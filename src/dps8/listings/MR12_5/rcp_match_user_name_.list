@@ -1,0 +1,276 @@
+	COMPILATION LISTING OF SEGMENT rcp_match_user_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0947.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 rcp_match_user_name_: proc (user_name, match_name) returns (bit (1));
+       14 
+       15 
+       16 /*
+       17*
+       18*   This procedure is called by RCP to see if a group_id matches a match string
+       19*   which is a group_id with star components.
+       20*
+       21*   For example User.Proj.a would match User.*.* or User but not User.Proj.m
+       22*
+       23*
+       24*   Written 06/01/78 by Michael R. Jordan
+       25*
+       26**/
+       27 
+       28 dcl  addr builtin;
+       29 dcl  index builtin;
+       30 dcl  length builtin;
+       31 dcl  match_name char (32) aligned;			/* Name in the RCPD. */
+       32 dcl  substr builtin;
+       33 dcl  user_name char (32) aligned;			/* Name of the user. */
+       34 
+       35 dcl 1 user aligned,
+       36     2 person char (32),				/* Person_id */
+       37     2 project char (32),				/* Project_id */
+       38     2 tag char (32);				/* Instance tag */
+       39 dcl 1 match like user;
+       40 
+       41 /*
+       42*
+       43*   If the strings match, the test succeeds.
+       44*
+       45**/
+       46 
+       47 
+       48 	if user_name = match_name then return ("1"b);
+       49 
+       50 
+       51 /*
+       52*
+       53*   Well, we have to do some work.  First parse the two strings
+       54*   and then see if they match.  If so the test succeeds.
+       55*
+       56**/
+       57 
+       58 
+       59 	call PARSE (user_name, addr (user));
+       60 	call PARSE (match_name, addr (match));
+       61 
+       62 
+       63 /*
+       64*
+       65*   Now test the structures returned.
+       66*
+       67**/
+       68 
+       69 
+       70 	if user.person ^= match.person then		/* Not the same person. */
+       71 	     if match.person ^= "*" then return ("0"b);	/* Nope! */
+       72 
+       73 	if user.project ^= match.project then		/* Not the same project. */
+       74 	     if match.project ^= "*" then return ("0"b);
+       75 
+       76 	if user.tag ^= match.tag then			/* Not the right tag. */
+       77 	     if match.tag ^= "*" then return ("0"b);
+       78 
+       79 
+       80 /*
+       81*
+       82*   All matched in some way - succeed!
+       83*
+       84**/
+       85 
+       86 
+       87 	return ("1"b);
+       88 
+       89 PARSE:	proc (s, st_ptr);
+       90 
+       91 
+       92 dcl  s char (*) aligned;				/* The string to parse. */
+       93 dcl  st_ptr ptr;					/* Ptr to the following structure... */
+       94 
+       95 
+       96 dcl  i fixed bin;					/* start of substring */
+       97 dcl  l fixed bin ;					/* length of substring */
+       98 dcl 1 st like user based (st_ptr);
+       99 
+      100 
+      101 /*
+      102*
+      103*   start out with default values for the structure.
+      104*
+      105**/
+      106 
+      107 
+      108 	     st.person, st.project, st.tag = "*";
+      109 
+      110 
+      111 /*
+      112*
+      113*   Now get the Person_id.
+      114*
+      115**/
+      116 
+      117 
+      118 	     l = index (s, ".")-1;			/* length of substring */
+      119 	     if l < 0 then do;			/* this is the last substring */
+      120 		st.person = s;
+      121 		return;
+      122 	     end;
+      123 
+      124 	     if l > 0 then				/* the substring is not null */
+      125 		st.person = substr (s, 1, l);		/* so use it */
+      126 
+      127 	     i = l+2;				/* update start of next substring */
+      128 	     if i > length (s) then return;		/* if there's no more, quit */
+      129 
+      130 
+      131 	     l = index (substr (s, i), ".")-1;		/* length of substring */
+      132 	     if l < 0 then do;			/* this is the last substring */
+      133 		st.project = substr (s, i);
+      134 		return;
+      135 	     end;
+      136 
+      137 	     if l > 0 then				/* the substring is not null */
+      138 		st.project = substr (s, i, l);	/* so use it */
+      139 
+      140 	     i = i+l+1;				/* update start of next substring */
+      141 	     if i > length (s) then return;		/* no more data */
+      142 
+      143 
+      144 	     st.tag = substr (s, i);			/* last substring */
+      145 
+      146 
+      147 	     return;
+      148 
+      149 
+      150 	end PARSE;
+      151 
+      152 
+      153      end rcp_match_user_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.0  rcp_match_user_name_.pl1          >spec>install>1111>rcp_match_user_name_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 28 ref 59 59 60 60
+i                               000166 automatic       fixed bin(17,0)          dcl 96 set ref 127* 128 131 133 137 140* 140 141 144
+index                                                  builtin function         dcl 29 ref 118 131
+l                               000167 automatic       fixed bin(17,0)          dcl 97 set ref 118* 119 124 124 127 131* 132 137 137
+                                                                                  140
+length                                                 builtin function         dcl 30 ref 128 141
+match                           000130 automatic       structure                level 1 packed packed unaligned dcl 39 set ref 60 60
+match_name                             parameter       char(32)                 dcl 31 set ref 13 48 60*
+person                          000100 automatic       char(32)                 level 2 in structure "user" dcl 35 in procedure
+                                                                                  "rcp_match_user_name_" set ref 70
+person                                 based           char(32)                 level 2 in structure "st" packed packed unaligned
+                                                                                  dcl 98 in procedure "PARSE" set ref 108* 120* 124*
+person                          000130 automatic       char(32)                 level 2 in structure "match" packed packed unaligned
+                                                                                  dcl 39 in procedure "rcp_match_user_name_" set ref
+                                                                                  70 70
+project                  10     000100 automatic       char(32)                 level 2 in structure "user" dcl 35 in procedure
+                                                                                  "rcp_match_user_name_" set ref 73
+project                  10            based           char(32)                 level 2 in structure "st" packed packed unaligned
+                                                                                  dcl 98 in procedure "PARSE" set ref 108* 133* 137*
+project                  10     000130 automatic       char(32)                 level 2 in structure "match" packed packed unaligned
+                                                                                  dcl 39 in procedure "rcp_match_user_name_" set ref
+                                                                                  73 73
+s                                      parameter       char                     dcl 92 ref 89 118 120 124 128 131 133 137 141 144
+st                                     based           structure                level 1 packed packed unaligned dcl 98
+st_ptr                                 parameter       pointer                  dcl 93 ref 89 108 108 108 120 124 133 137 144
+substr                                                 builtin function         dcl 32 ref 124 131 133 137 144
+tag                      20     000100 automatic       char(32)                 level 2 in structure "user" dcl 35 in procedure
+                                                                                  "rcp_match_user_name_" set ref 76
+tag                      20     000130 automatic       char(32)                 level 2 in structure "match" packed packed unaligned
+                                                                                  dcl 39 in procedure "rcp_match_user_name_" set ref
+                                                                                  76 76
+tag                      20            based           char(32)                 level 2 in structure "st" packed packed unaligned
+                                                                                  dcl 98 in procedure "PARSE" set ref 108* 144*
+user                            000100 automatic       structure                level 1 dcl 35 set ref 59 59
+user_name                              parameter       char(32)                 dcl 33 set ref 13 48 59*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+PARSE                           000146 constant        entry                    internal dcl 89 ref 59 60
+rcp_match_user_name_            000010 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       322         332     273         332
+Length       476     273        10         127      27           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_match_user_name_                136 external procedure  is an external procedure.  
+PARSE                                   internal procedure  shares stack frame of external procedure rcp_match_user_name_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_match_user_name_     000100 user                        rcp_match_user_name_
+                         000130 match                       rcp_match_user_name_
+                         000166 i                           PARSE
+                         000167 l                           PARSE
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000004        48 000015        59 000031        60 000047        70 000066        73 000104        76 000122
+     87 000140        89 000146       108 000157       118 000173       119 000204       120 000205       121 000211
+    124 000212       127 000216       128 000220       131 000223       132 000241       133 000242       134 000246
+    137 000247       140 000253       141 000256       144 000261       147 000271
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

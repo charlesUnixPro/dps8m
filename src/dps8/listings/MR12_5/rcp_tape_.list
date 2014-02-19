@@ -1,0 +1,2617 @@
+	COMPILATION LISTING OF SEGMENT rcp_tape_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0942.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(85-10-14,Farley), approve(85-10-14,MCR6979),
+       16*     audit(85-12-17,CLJones), install(86-03-21,MR12.0-1033):
+       17*     Issue request_status
+       18*     to FIPS devices. Allow for long unload connect time for FIPS.
+       19*  2) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       20*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       21*     Correct error message documentation.
+       22*  3) change(86-12-03,GWMay), approve(86-12-03,PBF7552),
+       23*     audit(86-12-09,Martinson), install(86-12-17,MR12.0-1250):
+       24*     Changed to go ahead and read the tape label so that the caller can display
+       25*     the "real" id and density of the tape when being run as the Initializer or
+       26*     if the authentication_level installation parameter is set to none.
+       27*  4) change(86-12-23,GDixon), approve(86-12-23,PBF7552),
+       28*     audit(86-12-23,Farley), install(87-01-05,MR12.0-1253):
+       29*     Don't change caller's volume label when rcp_tape_ was unable to read a
+       30*     label from the tape.  Set automatic write_flag in TAPE_STATE(4).
+       31*                                                   END HISTORY COMMENTS */
+       32 
+       33 /* format: style4,delnl,insnl,ifthen */
+       34 rcp_tape_:
+       35      procedure (arg_rcse_ptr, arg_ecode);
+       36 
+       37 /*	This program is an internal interface of RCP.
+       38*   *	Created on 02/20/75 by Bill Silver.
+       39*   *	Changed on 11/01/76 by Bill Silver to set/reset mount timer.
+       40*   *	Changed on 09/19/77 by R.J.C. Kissel to check tape labels.
+       41*   *	Modified on 04/26/78 by Michael R. Jordan to allow preloaded tape volumes.
+       42*   *	Modified on 01/31/79 by Michael R. Jordan to return label and density info,
+       43*   *	  to stop label reading on manual halt.
+       44*   *	Modified 4/79 by R.J.C. Kissel to handle 6250 bpi tapes.
+       45*   *	Modified 3/79 by Michael R. Jordan for MR7.0R
+       46*   *	Modified 04/79 by C. D. Tavares tor internal label authentication.
+       47*   *	Modified 01/02/81 by J. A. Bush for bootable Multics standard tapes
+       48*   *	Modified 3/82 by R.J.C. Kissel for FIPS level 1 by checking the accessibility code in an ANSI label
+       49*   *	Modified 7/82 by B. Braun to check 32 chars of the tape label and not just the first 16 characters.
+       50*   *                See TRs phx13431, phx12222.
+       51*   *	Modified 1/83 by J. A. Bush the set the rcse.label_type directly from the workspace
+       52*   *      Modified 12/83 by B. Braun to correct unnecessary authentication of tapes (phx14557 phx14837 phx16233).
+       53*   *	Modified 11/84 by Paul Farley to issue request_status to FIPS devices
+       54*   *	instead of set_write_permit, because the latter is not supported.
+       55*   *	Modified 10/85 by Paul Farley to extend the default IOI timeout during
+       56*   *	an unload of a FIPS tape to include a possible full rewind time.
+       57*   *
+       58*   *	This program is called to perform special tape attachment processing.
+       59**/
+       60 
+       61 /*		ARGUMENT  DATA		*/
+       62 
+       63 dcl  arg_ecode fixed bin (35);			/* (O) Return error_table_ code. */
+       64 dcl  arg_rcse_ptr ptr;				/* (I) Pointer to attachment RCS entry. */
+       65 
+       66 
+       67 /*		AUTOMATIC  DATA		*/
+       68 
+       69 dcl  command bit (6);				/* Initial IDCW command to device. */
+       70 dcl  device_off bit (18) aligned;			/* RCPD device entry offset. */
+       71 dcl  drive_num fixed bin;				/* Tape drive number. */
+       72 dcl  (ecode, scode) fixed bin (35);			/* error_table_ code. */
+       73 dcl  ioi_index fixed bin;				/* IOI internal device index. */
+       74 dcl  special_status_bits bit (7) aligned;		/* Used to isolate the special status bits we need. */
+       75 dcl  users_requested_volume_name char (32);
+       76 dcl  workspace_ptr ptr;				/* Pointer to our workspace. */
+       77 dcl  write_flag bit (1) aligned;
+       78 
+       79 
+       80 /*		BASED  DATA		*/
+       81 
+       82 dcl  1 wspace based (workspace_ptr) aligned,		/* Overlay of IOI workspace. */
+       83        2 idcw bit (36),				/* Tape IDCW. */
+       84        2 read_idcw bit (36),
+       85        2 read_dcw bit (36),
+       86        2 rewind_idcw bit (36),
+       87        2 state fixed bin,				/* Index that => current state of attachment. */
+       88        2 get_authentication_state fixed bin,
+       89        2 read_label_state fixed bin,
+       90        2 read_record_state fixed bin,
+       91        2 rewind_state fixed bin,
+       92        2 set_density_state fixed bin,
+       93        2 tape_state_4_state fixed bin,
+       94        2 mount_state fixed bin,			/* Save state used to wait for mounts. */
+       95        2 i fixed bin,				/* read_label loop counter. */
+       96        2 j fixed bin,				/* read_record loop counter. */
+       97        2 retry_count fixed bin,			/* Number of REREADYs we have issued. */
+       98        2 ring_comment char (8),			/* Used in tape mount messages. */
+       99        2 special_flag bit (1),			/* ON => special interrupt. */
+      100        2 special_status_word bit (36),			/* One word of special status. */
+      101        2 label_name char (32) unaligned,		/* label read from tape. */
+      102        2 label_type fixed bin,			/* see label_msg below for meaning. */
+      103        2 flags,
+      104          (
+      105          3 bad_mode bit (1),
+      106          3 blank_tape bit (1),
+      107          3 den_set bit (1),
+      108          3 nrzi_den_set bit (1),
+      109          3 label_match bit (1),
+      110          3 unreadable_tape bit (1),
+      111          3 record_read bit (1),
+      112          3 wait bit (1),
+      113          3 manual_halt bit (1),
+      114          3 ansi_non_blank_access bit (1),
+      115          3 pad bit (26)
+      116          ) unaligned,
+      117        2 pad_ptr ptr,				/* Pad so status queue starts at even offset. */
+      118        2 istatq like istat,				/* Our status queue - only 1 entry. */
+      119        2 label_buffer (32) bit (36);			/* Place to put the first few words for label checking. */
+      120 
+      121 
+      122 /*		INTERNAL STATIC DATA	*/
+      123 
+      124 dcl  max_num_retries fixed bin options (constant)		/* Number of times we will ready a tape drive. */
+      125 	internal static init (5);
+      126 
+      127 dcl  template_idcw bit (36) options (constant) /* Template of the IDCW we will use. */ internal static
+      128 	init ("000000700201"b3);
+      129 
+      130 dcl  template_read_idcw bit (36) options (constant) internal static init ("050000700000"b3);
+      131 						/* Read record binary command. */
+      132 
+      133 dcl  template_read_dcw bit (36) options (constant) internal static init ("000000000000"b3);
+      134 						/* We will set the address and tally later. */
+      135 
+      136 dcl  template_rewind_idcw bit (36) options (constant) internal static init ("700000700201"b3);
+      137 
+      138 dcl  rewind_command bit (6) options (constant) /* IDCW command. */ internal static init ("70"b3);
+      139 
+      140 dcl  rewind_unload_command bit (6) options (constant) /* IDCW command. */ internal static init ("72"b3);
+      141 
+      142 dcl  reset_status_command bit (6) options (constant) /* IDCW command. */ internal static init ("40"b3);
+      143 
+      144 dcl  request_status_command bit (6) options (constant) /* IDCW command. */ internal static init ("00"b3);
+      145 
+      146 dcl  set_write_permit_command bit (6) options (constant) /* IDCW command. */ internal static init ("63"b3);
+      147 
+      148 dcl  density (5) bit (6) options (constant) /* Set density commands */ internal static
+      149 	init ("60"b3, "61"b3, "64"b3, "65"b3, "41"b3);	/* 800, 556, 200, 1600, and 6250 bpi */
+      150 
+      151 dcl  DENSITY_INDEX (5) fixed bin options (constant) /* Volume density index */ internal static init (3, 2, 1, 4, 5);
+      152 						/* 800, 556, 200, 1600, 6250 */
+      153 
+      154 dcl  FIPS_UNLOAD_TIMEOUT fixed bin (71) options (constant) /* MAX time for connect */ internal static init (90000000);
+      155 
+      156 
+      157 /*		EXTERNAL ENTRIES CALLED	*/
+      158 
+      159 dcl  (addr, fixed, null, rel, size, substr, bin, ptr, dim, translate) builtin;
+      160 dcl  (bit, collate9, divide, hbound, lbound, length, min) builtin;
+      161 
+      162 dcl  (
+      163      error_table_$action_not_performed,
+      164      error_table_$device_attention,
+      165      error_table_$invalid_state
+      166      ) fixed bin (35) external;
+      167 
+      168 dcl  admin_gate_$ioi_set_to_max entry (fixed bin, fixed bin (71), fixed bin (35));
+      169 dcl  admin_gate_$syserr entry options (variable);
+      170 dcl  cv_dec_ entry (char (*), fixed bin);
+      171 dcl  ioi_$connect entry (fixed bin, fixed bin, fixed bin (35));
+      172 dcl  ioi_$get_special_status entry (fixed bin, bit (1) aligned, bit (36) aligned, fixed bin (35));
+      173 dcl  ioi_$set_status entry (fixed bin, fixed bin (18), fixed bin, fixed bin (35));
+      174 dcl  ioi_$timeout entry (fixed bin, fixed bin (71), fixed bin (35));
+      175 dcl  ioi_$workspace entry (fixed bin, ptr, fixed bin, fixed bin (35));
+      176 dcl  rcp_auto_register_ entry (char (*), char (*), char (*), fixed bin (35));
+      177 dcl  rcp_ioi_attach_ entry (ptr, fixed bin (35));
+      178 dcl  rcp_mount_timer_$reset entry (bit (18) aligned, fixed bin (35));
+      179 dcl  rcp_mount_timer_$set entry (bit (18) aligned, bit (1) aligned, fixed bin (35));
+      180 dcl  rcp_pointers_$data entry () returns (ptr);
+      181 dcl  bcd_to_ascii_ entry (bit (*), char (*));
+      182 dcl  ebcdic8_to_ascii_ entry (bit (*), char (*));
+      183 dcl  canon_for_volume_label_ entry (char (*), char (*), char (*), fixed bin, fixed bin (35));
+      184 dcl  authenticate_ ext entry (char (*)) returns (char (3) aligned);
+      185 
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      186 
+      187 
+  2     1 /*	Begin  include file ... rcp_data.incl.pl1
+  2     2*   *
+  2     3*   *	Created on 09/06/74 by Bill Silver.
+  2     4*   *	This include file defines the Resource Control Package data base, rcp_data.
+  2     5*   *	It is initialized in ring 0 by rcp_init.  It is maintained in ring 1 by RCP.
+  2     6*   *	It contains information about all of the devices and volumes managed by RCP.
+  2     7*   *	This include file references rcp_com_seg.incl.pl1.
+  2     8*
+  2     9*   *	Modified by R.J.C. Kissel on 10/5/77 to add the check_label bit.
+  2    10*   *	Modified by Michael R. Jordan on 04/24/78 to add modes and attached flag.
+  2    11*   *	Modified on 12/09/78 to add removable media bit.
+  2    12*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+  2    13*   *	Modified 3/79 by C. D. Tavares for expandable RCP modes.
+  2    14*   *	Modified 11/84 by Paul Farley to add fips flag.
+  2    15*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  2    16**/
+  2    17 
+  2    18 /****^  HISTORY COMMENTS:
+  2    19*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  2    20*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  2    21*     Support FIPS and IMU.
+  2    22*                                                   END HISTORY COMMENTS */
+  2    23 
+  2    24 dcl  rcpd_ptr ptr;					/* Points to base of RCPD. */
+  2    25 dcl  dtype_ptr ptr;					/* Points to a device type entry. */
+  2    26 dcl  device_ptr ptr;				/* Points to a device entry. */
+  2    27 dcl  volume_ptr ptr;				/* Points to a volume entry. */
+  2    28 
+  2    29 dcl 1 rcpd based (rcpd_ptr) aligned,			/* Begin at word 0 of RCPD. */
+  2    30     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  2    31     2 init bit (1) unal,				/* ON => rcp_ring1_init_ has executed */
+  2    32     2 modes like rcp_init_flags unaligned,
+  2    33     2 tot_dtypes fixed bin,				/* Number of known device types. */
+  2    34     2 tot_devices fixed bin,				/* Total number of devices configured. */
+  2    35     2 tot_volumes fixed bin,				/* Number of possible attached volumes. */
+  2    36     2 last_volume fixed bin,				/* The last volume entry currently in use. */
+  2    37     2 mtimer_chan fixed bin (71),			/* Event channel for mount timer. */
+  2    38     2 mtimer_pid bit (36),				/* ID of mount timer process. */
+  2    39     2 accounting_chan fixed bin (71),			/* Event channel for device accounting */
+  2    40     2 accounting_pid bit (36),			/* ID of accounting process */
+  2    41     2 unload_sleep_time fixed bin (71),			/* Number of microseconds to wait for unload completion. */
+  2    42     2 pad (7) fixed bin,
+  2    43     2 dtype (0 refer (rcpd.tot_dtypes))			/* One entry per device type. */
+  2    44      like dtype,					/* See structure below. */
+  2    45     2 device (0 refer (rcpd.tot_devices))		/* One entry per configured device. */
+  2    46      like device,					/* See structure below. */
+  2    47     2 volume (0 refer (rcpd.tot_volumes))		/* One entry per possible attached volume. */
+  2    48      like volume,					/* See structure below. */
+  2    49     2 end bit (36) aligned;				/* End of rcp_data. */
+  2    50 
+  2    51 dcl 1 dtype based (dtype_ptr) aligned,			/* Entry for one device type. */
+  2    52     2 device_type char (32),				/* Name of this device type. */
+  2    53     2 max_concurrent fixed bin,			/* Max number of concurrently assigned devices. */
+  2    54     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  2    55     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  2    56     2 first_off bit (18),				/* Offset of first device entry. */
+  2    57     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  2    58 
+  2    59 dcl 1 device based (device_ptr) aligned,		/* Up to state must = rcs.rcse. */
+  2    60     2 device_name char (8),				/* Name of device associated with this entry. */
+  2    61     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  2    62     2 dtypex fixed bin,				/* Device type index. */
+  2    63     2 model fixed bin,				/* Device model number. */
+  2    64     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  2    65     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  2    66     2 state_time fixed bin (71),			/* Time device put into current state. */
+  2    67     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted,
+  2    68*						   3 => storage system, 4 => reserved */
+  2    69 
+  2    70 /*	*	*	*	*	** Following fields are unique to device entry. */
+  2    71 
+  2    72     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2    73     2 acs_name char (12),				/* Entry name of ACS for this device. */
+  2    74     2 next_off bit (18),				/* Offset of next entry for this device type. */
+  2    75     2 iom_num fixed bin,				/* IOM number for this device. */
+  2    76     2 chan_num fixed bin,				/* Channel number for this device. */
+  2    77     2 num_channels fixed bin,				/* Num channels that may address device. */
+  2    78     2 flags,					/* Special info flags. */
+  2    79      (3 delete bit (1),				/* ON => Delete device when it is unassigned. */
+  2    80       3 priv bit (1),				/* ON => Deleted device assigned for priv attach. */
+  2    81       3 reservable bit (1),				/* ON => may be reserved for system process. */
+  2    82       3 reserved bit (1),				/* ON => reserved to a reserved process. */
+  2    83       3 mounting bit (1),				/* ON => mount pending. */
+  2    84       3 writing bit (1),				/* ON => mounting for writing. */
+  2    85       3 attached bit (1) unal,			/* ON => device is attached. */
+  2    86       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  2    87       3 fips bit (1),				/* ON => FIPS device. */
+  2    88       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  2    89       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  2    90       3 unused bit (25)) unal,
+  2    91     2 process_id bit (36),				/* ID of assigned process. */
+  2    92     2 group_id char (32),				/* Process group ID. */
+  2    93     2 error_count fixed bin (35),			/* Total error count.  Defined by user ring. */
+  2    94     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  2    95     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  2    96     2 histogram (4) fixed bin,			/* Assignment time histogram. */
+  2    97     2 reservation_id fixed bin (71),
+  2    98     2 reserved_by char (32),				/* Who made this reservation. */
+  2    99     2 current_authorization bit (72) aligned;		/* Authoization of process using this device. */
+  2   100 
+  2   101 dcl 1 volume based (volume_ptr) aligned,		/* Entry for one volume. */
+  2   102     2 process_id bit (36),				/* "0"b => unassigned. */
+  2   103     2 volume_name char (32),				/* Volume name. */
+  2   104     2 vtypex fixed bin,				/* Volume type index. */
+  2   105     2 group_id char (32),				/* This is used for the reserved_for field. */
+  2   106     2 reserved_by char (32),
+  2   107     2 reservation_id fixed bin (71),
+  2   108     2 state_time fixed bin (71),			/* Same as for a device. */
+  2   109     2 state fixed bin,				/* Same as for a device. */
+  2   110     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  2   111     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  2   112 
+  3     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  3     2 
+  3     3 /* Created on 04/24/78 by Michael R. Jordan */
+  3     4 /* Modified 04/10/79 by C. D. Tavares */
+  3     5 
+  3     6 dcl  rifp ptr;
+  3     7 
+  3     8 dcl 1 rcp_init_flags based (rifp),
+  3     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  3    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  3    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  3    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  3    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  3    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  3    15 
+  3    16 dcl (No_authentication initial (0),
+  3    17      Nominal_authentication initial (1),
+  3    18      Automatic_authentication initial (2),
+  3    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  3    20 
+  3    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  3    22     ("none", "nominal", "automatic", "manual");
+  3    23 
+  3    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  2   113 
+  2   114 
+  2   115 /*	End of include file ... rcp_data.incl.pl1	*/
+      188 
+      189 
+  4     1 /* --------------- BEGIN include file rcp_volume_formats.incl.pl1 --------------- */
+  4     2 
+  4     3 
+  4     4 
+  4     5 /****^  HISTORY COMMENTS:
+  4     6*  1) change(86-12-08,GWMay), approve(86-12-08,PBF7552),
+  4     7*     audit(86-12-08,Martinson), install(86-12-17,MR12.0-1250):
+  4     8*     added array entry 0 to the volume format types to indicate that the tape
+  4     9*     volume was not authenticated by rcp.
+  4    10*                                                   END HISTORY COMMENTS */
+  4    11 
+  4    12 
+  4    13 /* General volume types */
+  4    14 
+  4    15 dcl (Volume_unauthenticated initial (0),
+  4    16      Volume_blank initial (1),
+  4    17      Volume_unknown_format initial (6),
+  4    18      Volume_unreadable initial (7),
+  4    19 
+  4    20 /* Tape volume types */
+  4    21 
+  4    22      Volume_multics_tape initial (2),
+  4    23      Volume_gcos_tape initial (3),
+  4    24      Volume_ibm_tape initial (4),
+  4    25      Volume_ansi_tape initial (5)) fixed bin static options (constant);
+  4    26 
+  4    27 /* Printable descriptions of volume types */
+  4    28 
+  4    29 dcl  Tape_volume_types (0:7) char (16) static options (constant) initial
+  4    30     ("unauthenticated",
+  4    31      "blank",
+  4    32      "Multics",
+  4    33      "GCOS",
+  4    34      "IBM",
+  4    35      "ANSI",
+  4    36      "unrecognizable",
+  4    37      "unreadable");
+  4    38 
+  4    39 /* ---------------- END include file rcp_volume_formats.incl.pl1 ---------------- */
+      190 
+      191 
+  5     1 
+  5     2 /* Begin include file ...... iom_pcw.incl.pl1 */
+  5     3 
+  5     4 dcl  pcwp ptr;					/* pointer to PCW */
+  5     5 
+  5     6 dcl 1 pcw based (pcwp) aligned,			/* Peripheral Control Word */
+  5     7      (2 command bit (6),				/* device command */
+  5     8       2 device bit (6),				/* device code */
+  5     9       2 ext bit (6),				/* address extension */
+  5    10       2 code bit (3),				/* should be "111"b for PCW */
+  5    11       2 mask bit (1),				/* channel mask bit */
+  5    12       2 control bit (2),				/* terminate/proceed and marker control bits */
+  5    13       2 chan_cmd bit (6),				/* type of I/O operation */
+  5    14       2 count bit (6),				/* record count or control character */
+  5    15       2 mbz1 bit (3),
+  5    16       2 channel bit (6),				/* channel number */
+  5    17       2 mbz2 bit (27)) unal;
+  5    18 
+  5    19 dcl  idcwp ptr;					/* pointer to IDCW */
+  5    20 
+  5    21 dcl 1 idcw based (idcwp) aligned,			/* Instruction DCW */
+  5    22      (2 command bit (6),				/* device command */
+  5    23       2 device bit (6),				/* device code */
+  5    24       2 ext bit (6),				/* address extension */
+  5    25       2 code bit (3),				/* should be "111"b for PCW */
+  5    26       2 ext_ctl bit (1),				/* "1"b if address extension to be used */
+  5    27       2 control bit (2),				/* terminate/proceed and marker control bits */
+  5    28       2 chan_cmd bit (6),				/* type of I/O operation */
+  5    29       2 count bit (6)) unal;				/* record count or control character */
+  5    30 
+  5    31 /* End include file ...... iom_pcw.incl.pl1 */
+  5    32 
+      192 
+      193 
+  6     1 
+  6     2 /* Begin include file ...... iom_dcw.incl.pl1 */
+  6     3 
+  6     4 dcl  dcwp ptr,					/* pointer to DCW */
+  6     5      tdcwp ptr;					/* pointer to TDCW */
+  6     6 
+  6     7 dcl 1 dcw based (dcwp) aligned,			/* Data Control Word */
+  6     8      (2 address bit (18),				/* address for data transfer */
+  6     9       2 char_pos bit (3),				/* character position */
+  6    10       2 m64 bit (1),				/* non-zero for mod 64 address */
+  6    11       2 type bit (2),				/* DCW type */
+  6    12       2 tally bit (12)) unal;				/* tally for data transfer */
+  6    13 
+  6    14 dcl 1 tdcw based (tdcwp) aligned,			/* Transfer DCW */
+  6    15      (2 address bit (18),				/* address to transfer to */
+  6    16       2 mbz1 bit (4),
+  6    17       2 type bit (2),				/* should be "10"b for TDCW */
+  6    18       2 mbz2 bit (9),
+  6    19       2 ec bit (1),					/* non-zero to set LPW AE bit */
+  6    20       2 res bit (1),				/* non-zero to restrict further use of IDCW */
+  6    21       2 rel bit (1)) unal;				/* non-zero to set relative mode after transfer */
+  6    22 
+  6    23 /* End of include file ...... iom_dcw.incl.pl1 */
+  6    24 
+      194 
+      195 
+  7     1 
+  7     2 /* Begin include file ...... ioi_stat.incl.pl1 */
+  7     3 /* Last modified 3/24/75 by Noel I. Morris */
+  7     4 
+  7     5 dcl  isp ptr;					/* pointer to status structure */
+  7     6 
+  7     7 dcl 1 istat based (isp) aligned,			/* I/O Interfacer status structure */
+  7     8     2 completion,					/* completion flags */
+  7     9      (3 st bit (1),					/* "1"b if status returned */
+  7    10       3 er bit (1),					/* "1"b if status indicates error condition */
+  7    11       3 run bit (1),				/* "1"b if channel still running */
+  7    12       3 time_out bit (1)) unal,			/* "1"b if time-out occurred */
+  7    13     2 level fixed bin (3),				/* IOM interrupt level */
+  7    14     2 offset fixed bin (18),				/* DCW list offset */
+  7    15     2 absaddr fixed bin (24),				/* absolute address of workspace */
+  7    16     2 iom_stat bit (72),				/* IOM status */
+  7    17     2 lpw bit (72);					/* LPW residue */
+  7    18 
+  7    19 dcl  imp ptr;					/* pointer to message structure */
+  7    20 
+  7    21 dcl 1 imess based (imp) aligned,			/* I/O Interfacer event message structure */
+  7    22    (2 completion like istat.completion,			/* completion flags */
+  7    23     2 pad bit (11),
+  7    24     2 level bit (3),				/* interrupt level */
+  7    25     2 offset bit (18),				/* DCW list offset */
+  7    26     2 status bit (36)) unal;				/* first 36 bits of status */
+  7    27 
+  7    28 /* End of include file ...... ioi_stat.incl.pl1 */
+  7    29 
+      196 
+      197 
+  8     1 
+  8     2 /* Begin include file ...... iom_stat.incl.pl1 */
+  8     3 /* Last modified on 10/31/74 by Noel I. Morris */
+  8     4 
+  8     5 dcl  statp ptr;					/* pointer to status */
+  8     6 
+  8     7 dcl 1 status based (statp) aligned,			/* IOM status information */
+  8     8      (2 t bit (1),					/* set to "1"b by IOM */
+  8     9       2 power bit (1),				/* non-zero if peripheral absent or power off */
+  8    10       2 major bit (4),				/* major status */
+  8    11       2 sub bit (6),				/* substatus */
+  8    12       2 eo bit (1),					/* even/odd bit */
+  8    13       2 marker bit (1),				/* non-zero if marker status */
+  8    14       2 soft bit (2),				/* software status */
+  8    15       2 initiate bit (1),				/* initiate bit */
+  8    16       2 abort bit (1),				/* software abort bit */
+  8    17       2 channel_stat bit (3),				/* IOM channel status */
+  8    18       2 central_stat bit (3),				/* IOM central status */
+  8    19       2 mbz bit (6),
+  8    20       2 rcount bit (6),				/* record count residue */
+  8    21       2 address bit (18),				/* DCW address residue */
+  8    22       2 char_pos bit (3),				/* character position residue */
+  8    23       2 r bit (1),					/* non-zero if reading */
+  8    24       2 type bit (2),				/* type of last DCW */
+  8    25       2 tally bit (12)) unal;				/* DCW tally residue */
+  8    26 
+  8    27 dcl 1 faultword based (statp) aligned,			/* system fault word */
+  8    28      (2 mbz1 bit (9),
+  8    29       2 channel bit (9),				/* channel number */
+  8    30       2 serv_req bit (5),				/* service request */
+  8    31       2 mbz2 bit (3),
+  8    32       2 controller_fault bit (4),			/* system controller fault code */
+  8    33       2 io_fault bit (6)) unal;			/* I/O fault code */
+  8    34 
+  8    35 dcl 1 special_status based (statp) aligned,		/* special status from PSIA */
+  8    36    (2 t bit (1),					/* entry present bit */
+  8    37     2 channel bit (8),				/* channel number */
+  8    38     2 pad1 bit (3),
+  8    39     2 device bit (6),				/* device address */
+  8    40     2 pad2 bit (1),
+  8    41     2 byte2 bit (8),				/* device dependent information */
+  8    42     2 pad3 bit (1),
+  8    43     2 byte3 bit (8)) unal;				/* device dependent information */
+  8    44 
+  8    45 /* End of include file iom_stat.incl.pl1 */
+  8    46 
+      198 
+      199 
+  9     1 /* --------------- BEGIN include file resource_control_desc.incl.pl1 --------------- */
+  9     2 
+  9     3 /* Written by R.J.C. Kissel 3/78. */
+  9     4 /* Modified 09/28/78 by C. D. Tavares */
+  9     5 
+  9     6 dcl 1 resource_descriptions based (resource_desc_ptr) aligned,
+  9     7     2 version_no fixed bin,				/* caller must set this to resource_desc_version_1 */
+  9     8     2 n_items fixed bin,				/* Number of resources described by this structure. */
+  9     9     2 item (Resource_count refer (resource_descriptions.n_items)) aligned,
+  9    10       3 type char (32),				/* e.g., "tape_drive" */
+  9    11       3 name char (32),				/* e.g., "tapa_03" */
+  9    12       3 uid bit (36),				/* The resource unique id. */
+  9    13       3 potential_attributes bit (72),			/* resource's permissible attributes */
+  9    14       3 attributes (2) bit (72),			/* RCP attribute description (output) */
+  9    15       3 desired_attributes (4) bit (72),		/* desired attributes (input) */
+  9    16       3 potential_aim_range (2) bit (72),		/* Lowest and highest possible AIM bounds for resource */
+  9    17       3 aim_range (2) bit (72),			/* Current AIM range */
+  9    18       3 owner char (32),				/* e.g., "Smith.Project" */
+  9    19       3 acs_path char (168),				/* Access control segment pathname. */
+  9    20       3 location char (168),				/* String describing location in unusual cases */
+  9    21       3 comment char (168),				/* User-settable comment string */
+  9    22       3 charge_type char (32),			/* accounting identifier for this resource */
+  9    23       3 rew bit (3) unaligned,			/* user's effective access to resource */
+  9    24       3 (usage_lock,				/* This resource may not be acquired or used. */
+  9    25          release_lock,				/* The owner is not allowed to release the resource. */
+  9    26          awaiting_clear,				/* Resource awaiting manual clear */
+  9    27          user_alloc) bit (1) unaligned,			/* User claims volume contains useful data */
+  9    28       3 pad2 bit (29) unaligned,			/* Ignored field. */
+  9    29       3 given aligned,				/* each of these bits says the corresponding */
+  9    30 						/* item is significant on input */
+  9    31        (4 (name,
+  9    32 	 uid,
+  9    33 	 potential_attributes,
+  9    34 	 desired_attributes,
+  9    35 	 potential_aim_range,
+  9    36 	 aim_range,
+  9    37 	 owner,
+  9    38 	 acs_path,
+  9    39 	 location,
+  9    40 	 comment,
+  9    41 	 charge_type,
+  9    42 	 usage_lock,
+  9    43 	 release_lock,
+  9    44 	 user_alloc) bit (1),
+  9    45         4 pad1 bit (22)) unaligned,
+  9    46       3 state bit (36) aligned,			/* For use of resource_control_ only */
+  9    47       3 status_code fixed bin (35);			/* Standard system status code for this resource. */
+  9    48 
+  9    49 
+  9    50 /* Note that the reservation description must always be used with a resource
+  9    51*   description structure.  When they are used together the two structures must
+  9    52*   have the same number of entries, i.e. Resource_count is the same for both. */
+  9    53 
+  9    54 
+  9    55 dcl 1 reservation_description based (resource_res_ptr) aligned,
+  9    56     2 version_no fixed bin,				/* The version number for this structure. */
+  9    57     2 reserved_for char (32),				/* Group id of reserved for process. */
+  9    58     2 reserved_by char (32),				/* Group id of reserved by process. */
+  9    59     2 reservation_id fixed bin (71),			/* Reservation id of this reservation group. */
+  9    60     2 group_starting_time fixed bin (71),		/* Starting time for this reservation group. */
+  9    61     2 asap_duration fixed bin (71),			/* Duration after which as soon as possible is no longer good. */
+  9    62     2 flags aligned,
+  9    63      (3 auto_expire bit (1),				/* Should reservation expire when this process terminates. */
+  9    64       3 asap bit (1),				/* Make this reservation group as soon as possible. */
+  9    65       3 rel bit (1),				/* Times are relative/absolute. */
+  9    66       3 sec bit (1)) unaligned,			/* Times are in sec/microsec. */
+  9    67     2 n_items fixed bin,				/* Number of resources reserved in this group. */
+  9    68     2 reservation_group (Resource_count refer (reservation_description.n_items)),
+  9    69       3 starting_time fixed bin (71),			/* When this resource res. starts in the group. */
+  9    70       3 duration fixed bin (71);			/* Duration of this resource res. in the group. */
+  9    71 
+  9    72 dcl (resource_desc_ptr,
+  9    73      resource_res_ptr) pointer;
+  9    74 
+  9    75 dcl (resource_desc_version_1 initial (1),
+  9    76      resource_res_version_1 initial (1)) internal static options (constant);
+  9    77 
+  9    78 dcl  Resource_count fixed bin;			/* The number of resources described in the structures. */
+  9    79 
+  9    80 /* ---------------- END include file resource_control_desc.incl.pl1 ---------------- */
+      200 
+      201 
+ 10     1 /*	Begin include file ... rcp_resource_types.incl.pl1
+ 10     2*   *
+ 10     3*   *	Created 3/79 by Michael R. Jordan for MR7.0R
+ 10     4*   *
+ 10     5*   *	This include file defines the official RCP resource types.
+ 10     6*   *	The array of names is indexed by the corresponding device type.
+ 10     7*   *      MOD by RAF for MCA
+ 10     8**/
+ 10     9 
+ 10    10 
+ 10    11 
+ 10    12 /****^  HISTORY COMMENTS:
+ 10    13*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+ 10    14*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+ 10    15*     Support of MCA.
+ 10    16*                                                   END HISTORY COMMENTS */
+ 10    17 
+ 10    18 dcl  DEVICE_TYPE (8) char (32)
+ 10    19 	internal static options (constant)
+ 10    20 	init ("tape_drive", "disk_drive", "console", "printer", "punch", "reader", "special", "mca");
+ 10    21 
+ 10    22 dcl  NUM_QUALIFIERS (8) fixed bin			/* Number of qualifiers for each device type. */
+ 10    23 	internal static init (3, 0, 0, 2, 0, 0, 0, 0);
+ 10    24 
+ 10    25 dcl  VOLUME_TYPE (8) char (32)
+ 10    26 	internal static options (constant)
+ 10    27 	init ("tape_vol", "disk_vol", "", "", "", "", "", "");
+ 10    28 
+ 10    29 dcl  TAPE_DRIVE_DTYPEX fixed bin static internal options (constant) init (1);
+ 10    30 dcl  DISK_DRIVE_DTYPEX fixed bin static internal options (constant) init (2);
+ 10    31 dcl  CONSOLE_DTYPEX fixed bin static internal options (constant) init (3);
+ 10    32 dcl  PRINTER_DTYPEX fixed bin static internal options (constant) init (4);
+ 10    33 dcl  PUNCH_DTYPEX fixed bin static internal options (constant) init (5);
+ 10    34 dcl  READER_DTYPEX fixed bin static internal options (constant) init (6);
+ 10    35 dcl  SPECIAL_DTYPEX fixed bin static internal options (constant) init (7);
+ 10    36 dcl  MCA_DTYPEX fixed bin static internal options (constant) init (8);
+ 10    37 dcl  TAPE_VOL_VTYPEX fixed bin static internal options (constant) init (1);
+ 10    38 dcl  DISK_VOL_VTYPEX fixed bin static internal options (constant) init (2);
+ 10    39 
+ 10    40 
+ 10    41 /*	End include file ... rcp_resource_types.incl.pl1 */
+      202 
+      203 
+ 11     1 
+ 11     2 /* Begin include file ...... mstr.incl.pl1 */
+ 11     3 /* Modified 2/11/74 by N. I. Morris */
+ 11     4 /* Modified 12/30/80 by J. A. Bush for bootable tape labels */
+ 11     5 /* Modified 12/14/82 by J. A. Bush to add version number to the record header */
+ 11     6 
+ 11     7 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+ 11     8 dcl	mstrp		   ptr;			/* pointer to MST record */
+ 11     9 
+ 11    10 dcl	1 mstr		   based (mstrp) aligned,	/* Multics standard tape mstr */
+ 11    11 	  2 head		   like mstr_header,	/* tape record header */
+ 11    12 	  2 data		   bit (36864 refer (mstr.head.data_bit_len)),
+ 11    13 						/* record body */
+ 11    14 	  2 trail		   like mstr_trailer;	/* record trailer */
+ 11    15 
+ 11    16 dcl	1 mst_label	   based (mstrp) aligned,	/* bootable label structure */
+ 11    17 	  2 xfer_vector	   (4),			/* bootload interrupt transfer vector */
+ 11    18 	    3 lda_instr	   bit (36),		/* this will be a "LDA 4" instruction */
+ 11    19 	    3 tra_instr	   bit (36),		/* a "TRA" instruction to start of boot pgm */
+ 11    20 	  2 head		   like mstr_header,	/* standard record header */
+ 11    21 	  2 vid		   like volume_identifier,	/* tape volume info */
+ 11    22 	  2 fv_overlay	   (0:31),		/* overlay for fault vectors  when tape booted */
+ 11    23 	    3 scu_instr	   bit (36),		/* an "SCU" instruction to address of fault_data */
+ 11    24 	    3 dis_instr	   bit (36),		/* a "DIS" instruction, with Y field = to its own addr */
+ 11    25 	  2 fault_data	   (8) bit (36),		/* SCU data for unexpected faults goes here */
+ 11    26 	  2 boot_pgm_path	   char (168) unaligned,	/* path name of boot program */
+ 11    27 	  2 userid	   char (32) unaligned,	/* Storage for Person.Project.Instance of creator of tape */
+ 11    28 	  2 label_version	   fixed bin,		/* defined by LABEL_VERSION constant below */
+ 11    29 	  2 output_mode	   fixed bin,		/* mode in which tape was written with */
+ 11    30 	  2 boot_pgm_len	   fixed bin,		/* length in words of boot program */
+ 11    31 	  2 copyright	   char (56),		/* Protection notice goes here if boot pgm is written */
+ 11    32 	  2 pad		   (13) bit (36),		/* pad out to 192 (300 octal) */
+ 11    33 	  2 boot_pgm	   (0 refer (mst_label.boot_pgm_len)) bit (36),
+ 11    34 						/* boot program */
+ 11    35 	  2 trail		   like mstr_trailer;	/* standard record trailer */
+ 11    36 
+ 11    37 dcl	1 mstr_header	   based aligned,		/* Multics standard tape record header */
+ 11    38 	( 2 c1		   bit (36),		/* constant = 670314355245(8) */
+ 11    39 	  2 uid		   bit (72),		/* unique ID */
+ 11    40 	  2 rec_within_file	   fixed bin (17),		/* phys. rec. # within phys. file */
+ 11    41 	  2 phy_file	   fixed bin (17),		/* phys. file # on phys. tape */
+ 11    42 	  2 data_bits_used	   fixed bin (17),		/* # of bits of data in record */
+ 11    43 	  2 data_bit_len	   fixed bin (17),		/* bit length of data space */
+ 11    44 	  2 flags,				/* record flags */
+ 11    45 	    3 admin	   bit (1),		/* admin record flag */
+ 11    46 	    3 label	   bit (1),		/* label record flag */
+ 11    47 	    3 eor		   bit (1),		/* end-of-reel record flag */
+ 11    48 	    3 pad1	   bit (11),
+ 11    49 	    3 set		   bit (1),		/* ON if any of following items set */
+ 11    50 	    3 repeat	   bit (1),		/* repeated record flag */
+ 11    51 	    3 padded	   bit (1),		/* record contains padding flag */
+ 11    52 	    3 eot		   bit (1),		/* EOT reflector encountered flag */
+ 11    53 	    3 drain	   bit (1),		/* synchronous write flag */
+ 11    54 	    3 continue	   bit (1),		/* continue on next reel flag */
+ 11    55 	    3 pad2	   bit (4),
+ 11    56 	  2 header_version	   fixed bin (3) unsigned,	/* current header version number */
+ 11    57 	  2 repeat_count	   fixed bin (8),		/* repetition count */
+ 11    58 	  2 checksum	   bit (36),		/* checksum of header and trailer */
+ 11    59 	  2 c2		   bit (36)
+ 11    60 	  )		   unal;			/* constant = 512556146073(8) */
+ 11    61 
+ 11    62 dcl	1 mstr_trailer	   based aligned,		/* Multics standard tape record trailer */
+ 11    63 	( 2 c1		   bit (36),		/* constant = 107463422532(8) */
+ 11    64 	  2 uid		   bit (72),		/* unique ID (matches header) */
+ 11    65 	  2 tot_data_bits	   fixed bin (35),		/* total data bits written on logical tape */
+ 11    66 	  2 pad_pattern	   bit (36),		/* padding pattern */
+ 11    67 	  2 reel_num	   fixed bin (11),		/* reel sequence # */
+ 11    68 	  2 tot_file	   fixed bin (23),		/* phys. file number */
+ 11    69 	  2 tot_rec	   fixed bin (35),		/* phys. record # for logical tape */
+ 11    70 	  2 c2		   bit (36)
+ 11    71 	  )		   unal;			/* constant = 265221631704(8) */
+ 11    72 
+ 11    73 dcl	1 volume_identifier	   based aligned,		/* tape volume info */
+ 11    74 	( 2 installation_id	   char (32),		/* installation that created tape */
+ 11    75 	  2 tape_reel_id	   char (32),		/* tape reel name */
+ 11    76 	  2 volume_set_id	   char (32)
+ 11    77 	  )		   unaligned;		/* name of the volume set */
+ 11    78 
+ 11    79 dcl	(
+ 11    80 	header_c1		   init ("670314355245"b3),
+ 11    81 	header_c2		   init ("512556146073"b3),
+ 11    82 	trailer_c1	   init ("107463422532"b3),
+ 11    83 	trailer_c2	   init ("265221631704"b3),
+ 11    84 	label_c1		   init ("000004235000"b3)
+ 11    85 	)		   bit (36) static;
+ 11    86 
+ 11    87 dcl	LABEL_VERSION	   fixed bin static options (constant) init (3);
+ 11    88 						/* current label version */
+ 11    89 dcl	HEADER_VERSION	   fixed bin static options (constant) init (1);
+ 11    90 						/* current header version */
+ 11    91 
+ 11    92 /* End of include file ...... mstr.incl.pl1 */
+ 11    93 
+      204 
+      205 
+      206 
+      207 /*	Begin special tape attachment processing.
+      208**/
+      209 	rcse_ptr = arg_rcse_ptr;			/* Copy argument. */
+      210 	rcs_ptr = ptr (rcse_ptr, "0"b);
+      211 
+      212 	rcpd_ptr = rcp_pointers_$data ();
+      213 
+      214 	workspace_ptr = rcse.workspace_ptr;		/* Get pointer to current workspace. */
+      215 	ecode = 0;
+      216 
+      217 	if workspace_ptr ^= null ()			/* Have we set up a workspace yet? */
+      218 	then do;					/* Yes. */
+      219 	     ioi_index = rcse.ioi_index;		/* We will need this to call IOI. */
+      220 	     isp = addr (wspace.istatq);		/* Almost every state needs this pointer. */
+      221 	     goto TAPE_STATE (wspace.state);		/* Go do next step in tape attachment. */
+      222 	end;
+      223 
+      224 
+      225 /*	No workspace implies that this is the first call to rcp_$check_attach.
+      226*   *	We must attach the tape drive in ring 0 via IOI.
+      227**/
+      228 	call rcp_ioi_attach_ (rcse_ptr, ecode);
+      229 	if ecode ^= 0				/* Now check for any error at all. */
+      230 	then do;					/* Yes, abort attachment. */
+      231 	     arg_ecode = ecode;
+      232 	     return;
+      233 	end;
+      234 	ioi_index = rcse.ioi_index;			/* Get IOI index for this attachment. */
+      235 
+      236 /*	We have just attached the tape drive to IOI.  We must get an IOI workspace.
+      237*   *	Then we will try to unload any volume mounted on this tape drive.
+      238*   *	For T&D attachments we don't want to do any of this special processing.
+      239**/
+      240 	if rcse.flags.t_and_d			/* Is this a special T&D attachment? */
+      241 	then do;					/* Yes, nothing to do. */
+      242 	     rcse.state = 4;			/* Tell caller that tape is ready for use. */
+      243 	     arg_ecode = 0;
+      244 	     return;
+      245 	end;
+      246 
+      247 	call ioi_$workspace (ioi_index, workspace_ptr, size (wspace), ecode);
+      248 	if ecode ^= 0 then do;
+      249 	     arg_ecode = ecode;
+      250 	     return;
+      251 	end;
+      252 
+      253 	rcse.workspace_ptr = workspace_ptr;		/* Save workspace pointer for this attachment. */
+      254 	wspace.idcw = template_idcw;			/* Set up template IDCWs. */
+      255 	wspace.read_idcw = template_read_idcw;
+      256 	wspace.read_dcw = template_read_dcw;
+      257 	wspace.rewind_idcw = template_rewind_idcw;
+      258 	call cv_dec_ (substr (rcse.device_name, 6, 2), drive_num);
+      259 
+      260 /* Set the device code in the IDCWs. */
+      261 
+      262 	addr (wspace.idcw) -> idcw.device = bit (fixed (drive_num, 6));
+      263 	addr (wspace.read_idcw) -> idcw.device = bit (fixed (drive_num, 6));
+      264 	addr (wspace.rewind_idcw) -> idcw.device = bit (fixed (drive_num, 6));
+      265 
+      266 /* Set the buffer address and a tally count in the read DCW. */
+      267 
+      268 	addr (wspace.read_dcw) -> dcw.address = rel (addr (wspace.label_buffer));
+      269 	addr (wspace.read_dcw) -> dcw.tally = bit (bin (dim (wspace.label_buffer, 1), 12), 12);
+      270 	wspace.state,				/* Initialize the state variable that controls all. */
+      271 	     wspace.mount_state, wspace.retry_count = 0;	/* Initialize retry count. */
+      272 	if rcse.flags.writing			/* Set up mount comment. */
+      273 	     then
+      274 	     wspace.ring_comment = "with";
+      275 	else wspace.ring_comment = "without";
+      276 
+      277 	isp = addr (wspace.istatq);			/* Call IOI to set up our status queue. */
+      278 	call ioi_$set_status (ioi_index, fixed (rel (isp), 18), 1, ecode);
+      279 	if ecode ^= 0 then do;			/* Can't go on without a status queue. */
+      280 	     arg_ecode = ecode;
+      281 	     return;
+      282 	end;
+      283 
+      284 	if rcse.flags.preloaded then do;
+      285 	     wspace.state = 2;
+      286 	     wspace.mount_state = 2;
+      287 	     command = rewind_command;
+      288 	end;
+      289 	else do;
+      290 
+      291 /*	If we are unloading a FIPS tape drive, then we need to allow for the
+      292*   *	case where a rewind is in progress and the FIPS adapter holds onto the
+      293*   *	unload connect till the rewind completes. This is because the tape
+      294*   *	subsystem does not allow the unload, because the rewind has it busy.
+      295**/
+      296 	     if rcse.flags.fips then do;
+      297 		call admin_gate_$ioi_set_to_max (ioi_index, FIPS_UNLOAD_TIMEOUT, ecode);
+      298 		if ecode ^= 0 then do;
+      299 		     arg_ecode = ecode;
+      300 		     return;
+      301 		end;
+      302 		call ioi_$timeout (ioi_index, FIPS_UNLOAD_TIMEOUT, ecode);
+      303 		if ecode ^= 0 then do;
+      304 		     arg_ecode = ecode;
+      305 		     return;
+      306 		end;
+      307 	     end;
+      308 	     wspace.state = 1;
+      309 	     command = rewind_unload_command;
+      310 	end;
+      311 
+      312 	istat.completion.st = "0"b;			/* Try to rewind or rewind and unload the current volume. */
+      313 	addr (wspace.idcw) -> idcw.command = command;
+      314 	call ioi_$connect (ioi_index, 0, ecode);
+      315 	arg_ecode = ecode;
+      316 	return;
+      317 
+      318 
+      319 /*	Somehow or other we are trying to use the workspace out of sequence.
+      320**/
+      321 TAPE_STATE (0):					/* INVALID STATE */
+      322 	arg_ecode = error_table_$invalid_state;
+      323 	return;
+      324 
+      325 
+      326 /*	The connect issued to perform the rewind & unload has terminated.
+      327*   *	We don't really care whether or not the rewind & unload operation worked.
+      328*   *	We will tell the operator to mount the tape volume being attached.
+      329*   *	Then we will wait for any special interrupts generated by a rewind & unload
+      330*   *	or the mounting.
+      331**/
+      332 TAPE_STATE (1):					/* REWIND & UNLOAD TERMINATION */
+      333 	if ^istat.completion.st			/* There should at least be some status. */
+      334 	     then
+      335 	     return;				/* None, so ignore. */
+      336 						/* REQUEST TAPE MOUNT */
+      337 	call Print_Mount_Message ();			/* Print a mount message for the operator. */
+      338 	wspace.state,				/* Wait for special from tape mounting. */
+      339 	     wspace.mount_state = wspace.state + 1;	/* Remember state used to wait for mount. */
+      340 						/* Turn ON the mount timer. */
+      341 	device_off = rcse.device_off;			/* Need RCPD device entry offset. */
+      342 	write_flag = rcse.flags.writing;		/* Pass on write flag. */
+      343 	call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      344 	arg_ecode = ecode;
+      345 	return;
+      346 
+      347 
+      348 /*	We should come here because we have received a special interrupt.
+      349*   *	We will check to see if it is from a rewind & unload or from
+      350*   *	a mount.  The special status bits we will test are:
+      351*   *	REWIND, UNLOAD, READY, STANDBY, LOADED, RELEASED, MALFUNCTIONED.
+      352**/
+      353 TAPE_STATE (2):					/* SPECIAL from REWIND, REWIND & UNLOAD or from MOUNT. */
+      354 	call ioi_$get_special_status (ioi_index, special_flag, special_status_word, ecode);
+      355 	if (ecode ^= 0) then do;
+      356 	     arg_ecode = ecode;
+      357 	     return;
+      358 	end;
+      359 	if ^special_flag then
+      360 	     if rcse.flags.preloaded then do;		/* No special and we thought the tape was there, ask for it */
+      361 		if ^istat.completion.st then do;	/* REWIND has not been processed yet, just wait a while */
+      362 		     arg_ecode = 0;
+      363 		     return;
+      364 		end;
+      365 		if istat.completion.er | /* If there was an error ... */ (istat.level ^= 3) then
+      366 						/* or this is not a terminate ... */
+      367 		     call REREADY_TAPE ("0"b);	/* ask to have the tape rereadied. */
+      368 		else do;				/* turn on mount timer to make sure we don't loose this user. */
+      369 		     device_off = rcse.device_off;	/* Get RCPD offset of this device. */
+      370 		     write_flag = rcse.flags.writing;	/* Pass on write flag. */
+      371 		     call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      372 		end;
+      373 		arg_ecode = ecode;
+      374 		return;
+      375 	     end;
+      376 	     else do;				/* No special and not preloaded, just wait for it. */
+      377 		arg_ecode = 0;
+      378 		return;
+      379 	     end;
+      380 	if rcse.model = 400				/* Special case 400 type drives. */
+      381 	     then
+      382 	     goto CHECK_READY;
+      383 
+      384 /* Get the special status bits we need. */
+      385 	special_status_bits = substr (special_status_word, 30, 7);
+      386 
+      387 	if special_status_bits = "0101000"b then do;	/* If special is from UNLOAD wait for another. */
+      388 	     arg_ecode = 0;
+      389 	     return;
+      390 	end;
+      391 
+      392 	if substr (special_status_bits, 1, 1)		/* REWIND COMPLETE is ON. */
+      393 	     then
+      394 	     goto CHECK_READY;
+      395 
+      396 	if ^substr (special_status_bits, 3, 1)		/* READY must be ON. */
+      397 	then do;					/* We got special but tape still not ready. */
+      398 	     call REREADY_TAPE ("0"b);
+      399 	     arg_ecode = ecode;
+      400 	     return;
+      401 	end;
+      402 
+      403 CHECK_READY:
+      404 	if rcse.flags.preloaded then			/* This is a preloaded volume, let the operator know. */
+      405 	     call admin_gate_$syserr (0, "RCP: Using Reel ^a on ^a for ^a", rcse.volume_name, rcse.device_name,
+      406 		rcse.group_id);
+      407 	istat.completion.st = "0"b;			/* TAPE READY - check its current state. */
+      408 	if rcse.flags.fips then
+      409 	     addr (wspace.idcw) -> idcw.command = request_status_command;
+      410 	else addr (wspace.idcw) -> idcw.command = set_write_permit_command;
+      411 	call ioi_$connect (ioi_index, 0, ecode);
+      412 	wspace.state = wspace.state + 1;		/* Wait for command to terminate. */
+      413 	device_off = rcse.device_off;			/* Turn OFF mount timer. */
+      414 	call rcp_mount_timer_$reset (device_off, scode);
+      415 	if ecode = 0 then
+      416 	     ecode = scode;
+      417 	arg_ecode = ecode;
+      418 	return;
+      419 
+      420 
+      421 /*	Check the status from the (request status, reset status or set write
+      422*   *      permit) operation.  We must check that the write ring is correct.
+      423*   *	If everything is OK we will indicate that the attachment has been
+      424*   *	completed.
+      425**/
+      426 TAPE_STATE (3):					/* SET WRITE PERMIT TERMINATION. */
+      427 	if ^istat.completion.st			/* Is there any status. */
+      428 	then do;					/* No, ignore. */
+      429 	     arg_ecode = 0;
+      430 	     return;
+      431 	end;
+      432 
+      433 	statp = addr (istat.iom_stat);		/* Get pointer to IOM status. */
+      434 
+      435 	if (istat.completion.er) | /* Is there an error? */ (istat.level ^= 3)
+      436 						/* Or is this not a terminate? */
+      437 	then do;					/* Yes, try to ready tape again. */
+      438 	     if (status.major = "0101"b) /* Command Reject */ & ((status.sub & "71"b3) = "01"b3)
+      439 						/* Invalid OP Code */
+      440 		& (addr (wspace.idcw) -> idcw.command = set_write_permit_command) then do;
+      441 						/* We probably tries to set permit when there was no ring */
+      442 		addr (wspace.idcw) -> idcw.command = reset_status_command;
+      443 		call ioi_$connect (ioi_index, 0, ecode);
+      444 		arg_ecode = ecode;
+      445 		return;
+      446 	     end;
+      447 	     call REREADY_TAPE ("0"b);
+      448 	     arg_ecode = ecode;
+      449 	     return;
+      450 	end;
+      451 
+      452 	if (status.sub & "000010"b) ^= "000010"b then do; /* Tape not at BOT. */
+      453 	     call REREADY_TAPE ("0"b);
+      454 	     arg_ecode = ecode;
+      455 	     return;
+      456 	end;
+      457 
+      458 	if rcse.flags.writing = ((status.sub & "001001"b) = "000001"b) then do;
+      459 						/* Write ring is not correct. */
+      460 	     call REREADY_TAPE ("1"b);
+      461 	     arg_ecode = ecode;
+      462 	     return;
+      463 	end;
+      464 
+      465 
+      466 /* Initialize the internal procedure states for label checking. */
+      467 
+      468 	wspace.state = 4;
+      469 	wspace.read_label_state = 1;
+      470 	wspace.get_authentication_state = 1;
+      471 	wspace.tape_state_4_state = 1;
+      472 
+      473 /* Initialize the flags used by the label checking procedures. */
+      474 
+      475 	wspace.den_set = "0"b;
+      476 	wspace.nrzi_den_set = "0"b;
+      477 	wspace.record_read = "0"b;
+      478 	wspace.unreadable_tape = "0"b;
+      479 	wspace.bad_mode = "0"b;
+      480 	wspace.wait = "0"b;
+      481 	wspace.label_match = "0"b;
+      482 	wspace.label_name = "";
+      483 	wspace.blank_tape = "0"b;
+      484 	wspace.manual_halt = "0"b;
+      485 	wspace.ansi_non_blank_access = "0"b;
+      486 
+      487 /* Initialize the authentication bits in the rcse. */
+      488 
+      489 	rcse.flags.have_auth = "0"b;
+      490 	rcse.flags.need_auth = "0"b;
+      491 	rcse.flags.auth_set = "0"b;
+      492 
+      493 /* Now we will enter the label checking state.  It has a number of internal states
+      494*   which are remembered by the state variables in our workspace.
+      495**/
+      496 
+      497 TAPE_STATE (4):
+      498 	write_flag = rcse.flags.writing;
+      499 	goto STATE (wspace.tape_state_4_state);		/* get to the proper internal state. */
+      500 
+      501 STATE (1):
+      502 	wspace.tape_state_4_state = 1;
+      503 	call read_label ();
+      504 
+      505 	if wspace.wait then
+      506 	     goto RETURN;				/* let our caller wait for an event. */
+      507 
+      508 	users_requested_volume_name = rcse.volume_name;
+      509 
+      510 	call validate_tape_label (addr (wspace.label_buffer), rcse.volume_name, wspace.label_match, wspace.label_name,
+      511 	     wspace.label_type);
+      512 
+      513 	rcse.flags.label_type = wspace.label_type;	/* copy label type */
+      514 	if (wspace.label_match & ^rcse.must_auto_register) | rcpd.modes.authentication_level = No_authentication
+      515 	     | rcse.group_id = "Initializer.SysDaemon.z" then do;
+      516 						/* We are done */
+      517 	     wspace.rewind_state = 1;
+      518 STATE (2):
+      519 	     wspace.tape_state_4_state = 2;
+      520 	     call rewind ();
+      521 
+      522 	     if wspace.wait then
+      523 		goto RETURN;
+      524 
+      525 	     call ioi_$set_status (ioi_index, 0, 0, ecode);
+      526 	     if ecode = 0 then do;
+      527 		rcse.state = 4;
+      528 		wspace.state = 0;
+      529 
+      530 		if ^write_flag & wspace.label_name ^= "" then
+      531 		     rcse.volume_name = wspace.label_name;
+      532 		rcse.flags.volume_density_index = DENSITY_INDEX (wspace.i);
+      533 						/* return density */
+      534 		rcse.flags.label_type = wspace.label_type;
+      535 						/* and label type */
+      536 	     end;
+      537 	end;
+      538 
+      539 	else do;					/* label did not match. */
+      540 STATE (3):
+      541 	     wspace.tape_state_4_state = 3;
+      542 	     call get_authentication ();
+      543 
+      544 	     if wspace.wait then
+      545 		goto RETURN;
+      546 
+      547 	     if rcse.flags.have_auth then do;		/* We are done */
+      548 		wspace.rewind_state = 1;
+      549 STATE (4):
+      550 		wspace.tape_state_4_state = 4;
+      551 		call rewind ();
+      552 
+      553 		if wspace.wait then
+      554 		     goto RETURN;
+      555 
+      556 		call ioi_$set_status (ioi_index, 0, 0, ecode);
+      557 		if ecode = 0 then do;
+      558 		     rcse.state = 4;
+      559 		     wspace.state = 0;
+      560 		     if ^write_flag & wspace.label_name ^= "" then
+      561 			rcse.volume_name = wspace.label_name;
+      562 		     rcse.flags.volume_density_index = DENSITY_INDEX (wspace.i);
+      563 						/* return density */
+      564 		     rcse.flags.label_type = wspace.label_type;
+      565 						/* and label type */
+      566 		end;
+      567 		if rcse.flags.must_auto_register	/* Must ask RCPRM to register this volume for this user. */
+      568 		     then
+      569 		     call rcp_auto_register_ (VOLUME_TYPE (TAPE_VOL_VTYPEX), (users_requested_volume_name),
+      570 			(rcse.group_id), ecode);
+      571 	     end;
+      572 
+      573 	     else do;				/* authentication was denied. */
+      574 		call admin_gate_$syserr (0, "RCP: Authentication code for ^a does not match.", rcse.device_name);
+      575 		wspace.retry_count = 0;		/* start over with a new tape. */
+      576 		call REREADY_TAPE ("1"b);		/* Remount the (hopefully) correct tape. */
+      577 	     end;
+      578 	end;
+      579 
+      580 RETURN:
+      581 	arg_ecode = ecode;
+      582 	return;
+      583 
+      584 /**/
+      585 REREADY_TAPE:
+      586      procedure (remount_flag);
+      587 
+      588 /*	This procedure is called to tell the operator to ready the tape again.
+      589*   *	We will have to wspace.wait for the special again.
+      590**/
+      591 dcl  remount_flag bit (1);				/* ON => remount,  OFF => reready. */
+      592 
+      593 	if wspace.retry_count = max_num_retries		/* Have we retried too many times. */
+      594 	then do;					/* Yes, abort attachment. */
+      595 	     ecode = error_table_$device_attention;
+      596 	     return;
+      597 	end;
+      598 	wspace.retry_count = wspace.retry_count + 1;
+      599 
+      600 /* Turn ON mount timer. */
+      601 	device_off = rcse.device_off;			/* Get RCPD offset of this device. */
+      602 	write_flag = rcse.flags.writing;		/* Pass on write flag. */
+      603 	call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      604 	if ecode ^= 0 then
+      605 	     return;
+      606 
+      607 	if remount_flag				/* Remount or reready? */
+      608 	then do;					/* Remount. */
+      609 	     istat.completion.st = "0"b;		/* Unload reel for operator. */
+      610 	     addr (wspace.idcw) -> idcw.command = rewind_unload_command;
+      611 	     call ioi_$connect (ioi_index, 0, ecode);
+      612 	     call admin_gate_$syserr (3, "RCP: Remount Reel ^[scratch^s^;^a^] ^a ring on ^a", (rcse.volume_name = ""),
+      613 		rcse.volume_name, wspace.ring_comment, rcse.device_name);
+      614 	end;
+      615 	else if rcse.flags.preloaded then
+      616 	     call admin_gate_$syserr (3, "RCP: Reready Reel ^a on ^a for ^a", rcse.volume_name, rcse.device_name,
+      617 		rcse.group_id);
+      618 	else call admin_gate_$syserr (3, "RCP: Reready ^a", rcse.device_name);
+      619 
+      620 	wspace.state = wspace.mount_state;		/* Wait for special(s) again. */
+      621 
+      622      end REREADY_TAPE;
+      623 
+      624 /**/
+      625 read_label:
+      626      proc;
+      627 
+      628 	goto STATE (wspace.read_label_state);
+      629 
+      630 STATE (1):
+      631 	wspace.read_label_state = 1;
+      632 	wspace.record_read = "0"b;
+      633 	wspace.unreadable_tape = "0"b;
+      634 	wspace.i = 1;				/* Start at NRZI density of 800 bpi. */
+      635 	wspace.nrzi_den_set = "0"b;			/* Haven't sucessfully set one yet. */
+      636 try_next_density:					/* There is only one transfer to this label. */
+      637 	wspace.set_density_state = 1;
+      638 STATE (2):
+      639 	wspace.read_label_state = 2;
+      640 	call set_density ();
+      641 
+      642 	if wspace.wait then
+      643 	     return;
+      644 
+      645 	if wspace.den_set then do;
+      646 
+      647 	     wspace.nrzi_den_set = "1"b;
+      648 
+      649 	     wspace.read_record_state = 1;
+      650 STATE (3):
+      651 	     wspace.read_label_state = 3;
+      652 	     call read_record ();
+      653 
+      654 	     if wspace.wait then
+      655 		return;
+      656 
+      657 	     if wspace.bad_mode then do;		/* May be PE mode, 1600 bpi. */
+      658 try_pe:
+      659 		wspace.rewind_state = 1;
+      660 STATE (4):
+      661 		wspace.read_label_state = 4;
+      662 		call rewind ();			/* Back to load point to set new density. */
+      663 
+      664 		if wspace.wait then
+      665 		     return;
+      666 
+      667 		wspace.set_density_state = 1;
+      668 STATE (5):
+      669 		wspace.read_label_state = 5;
+      670 		wspace.i = 4;			/* Code for 1600 bpi. */
+      671 		call set_density ();
+      672 
+      673 		if wspace.wait then
+      674 		     return;
+      675 
+      676 		if wspace.den_set then do;
+      677 		     wspace.read_record_state = 1;
+      678 STATE (6):
+      679 		     wspace.read_label_state = 6;
+      680 		     call read_record ();
+      681 
+      682 		     if wspace.wait then
+      683 			return;
+      684 
+      685 		     if wspace.bad_mode then do;	/* Must be GCR mode, 6250  bpi. */
+      686 try_gcr:
+      687 			wspace.rewind_state = 1;
+      688 STATE (8):
+      689 			wspace.read_label_state = 8;
+      690 			call rewind ();		/* Back to load point to set new density. */
+      691 
+      692 			if wspace.wait then
+      693 			     return;
+      694 
+      695 			wspace.set_density_state = 1;
+      696 STATE (9):
+      697 			wspace.read_label_state = 9;
+      698 			wspace.i = 5;		/* Code for 6250 bpi. */
+      699 			call set_density ();
+      700 
+      701 			if wspace.wait then
+      702 			     return;
+      703 
+      704 			if wspace.den_set then do;
+      705 			     wspace.read_record_state = 1;
+      706 STATE (10):
+      707 			     wspace.read_label_state = 10;
+      708 			     call read_record ();
+      709 
+      710 			     if wspace.wait then
+      711 				return;
+      712 
+      713 			     if wspace.bad_mode then do;
+      714 						/* This should never happen. */
+      715 				wspace.unreadable_tape = "1"b;
+      716 						/* Tried NRZI, PE, and GCR modes and still got bad mode. */
+      717 			     end;
+      718 
+      719 			     else if wspace.blank_tape | wspace.record_read then do;
+      720 						/* Success. */
+      721 				wspace.unreadable_tape = "0"b;
+      722 			     end;
+      723 
+      724 			     else if wspace.manual_halt then do;
+      725 						/* Drive in standby. */
+      726 				wspace.unreadable_tape = "1"b;
+      727 			     end;
+      728 
+      729 			     else do;		/* Tape is unreadable at the only GCR density. */
+      730 				wspace.unreadable_tape = "1"b;
+      731 			     end;
+      732 			end;
+      733 
+      734 			else do;			/* Could'nt try the only available GCR density. */
+      735 			     wspace.unreadable_tape = "1"b;
+      736 			end;
+      737 		     end;				/* Must be GCR mode, 6250 bpi. */
+      738 
+      739 		     else if wspace.blank_tape | wspace.record_read then do;
+      740 						/* Success. */
+      741 			wspace.unreadable_tape = "0"b;
+      742 		     end;
+      743 
+      744 		     else if wspace.manual_halt then do;/* Drive in standby. */
+      745 			wspace.unreadable_tape = "1"b;
+      746 		     end;
+      747 
+      748 		     else do;			/* Tape is unreadable at the only PE density. */
+      749 			wspace.unreadable_tape = "1"b;
+      750 		     end;
+      751 		end;
+      752 
+      753 		else do;				/* Could'nt try the only available PE density. */
+      754 		     goto try_gcr;			/* Maybe it is GCR, 6250 bpi. */
+      755 		end;
+      756 	     end;					/* May be PE mode, 1600 bpi. */
+      757 
+      758 	     else if wspace.blank_tape | wspace.record_read then do;
+      759 						/* Success. */
+      760 		wspace.unreadable_tape = "0"b;
+      761 	     end;
+      762 
+      763 	     else if wspace.manual_halt then do;	/* Drive in standby. */
+      764 		wspace.unreadable_tape = "1"b;
+      765 	     end;
+      766 
+      767 	     else do;				/* Unreadable at this NRZI density. */
+      768 wrong_density:					/* There is only one transfer to this label. */
+      769 		wspace.unreadable_tape = "1"b;
+      770 
+      771 		wspace.i = wspace.i + 1;		/* Try all 3 NRZI densities */
+      772 		if wspace.i <= 3			/* before giving up. */
+      773 		then do;
+      774 		     wspace.rewind_state = 1;
+      775 STATE (7):
+      776 		     wspace.read_label_state = 7;
+      777 		     call rewind ();		/* Back to load point to set new density. */
+      778 
+      779 		     if wspace.wait then
+      780 			return;
+      781 
+      782 		     goto try_next_density;		/* This is the only transfer to this label. */
+      783 		end;
+      784 
+      785 		else do;				/* Maybe no NRZI density could be set. */
+      786 		     if ^wspace.nrzi_den_set then
+      787 			goto try_pe;
+      788 		end;
+      789 	     end;
+      790 	end;
+      791 
+      792 	else goto wrong_density;			/* Could'nt use this NRZI density. */
+      793 						/* This is the only transfer to this label. */
+      794 
+      795      end read_label;
+      796 
+      797 /**/
+      798 set_density:
+      799      proc;
+      800 
+      801 /* This procedure uses wspace.i to pick out the density that it is supposed to set. */
+      802 
+      803 	goto STATE (wspace.set_density_state);
+      804 
+      805 STATE (1):
+      806 	wspace.set_density_state = 1;
+      807 	addr (wspace.idcw) -> idcw.command = density (wspace.i);
+      808 	istat.completion.st = "0"b;
+      809 	call ioi_$connect (ioi_index, 0, ecode);	/* Initiate the set density command. */
+      810 
+      811 STATE (2):
+      812 	wspace.set_density_state = 2;
+      813 	if istat.completion.st & istat.level = 3 then do; /* We have some status back */
+      814 	     wspace.wait = "0"b;			/* Don't need to wait any more. */
+      815 
+      816 	     if istat.completion.er then
+      817 		wspace.den_set = "0"b;		/* Some error setting the density. */
+      818 	     else wspace.den_set = "1"b;		/* Everything is OK. */
+      819 	end;
+      820 
+      821 	else wspace.wait = "1"b;			/* Must let our caller wait for an event. */
+      822 
+      823      end set_density;
+      824 
+      825 /**/
+      826 read_record:
+      827      proc;
+      828 
+      829 /*
+      830*   This procedure tries to read the first good record on the tape.  The first
+      831*   record is assumed to be the tape label.
+      832*   Notice that even though the Multics Standard Tape (MST) format normally
+      833*   will write up to 64 records to get a good copy for the label record it
+      834*   always backspaces and rewrites until it gets a good label as the first
+      835*   record on the tape.
+      836**/
+      837 
+      838 	goto STATE (wspace.read_record_state);
+      839 
+      840 STATE (1):
+      841 	wspace.read_record_state = 1;
+      842 	wspace.j = 1;
+      843 
+      844 	wspace.record_read = "0"b;
+      845 	wspace.bad_mode = "0"b;
+      846 	wspace.blank_tape = "0"b;
+      847 	wspace.manual_halt = "0"b;
+      848 	istat.completion.st = "0"b;
+      849 	call ioi_$connect (ioi_index, 1, ecode);	/* Initiate the read record binary command. */
+      850 
+      851 STATE (2):
+      852 	wspace.read_record_state = 2;
+      853 	if istat.completion.st & istat.level = 3 then do;
+      854 	     wspace.wait = "0"b;			/* Don't need to wait anymore. */
+      855 
+      856 	     if istat.completion.er then do;		/* Some error occured while reading. */
+      857 		statp = addr (istat.iom_stat);
+      858 
+      859 		if status.major = "1010"b /* MPC Device Attention */ & status.sub = "001000"b
+      860 						/* Incompatible Mode */
+      861 		then do;
+      862 		     wspace.bad_mode = "1"b;
+      863 		end;
+      864 
+      865 		else if status.major = "0011"b /* Device Data Alert */ & status.sub = "000010"b
+      866 						/* Blank Tape on Read */
+      867 		then do;
+      868 		     wspace.blank_tape = "1"b;
+      869 		end;
+      870 
+      871 		else if status.major = "0010"b /* Device attention */ & (status.sub & "100110"b) = "000100"b
+      872 						/* Device in standby */
+      873 		then do;
+      874 		     wspace.manual_halt = "1"b;
+      875 		end;
+      876 
+      877 		else ;				/* Some other error, give up. */
+      878 	     end;
+      879 
+      880 	     else do;				/* Good read. */
+      881 		wspace.record_read = "1"b;
+      882 	     end;
+      883 	end;
+      884 
+      885 	else wspace.wait = "1"b;			/* Let our caller wait for an event. */
+      886 
+      887      end read_record;
+      888 
+      889 /**/
+      890 rewind:
+      891      proc;
+      892 
+      893 	goto STATE (wspace.rewind_state);
+      894 
+      895 STATE (1):
+      896 	wspace.rewind_state = 1;
+      897 	istat.completion.st = "0"b;
+      898 	call ioi_$connect (ioi_index, 3, ecode);	/* Initiate the rewind command */
+      899 
+      900 STATE (2):
+      901 	wspace.rewind_state = 2;
+      902 	if istat.completion.st & istat.level = 3 then do; /* We got the status from start of rewind. */
+      903 	     if istat.completion.er then do;
+      904 		call admin_gate_$syserr (3, "RCP: Manually rewind and reready ^a.", rcse.device_name);
+      905 		call rcp_mount_timer_$set ((rcse.device_off), (rcse.flags.writing), ecode);
+      906 	     end;
+      907 
+      908 STATE (3):
+      909 	     wspace.rewind_state = 3;
+      910 	     call ioi_$get_special_status (ioi_index, special_flag, special_status_word, ecode);
+      911 
+      912 	     if ecode ^= 0 | ^special_flag then
+      913 		wspace.wait = "1"b;			/* wait some more for the special. */
+      914 	     else do;				/* tape is finished rewinding. */
+      915 		call rcp_mount_timer_$reset ((rcse.device_off), ecode);
+      916 		wspace.wait = "0"b;
+      917 	     end;
+      918 	end;
+      919 	else wspace.wait = "1"b;			/* Let our caller wait for an event. */
+      920 
+      921      end rewind;
+      922 
+      923 /**/
+      924 get_authentication:
+      925      proc;
+      926 
+      927 dcl  authentication_label_name char (32);
+      928 
+      929 	goto STATE (wspace.get_authentication_state);
+      930 
+      931 STATE (1):
+      932 	wspace.get_authentication_state = 1;
+      933 	rcse.flags.need_auth = "1"b;
+      934 	rcse.flags.have_auth = "0"b;
+      935 	rcse.flags.auth_set = "0"b;
+      936 
+      937 /* Get rid of non-printable chars by replacing with ".", 208+208 = 416 because of implementation restriction */
+      938 
+      939 	authentication_label_name =
+      940 	     translate (wspace.label_name, (208)"." || (208)".",
+      941 	     substr (collate9 (), 1, 32) || substr (collate9 (), 128));
+      942 	call admin_gate_$syserr (3,
+      943 	     "RCP: Authenticate ^a.  It has ^a label ^[(Manual Halt)^2s^;^a^[ (with non-blank accessibility code)^]^].^[
+      944 RCP: WARNING!!  IF YOU AUTHENTICATE THIS REQUEST ^a WILL OWN VOLUME ^a!^]", rcse.device_name,
+      945 	     Tape_volume_types (wspace.label_type), wspace.manual_halt, authentication_label_name,
+      946 	     wspace.ansi_non_blank_access, rcse.flags.must_auto_register, rcse.group_id, rcse.volume_name);
+      947 
+      948 	device_off = rcse.device_off;
+      949 	write_flag = rcse.flags.writing;
+      950 	call rcp_mount_timer_$set (device_off, write_flag, ecode);
+      951 
+      952 STATE (2):
+      953 	wspace.get_authentication_state = 2;
+      954 	if rcse.flags.auth_set then do;		/* The operator has responded. */
+      955 	     wspace.wait = "0"b;
+      956 	     device_off = rcse.device_off;
+      957 	     call rcp_mount_timer_$reset (device_off, ecode);
+      958 	end;
+      959 
+      960 	else wspace.wait = "1"b;			/* Let our caller wait for an event. */
+      961 
+      962      end get_authentication;
+      963 
+      964 /**/
+      965 validate_tape_label:
+      966      proc (label_ptr, user_label, label_match, label_name, label_type);
+      967 
+      968 dcl  (
+      969      label_ptr ptr,					/* pointer to label record from tape. */
+      970      user_label char (*) aligned,			/* user specified volume id. */
+      971      label_match bit (1),				/* true if labels match, false otherwise. */
+      972      label_name char (32),				/* volume id from tape label record. */
+      973      label_type fixed bin
+      974      ) parameter;					/* type of label. */
+      975 
+      976 dcl  user_name char (32),				/* fixed length user label. */
+      977      canon_user_name char (32),			/* canonicalized user name. */
+      978      canon_label_name char (32),			/* canonicalized label name. */
+      979      label_auth char (3),				/* authentication code from label */
+      980      computed_auth_code char (3) aligned;		/* computer from user name */
+      981 
+      982 
+      983 /* TAPE LABEL FORMATS */
+      984 
+      985 dcl  1 mult based (label_ptr) unaligned,		/* Multics standard version 1 label structure */
+      986        2 lab_id bit (36),				/* this will be 670314355245 in octal */
+      987        2 pad (15) bit (36),				/* we ignore this */
+      988        2 vol_id char (32);				/* this is in ascii */
+      989 
+      990 dcl  1 gcos based (label_ptr) unaligned,
+      991        2 lab_id bit (12 * 6),				/* this will be "GE  600 BTL " in bcd */
+      992        2 installation_id bit (6 * 6),			/* we ignore this */
+      993        2 pad_vol_id bit (6),				/* pad first bit of vol_id as it is not used	*/
+      994        2 vol_id bit (6 * 6),				/* this is in bcd */
+      995        2 (file_ser, reel_seq, creation_date, retention_days, file_name) bit (6 * 6),
+      996 						/* we don't use these */
+      997        2 label_auth bit (3 * 6);			/* authentication code */
+      998 
+      999 dcl  1 ibm based (label_ptr) unaligned,
+     1000        2 lab_id bit (4 * 8),				/* this will be "VOL1" in ebcdic */
+     1001        2 vol_id bit (6 * 8),				/* this is in ebcdic */
+     1002        2 reserved bit (31 * 8),			/* we don't use these */
+     1003        2 label_auth bit (10 * 8);			/* authentication code */
+     1004 
+     1005 dcl  1 ansi based (label_ptr) unaligned,
+     1006        2 lab_id bit (4 * 8),				/* this will be "VOL1" in ascii (8 bit) */
+     1007        2 vol_id bit (6 * 8),				/* this is in 8 bit ascii */
+     1008        2 accessibility bit (1 * 8),			/* this is in 8 bit ascii, blank--OK, non-blank--authenticate */
+     1009        2 reserved bit (26 * 8),			/* we don't use these */
+     1010        2 label_auth bit (14 * 8);			/* authentication code */
+     1011 
+     1012 
+     1013 
+     1014 
+     1015 /*
+     1016*   Now see if we can find a volume id on this tape label.
+     1017**/
+     1018 
+     1019 	label_name = "";
+     1020 	label_auth = "";
+     1021 	label_type = Volume_unknown_format;
+     1022 	user_name = user_label;
+     1023 
+     1024 	if wspace.blank_tape then
+     1025 	     label_type = Volume_blank;
+     1026 
+     1027 	else if wspace.unreadable_tape | wspace.manual_halt then
+     1028 	     label_type = Volume_unreadable;
+     1029 
+     1030 	else if mult.lab_id = header_c1 then do;	/* Version 1 Multics standard label? */
+     1031 	     label_type = Volume_multics_tape;
+     1032 	     label_name = mult.vol_id;		/* get the volume id. */
+     1033 	     label_auth = "***";
+     1034 	end;
+     1035 	else if mult.lab_id = label_c1		/* Version 2 Multics standard label? */
+     1036 	     then
+     1037 	     if (label_ptr -> mst_label.head.c1 = header_c1 & label_ptr -> mst_label.head.label)
+     1038 						/* if all this is true yes */
+     1039 	     then do;
+     1040 		label_type = Volume_multics_tape;
+     1041 		label_name = label_ptr -> mst_label.tape_reel_id;
+     1042 						/* get the volume id. */
+     1043 		label_auth = "***";
+     1044 	     end;
+     1045 	     else ;
+     1046 
+     1047 	else if gcos.lab_id = "272520200600002022634320"b3 then do;
+     1048 						/* "GE  600 BTL " in bcd */
+     1049 	     label_type = Volume_gcos_tape;
+     1050 	     call bcd_to_ascii_ (string (gcos.vol_id), label_name);
+     1051 	     call bcd_to_ascii_ (string (gcos.label_auth), label_auth);
+     1052 	end;
+     1053 
+     1054 	else if ibm.lab_id = "E5D6D3F1"b4 then do;	/* "VOL1" in 8 bit ebcdic */
+     1055 	     label_type = Volume_ibm_tape;
+     1056 	     call ebcdic8_to_ascii_ (string (ibm.vol_id), label_name);
+     1057 	     call ebcdic8_to_ascii_ (string (ibm.label_auth), label_auth);
+     1058 	end;
+     1059 
+     1060 	else if ansi.lab_id = "564F4C31"b4 then do;	/* "VOL1"b in 8 bit ascii */
+     1061 	     label_type = Volume_ansi_tape;
+     1062 	     call unpack (ansi.vol_id, label_name);
+     1063 	     call unpack (ansi.label_auth, label_auth);
+     1064 
+     1065 	     if ansi.accessibility ^= "20"b4 then
+     1066 		wspace.ansi_non_blank_access = "1"b;
+     1067 	end;
+     1068 
+     1069 	else label_type = Volume_unknown_format;	/* Doesn't look like a recognizable label */
+     1070 
+     1071 
+     1072 /* Now see if the tape label we found matches the user specified label. */
+     1073 
+     1074 	if label_name = "" then do;
+     1075 	     label_match = ""b;
+     1076 	     return;
+     1077 	end;
+     1078 
+     1079 	label_match = "1"b;				/* assume so unless we turn it off */
+     1080 
+     1081 	if rcpd.modes.authentication_level = Manual_authentication then do;
+     1082 	     label_match = ""b;
+     1083 	     return;
+     1084 	end;
+     1085 
+     1086 /* nominal authentication mechanism is here */
+     1087 
+     1088 	if wspace.ansi_non_blank_access then do;	/* Always authenticate this. */
+     1089 	     label_match = "0"b;
+     1090 	     return;
+     1091 	end;
+     1092 
+     1093 /* canonicalize the tape label just read */
+     1094 
+     1095 	call canon_for_volume_label_ (VOLUME_TYPE (TAPE_VOL_VTYPEX), label_name, canon_label_name, label_type, ecode);
+     1096 	if ecode ^= 0 then
+     1097 	     label_match = ""b;
+     1098 	else do;					/* canonicalize the user name  */
+     1099 	     call canon_for_volume_label_ (VOLUME_TYPE (TAPE_VOL_VTYPEX), user_name, canon_user_name, label_type, ecode)
+     1100 		;
+     1101 	     if ecode ^= 0 then
+     1102 		label_match = ""b;
+     1103 	     else if canon_user_name ^= canon_label_name then
+     1104 		label_match = ""b;
+     1105 	end;
+     1106 
+     1107 	if rcpd.modes.authentication_level = Nominal_authentication
+     1108 	     | rcpd.modes.authentication_level = No_authentication | rcse.group_id = "Initializer.SysDaemon.z" then do;
+     1109 	     label_name = canon_label_name;
+     1110 	     return;
+     1111 	end;
+     1112 
+     1113 /* full, secure automatic authentication mechanism is here */
+     1114 
+     1115 	if label_type = Volume_multics_tape then
+     1116 	     return;				/* no further checks necessary */
+     1117 
+     1118 	computed_auth_code = authenticate_ (user_name);
+     1119 	if computed_auth_code ^= label_auth then
+     1120 	     label_match = ""b;
+     1121 
+     1122 	return;
+     1123 
+     1124      end validate_tape_label;
+     1125 
+     1126 /**/
+     1127 unpack:
+     1128      proc (input, output);
+     1129 
+     1130 dcl  input bit (*);
+     1131 dcl  output char (*);
+     1132 
+     1133 dcl  char_code fixed bin (17);
+     1134 dcl  char_limit fixed bin;
+     1135 dcl  input_chars (1:divide (length (input), 8, 24)) bit (8) based (addr (input));
+     1136 dcl  char_index fixed bin;
+     1137 
+     1138 	output = "";
+     1139 	char_limit = min (hbound (input_chars, 1), length (output));
+     1140 
+     1141 	do char_index = lbound (input_chars, 1) to char_limit by 1;
+     1142 	     char_code = fixed (input_chars (char_index), 17);
+     1143 	     substr (output, char_index, 1) = substr (collate9 (), char_code + 1, 1);
+     1144 	end;
+     1145 
+     1146      end unpack;
+     1147 
+     1148 Print_Mount_Message:
+     1149      proc ();
+     1150 
+     1151 
+     1152 dcl  rcp_pointers_$data entry () returns (ptr);
+     1153 dcl  rcprm_find_resource_$status entry (ptr, char (*), fixed bin (35));
+     1154 
+     1155 
+     1156 	if ^rcp_pointers_$data () -> rcpd.modes.resource_mgmt_enabled then
+     1157 	     call admin_gate_$syserr (3, "RCP: Mount Reel ^[scratch^s^;^a^] ^a ring on ^a for ^a",
+     1158 		(rcse.volume_name = ""), rcse.volume_name, wspace.ring_comment, rcse.device_name, rcse.group_id);
+     1159 	else do;
+     1160 	     Resource_count = 1;
+     1161 	     begin;
+     1162 
+     1163 dcl  garbage (size (resource_descriptions)) bit (36);
+     1164 
+     1165 		string (garbage) = ""b;
+     1166 		resource_desc_ptr = addr (garbage);
+     1167 
+     1168 		resource_descriptions.version_no = resource_desc_version_1;
+     1169 		resource_descriptions.n_items = 1;
+     1170 		resource_descriptions.item (1).type = VOLUME_TYPE (TAPE_VOL_VTYPEX);
+     1171 		resource_descriptions.item (1).name = rcse.volume_name;
+     1172 		resource_descriptions.item (1).given.name = "1"b;
+     1173 
+     1174 		call rcprm_find_resource_$status (resource_desc_ptr, (rcs.acs_directory), ecode);
+     1175 
+     1176 		if ecode = error_table_$action_not_performed then
+     1177 		     ecode = resource_descriptions.item (1).status_code;
+     1178 
+     1179 		if ecode ^= 0			/* We won't try to print location if we can't get it. */
+     1180 		then do;
+     1181 		     resource_descriptions.item (1).location = "";
+     1182 		     ecode = 0;
+     1183 		end;
+     1184 
+     1185 		call admin_gate_$syserr (3, "RCP: Mount ^[(from ""^a"") ^;^s^]Reel ^a ^a ring on ^a for ^a",
+     1186 		     (resource_descriptions.item (1).location ^= ""), resource_descriptions.item (1).location,
+     1187 		     rcse.volume_name, wspace.ring_comment, rcse.device_name, rcse.group_id);
+     1188 	     end;
+     1189 	end;
+     1190 
+     1191 
+     1192 	return;
+     1193 
+     1194 
+     1195      end Print_Mount_Message;
+     1196 
+     1197 /* BEGIN MESSAGE DOCUMENTATION
+     1198*
+     1199*   Message:
+     1200*   RCP: Mount Reel REELID with(out) ring on DRIVE for PERSON.PROJ.T.
+     1201*
+     1202*   S:	$beep
+     1203*
+     1204*   T:	$run
+     1205*
+     1206*   M:	A user process has requested the mounting of
+     1207*   tape reel REELID on drive DRIVE.
+     1208*
+     1209*   A:	Locate the requested reel.
+     1210*   Check to make sure that the user PERSON.PROJ is allowed to use the reel.
+     1211*   Insert or remove a write ring as specified.
+     1212*   Mount the reel on the specified drive.
+     1213*
+     1214*   If the reel cannot be mounted, either because it
+     1215*   cannot be located,
+     1216*   access is incorrect,
+     1217*   or the drive is down,
+     1218*   use the "x deny" function to reject the mount request.
+     1219*
+     1220*
+     1221*   Message:
+     1222*   RCP: Remount Reel REELID with(out) ring on DRIVE.
+     1223*
+     1224*   S:	$beep
+     1225*
+     1226*   T:	$run
+     1227*
+     1228*   M:	The system found a write
+     1229*   ring when one was not required,
+     1230*   or did not find one when one was needed.
+     1231*   Or the authentication code did not match.
+     1232*   The tape is unloaded.
+     1233*
+     1234*   A:	Correct the write ring status or mount the correct tape and reready the tape.
+     1235*
+     1236*
+     1237*   Message:
+     1238*   RCP: Reready DRIVE.
+     1239*
+     1240*   S:	$beep
+     1241*
+     1242*   T:	$run
+     1243*
+     1244*   M:	DRIVE has dropped out of ready status.
+     1245*
+     1246*   A:	Reready it.
+     1247*
+     1248*
+     1249*   Message:
+     1250*   RCP: Authentication code for DRIVE does not match.
+     1251*
+     1252*   S:	$info
+     1253*
+     1254*   T:     $run
+     1255*
+     1256*   M:	The authentication code typed for the
+     1257*   volume on DRIVE does no match the user
+     1258*   specified volume name.
+     1259*
+     1260*   A:	$ignore
+     1261*
+     1262*
+     1263*   Message:
+     1264*   RCP: Authenticate DRIVE. It has LABEL_TYPE label LABEL.
+     1265*
+     1266*   S:	$beep
+     1267*
+     1268*   T:	$run
+     1269*
+     1270*   M:	The system cannot determine that the volume on DRIVE is the one
+     1271*   requested.  The operator must authenticate the volume.  The label read from
+     1272*   the tape on DEVICE was of type LABEL_TYPE and was LABEL.  If LABEL is
+     1273*   "(Manual Halt)" this indicates that the tape drive was found in standby
+     1274*   while trying to read/verify the label.  If LABEL_TYPE is ANSI and LABEL is
+     1275*   "<label> (with non-blank accessibility code)" this indicates that the label
+     1276*   is an ANSI label with a non-blank character in the accessibility field, the
+     1277*   operator must consult the site standards for authenticating such tapes
+     1278*   before doing the authentication.  Any non-printable characters in the label
+     1279*   are represented by ".".
+     1280*
+     1281*   A:	If the volume is correct then
+     1282*   use the "x auth" function to input the DRIVE number and
+     1283*   the authentication code on the tape volume, or "***" if there is no
+     1284*   authentication code.  If authentication was requested due to the drive being in standby,
+     1285*   the tape should be rewound manually and rereadied manually and the above procedure
+     1286*   for authentication followed.
+     1287*
+     1288*
+     1289*   Message:
+     1290*   RCP: Authenticate DRIVE. It has LABEL_TYPE label LABEL and is UNREGISTERED.
+     1291*
+     1292*   S:	$beep
+     1293*
+     1294*   T:	$run
+     1295*
+     1296*   M:	The tape volume requested is not a registered tape volume. In addittion, the system may
+     1297*   not have been able to determine that the volume loaded is in fact the one requested. The
+     1298*   label read from the tape on DEVICE was of type LABEL_TYPE and was LABEL. If LABEL is
+     1299*   "(Manual Halt)" this indicates that the tape drive was found in standby while trying to
+     1300*   read/verify the label. Any non-printable characters in the label are represented by ".".
+     1301*
+     1302*   A:	If the volume is correct and is to be registered to the user requesting this attachment
+     1303*   use the "x auth" function to input the DRIVE number and the authentication code on the
+     1304*   tape volume, or "***" if there is no authentication code. If authentication was requested
+     1305*   due to the drive being in standby, the tape should be rewound manually and rereadied
+     1306*   manually and the above procedure for authentication followed.
+     1307*
+     1308*
+     1309*   Message:
+     1310*   RCP: Using Reel REELID on DRIVE for PERSON.PROJ.T.
+     1311*
+     1312*   S:	$info
+     1313*
+     1314*   T:	$run
+     1315*
+     1316*   M:	Using a preloaded volume.
+     1317*
+     1318*   A:	$ignore
+     1319*
+     1320*
+     1321*   Message:
+     1322*   RCP: Reready Reel REELID on DRIVE for PERSON.PROJ.T.
+     1323*
+     1324*   S:	$beep
+     1325*
+     1326*   T:	$run
+     1327*
+     1328*   M:	A preloaded volume was not ready.
+     1329*
+     1330*   A:	Make the volume ready.
+     1331*
+     1332*
+     1333*   Message:
+     1334*   RCP: WARNING!!  IF YOU AUTHENTICATE THIS REQUEST <USER> WILL OWN VOLUME <VOLUME>!
+     1335*
+     1336*   S:	$beep
+     1337*
+     1338*   T:	$run
+     1339*
+     1340*   M:	This is a warning to the operator.  IHe should be very careful to check the
+     1341*   physical label of the volume before authenticating this request.  As the message states,
+     1342*   if the request is autheticated, <VOLUME> will be registered and acquired to <USER>.
+     1343*
+     1344*   A:	Check the physical label of the tape volume.  If it is the property of
+     1345*   <USER>, authenticate the request.  If it is not the property of <USER> deny the
+     1346*   request by typing "x auth no".
+     1347*
+     1348*
+     1349*   END MESSAGE DOCUMENTATION */
+     1350 
+     1351      end rcp_tape_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.1  rcp_tape_.pl1                     >spec>install>1111>rcp_tape_.pl1
+186          1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+188          2    03/27/86  1120.0  rcp_data.incl.pl1                 >ldd>include>rcp_data.incl.pl1
+2-113        3    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+190          4    12/17/86  1550.5  rcp_volume_formats.incl.pl1       >ldd>include>rcp_volume_formats.incl.pl1
+192          5    05/06/74  1742.1  iom_pcw.incl.pl1                  >ldd>include>iom_pcw.incl.pl1
+194          6    11/12/74  1550.1  iom_dcw.incl.pl1                  >ldd>include>iom_dcw.incl.pl1
+196          7    08/17/79  2215.0  ioi_stat.incl.pl1                 >ldd>include>ioi_stat.incl.pl1
+198          8    01/10/75  1343.6  iom_stat.incl.pl1                 >ldd>include>iom_stat.incl.pl1
+200          9    02/13/79  1715.0  resource_control_desc.incl.pl1    >ldd>include>resource_control_desc.incl.pl1
+202         10    03/27/86  1120.0  rcp_resource_types.incl.pl1       >ldd>include>rcp_resource_types.incl.pl1
+204         11    12/20/82  1113.8  mstr.incl.pl1                     >ldd>include>mstr.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DENSITY_INDEX                   000200 constant        fixed bin(17,0)          initial array dcl 151 ref 532 562
+FIPS_UNLOAD_TIMEOUT             000176 constant        fixed bin(71,0)          initial dcl 154 set ref 297* 302*
+Manual_authentication                  constant        fixed bin(17,0)          initial dcl 3-16 ref 1081
+No_authentication                      constant        fixed bin(17,0)          initial dcl 3-16 ref 514 1107
+Nominal_authentication                 constant        fixed bin(17,0)          initial dcl 3-16 ref 1107
+Resource_count                  000140 automatic       fixed bin(17,0)          dcl 9-78 set ref 1160* 1163
+TAPE_VOL_VTYPEX                        constant        fixed bin(17,0)          initial dcl 10-37 ref 567 1095 1099 1170
+Tape_volume_types               000136 constant        char(16)                 initial array packed unaligned dcl 4-29 set ref 942*
+VOLUME_TYPE                     000036 constant        char(32)                 initial array packed unaligned dcl 10-25 set ref
+                                                                                  567* 1095* 1099* 1170
+Volume_ansi_tape                       constant        fixed bin(17,0)          initial dcl 4-15 ref 1061
+Volume_blank                           constant        fixed bin(17,0)          initial dcl 4-15 ref 1024
+Volume_gcos_tape                       constant        fixed bin(17,0)          initial dcl 4-15 ref 1049
+Volume_ibm_tape                        constant        fixed bin(17,0)          initial dcl 4-15 ref 1055
+Volume_multics_tape                    constant        fixed bin(17,0)          initial dcl 4-15 ref 1031 1040 1115
+Volume_unknown_format                  constant        fixed bin(17,0)          initial dcl 4-15 ref 1021 1069
+Volume_unreadable                      constant        fixed bin(17,0)          initial dcl 4-15 ref 1027
+accessibility             2(08)        based           bit(8)                   level 2 packed packed unaligned dcl 1005 ref 1065
+acs_directory            74            based           char(32)                 level 2 dcl 1-30 ref 1174
+addr                                                   builtin function         dcl 159 ref 220 262 263 264 268 268 269 277 313 408
+                                                                                  410 433 438 442 510 510 610 807 857 1139 1141 1142
+                                                                                  1166
+address                                based           bit(18)                  level 2 packed packed unaligned dcl 6-7 set ref 268*
+admin_gate_$ioi_set_to_max      000016 constant        entry                    external dcl 168 ref 297
+admin_gate_$syserr              000020 constant        entry                    external dcl 169 ref 403 574 612 615 618 904 942
+                                                                                  1156 1185
+ansi                                   based           structure                level 1 packed packed unaligned dcl 1005
+ansi_non_blank_access
+                         34(09)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 485*
+                                                                                  942* 1065* 1088
+arg_ecode                              parameter       fixed bin(35,0)          dcl 63 set ref 34 231* 243* 249* 280* 299* 304* 315*
+                                                                                  321* 344* 356* 362* 373* 377* 388* 399* 417* 429*
+                                                                                  444* 448* 454* 461* 580*
+arg_rcse_ptr                           parameter       pointer                  dcl 64 ref 34 209
+auth_set                 35(08)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  491* 935* 954
+authenticate_                   000056 constant        entry                    external dcl 184 ref 1118
+authentication_label_name       000206 automatic       char(32)                 packed unaligned dcl 927 set ref 939* 942*
+authentication_level     14(08)        based           fixed bin(2,0)           level 3 packed packed unsigned unaligned dcl 2-29
+                                                                                  ref 514 1081 1107 1107
+bad_mode                 34            based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 479*
+                                                                                  657 685 713 845* 862*
+bcd_to_ascii_                   000050 constant        entry                    external dcl 181 ref 1050 1051
+bin                                                    builtin function         dcl 159 ref 269
+bit                                                    builtin function         dcl 160 ref 262 263 264 269
+blank_tape               34(01)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 483*
+                                                                                  719 739 758 846* 868* 1024
+c1                       10            based           bit(36)                  level 3 packed packed unaligned dcl 11-16 ref 1035
+canon_for_volume_label_         000054 constant        entry                    external dcl 183 ref 1095 1099
+canon_label_name                000244 automatic       char(32)                 packed unaligned dcl 976 set ref 1095* 1103 1109
+canon_user_name                 000234 automatic       char(32)                 packed unaligned dcl 976 set ref 1099* 1103
+char_code                       000264 automatic       fixed bin(17,0)          dcl 1133 set ref 1142* 1143
+char_index                      000266 automatic       fixed bin(17,0)          dcl 1136 set ref 1141* 1142 1143*
+char_limit                      000265 automatic       fixed bin(17,0)          dcl 1134 set ref 1139* 1141
+collate9                                               builtin function         dcl 160 ref 939 939 1143
+command                         000100 automatic       bit(6)                   packed unaligned dcl 69 in procedure "rcp_tape_" set
+                                                                                  ref 287* 309* 313
+command                                based           bit(6)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 5-21 in procedure "rcp_tape_" set ref 313*
+                                                                                  408* 410* 438 442* 610* 807*
+completion               40            based           structure                level 3 in structure "wspace" dcl 82 in procedure
+                                                                                  "rcp_tape_"
+completion                             based           structure                level 2 in structure "istat" dcl 7-7 in procedure
+                                                                                  "rcp_tape_"
+computed_auth_code              000255 automatic       char(3)                  dcl 976 set ref 1118* 1119
+cv_dec_                         000022 constant        entry                    external dcl 170 ref 258
+dcw                                    based           structure                level 1 dcl 6-7
+den_set                  34(02)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 475*
+                                                                                  645 676 704 816* 818*
+density                         000205 constant        bit(6)                   initial array packed unaligned dcl 148 ref 807
+device                                 based           structure                level 1 dcl 2-59 in procedure "rcp_tape_"
+device                    0(06)        based           bit(6)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 5-21 in procedure "rcp_tape_" set ref 262*
+                                                                                  263* 264*
+device_name                            based           char(8)                  level 2 dcl 1-55 set ref 258 258 403* 574* 612* 615*
+                                                                                  618* 904* 942* 1156* 1185*
+device_off                      000101 automatic       bit(18)                  dcl 70 in procedure "rcp_tape_" set ref 341* 343*
+                                                                                  369* 371* 413* 414* 601* 603* 948* 950* 956* 957*
+device_off               30            based           bit(18)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_tape_" ref 341 369 413 601 905 915 948 956
+dim                                                    builtin function         dcl 159 ref 269
+divide                                                 builtin function         dcl 160 ref 1139
+drive_num                       000102 automatic       fixed bin(17,0)          dcl 71 set ref 258* 262 263 264
+dtype                                  based           structure                level 1 dcl 2-51
+ebcdic8_to_ascii_               000052 constant        entry                    external dcl 182 ref 1056 1057
+ecode                           000103 automatic       fixed bin(35,0)          dcl 72 set ref 215* 228* 229 231 247* 248 249 278*
+                                                                                  279 280 297* 298 299 302* 303 304 314* 315 343*
+                                                                                  344 353* 355 356 371* 373 399 411* 415 415* 417
+                                                                                  443* 444 448 454 461 525* 526 556* 557 567* 580
+                                                                                  595* 603* 604 611* 809* 849* 898* 905* 910* 912
+                                                                                  915* 950* 957* 1095* 1096 1099* 1101 1174* 1176
+                                                                                  1176* 1179 1182*
+er                        0(01)        based           bit(1)                   level 3 packed packed unaligned dcl 7-7 ref 365 435
+                                                                                  816 856 903
+error_table_$action_not_performed
+                                000010 external static fixed bin(35,0)          dcl 162 ref 1176
+error_table_$device_attention   000012 external static fixed bin(35,0)          dcl 162 ref 595
+error_table_$invalid_state      000014 external static fixed bin(35,0)          dcl 162 ref 321
+fips                     35(18)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 296 408
+fixed                                                  builtin function         dcl 159 ref 262 263 264 278 278 1142
+flags                    15            based           structure                level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 11-16 in procedure "rcp_tape_"
+flags                    35            based           structure                level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_tape_"
+flags                    34            based           structure                level 2 in structure "wspace" dcl 82 in procedure
+                                                                                  "rcp_tape_"
+garbage                         000100 automatic       bit(36)                  array packed unaligned dcl 1163 set ref 1165* 1166
+gcos                                   based           structure                level 1 packed packed unaligned dcl 990
+get_authentication_state
+                          5            based           fixed bin(17,0)          level 2 dcl 82 set ref 470* 929 931* 952*
+given                   270            based           structure                array level 3 dcl 9-6
+group_id                 43            based           char(32)                 level 2 dcl 1-55 set ref 403* 514 567 615* 942* 1107
+                                                                                  1156* 1185*
+have_auth                35(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  489* 547 934*
+hbound                                                 builtin function         dcl 160 ref 1139
+head                     10            based           structure                level 2 dcl 11-16
+header_c1                       000035 constant        bit(36)                  initial packed unaligned dcl 11-79 ref 1030 1035
+i                        14            based           fixed bin(17,0)          level 2 dcl 82 set ref 532 562 634* 670* 698* 771*
+                                                                                  771 772 807
+ibm                                    based           structure                level 1 packed packed unaligned dcl 999
+idcw                                   based           bit(36)                  level 2 in structure "wspace" dcl 82 in procedure
+                                                                                  "rcp_tape_" set ref 254* 262 313 408 410 438 442
+                                                                                  610 807
+idcw                                   based           structure                level 1 dcl 5-21 in procedure "rcp_tape_"
+input                                  parameter       bit                      packed unaligned dcl 1130 set ref 1127 1139 1139
+                                                                                  1141 1142
+input_chars                            based           bit(8)                   array packed unaligned dcl 1135 ref 1139 1141 1142
+ioi_$connect                    000024 constant        entry                    external dcl 171 ref 314 411 443 611 809 849 898
+ioi_$get_special_status         000026 constant        entry                    external dcl 172 ref 353 910
+ioi_$set_status                 000030 constant        entry                    external dcl 173 ref 278 525 556
+ioi_$timeout                    000032 constant        entry                    external dcl 174 ref 302
+ioi_$workspace                  000034 constant        entry                    external dcl 175 ref 247
+ioi_index                       000105 automatic       fixed bin(17,0)          dcl 73 in procedure "rcp_tape_" set ref 219* 234*
+                                                                                  247* 278* 297* 302* 314* 353* 411* 443* 525* 556*
+                                                                                  611* 809* 849* 898* 910*
+ioi_index                60            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_tape_" ref 219 234
+iom_stat                  4            based           bit(72)                  level 2 dcl 7-7 set ref 433 857
+isp                             000132 automatic       pointer                  dcl 7-5 set ref 220* 277* 278 278 312 332 361 365
+                                                                                  365 407 426 433 435 435 609 808 813 813 816 848
+                                                                                  853 853 856 857 897 902 902 903
+istat                                  based           structure                level 1 dcl 7-7
+istatq                   40            based           structure                level 2 dcl 82 set ref 220 277
+item                      2            based           structure                array level 2 dcl 9-6
+j                        15            based           fixed bin(17,0)          level 2 dcl 82 set ref 842*
+lab_id                                 based           bit(32)                  level 2 in structure "ansi" packed packed unaligned
+                                                                                  dcl 1005 in procedure "validate_tape_label" ref
+                                                                                  1060
+lab_id                                 based           bit(72)                  level 2 in structure "gcos" packed packed unaligned
+                                                                                  dcl 990 in procedure "validate_tape_label" ref
+                                                                                  1047
+lab_id                                 based           bit(32)                  level 2 in structure "ibm" packed packed unaligned
+                                                                                  dcl 999 in procedure "validate_tape_label" ref
+                                                                                  1054
+lab_id                                 based           bit(36)                  level 2 in structure "mult" packed packed unaligned
+                                                                                  dcl 985 in procedure "validate_tape_label" ref
+                                                                                  1030 1035
+label                    15(01)        based           bit(1)                   level 4 packed packed unaligned dcl 11-16 ref 1035
+label_auth               11(04)        based           bit(80)                  level 2 in structure "ibm" packed packed unaligned
+                                                                                  dcl 999 in procedure "validate_tape_label" ref
+                                                                                  1057 1057
+label_auth                      000254 automatic       char(3)                  packed unaligned dcl 976 in procedure
+                                                                                  "validate_tape_label" set ref 1020* 1033* 1043*
+                                                                                  1051* 1057* 1063* 1119
+label_auth               10(08)        based           bit(112)                 level 2 in structure "ansi" packed packed unaligned
+                                                                                  dcl 1005 in procedure "validate_tape_label" set
+                                                                                  ref 1063*
+label_auth               11(06)        based           bit(18)                  level 2 in structure "gcos" packed packed unaligned
+                                                                                  dcl 990 in procedure "validate_tape_label" ref
+                                                                                  1051 1051
+label_buffer             50            based           bit(36)                  array level 2 dcl 82 set ref 268 269 510 510
+label_c1                        000034 constant        bit(36)                  initial packed unaligned dcl 11-79 ref 1035
+label_match                            parameter       bit(1)                   packed unaligned dcl 968 in procedure
+                                                                                  "validate_tape_label" set ref 965 1075* 1079*
+                                                                                  1082* 1089* 1096* 1101* 1103* 1119*
+label_match              34(04)        based           bit(1)                   level 3 in structure "wspace" packed packed
+                                                                                  unaligned dcl 82 in procedure "rcp_tape_" set ref
+                                                                                  481* 510* 514
+label_name                             parameter       char(32)                 packed unaligned dcl 968 in procedure
+                                                                                  "validate_tape_label" set ref 965 1019* 1032*
+                                                                                  1041* 1050* 1056* 1062* 1074 1095* 1109*
+label_name               23            based           char(32)                 level 2 in structure "wspace" packed packed
+                                                                                  unaligned dcl 82 in procedure "rcp_tape_" set ref
+                                                                                  482* 510* 530 530 560 560 939
+label_ptr                              parameter       pointer                  dcl 968 ref 965 1030 1032 1035 1035 1035 1041 1047
+                                                                                  1050 1050 1051 1051 1054 1056 1056 1057 1057 1060
+                                                                                  1062 1063 1065
+label_type               35(30)        based           fixed bin(6,0)           level 3 in structure "rcse" packed packed unsigned
+                                                                                  unaligned dcl 1-55 in procedure "rcp_tape_" set
+                                                                                  ref 513* 534* 564*
+label_type                             parameter       fixed bin(17,0)          dcl 968 in procedure "validate_tape_label" set ref
+                                                                                  965 1021* 1024* 1027* 1031* 1040* 1049* 1055*
+                                                                                  1061* 1069* 1095* 1099* 1115
+label_type               33            based           fixed bin(17,0)          level 2 in structure "wspace" dcl 82 in procedure
+                                                                                  "rcp_tape_" set ref 510* 513 534 564 942
+lbound                                                 builtin function         dcl 160 ref 1141
+length                                                 builtin function         dcl 160 ref 1139 1139
+level                     1            based           fixed bin(3,0)           level 2 dcl 7-7 ref 365 435 813 853 902
+location                133            based           char(168)                array level 3 dcl 9-6 set ref 1181* 1185 1185*
+lock_info                              based           structure                level 1 dcl 1-46
+major                     0(02)        based           bit(4)                   level 2 packed packed unaligned dcl 8-7 ref 438 859
+                                                                                  865 871
+manual_halt              34(08)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 484*
+                                                                                  724 744 763 847* 874* 942* 1027
+max_num_retries                        constant        fixed bin(17,0)          initial dcl 124 ref 593
+min                                                    builtin function         dcl 160 ref 1139
+model                    13            based           fixed bin(17,0)          level 2 dcl 1-55 ref 380
+modes                    14(01)        based           structure                level 2 packed packed unaligned dcl 2-29
+mount_state              13            based           fixed bin(17,0)          level 2 dcl 82 set ref 270* 286* 338* 620
+mst_label                              based           structure                level 1 dcl 11-16
+mstr_header                            based           structure                level 1 dcl 11-37
+mstr_trailer                           based           structure                level 1 dcl 11-62
+mult                                   based           structure                level 1 packed packed unaligned dcl 985
+must_auto_register       35(17)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref 514
+                                                                                  567 942*
+n_items                   1            based           fixed bin(17,0)          level 2 dcl 9-6 set ref 1169*
+name                     12            based           char(32)                 array level 3 in structure "resource_descriptions"
+                                                                                  dcl 9-6 in procedure "rcp_tape_" set ref 1171*
+name                    270            based           bit(1)                   array level 4 in structure "resource_descriptions"
+                                                                                  packed packed unaligned dcl 9-6 in procedure
+                                                                                  "rcp_tape_" set ref 1172*
+need_auth                35(07)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  490* 933*
+nrzi_den_set             34(03)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 476*
+                                                                                  635* 647* 786
+null                                                   builtin function         dcl 159 ref 217
+output                                 parameter       char                     packed unaligned dcl 1131 set ref 1127 1138* 1139
+                                                                                  1143*
+preloaded                35(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 284 359
+                                                                                  403 615
+ptr                                                    builtin function         dcl 159 ref 210
+rcp_auto_register_              000036 constant        entry                    external dcl 176 ref 567
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 3-8
+rcp_ioi_attach_                 000040 constant        entry                    external dcl 177 ref 228
+rcp_mount_timer_$reset          000042 constant        entry                    external dcl 178 ref 414 915 957
+rcp_mount_timer_$set            000044 constant        entry                    external dcl 179 ref 343 371 603 905 950
+rcp_pointers_$data              000060 constant        entry                    external dcl 1152 in procedure "Print_Mount_Message"
+                                                                                  ref 1156
+rcp_pointers_$data              000046 constant        entry                    external dcl 180 in procedure "rcp_tape_" ref 212
+rcpd                                   based           structure                level 1 dcl 2-29
+rcpd_ptr                        000130 automatic       pointer                  dcl 2-24 set ref 212* 514 1081 1107 1107
+rcprm_find_resource_$status     000062 constant        entry                    external dcl 1153 ref 1174
+rcs                                    based           structure                level 1 dcl 1-30
+rcs_ptr                         000124 automatic       pointer                  dcl 1-23 set ref 210* 1174
+rcse                                   based           structure                level 1 dcl 1-55
+rcse_ptr                        000126 automatic       pointer                  dcl 1-24 set ref 209* 210 214 219 228* 234 240 242
+                                                                                  253 258 258 272 284 296 341 342 359 369 370 380
+                                                                                  403 403 403 403 408 413 458 489 490 491 497 508
+                                                                                  510 513 514 514 527 530 532 534 547 558 560 562
+                                                                                  564 567 567 574 601 602 612 612 612 615 615 615
+                                                                                  615 618 904 905 905 915 933 934 935 942 942 942
+                                                                                  942 948 949 954 956 1107 1156 1156 1156 1156 1171
+                                                                                  1185 1185 1185
+read_dcw                  2            based           bit(36)                  level 2 dcl 82 set ref 256* 268 269
+read_idcw                 1            based           bit(36)                  level 2 dcl 82 set ref 255* 263
+read_label_state          6            based           fixed bin(17,0)          level 2 dcl 82 set ref 469* 628 630* 638* 650* 660*
+                                                                                  668* 678* 688* 696* 706* 775*
+read_record_state         7            based           fixed bin(17,0)          level 2 dcl 82 set ref 649* 677* 705* 838 840* 851*
+record_read              34(06)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 477*
+                                                                                  632* 719 739 758 844* 881*
+rel                                                    builtin function         dcl 159 ref 268 278 278
+remount_flag                           parameter       bit(1)                   packed unaligned dcl 591 ref 585 607
+request_status_command                 constant        bit(6)                   initial packed unaligned dcl 144 ref 408
+reset_status_command                   constant        bit(6)                   initial packed unaligned dcl 142 ref 442
+resource_desc_ptr               000136 automatic       pointer                  dcl 9-72 set ref 1163 1166* 1168 1169 1170 1171 1172
+                                                                                  1174* 1176 1181 1185 1185
+resource_desc_version_1                constant        fixed bin(17,0)          initial dcl 9-75 ref 1168
+resource_descriptions                  based           structure                level 1 dcl 9-6 set ref 1163
+resource_mgmt_enabled
+                         14(04)        based           bit(1)                   level 3 packed packed unaligned dcl 2-29 ref 1156
+retry_count              16            based           fixed bin(17,0)          level 2 dcl 82 set ref 270* 575* 593 598* 598
+rewind_command                         constant        bit(6)                   initial packed unaligned dcl 138 ref 287
+rewind_idcw               3            based           bit(36)                  level 2 dcl 82 set ref 257* 264
+rewind_state             10            based           fixed bin(17,0)          level 2 dcl 82 set ref 517* 548* 658* 686* 774* 893
+                                                                                  895* 900* 908*
+rewind_unload_command                  constant        bit(6)                   initial packed unaligned dcl 140 ref 309 610
+ring_comment             17            based           char(8)                  level 2 dcl 82 set ref 272* 275* 612* 1156* 1185*
+scode                           000104 automatic       fixed bin(35,0)          dcl 72 set ref 414* 415
+set_density_state        11            based           fixed bin(17,0)          level 2 dcl 82 set ref 636* 667* 695* 803 805* 811*
+set_write_permit_command               constant        bit(6)                   initial packed unaligned dcl 146 ref 410 438
+size                                                   builtin function         dcl 159 ref 247 247 1163
+special_flag             21            based           bit(1)                   level 2 dcl 82 set ref 353* 359 910* 912
+special_status_bits             000106 automatic       bit(7)                   dcl 74 set ref 385* 387 392 396
+special_status_word      22            based           bit(36)                  level 2 dcl 82 set ref 353* 385 910*
+st                                     based           bit(1)                   level 3 packed packed unaligned dcl 7-7 set ref 312*
+                                                                                  332 361 407* 426 609* 808* 813 848* 853 897* 902
+state                     4            based           fixed bin(17,0)          level 2 in structure "wspace" dcl 82 in procedure
+                                                                                  "rcp_tape_" set ref 221 270* 285* 308* 338 338*
+                                                                                  412* 412 468* 528* 559* 620*
+state                    24            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_tape_" set ref 242* 527* 558*
+statp                           000134 automatic       pointer                  dcl 8-5 set ref 433* 438 438 452 458 857* 859 859
+                                                                                  865 865 871 871
+status                                 based           structure                level 1 dcl 8-7
+status_code             272            based           fixed bin(35,0)          array level 3 dcl 9-6 ref 1176
+sub                       0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 8-7 ref 438 452
+                                                                                  458 859 865 871
+substr                                                 builtin function         dcl 159 set ref 258 258 385 392 396 939 939 1143*
+                                                                                  1143
+t_and_d                  35(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 240
+tally                     0(24)        based           bit(12)                  level 2 packed packed unaligned dcl 6-7 set ref 269*
+tape_reel_id             30            based           char(32)                 level 3 packed packed unaligned dcl 11-16 ref 1041
+tape_state_4_state       12            based           fixed bin(17,0)          level 2 dcl 82 set ref 471* 499 501* 518* 540* 549*
+template_idcw                          constant        bit(36)                  initial packed unaligned dcl 127 ref 254
+template_read_dcw                      constant        bit(36)                  initial packed unaligned dcl 133 ref 256
+template_read_idcw              000207 constant        bit(36)                  initial packed unaligned dcl 130 ref 255
+template_rewind_idcw            000206 constant        bit(36)                  initial packed unaligned dcl 136 ref 257
+translate                                              builtin function         dcl 159 ref 939
+type                      2            based           char(32)                 array level 3 dcl 9-6 set ref 1170*
+unreadable_tape          34(05)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 478*
+                                                                                  633* 715* 721* 726* 730* 735* 741* 745* 749* 760*
+                                                                                  764* 768* 1027
+user_label                             parameter       char                     dcl 968 ref 965 1022
+user_name                       000224 automatic       char(32)                 packed unaligned dcl 976 set ref 1022* 1099* 1118*
+users_requested_volume_name     000107 automatic       char(32)                 packed unaligned dcl 75 set ref 508* 567
+version_no                             based           fixed bin(17,0)          level 2 dcl 9-6 set ref 1168*
+vid                      20            based           structure                level 2 dcl 11-16
+vol_id                    0(32)        based           bit(48)                  level 2 in structure "ibm" packed packed unaligned
+                                                                                  dcl 999 in procedure "validate_tape_label" ref
+                                                                                  1056 1056
+vol_id                   20            based           char(32)                 level 2 in structure "mult" packed packed unaligned
+                                                                                  dcl 985 in procedure "validate_tape_label" ref
+                                                                                  1032
+vol_id                    3(06)        based           bit(36)                  level 2 in structure "gcos" packed packed unaligned
+                                                                                  dcl 990 in procedure "validate_tape_label" ref
+                                                                                  1050 1050
+vol_id                    0(32)        based           bit(48)                  level 2 in structure "ansi" packed packed unaligned
+                                                                                  dcl 1005 in procedure "validate_tape_label" set
+                                                                                  ref 1062*
+volume                                 based           structure                level 1 dcl 2-101
+volume_density_index     35(27)        based           fixed bin(3,0)           level 3 packed packed unsigned unaligned dcl 1-55
+                                                                                  set ref 532* 562*
+volume_identifier                      based           structure                level 1 dcl 11-73
+volume_name               2            based           char(32)                 level 2 dcl 1-55 set ref 403* 508 510* 530* 560* 612
+                                                                                  612* 615* 942* 1156 1156* 1171 1185*
+wait                     34(07)        based           bit(1)                   level 3 packed packed unaligned dcl 82 set ref 480*
+                                                                                  505 522 544 553 642 654 664 673 682 692 701 710
+                                                                                  779 814* 821* 854* 885* 912* 916* 919* 955* 960*
+workspace_ptr            62            based           pointer                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_tape_" set ref 214 253*
+workspace_ptr                   000120 automatic       pointer                  dcl 76 in procedure "rcp_tape_" set ref 214* 217 220
+                                                                                  221 247* 247 247 253 254 255 256 257 262 263 264
+                                                                                  268 268 269 269 270 270 270 272 275 277 285 286
+                                                                                  308 313 338 338 338 353 353 359 385 408 410 412
+                                                                                  412 438 442 468 469 470 471 475 476 477 478 479
+                                                                                  480 481 482 483 484 485 499 501 505 510 510 510
+                                                                                  510 510 513 514 517 518 522 528 530 530 532 534
+                                                                                  540 544 548 549 553 559 560 560 562 564 575 593
+                                                                                  598 598 610 612 620 620 628 630 632 633 634 635
+                                                                                  636 638 642 645 647 649 650 654 657 658 660 664
+                                                                                  667 668 670 673 676 677 678 682 685 686 688 692
+                                                                                  695 696 698 701 704 705 706 710 713 715 719 719
+                                                                                  721 724 726 730 735 739 739 741 744 745 749 758
+                                                                                  758 760 763 764 768 771 771 772 774 775 779 786
+                                                                                  803 805 807 807 811 814 816 818 821 838 840 842
+                                                                                  844 845 846 847 851 854 862 868 874 881 885 893
+                                                                                  895 900 908 910 910 912 912 916 919 929 931 939
+                                                                                  942 942 942 952 955 960 1024 1027 1027 1065 1088
+                                                                                  1156 1185
+write_flag                      000122 automatic       bit(1)                   dcl 77 set ref 342* 343* 370* 371* 497* 530 560 602*
+                                                                                  603* 949* 950*
+writing                  35(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 272 342
+                                                                                  370 458 497 602 905 949
+wspace                                 based           structure                level 1 dcl 82 set ref 247 247
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 3-16
+CONSOLE_DTYPEX                         internal static fixed bin(17,0)          initial dcl 10-31
+DEVICE_TYPE                            internal static char(32)                 initial array packed unaligned dcl 10-18
+DISK_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 10-30
+DISK_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 10-38
+HEADER_VERSION                         internal static fixed bin(17,0)          initial dcl 11-89
+LABEL_VERSION                          internal static fixed bin(17,0)          initial dcl 11-87
+MCA_DTYPEX                             internal static fixed bin(17,0)          initial dcl 10-36
+NUM_QUALIFIERS                         internal static fixed bin(17,0)          initial array dcl 10-22
+PRINTER_DTYPEX                         internal static fixed bin(17,0)          initial dcl 10-32
+PUNCH_DTYPEX                           internal static fixed bin(17,0)          initial dcl 10-33
+READER_DTYPEX                          internal static fixed bin(17,0)          initial dcl 10-34
+SPECIAL_DTYPEX                         internal static fixed bin(17,0)          initial dcl 10-35
+TAPE_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 10-29
+Volume_unauthenticated                 internal static fixed bin(17,0)          initial dcl 4-15
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 3-21
+based_rcp_id                           based           structure                level 1 dcl 1-26
+dcwp                                   automatic       pointer                  dcl 6-4
+device_ptr                             automatic       pointer                  dcl 2-26
+dtype_ptr                              automatic       pointer                  dcl 2-25
+faultword                              based           structure                level 1 dcl 8-27
+header_c2                              internal static bit(36)                  initial packed unaligned dcl 11-79
+idcwp                                  automatic       pointer                  dcl 5-19
+imess                                  based           structure                level 1 dcl 7-21
+imp                                    automatic       pointer                  dcl 7-19
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+mstr                                   based           structure                level 1 dcl 11-10
+mstrp                                  automatic       pointer                  dcl 11-8
+pcw                                    based           structure                level 1 dcl 5-6
+pcwp                                   automatic       pointer                  dcl 5-4
+reservation_description                based           structure                level 1 dcl 9-55
+resource_res_ptr                       automatic       pointer                  dcl 9-72
+resource_res_version_1                 internal static fixed bin(17,0)          initial dcl 9-75
+rifp                                   automatic       pointer                  dcl 3-6
+special_status                         based           structure                level 1 dcl 8-35
+tdcw                                   based           structure                level 1 dcl 6-14
+tdcwp                                  automatic       pointer                  dcl 6-4
+trailer_c1                             internal static bit(36)                  initial packed unaligned dcl 11-79
+trailer_c2                             internal static bit(36)                  initial packed unaligned dcl 11-79
+volume_ptr                             automatic       pointer                  dcl 2-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_READY                     001467 constant        label                    dcl 403 ref 380 392
+Print_Mount_Message             004556 constant        entry                    internal dcl 1148 ref 337
+REREADY_TAPE                    002355 constant        entry                    internal dcl 585 ref 365 398 447 453 460 576
+RETURN                          002351 constant        label                    dcl 580 ref 505 522 544 553
+STATE                           000027 constant        label                    array(3) dcl 895 in procedure "rewind" ref 893
+STATE                           000032 constant        label                    array(2) dcl 931 in procedure "get_authentication"
+                                                                                  set ref 929
+STATE                           000025 constant        label                    array(2) dcl 840 in procedure "read_record" ref 838
+STATE                           000023 constant        label                    array(2) dcl 805 in procedure "set_density" ref 803
+STATE                           000005 constant        label                    array(4) dcl 501 in procedure "rcp_tape_" ref 499
+STATE                           000011 constant        label                    array(10) dcl 630 in procedure "read_label" ref 628
+TAPE_STATE                      000000 constant        label                    array(0:4) dcl 321 ref 221
+get_authentication              003511 constant        entry                    internal dcl 924 ref 542
+rcp_tape_                       000677 constant        entry                    external dcl 34
+read_label                      002612 constant        entry                    internal dcl 625 ref 503
+read_record                     003172 constant        entry                    internal dcl 826 ref 652 680 708
+rewind                          003322 constant        entry                    internal dcl 890 ref 520 551 662 690 777
+set_density                     003111 constant        entry                    internal dcl 798 ref 640 671 699
+try_gcr                         002733 constant        label                    dcl 686 ref 754
+try_next_density                002627 constant        label                    dcl 636 ref 782
+try_pe                          002664 constant        label                    dcl 658 ref 786
+unpack                          004475 constant        entry                    internal dcl 1127 ref 1062 1063
+validate_tape_label             003720 constant        entry                    internal dcl 965 ref 510
+wrong_density                   003064 constant        label                    dcl 768 ref 645
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+string                                                 builtin function         set ref 1050 1050 1051 1051 1056 1056 1057 1057
+                                                                                  1165*
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5442        5526    5152        5452
+Length      6172    5152        64         430     267           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_tape_                           688 external procedure  is an external procedure.  
+REREADY_TAPE                            internal procedure  shares stack frame of external procedure rcp_tape_.  
+read_label                              internal procedure  shares stack frame of external procedure rcp_tape_.  
+set_density                             internal procedure  shares stack frame of external procedure rcp_tape_.  
+read_record                             internal procedure  shares stack frame of external procedure rcp_tape_.  
+rewind                                  internal procedure  shares stack frame of external procedure rcp_tape_.  
+get_authentication                      internal procedure  shares stack frame of external procedure rcp_tape_.  
+validate_tape_label                     internal procedure  shares stack frame of external procedure rcp_tape_.  
+unpack                                  internal procedure  shares stack frame of external procedure rcp_tape_.  
+Print_Mount_Message                     internal procedure  shares stack frame of external procedure rcp_tape_.  
+begin block on line 1161            142 begin block         uses auto adjustable storage.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 1161 000100 garbage                     begin block on line 1161
+rcp_tape_                000100 command                     rcp_tape_
+                         000101 device_off                  rcp_tape_
+                         000102 drive_num                   rcp_tape_
+                         000103 ecode                       rcp_tape_
+                         000104 scode                       rcp_tape_
+                         000105 ioi_index                   rcp_tape_
+                         000106 special_status_bits         rcp_tape_
+                         000107 users_requested_volume_name rcp_tape_
+                         000120 workspace_ptr               rcp_tape_
+                         000122 write_flag                  rcp_tape_
+                         000124 rcs_ptr                     rcp_tape_
+                         000126 rcse_ptr                    rcp_tape_
+                         000130 rcpd_ptr                    rcp_tape_
+                         000132 isp                         rcp_tape_
+                         000134 statp                       rcp_tape_
+                         000136 resource_desc_ptr           rcp_tape_
+                         000140 Resource_count              rcp_tape_
+                         000206 authentication_label_name   get_authentication
+                         000224 user_name                   validate_tape_label
+                         000234 canon_user_name             validate_tape_label
+                         000244 canon_label_name            validate_tape_label
+                         000254 label_auth                  validate_tape_label
+                         000255 computed_auth_code          validate_tape_label
+                         000264 char_code                   unpack
+                         000265 char_limit                  unpack
+                         000266 char_index                  unpack
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             enter_begin_block   leave_begin_block   call_ext_out_desc   call_ext_out
+return_mac          alloc_auto_adj      shorten_stack       ext_entry           set_chars_eis       translate_3
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$ioi_set_to_max    admin_gate_$syserr            authenticate_                 bcd_to_ascii_
+canon_for_volume_label_       cv_dec_                       ebcdic8_to_ascii_             ioi_$connect
+ioi_$get_special_status       ioi_$set_status               ioi_$timeout                  ioi_$workspace
+rcp_auto_register_            rcp_ioi_attach_               rcp_mount_timer_$reset        rcp_mount_timer_$set
+rcp_pointers_$data            rcp_pointers_$data            rcprm_find_resource_$status
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$device_attention error_table_$invalid_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     34 000673       209 000704       210 000710       212 000712       214 000720       215 000723       217 000724
+    219 000730       220 000733       221 000735       228 000737       229 000750       231 000752       232 000754
+    234 000755       240 000760       242 000763       243 000765       244 000767       247 000770       248 001007
+    249 001011       250 001013       253 001014       254 001017       255 001021       256 001023       257 001024
+    258 001026       262 001047       263 001060       264 001067       268 001075       269 001100       270 001105
+    272 001110       275 001121       277 001124       278 001126       279 001150       280 001152       281 001154
+    284 001155       285 001161       286 001164       287 001165       288 001167       296 001170       297 001173
+    298 001206       299 001210       300 001212       302 001213       303 001226       304 001230       305 001232
+    308 001233       309 001236       312 001240       313 001242       314 001245       315 001261       316 001264
+    321 001265       323 001271       332 001272       337 001275       338 001276       341 001303       342 001306
+    343 001312       344 001325       345 001330       353 001331       355 001346       356 001350       357 001352
+    359 001353       361 001363       362 001366       363 001370       365 001371       369 001405       370 001407
+    371 001413       373 001426       374 001431       377 001432       378 001434       380 001435       385 001441
+    387 001444       388 001446       389 001450       392 001451       396 001454       398 001457       399 001463
+    400 001466       403 001467       407 001526       408 001530       410 001537       411 001542       412 001556
+    413 001560       414 001563       415 001574       417 001600       418 001602       426 001603       429 001606
+    430 001610       433 001611       435 001613       438 001621       442 001642       443 001644       444 001660
+    445 001663       447 001664       448 001670       449 001673       452 001674       453 001703       454 001707
+    455 001712       458 001713       460 001725       461 001731       462 001734       468 001735       469 001737
+    470 001741       471 001742       475 001743       476 001745       477 001747       478 001751       479 001753
+    480 001755       481 001757       482 001761       483 001764       484 001766       485 001770       489 001772
+    490 001774       491 001776       497 002000       499 002004       501 002006       503 002010       505 002011
+    508 002015       510 002021       513 002055       514 002061       517 002100       518 002102       520 002104
+    522 002105       525 002111       526 002130       527 002132       528 002135       530 002137       532 002151
+    534 002157       537 002161       540 002162       542 002164       544 002165       547 002171       548 002175
+    549 002177       551 002201       553 002202       556 002206       557 002225       558 002227       559 002232
+    560 002234       562 002246       564 002254       567 002256       571 002315       574 002316       575 002343
+    576 002345       580 002351       582 002354       585 002355       593 002357       595 002363       596 002366
+    598 002367       601 002370       602 002373       603 002377       604 002412       607 002415       609 002423
+    610 002425       611 002430       612 002444       614 002514       615 002515       618 002557       620 002606
+    622 002611       625 002612       628 002613       630 002616       632 002620       633 002622       634 002624
+    635 002625       636 002627       638 002632       640 002634       642 002635       645 002642       647 002645
+    649 002647       650 002651       652 002653       654 002654       657 002661       658 002664       660 002667
+    662 002671       664 002672       667 002677       668 002701       670 002703       671 002705       673 002706
+    676 002713       677 002716       678 002720       680 002722       682 002723       685 002730       686 002733
+    688 002736       690 002740       692 002741       695 002746       696 002750       698 002752       699 002754
+    701 002755       704 002762       705 002765       706 002767       708 002771       710 002772       713 002777
+    715 003002       717 003004       719 003005       721 003010       722 003012       724 003013       726 003016
+    727 003020       730 003021       732 003023       735 003024       737 003026       739 003027       741 003032
+    742 003034       744 003035       745 003040       746 003042       749 003043       751 003045       754 003046
+    756 003047       758 003050       760 003053       761 003055       763 003056       764 003061       765 003063
+    768 003064       771 003066       772 003067       774 003072       775 003074       777 003076       779 003077
+    782 003104       786 003105       795 003110       798 003111       803 003112       805 003115       807 003117
+    808 003124       809 003126       811 003142       813 003145       814 003154       816 003156       818 003164
+    819 003166       821 003167       823 003171       826 003172       838 003173       840 003176       842 003200
+    844 003201       845 003203       846 003205       847 003207       848 003211       849 003213       851 003227
+    853 003232       854 003241       856 003243       857 003246       859 003250       862 003266       863 003270
+    865 003271       868 003277       869 003301       871 003302       874 003311       878 003313       881 003314
+    883 003316       885 003317       887 003321       890 003322       893 003323       895 003326       897 003330
+    898 003332       900 003347       902 003352       903 003361       904 003364       905 003412       908 003434
+    910 003437       912 003454       915 003466       916 003502       918 003505       919 003506       921 003510
+    924 003511       929 003512       931 003515       933 003517       934 003522       935 003524       939 003526
+    942 003556       948 003646       949 003651       950 003655       952 003670       954 003673       955 003677
+    956 003701       957 003703       958 003714       960 003715       962 003717       965 003720      1019 003731
+   1020 003736      1021 003740      1022 003742      1024 003747      1027 003756      1030 003764      1031 003774
+   1032 003776      1033 004002      1034 004004      1035 004005      1040 004015      1041 004017      1043 004023
+   1045 004025      1047 004026      1049 004032      1050 004034      1051 004054      1052 004100      1054 004101
+   1055 004105      1056 004107      1057 004130      1058 004153      1060 004154      1061 004160      1062 004162
+   1063 004200      1065 004221      1067 004233      1074 004234      1075 004242      1076 004246      1079 004247
+   1081 004253      1082 004261      1083 004264      1088 004265      1089 004271      1090 004274      1095 004275
+   1096 004327      1099 004337      1101 004371      1103 004401      1107 004412      1109 004430      1110 004435
+   1115 004436      1118 004443      1119 004460      1122 004474      1127 004475      1138 004513      1139 004520
+   1141 004526      1142 004535      1143 004546      1144 004553      1146 004555      1148 004556      1156 004557
+   1160 004646      1161 004650      1163 004653      1165 004662      1166 004667      1168 004671      1169 004673
+   1170 004675      1171 004702      1172 004706      1174 004710      1176 004735      1179 004745      1181 004747
+   1182 004753      1185 004754      1188 005035      1192 005036
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

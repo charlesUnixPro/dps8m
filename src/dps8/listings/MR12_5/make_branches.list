@@ -1,0 +1,594 @@
+	COMPILATION LISTING OF SEGMENT make_branches
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1018.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 make_branches: proc (pathp, namep, bitcnt, aclp, rb, access, dirsw);
+       14 
+       15 /* Modified 741115 by PG to turn off safety switch before trying to delete branch. */
+       16 /* Modified 751104 by BSG for NSS: to trek around deleting stuff on non-RPV volume */
+       17 /* Modified 3/82 BIM acl cleanup */
+       18 
+       19 dcl  bitcnt fixed bin (24),
+       20     (pnl, pcnt, i, j) fixed bin (17),
+       21      ercode fixed bin (35),
+       22     (rb (3), nrb (3)) fixed bin (6),
+       23      access bit (3),
+       24      dirsw fixed bin (1),
+       25      mode fixed bin (5);
+       26 
+       27 dcl 1 seg_access_string unaligned,
+       28     2 zero1 bit (1) unaligned,
+       29     2 rew bit (3) unaligned,
+       30     2 zero2 bit (1) unaligned;
+       31 
+       32 dcl 1 dir_access_string unaligned,
+       33     2 zero1 bit (1) unaligned,
+       34     2 s bit (1) unaligned,
+       35     2 zero2 bit (1) unaligned,
+       36     2 m bit (1) unaligned,
+       37     2 a bit (1) unaligned;
+       38 
+       39 dcl 1 dir_access_bit_string unaligned,
+       40     2 s bit (1) unaligned,
+       41     2 m bit (1) unaligned,
+       42     2 a bit (1) unaligned;
+       43 
+       44 
+       45 dcl (error_table_$namedup, error_table_$noaccess) fixed bin (35) external;
+       46 dcl  error_table_$pvid_not_found fixed bin (35) external;
+       47 
+       48 
+       49 dcl 1 nename aligned,				/* name structure for recursive call */
+       50     2 count fixed bin (17),
+       51     2 names,
+       52       3 size fixed,
+       53       3 name char (32) unaligned;
+       54 
+       55 dcl (addr, null, substr) builtin;
+       56 
+       57 
+       58 dcl  asd_$replace_sall entry (char (*), char (*), ptr, fixed bin, bit (1) aligned, fixed bin (35)),
+       59      append$branchx entry (char (*), char (*), fixed bin (5), (3) fixed bin (6), char (*),
+       60      fixed bin (1), fixed bin, fixed bin (24), fixed bin (35)),
+       61      chname$cfile entry (char (*), char (*), char (*), char (*), fixed bin (35)),
+       62      delentry$dfile entry (char (*), char (*), fixed bin (35)),
+       63      set$safety_sw_path entry (char (*), char (*), bit (1), fixed bin (35)),
+       64      syserr ext entry options (variable),
+       65      syserr$error_code entry options (variable),
+       66      unique_chars_ entry (bit (*)) returns (char (15));
+       67 
+  1     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  1     2 
+  1     3 /* Declarations for Segment Loading Table header and array.
+  1     4*
+  1     5*   Used by Initialization and MST Checker subroutines */
+  1     6 
+  1     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  1     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  1     9     namep ptr,					/* pointer to segment name list block */
+  1    10     pathp ptr,					/* pointer to segment's directory path name */
+  1    11     aclp ptr;					/* pointer to acl structure */
+  1    12 
+  1    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  1    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  1    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  1    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  1    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  1    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  1    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  1    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  1    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  1    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  1    23 
+  1    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  1    25 
+  1    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  1    27 	2 pad bit (18) unal,
+  1    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  1    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  1    30 
+  1    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  1    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  1    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  1    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  1    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  1    36 	  3 pad bit (5) unal,
+  1    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  1    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  1    39 
+  1    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  1    41 	2 size fixed bin (17),			/* length of pathname */
+  1    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  1    43 	2 acls fixed bin;				/* ACL list starts here */
+  1    44 
+  1    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  1    46 	2 count fixed bin,				/* number of entries in acl list */
+  1    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  1    48 	  3 userid char (32),			/* user specification */
+  1    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  1    50 	  3 pad bit (36) aligned,
+  1    51 	  3 code fixed bin;
+  1    52 
+  1    53 
+  1    54 /* END INCLUDE FILE slt.incl.pl1 */
+       68 
+  2     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  2     2*
+  2     3*   Values for the "access mode" argument so often used in hardcore
+  2     4*   James R. Davis 26 Jan 81  MCR 4844
+  2     5*   Added constants for SM access 4/28/82 Jay Pattin
+  2     6*   Added text strings 03/19/85 Chris Jones
+  2     7**/
+  2     8 
+  2     9 
+  2    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2    11 dcl	(
+  2    12 	N_ACCESS		   init ("000"b),
+  2    13 	R_ACCESS		   init ("100"b),
+  2    14 	E_ACCESS		   init ("010"b),
+  2    15 	W_ACCESS		   init ("001"b),
+  2    16 	RE_ACCESS		   init ("110"b),
+  2    17 	REW_ACCESS	   init ("111"b),
+  2    18 	RW_ACCESS		   init ("101"b),
+  2    19 	S_ACCESS		   init ("100"b),
+  2    20 	M_ACCESS		   init ("010"b),
+  2    21 	A_ACCESS		   init ("001"b),
+  2    22 	SA_ACCESS		   init ("101"b),
+  2    23 	SM_ACCESS		   init ("110"b),
+  2    24 	SMA_ACCESS	   init ("111"b)
+  2    25 	)		   bit (3) internal static options (constant);
+  2    26 
+  2    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  2    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  2    29 
+  2    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  2    31 			   static options (constant);
+  2    32 
+  2    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  2    34 			   static options (constant);
+  2    35 
+  2    36 dcl	(
+  2    37 	N_ACCESS_BIN	   init (00000b),
+  2    38 	R_ACCESS_BIN	   init (01000b),
+  2    39 	E_ACCESS_BIN	   init (00100b),
+  2    40 	W_ACCESS_BIN	   init (00010b),
+  2    41 	RW_ACCESS_BIN	   init (01010b),
+  2    42 	RE_ACCESS_BIN	   init (01100b),
+  2    43 	REW_ACCESS_BIN	   init (01110b),
+  2    44 	S_ACCESS_BIN	   init (01000b),
+  2    45 	M_ACCESS_BIN	   init (00010b),
+  2    46 	A_ACCESS_BIN	   init (00001b),
+  2    47 	SA_ACCESS_BIN	   init (01001b),
+  2    48 	SM_ACCESS_BIN	   init (01010b),
+  2    49 	SMA_ACCESS_BIN	   init (01011b)
+  2    50 	)		   fixed bin (5) internal static options (constant);
+  2    51 
+  2    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+       69 
+       70 
+       71 
+       72 /* program */
+       73 
+       74 	if dirsw = 0 /* segment */ then do;
+       75 	     unspec (seg_access_string) = ""b;
+       76 	     seg_access_string.rew = access;
+       77 	     mode = bin (string (seg_access_string), 5);
+       78 	end;
+       79 	else do;
+       80 	     unspec (dir_access_string) = ""b;
+       81 	     string (dir_access_bit_string) = access;
+       82 	     dir_access_string = dir_access_bit_string, by name;
+       83 	     mode = bin (string (dir_access_string), 5);
+       84 	end;
+       85 
+       86 rpt:
+       87 	pnl = pathp -> path.size;			/* Grab length of pathname. */
+       88 	call append$branchx (pathp -> path.name, namep -> segnam.names (1).name,
+       89 	     mode, rb, "*.*.*", dirsw, 0, bitcnt, ercode); /* Try to append. */
+       90 	if ercode ^= 0 then do;			/* Check for errors. */
+       91 	     if ercode = error_table_$namedup then do;	/* Name dup. */
+       92 		call delete (pathp -> path.name, namep -> segnam.names (1).name); /* Go delete. */
+       93 		go to rpt;			/* Try again. */
+       94 	     end;
+       95 	     else if ercode = error_table_$noaccess then do; /* See if dir. does not exist. */
+       96 		do i = pnl to 1 by -1 while (substr (pathp -> path.name, i, 1) ^= ">");
+       97 		end;
+       98 		if i = 1 then
+       99 		     if substr (pathp -> path.name, 1, 1) ^= ">" then
+      100 			call syserr (1, "make_branches: bad path name ^a", pathp -> path.name);
+      101 		     else pcnt = 1;
+      102 		else pcnt = i - 1;
+      103 		nename.names.name = substr (pathp -> path.name, i + 1, pnl - i);
+      104 		nrb (1), nrb (2), nrb (3) = 5;
+      105 		nename.count = 1;
+      106 		pathp -> path.size = pcnt;		/* This KLUDGE is worthy of Charles Garman. */
+      107 		call make_branches (pathp, addr (nename), 0, aclp, nrb, SMA_ACCESS, 1);
+      108 		pathp -> path.size = pnl;		/* However, it was perpetrated by NIM. */
+      109 		go to rpt;
+      110 	     end;
+      111 	     call syserr$error_code (1, ercode, "make_branches: error from append on ^a>^a:",
+      112 		pathp -> path.name, namep -> segnam.names (1).name);
+      113 	end;
+      114 	if aclp ^= null then do;			/* must append an acl to the branch */
+      115 
+      116 	     call asd_$replace_sall (pathp -> path.name, namep -> segnam.names (1).name,
+      117 		addr (aclp -> acls.acl), aclp -> acls.count, "1"b, ercode);
+      118 	     if ercode ^= 0 then call syserr$error_code (1, ercode,
+      119 		"make_branches: error from asd_$replace_sall on ^a>^a:", pathp -> path.name, namep -> segnam.names (1).name);
+      120 	end;
+      121 	do j = 2 to namep -> segnam.count;		/* Add all other names. */
+      122 repeat:	     call chname$cfile (pathp -> path.name, namep -> segnam.names (1).name, "",
+      123 		namep -> segnam.names (j).name, ercode); /* Add a name. */
+      124 	     if ercode ^= 0 then do;
+      125 		if ercode = error_table_$namedup then do;
+      126 		     call delete (pathp -> path.name, namep -> segnam.names (j).name);
+      127 		     go to repeat;			/* Try again. */
+      128 		end;
+      129 		call syserr$error_code (1, ercode, "make_branches: error from chname on ^a>^a:",
+      130 		     pathp -> path.name, namep -> segnam.names (1).name);
+      131 	     end;
+      132 	end;
+      133 	return;
+      134 
+      135 delete:	entry (pathname, entryname);			/* Entry to delete something. */
+      136 
+      137 dcl (pathname, entryname) char (*);
+      138 dcl  newname char (32);
+      139 dcl  ustr char (15);
+      140 
+      141 	call set$safety_sw_path (pathname, entryname, "0"b /* OFF */, ercode);
+      142 	if ercode ^= 0 then if ercode = error_table_$pvid_not_found then go to nopv; /* online inst */
+      143 	     else call syserr$error_code (1, ercode, "make_branches: delete: could not turn ^a>^a safety switch off:",
+      144 		pathname, entryname);
+      145 
+      146 	call delentry$dfile (pathname, entryname, ercode);
+      147 	if ercode ^= 0 then if ercode = error_table_$pvid_not_found then do;
+      148 nopv:		ustr = unique_chars_ ("0"b);		/* Make up new name */
+      149 		newname = ustr || entryname;
+      150 		call syserr (0, "make_branches: delete: renaming ^a to ^a in ^a", entryname, newname, pathname);
+      151 		call chname$cfile (pathname, entryname, entryname, newname, ercode);
+      152 		if ercode ^= 0 then call syserr$error_code (1, ercode, "make_branches: delete: failed to rename");
+      153 	     end;
+      154 	     else call syserr$error_code (1, ercode, "make_branches: could not delete ^a>^a:", pathname, entryname);
+      155 	return;
+      156 
+      157 /* BEGIN MESSAGE DOCUMENTATION
+      158*
+      159*   Message:
+      160*   make_branches: bad path name PATH
+      161*
+      162*   S:	$crash
+      163*
+      164*   T:	$init
+      165*
+      166*   M:	$err
+      167*
+      168*   A:	$recover
+      169*   $boot_tape
+      170*
+      171*
+      172*   Message:
+      173*   make_branches: error from append on PATH: ERROR_MESSAGE
+      174*
+      175*   S:	$crash
+      176*
+      177*   T:	$init
+      178*
+      179*   M:	$err
+      180*
+      181*   A:	$recover
+      182*   $boot_tape
+      183*
+      184*
+      185*   Message:
+      186*   make_branches: error from chname on PATH: ERROR_MESSAGE
+      187*
+      188*   S:	$crash
+      189*
+      190*   T:	$init
+      191*
+      192*   M:	$err
+      193*
+      194*   A:	$recover
+      195*   $boot_tape
+      196*
+      197*
+      198*   Message:
+      199*   make_branches: error from asd_$replace_sall on PATH: ERROR_MESSAGE
+      200*
+      201*   S:	$crash
+      202*
+      203*   T:	$init
+      204*
+      205*   M:	$err
+      206*
+      207*   A:	$recover
+      208*   $boot_tape
+      209*
+      210*
+      211*   Message:
+      212*   make_branches: delete: could not turn PATH safety switch off: ERROR_MESSAGE
+      213*
+      214*   S:	$crash
+      215*
+      216*   T:	$init
+      217*
+      218*   M:	$err
+      219*
+      220*   A:	$recover
+      221*   $boot_tape
+      222*
+      223*
+      224*   Message:
+      225*   make_branches: delete: renaming NAME to UNIQUE in DIRNAME
+      226*
+      227*   S:	$info
+      228*
+      229*   T:	$init
+      230*
+      231*   M:	A segment which
+      232*   is being loaded from the system tape
+      233*   encountered a previous copy
+      234*   on a physical volume which
+      235*   is not now mounted.
+      236*   The old version of the segment is being renamed
+      237*   so that the new copy can be loaded.
+      238*
+      239*   A:	$note
+      240*   The system programmers will want to delete the unique-named segment.
+      241*
+      242*
+      243*   Message:
+      244*   make_branches: delete: failed to rename
+      245*
+      246*   S:	$crash
+      247*
+      248*   T:	$init
+      249*
+      250*   M:	$err
+      251*
+      252*   A:	$recover
+      253*   $boot_tape
+      254*
+      255*
+      256*   Message:
+      257*   make_branches: could not delete PATH: ERROR_MESSAGE
+      258*
+      259*   S:	$crash
+      260*
+      261*   T:	$init
+      262*
+      263*   M:	$err
+      264*
+      265*   A:	$recover
+      266*   $boot_tape
+      267*
+      268*
+      269*   END MESSAGE DOCUMENTATION */
+      270 
+      271      end make_branches;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.1  make_branches.pl1                 >spec>install>1110>make_branches.pl1
+68           1    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+69           2    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SMA_ACCESS                      000000 constant        bit(3)                   initial packed unaligned dcl 2-11 set ref 107*
+access                                 parameter       bit(3)                   packed unaligned dcl 19 ref 13 76 81
+acl                       1            based           structure                array level 2 dcl 1-45 set ref 116 116
+aclp                                   parameter       pointer                  dcl 1-7 set ref 13 107* 114 116 116 116
+acls                                   based           structure                level 1 dcl 1-45
+addr                                                   builtin function         dcl 55 ref 107 107 116 116
+append$branchx                  000020 constant        entry                    external dcl 58 ref 88
+asd_$replace_sall               000016 constant        entry                    external dcl 58 ref 116
+bitcnt                                 parameter       fixed bin(24,0)          dcl 19 set ref 13 88*
+chname$cfile                    000022 constant        entry                    external dcl 58 ref 122 151
+count                                  based           fixed bin(17,0)          level 2 in structure "acls" dcl 1-45 in procedure
+                                                                                  "make_branches" set ref 116*
+count                           000114 automatic       fixed bin(17,0)          level 2 in structure "nename" dcl 49 in procedure
+                                                                                  "make_branches" set ref 105*
+count                                  based           fixed bin(17,0)          level 2 in structure "segnam" dcl 1-31 in procedure
+                                                                                  "make_branches" ref 121
+delentry$dfile                  000024 constant        entry                    external dcl 58 ref 146
+dir_access_bit_string           000113 automatic       structure                level 1 packed packed unaligned dcl 39 set ref 81*
+                                                                                  82
+dir_access_string               000112 automatic       structure                level 1 packed packed unaligned dcl 32 set ref 80*
+                                                                                  82* 83
+dirsw                                  parameter       fixed bin(1,0)           dcl 19 set ref 13 74 88*
+entryname                              parameter       char                     packed unaligned dcl 137 set ref 135 141* 143* 146*
+                                                                                  149 150* 151* 151* 154*
+ercode                          000104 automatic       fixed bin(35,0)          dcl 19 set ref 88* 90 91 95 111* 116* 118 118* 122*
+                                                                                  124 125 129* 141* 142 142 143* 146* 147 147 151*
+                                                                                  152 152* 154*
+error_table_$namedup            000010 external static fixed bin(35,0)          dcl 45 ref 91 125
+error_table_$noaccess           000012 external static fixed bin(35,0)          dcl 45 ref 95
+error_table_$pvid_not_found     000014 external static fixed bin(35,0)          dcl 46 ref 142 147
+i                               000102 automatic       fixed bin(17,0)          dcl 19 set ref 96* 96* 98 102 103 103
+j                               000103 automatic       fixed bin(17,0)          dcl 19 set ref 121* 122 126*
+mode                            000110 automatic       fixed bin(5,0)           dcl 19 set ref 77* 83* 88*
+name                      2            based           char(32)                 array level 3 in structure "segnam" packed packed
+                                                                                  unaligned dcl 1-31 in procedure "make_branches"
+                                                                                  set ref 88* 92* 111* 116* 118* 122* 122* 126* 129*
+name                      1            based           char                     level 2 in structure "path" packed packed unaligned
+                                                                                  dcl 1-40 in procedure "make_branches" set ref 88*
+                                                                                  92* 96 98 98* 103 111* 116* 118* 122* 126* 129*
+name                      2     000114 automatic       char(32)                 level 3 in structure "nename" packed packed
+                                                                                  unaligned dcl 49 in procedure "make_branches" set
+                                                                                  ref 103*
+namep                                  parameter       pointer                  dcl 1-7 ref 13 88 92 111 116 118 121 122 122 126 129
+names                     1            based           structure                array level 2 in structure "segnam" dcl 1-31
+                                                                                  in procedure "make_branches"
+names                     1     000114 automatic       structure                level 2 in structure "nename" dcl 49 in procedure
+                                                                                  "make_branches"
+nename                          000114 automatic       structure                level 1 dcl 49 set ref 107 107
+newname                         000126 automatic       char(32)                 packed unaligned dcl 138 set ref 149* 150* 151*
+nrb                             000105 automatic       fixed bin(6,0)           array dcl 19 set ref 104* 104* 104* 107*
+null                                                   builtin function         dcl 55 ref 114
+path                                   based           structure                level 1 dcl 1-40
+pathname                               parameter       char                     packed unaligned dcl 137 set ref 135 141* 143* 146*
+                                                                                  150* 151* 154*
+pathp                                  parameter       pointer                  dcl 1-7 set ref 13 86 88 92 96 98 98 103 106 107*
+                                                                                  108 111 116 118 122 126 129
+pcnt                            000101 automatic       fixed bin(17,0)          dcl 19 set ref 101* 102* 106
+pnl                             000100 automatic       fixed bin(17,0)          dcl 19 set ref 86* 96 103 108
+rb                                     parameter       fixed bin(6,0)           array dcl 19 set ref 13 88*
+rew                       0(01) 000111 automatic       bit(3)                   level 2 packed packed unaligned dcl 27 set ref 76*
+seg_access_string               000111 automatic       structure                level 1 packed packed unaligned dcl 27 set ref 75*
+                                                                                  77
+segnam                                 based           structure                level 1 dcl 1-31
+set$safety_sw_path              000026 constant        entry                    external dcl 58 ref 141
+size                                   based           fixed bin(17,0)          level 2 dcl 1-40 set ref 86 88 88 92 92 96 98 98 98
+                                                                                  103 106* 108* 111 111 116 116 118 118 122 122 126
+                                                                                  126 129 129
+substr                                                 builtin function         dcl 55 ref 96 98 103
+syserr                          000030 constant        entry                    external dcl 58 ref 98 150
+syserr$error_code               000032 constant        entry                    external dcl 58 ref 111 118 129 143 152 154
+unique_chars_                   000034 constant        entry                    external dcl 58 ref 148
+ustr                            000136 automatic       char(15)                 packed unaligned dcl 139 set ref 148* 149
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-30
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+name_seg                               based           structure                level 1 dcl 1-26
+names_ptr                              automatic       pointer                  dcl 1-7
+slt                                    based           structure                level 1 dcl 1-13
+sltp                                   automatic       pointer                  dcl 1-7
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+delete                          001143 constant        entry                    external dcl 135 ref 92 126
+make_branches                   000200 constant        entry                    external dcl 13 ref 107
+nopv                            001310 constant        label                    dcl 148 ref 142
+repeat                          000761 constant        label                    dcl 122 ref 127
+rpt                             000252 constant        label                    dcl 86 ref 93 109
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+bin                                                    builtin function         ref 77 83
+string                                                 builtin function         set ref 77 81* 83
+unspec                                                 builtin function         set ref 75 80*
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1704        1742    1532        1714
+Length      2164    1532        36         206     151           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+make_branches                       182 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+make_branches            000100 pnl                         make_branches
+                         000101 pcnt                        make_branches
+                         000102 i                           make_branches
+                         000103 j                           make_branches
+                         000104 ercode                      make_branches
+                         000105 nrb                         make_branches
+                         000110 mode                        make_branches
+                         000111 seg_access_string           make_branches
+                         000112 dir_access_string           make_branches
+                         000113 dir_access_bit_string       make_branches
+                         000114 nename                      make_branches
+                         000126 newname                     make_branches
+                         000136 ustr                        make_branches
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_in_desc    call_ext_in         call_ext_out_desc   return_mac          shorten_stack
+ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branchx                asd_$replace_sall             chname$cfile                  delentry$dfile
+set$safety_sw_path            syserr                        syserr$error_code             unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$namedup          error_table_$noaccess         error_table_$pvid_not_found
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000172        74 000205        75 000210        76 000212        77 000216        78 000221        80 000222
+     81 000224        82 000230        83 000247        86 000252        88 000256        90 000341        91 000343
+     92 000346        93 000374        95 000375        96 000377        97 000414        98 000417       101 000462
+    102 000465       103 000467       104 000500       105 000504       106 000506       107 000510       108 000537
+    109 000543       111 000544       114 000613       116 000620       118 000675       121 000747       122 000761
+    124 001030       125 001032       126 001035       127 001064       129 001065       132 001134       133 001136
+    135 001137       141 001163       142 001214       143 001221       146 001260       147 001303       148 001310
+    149 001326       150 001345       151 001404       152 001437       153 001467       154 001470       155 001527
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

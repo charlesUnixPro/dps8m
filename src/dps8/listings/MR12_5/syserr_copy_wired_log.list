@@ -1,0 +1,664 @@
+	COMPILATION LISTING OF SEGMENT syserr_copy_wired_log
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* format: style2,indcomtxt */
+        9 
+       10 syserr_copy_wired_log:
+       11      procedure;
+       12 
+       13 /**** This procedure copies all the messages from the wired buffer
+       14*      to the paged syserr log partition.
+       15*
+       16*      It is called by the SyserrLogger the Hproc.
+       17*
+       18*      This procedure expects to be called unwired, with neither the
+       19*      paged log lock nor the wired log lock held.
+       20*
+       21*      1) It locks the paged log.
+       22*
+       23*      2) It wires down.
+       24*
+       25*      3) It locks the wired log (a spin lock)
+       26*
+       27*      4) It copies the wired buffer and marks it empty.
+       28*
+       29*      5) It unlocks the wired log.
+       30*
+       31*      6) It unwires and unmasks.
+       32*
+       33*      7) It calls syserr_copy to actually put the text from
+       34*      the copy of the wired buffer into the paged log.
+       35*
+       36*      8) It unlocks the paged log and returns.
+       37*
+       38*      NOTE
+       39*      This would be considerably more robust if syserr_copy
+       40*      were able to copy directly into the paged log from the
+       41*      wired log, by temp-wiring the neccessary pages of paged log,
+       42*      copying, and then unwiring. The wired buffer should not
+       43*      be marked AVAILABLE until the messages have been successfully
+       44*      disposed of.
+       45**/
+       46 
+       47 /**** History
+       48*      Created 1984-11-26 BIM: from syserr_log_daemon of Sibert.
+       49*      Modified 1985-01-25 Keith Loepere: fix race in syserr_real copying.
+       50*      Modified 1985-02-19 Keith Loepere: for making the paged syserr lock
+       51*      the highest paged lock.
+       52*      Modified 1985-03-08 EJ Sharpe: added adjust_wired_log_sequence
+       53**/
+       54 
+       55 
+       56 	declare P_sequence_increment	 fixed bin (35) parameter;
+       57 
+       58 	declare automatic_buffer	 (syserr_data$wired_log_size) bit (36) aligned automatic;
+       59 	declare based_buffer	 (syserr_data$wired_log_size) bit (36) aligned based;
+       60 
+       61 	declare msg_idx		 fixed bin;
+       62 	declare sequence_increment	 fixed bin (35);	/* arg copy */
+       63 	declare temp_mask		 bit (72) aligned;	/* global since it is unwise to call unwire_unmask in a condition handler */
+       64 	declare wire_arg		 fixed bin (71);
+       65 	declare wire_ptr		 pointer;
+       66 
+       67 	declare pmut$read_mask	 entry (bit (72) aligned);
+       68 	declare pmut$wire_and_mask	 entry (fixed bin (71), pointer);
+       69 	declare pmut$unwire_unmask	 entry (fixed bin (71), pointer);
+       70 	declare syserr		 entry options (variable);
+       71 	declare syserr_copy$lock	 entry ();
+       72 	declare syserr_copy$unlock	 entry ();
+       73 	declare syserr_copy$wired_log	 entry (pointer);
+       74 
+       75 	declare pds$processid	 bit (36) external aligned;
+       76 	declare syserr_data$wired_log_size
+       77 				 external fixed bin (35);
+       78 	declare scs$sys_level	 bit (72) aligned external;
+       79 
+       80 	declare any_other		 condition;
+       81 
+       82 	declare (addr, null, rel, stacq, unspec)
+       83 				 builtin;
+       84 
+       85 	syserr_log_data_ptr = addr (syserr_log_data$);
+       86 	sd_ptr = addr (syserr_data$syserr_area);
+       87 	wlog_ptr = addr (syserr_data$wired_log_area);
+       88 
+       89 	call syserr_copy$lock ();			/* Lock the paged log */
+       90 
+       91 	call pmut$wire_and_mask (wire_arg, wire_ptr);
+       92 
+       93 	call get_wired_log ();
+       94 
+       95 	call pmut$unwire_unmask (wire_arg, wire_ptr);	/* Permit faults to occur and be handled */
+       96 
+       97 	on any_other call condition_handler;
+       98 
+       99 	call syserr_copy$wired_log (addr (automatic_buffer));
+      100 
+      101 	if syserr_log_data.take_a_fault
+      102 	then do;					/* For use to test fault recovery: patch this bit on */
+      103 		syserr_log_data.take_a_fault = "0"b;	/* and get a fault. Turn it off, of course, since we */
+      104 		null () -> syserr_log_data.take_a_fault = "0"b;
+      105 						/* only want one fault at a time */
+      106 	     end;
+      107 
+      108 	revert any_other;
+      109 
+      110 	call syserr_copy$unlock ();			/* Unlock the paged log */
+      111 	return;
+      112 
+      113 RETURN_ERROR:
+      114 	if (syserr_log_data.lock.pid = pds$processid)
+      115 	then call syserr_copy$unlock ();
+      116 
+      117 	if temp_mask = scs$sys_level
+      118 	then call pmut$unwire_unmask (wire_arg, wire_ptr);
+      119 
+      120 	if (syserr_log_data.error_count > 5) & sd.log_flag
+      121 	then do;					/* We turn off logging after five errors */
+      122 		call syserr (BEEP, "syserr_copy_wired_log: Too many faults: log copying will be disabled.");
+      123 		sd.log_flag = "0"b;			/* to avoid getting into a loop doing this */
+      124 	     end;
+      125 	syserr_log_data.error_count = syserr_log_data.error_count + 1;
+      126 
+      127 	return;
+      128 
+      129 
+      130 /* The following entrypoint is called from syserr_seg_manager during
+      131*   answering service initialization.  The task is to increase all sequence
+      132*   numbers in the wired log by the value supplied.   This is to get the paged
+      133*   and wired log messages consistant with what the AS has found in the syserr
+      134*   log history (i.e. the permanent log segments). */
+      135 
+      136 adjust_wired_log_sequence:
+      137      entry (P_sequence_increment);
+      138 
+      139 	sequence_increment = P_sequence_increment;
+      140 	sd_ptr = addr (syserr_data$syserr_area);
+      141 	wlog_ptr = addr (syserr_data$wired_log_area);
+      142 
+      143 	call pmut$wire_and_mask (wire_arg, wire_ptr);
+      144 
+      145 	if (sd.lock = pds$processid)
+      146 	then call lock_error ();
+      147 
+      148 	do while (^stacq (sd.lock, pds$processid, ""b));
+      149 	end;
+      150 
+      151 	wlog.seq_num = wlog.seq_num + sequence_increment; /* make sure next incoming message will be right */
+      152 
+      153 	wmess_ptr = addr (wlog.buffer);		/* first message */
+      154 
+      155 	do msg_idx = 1 to wlog.head.count;
+      156 	     wmess.seq_num = wmess.seq_num + sequence_increment;
+      157 	     wmess_ptr = addrel (wmess_ptr, currentsize (wmess));
+      158 						/* Move on to the next message */
+      159 	end;
+      160 
+      161 	if ^stacq (sd.lock, ""b, pds$processid)
+      162 	then call lock_error ();
+      163 
+      164 	call pmut$unwire_unmask (wire_arg, wire_ptr);
+      165 
+      166 	return;
+      167 
+      168 
+      169 get_wired_log:
+      170      procedure ();
+      171 
+      172 	declare message_count	 fixed bin;
+      173 
+      174 /* This procedure copies the contents of the wired log into our buffer in automatic
+      175*   storage (also wired, at the moment).	 It locks the wired log, copies the message(s),
+      176*   resets the wired log to say that it's now empty, unlocks the wired log, and
+      177*   returns.  Once we unlock, the next message will be put at the top of the wired
+      178*   buffer.  If we can do all of this before the wired buffer is full, we will never
+      179*   lose any messages. */
+      180 
+      181 
+      182 	if (sd.lock = pds$processid)
+      183 	then /* MYLOCK error */
+      184 	     call lock_error ();
+      185 
+      186 	do while (^stacq (sd.lock, pds$processid, ""b));
+      187 	end;
+      188 
+      189 /* We will copy the whole wired log buffer plus its extension into our own buffer. */
+      190 
+      191 	unspec (automatic_buffer) = unspec (wlog_ptr -> based_buffer);
+      192 
+      193 	message_count = wlog.count;			/* Save for metering */
+      194 
+      195 /* This is where a call to meter_oc_log_ used to be made, but it was removed
+      196*   because meter_oc_log_ is so silly, and because there isn't anything to
+      197*   extract the meters, anyway. Real metering ought to be added back someday. */
+      198 
+      199 	wlog.next = rel (addr (wlog.buffer));		/* Start next message at top of buffer. */
+      200 	wlog.count = 0;				/* No entries in buffer now. */
+      201 
+      202 	if ^stacq (sd.lock, ""b, pds$processid)
+      203 	then call lock_error ();
+      204 
+      205 	return;
+      206      end get_wired_log;
+      207 
+      208 
+      209 lock_error:
+      210      procedure ();
+      211 
+      212 /* This procedure crashes the system when a locking error occurs on the
+      213*   wired syserr data lock-- but first, it turns off logging just in case
+      214*   it gets restarted or other messages are generated before the crash. */
+      215 
+      216 	sd.log_flag = "0"b;
+      217 	call syserr (CRASH, "syserr_copy_wired_log: Bad syserr_data lock ^w.", sd.lock);
+      218 
+      219 	return;
+      220      end lock_error;
+      221 
+      222 condition_handler:
+      223      procedure ();
+      224 
+      225 	declare severity		 fixed bin;
+      226 	declare buf_ptr		 pointer;
+      227 	declare mess_ptr		 pointer;
+      228 
+      229 	call pmut$read_mask (temp_mask);
+      230 	if temp_mask = scs$sys_level
+      231 	then /* If we took a fault while wired, we should have */
+      232 	     severity = CRASH;			/* crashed already (fim detects this), but just in case... */
+      233 	else severity = BEEP;
+      234 
+      235 	buf_ptr = addr (automatic_buffer);
+      236 	mess_ptr = addr (buf_ptr -> wlog.buffer);
+      237 
+      238 	call syserr (severity,
+      239 	     "syserr_copy_wired_log: Fault occurred while copying into LOG partition. Messages ^d to ^d may be lost",
+      240 	     mess_ptr -> wmess.seq_num, buf_ptr -> wlog.head.seq_num);
+      241 
+      242 	go to RETURN_ERROR;				/* main line uses temp_mask to decide to unwire. */
+      243      end condition_handler;
+      244 
+      245 
+  1     1 /* BEGIN INCLUDE FILE  syserr_data.incl.pl1 */
+  1     2 
+  1     3 /* Created by  Bill Silver  on 01/03/73. */
+  1     4 /* Modified September 1975 by Larry Johnson to add binary data */
+  1     5 /* Modified March 1976 by Steve Webber for use with cds */
+  1     6 /* Modified 1985-01-21 by EJ Sharpe: added wmess.process_id */
+  1     7 /* Modified 1985-02-18 by Keith Loepere to break out headers. */
+  1     8 
+  1     9 /* This include file defines the syserr and log areas found in  syserr_data.cds
+  1    10*   There is one lock that coordinates the use of all the data found in
+  1    11*   syserr_data.cds.  NOTE, if this include file changes, syserr_data.cds
+  1    12*   may also have to be changed. */
+  1    13 
+  1    14 dcl  syserr_data$syserr_area char (1) aligned external,
+  1    15      syserr_data$wired_log_area char (1) aligned external;
+  1    16 
+  1    17 dcl  sd_ptr ptr,					/* Pointer to beginning of syserr_area. */
+  1    18      wlog_ptr ptr,					/* Pointer to beginning of wired_log_area. */
+  1    19      wmess_ptr ptr;					/* Pointer to a message entry in the wired log. */
+  1    20 
+  1    21 dcl 1 sd based (sd_ptr) aligned,			/* Overlay of syserr_data$syserr_area. */
+  1    22     2 lock bit (36),				/* Locks all the data in syserr_data. */
+  1    23     2 log_flag bit (1) unal,				/* ON => logging mechanism enabled. */
+  1    24     2 char_type_flag bit (1) unal,			/* ON => ASCII,  OFF => BCD. */
+  1    25     2 ocdcm_init_flag bit (1) unal,			/* ON => ocdcm_ has been initialized. */
+  1    26     2 pad bit (33) unal,
+  1    27     2 prev_text_written char (80);			/* Text of last message written */
+  1    28 
+  1    29 dcl 1 wlog based (wlog_ptr) aligned,			/* Overlay of syserr_data$wired_log_area. */
+  1    30     2 head like wlog_header,				/* Wired log header. */
+  1    31     2 buffer (wlog.head.bsize) bit (36);		/* Wired log buffer. */
+  1    32 
+  1    33 dcl 1 wlog_header based aligned,			/* WIRED LOG HEADER */
+  1    34     2 bsize fixed bin,				/* Size of the wired log buffer in words.
+  1    35*						   Defined in syserr_data.cds. */
+  1    36     2 count fixed bin,				/* Num of message entries in wired log. */
+  1    37     2 slog_ptr ptr,					/* Pointer to the paged log segment: syserr_log. */
+  1    38     2 seq_num fixed bin (35),				/* Sequence number of last message logged. */
+  1    39     2 next bit (18) unal,				/* Offset relative to base syserr_data */
+  1    40 						/* Where next entry will go in wired log. */
+  1    41     2 pad bit (18) unal;
+  1    42 
+  1    43 
+  1    44 /* This is an overlay of a message entry that goes into the wired log.  Each message
+  1    45*   entry corresponds to one syserr message. */
+  1    46 
+  1    47 dcl 1 wmess based (wmess_ptr) aligned,
+  1    48     2 header aligned like wmess_header,
+  1    49     2 text char (0 refer (wmess.text_len)),		/* Text of expanded message - kept in ASCII. */
+  1    50     2 data (0 refer (wmess.data_size)) bit (36);		/* Binary data area */
+  1    51 
+  1    52 dcl 1 wmess_header based aligned,
+  1    53     2 seq_num fixed bin (35),				/* Sequence number of this message. */
+  1    54     2 time fixed bin (71) unal,			/* Time message logged at */
+  1    55     2 code fixed bin (11) unal,			/* Syserr code associated with this message. */
+  1    56     2 text_len fixed bin (11) unal,			/* Length of message text in ASCII characters. */
+  1    57     2 data_size fixed bin (11) unal,			/* Size of binary data */
+  1    58     2 data_code fixed bin (11) unal,			/* Data code */
+  1    59     2 pad bit (24) unal,
+  1    60     2 process_id bit (36);				/* ID of process which wrote message */
+  1    61 
+  1    62 /* END INCLUDE FILE syserr_data.incl.pl1 */
+      246 
+      247 
+  2     1 /* BEGIN INCLUDE FILE ... syserr_log_dcls.incl.pl1 ... 84-08-17 ... W. Olin Sibert */
+  2     2 /* Modified 1984-12-10, BIM: changed to a fast lock, added error count. */
+  2     3 
+  2     4 /* The syserr_log_data segment, made reverse-deciduous in >sl1, overlays the
+  2     5*   first page of the LOG partition, and contains control information about
+  2     6*   the other syserr_log segments. */
+  2     7 
+  2     8 declare   syserr_log_data$    fixed bin external static;
+  2     9 declare   syserr_log_data_ptr pointer;
+  2    10 
+  2    11 declare 1 syserr_log_data     aligned based (syserr_log_data_ptr),
+  2    12           2 version           char (8) unaligned,           /* SYSERR_LOG_DATA_V1 */
+  2    13           2 old_init_word     char (4) unaligned,           /* Overlays slog.head.init_word ("INIT") */
+  2    14 	2 pad003    	bit (1) aligned,
+  2    15 
+  2    16           2 live_log          fixed bin,                    /* Identifier of live log (#1 or #2) */
+  2    17 	2 pad001		bit (1) aligned,
+  2    18           2 error_count       fixed bin (35),               /* errors copying the log */
+  2    19           2 swap_time         fixed bin (71),               /* Time of last log swap; zero if other_log_empty */
+  2    20 
+  2    21           2 messages_copied   fixed bin (35),               /* A meter */
+  2    22           2 messages_lost     fixed bin (35),               /* Messages not copied because logs full */
+  2    23 
+  2    24           2 log_start (2)     fixed bin,                    /* Offset of each log segment in the partition */
+  2    25           2 log_size (2)      fixed bin,                    /* Number of pages in each log segment */
+  2    26 
+  2    27           2 per_bootload,                                   /* Ramaining structure is reinitialized at each boot */
+  2    28             3 log_ptr (2) pointer,                          /* Pointer to the three segments in the partition */
+  2    29 
+  2    30             3 log_name (2) char (32) unaligned,             /* Current names of log segments (by syserr_seg_manager) */
+  2    31             3 log_dir char (168) unaligned,                 /* Parent directory */
+  2    32 
+  2    33             3 lock		aligned,
+  2    34 	    4 pid		bit (36) aligned,             /* Standard format wait lock, used when updating log */
+  2    35               4 event_id      fixed bin (35),
+  2    36               4 notify_requested 
+  2    37 	                    bit (1) unaligned,
+  2    38 	    4 pad           bit (35) unaligned,
+  2    39             3 take_a_fault    bit (1) aligned,              /* Forces a fault if on, for testing fault recovery */
+  2    40             3 test_mode       bit (1) aligned,              /* Running in outer-ring test mode */
+  2    41 
+  2    42             3 copy_disabled   bit (1) aligned,              /* No more messages being copied into live log */
+  2    43             3 drop_severity_5 bit (1) aligned,              /* No more severity 5 messages (log is 3/4 full) */
+  2    44 	  3 wakeup_on_printable bit (1) aligned,	/* Console recovery: send wakeup for printable message */
+  2    45 
+  2    46             3 copy_threshold  fixed bin (18),               /* How often to copy to outer ring log segments */
+  2    47             3 copy_channel    fixed bin (71),
+  2    48             3 copy_process_id bit (36) aligned,
+  2    49 
+  2    50           2 pad fixed bin (71);                             /* Anything goes, as long as it's under a page */
+  2    51 
+  2    52 declare   SYSERR_LOG_DATA_V1 char (8) internal static options (constant) init ("syserr01");
+  2    53 
+  2    54 /* END INCLUDE FILE ... syserr_log_dcls.incl.p1l */
+      248 
+      249 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      250 
+      251 
+      252 /* BEGIN MESSAGE DOCUMENTATION
+      253*
+      254*   Message:
+      255*   syserr_copy_wired_log: Bad lock WWWWWWWWWWWW at SSS|OOOOOO
+      256*
+      257*   S:	$crash
+      258*
+      259*   T:	$run
+      260*
+      261*   M:	$err
+      262*   The contents of the lock word and its address are printed, as an aid
+      263*   for debugging.
+      264*
+      265*   A:	$recover
+      266*
+      267*   Message:
+      268*   syserr_copy_wired_log: Fault occurred while copying into LOG partition. Messages NNNN to NNNN may be lost.
+      269*
+      270*   S:	$crash
+      271*
+      272*   T:	$run
+      273*
+      274*   M:	$err
+      275*   A fault has occurred while copying data from the wired syserr log buffer
+      276*   to the paged syserr log. This
+      277*   usually results from a disk error on the LOG partition, which would
+      278*   also generate disk error messages.  The sequence numbers of the
+      279*   affected messages are given because those messages may not appear
+      280*   in the LOG partition.
+      281*
+      282*   A:	$recover
+      283*
+      284*
+      285*   Message:
+      286*   syserr_copy_wired_log: Too many faults, log copying disabled.
+      287*
+      288*   S:	$beep
+      289*
+      290*   T:	$run
+      291*
+      292*   M:	$err
+      293*   If too many errors occur updating the LOG partition, log copying will
+      294*   be disabled, which causes all further messages to be printed on the
+      295*   console but not entered in the log.
+      296*
+      297*   A:	$notify
+      298*
+      299*   END MESSAGE DOCUMENTATION */
+      300 
+      301      end syserr_copy_wired_log;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  syserr_copy_wired_log.pl1         >special_ldd>install>MR12.3-1114>syserr_copy_wired_log.pl1
+246          1    03/08/85  0852.7  syserr_data.incl.pl1              >ldd>include>syserr_data.incl.pl1
+248          2    01/06/85  1422.2  syserr_log_dcls.incl.pl1          >ldd>include>syserr_log_dcls.incl.pl1
+250          3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BEEP                            000000 constant        fixed bin(17,0)          initial dcl 3-7 set ref 122* 233
+CRASH                           000006 constant        fixed bin(17,0)          initial dcl 3-7 set ref 217* 230
+P_sequence_increment                   parameter       fixed bin(35,0)          dcl 56 ref 136 139
+addr                                                   builtin function         dcl 82 ref 85 86 87 99 99 140 141 153 199 235 236
+any_other                       000110 stack reference condition                dcl 80 ref 97 108
+automatic_buffer                000100 automatic       bit(36)                  array dcl 58 set ref 99 99 191* 235
+based_buffer                           based           bit(36)                  array dcl 59 ref 191
+buf_ptr                         000110 automatic       pointer                  dcl 226 set ref 235* 236 238
+buffer                    6            based           bit(36)                  array level 2 dcl 1-29 set ref 153 199 236
+count                     1            based           fixed bin(17,0)          level 3 dcl 1-29 set ref 155 193 200*
+data_size                 3(24)        based           fixed bin(11,0)          level 3 packed packed unaligned dcl 1-47 ref 157
+error_count               6            based           fixed bin(35,0)          level 2 dcl 2-11 set ref 120 125* 125
+head                                   based           structure                level 2 dcl 1-29
+header                                 based           structure                level 2 dcl 1-47
+lock                    116            based           structure                level 3 in structure "syserr_log_data" dcl 2-11
+                                                                                  in procedure "syserr_copy_wired_log"
+lock                                   based           bit(36)                  level 2 in structure "sd" dcl 1-21 in procedure
+                                                                                  "syserr_copy_wired_log" set ref 145 148 161 182
+                                                                                  186 202 217*
+log_flag                  1            based           bit(1)                   level 2 packed packed unaligned dcl 1-21 set ref 120
+                                                                                  123* 216*
+mess_ptr                        000112 automatic       pointer                  dcl 227 set ref 236* 238
+message_count                   000142 automatic       fixed bin(17,0)          dcl 172 set ref 193*
+msg_idx                         000100 automatic       fixed bin(17,0)          dcl 61 set ref 155*
+next                      5            based           bit(18)                  level 3 packed packed unaligned dcl 1-29 set ref
+                                                                                  199*
+null                                                   builtin function         dcl 82 ref 104
+pds$processid                   000026 external static bit(36)                  dcl 75 ref 113 145 148 161 182 186 202
+per_bootload             20            based           structure                level 2 dcl 2-11
+pid                     116            based           bit(36)                  level 4 dcl 2-11 ref 113
+pmut$read_mask                  000010 constant        entry                    external dcl 67 ref 229
+pmut$unwire_unmask              000014 constant        entry                    external dcl 69 ref 95 117 164
+pmut$wire_and_mask              000012 constant        entry                    external dcl 68 ref 91 143
+rel                                                    builtin function         dcl 82 ref 199
+scs$sys_level                   000032 external static bit(72)                  dcl 78 ref 117 230
+sd                                     based           structure                level 1 dcl 1-21
+sd_ptr                          000116 automatic       pointer                  dcl 1-17 set ref 86* 120 123 140* 145 148 161 182
+                                                                                  186 202 216 217
+seq_num                   4            based           fixed bin(35,0)          level 3 in structure "wlog" dcl 1-29 in procedure
+                                                                                  "syserr_copy_wired_log" set ref 151* 151 238*
+seq_num                                based           fixed bin(35,0)          level 3 in structure "wmess" dcl 1-47 in procedure
+                                                                                  "syserr_copy_wired_log" set ref 156* 156 238*
+sequence_increment              000101 automatic       fixed bin(35,0)          dcl 62 set ref 139* 151 156
+severity                        000106 automatic       fixed bin(17,0)          dcl 225 set ref 230* 233* 238*
+stacq                                                  builtin function         dcl 82 ref 148 161 186 202
+syserr                          000016 constant        entry                    external dcl 70 ref 122 217 238
+syserr_copy$lock                000020 constant        entry                    external dcl 71 ref 89
+syserr_copy$unlock              000022 constant        entry                    external dcl 72 ref 110 113
+syserr_copy$wired_log           000024 constant        entry                    external dcl 73 ref 99
+syserr_data$syserr_area         000034 external static char(1)                  dcl 1-14 set ref 86 140
+syserr_data$wired_log_area      000036 external static char(1)                  dcl 1-14 set ref 87 141
+syserr_data$wired_log_size      000030 external static fixed bin(35,0)          dcl 76 ref 58 191
+syserr_log_data                        based           structure                level 1 dcl 2-11
+syserr_log_data$                000040 external static fixed bin(17,0)          dcl 2-8 set ref 85
+syserr_log_data_ptr             000124 automatic       pointer                  dcl 2-9 set ref 85* 101 103 113 120 125 125
+take_a_fault            121            based           bit(1)                   level 3 dcl 2-11 set ref 101 103* 104*
+temp_mask                       000102 automatic       bit(72)                  dcl 63 set ref 117 229* 230
+text_len                  3(12)        based           fixed bin(11,0)          level 3 packed packed unaligned dcl 1-47 ref 157
+unspec                                                 builtin function         dcl 82 set ref 191* 191
+wire_arg                        000104 automatic       fixed bin(71,0)          dcl 64 set ref 91* 95* 117* 143* 164*
+wire_ptr                        000106 automatic       pointer                  dcl 65 set ref 91* 95* 117* 143* 164*
+wlog                                   based           structure                level 1 dcl 1-29
+wlog_header                            based           structure                level 1 dcl 1-33
+wlog_ptr                        000120 automatic       pointer                  dcl 1-17 set ref 87* 141* 151 151 153 155 191 193
+                                                                                  199 199 200
+wmess                                  based           structure                level 1 dcl 1-47 set ref 157
+wmess_header                           based           structure                level 1 dcl 1-52
+wmess_ptr                       000122 automatic       pointer                  dcl 1-17 set ref 153* 156 156 157* 157 157
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_DATA_V1                     internal static char(8)                  initial packed unaligned dcl 2-52
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN_ERROR                    000226 constant        label                    dcl 113 ref 242
+adjust_wired_log_sequence       000322 constant        entry                    external dcl 136
+condition_handler               000547 constant        entry                    internal dcl 222 ref 97
+get_wired_log                   000450 constant        entry                    internal dcl 169 ref 93
+lock_error                      000516 constant        entry                    internal dcl 209 ref 145 161 182 202
+syserr_copy_wired_log           000116 constant        entry                    external dcl 10
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addrel                                                 builtin function         ref 157
+currentsize                                            builtin function         ref 157
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1034        1076     633        1044
+Length      1356     633        42         243     201           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+syserr_copy_wired_log               174 external procedure  is an external procedure.  
+on unit on line 97                  124 on unit               
+get_wired_log                           internal procedure  shares stack frame of external procedure syserr_copy_wired_log.  
+lock_error                              internal procedure  shares stack frame of external procedure syserr_copy_wired_log.  
+condition_handler                       internal procedure  shares stack frame of on unit on line 97.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+on unit on line 97       000106 severity                    condition_handler
+                         000110 buf_ptr                     condition_handler
+                         000112 mess_ptr                    condition_handler
+syserr_copy_wired_log    000100 msg_idx                     syserr_copy_wired_log
+                         000100 automatic_buffer            syserr_copy_wired_log
+                         000101 sequence_increment          syserr_copy_wired_log
+                         000102 temp_mask                   syserr_copy_wired_log
+                         000104 wire_arg                    syserr_copy_wired_log
+                         000106 wire_ptr                    syserr_copy_wired_log
+                         000116 sd_ptr                      syserr_copy_wired_log
+                         000120 wlog_ptr                    syserr_copy_wired_log
+                         000122 wmess_ptr                   syserr_copy_wired_log
+                         000124 syserr_log_data_ptr         syserr_copy_wired_log
+                         000142 message_count               get_wired_log
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           alloc_auto_adj      enable_op
+ext_entry           int_entry           stacq_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+pmut$read_mask                pmut$unwire_unmask            pmut$wire_and_mask            syserr
+syserr_copy$lock              syserr_copy$unlock            syserr_copy$wired_log
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$processid                 scs$sys_level                 syserr_data$syserr_area       syserr_data$wired_log_area
+syserr_data$wired_log_size    syserr_log_data$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     58 000106        10 000115        85 000124        86 000127        87 000131        89 000133        91 000137
+     93 000150        95 000151        97 000162        99 000200       101 000211       103 000214       104 000215
+    108 000217       110 000220       111 000225       113 000226       117 000237       120 000256       122 000266
+    123 000306       125 000311       127 000316       136 000317       139 000330       140 000333       141 000336
+    143 000340       145 000350       148 000355       149 000364       151 000365       153 000372       155 000374
+    156 000403       157 000407       159 000425       161 000427       164 000436       166 000447       169 000450
+    182 000451       186 000456       187 000464       191 000465       193 000500       199 000502       200 000505
+    202 000506       205 000515       209 000516       216 000517       217 000522       219 000546       222 000547
+    229 000550       230 000560       233 000573       235 000575       236 000577       238 000601       242 000627
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

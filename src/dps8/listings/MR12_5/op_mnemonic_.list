@@ -1,0 +1,938 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXknmFCJN
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1028.0 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   *********************************************************** */
+        8 
+        9 /* op_mnemonic_.cds -- successor to the illegible op_mnemonic.alm */
+       10 
+       11 /* format: style2 */
+       12 
+       13 op_mnemonic_:
+       14      procedure;
+       15 
+       16 /* BIM 12/82 */
+       17 /* Modified to not need the bce/Multics versions! March 1985 by Keith Loepere. */
+       18 
+       19 declare create_data_segment_ entry (pointer, fixed binary (35));
+       20 declare com_err_ entry() options(variable);
+       21 declare code fixed bin (35);
+       22 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       23 
+  2     1 /* Begin include file op_mnemonic_dcl_.incl.pl1 BIM 12/82 */
+  2     2 /* format: style3 */
+  2     3 /* INTERNAL INTERFACE OF THE PL/I COMPILER */
+  2     4 
+  2     5 declare	1 op_mnemonic_$op_mnemonic_
+  2     6 			(0:1023) aligned like op_mnemonic external static;
+  2     7 
+  2     8 declare	  op_mnemonic_ptr	pointer;
+  2     9 declare	1 op_mnemonic	aligned based (op_mnemonic_ptr),
+  2    10 	  2 name		char (6) unaligned,		/* opcode name, save abd/abdx, or .... */
+  2    11 	  2 dtype		fixed bin (2) unaligned,	/* for num_words > 1, 0 ==> char, 1 ==> bit, 2 ==> other. Else 1 ==> abd/abdx (funny bit 29) */
+  2    12 	  2 num_desc	fixed bin (5) unaligned,
+  2    13 	  2 num_words	fixed bin (8) unaligned;
+  2    14 
+  2    15 /* End include file op_mnemonic_dcl_ */
+       24 
+       25 
+       26           declare 1 CDSA                 aligned like cds_args;
+       27 	declare 1 OI		 aligned,
+       28 		2 op_mnemonic	 bit (0) aligned,	/* programs reference this ... */
+       29 		2 op_mnemonic_	 (0:1023) aligned like op_mnemonic;
+       30 
+       31 	declare 1 unused		 aligned like op_mnemonic;
+       32 
+       33 
+       34 	unspec (unused) = ""b;
+       35 	unused.name = "....  ";
+       36 	unused.num_words = 1;
+       37 	OI.op_mnemonic_ (*) = unused;
+       38 
+       39 	call set_opcode (2, "mme1  ", 0, 0, 1);
+       40 	call set_opcode (4, "drl   ", 0, 0, 1);
+       41 	call set_opcode (8, "mme2  ", 0, 0, 1);
+       42 	call set_opcode (10, "mme3  ", 0, 0, 1);
+       43 	call set_opcode (14, "mme4  ", 0, 0, 1);
+       44 	call set_opcode (18, "nop   ", 0, 0, 1);
+       45 	call set_opcode (20, "puls1 ", 0, 0, 1);
+       46 	call set_opcode (22, "puls2 ", 0, 0, 1);
+       47 	call set_opcode (26, "cioc  ", 0, 0, 1);
+       48 	call set_opcode (32, "adlx0 ", 0, 0, 1);
+       49 	call set_opcode (33, "mve   ", 0, 3, 4);
+       50 	call set_opcode (34, "adlx1 ", 0, 0, 1);
+       51 	call set_opcode (36, "adlx2 ", 0, 0, 1);
+       52 	call set_opcode (38, "adlx3 ", 0, 0, 1);
+       53 	call set_opcode (40, "adlx4 ", 0, 0, 1);
+       54 	call set_opcode (41, "mvne  ", 2, 3, 4);
+       55 	call set_opcode (42, "adlx5 ", 0, 0, 1);
+       56 	call set_opcode (44, "adlx6 ", 0, 0, 1);
+       57 	call set_opcode (46, "adlx7 ", 0, 0, 1);
+       58 	call set_opcode (52, "ldqc  ", 0, 0, 1);
+       59 	call set_opcode (54, "adl   ", 0, 0, 1);
+       60 	call set_opcode (56, "ldac  ", 0, 0, 1);
+       61 	call set_opcode (58, "adla  ", 0, 0, 1);
+       62 	call set_opcode (60, "adlq  ", 0, 0, 1);
+       63 	call set_opcode (62, "adlaq ", 0, 0, 1);
+       64 	call set_opcode (64, "asx0  ", 0, 0, 1);
+       65 	call set_opcode (66, "asx1  ", 0, 0, 1);
+       66 	call set_opcode (68, "asx2  ", 0, 0, 1);
+       67 	call set_opcode (70, "asx3  ", 0, 0, 1);
+       68 	call set_opcode (72, "asx4  ", 0, 0, 1);
+       69 	call set_opcode (74, "asx5  ", 0, 0, 1);
+       70 	call set_opcode (76, "asx6  ", 0, 0, 1);
+       71 	call set_opcode (78, "asx7  ", 0, 0, 1);
+       72 	call set_opcode (80, "adwp0 ", 0, 0, 1);
+       73 	call set_opcode (82, "adwp1 ", 0, 0, 1);
+       74 	call set_opcode (84, "adwp2 ", 0, 0, 1);
+       75 	call set_opcode (86, "adwp3 ", 0, 0, 1);
+       76 	call set_opcode (88, "aos   ", 0, 0, 1);
+       77 	call set_opcode (90, "asa   ", 0, 0, 1);
+       78 	call set_opcode (92, "asq   ", 0, 0, 1);
+       79 	call set_opcode (94, "sscr  ", 0, 0, 1);
+       80 	call set_opcode (96, "adx0  ", 0, 0, 1);
+       81 	call set_opcode (97, "csl   ", 1, 2, 3);
+       82 	call set_opcode (98, "adx1  ", 0, 0, 1);
+       83 	call set_opcode (99, "csr   ", 1, 2, 3);
+       84 	call set_opcode (100, "adx2  ", 0, 0, 1);
+       85 	call set_opcode (102, "adx3  ", 0, 0, 1);
+       86 	call set_opcode (104, "adx4  ", 0, 0, 1);
+       87 	call set_opcode (105, "sztl  ", 1, 2, 3);
+       88 	call set_opcode (106, "adx5  ", 0, 0, 1);
+       89 	call set_opcode (107, "sztr  ", 1, 2, 3);
+       90 	call set_opcode (108, "adx6  ", 0, 0, 1);
+       91 	call set_opcode (109, "cmpb  ", 1, 2, 3);
+       92 	call set_opcode (110, "adx7  ", 0, 0, 1);
+       93 	call set_opcode (114, "awca  ", 0, 0, 1);
+       94 	call set_opcode (116, "awcq  ", 0, 0, 1);
+       95 	call set_opcode (118, "lreg  ", 0, 0, 1);
+       96 	call set_opcode (122, "ada   ", 0, 0, 1);
+       97 	call set_opcode (124, "adq   ", 0, 0, 1);
+       98 	call set_opcode (126, "adaq  ", 0, 0, 1);
+       99 	call set_opcode (128, "cmpx0 ", 0, 0, 1);
+      100 	call set_opcode (129, "mlr   ", 0, 2, 3);
+      101 	call set_opcode (130, "cmpx1 ", 0, 0, 1);
+      102 	call set_opcode (131, "mrl   ", 0, 2, 3);
+      103 	call set_opcode (132, "cmpx2 ", 0, 0, 1);
+      104 	call set_opcode (134, "cmpx3 ", 0, 0, 1);
+      105 	call set_opcode (136, "cmpx4 ", 0, 0, 1);
+      106 	call set_opcode (138, "cmpx5 ", 0, 0, 1);
+      107 	call set_opcode (140, "cmpx6 ", 0, 0, 1);
+      108 	call set_opcode (141, "cmpc  ", 0, 2, 3);
+      109 	call set_opcode (142, "cmpx7 ", 0, 0, 1);
+      110 	call set_opcode (146, "cwl   ", 0, 0, 1);
+      111 	call set_opcode (154, "cmpa  ", 0, 0, 1);
+      112 	call set_opcode (156, "cmpq  ", 0, 0, 1);
+      113 	call set_opcode (158, "cmpaq ", 0, 0, 1);
+      114 	call set_opcode (160, "sblx0 ", 0, 0, 1);
+      115 	call set_opcode (161, "scd   ", 0, 2, 4);
+      116 	call set_opcode (162, "sblx1 ", 0, 0, 1);
+      117 	call set_opcode (163, "scdr  ", 0, 2, 4);
+      118 	call set_opcode (164, "sblx2 ", 0, 0, 1);
+      119 	call set_opcode (166, "sblx3 ", 0, 0, 1);
+      120 	call set_opcode (168, "sblx4 ", 0, 0, 1);
+      121 	call set_opcode (169, "scm   ", 0, 2, 4);
+      122 	call set_opcode (170, "sblx5 ", 0, 0, 1);
+      123 	call set_opcode (171, "scmr  ", 0, 2, 4);
+      124 	call set_opcode (172, "sblx6 ", 0, 0, 1);
+      125 	call set_opcode (174, "sblx7 ", 0, 0, 1);
+      126 	call set_opcode (186, "sbla  ", 0, 0, 1);
+      127 	call set_opcode (188, "sblq  ", 0, 0, 1);
+      128 	call set_opcode (190, "sblaq ", 0, 0, 1);
+      129 	call set_opcode (192, "ssx0  ", 0, 0, 1);
+      130 	call set_opcode (194, "ssx1  ", 0, 0, 1);
+      131 	call set_opcode (196, "ssx2  ", 0, 0, 1);
+      132 	call set_opcode (198, "ssx3  ", 0, 0, 1);
+      133 	call set_opcode (200, "ssx4  ", 0, 0, 1);
+      134 	call set_opcode (202, "ssx5  ", 0, 0, 1);
+      135 	call set_opcode (204, "ssx6  ", 0, 0, 1);
+      136 	call set_opcode (206, "ssx7  ", 0, 0, 1);
+      137 	call set_opcode (208, "adwp4 ", 0, 0, 1);
+      138 	call set_opcode (210, "adwp5 ", 0, 0, 1);
+      139 	call set_opcode (212, "adwp6 ", 0, 0, 1);
+      140 	call set_opcode (214, "adwp7 ", 0, 0, 1);
+      141 	call set_opcode (216, "sdbr  ", 0, 0, 1);
+      142 	call set_opcode (217, "sptr  ", 0, 0, 1);
+      143 	call set_opcode (218, "ssa   ", 0, 0, 1);
+      144 	call set_opcode (220, "ssq   ", 0, 0, 1);
+      145 	call set_opcode (224, "sbx0  ", 0, 0, 1);
+      146 	call set_opcode (225, "mvt   ", 0, 2, 4);
+      147 	call set_opcode (226, "sbx1  ", 0, 0, 1);
+      148 	call set_opcode (228, "sbx2  ", 0, 0, 1);
+      149 	call set_opcode (230, "sbx3  ", 0, 0, 1);
+      150 	call set_opcode (232, "sbx4  ", 0, 0, 1);
+      151 	call set_opcode (233, "tct   ", 0, 1, 4);
+      152 	call set_opcode (234, "sbx5  ", 0, 0, 1);
+      153 	call set_opcode (235, "tctr  ", 0, 1, 4);
+      154 	call set_opcode (236, "sbx6  ", 0, 0, 1);
+      155 	call set_opcode (238, "sbx7  ", 0, 0, 1);
+      156 	call set_opcode (242, "swca  ", 0, 0, 1);
+      157 	call set_opcode (244, "swcq  ", 0, 0, 1);
+      158 	call set_opcode (246, "lpri  ", 0, 0, 1);
+      159 	call set_opcode (247, "lptr  ", 0, 0, 1);
+      160 	call set_opcode (250, "sba   ", 0, 0, 1);
+      161 	call set_opcode (252, "sbq   ", 0, 0, 1);
+      162 	call set_opcode (254, "sbaq  ", 0, 0, 1);
+      163 	call set_opcode (256, "cnax0 ", 0, 0, 1);
+      164 	call set_opcode (258, "cnax1 ", 0, 0, 1);
+      165 	call set_opcode (260, "cnax2 ", 0, 0, 1);
+      166 	call set_opcode (261, "ad2d  ", 2, 2, 3);
+      167 	call set_opcode (262, "cnax3 ", 0, 0, 1);
+      168 	call set_opcode (263, "sb2d  ", 2, 2, 3);
+      169 	call set_opcode (264, "cnax4 ", 0, 0, 1);
+      170 	call set_opcode (266, "cnax5 ", 0, 0, 1);
+      171 	call set_opcode (268, "cnax6 ", 0, 0, 1);
+      172 	call set_opcode (269, "mp2d  ", 2, 2, 3);
+      173 	call set_opcode (270, "cnax7 ", 0, 0, 1);
+      174 	call set_opcode (271, "dv2d  ", 2, 2, 3);
+      175 	call set_opcode (274, "cmk   ", 0, 0, 1);
+      176 	call set_opcode (276, "absa  ", 0, 0, 1);
+      177 	call set_opcode (278, "epaq  ", 0, 0, 1);
+      178 	call set_opcode (280, "sznc  ", 0, 0, 1);
+      179 	call set_opcode (282, "cnaa  ", 0, 0, 1);
+      180 	call set_opcode (284, "cnaq  ", 0, 0, 1);
+      181 	call set_opcode (286, "cnaaq ", 0, 0, 1);
+      182 	call set_opcode (288, "ldx0  ", 0, 0, 1);
+      183 	call set_opcode (290, "ldx1  ", 0, 0, 1);
+      184 	call set_opcode (292, "ldx2  ", 0, 0, 1);
+      185 	call set_opcode (293, "ad3d  ", 2, 3, 4);
+      186 	call set_opcode (294, "ldx3  ", 0, 0, 1);
+      187 	call set_opcode (295, "sb3d  ", 2, 3, 4);
+      188 	call set_opcode (296, "ldx4  ", 0, 0, 1);
+      189 	call set_opcode (298, "ldx5  ", 0, 0, 1);
+      190 	call set_opcode (300, "ldx6  ", 0, 0, 1);
+      191 	call set_opcode (301, "mp3d  ", 2, 3, 4);
+      192 	call set_opcode (302, "ldx7  ", 0, 0, 1);
+      193 	call set_opcode (303, "dv3d  ", 2, 3, 4);
+      194 	call set_opcode (304, "lbar  ", 0, 0, 1);
+      195 	call set_opcode (306, "rsw   ", 0, 0, 1);
+      196 	call set_opcode (308, "ldbr  ", 0, 0, 1);
+      197 	call set_opcode (309, "lsdr  ", 0, 0, 1);
+      198 	call set_opcode (310, "rmcm  ", 0, 0, 1);
+      199 	call set_opcode (312, "szn   ", 0, 0, 1);
+      200 	call set_opcode (314, "lda   ", 0, 0, 1);
+      201 	call set_opcode (316, "ldq   ", 0, 0, 1);
+      202 	call set_opcode (318, "ldaq  ", 0, 0, 1);
+      203 	call set_opcode (320, "orsx0 ", 0, 0, 1);
+      204 	call set_opcode (322, "orsx1 ", 0, 0, 1);
+      205 	call set_opcode (324, "orsx2 ", 0, 0, 1);
+      206 	call set_opcode (326, "orsx3 ", 0, 0, 1);
+      207 	call set_opcode (328, "orsx4 ", 0, 0, 1);
+      208 	call set_opcode (330, "orsx5 ", 0, 0, 1);
+      209 	call set_opcode (332, "orsx6 ", 0, 0, 1);
+      210 	call set_opcode (334, "orsx7 ", 0, 0, 1);
+      211 	call set_opcode (336, "spri0 ", 0, 0, 1);
+      212 	call set_opcode (337, "spbp0 ", 0, 0, 1);
+      213 	call set_opcode (338, "spbp1 ", 0, 0, 1);
+      214 	call set_opcode (339, "spri1 ", 0, 0, 1);
+      215 	call set_opcode (340, "spri2 ", 0, 0, 1);
+      216 	call set_opcode (341, "spbp2 ", 0, 0, 1);
+      217 	call set_opcode (342, "spbp3 ", 0, 0, 1);
+      218 	call set_opcode (343, "spri3 ", 0, 0, 1);
+      219 	call set_opcode (344, "spri  ", 0, 0, 1);
+      220 	call set_opcode (345, "ssdr  ", 0, 0, 1);
+      221 	call set_opcode (346, "orsa  ", 0, 0, 1);
+      222 	call set_opcode (348, "orsq  ", 0, 0, 1);
+      223 	call set_opcode (350, "lsdp  ", 0, 0, 1);
+      224 	call set_opcode (351, "lptp  ", 0, 0, 1);
+      225 	call set_opcode (352, "orx0  ", 0, 0, 1);
+      226 	call set_opcode (354, "orx1  ", 0, 0, 1);
+      227 	call set_opcode (356, "orx2  ", 0, 0, 1);
+      228 	call set_opcode (358, "orx3  ", 0, 0, 1);
+      229 	call set_opcode (360, "orx4  ", 0, 0, 1);
+      230 	call set_opcode (362, "orx5  ", 0, 0, 1);
+      231 	call set_opcode (364, "orx6  ", 0, 0, 1);
+      232 	call set_opcode (366, "orx7  ", 0, 0, 1);
+      233 	call set_opcode (368, "tsp0  ", 0, 0, 1);
+      234 	call set_opcode (370, "tsp1  ", 0, 0, 1);
+      235 	call set_opcode (372, "tsp2  ", 0, 0, 1);
+      236 	call set_opcode (374, "tsp3  ", 0, 0, 1);
+      237 	call set_opcode (378, "ora   ", 0, 0, 1);
+      238 	call set_opcode (380, "orq   ", 0, 0, 1);
+      239 	call set_opcode (382, "oraq  ", 0, 0, 1);
+      240 	call set_opcode (384, "canx0 ", 0, 0, 1);
+      241 	call set_opcode (385, "mvn   ", 2, 2, 3);
+      242 	call set_opcode (386, "canx1 ", 0, 0, 1);
+      243 	call set_opcode (387, "btd   ", 2, 2, 3);
+      244 	call set_opcode (388, "canx2 ", 0, 0, 1);
+      245 	call set_opcode (390, "canx3 ", 0, 0, 1);
+      246 	call set_opcode (391, "cmpn  ", 2, 2, 3);
+      247 	call set_opcode (392, "canx4 ", 0, 0, 1);
+      248 	call set_opcode (394, "canx5 ", 0, 0, 1);
+      249 	call set_opcode (395, "dtb   ", 2, 2, 3);
+      250 	call set_opcode (396, "canx6 ", 0, 0, 1);
+      251 	call set_opcode (398, "canx7 ", 0, 0, 1);
+      252 	call set_opcode (400, "eawp0 ", 0, 0, 1);
+      253 	call set_opcode (401, "easp1 ", 0, 0, 1);
+      254 	call set_opcode (402, "easp0 ", 0, 0, 1);
+      255 	call set_opcode (403, "eawp1 ", 0, 0, 1);
+      256 	call set_opcode (404, "eawp2 ", 0, 0, 1);
+      257 	call set_opcode (405, "easp3 ", 0, 0, 1);
+      258 	call set_opcode (406, "easp2 ", 0, 0, 1);
+      259 	call set_opcode (407, "eawp3 ", 0, 0, 1);
+      260 	call set_opcode (410, "cana  ", 0, 0, 1);
+      261 	call set_opcode (412, "canq  ", 0, 0, 1);
+      262 	call set_opcode (414, "canaq ", 0, 0, 1);
+      263 	call set_opcode (416, "lcx0  ", 0, 0, 1);
+      264 	call set_opcode (418, "lcx1  ", 0, 0, 1);
+      265 	call set_opcode (420, "lcx2  ", 0, 0, 1);
+      266 	call set_opcode (422, "lcx3  ", 0, 0, 1);
+      267 	call set_opcode (424, "lcx4  ", 0, 0, 1);
+      268 	call set_opcode (426, "lcx5  ", 0, 0, 1);
+      269 	call set_opcode (428, "lcx6  ", 0, 0, 1);
+      270 	call set_opcode (430, "lcx7  ", 0, 0, 1);
+      271 	call set_opcode (432, "eawp4 ", 0, 0, 1);
+      272 	call set_opcode (433, "easp5 ", 0, 0, 1);
+      273 	call set_opcode (434, "easp4 ", 0, 0, 1);
+      274 	call set_opcode (435, "eawp5 ", 0, 0, 1);
+      275 	call set_opcode (436, "eawp6 ", 0, 0, 1);
+      276 	call set_opcode (437, "easp7 ", 0, 0, 1);
+      277 	call set_opcode (438, "easp6 ", 0, 0, 1);
+      278 	call set_opcode (439, "eawp7 ", 0, 0, 1);
+      279 	call set_opcode (442, "lca   ", 0, 0, 1);
+      280 	call set_opcode (444, "lcq   ", 0, 0, 1);
+      281 	call set_opcode (446, "lcaq  ", 0, 0, 1);
+      282 	call set_opcode (448, "ansx0 ", 0, 0, 1);
+      283 	call set_opcode (450, "ansx1 ", 0, 0, 1);
+      284 	call set_opcode (452, "ansx2 ", 0, 0, 1);
+      285 	call set_opcode (454, "ansx3 ", 0, 0, 1);
+      286 	call set_opcode (456, "ansx4 ", 0, 0, 1);
+      287 	call set_opcode (458, "ansx5 ", 0, 0, 1);
+      288 	call set_opcode (460, "ansx6 ", 0, 0, 1);
+      289 	call set_opcode (462, "ansx7 ", 0, 0, 1);
+      290 	call set_opcode (464, "epp0  ", 0, 0, 1);
+      291 	call set_opcode (465, "epbp0 ", 0, 0, 1);
+      292 	call set_opcode (466, "epbp1 ", 0, 0, 1);
+      293 	call set_opcode (467, "epp1  ", 0, 0, 1);
+      294 	call set_opcode (468, "epp2  ", 0, 0, 1);
+      295 	call set_opcode (469, "epbp2 ", 0, 0, 1);
+      296 	call set_opcode (470, "epbp3 ", 0, 0, 1);
+      297 	call set_opcode (471, "epp3  ", 0, 0, 1);
+      298 	call set_opcode (472, "stac  ", 0, 0, 1);
+      299 	call set_opcode (474, "ansa  ", 0, 0, 1);
+      300 	call set_opcode (476, "ansq  ", 0, 0, 1);
+      301 	call set_opcode (478, "stcd  ", 0, 0, 1);
+      302 	call set_opcode (480, "anx0  ", 0, 0, 1);
+      303 	call set_opcode (482, "anx1  ", 0, 0, 1);
+      304 	call set_opcode (484, "anx2  ", 0, 0, 1);
+      305 	call set_opcode (486, "anx3  ", 0, 0, 1);
+      306 	call set_opcode (488, "anx4  ", 0, 0, 1);
+      307 	call set_opcode (490, "anx5  ", 0, 0, 1);
+      308 	call set_opcode (492, "anx6  ", 0, 0, 1);
+      309 	call set_opcode (494, "anx7  ", 0, 0, 1);
+      310 	call set_opcode (496, "epp4  ", 0, 0, 1);
+      311 	call set_opcode (497, "epbp4 ", 0, 0, 1);
+      312 	call set_opcode (498, "epbp5 ", 0, 0, 1);
+      313 	call set_opcode (499, "epp5  ", 0, 0, 1);
+      314 	call set_opcode (500, "epp6  ", 0, 0, 1);
+      315 	call set_opcode (501, "epbp6 ", 0, 0, 1);
+      316 	call set_opcode (502, "epbp7 ", 0, 0, 1);
+      317 	call set_opcode (503, "epp7  ", 0, 0, 1);
+      318 	call set_opcode (506, "ana   ", 0, 0, 1);
+      319 	call set_opcode (508, "anq   ", 0, 0, 1);
+      320 	call set_opcode (510, "anaq  ", 0, 0, 1);
+      321 	call set_opcode (514, "mpf   ", 0, 0, 1);
+      322 	call set_opcode (516, "mpy   ", 0, 0, 1);
+      323 	call set_opcode (522, "cmg   ", 0, 0, 1);
+      324 	call set_opcode (530, "lde   ", 0, 0, 1);
+      325 	call set_opcode (534, "rscr  ", 0, 0, 1);
+      326 	call set_opcode (538, "ade   ", 0, 0, 1);
+      327 	call set_opcode (546, "ufm   ", 0, 0, 1);
+      328 	call set_opcode (550, "dufm  ", 0, 0, 1);
+      329 	call set_opcode (554, "fcmg  ", 0, 0, 1);
+      330 	call set_opcode (558, "dfcmg ", 0, 0, 1);
+      331 	call set_opcode (560, "fszn  ", 0, 0, 1);
+      332 	call set_opcode (562, "fld   ", 0, 0, 1);
+      333 	call set_opcode (566, "dfld  ", 0, 0, 1);
+      334 	call set_opcode (570, "ufa   ", 0, 0, 1);
+      335 	call set_opcode (574, "dufa  ", 0, 0, 1);
+      336 	call set_opcode (576, "sxl0  ", 0, 0, 1);
+      337 	call set_opcode (578, "sxl1  ", 0, 0, 1);
+      338 	call set_opcode (580, "sxl2  ", 0, 0, 1);
+      339 	call set_opcode (582, "sxl3  ", 0, 0, 1);
+      340 	call set_opcode (583, "sareg ", 0, 0, 1);
+      341 	call set_opcode (584, "sxl4  ", 0, 0, 1);
+      342 	call set_opcode (586, "sxl5  ", 0, 0, 1);
+      343 	call set_opcode (588, "sxl6  ", 0, 0, 1);
+      344 	call set_opcode (590, "sxl7  ", 0, 0, 1);
+      345 	call set_opcode (591, "spl   ", 0, 0, 1);
+      346 	call set_opcode (592, "stz   ", 0, 0, 1);
+      347 	call set_opcode (594, "smic  ", 0, 0, 1);
+      348 	call set_opcode (596, "scpr  ", 0, 0, 1);
+      349 	call set_opcode (600, "stt   ", 0, 0, 1);
+      350 	call set_opcode (602, "fst   ", 0, 0, 1);
+      351 	call set_opcode (604, "ste   ", 0, 0, 1);
+      352 	call set_opcode (606, "dfst  ", 0, 0, 1);
+      353 	call set_opcode (610, "fmp   ", 0, 0, 1);
+      354 	call set_opcode (614, "dfmp  ", 0, 0, 1);
+      355 	call set_opcode (615, "lareg ", 0, 0, 1);
+      356 	call set_opcode (623, "lpl   ", 0, 0, 1);
+      357 	call set_opcode (624, "fstr  ", 0, 0, 1);
+      358 	call set_opcode (626, "frd   ", 0, 0, 1);
+      359 	call set_opcode (628, "dfstr ", 0, 0, 1);
+      360 	call set_opcode (630, "dfrd  ", 0, 0, 1);
+      361 	call set_opcode (634, "fad   ", 0, 0, 1);
+      362 	call set_opcode (638, "dfad  ", 0, 0, 1);
+      363 	call set_opcode (640, "rpl   ", 0, 1, 1);
+      364 	call set_opcode (641, "a9bd  ", 1, 0, 1);
+      365 	call set_opcode (643, "a6bd  ", 1, 0, 1);
+      366 	call set_opcode (645, "a4bd  ", 1, 0, 1);
+      367 	call set_opcode (647, "abd   ", 1, 0, 1);
+      368 	call set_opcode (650, "bcd   ", 0, 0, 1);
+      369 	call set_opcode (652, "div   ", 0, 0, 1);
+      370 	call set_opcode (654, "dvf   ", 0, 0, 1);
+      371 	call set_opcode (655, "awd   ", 1, 0, 1);
+      372 	call set_opcode (662, "fneg  ", 0, 0, 1);
+      373 	call set_opcode (666, "fcmp  ", 0, 0, 1);
+      374 	call set_opcode (670, "dfcmp ", 0, 0, 1);
+      375 	call set_opcode (672, "rpt   ", 0, 1, 1);
+      376 	call set_opcode (673, "s9bd  ", 1, 0, 1);
+      377 	call set_opcode (675, "s6bd  ", 1, 0, 1);
+      378 	call set_opcode (677, "s4bd  ", 1, 0, 1);
+      379 	call set_opcode (679, "sbd   ", 1, 0, 1);
+      380 	call set_opcode (682, "fdi   ", 0, 0, 1);
+      381 	call set_opcode (686, "dfdi  ", 0, 0, 1);
+      382 	call set_opcode (687, "swd   ", 1, 0, 1);
+      383 	call set_opcode (690, "neg   ", 0, 0, 1);
+      384 	call set_opcode (692, "cams  ", 0, 0, 1);
+      385 	call set_opcode (693, "camp  ", 0, 0, 1);
+      386 	call set_opcode (694, "negl  ", 0, 0, 1);
+      387 	call set_opcode (698, "ufs   ", 0, 0, 1);
+      388 	call set_opcode (702, "dufs  ", 0, 0, 1);
+      389 	call set_opcode (704, "sprp0 ", 0, 0, 1);
+      390 	call set_opcode (705, "ara0  ", 0, 0, 1);
+      391 	call set_opcode (706, "sprp1 ", 0, 0, 1);
+      392 	call set_opcode (707, "ara1  ", 0, 0, 1);
+      393 	call set_opcode (708, "sprp2 ", 0, 0, 1);
+      394 	call set_opcode (709, "ara2  ", 0, 0, 1);
+      395 	call set_opcode (710, "sprp3 ", 0, 0, 1);
+      396 	call set_opcode (711, "ara3  ", 0, 0, 1);
+      397 	call set_opcode (712, "sprp4 ", 0, 0, 1);
+      398 	call set_opcode (713, "ara4  ", 0, 0, 1);
+      399 	call set_opcode (714, "sprp5 ", 0, 0, 1);
+      400 	call set_opcode (715, "ara5  ", 0, 0, 1);
+      401 	call set_opcode (716, "sprp6 ", 0, 0, 1);
+      402 	call set_opcode (717, "ara6  ", 0, 0, 1);
+      403 	call set_opcode (718, "sprp7 ", 0, 0, 1);
+      404 	call set_opcode (719, "ara7  ", 0, 0, 1);
+      405 	call set_opcode (720, "sbar  ", 0, 0, 1);
+      406 	call set_opcode (722, "stba  ", 0, 1, 1);
+      407 	call set_opcode (724, "stbq  ", 0, 1, 1);
+      408 	call set_opcode (726, "smcm  ", 0, 0, 1);
+      409 	call set_opcode (728, "stc1  ", 0, 0, 1);
+      410 	call set_opcode (734, "ssdp  ", 0, 0, 1);
+      411 	call set_opcode (735, "sptp  ", 0, 0, 1);
+      412 	call set_opcode (736, "rpd   ", 0, 1, 1);
+      413 	call set_opcode (737, "aar0  ", 0, 0, 1);
+      414 	call set_opcode (739, "aar1  ", 0, 0, 1);
+      415 	call set_opcode (741, "aar2  ", 0, 0, 1);
+      416 	call set_opcode (743, "aar3  ", 0, 0, 1);
+      417 	call set_opcode (745, "aar4  ", 0, 0, 1);
+      418 	call set_opcode (746, "fdv   ", 0, 0, 1);
+      419 	call set_opcode (747, "aar5  ", 0, 0, 1);
+      420 	call set_opcode (749, "aar6  ", 0, 0, 1);
+      421 	call set_opcode (750, "dfdv  ", 0, 0, 1);
+      422 	call set_opcode (751, "aar7  ", 0, 0, 1);
+      423 	call set_opcode (758, "fno   ", 0, 0, 1);
+      424 	call set_opcode (762, "fsb   ", 0, 0, 1);
+      425 	call set_opcode (766, "dfsb  ", 0, 0, 1);
+      426 	call set_opcode (768, "tze   ", 0, 0, 1);
+      427 	call set_opcode (769, "trtn  ", 0, 0, 1);
+      428 	call set_opcode (770, "tnz   ", 0, 0, 1);
+      429 	call set_opcode (771, "trtf  ", 0, 0, 1);
+      430 	call set_opcode (772, "tnc   ", 0, 0, 1);
+      431 	call set_opcode (774, "trc   ", 0, 0, 1);
+      432 	call set_opcode (776, "tmi   ", 0, 0, 1);
+      433 	call set_opcode (777, "tmoz  ", 0, 0, 1);
+      434 	call set_opcode (778, "tpl   ", 0, 0, 1);
+      435 	call set_opcode (779, "tpnz  ", 0, 0, 1);
+      436 	call set_opcode (781, "ttn   ", 0, 0, 1);
+      437 	call set_opcode (782, "ttf   ", 0, 0, 1);
+      438 	call set_opcode (784, "rtcd  ", 0, 0, 1);
+      439 	call set_opcode (790, "rcu   ", 0, 0, 1);
+      440 	call set_opcode (792, "teo   ", 0, 0, 1);
+      441 	call set_opcode (794, "teu   ", 0, 0, 1);
+      442 	call set_opcode (796, "dis   ", 0, 0, 1);
+      443 	call set_opcode (798, "tov   ", 0, 0, 1);
+      444 	call set_opcode (800, "eax0  ", 0, 0, 1);
+      445 	call set_opcode (802, "eax1  ", 0, 0, 1);
+      446 	call set_opcode (804, "eax2  ", 0, 0, 1);
+      447 	call set_opcode (806, "eax3  ", 0, 0, 1);
+      448 	call set_opcode (808, "eax4  ", 0, 0, 1);
+      449 	call set_opcode (810, "eax5  ", 0, 0, 1);
+      450 	call set_opcode (812, "eax6  ", 0, 0, 1);
+      451 	call set_opcode (814, "eax7  ", 0, 0, 1);
+      452 	call set_opcode (816, "ret   ", 0, 0, 1);
+      453 	call set_opcode (822, "rccl  ", 0, 0, 1);
+      454 	call set_opcode (824, "ldi   ", 0, 0, 1);
+      455 	call set_opcode (826, "eaa   ", 0, 0, 1);
+      456 	call set_opcode (828, "eaq   ", 0, 0, 1);
+      457 	call set_opcode (830, "ldt   ", 0, 0, 1);
+      458 	call set_opcode (832, "ersx0 ", 0, 0, 1);
+      459 	call set_opcode (833, "arn0  ", 0, 0, 1);
+      460 	call set_opcode (834, "ersx1 ", 0, 0, 1);
+      461 	call set_opcode (835, "arn1  ", 0, 0, 1);
+      462 	call set_opcode (836, "ersx2 ", 0, 0, 1);
+      463 	call set_opcode (837, "arn2  ", 0, 0, 1);
+      464 	call set_opcode (838, "ersx3 ", 0, 0, 1);
+      465 	call set_opcode (839, "arn3  ", 0, 0, 1);
+      466 	call set_opcode (840, "ersx4 ", 0, 0, 1);
+      467 	call set_opcode (841, "arn4  ", 0, 0, 1);
+      468 	call set_opcode (842, "ersx5 ", 0, 0, 1);
+      469 	call set_opcode (843, "arn5  ", 0, 0, 1);
+      470 	call set_opcode (844, "ersx6 ", 0, 0, 1);
+      471 	call set_opcode (845, "arn6  ", 0, 0, 1);
+      472 	call set_opcode (846, "ersx7 ", 0, 0, 1);
+      473 	call set_opcode (847, "arn7  ", 0, 0, 1);
+      474 	call set_opcode (848, "spri4 ", 0, 0, 1);
+      475 	call set_opcode (849, "spbp4 ", 0, 0, 1);
+      476 	call set_opcode (850, "spbp5 ", 0, 0, 1);
+      477 	call set_opcode (851, "spri5 ", 0, 0, 1);
+      478 	call set_opcode (852, "spri6 ", 0, 0, 1);
+      479 	call set_opcode (853, "spbp6 ", 0, 0, 1);
+      480 	call set_opcode (854, "spbp7 ", 0, 0, 1);
+      481 	call set_opcode (855, "spri7 ", 0, 0, 1);
+      482 	call set_opcode (856, "stacq ", 0, 0, 1);
+      483 	call set_opcode (858, "ersa  ", 0, 0, 1);
+      484 	call set_opcode (860, "ersq  ", 0, 0, 1);
+      485 	call set_opcode (862, "scu   ", 0, 0, 1);
+      486 	call set_opcode (864, "erx0  ", 0, 0, 1);
+      487 	call set_opcode (865, "nar0  ", 0, 0, 1);
+      488 	call set_opcode (866, "erx1  ", 0, 0, 1);
+      489 	call set_opcode (867, "nar1  ", 0, 0, 1);
+      490 	call set_opcode (868, "erx2  ", 0, 0, 1);
+      491 	call set_opcode (869, "nar2  ", 0, 0, 1);
+      492 	call set_opcode (870, "erx3  ", 0, 0, 1);
+      493 	call set_opcode (871, "nar3  ", 0, 0, 1);
+      494 	call set_opcode (872, "erx4  ", 0, 0, 1);
+      495 	call set_opcode (873, "nar4  ", 0, 0, 1);
+      496 	call set_opcode (874, "erx5  ", 0, 0, 1);
+      497 	call set_opcode (875, "nar5  ", 0, 0, 1);
+      498 	call set_opcode (876, "erx6  ", 0, 0, 1);
+      499 	call set_opcode (877, "nar6  ", 0, 0, 1);
+      500 	call set_opcode (878, "erx7  ", 0, 0, 1);
+      501 	call set_opcode (879, "nar7  ", 0, 0, 1);
+      502 	call set_opcode (880, "tsp4  ", 0, 0, 1);
+      503 	call set_opcode (882, "tsp5  ", 0, 0, 1);
+      504 	call set_opcode (884, "tsp6  ", 0, 0, 1);
+      505 	call set_opcode (886, "tsp7  ", 0, 0, 1);
+      506 	call set_opcode (888, "lcpr  ", 0, 0, 1);
+      507 	call set_opcode (890, "era   ", 0, 0, 1);
+      508 	call set_opcode (892, "erq   ", 0, 0, 1);
+      509 	call set_opcode (894, "eraq  ", 0, 0, 1);
+      510 	call set_opcode (896, "tsx0  ", 0, 0, 1);
+      511 	call set_opcode (898, "tsx1  ", 0, 0, 1);
+      512 	call set_opcode (900, "tsx2  ", 0, 0, 1);
+      513 	call set_opcode (902, "tsx3  ", 0, 0, 1);
+      514 	call set_opcode (904, "tsx4  ", 0, 0, 1);
+      515 	call set_opcode (906, "tsx5  ", 0, 0, 1);
+      516 	call set_opcode (908, "tsx6  ", 0, 0, 1);
+      517 	call set_opcode (910, "tsx7  ", 0, 0, 1);
+      518 	call set_opcode (912, "tra   ", 0, 0, 1);
+      519 	call set_opcode (918, "call6 ", 0, 0, 1);
+      520 	call set_opcode (922, "tss   ", 0, 0, 1);
+      521 	call set_opcode (924, "xec   ", 0, 0, 1);
+      522 	call set_opcode (926, "xed   ", 0, 0, 1);
+      523 	call set_opcode (928, "lxl0  ", 0, 0, 1);
+      524 	call set_opcode (930, "lxl1  ", 0, 0, 1);
+      525 	call set_opcode (932, "lxl2  ", 0, 0, 1);
+      526 	call set_opcode (934, "lxl3  ", 0, 0, 1);
+      527 	call set_opcode (936, "lxl4  ", 0, 0, 1);
+      528 	call set_opcode (938, "lxl5  ", 0, 0, 1);
+      529 	call set_opcode (940, "lxl6  ", 0, 0, 1);
+      530 	call set_opcode (942, "lxl7  ", 0, 0, 1);
+      531 	call set_opcode (946, "ars   ", 0, 0, 1);
+      532 	call set_opcode (948, "qrs   ", 0, 0, 1);
+      533 	call set_opcode (950, "lrs   ", 0, 0, 1);
+      534 	call set_opcode (954, "als   ", 0, 0, 1);
+      535 	call set_opcode (956, "qls   ", 0, 0, 1);
+      536 	call set_opcode (958, "lls   ", 0, 0, 1);
+      537 	call set_opcode (960, "stx0  ", 0, 0, 1);
+      538 	call set_opcode (961, "sar0  ", 0, 0, 1);
+      539 	call set_opcode (962, "stx1  ", 0, 0, 1);
+      540 	call set_opcode (963, "sar1  ", 0, 0, 1);
+      541 	call set_opcode (964, "stx2  ", 0, 0, 1);
+      542 	call set_opcode (965, "sar2  ", 0, 0, 1);
+      543 	call set_opcode (966, "stx3  ", 0, 0, 1);
+      544 	call set_opcode (967, "sar3  ", 0, 0, 1);
+      545 	call set_opcode (968, "stx4  ", 0, 0, 1);
+      546 	call set_opcode (969, "sar4  ", 0, 0, 1);
+      547 	call set_opcode (970, "stx5  ", 0, 0, 1);
+      548 	call set_opcode (971, "sar5  ", 0, 0, 1);
+      549 	call set_opcode (972, "stx6  ", 0, 0, 1);
+      550 	call set_opcode (973, "sar6  ", 0, 0, 1);
+      551 	call set_opcode (974, "stx7  ", 0, 0, 1);
+      552 	call set_opcode (975, "sar7  ", 0, 0, 1);
+      553 	call set_opcode (976, "stc2  ", 0, 0, 1);
+      554 	call set_opcode (978, "stca  ", 0, 1, 1);
+      555 	call set_opcode (980, "stcq  ", 0, 1, 1);
+      556 	call set_opcode (982, "sreg  ", 0, 0, 1);
+      557 	call set_opcode (984, "sti   ", 0, 0, 1);
+      558 	call set_opcode (985, "sra   ", 0, 0, 1);
+      559 	call set_opcode (986, "sta   ", 0, 0, 1);
+      560 	call set_opcode (988, "stq   ", 0, 0, 1);
+      561 	call set_opcode (990, "staq  ", 0, 0, 1);
+      562 	call set_opcode (992, "lprp0 ", 0, 0, 1);
+      563 	call set_opcode (993, "lar0  ", 0, 0, 1);
+      564 	call set_opcode (994, "lprp1 ", 0, 0, 1);
+      565 	call set_opcode (995, "lar1  ", 0, 0, 1);
+      566 	call set_opcode (996, "lprp2 ", 0, 0, 1);
+      567 	call set_opcode (997, "lar2  ", 0, 0, 1);
+      568 	call set_opcode (998, "lprp3 ", 0, 0, 1);
+      569 	call set_opcode (999, "lar3  ", 0, 0, 1);
+      570 	call set_opcode (1000, "lprp4 ", 0, 0, 1);
+      571 	call set_opcode (1001, "lar4  ", 0, 0, 1);
+      572 	call set_opcode (1002, "lprp5 ", 0, 0, 1);
+      573 	call set_opcode (1003, "lar5  ", 0, 0, 1);
+      574 	call set_opcode (1004, "lprp6 ", 0, 0, 1);
+      575 	call set_opcode (1005, "lar6  ", 0, 0, 1);
+      576 	call set_opcode (1006, "lprp7 ", 0, 0, 1);
+      577 	call set_opcode (1007, "lar7  ", 0, 0, 1);
+      578 	call set_opcode (1010, "arl   ", 0, 0, 1);
+      579 	call set_opcode (1012, "qrl   ", 0, 0, 1);
+      580 	call set_opcode (1014, "lrl   ", 0, 0, 1);
+      581 	call set_opcode (1016, "gtb   ", 0, 0, 1);
+      582 	call set_opcode (1017, "lra   ", 0, 0, 1);
+      583 	call set_opcode (1018, "alr   ", 0, 0, 1);
+      584 	call set_opcode (1020, "qlr   ", 0, 0, 1);
+      585 	call set_opcode (1022, "llr   ", 0, 0, 1);
+      586 
+      587 	CDSA.sections (1).p = addr (OI);
+      588 	CDSA.sections (1).len = size (OI);
+      589 	CDSA.sections (1).struct_name = "OI";
+      590 	CDSA.seg_name = "op_mnemonic_";
+      591 	CDSA.num_exclude_names = 0;
+      592 	CDSA.exclude_array_ptr = null ();
+      593 	string (CDSA.switches) = ""b;
+      594 	CDSA.switches.have_text = "1"b;
+      595 
+      596 	call create_data_segment_ (addr (CDSA), code);
+      597 	if code ^= 0
+      598 	then call com_err_ (code, "op_mnemonic_");
+      599 	return;
+      600 
+      601 set_opcode:
+      602      procedure (Opx, Name, Dtype, Num_descs, Num_words);
+      603 	declare Opx		 fixed bin;
+      604 	declare Name		 char (6);
+      605 	declare Dtype		 fixed bin (2);
+      606 	declare Num_descs		 fixed bin (5);
+      607 	declare Num_words		 fixed bin (8);
+      608 
+      609 	op_mnemonic_ptr = addr (OI.op_mnemonic_ (Opx));
+      610 	op_mnemonic.name = Name;
+      611 	op_mnemonic.dtype = Dtype;
+      612 	op_mnemonic.num_desc = Num_descs;
+      613 	op_mnemonic.num_words = Num_words;
+      614      end set_opcode;
+      615      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.8  !BBBJZjXknmFCJN.pl1               >spec>install>1111>op_mnemonic_.cds
+23           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+24           2    04/07/83  1635.0  op_mnemonic_dcl_.incl.pl1         >ldd>include>op_mnemonic_dcl_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CDSA                            000104 automatic       structure                level 1 dcl 26 set ref 596 596
+Dtype                                  parameter       fixed bin(2,0)           dcl 605 ref 601 611
+Name                                   parameter       char(6)                  packed unaligned dcl 604 ref 601 610
+Num_descs                              parameter       fixed bin(5,0)           dcl 606 ref 601 612
+Num_words                              parameter       fixed bin(8,0)           dcl 607 ref 601 613
+OI                              000151 automatic       structure                level 1 dcl 27 set ref 587 588
+Opx                                    parameter       fixed bin(17,0)          dcl 603 ref 601 609
+cds_args                               based           structure                level 1 dcl 1-3
+code                            000100 automatic       fixed bin(35,0)          dcl 21 set ref 596* 597 597*
+com_err_                        000014 constant        entry                    external dcl 20 ref 597
+create_data_segment_            000012 constant        entry                    external dcl 19 ref 596
+dtype                     1(18)        based           fixed bin(2,0)           level 2 packed packed unaligned dcl 2-9 set ref 611*
+exclude_array_ptr        42     000104 automatic       pointer                  level 2 dcl 26 set ref 592*
+have_text                44(02) 000104 automatic       bit(1)                   level 3 packed packed unaligned dcl 26 set ref 594*
+len                       2     000104 automatic       fixed bin(18,0)          array level 3 dcl 26 set ref 588*
+name                            004152 automatic       char(6)                  level 2 in structure "unused" packed packed
+                                                                                  unaligned dcl 31 in procedure "op_mnemonic_" set
+                                                                                  ref 35*
+name                                   based           char(6)                  level 2 in structure "op_mnemonic" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "op_mnemonic_" set
+                                                                                  ref 610*
+num_desc                  1(21)        based           fixed bin(5,0)           level 2 packed packed unaligned dcl 2-9 set ref 612*
+num_exclude_names        40     000104 automatic       fixed bin(17,0)          level 2 dcl 26 set ref 591*
+num_words                 1(27)        based           fixed bin(8,0)           level 2 in structure "op_mnemonic" packed packed
+                                                                                  unaligned dcl 2-9 in procedure "op_mnemonic_" set
+                                                                                  ref 613*
+num_words                 1(27) 004152 automatic       fixed bin(8,0)           level 2 in structure "unused" packed packed
+                                                                                  unaligned dcl 31 in procedure "op_mnemonic_" set
+                                                                                  ref 36*
+op_mnemonic                            based           structure                level 1 dcl 2-9
+op_mnemonic_                    000151 automatic       structure                array level 2 dcl 27 set ref 37* 609
+op_mnemonic_ptr                 000102 automatic       pointer                  dcl 2-8 set ref 609* 610 611 612 613 2-9 2-9 2-9 2-9
+                                                                                  2-9
+p                               000104 automatic       pointer                  array level 3 dcl 26 set ref 587*
+sections                        000104 automatic       structure                array level 2 dcl 26
+seg_name                 30     000104 automatic       char(32)                 level 2 dcl 26 set ref 590*
+struct_name               3     000104 automatic       char(32)                 array level 3 dcl 26 set ref 589*
+switches                 44     000104 automatic       structure                level 2 dcl 26 set ref 593*
+unused                          004152 automatic       structure                level 1 dcl 31 set ref 34* 37
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+op_mnemonic_$op_mnemonic_       000016 external static structure                array level 1 dcl 2-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+op_mnemonic_                    002130 constant        entry                    external dcl 13
+set_opcode                      015122 constant        entry                    internal dcl 601 ref 39 40 41 42 43 44 45 46 47 48
+                                                                                  49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65
+                                                                                  66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82
+                                                                                  83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99
+                                                                                  100 101 102 103 104 105 106 107 108 109 110 111
+                                                                                  112 113 114 115 116 117 118 119 120 121 122 123
+                                                                                  124 125 126 127 128 129 130 131 132 133 134 135
+                                                                                  136 137 138 139 140 141 142 143 144 145 146 147
+                                                                                  148 149 150 151 152 153 154 155 156 157 158 159
+                                                                                  160 161 162 163 164 165 166 167 168 169 170 171
+                                                                                  172 173 174 175 176 177 178 179 180 181 182 183
+                                                                                  184 185 186 187 188 189 190 191 192 193 194 195
+                                                                                  196 197 198 199 200 201 202 203 204 205 206 207
+                                                                                  208 209 210 211 212 213 214 215 216 217 218 219
+                                                                                  220 221 222 223 224 225 226 227 228 229 230 231
+                                                                                  232 233 234 235 236 237 238 239 240 241 242 243
+                                                                                  244 245 246 247 248 249 250 251 252 253 254 255
+                                                                                  256 257 258 259 260 261 262 263 264 265 266 267
+                                                                                  268 269 270 271 272 273 274 275 276 277 278 279
+                                                                                  280 281 282 283 284 285 286 287 288 289 290 291
+                                                                                  292 293 294 295 296 297 298 299 300 301 302 303
+                                                                                  304 305 306 307 308 309 310 311 312 313 314 315
+                                                                                  316 317 318 319 320 321 322 323 324 325 326 327
+                                                                                  328 329 330 331 332 333 334 335 336 337 338 339
+                                                                                  340 341 342 343 344 345 346 347 348 349 350 351
+                                                                                  352 353 354 355 356 357 358 359 360 361 362 363
+                                                                                  364 365 366 367 368 369 370 371 372 373 374 375
+                                                                                  376 377 378 379 380 381 382 383 384 385 386 387
+                                                                                  388 389 390 391 392 393 394 395 396 397 398 399
+                                                                                  400 401 402 403 404 405 406 407 408 409 410 411
+                                                                                  412 413 414 415 416 417 418 419 420 421 422 423
+                                                                                  424 425 426 427 428 429 430 431 432 433 434 435
+                                                                                  436 437 438 439 440 441 442 443 444 445 446 447
+                                                                                  448 449 450 451 452 453 454 455 456 457 458 459
+                                                                                  460 461 462 463 464 465 466 467 468 469 470 471
+                                                                                  472 473 474 475 476 477 478 479 480 481 482 483
+                                                                                  484 485 486 487 488 489 490 491 492 493 494 495
+                                                                                  496 497 498 499 500 501 502 503 504 505 506 507
+                                                                                  508 509 510 511 512 513 514 515 516 517 518 519
+                                                                                  520 521 522 523 524 525 526 527 528 529 530 531
+                                                                                  532 533 534 535 536 537 538 539 540 541 542 543
+                                                                                  544 545 546 547 548 549 550 551 552 553 554 555
+                                                                                  556 557 558 559 560 561 562 563 564 565 566 567
+                                                                                  568 569 570 571 572 573 574 575 576 577 578 579
+                                                                                  580 581 582 583 584 585
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 587 596 596 609
+null                                                   builtin function         ref 592
+size                                                   builtin function         ref 588
+string                                                 builtin function         ref 593
+unspec                                                 builtin function         ref 34
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0     15264       15304   15205       15274
+Length     21070   15205        20        3547      56           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+op_mnemonic_                       2186 external procedure  is an external procedure.  
+set_opcode                              internal procedure  shares stack frame of external procedure op_mnemonic_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+op_mnemonic_             000100 code                        op_mnemonic_
+                         000102 op_mnemonic_ptr             op_mnemonic_
+                         000104 CDSA                        op_mnemonic_
+                         000151 OI                          op_mnemonic_
+                         004152 unused                      op_mnemonic_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 002127        34 002135        35 002137        36 002142        37 002144        39 002205        40 002217
+     41 002231        42 002243        43 002255        44 002267        45 002301        46 002313        47 002325
+     48 002337        49 002351        50 002364        51 002376        52 002410        53 002422        54 002434
+     55 002450        56 002462        57 002474        58 002506        59 002520        60 002532        61 002544
+     62 002556        63 002570        64 002602        65 002614        66 002626        67 002640        68 002652
+     69 002664        70 002676        71 002710        72 002722        73 002734        74 002746        75 002760
+     76 002772        77 003004        78 003016        79 003030        80 003042        81 003054        82 003070
+     83 003102        84 003116        85 003130        86 003142        87 003154        88 003170        89 003202
+     90 003216        91 003230        92 003244        93 003256        94 003270        95 003302        96 003314
+     97 003326        98 003340        99 003352       100 003364       101 003377       102 003411       103 003424
+    104 003436       105 003450       106 003462       107 003474       108 003506       109 003521       110 003533
+    111 003545       112 003557       113 003571       114 003603       115 003615       116 003630       117 003642
+    118 003655       119 003667       120 003701       121 003713       122 003726       123 003740       124 003753
+    125 003765       126 003777       127 004011       128 004023       129 004035       130 004047       131 004061
+    132 004073       133 004105       134 004117       135 004131       136 004143       137 004155       138 004167
+    139 004201       140 004213       141 004225       142 004237       143 004251       144 004263       145 004275
+    146 004307       147 004322       148 004334       149 004346       150 004360       151 004372       152 004405
+    153 004417       154 004432       155 004444       156 004456       157 004470       158 004502       159 004514
+    160 004526       161 004540       162 004552       163 004564       164 004576       165 004610       166 004622
+    167 004636       168 004650       169 004664       170 004676       171 004710       172 004722       173 004736
+    174 004750       175 004764       176 004776       177 005010       178 005022       179 005034       180 005046
+    181 005060       182 005072       183 005104       184 005116       185 005130       186 005144       187 005156
+    188 005172       189 005204       190 005216       191 005230       192 005244       193 005256       194 005272
+    195 005304       196 005316       197 005330       198 005342       199 005354       200 005366       201 005400
+    202 005412       203 005424       204 005436       205 005450       206 005462       207 005474       208 005506
+    209 005520       210 005532       211 005544       212 005556       213 005570       214 005602       215 005614
+    216 005626       217 005640       218 005652       219 005664       220 005676       221 005710       222 005722
+    223 005734       224 005746       225 005760       226 005772       227 006004       228 006016       229 006030
+    230 006042       231 006054       232 006066       233 006100       234 006112       235 006124       236 006136
+    237 006150       238 006162       239 006174       240 006206       241 006220       242 006234       243 006246
+    244 006262       245 006274       246 006306       247 006322       248 006334       249 006346       250 006362
+    251 006374       252 006406       253 006420       254 006432       255 006444       256 006456       257 006470
+    258 006502       259 006514       260 006526       261 006540       262 006552       263 006564       264 006576
+    265 006610       266 006622       267 006634       268 006646       269 006660       270 006672       271 006704
+    272 006716       273 006730       274 006742       275 006754       276 006766       277 007000       278 007012
+    279 007024       280 007036       281 007050       282 007062       283 007074       284 007106       285 007120
+    286 007132       287 007144       288 007156       289 007170       290 007202       291 007214       292 007226
+    293 007240       294 007252       295 007264       296 007276       297 007310       298 007322       299 007334
+    300 007346       301 007360       302 007372       303 007404       304 007416       305 007430       306 007442
+    307 007454       308 007466       309 007500       310 007512       311 007524       312 007536       313 007550
+    314 007562       315 007574       316 007606       317 007620       318 007632       319 007644       320 007656
+    321 007670       322 007702       323 007714       324 007726       325 007740       326 007752       327 007764
+    328 007776       329 010010       330 010022       331 010034       332 010046       333 010060       334 010072
+    335 010104       336 010116       337 010130       338 010142       339 010154       340 010166       341 010200
+    342 010212       343 010224       344 010236       345 010250       346 010262       347 010274       348 010306
+    349 010320       350 010332       351 010344       352 010356       353 010370       354 010402       355 010414
+    356 010426       357 010440       358 010452       359 010464       360 010476       361 010510       362 010522
+    363 010534       364 010547       365 010562       366 010575       367 010610       368 010623       369 010635
+    370 010647       371 010661       372 010674       373 010706       374 010720       375 010732       376 010745
+    377 010760       378 010773       379 011006       380 011021       381 011033       382 011045       383 011060
+    384 011072       385 011104       386 011116       387 011130       388 011142       389 011154       390 011166
+    391 011200       392 011212       393 011224       394 011236       395 011250       396 011262       397 011274
+    398 011306       399 011320       400 011332       401 011344       402 011356       403 011370       404 011402
+    405 011414       406 011426       407 011441       408 011454       409 011466       410 011500       411 011512
+    412 011524       413 011537       414 011551       415 011563       416 011575       417 011607       418 011621
+    419 011633       420 011645       421 011657       422 011671       423 011703       424 011715       425 011727
+    426 011741       427 011753       428 011765       429 011777       430 012011       431 012023       432 012035
+    433 012047       434 012061       435 012073       436 012105       437 012117       438 012131       439 012143
+    440 012155       441 012167       442 012201       443 012213       444 012225       445 012237       446 012251
+    447 012263       448 012275       449 012307       450 012321       451 012333       452 012345       453 012357
+    454 012371       455 012403       456 012415       457 012427       458 012441       459 012453       460 012465
+    461 012477       462 012511       463 012523       464 012535       465 012547       466 012561       467 012573
+    468 012605       469 012617       470 012631       471 012643       472 012655       473 012667       474 012701
+    475 012713       476 012725       477 012737       478 012751       479 012763       480 012775       481 013007
+    482 013021       483 013033       484 013045       485 013057       486 013071       487 013103       488 013115
+    489 013127       490 013141       491 013153       492 013165       493 013177       494 013211       495 013223
+    496 013235       497 013247       498 013261       499 013273       500 013305       501 013317       502 013331
+    503 013343       504 013355       505 013367       506 013401       507 013413       508 013425       509 013437
+    510 013451       511 013463       512 013475       513 013507       514 013521       515 013533       516 013545
+    517 013557       518 013571       519 013603       520 013615       521 013627       522 013641       523 013653
+    524 013665       525 013677       526 013711       527 013723       528 013735       529 013747       530 013761
+    531 013773       532 014005       533 014017       534 014031       535 014043       536 014055       537 014067
+    538 014101       539 014113       540 014125       541 014137       542 014151       543 014163       544 014175
+    545 014207       546 014221       547 014233       548 014245       549 014257       550 014271       551 014303
+    552 014315       553 014327       554 014341       555 014354       556 014367       557 014401       558 014413
+    559 014425       560 014437       561 014451       562 014463       563 014475       564 014507       565 014521
+    566 014533       567 014545       568 014557       569 014571       570 014603       571 014615       572 014627
+    573 014641       574 014653       575 014665       576 014677       577 014711       578 014723       579 014735
+    580 014747       581 014761       582 014773       583 015005       584 015017       585 015031       587 015043
+    588 015045       589 015047       590 015052       591 015055       592 015056       593 015060       594 015061
+    596 015063       597 015076       599 015121       601 015122       609 015124       610 015130       611 015134
+    612 015141       613 015146       614 015150
+
+
+Object Segment >spec>install>1111>op_mnemonic_
+Created on 11/11/89  1029.1 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    4000    4036    4046    4046
+Length    4420    4000      36      10     336       0
+
+
+4 Definitions:
+
+
+segname:    op_mnemonic_
+
+text|0          op_mnemonic
+text|0          op_mnemonic_
+symb|0          symbol_table
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,409 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>aim_util_.alm                                                                                                                                        
+ASSEMBLED ON:	11/11/89  0948.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " aim_util_ -- utilities that construct and deconstruct access classes
+                                    10  "              and authorizations.
+                                    11  "
+                                    12  "  BIM 84-04-26
+                                    13  "  Modified 1985-05-02, BIM: don't assume double-word alignment.
+                                    14  "
+    000000                          15  	name	aim_util_
+                        000000      16  	entry	get_access_class
+                        000010      17  	entry	get_level
+                        000016      18  	entry	get_categories
+                        000021      19  	entry	get_privileges
+                        000027      20  	entry	make_access_class
+                                    21  
+                                    22  	include	aim_template
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE aim_template.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 03/26/84  1515.2 est Mon by convert_include_file,
+                                   1-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   1-8  
+                                   1-9  	"Made from >ldd>include_1>aim_template.incl.pl1,
+                                  1-10  	"   modified 09/07/83  1810.6 est Wed
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure aim_template
+                                  1-14  "
+                        000002    1-15  	equ	aim_template_size,2
+                                  1-16  
+                                  1-17  
+                        000000    1-18  	equ	aim_template.categories,0
+                                  1-19  
+                        000001    1-20  	equ	aim_template.level,1	" UPPER
+                        000001    1-21  	equ	aim_template.privileges,1	" LOWER
+                        000001    1-22  	equ	aim_template.ipc_word,1
+                        400000    1-23  	bool	aim_template.ipc,400000	" DL
+                        000001    1-24  	equ	aim_template.dir_word,1
+                        200000    1-25  	bool	aim_template.dir,200000	" DL
+                        000001    1-26  	equ	aim_template.seg_word,1
+                        100000    1-27  	bool	aim_template.seg,100000	" DL
+                        000001    1-28  	equ	aim_template.soos_word,1
+                        040000    1-29  	bool	aim_template.soos,040000	" DL
+                        000001    1-30  	equ	aim_template.ring1_word,1
+                        020000    1-31  	bool	aim_template.ring1,020000	" DL
+                        000001    1-32  	equ	aim_template.rcp_word,1
+                        010000    1-33  	bool	aim_template.rcp,010000	" DL
+                        000001    1-34  	equ	aim_template.comm_word,1
+                        004000    1-35  	bool	aim_template.comm,004000	" DL
+                                  1-36  
+                                  1-37       "END INCLUDE FILE aim_template.incl.alm
+                                    23  
+                                    24  " 
+                                    25  
+                                    26  "	CONVENTIONS
+                                    27  "
+                                    28  "	ap	pr0 (argument list)
+                                    29  
+                                    30  
+                                    31  " GET_ACCESS_CLASS
+                                    32  
+                        000002      33  	set	auth,2	" arg offset
+                        000004      34  	set	acc,4	" arg offset
+                                    35  
+    000000                          36  get_access_class:
+    000000  aa  0 00002 3515 20     37  	epp1	ap|auth,*
+    000001  aa  1 00000 2351 00     38  	lda	pr1|0		" get the access class
+    000002  aa  1 00001 2361 00     39  	ldq	pr1|1
+    000003  0a   000040 3770 00     40           	anaq	access_class_mask   " remove privileges
+    000004  aa  0 00004 3515 20     41  	epp1	ap|acc,*
+    000005  aa  1 00000 7551 00     42  	sta	pr1|0
+    000006  aa  1 00001 7561 00     43  	stq	pr1|1
+    000007  aa  7 00044 7101 20     44  	short_return
+                                    45  
+                                    46  " GET_LEVEL
+                                    47  
+                        000002      48  	set	acc,2		" arguments are different
+                        000004      49  	set	level,4
+                                    50  
+    000010                          51  get_level:
+    000010  aa  0 00002 3515 20     52  	epp1	ap|acc,*
+    000011  aa  1 00000 2351 00     53  	lda	pr1|0		" get the access class
+    000012  aa  1 00001 2361 00     54  	ldq	pr1|1
+    000013  aa   000022 7720 00     55  	qrl	18		" level DU in Q
+    000014  aa  0 00004 7561 20     56  	stq	ap|level,*
+    000015  aa  7 00044 7101 20     57  	short_return
+                                    58  
+                                    59  " GET_CATEGORIES
+                                    60  
+                        000002      61  	set	acc,2	" access class
+                        000004      62  	set	cats,4 	" categories
+                                    63  
+    000016                          64  get_categories:
+    000016  aa  0 00002 2351 20     65  	lda	ap|acc,*	" First word is categories
+    000017  aa  0 00004 7551 20     66  	sta	ap|cats,* " simple, no?
+    000020  aa  7 00044 7101 20     67  	short_return
+                                    68  
+                                    69  " GET_PRIVILEGES
+                                    70  
+                        000002      71  	set	auth,2
+                        000004      72  	set	privs,4
+                                    73  
+    000021                          74  get_privileges:
+    000021  aa  0 00002 3515 20     75  	epp1	ap|auth,*
+    000022  aa  1 00001 2361 00     76  	ldq	pr1|1		" just this word
+    000023  aa   777777 3760 07     77  	anq	=o777777,dl	" privs are low half of second word
+    000024  aa   000022 7360 00     78  	qls	18                  " return bit (36) aligned
+    000025  aa  0 00004 7561 20     79  	stq	ap|privs,*
+    000026  aa  7 00044 7101 20     80  	short_return
+                                    81  
+                                    82  " MAKE_ACCESS_CLASS
+                                    83  
+                        000002      84  	set	level,2
+                        000004      85  	set	cats,4
+                        000006      86  	set	acc,6
+                                    87  
+    000027                          88  make_access_class:
+    000027  aa  0 00004 2351 20     89  	lda	ap|cats,*
+    000030  aa  0 00002 2361 20     90  	ldq	ap|level,*
+    000031  aa   000022 7360 00     91  	qls	18		" DU
+    000032  0a   000040 3770 00     92  	anaq	access_class_mask	" in case of junk
+    000033  aa  0 00006 3515 20     93  	epp1	ap|acc,*
+    000034  aa  1 00000 7551 00     94  	sta	pr1|0
+    000035  aa  1 00001 7561 00     95  	stq	pr1|1
+    000036  aa  7 00044 7101 20     96  	short_return
+                                    97  
+    000037  aa   000000 0110 03     98  	even
+    000040                          99  access_class_mask:
+    000040  aa   777777 000000     100  	vfd	18/-1,18/0,15/0,3/7,18/0
+    000041  aa   000007 000000 
+                                   101  	end
+ENTRY SEQUENCES
+     
+    000042  5a   000045 0000 00
+    000043  aa  7 00046 2721 20
+    000044  0a   000000 7100 00
+    000045  5a   000037 0000 00
+    000046  aa  7 00046 2721 20
+    000047  0a   000010 7100 00
+    000050  5a   000030 0000 00
+    000051  aa  7 00046 2721 20
+    000052  0a   000016 7100 00
+    000053  5a   000021 0000 00
+    000054  aa  7 00046 2721 20
+    000055  0a   000021 7100 00
+    000056  5a   000011 0000 00
+    000057  aa  7 00046 2721 20
+    000060  0a   000027 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000062  5a   000003 000000 
+    000063  5a   000064 600000 
+    000064  aa   000000 000000 
+    000065  55   000011 000002 
+    000066  5a   000002 400003 
+    000067  55   000006 000011 
+    000070  aa  011 141 151 155
+    000071  aa  137 165 164 151
+    000072  aa  154 137 000 000
+    000073  55   000021 000003 
+    000074  0a   000057 500000 
+    000075  55   000014 000003 
+    000076  aa  021 155 141 153         make_access_class
+    000077  aa  145 137 141 143
+    000100  aa  143 145 163 163
+    000101  aa  137 143 154 141
+    000102  aa  163 163 000 000
+    000103  55   000030 000011 
+    000104  0a   000054 500000 
+    000105  55   000024 000003 
+    000106  aa  016 147 145 164         get_privileges
+    000107  aa  137 160 162 151
+    000110  aa  166 151 154 145
+    000111  aa  147 145 163 000
+    000112  55   000037 000021 
+    000113  0a   000051 500000 
+    000114  55   000033 000003 
+    000115  aa  016 147 145 164         get_categories
+    000116  aa  137 143 141 164
+    000117  aa  145 147 157 162
+    000120  aa  151 145 163 000
+    000121  55   000045 000030 
+    000122  0a   000046 500000 
+    000123  55   000042 000003 
+    000124  aa  011 147 145 164         get_level
+    000125  aa  137 154 145 166
+    000126  aa  145 154 000 000
+    000127  55   000055 000037 
+    000130  0a   000043 500000 
+    000131  55   000050 000003 
+    000132  aa  020 147 145 164         get_access_class
+    000133  aa  137 141 143 143
+    000134  aa  145 163 163 137
+    000135  aa  143 154 141 163
+    000136  aa  163 000 000 000
+    000137  55   000002 000045 
+    000140  6a   000000 400002 
+    000141  55   000060 000003 
+    000142  aa  014 163 171 155         symbol_table
+    000143  aa  142 157 154 137
+    000144  aa  164 141 142 154
+    000145  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000146  aa   000000 000015 
+    000147  aa   000000 000000 
+    000150  aa   000000 000000 
+    000151  aa   000000 000000 
+    000152  aa   000000 000000 
+    000153  aa   000000 000000 
+    000154  5a   000037 000000 
+    000155  5a   000021 000000 
+    000156  5a   000030 000000 
+    000157  5a   000011 000000 
+    000160  5a   000045 000000 
+    000161  5a   000055 000000 
+    000162  aa   000000 000000 
+    000163  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000164  aa   000001 000000 
+    000165  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000062 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   255063 332310 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000153 
+    000020  aa   000000 000117 
+    000021  aa   000131 000126 
+    000022  aa   000144 000117 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000040 
+    000067  aa   175453 017675 
+    000070  aa   000000 117547 
+    000071  aa   176511 400000 
+    000072  aa   000106 000042 
+    000073  aa   130037 657474 
+    000074  aa   000000 113006 
+    000075  aa   135163 000000 
+    000076  aa   076163 160145          >spec>install>1110>aim_util_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061060 076141 
+    000103  aa   151155 137165 
+    000104  aa   164151 154137 
+    000105  aa   056141 154155 
+    000106  aa   076154 144144          >ldd>include>aim_template.incl.alm
+    000107  aa   076151 156143 
+    000110  aa   154165 144145 
+    000111  aa   076141 151155 
+    000112  aa   137164 145155 
+    000113  aa   160154 141164 
+    000114  aa   145056 151156 
+    000115  aa   143154 056141 
+    000116  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           6    acc                      aim_util_:     34,   41,   48,   52,   61,   65,   86,   93.
+          40    access_class_mask        aim_util_:     40,   92,   99.
+           0    aim_template.categories  aim_template:        18.
+        4000    aim_template.comm        aim_template:        35.
+           1    aim_template.comm_word   aim_template:        34.
+      200000    aim_template.dir         aim_template:        25.
+           1    aim_template.dir_word    aim_template:        24.
+      400000    aim_template.ipc         aim_template:        23.
+           1    aim_template.ipc_word    aim_template:        22.
+           1    aim_template.level       aim_template:        20.
+           1    aim_template.privileges  aim_template:        21.
+       10000    aim_template.rcp         aim_template:        33.
+           1    aim_template.rcp_word    aim_template:        32.
+       20000    aim_template.ring1       aim_template:        31.
+           1    aim_template.ring1_word  aim_template:        30.
+      100000    aim_template.seg         aim_template:        27.
+           1    aim_template.seg_word    aim_template:        26.
+       40000    aim_template.soos        aim_template:        29.
+           1    aim_template.soos_word   aim_template:        28.
+           2    aim_template_size        aim_template:        15.
+           2    auth                     aim_util_:     33,   37,   71,   75.
+           4    cats                     aim_util_:     62,   66,   85,   89.
+           0    get_access_class         aim_util_:     16,   36.
+          16    get_categories           aim_util_:     18,   64.
+          10    get_level                aim_util_:     17,   51.
+          21    get_privileges           aim_util_:     19,   74.
+           2    level                    aim_util_:     49,   56,   84,   90.
+          27    make_access_class        aim_util_:     20,   88.
+           4    privs                    aim_util_:     72,   79.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

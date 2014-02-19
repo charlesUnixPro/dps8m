@@ -1,0 +1,914 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>double_arc_tangent_.alm                                                                                                                              
+ASSEMBLED ON:	11/11/89  0945.9 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1985 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+                                     6  
+                                     7  " HISTORY COMMENTS:
+                                     8  "  1) change(86-07-14,BWong), approve(86-07-14,MCR7413),
+                                     9  "     audit(86-07-16,Ginter), install(86-07-28,MR12.0-1104):
+                                    10  "     Make code more efficient.
+                                    11  "                                                      END HISTORY COMMENTS
+                                    12  
+                                    13  
+    000000                          14  name	double_arc_tangent_
+                                    15  " Modification history:
+                                    16  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                    17  "	based on the GCOS routine '7nan'.
+                                    18  "
+                                    19  " Function:  Approximate to double precision the principal value, in radians
+                                    20  "	or degrees, of the arctangent of (x, y) or z where z=x/y for any
+                                    21  "         valid input argument(s).  For atan(z) the answer is in quadrant 1
+                                    22  "	or 4 (-pi/2<=atan<=pi/2, -90<=atan<=90).  For atan(x,y) the answer
+                                    23  "	will be in the correct quadrant (-pi<=atan2<=pi, -180<=atan2<=180).
+                                    24  "
+                                    25  "	Modified: March 18, 1986 by B. Wong - Make code more efficient by
+                                    26  "		replacing 
+                                    27  "
+                                    28  "		  range_0_to_1:	fcmg	tan_pi_by_32,x2
+                                    29  "				tmi	range_0
+                                    30  "		  range_1:	tra	calculate_for_range_1_to_7
+                                    31  "		  range_0:
+                                    32  "
+                                    33  "		with
+                                    34  "
+                                    35  "		  range_0_to_1:	fcmg	tan_pi_by_32,x2
+                                    36  "		  range_1:	tpl	calculate_for_range_1_to_7
+                                    37  "		  range_0:
+                                    38  "
+                                    39  " Entry:	through the appropriately named entry point with:
+                                    40  " 	EAQ = the first argument (z or x).
+                                    41  "	PR1 = the address of the second argument (y).
+                                    42  "	PR2 = the address of a 14 word, even-word aligned scratch area.
+                                    43  "	PR3 = the return address.
+                                    44  "
+                                    45  " Exit:	EAQ = the desired arctangent in radians or degrees.
+                                    46  "
+                                    47  " Uses:	X0, X1, X2, X3, X4
+                                    48  "	X0 = saves a return address from arctan
+                                    49  "	X1 = saves a return address from arctan2
+                                    50  "	X2 = indicates BFP or HFP mode - all the floating point math
+                                    51  "	     routines use this register for the same purpose.
+                                    52  "	X3 = saves a return address from part_arctan
+                                    53  "	X4 = index to tables
+                                    54  
+                                    55  
+    000000                          56  	segref	math_constants_,half_pi,hfp_one_radian,one_radian,pi
+                                    57  
+                        000000      58  	equ	BFP,0
+                        000002      59  	equ	HFP,2
+                        000000      60  	equ	z,0
+                        000002      61  	equ	zz,2
+                        000004      62  	equ	arctan_z,4
+                        000006      63  	equ	x,6
+                        000010      64  	equ	y,8
+                        000012      65  	equ	indicators,10
+                        000014      66  	equ	abs_z_minus_u,12
+                                    67  
+                        000000      68  	segdef	double_arc_tan_degrees_,double_arc_tangent_degrees_
+                        000005      69  	segdef	double_arc_tan_degrees_2_,double_arc_tangent_degrees_2_
+                        000012      70  	segdef	double_arc_tan_radians_,double_arc_tangent_radians_
+                        000016      71  	segdef	double_arc_tan_radians_2_,double_arc_tangent_radians_2_
+                        000022      72  	segdef	hfp_double_arc_tan_degrees_
+                        000027      73  	segdef	hfp_double_arc_tan_degrees_2_
+                        000034      74  	segdef	hfp_double_arc_tan_radians_
+                        000040      75  	segdef	hfp_double_arc_tan_radians_2_
+                                    76  
+    000000                          77  double_arc_tangent_degrees_:
+    000000                          78  double_arc_tan_degrees_:
+    000000  aa   000000 6220 00     79  	eax2      BFP		" no offset for BFP constants
+    000001  0a   000044 7000 00     80  	tsx0      arctan		" EAQ := arctan (x)
+    000002  4a  4 00010 4631 20     81  	dfmp      one_radian	" convert radians to degrees
+    000003  aa   000000 4730 00     82  	dfrd	0
+    000004  aa  3 00000 7101 00     83  	tra       pr3|0		" return
+                                    84  
+    000005                          85  double_arc_tangent_degrees_2_:
+    000005                          86  double_arc_tan_degrees_2_:
+    000005  aa   000000 6220 00     87  	eax2      BFP		" no offset for BFP constants
+    000006  0a   000167 7010 00     88  	tsx1      arctan2		" EAQ := arctan2 (x,y)
+    000007  4a  4 00010 4631 20     89  	dfmp      one_radian	" convert radians to degrees
+    000010  aa   000000 4730 00     90  	dfrd	0
+    000011  aa  3 00000 7101 00     91  	tra       pr3|0		" return
+                                    92  
+    000012                          93  double_arc_tangent_radians_:
+    000012                          94  double_arc_tan_radians_:
+    000012  aa   000000 6220 00     95  	eax2      BFP		" no offset for BFP constants
+    000013  0a   000044 7000 00     96  	tsx0      arctan		" EAQ := arctan (x)
+    000014  aa   000000 4730 00     97  	dfrd	0
+    000015  aa  3 00000 7101 00     98  	tra       pr3|0		" return
+                                    99  
+    000016                         100  double_arc_tangent_radians_2_:
+    000016                         101  double_arc_tan_radians_2_:
+    000016  aa   000000 6220 00    102  	eax2      BFP		" no offset for BFP constants
+    000017  0a   000167 7010 00    103  	tsx1      arctan2		" EAQ := arctan2 (x,y)
+    000020  aa   000000 4730 00    104  	dfrd	0
+    000021  aa  3 00000 7101 00    105  	tra       pr3|0		" return
+                                   106  
+    000022                         107  hfp_double_arc_tan_degrees_:
+    000022  aa   000002 6220 00    108  	eax2      HFP		" 2 word offset for HFP constants
+    000023  0a   000044 7000 00    109  	tsx0      arctan		" EAQ := arctan (x)
+    000024  4a  4 00012 4631 20    110  	dfmp      hfp_one_radian	" convert radians to degrees
+    000025  aa   000000 4730 00    111  	dfrd	0
+    000026  aa  3 00000 7101 00    112  	tra       pr3|0		" return
+                                   113  
+    000027                         114  hfp_double_arc_tan_degrees_2_:
+    000027  aa   000002 6220 00    115  	eax2      HFP		" 2 word offset for HFP constants
+    000030  0a   000167 7010 00    116  	tsx1      arctan2		" EAQ := arctan2 (x,y)
+    000031  4a  4 00012 4631 20    117  	dfmp      hfp_one_radian	" convert radians to degrees
+    000032  aa   000000 4730 00    118  	dfrd	0
+    000033  aa  3 00000 7101 00    119  	tra       pr3|0		" return
+                                   120  
+    000034                         121  hfp_double_arc_tan_radians_:
+    000034  aa   000002 6220 00    122  	eax2      HFP		" 2 word offset for HFP constants
+    000035  0a   000044 7000 00    123  	tsx0      arctan		" EAQ := arctan (x)
+    000036  aa   000000 4730 00    124  	dfrd	0
+    000037  aa  3 00000 7101 00    125  	tra       pr3|0		" return
+                                   126  
+    000040                         127  hfp_double_arc_tan_radians_2_:
+    000040  aa   000002 6220 00    128  	eax2      HFP		" 2 word offset for HFP constants
+    000041  0a   000167 7010 00    129  	tsx1      arctan2		" EAQ := arctan2 (x,y)
+    000042  aa   000000 4730 00    130  	dfrd	0
+    000043  aa  3 00000 7101 00    131  	tra       pr3|0		" return
+                                   132  
+    000044                         133  arctan:
+    000044  aa   400000 4750 03    134  	fad	=0.0,du		" normalize input and set indicators
+    000045  aa  2 00004 4571 00    135  	dfst	pr2|arctan_z	" store argument z
+                                   136  
+                                   137  " Find which of the 9 ranges abs(z) lies in using a binary search.
+                                   138  
+                                   139  " Set X4 as the range indicator.  X4 is set to X4+4*(range-1) since double
+                                   140  " precision tables with decimal BFP and octal HFP values are used.
+                                   141  
+    000046  aa   000000 6240 12    142  	eax4	0,x2		" initialize the table index with BFP or HFP offset
+                                   143  
+    000047  0a   000270 4250 12    144  	fcmg	tan_7_pi_by_32,x2
+    000050  0a   000104 6040 00    145  	tmi	range_0_to_3
+                                   146  
+    000051  0a   000304 4250 12    147  	fcmg	tan_13_pi_by_32,x2
+    000052  0a   000072 6040 00    148  	tmi	range_4_to_6
+                                   149  
+    000053  0a   000310 4250 12    150  	fcmg	tan_15_pi_by_32,x2
+    000054  0a   000070 6040 00    151  	tmi	range_7
+                                   152  
+    000055                         153  range_8:
+                                   154  				" range = 8, abs (z) >= tan_15_pi_by_32
+    000055  0a   000240 4270 12    155  	dfcmg	eps1,x2
+    000056  aa   000003 6040 04    156  	tmi	3,ic		" if abs (z) < 1e71b:
+    000057  4a  4 00014 4331 20    157  	  dfld	half_pi,x2	"   EAQ := radians = half_pi
+    000060  0a   000136 7100 00    158  	  tra	set_to_quadrant_1_or_4
+                                   159  				" else:
+    000061  aa   400000 4750 03    160  	fad	=0.0,du
+    000062  aa   000002 6050 04    161  	tpl	2,ic
+    000063  aa   000000 5130 00    162  	  fneg	0		"   EAQ := abs (z)
+    000064  0a   000444 5270 00    163  	dfdi	=-1.0d0		"   EAQ := -1/abs_z
+    000065  0a   000142 7030 00    164  	tsx3	part_arctan	"   calculate part_arctan (-1/abs_z)
+                                   165  				"     which is equivalent to - (part_arctan (1/abs_z))
+    000066  4a  4 00014 4771 20    166  	dfad	half_pi,x2	"   EAQ := radians = half_pi - part_arctan (1/abs_z)
+    000067  0a   000136 7100 00    167  	tra	set_to_quadrant_1_or_4
+                                   168  
+    000070                         169  range_7:
+    000070  aa   000030 0640 03    170  	adx4	=24,du		" range = 7, tan_13_pi_by_32 <= abs (z) < tan_15_pi_by_32
+    000071  0a   000123 7100 00    171  	tra	calculate_for_range_1_to_7
+                                   172  
+    000072                         173  range_4_to_6:
+    000072  0a   000300 4250 12    174  	fcmg	tan_11_pi_by_32,x2
+    000073  0a   000076 6040 00    175  	tmi	range_4_to_5
+                                   176  
+    000074                         177  range_6:
+    000074  aa   000024 0640 03    178  	adx4	=20,du		" range = 6, tan_11_pi_by_32 <= abs (z) < tan_13_pi_by_32
+    000075  0a   000123 7100 00    179  	tra	calculate_for_range_1_to_7
+                                   180  
+    000076                         181  range_4_to_5:
+    000076  0a   000274 4250 12    182  	fcmg	tan_9_pi_by_32,x2
+    000077  0a   000102 6040 00    183  	tmi	range_4
+                                   184  
+    000100                         185  range_5:
+    000100  aa   000020 0640 03    186  	adx4	=16,du		" range = 5, tan_9_pi_by_32 <= abs (z) < tan_11_pi_by_32
+    000101  0a   000123 7100 00    187  	tra	calculate_for_range_1_to_7
+                                   188  
+    000102                         189  range_4:
+    000102  aa   000014 0640 03    190  	adx4	=12,du		" range = 4, tan_7_pi_by_32 <= abs (z) < tan_9_pi_by_32
+    000103  0a   000123 7100 00    191  	tra	calculate_for_range_1_to_7
+                                   192  
+    000104                         193  range_0_to_3:
+    000104  0a   000260 4250 12    194  	fcmg	tan_3_pi_by_32,x2
+    000105  0a   000114 6040 00    195  	tmi	range_0_to_1
+                                   196  
+    000106  0a   000264 4250 12    197  	fcmg	tan_5_pi_by_32,x2
+    000107  0a   000112 6040 00    198  	tmi	range_2
+                                   199  
+    000110                         200  range_3:
+    000110  aa   000010 0640 03    201  	adx4	=8,du		" range = 3, tan_5_pi_by_32 <= abs (z) < tan_7_pi_by_32
+    000111  0a   000123 7100 00    202  	tra	calculate_for_range_1_to_7
+                                   203  
+    000112                         204  range_2:
+    000112  aa   000004 0640 03    205  	adx4	=4,du		" range = 2, tan_3_pi_by_32 <= abs (z) < tan_5_pi_by_32
+    000113  0a   000123 7100 00    206  	tra	calculate_for_range_1_to_7
+                                   207  
+    000114                         208  range_0_to_1:
+    000114  0a   000254 4250 12    209  	fcmg	tan_pi_by_32,x2
+                                   210  
+    000115                         211  range_1:
+                                   212  				" range = 1, tan_pi_by_32 <= abs (z) < tan_3_pi_by_32
+    000115  0a   000123 6050 00    213  	tpl	calculate_for_range_1_to_7
+                                   214  
+    000116                         215  range_0:
+                                   216  				" range = 0, abs (z) < tan_pi_by_32
+    000116  aa   400000 4750 03    217  	fad	=0.0,du
+    000117  aa   000002 6050 04    218  	tpl	2,ic
+    000120  aa   000000 5130 00    219  	  fneg	0		" EAQ := abs (z)
+    000121  0a   000142 7030 00    220  	tsx3	part_arctan	" EAQ := part_arctan (abs_z)
+    000122  0a   000136 7100 00    221  	tra	set_to_quadrant_1_or_4
+                                   222  
+    000123                         223  calculate_for_range_1_to_7:
+    000123  aa   400000 4750 03    224  	fad	=0.0,du
+    000124  aa   000002 6050 04    225  	tpl	2,ic
+    000125  aa   000000 5130 00    226  	  fneg	0		" EAQ := abs (z)
+                                   227  
+    000126  0a   000314 5770 14    228  	dfsb	u,x4		" EAQ := abs_z - u(range)
+    000127  aa  2 00014 4571 00    229  	dfst	pr2|abs_z_minus_u
+    000130  0a   000314 4770 14    230  	dfad	u,x4		" EAQ := abs_z
+    000131  0a   000314 4630 14    231  	dfmp	u,x4		" EAQ := abs_z * u(range)
+    000132  0a   000404 4750 12    232  	fad	one,x2		" EAQ := 1 + abs_z*u(range)
+    000133  aa  2 00014 5271 00    233  	dfdi	pr2|abs_z_minus_u	" EAQ := t
+                                   234  
+    000134  0a   000142 7030 00    235  	tsx3	part_arctan	" EAQ := part_arctan (t)
+    000135  0a   000350 4770 14    236  	dfad	arctan_of_u,x4	" EAQ := radians = part_arctan (t) + arctan(u(range))
+                                   237  
+    000136                         238  set_to_quadrant_1_or_4:
+    000136  aa  2 00004 4301 00    239  	fszn	pr2|arctan_z	" set indicators
+    000137  aa   000000 6050 10    240  	tpl	0,x0		" if z >= 0 then return (radians)
+    000140  aa   000000 5130 00    241  	  fneg	0		" else return (-radians)
+    000141  aa   000000 7100 10    242  	  tra	0,x0
+                                   243  
+    000142                         244  part_arctan:
+                                   245  				" EAQ contains z arg
+    000142  0a   000244 4250 12    246  	fcmg	eps2,x2		" if abs (z) < 5.7031627e10
+    000143  aa   000000 6040 13    247  	tmi	0,x3		" then return (z)
+                                   248  
+    000144  aa  2 00000 4721 00    249  	dfstr	pr2|z
+    000145  aa  2 00000 4631 00    250  	dfmp	pr2|z		" calculate zz = z*z
+    000146  aa  2 00002 4721 00    251  	dfstr	pr2|zz
+    000147  0a   000440 4630 12    252  	dfmp	p7,x2		" calculate p(zz)
+    000150  0a   000434 4770 12    253  	dfad	p6,x2
+    000151  aa  2 00002 4631 00    254  	dfmp	pr2|zz
+    000152  0a   000430 4770 12    255  	dfad	p5,x2
+    000153  aa  2 00002 4631 00    256  	dfmp	pr2|zz
+    000154  0a   000424 4770 12    257  	dfad	p4,x2
+    000155  aa  2 00002 4631 00    258  	dfmp	pr2|zz
+    000156  0a   000420 4770 12    259  	dfad	p3,x2
+    000157  aa  2 00002 4631 00    260  	dfmp	pr2|zz
+    000160  0a   000414 4770 12    261  	dfad	p2,x2
+    000161  aa  2 00002 4631 00    262  	dfmp	pr2|zz
+    000162  0a   000410 4770 12    263  	dfad	p1,x2
+    000163  aa  2 00002 4631 00    264  	dfmp	pr2|zz
+    000164  0a   000404 4770 12    265  	dfad	one,x2
+    000165  aa  2 00000 4631 00    266  	dfmp	pr2|z		" calculate z*p(zz)
+    000166  aa   000000 7100 13    267  	tra	0,x3		" return
+                                   268  
+    000167                         269  arctan2:
+    000167  aa   400000 4750 03    270  	fad	=0.0,du		" normalize x
+    000170  aa  2 00006 4571 00    271  	dfst	pr2|x		" save normalized x for quadrant check
+    000171  aa  1 00000 4331 00    272  	dfld	pr1|0		" load y
+    000172  aa   400000 4750 03    273  	fad	=0.0,du		" normalize y
+    000173  aa  2 00010 4571 00    274  	dfst	pr2|y		" save normalized y for quadrant check
+    000174  0a   000204 6010 00    275  	tnz	y_not_zero
+    000175  aa  2 00006 4301 00    276  	fszn	pr2|x		" test if x = 0 also
+    000176  0a   000226 6000 00    277  	tze	arctan2_domain_err	" 0/0 is error
+    000177  4a  4 00014 4331 20    278  	dfld	half_pi,x2	" atan(x/0) =  + or - (half_pi)
+    000200  aa  2 00006 4301 00    279  	fszn	pr2|x
+    000201  aa   000000 6050 11    280  	tpl	0,x1		" if x >= 0 then return (radians)
+    000202  aa   000000 5130 00    281  	  fneg	0		" else return (-radians)
+    000203  aa   000000 7100 11    282  	  tra	0,x1
+                                   283  
+                                   284  
+    000204                         285  y_not_zero:
+    000204  aa  2 00012 7541 00    286  	sti	pr2|indicators	" save indicators
+    000205  0a   000250 6340 12    287  	ldi	no_overflow,x2
+    000206  aa  2 00006 5271 00    288  	dfdi	pr2|x		" EAQ := x/y
+    000207  0a   000235 6140 00    289  	teo	quotient_too_large	" if overflow, atan(x,y) = pi/2 or -pi/2
+    000210  0a   000232 6150 00    290  	teu	quotient_too_small	" if underflow, atan(x,y) = 0
+    000211  aa  2 00012 6341 00    291  	ldi	pr2|indicators	" restore previous indicators
+    000212  aa   400000 4750 03    292  	fad	=0.0,du		" set indicators
+    000213  aa   000002 6050 04    293  	tpl	2,ic		" calculate z = abs (x,y)
+    000214  aa   000000 5130 00    294  	  fneg	0
+    000215  0a   000044 7000 00    295  	tsx0	arctan		" EAQ := arctan(z)
+                                   296  
+    000216                         297  set_quadrant:
+    000216  aa  2 00010 4301 00    298  	fszn	pr2|y		" set the quadrant
+    000217  aa   000003 6050 04    299  	tpl	3,ic		" if y < 0 then
+    000220  aa   000000 5130 00    300  	  fneg	0		"   radians = pi-radians
+    000221  4a  4 00016 4771 20    301  	  dfad	pi,x2
+    000222  aa  2 00006 4301 00    302  	fszn	pr2|x
+    000223  aa   000000 6050 11    303  	tpl	0,x1		" if x >= 0 then return (radians)
+    000224  aa   000000 5130 00    304  	  fneg	0		" else return (-radians)
+    000225  aa   000000 7100 11    305  	  tra	0,x1
+                                   306  
+                                   307  				" error when x=0 and y=0
+    000226                         308  arctan2_domain_err:
+    000226  aa   000030 2360 07    309  	ldq	24,dl
+    000227  4a  4 00020 7001 20    310  	tsx0	<call_math_error_>|[call_math_error_]
+    000230  aa   400000 4310 03    311  	fld	=0.0,du
+    000231  aa  3 00000 7101 00    312  	tra	pr3|0		" return to caller
+                                   313  
+    000232                         314  quotient_too_small:
+    000232  aa  2 00012 6341 00    315  	ldi	pr2|indicators	" restore indicators
+    000233  aa   400000 4310 03    316  	fld	=0.0,du		" radians = 0.0
+    000234  0a   000216 7100 00    317  	tra	set_quadrant
+                                   318  
+    000235                         319  quotient_too_large:
+    000235  aa  2 00012 6341 00    320  	ldi	pr2|indicators	" restore indicators
+    000236  4a  4 00014 4331 20    321  	dfld	half_pi,x2	" radians = half_pi
+    000237  0a   000216 7100 00    322  	tra	set_quadrant
+                                   323  
+                                   324  	even
+                                   325  
+    000240  aa   220400 000000     326  eps1:	oct	220400000000,000000000000	" 2**71 = 2.36e21
+    000241  aa   000000 000000 
+    000242  aa   044400 000000     327  	oct	044400000000,000000000000
+    000243  aa   000000 000000 
+    000244  aa   704471 421604     328  eps2:	dec	5.7031627d-10
+    000245  aa   407031 702277 
+    000246  aa   762116 304341     329  	oct	762116304341,000000000000
+    000247  aa   000000 000000 
+    000250                         330  no_overflow:
+    000250  aa   000000 004000     331  	oct	000000004000,000000000000	" bit 25 is the overflow mask
+    000251  aa   000000 000000 
+    000252  aa   000000 004010     332  	oct	000000004010,000000000000	" bit 33 is the hex indicator
+    000253  aa   000000 000000 
+                                   333  
+                                   334  " This is the table of ranges.
+                                   335  
+    000254                         336  tan_pi_by_32:
+    000254  aa   772623 327342     337  	dec	.98491403d-1		" tan(pi/32)
+    000255  aa   551170 653205 
+    000256  aa   000062 332734     338  	oct	000062332734,000000000000
+    000257  aa   000000 000000 
+    000260                         339  tan_3_pi_by_32:
+    000260  aa   776466 501014     340  	dec	.30334668d00		" tan(3*pi/32)
+    000261  aa   276317 550567 
+    000262  aa   000233 240406     341  	oct	000233240406,000000000000
+    000263  aa   000000 000000 
+    000264                         342  tan_5_pi_by_32:
+    000264  aa   000421 526706     343  	dec	.53451114d00		" tan(5*pi/32)
+    000265  aa   632271 614050 
+    000266  aa   000421 526707     344  	oct	000421526707,000000000000
+    000267  aa   000000 000000 
+    000270                         345  tan_7_pi_by_32:
+    000270  aa   000644 140012     346  	dec	.82067879d00		" tan(7*pi/32)
+    000271  aa   471104 326120 
+    000272  aa   000644 140013     347  	oct	000644140013,000000000000
+    000273  aa   000000 000000 
+    000274                         348  tan_9_pi_by_32:
+    000274  aa   002467 737541     349  	dec	1.2185035d00		" tan(9*pi/32)
+    000275  aa   524374 032261 
+    000276  aa   002046 773754     350  	oct	002046773754,000000000000
+    000277  aa   000000 000000 
+    000300                         351  tan_11_pi_by_32:
+    000300  aa   002736 742355     352  	dec	1.8708684d00		" tan(11*pi/32)
+    000301  aa   010752 710074 
+    000302  aa   002073 674236     353  	oct	002073674236,000000000000
+    000303  aa   000000 000000 
+    000304                         354  tan_13_pi_by_32:
+    000304  aa   004645 753171     355  	dec	3.2965582d00		" tan(13*pi/32)
+    000305  aa   751342 441016 
+    000306  aa   002151 372636     356  	oct	002151372636,000000000000
+    000307  aa   000000 000000 
+    000310                         357  tan_15_pi_by_32:
+    000310  aa   010504 715423     358  	dec	10.153170d00		" tan(15*pi/32)
+    000311  aa   054564 714560 
+    000312  aa   002504 715423     359  	oct	002504715423,000000000000
+    000313  aa   000000 000000 
+                                   360  
+                                   361  " This table is values of u, where u(i)=...
+                                   362  
+    000314  aa   774627 276570     363  u:	dec	1.98912367379658006912d-01    " tan(pi/16)
+    000315  aa   052461 260037 
+    000316  aa   000145 657536     364  	oct	000145657536,012514254010
+    000317  aa   012514 254010 
+    000320  aa   776650 117146     365  	dec	4.14213562373095048802d-01	" tan(2*pi/16)
+    000321  aa   376357 144411 
+    000322  aa   000324 047463     366  	oct	000324047463,177167462204
+    000323  aa   177167 462204 
+    000324  aa   000526 067012     367  	dec	6.68178637919298919998d-01	" tan(3*pi/16)
+    000325  aa   533771 440573 
+    000326  aa   000526 067012     368  	oct	000526067012,533771440573
+    000327  aa   533771 440573 
+    000330  aa   002400 000000     369  	dec	1.0d0			" tan(4*pi/16)
+    000331  aa   000000 000000 
+    000332  aa   002040 000000     370  	oct	002040000000,000000000000
+    000333  aa   000000 000000 
+    000334  aa   002577 103070     371  	dec	1.49660576266548901760d00	" tan(5*pi/16)
+    000335  aa   455164 302502 
+    000336  aa   002057 710307     372  	oct	002057710307,045516430250
+    000337  aa   045516 430250 
+    000340  aa   004465 011714     373  	dec	2.41421356237309504880d00	" tan(6*pi/16)
+    000341  aa   637635 714441 
+    000342  aa   002115 202363     374  	oct	002115202363,147747363110
+    000343  aa   147747 363110 
+    000344  aa   006501 577670     375  	dec	5.02733949212584810451d00	" tan(7*pi/16)
+    000345  aa   441107 342042 
+    000346  aa   002240 677734     376  	oct	002240677734,220443561021
+    000347  aa   220443 561021 
+                                   377  
+                                   378  " This table is values of arctan(u(i)).
+                                   379  
+    000350                         380  arctan_of_u:
+    000350  aa   774622 077325     381  	dec	.19634954084936207740d00	" pi/16
+    000351  aa   042055 060432 
+    000352  aa   000144 417665     382  	oct	000144417665,210413214107
+    000353  aa   210413 214107 
+    000354  aa   776622 077325     383  	dec	.39269908169872415481d00	" 2*pi/16
+    000355  aa   042055 060432 
+    000356  aa   000311 037552     384  	oct	000311037552,421026430215
+    000357  aa   421026 430215 
+    000360  aa   000455 457437     385  	dec	.58904862254808623221d00	" 3*pi/16
+    000361  aa   631441 644324 
+    000362  aa   000455 457437     386  	oct	000455457437,631441644324
+    000363  aa   631441 644324 
+    000364  aa   000622 077325     387  	dec	.78539816339744830962d00	" 4*pi/16
+    000365  aa   042055 060432 
+    000366  aa   000622 077325     388  	oct	000622077325,042055060432
+    000367  aa   042055 060432 
+    000370  aa   000766 517212     389  	dec	.98174770424681038702d00	" 5*pi/16
+    000371  aa   252470 274541 
+    000372  aa   000766 517212     390  	oct	000766517212,252470274541
+    000373  aa   252470 274541 
+    000374  aa   002455 457437     391  	dec	1.17809724509617246442d00	" 6*pi/16
+    000375  aa   631441 644324 
+    000376  aa   002045 545743     392  	oct	002045545743,763144164432
+    000377  aa   763144 164432 
+    000400  aa   002537 667372     393  	dec	1.37444678594553454182d00	" 7*pi/16
+    000401  aa   335647 352367 
+    000402  aa   002053 766737     394  	oct	002053766737,233564735237
+    000403  aa   233564 735237 
+                                   395  
+                                   396  " These constants are used to approximate atan over the range [0,tan(pi/32)].
+                                   397  
+    000404  aa   002400 000000     398  one:      dec	1.0d0
+    000405  aa   000000 000000 
+    000406  aa   002040 000000     399  	oct	002040000000,000000000000
+    000407  aa   000000 000000 
+    000410  aa   777252 525252     400  p1:	dec	-.33333333333333333154d00
+    000411  aa   525252 525314 
+    000412  aa   001525 252525     401  	oct	001525252525,252525252546
+    000413  aa   252525 252546 
+    000414  aa   774631 463146     402  p2:	dec	+.19999999999999612046d00
+    000415  aa   314631 033515 
+    000416  aa   000146 314631     403  	oct	000146314631,463146206723
+    000417  aa   463146 206723 
+    000420  aa   775333 333333     404  p3:	dec	-.14285714285394000547d00
+    000421  aa   334236 141156 
+    000422  aa   001666 666666     405  	oct	001666666666,667047430233
+    000423  aa   667047 430233 
+    000424  aa   772707 070705     406  p4:	dec	+.1111111098121285609d00
+    000425  aa   556610 016267 
+    000426  aa   000070 707070     407  	oct	000070707070,555661001627
+    000427  aa   555661 001627 
+    000430  aa   773213 506326     408  p5:	dec	-.9090880462996335d-01
+    000431  aa   231043 372570 
+    000432  aa   001721 350632     409  	oct	001721350632,623104337257
+    000433  aa   623104 337257 
+    000434  aa   772472 735770     410  p6:	dec	+.76888077127566d-01
+    000435  aa   133430 606153 
+    000436  aa   000047 273577     411  	oct	000047273577,013343060615
+    000437  aa   013343 060615 
+    000440  aa   773370 056550     412  p7:	dec	-.64430854376d-01
+    000441  aa   715013 566527 
+    000442  aa   001737 005655     413  	oct	001737005655,071501356653
+    000443  aa   071501 356653 
+                                   414  
+                                   415  	end
+LITERALS
+     
+    000444  aa   001000 000000 
+    000445  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000446  5a   000003 000000 
+    000447  5a   000214 600000 
+    000450  aa   000000 000000 
+    000451  55   000013 000002 
+    000452  5a   000002 400003 
+    000453  55   000006 000013 
+    000454  aa  023 144 157 165
+    000455  aa  142 154 145 137
+    000456  aa  141 162 143 137
+    000457  aa  164 141 156 147
+    000460  aa  145 156 164 137
+    000461  55   000026 000003 
+    000462  0a   000040 400000 
+    000463  55   000016 000003 
+    000464  aa  035 150 146 160         hfp_double_arc_tan_radians_2_
+    000465  aa  137 144 157 165
+    000466  aa  142 154 145 137
+    000467  aa  141 162 143 137
+    000470  aa  164 141 156 137
+    000471  aa  162 141 144 151
+    000472  aa  141 156 163 137
+    000473  aa  062 137 000 000
+    000474  55   000040 000013 
+    000475  0a   000034 400000 
+    000476  55   000031 000003 
+    000477  aa  033 150 146 160         hfp_double_arc_tan_radians_
+    000500  aa  137 144 157 165
+    000501  aa  142 154 145 137
+    000502  aa  141 162 143 137
+    000503  aa  164 141 156 137
+    000504  aa  162 141 144 151
+    000505  aa  141 156 163 137
+    000506  55   000053 000026 
+    000507  0a   000027 400000 
+    000510  55   000043 000003 
+    000511  aa  035 150 146 160         hfp_double_arc_tan_degrees_2_
+    000512  aa  137 144 157 165
+    000513  aa  142 154 145 137
+    000514  aa  141 162 143 137
+    000515  aa  164 141 156 137
+    000516  aa  144 145 147 162
+    000517  aa  145 145 163 137
+    000520  aa  062 137 000 000
+    000521  55   000065 000040 
+    000522  0a   000022 400000 
+    000523  55   000056 000003 
+    000524  aa  033 150 146 160         hfp_double_arc_tan_degrees_
+    000525  aa  137 144 157 165
+    000526  aa  142 154 145 137
+    000527  aa  141 162 143 137
+    000530  aa  164 141 156 137
+    000531  aa  144 145 147 162
+    000532  aa  145 145 163 137
+    000533  55   000100 000053 
+    000534  0a   000016 400000 
+    000535  55   000070 000003 
+    000536  aa  035 144 157 165         double_arc_tangent_radians_2_
+    000537  aa  142 154 145 137
+    000540  aa  141 162 143 137
+    000541  aa  164 141 156 147
+    000542  aa  145 156 164 137
+    000543  aa  162 141 144 151
+    000544  aa  141 156 163 137
+    000545  aa  062 137 000 000
+    000546  55   000112 000065 
+    000547  0a   000016 400000 
+    000550  55   000103 000003 
+    000551  aa  031 144 157 165         double_arc_tan_radians_2_
+    000552  aa  142 154 145 137
+    000553  aa  141 162 143 137
+    000554  aa  164 141 156 137
+    000555  aa  162 141 144 151
+    000556  aa  141 156 163 137
+    000557  aa  062 137 000 000
+    000560  55   000124 000100 
+    000561  0a   000012 400000 
+    000562  55   000115 000003 
+    000563  aa  033 144 157 165         double_arc_tangent_radians_
+    000564  aa  142 154 145 137
+    000565  aa  141 162 143 137
+    000566  aa  164 141 156 147
+    000567  aa  145 156 164 137
+    000570  aa  162 141 144 151
+    000571  aa  141 156 163 137
+    000572  55   000135 000112 
+    000573  0a   000012 400000 
+    000574  55   000127 000003 
+    000575  aa  027 144 157 165         double_arc_tan_radians_
+    000576  aa  142 154 145 137
+    000577  aa  141 162 143 137
+    000600  aa  164 141 156 137
+    000601  aa  162 141 144 151
+    000602  aa  141 156 163 137
+    000603  55   000150 000124 
+    000604  0a   000005 400000 
+    000605  55   000140 000003 
+    000606  aa  035 144 157 165         double_arc_tangent_degrees_2_
+    000607  aa  142 154 145 137
+    000610  aa  141 162 143 137
+    000611  aa  164 141 156 147
+    000612  aa  145 156 164 137
+    000613  aa  144 145 147 162
+    000614  aa  145 145 163 137
+    000615  aa  062 137 000 000
+    000616  55   000162 000135 
+    000617  0a   000005 400000 
+    000620  55   000153 000003 
+    000621  aa  031 144 157 165         double_arc_tan_degrees_2_
+    000622  aa  142 154 145 137
+    000623  aa  141 162 143 137
+    000624  aa  164 141 156 137
+    000625  aa  144 145 147 162
+    000626  aa  145 145 163 137
+    000627  aa  062 137 000 000
+    000630  55   000174 000150 
+    000631  0a   000000 400000 
+    000632  55   000165 000003 
+    000633  aa  033 144 157 165         double_arc_tangent_degrees_
+    000634  aa  142 154 145 137
+    000635  aa  141 162 143 137
+    000636  aa  164 141 156 147
+    000637  aa  145 156 164 137
+    000640  aa  144 145 147 162
+    000641  aa  145 145 163 137
+    000642  55   000205 000162 
+    000643  0a   000000 400000 
+    000644  55   000177 000003 
+    000645  aa  027 144 157 165         double_arc_tan_degrees_
+    000646  aa  142 154 145 137
+    000647  aa  141 162 143 137
+    000650  aa  164 141 156 137
+    000651  aa  144 145 147 162
+    000652  aa  145 145 163 137
+    000653  55   000002 000174 
+    000654  6a   000000 400002 
+    000655  55   000210 000003 
+    000656  aa  014 163 171 155         symbol_table
+    000657  aa  142 157 154 137
+    000660  aa  164 141 142 154
+    000661  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000662  aa   000000 000033 
+    000663  5a   000100 000000 
+    000664  5a   000150 000000 
+    000665  5a   000124 000000 
+    000666  5a   000174 000000 
+    000667  5a   000013 000000 
+    000670  5a   000040 000000 
+    000671  5a   000026 000000 
+    000672  5a   000053 000000 
+    000673  aa   000000 000000 
+    000674  aa   000000 000000 
+    000675  5a   000205 000000 
+    000676  aa   000000 000000 
+    000677  aa   000000 000000 
+    000700  aa   000000 000000 
+    000701  aa   000000 000000 
+    000702  aa   000000 000000 
+    000703  aa   000000 000000 
+    000704  aa   000000 000000 
+    000705  aa   000000 000000 
+    000706  aa   000000 000000 
+    000707  aa   000000 000000 
+    000710  aa   000000 000000 
+    000711  aa   000000 000000 
+    000712  5a   000065 000000 
+    000713  5a   000135 000000 
+    000714  5a   000112 000000 
+    000715  5a   000162 000000 
+
+EXTERNAL NAMES
+
+    000716  aa  020 143 141 154         call_math_error_
+    000717  aa  154 137 155 141
+    000720  aa  164 150 137 145
+    000721  aa  162 162 157 162
+    000722  aa  137 000 000 000
+    000723  aa  002 160 151 000         pi
+    000724  aa  012 157 156 145         one_radian
+    000725  aa  137 162 141 144
+    000726  aa  151 141 156 000
+    000727  aa  016 150 146 160         hfp_one_radian
+    000730  aa  137 157 156 145
+    000731  aa  137 162 141 144
+    000732  aa  151 141 156 000
+    000733  aa  007 150 141 154         half_pi
+    000734  aa  146 137 160 151
+    000735  aa  017 155 141 164         math_constants_
+    000736  aa  150 137 143 157
+    000737  aa  156 163 164 141
+    000740  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000741  aa   000004 000000 
+    000742  55   000250 000250 
+    000743  aa   000004 000000 
+    000744  55   000267 000255 
+    000745  aa   000004 000000 
+    000746  55   000267 000256 
+    000747  aa   000004 000000 
+    000750  55   000267 000261 
+    000751  aa   000004 000000 
+    000752  55   000267 000265 
+    000753  aa   000001 000000 
+    000754  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000755  5a   000273 000000 
+    000756  5a   000275 000000 
+    000757  5a   000303 000000 
+    000760  5a   000301 000000 
+    000761  5a   000277 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000446 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000022 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         math_constants_|one_radian
+    000011  5a   000313 0000 00
+    000012  9a   777766 0000 46         math_constants_|hfp_one_radian
+    000013  5a   000312 0000 00
+    000014  9a   777764 0000 46         math_constants_|half_pi
+    000015  5a   000311 0000 12
+    000016  9a   777762 0000 46         math_constants_|pi
+    000017  5a   000310 0000 12
+    000020  9a   777760 0000 46         call_math_error_|call_math_error_
+    000021  5a   000307 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253716 425624 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000204 
+    000020  aa   000000 000105 
+    000021  aa   000145 000140 
+    000022  aa   000176 000105 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000052 
+    000067  aa   175453 020004 
+    000070  aa   000000 117547 
+    000071  aa   176722 400000 
+    000072  aa   076163 160145          >spec>install>1110>double_arc_tangent_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076144 
+    000077  aa   157165 142154 
+    000100  aa   145137 141162 
+    000101  aa   143137 164141 
+    000102  aa   156147 145156 
+    000103  aa   164137 056141 
+    000104  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          14    abs_z_minus_u            double_arc_tangent_:       66,  229,  233.
+          44    arctan                   double_arc_tangent_:       80,   96,  109,  123,  133,  295.
+         167    arctan2                  double_arc_tangent_:       88,  103,  116,  129,  269.
+         226    arctan2_domain_err       double_arc_tangent_:      277,  308.
+         350    arctan_of_u              double_arc_tangent_:      236,  380.
+           4    arctan_z                 double_arc_tangent_:       62,  135,  239.
+           0    BFP                      double_arc_tangent_:       58,   79,   87,   95,  102.
+         123    calculate_for_range_1_to_7     double_arc_tangent_:      171,  179,  187,  191,  202,  206,  213,  223.
+                call_math_error_         double_arc_tangent_:      310.
+           0    double_arc_tangent_degrees_    double_arc_tangent_:       68,   77.
+           5    double_arc_tangent_degrees_2_  double_arc_tangent_:       69,   85.
+          12    double_arc_tangent_radians_    double_arc_tangent_:       70,   93.
+          16    double_arc_tangent_radians_2_  double_arc_tangent_:       71,  100.
+           0    double_arc_tan_degrees_  double_arc_tangent_:       68,   78.
+           5    double_arc_tan_degrees_2_      double_arc_tangent_:       69,   86.
+          12    double_arc_tan_radians_  double_arc_tangent_:       70,   94.
+          16    double_arc_tan_radians_2_      double_arc_tangent_:       71,  101.
+         240    eps1                     double_arc_tangent_:      155,  326.
+         244    eps2                     double_arc_tangent_:      246,  328.
+                half_pi                  double_arc_tangent_:       56,  157,  166,  278,  321.
+           2    HFP                      double_arc_tangent_:       59,  108,  115,  122,  128.
+          22    hfp_double_arc_tan_degrees_    double_arc_tangent_:       72,  107.
+          27    hfp_double_arc_tan_degrees_2_  double_arc_tangent_:       73,  114.
+          34    hfp_double_arc_tan_radians_    double_arc_tangent_:       74,  121.
+          40    hfp_double_arc_tan_radians_2_  double_arc_tangent_:       75,  127.
+                hfp_one_radian           double_arc_tangent_:       56,  110,  117.
+          12    indicators               double_arc_tangent_:       65,  286,  291,  315,  320.
+                math_constants_          double_arc_tangent_:       56.
+         250    no_overflow              double_arc_tangent_:      287,  330.
+         404    one                      double_arc_tangent_:      232,  265,  398.
+                one_radian               double_arc_tangent_:       56,   81,   89.
+         410    p1                       double_arc_tangent_:      263,  400.
+         414    p2                       double_arc_tangent_:      261,  402.
+         420    p3                       double_arc_tangent_:      259,  404.
+         424    p4                       double_arc_tangent_:      257,  406.
+         430    p5                       double_arc_tangent_:      255,  408.
+         434    p6                       double_arc_tangent_:      253,  410.
+         440    p7                       double_arc_tangent_:      252,  412.
+         142    part_arctan              double_arc_tangent_:      164,  220,  235,  244.
+                pi                       double_arc_tangent_:       56,  301.
+         235    quotient_too_large       double_arc_tangent_:      289,  319.
+         232    quotient_too_small       double_arc_tangent_:      290,  314.
+         116    range_0                  double_arc_tangent_:      215.
+         114    range_0_to_1             double_arc_tangent_:      195,  208.
+         104    range_0_to_3             double_arc_tangent_:      145,  193.
+         115    range_1                  double_arc_tangent_:      211.
+         112    range_2                  double_arc_tangent_:      198,  204.
+         110    range_3                  double_arc_tangent_:      200.
+         102    range_4                  double_arc_tangent_:      183,  189.
+          76    range_4_to_5             double_arc_tangent_:      175,  181.
+          72    range_4_to_6             double_arc_tangent_:      148,  173.
+         100    range_5                  double_arc_tangent_:      185.
+          74    range_6                  double_arc_tangent_:      177.
+          70    range_7                  double_arc_tangent_:      151,  169.
+          55    range_8                  double_arc_tangent_:      153.
+         216    set_quadrant             double_arc_tangent_:      297,  317,  322.
+         136    set_to_quadrant_1_or_4   double_arc_tangent_:      158,  167,  221,  238.
+         300    tan_11_pi_by_32          double_arc_tangent_:      174,  351.
+         304    tan_13_pi_by_32          double_arc_tangent_:      147,  354.
+         310    tan_15_pi_by_32          double_arc_tangent_:      150,  357.
+         260    tan_3_pi_by_32           double_arc_tangent_:      194,  339.
+         264    tan_5_pi_by_32           double_arc_tangent_:      197,  342.
+         270    tan_7_pi_by_32           double_arc_tangent_:      144,  345.
+         274    tan_9_pi_by_32           double_arc_tangent_:      182,  348.
+         254    tan_pi_by_32             double_arc_tangent_:      209,  336.
+         314    u                        double_arc_tangent_:      228,  230,  231,  363.
+           6    x                        double_arc_tangent_:       63,  271,  276,  279,  288,  302.
+          10    y                        double_arc_tangent_:       64,  274,  298.
+         204    y_not_zero               double_arc_tangent_:      275,  285.
+           0    z                        double_arc_tangent_:       60,  249,  250,  266.
+           2    zz                       double_arc_tangent_:       61,  251,  254,  256,  258,  260,  262,  264.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,905 @@
+	COMPILATION LISTING OF SEGMENT log_segment_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1025.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 log_segment_:
+        9      procedure ();
+       10 
+       11 /* *	LOG_SEGMENT_
+       12*   *
+       13*   *	This procedure is the lowest level of the new logging mechanism.
+       14*   *	It is responsible for the creation of messages within a single
+       15*   *	log segment. If the segment becomes full, or is damaged, log_segment_
+       16*   *	returns an appropriate error code, and its caller must take appropriate
+       17*   *	action.  This procedure can be called from any ring, in any environment.
+       18*   *	This is the only procedure that can intepret the allocation information
+       19*   *	in the log segment header; other procedures must call this one to
+       20*   *	create messages, take the segment in and out of service, etc.
+       21*   *
+       22*   *	Modification history:
+       23*   *	1984-05-04, W. Olin Sibert, after the style of Benson's log_prim_
+       24*   *	1984-12-21, WOS: Changed to make data class 16 chars as it should be
+       25*   */
+       26 
+       27 declare	P_log_segment_ptr pointer parameter;
+       28 declare	P_text_lth fixed bin parameter;
+       29 declare	P_data_lth fixed bin parameter;
+       30 declare	P_data_class char (16) varying parameter;
+       31 declare	P_message_number fixed bin (35) parameter;
+       32 declare	P_last_offset fixed bin (18) parameter;
+       33 declare	P_log_message_ptr pointer parameter;
+       34 declare	P_service_bit bit (1) aligned parameter;
+       35 declare	P_code fixed bin (35) parameter;
+       36 
+       37 declare	message_size fixed bin (18);
+       38 declare	message_number fixed bin (35);
+       39 
+       40 declare 1 sequence_info aligned automatic,
+       41 	2 pad bit (17) unaligned,
+       42 	2 number fixed bin (35) unaligned,		/* NOTE: This value spans a word boundary */
+       43 	2 in_service bit (1) unaligned,
+       44 	2 words_used fixed bin (18) unsigned unaligned;
+       45 
+       46 declare	error_table_$action_not_performed fixed bin (35) external static;
+       47 declare	error_table_$bigarg fixed bin (35) external static;
+       48 declare	error_table_$log_out_of_service fixed bin (35) external static;
+       49 declare	error_table_$log_segment_damaged fixed bin (35) external static;
+       50 declare	error_table_$log_segment_full fixed bin (35) external static;
+       51 
+       52 declare   log_data_$new_message_flag bit (36) aligned external static;
+       53 declare   log_data_$complete_message_flag bit (36) aligned external static;
+       54 
+       55 declare  (addr, length, null, size, stacq, unspec, wordno) builtin;
+       56 
+       57 /* */
+       58 
+       59 MAIN_RETURN:
+       60 	return;					/* Only exit from this subroutine */
+       61 
+       62 
+       63 
+       64 finished:
+       65      procedure (P_return_code);
+       66 
+       67 declare	P_return_code fixed bin (35) parameter;
+       68 
+       69 
+       70 	P_code = P_return_code;
+       71 
+       72 	goto MAIN_RETURN;
+       73 
+       74 	end finished;
+       75 
+       76 /* */
+       77 
+       78 log_segment_$create_message_number:
+       79      entry (P_log_segment_ptr, P_text_lth, P_data_lth, P_data_class, P_message_number, P_log_message_ptr, P_code);
+       80 
+       81 /* This entry reserves space for a message in the log segment, assigns
+       82*   the next sequence number to it, and returns a pointer to the message
+       83*   which will be filled in by the caller. It is only used for things
+       84*   like copying selected messages from one log segment to another. */
+       85 
+       86 	message_number = P_message_number;
+       87 	goto CREATE_MESSAGE_COMMON;
+       88 
+       89 
+       90 log_segment_$create_message:
+       91      entry (P_log_segment_ptr, P_text_lth, P_data_lth, P_data_class, P_log_message_ptr, P_code);
+       92 
+       93 /* This entry reserves space for a message in the log segment, assigns
+       94*   the next sequence number to it, and returns a pointer to the message
+       95*   which will be filled in by the caller. This is the usual way of
+       96*   creating log messages. */
+       97 
+       98 	message_number = -1;			/* We assign it ourselves */
+       99 
+      100 
+      101 CREATE_MESSAGE_COMMON:
+      102 	log_message_text_lth = P_text_lth;
+      103 	log_message_data_class_lth = length (P_data_class);
+      104 	log_message_data_lth = P_data_lth;
+      105 	P_log_message_ptr = null ();
+      106 
+      107 	call copy_log_segment_ptr ();			/* Copy parameter and check header */
+      108 
+      109 	message_size = size (log_message);
+      110 
+      111 	if (message_size > log_segment.max_size) then	/* Too big ever to be allocated. This is a fatal */
+      112 	     call finished (error_table_$bigarg);	/* error; our caller shouldn't ever do this. */
+      113 
+      114 	do while (^allocate_message ());		/* Make space for the message and assign its number; this */
+      115 	     end;					/* returns with log_message_ptr and message_number set */
+      116 
+      117           unspec (log_message.header) = ""b;                /* Initialize it (header only, because of refer extents) */
+      118 	log_message.text_lth = log_message_text_lth;  /* Copy in vital information */
+      119 
+      120 	if (log_message_data_lth ^= 0) then do;
+      121 	     log_message.data_lth = log_message_data_lth;  /* These values must not be changed */
+      122 	     log_message.data_class_lth = log_message_data_class_lth;
+      123 	     log_message.data_class = P_data_class;
+      124 	     end;
+      125 
+      126 	log_message.sequence = message_number;
+      127           log_message.sentinel = log_data_$new_message_flag; /* Mark it as incomplete, but with correct size info */
+      128 
+      129 	P_log_message_ptr = log_message_ptr;	/* All done */
+      130 	call finished (0);
+      131 
+      132 /* */
+      133 
+      134 log_segment_$finish_message:
+      135      entry (P_log_segment_ptr, P_log_message_ptr, P_code);
+      136 
+      137 /* This entry just pops in the appropriate sentinel for a completed message
+      138*   and updates discretionary values in the header */
+      139 
+      140 	call copy_log_segment_ptr_no_check ();		/* It's OK to FINISH a message in an out-of-service log */
+      141 
+      142 	log_message_ptr = P_log_message_ptr;
+      143 
+      144           if (log_message.sentinel ^= log_data_$new_message_flag) then
+      145                call finished (error_table_$log_segment_damaged);
+      146           if (log_message.time = 0) then
+      147                call finished (error_table_$log_segment_damaged);
+      148 
+      149 	call update_header_limits ();
+      150 
+      151           log_message.sentinel = log_data_$complete_message_flag;
+      152 
+      153 	call finished (0);
+      154 
+      155 /* */
+      156 
+      157 log_segment_$initialize_sequence:
+      158      entry (P_log_segment_ptr, P_message_number, P_code);
+      159 
+      160 /* This is called only by log_initialize_, which has not finished setting up
+      161*   the log header at this point, so we can't call copy_log_segment_ptr. */
+      162 
+      163 
+      164 	log_segment_ptr = P_log_segment_ptr;
+      165 
+      166 	unspec (sequence_info) = ""b;
+      167 	sequence_info.number = P_message_number;
+      168 	unspec (log_segment.alloc_info) = unspec (sequence_info);
+      169 
+      170 	call finished (0);
+      171 
+      172 
+      173 
+      174 log_segment_$last_message_info:
+      175      entry (P_log_segment_ptr, P_message_number, P_last_offset, P_code);
+      176 
+      177 /* This is used primarily by log_position_, to find out what's really 
+      178*   in the log before it goes to validate messages. */
+      179 
+      180 
+      181 	call copy_log_segment_ptr_no_check ();
+      182 
+      183 	unspec (sequence_info) = unspec (log_segment.alloc_info);
+      184 	P_message_number = sequence_info.number;
+      185 	P_last_offset = wordno (addr (log_segment.data (sequence_info.words_used)));
+      186 
+      187 	call finished (0);
+      188 
+      189 
+      190 /* */
+      191 
+      192 log_segment_$place_in_service:
+      193      entry (P_log_segment_ptr, P_code);
+      194 
+      195 	call copy_log_segment_ptr_no_check ();
+      196 	call set_service_bit ("1"b);
+      197 
+      198 	call finished (0);
+      199 
+      200 
+      201 
+      202 log_segment_$remove_from_service:
+      203      entry (P_log_segment_ptr, P_code);
+      204 
+      205 	call copy_log_segment_ptr_no_check ();
+      206 	call set_service_bit ("0"b);
+      207 
+      208 	call finished (0);
+      209 
+      210 
+      211 
+      212 log_segment_$get_service_bit:
+      213      entry (P_log_segment_ptr, P_service_bit, P_code);
+      214 
+      215 	call copy_log_segment_ptr_no_check ();
+      216 
+      217 	unspec (sequence_info) = unspec (log_segment.alloc_info);
+      218 
+      219 	P_service_bit = sequence_info.in_service;
+      220 
+      221 	call finished (0);
+      222 
+      223 /* */
+      224 
+      225 /* *	The procedure on the next page performs the complicated STACQ hack
+      226*   *	for assigning storage. Basically, the idea is to assign storage AND
+      227*   *	increment the sequence number in one simple operation. This is done
+      228*   *	by having a single word that is shared: 18 bits for the low end of
+      229*   *	the sequence number, and 18 bits for the number of words used in the
+      230*   *	data area. The upper 18 bits of the fixed bin (35) sequence number
+      231*   *	are in the previous word.  See the declaration of sequence_info, at
+      232*   *	the front, for details.
+      233*   *
+      234*   *	The sequence_info in the log header always contains the last sequence
+      235*   *	number already used, and the number of words already used. The number
+      236*   *	of words already used is, of course, the offset (from the beginning of
+      237*   *	the data area) of the next word to be used; the sequence number is the
+      238*   *	sequence number of the previous message.
+      239*   *
+      240*   *	This procedure works by picking up the current contents of the two-word
+      241*   *	alloc_info structure in the log header, updating it to include the new
+      242*   *	message number and the new number of words used, and trying to STACQ the
+      243*   *	second word back into the header. Only the second word is of interest for
+      244*   *	this operation, because it is the only one that is modified except when
+      245*   *	the sequence numbers cross a 256K boundary. When that happens, the first
+      246*   *	word must be updated as well. This happens so rarely that there cannot be
+      247*   *	a mis-sequencing, since the only time that word is updated is when it is
+      248*   *	actually being changed.
+      249*   *
+      250*   *	This strategy *could* fail for the create_message_number entrypoint,
+      251*   *	in which our caller supplies the new sequence number, but even that is
+      252*   *	very unlikely, and, in any case, that entrypoint should only be used by
+      253*   *	a process that is sure it is the only writer to the log segment in
+      254*   *	question; this is true for the applications where it is used, such as
+      255*   *	copying syserr messages from one place to another and trimming and
+      256*   *	consolidating log segments.
+      257*   *
+      258*   *	The strategy used here uses four temporary copies of the two-word
+      259*   *	alloc_info structure, two each in two different formats: one format for
+      260*   *	doing the arithmetic, the other for doing the STACQ. This is done for
+      261*   *	code clarity; because the temporaries can be manipulated with LDAQ/STAQ,
+      262*   *	this scheme is as efficient as using based overlays.
+      263*   */
+      264 
+      265 /* */
+      266 
+      267 allocate_message:
+      268      procedure () returns (bit (1) aligned);
+      269 
+      270 declare	temp fixed bin (71);			/* Forces doubleword alignment for the four temp */
+      271 						/* values, so they can be unspec'd with ldaq/staq */
+      272 declare 1 old_sequence_info aligned like sequence_info automatic;
+      273 declare 1 new_sequence_info aligned like sequence_info automatic;
+      274 declare 1 old_alloc_info aligned like log_segment_header.alloc_info automatic;
+      275 declare 1 new_alloc_info aligned like log_segment_header.alloc_info automatic;
+      276 
+      277 
+      278 	unspec (old_sequence_info) = unspec (log_segment.alloc_info);	/* Get the current values */
+      279 	unspec (new_sequence_info) = unspec (old_sequence_info);	/* Make a copy which will be incremented */
+      280 
+      281 	if ((old_sequence_info.words_used + message_size) > log_segment.max_size) then
+      282 	     call finished (error_table_$log_segment_full);    /* No room left. This check must be made each time through */
+      283 
+      284 	new_sequence_info.words_used = new_sequence_info.words_used + message_size; /* Reserve space */
+      285 
+      286 	if (message_number < 0) then			/* We assign (increment) this one ourselves */
+      287 	     new_sequence_info.number = new_sequence_info.number + 1;
+      288 	else new_sequence_info.number = message_number;	/* Otherwise, use the caller's idea */
+      289 
+      290 	unspec (old_alloc_info) = unspec (old_sequence_info); /* Copy back into format used for STACQ */
+      291 	unspec (new_alloc_info) = unspec (new_sequence_info);
+      292 
+      293 	if ^stacq (log_segment.alloc_info.word_2, new_alloc_info.word_2, old_alloc_info.word_2)
+      294 	     then return ("0"b);			/* Allocation failed, make our caller retry */
+      295 
+      296 	if (old_alloc_info.word_1 ^= new_alloc_info.word_1) then	/* Update first word only if it changes, */
+      297 	     log_segment.alloc_info.word_1 = new_alloc_info.word_1;	/* thus avoiding sequencing race */
+      298 
+      299 	log_message_ptr = addr (log_segment.data (1 + old_sequence_info.words_used));
+      300 	if (message_number < 0) then			/* Tell our caller where it is, and what  */
+      301 	     message_number = new_sequence_info.number;	/* its number is, if he doesn't know already */
+      302 
+      303 	return ("1"b);
+      304 
+      305 	end allocate_message;
+      306 
+      307 /* */
+      308 
+      309 update_header_limits:
+      310      procedure ();
+      311 
+      312 declare	new_time fixed bin (71);
+      313 declare	new_sequence fixed bin (35);
+      314 declare	test_time fixed bin (71);
+      315 declare	test_sequence fixed bin (35);
+      316 declare	replaced bit (1) aligned;
+      317 
+      318 
+      319 	new_time = log_message.time;		/* Copy these for efficiency */
+      320 	new_sequence = log_message.sequence;	/* and to get them properly aligned */
+      321 
+      322 	replaced = "0"b;				/* IF (first_time = 0) then SET first_time */
+      323 	do while (^replaced);			/* IF (new_time < first_time) then SET first_time */
+      324 	     test_time = log_segment.first_time;
+      325 	     if (test_time = 0) then
+      326 		call replace_time (log_segment.first_time);
+      327 	     else if (new_time < test_time) then
+      328 		call replace_time (log_segment.first_time);
+      329 	     else replaced = "1"b;
+      330 	     end;
+      331 
+      332 	replaced = "0"b;				/* IF (new_time > last_time) then SET last_time */
+      333 	do while (^replaced);			/* Also catches IF (last_time = 0) automatically */
+      334 	     test_time = log_segment.last_time;
+      335 	     if (new_time > test_time) then
+      336 		call replace_time (log_segment.last_time);
+      337 	     else replaced = "1"b;
+      338 	     end;
+      339 
+      340 	replaced = "0"b;				/* IF (first_sequence = 0) then SET first_sequence */
+      341 	do while (^replaced);			/* IF (new_sequence < first_sequence) then SET first_sequence */
+      342 	     test_sequence = log_segment.first_sequence;
+      343 	     if (test_sequence = 0) then
+      344 		call replace_sequence (log_segment.first_sequence);
+      345 	     else if (new_sequence < test_sequence) then
+      346 		call replace_sequence (log_segment.first_sequence);
+      347 	     else replaced = "1"b;
+      348 	     end;
+      349 
+      350 	replaced = "0"b;				/* IF (new_sequence > last_sequence) then SET last_sequence */
+      351 	do while (^replaced);			/* Also catches IF (last_sequence = 0) automatically */
+      352 	     test_sequence = log_segment.last_sequence;
+      353 	     if (new_sequence > test_sequence) then
+      354 		call replace_sequence (log_segment.last_sequence);
+      355 	     else replaced = "1"b;
+      356 	     end;
+      357 
+      358 	return;
+      359 
+      360 /* */
+      361 
+      362 /* *	This procedure is an attempt at a two-word STACQ. It cannot always
+      363*   *	work, but it should usually succeed, for extremely large values of
+      364*   *	usually.
+      365*   *
+      366*   *	The window is only ten microseconds long, or thereabouts, and it can
+      367*   *	onle be exploited every 20 hours or so, as the upper word of the clock
+      368*   *	is turning over. So, in order for this to fail, there would have to
+      369*   *	be two processes, less than ten microseconds apart, attempting to
+      370*   *	update the header of the log segment.
+      371*   *
+      372*   *	While this, in itself, is not terribly unlikely (occurring, perhaps,
+      373*   *	one out of every 10,000 update attempts), the failure will only occur
+      374*   *	if this already unlikely circumstance happens to fall within the
+      375*   *	once-a-day window, itself representing a roughly one in 6,000,000,000
+      376*   *	chance. So, we can, with considerable justification, dismiss this as a
+      377*   *	vanishingly small possibility. And, even if it does happen, the damage
+      378*   *	will very likely be benign.  */
+      379 
+      380 replace_time:
+      381      procedure (P_time);
+      382 
+      383 declare	P_time fixed bin (71) parameter;
+      384 
+      385 declare	time_words_ptr pointer;
+      386 declare 1 time_words aligned based (time_words_ptr),
+      387 	2 word_1 bit (36) aligned,
+      388 	2 word_2 bit (36) aligned;
+      389 
+      390 declare 1 test_words aligned like time_words automatic;
+      391 declare 1 new_words aligned like time_words automatic;
+      392 
+      393 
+      394 	unspec (test_words) = unspec (test_time);
+      395 	unspec (new_words) = unspec (new_time);
+      396 	time_words_ptr = addr (P_time);
+      397 
+      398 	replaced = stacq (time_words.word_2, new_words.word_2, test_words.word_2);
+      399 
+      400 	if ^replaced then return;
+      401 
+      402 	if (test_words.word_1 ^= new_words.word_1) then	/* If the upper word changed, too, just set it */
+      403 	     time_words.word_1 = new_words.word_1;	/* and hope for the best. */
+      404 
+      405 	return;
+      406 	end replace_time;
+      407 
+      408 /* */
+      409 
+      410 /* This is much simpler, since it replaces only one word at a time. */
+      411 
+      412 replace_sequence:
+      413      procedure (P_sequence);
+      414 
+      415 declare	P_sequence fixed bin (35) parameter;
+      416 
+      417 declare	number_word_ptr pointer;
+      418 declare	number_word bit (36) aligned based (number_word_ptr);
+      419 declare	test_word bit (36) aligned;
+      420 declare	new_word bit (36) aligned;
+      421 
+      422 
+      423 	unspec (test_word) = unspec (test_sequence);
+      424 	unspec (new_word) = unspec (new_sequence);
+      425 	number_word_ptr = addr (P_sequence);
+      426 
+      427 	replaced = stacq (number_word, new_word, test_word);
+      428 
+      429 	return;
+      430 	end replace_sequence;
+      431 
+      432 	end update_header_limits;
+      433 
+      434 /* */
+      435 
+      436 set_service_bit:
+      437      procedure (P_bit);
+      438 
+      439 declare	P_bit bit (1) aligned parameter;
+      440 
+      441 declare	temp fixed bin (71);			/* Forces doubleword alignment for the four temp */
+      442 						/* values, so they can be unspec'd with ldaq/staq */
+      443 declare 1 old_sequence_info aligned like sequence_info automatic;
+      444 declare 1 new_sequence_info aligned like sequence_info automatic;
+      445 declare 1 old_alloc_info aligned like log_segment_header.alloc_info automatic;
+      446 declare 1 new_alloc_info aligned like log_segment_header.alloc_info automatic;
+      447 
+      448 /* This has to do similar things to the allocate_message procedure (see the
+      449*   comment there for details. However, since it never changes the upper word,
+      450*   and doesn't care about running out of space, its processing loop is much
+      451*   simpler. It never returns normally, but always exits by calling "finished",
+      452*   either indicating success (meaning that it was this process, and no other,
+      453*   that changed the state of the service bit, or returning action_not_performed
+      454*   indicating that someone else did it. */
+      455 
+      456 
+      457 	do while ("1"b);				/* Keep trying until we succeed */
+      458 	     unspec (old_sequence_info) = unspec (log_segment.alloc_info);
+      459 	     unspec (new_sequence_info) = unspec (old_sequence_info);
+      460 
+      461 	     if (P_bit = old_sequence_info.in_service) then
+      462 		call finished (error_table_$action_not_performed);
+      463 
+      464 	     new_sequence_info.in_service = P_bit;
+      465 	     unspec (old_alloc_info) = unspec (old_sequence_info);
+      466 	     unspec (new_alloc_info) = unspec (new_sequence_info);
+      467 
+      468 	     if stacq (log_segment.alloc_info.word_2, new_alloc_info.word_2, old_alloc_info.word_2) then
+      469 		return;				/* Return only when successful */
+      470 	     end;
+      471 
+      472 	end set_service_bit;
+      473 
+      474 /* */
+      475 
+      476 copy_log_segment_ptr:
+      477      procedure ();
+      478 
+      479 	log_segment_ptr = P_log_segment_ptr;
+      480 	log_message_ptr = null ();
+      481 
+      482 	if (log_segment.version ^= LOG_SEGMENT_VERSION_1) then call finished (error_table_$log_segment_damaged);
+      483 
+      484 	unspec (sequence_info) = unspec (log_segment.alloc_info);
+      485 	if ^sequence_info.in_service then call finished (error_table_$log_out_of_service);
+      486 
+      487 	return;
+      488 	end copy_log_segment_ptr;
+      489 
+      490 
+      491 
+      492 copy_log_segment_ptr_no_check:
+      493      procedure ();
+      494 
+      495 /* As above, but doesn't check in-service flag */
+      496 
+      497 
+      498 	log_segment_ptr = P_log_segment_ptr;
+      499 	log_message_ptr = null ();
+      500 
+      501 	if (log_segment.version ^= LOG_SEGMENT_VERSION_1) then call finished (error_table_$log_segment_damaged);
+      502 
+      503 	return;
+      504 	end copy_log_segment_ptr_no_check;
+      505 
+      506  /* BEGIN INCLUDE FILE ... log_segment.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  1     2 
+  1     3 declare   log_segment_ptr               pointer;
+  1     4 declare   log_segment_max_size          fixed bin (18);
+  1     5 declare   LOG_SEGMENT_VERSION_1         char (8) internal static options (constant) init ("SysLog01");
+  1     6 
+  1     7 
+  1     8 declare 1 log_segment                   aligned based (log_segment_ptr),
+  1     9           2 header                      aligned like log_segment_header,
+  1    10           2 data                        dim (log_segment_max_size refer (log_segment.max_size)) bit (36) aligned;
+  1    11 
+  1    12 
+  1    13 declare 1 log_segment_header            aligned based,
+  1    14           2 version                     char (8) unaligned, /* LOG_SEGMENT_VERSION_1 */
+  1    15           2 time_created                fixed bin (71),     /* When the segment header was initialized */
+  1    16           2 previous_log_dir            char (168) unaligned, /* Directory containing previous log segment */
+  1    17 
+  1    18           2 limits,
+  1    19             3 first_sequence            fixed bin (35),     /* First and last sequence numbers / time stamps */
+  1    20             3 last_sequence             fixed bin (35),     /* of messages in the log. These may be slightly */
+  1    21             3 first_time                fixed bin (71),     /* incorrect due to lockless updating strategy */
+  1    22             3 last_time                 fixed bin (71),
+  1    23 
+  1    24           2 alloc_info,                                     /* Complex STACQ hack for allocating and assigning */
+  1    25             3 word_1                    fixed bin (18),     /* sequence numbers locklessly. See log_segment_ */
+  1    26             3 word_2                    bit (36) aligned,   /* for details of strategy */
+  1    27           2 max_size                    fixed bin (18),     /* Total words in data area */
+  1    28 
+  1    29           2 listeners_registered        bit (1) aligned,    /* Set if ANY processes were ever registered-- it's only */
+  1    30           2 listener_bootload_time      fixed bin (71),     /* kept here for efficiency. The bootload time is used to */
+  1    31                                                             /* detect all the dead listeners after a reboot */
+  1    32           2 listener (25),                                  /* Processes waiting for messages in the log */
+  1    33             3 process_id                bit (36) aligned,
+  1    34             3 event_channel             fixed bin (71) unaligned, /* Saves space-- allows 3-word entries */
+  1    35 
+  1    36           2 last_wakeup_time            fixed bin (71),     /* When last wakeup was sent */
+  1    37           2 wakeup_delta                fixed bin (71),     /* Wakeups sent no more than once per this interval */
+  1    38 
+  1    39           2 pad (6)                     fixed bin (71);     /* Pad header to 150 words */
+  1    40 
+  1    41 
+  1    42 declare   LOG_SEGMENT_NEW_MESSAGE           init ("777111555333"b3) bit (36) aligned internal static options (constant);
+  1    43 declare   LOG_SEGMENT_COMPLETE_MESSAGE      init ("666000444222"b3) bit (36) aligned internal static options (constant);
+  1    44 
+  1    45 /* END INCLUDE FILE ... log_segment.incl.pl1 */
+      506 
+      507  /* BEGIN INCLUDE FILE ... log_message.incl.pl1 ... 84-04-25 ... W. Olin Sibert */
+  2     2 
+  2     3 declare 1 log_message_header  aligned based,                /* Items marked "(SET)" are set by $create_message */
+  2     4           2 sentinel          bit (36) aligned,             /* Proper value declared in log_segment.incl.pl1 */
+  2     5           2 sequence          fixed bin (35),               /* Sequence number for this message (SET) */
+  2     6           2 severity          fixed bin (8) unaligned,      /* Severity of message */
+  2     7           2 data_class_lth    fixed bin (9) unaligned unsigned, /* Length of data class-- 0 to 16 (SET) */
+  2     8           2 time              fixed bin (53) unaligned,     /* Time message originated */
+  2     9           2 text_lth          fixed bin (17) unaligned,     /* Length of message text. Must be nonzero (SET) */
+  2    10           2 data_lth          fixed bin (17) unaligned,     /* Length of binary data. May be zero (SET) */
+  2    11           2 process_id        bit (36) aligned;             /* Process id of process writing message */
+  2    12 
+  2    13 declare 1 log_message         aligned based (log_message_ptr),
+  2    14           2 header            aligned like log_message_header,
+  2    15           2 text              char (log_message_text_lth         refer (log_message.text_lth)) unaligned,
+  2    16           2 data_class        char (log_message_data_class_lth   refer (log_message.data_class_lth)) unaligned,
+  2    17           2 data              dim (log_message_data_lth          refer (log_message.data_lth)) bit (36) aligned;
+  2    18 
+  2    19 declare   log_message_ptr pointer;
+  2    20 declare   log_message_text_lth fixed bin;
+  2    21 declare   log_message_data_class_lth fixed bin;
+  2    22 declare   log_message_data_lth fixed bin;
+  2    23 
+  2    24 /* END INCLUDE FILE ... log_message.incl.pl1 */
+      507 
+      508 
+      509 	end log_segment_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  log_segment_.pl1                  >spec>install>1111>log_segment_.pl1
+506          1    12/04/84  2124.9  log_segment.incl.pl1              >ldd>include>log_segment.incl.pl1
+507          2    01/21/85  0912.2  log_message.incl.pl1              >ldd>include>log_message.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+LOG_SEGMENT_VERSION_1           000000 constant        char(8)                  initial packed unaligned dcl 1-5 ref 482 501
+P_bit                                  parameter       bit(1)                   dcl 439 ref 436 461 464
+P_code                                 parameter       fixed bin(35,0)          dcl 35 set ref 70* 78 90 134 157 174 192 202 212
+P_data_class                           parameter       varying char(16)         dcl 30 ref 78 90 103 123
+P_data_lth                             parameter       fixed bin(17,0)          dcl 29 ref 78 90 104
+P_last_offset                          parameter       fixed bin(18,0)          dcl 32 set ref 174 185*
+P_log_message_ptr                      parameter       pointer                  dcl 33 set ref 78 90 105* 129* 134 142
+P_log_segment_ptr                      parameter       pointer                  dcl 27 ref 78 90 134 157 164 174 192 202 212 479 498
+P_message_number                       parameter       fixed bin(35,0)          dcl 31 set ref 78 86 157 167 174 184*
+P_return_code                          parameter       fixed bin(35,0)          dcl 67 ref 64 70
+P_sequence                             parameter       fixed bin(35,0)          dcl 415 set ref 412 425
+P_service_bit                          parameter       bit(1)                   dcl 34 set ref 212 219*
+P_text_lth                             parameter       fixed bin(17,0)          dcl 28 ref 78 90 101
+P_time                                 parameter       fixed bin(71,0)          dcl 383 set ref 380 396
+addr                                                   builtin function         dcl 55 ref 185 299 396 425
+alloc_info               64            based           structure                level 3 in structure "log_segment" dcl 1-8
+                                                                                  in procedure "log_segment_" set ref 168* 183 217
+                                                                                  278 458 484
+alloc_info               64            based           structure                level 2 in structure "log_segment_header" dcl 1-13
+                                                                                  in procedure "log_segment_"
+data                    226            based           bit(36)                  array level 2 dcl 1-8 set ref 185 299
+data_class                             based           char                     level 2 packed packed unaligned dcl 2-13 set ref
+                                                                                  123*
+data_class_lth            2(09)        based           fixed bin(9,0)           level 3 packed packed unsigned unaligned dcl 2-13
+                                                                                  set ref 122* 123
+data_lth                  4(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 2-13 set ref
+                                                                                  121*
+error_table_$action_not_performed
+                                000010 external static fixed bin(35,0)          dcl 46 set ref 461*
+error_table_$bigarg             000012 external static fixed bin(35,0)          dcl 47 set ref 111*
+error_table_$log_out_of_service 000014 external static fixed bin(35,0)          dcl 48 set ref 485*
+error_table_$log_segment_damaged
+                                000016 external static fixed bin(35,0)          dcl 49 set ref 144* 146* 482* 501*
+error_table_$log_segment_full   000020 external static fixed bin(35,0)          dcl 50 set ref 281*
+first_sequence           56            based           fixed bin(35,0)          level 4 dcl 1-8 set ref 342 343* 345*
+first_time               60            based           fixed bin(71,0)          level 4 dcl 1-8 set ref 324 325* 327*
+header                                 based           structure                level 2 in structure "log_segment" dcl 1-8
+                                                                                  in procedure "log_segment_"
+header                                 based           structure                level 2 in structure "log_message" dcl 2-13
+                                                                                  in procedure "log_segment_" set ref 117*
+in_service                1(17) 000222 automatic       bit(1)                   level 2 in structure "new_sequence_info" packed
+                                                                                  packed unaligned dcl 444 in procedure
+                                                                                  "set_service_bit" set ref 464*
+in_service                1(17) 000102 automatic       bit(1)                   level 2 in structure "sequence_info" packed packed
+                                                                                  unaligned dcl 40 in procedure "log_segment_" set
+                                                                                  ref 219 485
+in_service                1(17) 000220 automatic       bit(1)                   level 2 in structure "old_sequence_info" packed
+                                                                                  packed unaligned dcl 443 in procedure
+                                                                                  "set_service_bit" set ref 461
+last_sequence            57            based           fixed bin(35,0)          level 4 dcl 1-8 set ref 352 353*
+last_time                62            based           fixed bin(71,0)          level 4 dcl 1-8 set ref 334 335*
+length                                                 builtin function         dcl 55 ref 103
+limits                   56            based           structure                level 3 dcl 1-8
+log_data_$complete_message_flag 000024 external static bit(36)                  dcl 53 ref 151
+log_data_$new_message_flag      000022 external static bit(36)                  dcl 52 ref 127 144
+log_message                            based           structure                level 1 dcl 2-13 set ref 109
+log_message_data_class_lth      000111 automatic       fixed bin(17,0)          dcl 2-21 set ref 103* 109 122
+log_message_data_lth            000112 automatic       fixed bin(17,0)          dcl 2-22 set ref 104* 109 120 121
+log_message_header                     based           structure                level 1 dcl 2-3
+log_message_ptr                 000106 automatic       pointer                  dcl 2-19 set ref 109 117 118 121 122 123 126 127 129
+                                                                                  142* 144 146 151 299* 319 320 480* 499*
+log_message_text_lth            000110 automatic       fixed bin(17,0)          dcl 2-20 set ref 101* 109 118
+log_segment                            based           structure                level 1 dcl 1-8
+log_segment_header                     based           structure                level 1 dcl 1-13
+log_segment_ptr                 000104 automatic       pointer                  dcl 1-3 set ref 111 164* 168 183 185 217 278 281 293
+                                                                                  296 299 324 325 327 334 335 342 343 345 352 353
+                                                                                  458 468 479* 482 484 498* 501
+max_size                 66            based           fixed bin(18,0)          level 3 dcl 1-8 ref 111 281
+message_number                  000101 automatic       fixed bin(35,0)          dcl 38 set ref 86* 98* 126 286 288 300 300*
+message_size                    000100 automatic       fixed bin(18,0)          dcl 37 set ref 109* 111 281 284
+new_alloc_info                  000226 automatic       structure                level 1 dcl 446 in procedure "set_service_bit" set
+                                                                                  ref 466*
+new_alloc_info                  000144 automatic       structure                level 1 dcl 275 in procedure "allocate_message" set
+                                                                                  ref 291*
+new_sequence                    000156 automatic       fixed bin(35,0)          dcl 313 set ref 320* 345 353 424
+new_sequence_info               000140 automatic       structure                level 1 dcl 273 in procedure "allocate_message" set
+                                                                                  ref 279* 291
+new_sequence_info               000222 automatic       structure                level 1 dcl 444 in procedure "set_service_bit" set
+                                                                                  ref 459* 466
+new_time                        000154 automatic       fixed bin(71,0)          dcl 312 set ref 319* 327 335 395
+new_word                        000211 automatic       bit(36)                  dcl 420 set ref 424* 427
+new_words                       000176 automatic       structure                level 1 dcl 391 set ref 395*
+null                                                   builtin function         dcl 55 ref 105 480 499
+number                    0(17) 000140 automatic       fixed bin(35,0)          level 2 in structure "new_sequence_info" packed
+                                                                                  packed unaligned dcl 273 in procedure
+                                                                                  "allocate_message" set ref 286* 286 288* 300
+number                    0(17) 000102 automatic       fixed bin(35,0)          level 2 in structure "sequence_info" packed packed
+                                                                                  unaligned dcl 40 in procedure "log_segment_" set
+                                                                                  ref 167* 184
+number_word                            based           bit(36)                  dcl 418 ref 427
+number_word_ptr                 000206 automatic       pointer                  dcl 417 set ref 425* 427
+old_alloc_info                  000142 automatic       structure                level 1 dcl 274 in procedure "allocate_message" set
+                                                                                  ref 290*
+old_alloc_info                  000224 automatic       structure                level 1 dcl 445 in procedure "set_service_bit" set
+                                                                                  ref 465*
+old_sequence_info               000220 automatic       structure                level 1 dcl 443 in procedure "set_service_bit" set
+                                                                                  ref 458* 459 465
+old_sequence_info               000136 automatic       structure                level 1 dcl 272 in procedure "allocate_message" set
+                                                                                  ref 278* 279 290
+replaced                        000163 automatic       bit(1)                   dcl 316 set ref 322* 323 329* 332* 333 337* 340* 341
+                                                                                  347* 350* 351 355* 398* 400 427*
+sentinel                               based           bit(36)                  level 3 dcl 2-13 set ref 127* 144 151*
+sequence                  1            based           fixed bin(35,0)          level 3 dcl 2-13 set ref 126* 320
+sequence_info                   000102 automatic       structure                level 1 dcl 40 set ref 166* 168 183* 217* 484*
+size                                                   builtin function         dcl 55 ref 109
+stacq                                                  builtin function         dcl 55 ref 293 398 427 468
+test_sequence                   000162 automatic       fixed bin(35,0)          dcl 315 set ref 342* 343 345 352* 353 423
+test_time                       000160 automatic       fixed bin(71,0)          dcl 314 set ref 324* 325 327 334* 335 394
+test_word                       000210 automatic       bit(36)                  dcl 419 set ref 423* 427
+test_words                      000174 automatic       structure                level 1 dcl 390 set ref 394*
+text_lth                  4            based           fixed bin(17,0)          level 3 packed packed unaligned dcl 2-13 set ref
+                                                                                  118* 123
+time                      2(18)        based           fixed bin(53,0)          level 3 packed packed unaligned dcl 2-13 set ref 146
+                                                                                  319
+time_words                             based           structure                level 1 dcl 386
+time_words_ptr                  000172 automatic       pointer                  dcl 385 set ref 396* 398 402
+unspec                                                 builtin function         dcl 55 set ref 117* 166* 168* 168 183* 183 217* 217
+                                                                                  278* 278 279* 279 290* 290 291* 291 394* 394 395*
+                                                                                  395 423* 423 424* 424 458* 458 459* 459 465* 465
+                                                                                  466* 466 484* 484
+version                                based           char(8)                  level 3 packed packed unaligned dcl 1-8 ref 482 501
+word_1                          000144 automatic       fixed bin(18,0)          level 2 in structure "new_alloc_info" dcl 275
+                                                                                  in procedure "allocate_message" set ref 296 296
+word_1                                 based           bit(36)                  level 2 in structure "time_words" dcl 386
+                                                                                  in procedure "replace_time" set ref 402*
+word_1                          000174 automatic       bit(36)                  level 2 in structure "test_words" dcl 390
+                                                                                  in procedure "replace_time" set ref 402
+word_1                          000176 automatic       bit(36)                  level 2 in structure "new_words" dcl 391
+                                                                                  in procedure "replace_time" set ref 402 402
+word_1                   64            based           fixed bin(18,0)          level 4 in structure "log_segment" dcl 1-8
+                                                                                  in procedure "log_segment_" set ref 296*
+word_1                          000142 automatic       fixed bin(18,0)          level 2 in structure "old_alloc_info" dcl 274
+                                                                                  in procedure "allocate_message" set ref 296
+word_2                    1     000224 automatic       bit(36)                  level 2 in structure "old_alloc_info" dcl 445
+                                                                                  in procedure "set_service_bit" set ref 468
+word_2                   65            based           bit(36)                  level 4 in structure "log_segment" dcl 1-8
+                                                                                  in procedure "log_segment_" set ref 293 468
+word_2                    1     000226 automatic       bit(36)                  level 2 in structure "new_alloc_info" dcl 446
+                                                                                  in procedure "set_service_bit" set ref 468
+word_2                    1     000174 automatic       bit(36)                  level 2 in structure "test_words" dcl 390
+                                                                                  in procedure "replace_time" set ref 398
+word_2                    1     000142 automatic       bit(36)                  level 2 in structure "old_alloc_info" dcl 274
+                                                                                  in procedure "allocate_message" set ref 293
+word_2                    1            based           bit(36)                  level 2 in structure "time_words" dcl 386
+                                                                                  in procedure "replace_time" ref 398
+word_2                    1     000144 automatic       bit(36)                  level 2 in structure "new_alloc_info" dcl 275
+                                                                                  in procedure "allocate_message" set ref 293
+word_2                    1     000176 automatic       bit(36)                  level 2 in structure "new_words" dcl 391
+                                                                                  in procedure "replace_time" set ref 398
+wordno                                                 builtin function         dcl 55 ref 185
+words_used                1(18) 000136 automatic       fixed bin(18,0)          level 2 in structure "old_sequence_info" packed
+                                                                                  packed unsigned unaligned dcl 272 in procedure
+                                                                                  "allocate_message" set ref 281 299
+words_used                1(18) 000140 automatic       fixed bin(18,0)          level 2 in structure "new_sequence_info" packed
+                                                                                  packed unsigned unaligned dcl 273 in procedure
+                                                                                  "allocate_message" set ref 284* 284
+words_used                1(18) 000102 automatic       fixed bin(18,0)          level 2 in structure "sequence_info" packed packed
+                                                                                  unsigned unaligned dcl 40 in procedure
+                                                                                  "log_segment_" set ref 185
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+LOG_SEGMENT_COMPLETE_MESSAGE           internal static bit(36)                  initial dcl 1-43
+LOG_SEGMENT_NEW_MESSAGE                internal static bit(36)                  initial dcl 1-42
+log_segment_max_size                   automatic       fixed bin(18,0)          dcl 1-4
+temp                                   automatic       fixed bin(71,0)          dcl 270 in procedure "allocate_message"
+temp                                   automatic       fixed bin(71,0)          dcl 441 in procedure "set_service_bit"
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CREATE_MESSAGE_COMMON           000074 constant        label                    dcl 101 set ref 87
+MAIN_RETURN                     000024 constant        label                    dcl 59 ref 72
+allocate_message                000475 constant        entry                    internal dcl 267 ref 114
+copy_log_segment_ptr            001066 constant        entry                    internal dcl 476 ref 107
+copy_log_segment_ptr_no_check   001127 constant        entry                    internal dcl 492 ref 140 181 195 205 215
+finished                        000470 constant        entry                    internal dcl 64 ref 111 130 144 146 153 170 187 198
+                                                                                  208 221 281 461 482 485 501
+log_segment_                    000017 constant        entry                    external dcl 8
+log_segment_$create_message     000060 constant        entry                    external dcl 90
+log_segment_$create_message_number
+                                000033 constant        entry                    external dcl 78
+log_segment_$finish_message     000205 constant        entry                    external dcl 134
+log_segment_$get_service_bit    000442 constant        entry                    external dcl 212
+log_segment_$initialize_sequence
+                                000266 constant        entry                    external dcl 157
+log_segment_$last_message_info  000330 constant        entry                    external dcl 174
+log_segment_$place_in_service   000372 constant        entry                    external dcl 192
+log_segment_$remove_from_service
+                                000415 constant        entry                    external dcl 202
+replace_sequence                000775 constant        entry                    internal dcl 412 ref 343 345 353
+replace_time                    000750 constant        entry                    internal dcl 380 ref 325 327 335
+set_service_bit                 001013 constant        entry                    internal dcl 436 ref 196 206
+update_header_limits            000606 constant        entry                    internal dcl 309 ref 149
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1536        1564    1164        1546
+Length      2026    1164        26         225     352           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_segment_                        206 external procedure  is an external procedure.  
+finished                                internal procedure  shares stack frame of external procedure log_segment_.  
+allocate_message                        internal procedure  shares stack frame of external procedure log_segment_.  
+update_header_limits                    internal procedure  shares stack frame of external procedure log_segment_.  
+replace_time                            internal procedure  shares stack frame of external procedure log_segment_.  
+replace_sequence                        internal procedure  shares stack frame of external procedure log_segment_.  
+set_service_bit                         internal procedure  shares stack frame of external procedure log_segment_.  
+copy_log_segment_ptr                    internal procedure  shares stack frame of external procedure log_segment_.  
+copy_log_segment_ptr_no_check           internal procedure  shares stack frame of external procedure log_segment_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+log_segment_             000100 message_size                log_segment_
+                         000101 message_number              log_segment_
+                         000102 sequence_info               log_segment_
+                         000104 log_segment_ptr             log_segment_
+                         000106 log_message_ptr             log_segment_
+                         000110 log_message_text_lth        log_segment_
+                         000111 log_message_data_class_lth  log_segment_
+                         000112 log_message_data_lth        log_segment_
+                         000136 old_sequence_info           allocate_message
+                         000140 new_sequence_info           allocate_message
+                         000142 old_alloc_info              allocate_message
+                         000144 new_alloc_info              allocate_message
+                         000154 new_time                    update_header_limits
+                         000156 new_sequence                update_header_limits
+                         000160 test_time                   update_header_limits
+                         000162 test_sequence               update_header_limits
+                         000163 replaced                    update_header_limits
+                         000172 time_words_ptr              replace_time
+                         000174 test_words                  replace_time
+                         000176 new_words                   replace_time
+                         000206 number_word_ptr             replace_sequence
+                         000210 test_word                   replace_sequence
+                         000211 new_word                    replace_sequence
+                         000220 old_sequence_info           set_service_bit
+                         000222 new_sequence_info           set_service_bit
+                         000224 old_alloc_info              set_service_bit
+                         000226 new_alloc_info              set_service_bit
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry           stacq_mac
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$bigarg
+error_table_$log_out_of_service                             error_table_$log_segment_damaged
+error_table_$log_segment_full log_data_$complete_message_flag                             log_data_$new_message_flag
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000016        59 000024        78 000025        86 000047        87 000051        90 000052        98 000072
+    101 000074       103 000077       104 000102       105 000104       107 000106       109 000107       111 000116
+    114 000130       115 000135       117 000136       118 000142       120 000145       121 000147       122 000150
+    123 000153       126 000167       127 000171       129 000174       130 000175       134 000200       140 000217
+    142 000220       144 000223       146 000235       149 000252       151 000253       153 000256       157 000261
+    164 000300       166 000304       167 000306       168 000314       170 000317       174 000322       181 000342
+    183 000343       184 000347       185 000353       187 000361       192 000365       195 000402       196 000403
+    198 000407       202 000412       205 000425       206 000426       208 000432       212 000435       215 000452
+    217 000453       219 000457       221 000464       509 000467        64 000470        70 000472        72 000474
+    267 000475       278 000477       279 000503       281 000504       284 000520       286 000524       288 000542
+    290 000547       291 000551       293 000553       296 000564       299 000571       300 000574       303 000602
+    309 000606       319 000607       320 000615       322 000617       323 000620       324 000622       325 000625
+    327 000635       329 000646       330 000650       332 000651       333 000652       334 000654       335 000657
+    337 000670       338 000672       340 000673       341 000674       342 000676       343 000701       345 000711
+    347 000722       348 000724       350 000725       351 000726       352 000730       353 000733       355 000744
+    356 000746       358 000747       380 000750       394 000752       395 000754       396 000756       398 000760
+    400 000765       402 000767       405 000774       412 000775       423 000777       424 001001       425 001003
+    427 001005       429 001012       436 001013       457 001015       458 001016       459 001022       461 001023
+    464 001043       465 001051       466 001053       468 001055       470 001064       472 001065       476 001066
+    479 001067       480 001073       482 001075       484 001110       485 001114       487 001126       492 001127
+    498 001130       499 001134       501 001136       503 001151
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,847 @@
+	COMPILATION LISTING OF SEGMENT wired_plm
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0943.5 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 wired_plm: proc ();
+       14 
+       15 /* RE Mullen, v2pl1, oct 1973 */
+       16 /* NSS by BSG */
+       17 /* BSG for lockless scheduler and global events, 9/20/77 */
+       18 /* Modified 03/21/81, W. Olin Sibert, for ADP PTW formats */
+       19 /* Metering added 04/17/81, WOS */
+       20 /* No PD, 07/25/83, E. N. Kittlitz */
+       21 
+       22 dcl  apt_ptr ptr parameter;
+       23 
+       24 dcl  rastep bit (18) aligned;
+       25 dcl  i fixed bin;
+       26 dcl (astep, ap) ptr;
+       27 dcl  sstp pointer;
+       28 dcl  ptp pointer;
+       29 
+       30 dcl 1 p based (ap),
+       31     2 a (0 : 1) bit (18) unaligned;
+       32 
+       33 dcl  page$pread entry (ptr, fixed bin, fixed bin (35));
+       34 dcl  page$lock_ptl entry ();
+       35 dcl  page$unlock_ptl entry ();
+       36 
+       37 dcl  pds$processid bit (36) aligned external static;
+       38 dcl  pds$apt_ptr ptr external static;
+       39 dcl  sst$astsize fixed bin external static;
+       40 dcl  sst$astap pointer external static;
+       41 dcl  sst$cmp pointer external static;
+       42 dcl  sst$wired fixed bin external static;
+       43 dcl  sys_info$system_type fixed bin external static;
+       44 dcl  tcm$loading_page_waits fixed bin (35) external static;
+       45 
+       46 dcl  sst_seg$ external static;
+       47 
+       48 dcl (addr, addrel, ptr, rel) builtin;
+       49 
+       50 /*  */
+       51 
+       52 /* LOAD: Entry to load a process by wiring down all critical pages
+       53*   needed by the process. */
+       54 
+       55 wired_plm$load: entry (apt_ptr);
+       56 
+       57 	aptep = apt_ptr;				/* Copy args */
+       58 	sstp = addr (sst_seg$);
+       59 	ap = addr (apte.asteps);			/* get pointer to asteps array */
+       60 
+       61 	call page$lock_ptl;
+       62 
+       63 	do i = 0 to 1;				/* loop over the asteps */
+       64 	     rastep = ap -> p.a (i);			/* get i-th rel pointer */
+       65 	     if rastep then do;			/* if rel pointer non zero */
+       66 		astep = ptr (sstp, rastep);
+       67 		ptp = addrel (astep, sst$astsize);	/* get pointer to page table */
+       68 
+       69 		call load_this_page ();
+       70 		end;
+       71 	     end; 				/* of loop through asteps */
+       72 
+       73 	call page$unlock_ptl;
+       74 
+       75 	return;					/* All done */
+       76 
+       77 /*  */
+       78 
+       79 load_this_page: proc ();
+       80 
+       81 dcl  wired_bit bit (1) aligned;
+       82 dcl  os_bit bit (1) aligned;
+       83 dcl  valid_bit bit (1) aligned;
+       84 dcl  wait_event fixed bin (35);
+       85 
+       86 
+       87 	if sys_info$system_type = ADP_SYSTEM then do;	/* Get the interesting bits */
+       88 	     valid_bit = adp_ptw.valid;
+       89 	     os_bit = adp_ptw.os;
+       90 	     wired_bit = adp_ptw.wired;
+       91 	     end;
+       92 
+       93 	else do;
+       94 	     valid_bit = l68_ptw.valid;
+       95 	     os_bit = l68_ptw.os;
+       96 	     wired_bit = l68_ptw.wired;
+       97 	     end;
+       98 
+       99 	if ^wired_bit then do;			/* If not already wired, wire it */
+      100 	     if sys_info$system_type = ADP_SYSTEM then
+      101 		adp_ptw.wired = "1"b;
+      102 	     else l68_ptw.wired = "1"b;
+      103 	     sst$wired = sst$wired + 1;
+      104 	     end;
+      105 
+      106 	if ^valid_bit then do;			/* Not now in core */
+      107 	     if os_bit then 			/* But should be arriving any minute now */
+      108 		wait_event = binary (rel (ptp), 18);
+      109 	     else call page$pread (astep, 0, wait_event); /* Otherwise, ask for it */
+      110 
+      111 	     if wait_event > 0 then			/* Have an event, remember to wait for it */
+      112 		apte.wait_event = bit (bin (wait_event, 36), 36);
+      113 
+      114 	     if wait_event > 262143 then;		/* Global event -- ignore it */
+      115 	     else do;				/* It will end up here, so notify */
+      116 		if sys_info$system_type = ADP_SYSTEM then
+      117 		     cmep = addr (sst$cmp -> cma (adp_core_ptw.frame));
+      118 		else cmep = addr (sst$cmp -> cma (l68_core_ptw.frame));
+      119 		cme.notify_requested = "1"b;
+      120 		end;
+      121 
+      122 /* THIS IS COMMENTED OUT until there is room in tcm for the new metering cell -- WOS, 04/17/81
+      123*	     tcm$loading_page_waits = tcm$loading_page_waits + 1; /* Meter */
+      124 	     end;
+      125 
+      126 	return;
+      127 	end load_this_page;
+      128 
+      129  /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  1     2 
+  1     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  1     4 
+  1     5 dcl  aptep pointer;
+  1     6 
+  1     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  1     8     2 thread unaligned,				/* List thread */
+  1     9       3 fp bit (18),				/* Forward pointer */
+  1    10       3 bp bit (18),				/* Backward pointer */
+  1    11     2 flags unaligned,				/* Flags and miscellaneous */
+  1    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  1    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  1    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  1    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  1    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  1    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  1    18       3 eligible bit (1),				/* ON if process is eligible */
+  1    19       3 idle bit (1),				/* ON if  this is an idle process */
+  1    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  1    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  1    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  1    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  1    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  1    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  1    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  1    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  1    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  1    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  1    30       3 state bit (18),				/* execution state */
+  1    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  1    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  1    33 						/* bit 18-35: sequential number */
+  1    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  1    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  1    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  1    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  1    38 
+  1    39 /* * * * * * * * */
+  1    40 
+  1    41     2 ipc_pointers unaligned,
+  1    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  1    43       3 pad3 bit (18),
+  1    44     2 ips_message bit (36),				/* IPS signals pending */
+  1    45     2 asteps unaligned,				/* relative ASTE pointers */
+  1    46       3 pds bit (18),				/* PDS (per-process) */
+  1    47       3 dseg bit (18),				/* DSEG (per-process) */
+  1    48       3 prds bit (18),				/* PRDS (per-processor) */
+  1    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  1    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  1    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  1    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  1    53 
+  1    54 /* * * * * * * * */
+  1    55 
+  1    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  1    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  1    58     2 flags2 unaligned,
+  1    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  1    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  1    61       3 pad7 bit (7),
+  1    62       3 batch bit (1),				/* ON if absentee */
+  1    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  1    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  1    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  1    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  1    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  1    68 
+  1    69 /* * * * * * */
+  1    70 
+  1    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  1    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  1    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  1    74     2 deadline fixed bin (71),			/* time of next run */
+  1    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  1    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  1    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  1    78*						/* reaches this (units = 1/1024 sec) */
+  1    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  1    80     2 access_authorization bit (72),			/* authorization of this process */
+  1    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  1    82 
+  1    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  1    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  1    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  1    86 
+  1    87 /*  Cells used to drive and instrument finite-state model for response time
+  1    88*    measurement. Maintained by meter_response_time */
+  1    89 
+  1    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  1    91     2 pad18 bit (18) unaligned,
+  1    92     2 number_processing fixed bin (35),			/* Number interactions */
+  1    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  1    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  1    95 
+  1    96 /* * * * * * */
+  1    97 
+  1    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  1    99 
+  1   100 /*  End of cells for finite-state model */
+  1   101 
+  1   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  1   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  1   104     2 pad4 bit (28) unaligned,
+  1   105     2 ipc_r_offset fixed bin (18) unsigned,
+  1   106     2 ipc_r_factor fixed bin (35) unsigned,
+  1   107     2 apad (10) fixed bin (35);
+  1   108 
+  1   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      129 
+      130  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  2     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  2     3 
+  2     4 dcl  cmep ptr;					/* pointer to core map entry */
+  2     5 
+  2     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  2     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  2     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  2     9 
+  2    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  2    11     2 pad5 bit (1) unaligned,
+  2    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  2    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  2    14     2 pad2 bit (1) unaligned,
+  2    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  2    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  2    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  2    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  2    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  2    20     2 pad3 bit (1) unaligned,
+  2    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  2    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  2    23 
+  2    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  2    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  2    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  2    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  2    28 
+  2    29 
+  2    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  2    31 
+  2    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  2    33     2 pad bit (36) unaligned,
+  2    34     2 record_no bit (18) unaligned,			/* record number of device */
+  2    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  2    36     2 flags bit (14) unal,
+  2    37     2 pad1 bit (18) unal;
+  2    38 
+  2    39 
+  2    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      130 
+      131  /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  3     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  3     3 
+  3     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  3     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  3     6     2 pad1 bit (4) unaligned,
+  3     7     2 flags unaligned like l68_ptw_flags;
+  3     8 
+  3     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  3    10     2 add bit (18) unaligned,
+  3    11     2 flags like l68_ptw_flags unaligned;
+  3    12 
+  3    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  3    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  3    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  3    16 
+  3    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  3    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  3    19     2 first bit (1),				/* the page has not yet been written out */
+  3    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  3    21 
+  3    22     2 pad1 bit (1),
+  3    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  3    24     2 phu bit (1),					/* page has been used bit */
+  3    25 
+  3    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  3    27     2 nypd bit (1), 				/* must be moved to paging device */
+  3    28     2 phm bit (1),					/* page has been modified bit */
+  3    29 
+  3    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  3    31     2 wired bit (1),				/* page is to remain in core */
+  3    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  3    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  3    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  3    35 
+  3    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      131 
+      132  /* BEGIN INCLUDE FILE ... ptw.adp.incl.pl1 ... 02/11/81, for ADP conversion */
+  4     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  4     3 
+  4     4 dcl 1 adp_core_ptw aligned based (ptp), 		/* PTW for in-core page */
+  4     5     2 pad1 bit (2) unaligned,
+  4     6     2 frame fixed bin (16) unsigned unaligned,		/* Core frame number */
+  4     7     2 flags like adp_ptw_flags unaligned;		/* add_type = "00"b; */
+  4     8 
+  4     9 dcl 1 adp_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  4    10     2 add bit (18) unaligned,
+  4    11     2 flags like adp_ptw_flags unaligned;
+  4    12 
+  4    13 dcl 1 adp_special_ptw aligned based (ptp) like adp_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  4    14 dcl 1 adp_real_disk_ptw aligned based (ptp) like adp_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  4    15 dcl 1 adp_null_disk_ptw aligned based (ptp) like adp_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  4    16 
+  4    17 dcl 1 adp_ptw_flags unaligned based,			/* Common lower halfword for ADP PTW */
+  4    18    (2 add_type bit (4),				/* See specific declarations */
+  4    19     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  4    20     2 wired bit (1),				/* page is to remain in core */
+  4    21     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  4    22     2 phu1 bit (1), 				/* page has been used in the quantum */
+  4    23     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  4    24 
+  4    25     2 unusable1 bit (3),				/* Shares hardware byte */
+  4    26     2 valid bit (1),				/* "1"b if page is in core */
+  4    27     2 write bit (1),				/* "1"b if page may be written into */
+  4    28     2 unusable2 bit (1),				/* Shares hardware byte */
+  4    29     2 iox bit (1),					/* "1"b if page is to be present to IOX */
+  4    30     2 phm bit (1),					/* page has been modified bit */
+  4    31     2 phu bit (1)) unaligned; 			/* page has been used bit */
+  4    32 
+  4    33 /* END INCLUDE FILE ... ptw.adp.incl.pl1 */
+      132 
+      133  /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  5     2 
+  5     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  5     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  5     5 
+  5     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  5     7     ("Level68", "ADP");
+  5     8 
+  5     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      133 
+      134 
+      135      end wired_plm;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0853.8  wired_plm.pl1                     >spec>install>1115>wired_plm.pl1
+129          1    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+130          2    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+131          3    03/27/82  0430.2  ptw.l68.incl.pl1                  >ldd>include>ptw.l68.incl.pl1
+132          4    03/27/82  0430.2  ptw.adp.incl.pl1                  >ldd>include>ptw.adp.incl.pl1
+133          5    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 5-4 ref 87 100 116
+a                                      based           bit(18)                  array level 2 packed packed unaligned dcl 30 ref 64
+addr                                                   builtin function         dcl 48 ref 58 59 116 118
+addrel                                                 builtin function         dcl 48 ref 67
+adp_core_ptw                           based           structure                level 1 dcl 4-4
+adp_ptw                                based           structure                level 1 dcl 4-9
+adp_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 4-17
+ap                              000104 automatic       pointer                  dcl 26 set ref 59* 64
+apt_ptr                                parameter       pointer                  dcl 22 ref 55 57
+apte                                   based           structure                level 1 dcl 1-7
+aptep                           000112 automatic       pointer                  dcl 1-5 set ref 57* 59 111
+astep                           000102 automatic       pointer                  dcl 26 set ref 66* 67 109*
+asteps                   12            based           structure                level 2 packed packed unaligned dcl 1-7 set ref 59
+cma                                    based           structure                array level 1 dcl 2-30 set ref 116 118
+cme                                    based           structure                level 1 dcl 2-6
+cmep                            000114 automatic       pointer                  dcl 2-4 set ref 116* 118* 119
+flags                     0(18)        based           structure                level 2 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 3-9 in procedure "wired_plm"
+flags                     0(18)        based           structure                level 2 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "wired_plm"
+frame                                  based           fixed bin(14,0)          level 2 in structure "l68_core_ptw" packed packed
+                                                                                  unsigned unaligned dcl 3-4 in procedure
+                                                                                  "wired_plm" ref 118
+frame                     0(02)        based           fixed bin(16,0)          level 2 in structure "adp_core_ptw" packed packed
+                                                                                  unsigned unaligned dcl 4-4 in procedure
+                                                                                  "wired_plm" ref 116
+i                               000101 automatic       fixed bin(17,0)          dcl 25 set ref 63* 64*
+l68_core_ptw                           based           structure                level 1 dcl 3-4
+l68_ptw                                based           structure                level 1 dcl 3-9
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 3-17
+notify_requested          1(30)        based           bit(1)                   level 2 packed packed unaligned dcl 2-6 set ref 119*
+os                        0(32)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 3-9 in procedure "wired_plm" ref 95
+os                        0(24)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "wired_plm" ref 89
+os_bit                          000125 automatic       bit(1)                   dcl 82 set ref 89* 95* 107
+p                                      based           structure                level 1 packed packed unaligned dcl 30
+page$lock_ptl                   000012 constant        entry                    external dcl 34 ref 61
+page$pread                      000010 constant        entry                    external dcl 33 ref 109
+page$unlock_ptl                 000014 constant        entry                    external dcl 35 ref 73
+ptp                             000110 automatic       pointer                  dcl 28 set ref 67* 88 89 90 94 95 96 100 102 107 116
+                                                                                  118
+ptr                                                    builtin function         dcl 48 ref 66
+rastep                          000100 automatic       bit(18)                  dcl 24 set ref 64* 65 66
+rel                                                    builtin function         dcl 48 ref 107
+sst$astsize                     000016 external static fixed bin(17,0)          dcl 39 ref 67
+sst$cmp                         000020 external static pointer                  dcl 41 ref 116 118
+sst$wired                       000022 external static fixed bin(17,0)          dcl 42 set ref 103* 103
+sst_seg$                        000026 external static fixed bin(17,0)          dcl 46 set ref 58
+sstp                            000106 automatic       pointer                  dcl 27 set ref 58* 66
+sys_info$system_type            000024 external static fixed bin(17,0)          dcl 43 ref 87 100 116
+valid                     0(30)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "wired_plm" ref 88
+valid                     0(33)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 3-9 in procedure "wired_plm" ref 94
+valid_bit                       000126 automatic       bit(1)                   dcl 83 set ref 88* 94* 106
+wait_event               20            based           bit(36)                  level 2 in structure "apte" dcl 1-7 in procedure
+                                                                                  "wired_plm" set ref 111*
+wait_event                      000127 automatic       fixed bin(35,0)          dcl 84 in procedure "load_this_page" set ref 107*
+                                                                                  109* 111 111 114
+wired                     0(31)        based           bit(1)                   level 3 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 3-9 in procedure "wired_plm" set ref
+                                                                                  96 102*
+wired                     0(23)        based           bit(1)                   level 3 in structure "adp_ptw" packed packed
+                                                                                  unaligned dcl 4-9 in procedure "wired_plm" set ref
+                                                                                  90 100*
+wired_bit                       000124 automatic       bit(1)                   dcl 81 set ref 90* 96* 99
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+L68_SYSTEM                             internal static fixed bin(17,0)          initial dcl 5-3
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 5-6
+adp_null_disk_ptw                      based           structure                level 1 dcl 4-15
+adp_real_disk_ptw                      based           structure                level 1 dcl 4-14
+adp_special_ptw                        based           structure                level 1 dcl 4-13
+l68_null_disk_ptw                      based           structure                level 1 dcl 3-15
+l68_real_disk_ptw                      based           structure                level 1 dcl 3-14
+l68_special_ptw                        based           structure                level 1 dcl 3-13
+mcme                                   based           structure                level 1 dcl 2-32
+pds$apt_ptr                            external static pointer                  dcl 38
+pds$processid                          external static bit(36)                  dcl 37
+sst$astap                              external static pointer                  dcl 40
+tcm$loading_page_waits                 external static fixed bin(35,0)          dcl 44
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+load_this_page                  000072 constant        entry                    internal dcl 79 ref 69
+wired_plm                       000002 constant        entry                    external dcl 13
+wired_plm$load                  000013 constant        entry                    external dcl 55
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+bin                                                    builtin function         ref 111
+binary                                                 builtin function         ref 107
+bit                                                    builtin function         ref 111
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       350         400     227         360
+Length       654     227        30         237     120           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+wired_plm                            98 external procedure  is an external procedure.  
+load_this_page                          internal procedure  shares stack frame of external procedure wired_plm.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+wired_plm                000100 rastep                      wired_plm
+                         000101 i                           wired_plm
+                         000102 astep                       wired_plm
+                         000104 ap                          wired_plm
+                         000106 sstp                        wired_plm
+                         000110 ptp                         wired_plm
+                         000112 aptep                       wired_plm
+                         000114 cmep                        wired_plm
+                         000124 wired_bit                   load_this_page
+                         000125 os_bit                      load_this_page
+                         000126 valid_bit                   load_this_page
+                         000127 wait_event                  load_this_page
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+page$lock_ptl                 page$pread                    page$unlock_ptl
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sst$astsize                   sst$cmp                       sst$wired                     sst_seg$
+sys_info$system_type
+
+
+CONSTANTS
+000000  aa     464000000000
+
+BEGIN PROCEDURE wired_plm
+ENTRY TO wired_plm                                          STATEMENT 1 ON LINE 13
+wired_plm: proc ();
+
+000001  da     000100200000
+000002  aa   000160 6270 00	eax7 	112
+000003  aa  7 00034 3521 20	epp2 	pr7|28,*
+000004  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000005  aa     000000000000
+000006  aa     000000000000
+						STATEMENT 1 ON LINE 55
+wired_plm$load: entry (apt_ptr);
+
+000007  aa   000011 7100 04	tra  	9,ic		000020
+ENTRY TO wired_plm$load                                     STATEMENT 1 ON LINE 55
+wired_plm$load: entry (apt_ptr);
+
+000010  at     000001000000
+000011  ta     000010000000
+000012  da     000114300000
+000013  aa   000160 6270 00	eax7 	112
+000014  aa  7 00034 3521 20	epp2 	pr7|28,*
+000015  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000016  aa     000002000000
+000017  aa     000000000000
+						STATEMENT 1 ON LINE 57
+	aptep = apt_ptr;
+
+000020  aa  6 00032 3735 20	epp7 	pr6|26,*
+000021  aa  7 00002 3715 20	epp5 	pr7|2,*		apt_ptr
+000022  aa  5 00000 3715 20	epp5 	pr5|0,*		apt_ptr
+000023  aa  6 00112 6515 00	spri5	pr6|74		aptep
+						STATEMENT 1 ON LINE 58
+	sstp = addr (sst_seg$);
+
+000024  la  4 00026 3535 20	epp3 	pr4|22,*		sst_seg$
+000025  aa  6 00106 2535 00	spri3	pr6|70		sstp
+						STATEMENT 1 ON LINE 59
+	ap = addr (apte.asteps);
+
+000026  aa  5 00012 3515 00	epp1 	pr5|10		apte.asteps
+000027  aa  6 00104 2515 00	spri1	pr6|68		ap
+						STATEMENT 1 ON LINE 61
+	call page$lock_ptl;
+
+000030  aa  6 00056 6211 00	eax1 	pr6|46
+000031  aa   000000 4310 07	fld  	0,dl
+000032  la  4 00012 3521 20	epp2 	pr4|10,*		page$lock_ptl
+000033  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 63
+	do i = 0 to 1;
+
+000034  aa  6 00101 4501 00	stz  	pr6|65		i
+000035  aa   000000 0110 03	nop  	0,du
+000036  aa  6 00101 2361 00	ldq  	pr6|65		i
+000037  aa   000001 1160 07	cmpq 	1,dl
+000040  aa   000024 6054 04	tpnz 	20,ic		000064
+						STATEMENT 1 ON LINE 64
+	     rastep = ap -> p.a (i);
+
+000041  aa   000022 4020 07	mpy  	18,dl
+000042  aa  6 00100 4501 00	stz  	pr6|64		rastep
+000043  aa  6 00104 3735 20	epp7 	pr6|68,*		ap
+000044  aa  003 100 060 506	csl  	(pr,ql),(pr),fill(0),bool(move)
+000045  aa  7 00000 00 0022	descb	pr7|0,18		p.a
+000046  aa  6 00100 00 0022	descb	pr6|64,18		rastep
+						STATEMENT 1 ON LINE 65
+	     if rastep then do;
+
+000047  aa  6 00100 2351 00	lda  	pr6|64		rastep
+000050  aa   000012 6000 04	tze  	10,ic		000062
+						STATEMENT 1 ON LINE 66
+		astep = ptr (sstp, rastep);
+
+000051  aa  6 00106 3521 20	epp2 	pr6|70,*		sstp
+000052  aa   000000 3120 01	eawp2	0,au
+000053  aa  6 00102 2521 00	spri2	pr6|66		astep
+						STATEMENT 1 ON LINE 67
+		ptp = addrel (astep, sst$astsize);
+
+000054  aa  6 00044 3701 20	epp4 	pr6|36,*
+000055  la  4 00016 2361 20	ldq  	pr4|14,*		sst$astsize
+000056  aa  2 00000 3515 06	epp1 	pr2|0,ql
+000057  aa   000000 0510 03	adwp1	0,du
+000060  aa  6 00110 2515 00	spri1	pr6|72		ptp
+						STATEMENT 1 ON LINE 69
+		call load_this_page ();
+
+000061  aa   000011 6700 04	tsp4 	9,ic		000072
+						STATEMENT 1 ON LINE 70
+		end;
+
+						STATEMENT 1 ON LINE 71
+	     end;
+
+000062  aa  6 00101 0541 00	aos  	pr6|65		i
+000063  aa   777753 7100 04	tra  	-21,ic		000036
+						STATEMENT 1 ON LINE 73
+	call page$unlock_ptl;
+
+000064  aa  6 00056 6211 00	eax1 	pr6|46
+000065  aa   000000 4310 07	fld  	0,dl
+000066  aa  6 00044 3701 20	epp4 	pr6|36,*
+000067  la  4 00014 3521 20	epp2 	pr4|12,*		page$unlock_ptl
+000070  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 75
+	return;
+
+000071  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 135
+     end wired_plm;
+
+BEGIN PROCEDURE load_this_page
+ENTRY TO load_this_page                                     STATEMENT 1 ON LINE 79
+load_this_page: proc ();
+
+000072  aa  6 00116 6501 00	spri4	pr6|78
+						STATEMENT 1 ON LINE 87
+	if sys_info$system_type = ADP_SYSTEM then do;
+
+000073  aa  6 00044 3701 20	epp4 	pr6|36,*
+000074  la  4 00024 2361 20	ldq  	pr4|20,*		sys_info$system_type
+000075  aa   000002 1160 07	cmpq 	2,dl
+000076  aa   000016 6010 04	tnz  	14,ic		000114
+						STATEMENT 1 ON LINE 88
+	     valid_bit = adp_ptw.valid;
+
+000077  aa  6 00110 2351 20	lda  	pr6|72,*		adp_ptw.valid
+000100  aa   000036 7350 00	als  	30
+000101  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000102  aa  6 00126 7551 00	sta  	pr6|86		valid_bit
+						STATEMENT 1 ON LINE 89
+	     os_bit = adp_ptw.os;
+
+000103  aa  6 00110 2351 20	lda  	pr6|72,*		adp_ptw.os
+000104  aa   000030 7350 00	als  	24
+000105  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000106  aa  6 00125 7551 00	sta  	pr6|85		os_bit
+						STATEMENT 1 ON LINE 90
+	     wired_bit = adp_ptw.wired;
+
+000107  aa  6 00110 2351 20	lda  	pr6|72,*		adp_ptw.wired
+000110  aa   000027 7350 00	als  	23
+000111  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000112  aa  6 00124 7551 00	sta  	pr6|84		wired_bit
+						STATEMENT 1 ON LINE 91
+	     end;
+
+000113  aa   000015 7100 04	tra  	13,ic		000130
+						STATEMENT 1 ON LINE 93
+	else do;
+
+						STATEMENT 1 ON LINE 94
+	     valid_bit = l68_ptw.valid;
+
+000114  aa  6 00110 2351 20	lda  	pr6|72,*		l68_ptw.valid
+000115  aa   000041 7350 00	als  	33
+000116  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000117  aa  6 00126 7551 00	sta  	pr6|86		valid_bit
+						STATEMENT 1 ON LINE 95
+	     os_bit = l68_ptw.os;
+
+000120  aa  6 00110 2351 20	lda  	pr6|72,*		l68_ptw.os
+000121  aa   000040 7350 00	als  	32
+000122  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000123  aa  6 00125 7551 00	sta  	pr6|85		os_bit
+						STATEMENT 1 ON LINE 96
+	     wired_bit = l68_ptw.wired;
+
+000124  aa  6 00110 2351 20	lda  	pr6|72,*		l68_ptw.wired
+000125  aa   000037 7350 00	als  	31
+000126  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000127  aa  6 00124 7551 00	sta  	pr6|84		wired_bit
+						STATEMENT 1 ON LINE 97
+	     end;
+
+						STATEMENT 1 ON LINE 99
+	if ^wired_bit then do;
+
+000130  aa   000012 6010 04	tnz  	10,ic		000142
+						STATEMENT 1 ON LINE 100
+	     if sys_info$system_type = ADP_SYSTEM then
+		adp_ptw.wired = "1"b;
+
+000131  la  4 00024 2361 20	ldq  	pr4|20,*		sys_info$system_type
+000132  aa   000002 1160 07	cmpq 	2,dl
+000133  aa   000004 6010 04	tnz  	4,ic		000137
+000134  aa   010000 2350 07	lda  	4096,dl
+000135  aa  6 00110 2551 20	orsa 	pr6|72,*		adp_ptw.wired
+000136  aa   000003 7100 04	tra  	3,ic		000141
+						STATEMENT 1 ON LINE 102
+	     else l68_ptw.wired = "1"b;
+
+000137  aa   000020 2350 07	lda  	16,dl
+000140  aa  6 00110 2551 20	orsa 	pr6|72,*		l68_ptw.wired
+						STATEMENT 1 ON LINE 103
+	     sst$wired = sst$wired + 1;
+
+000141  la  4 00022 0541 20	aos  	pr4|18,*		sst$wired
+						STATEMENT 1 ON LINE 104
+	     end;
+
+						STATEMENT 1 ON LINE 106
+	if ^valid_bit then do;
+
+000142  aa  6 00126 2351 00	lda  	pr6|86		valid_bit
+000143  aa   000063 6010 04	tnz  	51,ic		000226
+						STATEMENT 1 ON LINE 107
+	     if os_bit then 			/* But should be arriving any minute now */
+		wait_event = binary (rel (ptp), 18);
+
+000144  aa  6 00125 2351 00	lda  	pr6|85		os_bit
+000145  aa   000005 6000 04	tze  	5,ic		000152
+000146  aa  6 00110 6351 20	eaa  	pr6|72,*		ptp
+000147  aa   000066 7730 00	lrl  	54
+000150  aa  6 00127 7561 00	stq  	pr6|87		wait_event
+000151  aa   000014 7100 04	tra  	12,ic		000165
+						STATEMENT 1 ON LINE 109
+	     else call page$pread (astep, 0, wait_event);
+
+000152  aa  6 00130 4501 00	stz  	pr6|88
+000153  aa  6 00102 3521 00	epp2 	pr6|66		astep
+000154  aa  6 00134 2521 00	spri2	pr6|92
+000155  aa  6 00130 3521 00	epp2 	pr6|88
+000156  aa  6 00136 2521 00	spri2	pr6|94
+000157  aa  6 00127 3521 00	epp2 	pr6|87		wait_event
+000160  aa  6 00140 2521 00	spri2	pr6|96
+000161  aa  6 00132 6211 00	eax1 	pr6|90
+000162  aa   014000 4310 07	fld  	6144,dl
+000163  la  4 00010 3521 20	epp2 	pr4|8,*		page$pread
+000164  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 111
+	     if wait_event > 0 then			/* Have an event, remember to wait for it */
+		apte.wait_event = bit (bin (wait_event, 36), 36);
+
+000165  aa  6 00127 2361 00	ldq  	pr6|87		wait_event
+000166  aa   000010 6044 04	tmoz 	8,ic		000176
+000167  aa   000044 7770 00	llr  	36
+000170  aa   000044 7330 00	lrs  	36
+000171  aa   000002 6050 04	tpl  	2,ic		000173
+000172  aa   000000 5330 00	negl 	0
+000173  aa   000044 7370 00	lls  	36
+000174  aa  6 00112 3735 20	epp7 	pr6|74,*		aptep
+000175  aa  7 00020 7551 00	sta  	pr7|16		apte.wait_event
+						STATEMENT 1 ON LINE 114
+	     if wait_event > 262143 then;
+
+000176  aa  6 00127 2361 00	ldq  	pr6|87		wait_event
+000177  aa   777777 1160 07	cmpq 	262143,dl
+000200  aa   000002 6044 04	tmoz 	2,ic		000202
+000201  aa   000025 7100 04	tra  	21,ic		000226
+						STATEMENT 1 ON LINE 115
+	     else do;
+
+						STATEMENT 1 ON LINE 116
+		if sys_info$system_type = ADP_SYSTEM then
+		     cmep = addr (sst$cmp -> cma (adp_core_ptw.frame));
+
+000202  aa  6 00044 3701 20	epp4 	pr6|36,*
+000203  la  4 00024 2361 20	ldq  	pr4|20,*		sys_info$system_type
+000204  aa   000002 1160 07	cmpq 	2,dl
+000205  aa   000011 6010 04	tnz  	9,ic		000216
+000206  aa  6 00110 2351 20	lda  	pr6|72,*		adp_core_ptw.frame
+000207  aa   000002 7350 00	als  	2
+000210  aa   000070 7730 00	lrl  	56
+000211  aa   000002 7360 00	qls  	2
+000212  la  4 00020 3735 20	epp7 	pr4|16,*		sst$cmp
+000213  aa  7 00000 3735 66	epp7 	pr7|0,*ql		cma
+000214  aa  6 00114 6535 00	spri7	pr6|76		cmep
+000215  aa   000007 7100 04	tra  	7,ic		000224
+						STATEMENT 1 ON LINE 118
+		else cmep = addr (sst$cmp -> cma (l68_core_ptw.frame));
+
+000216  aa  6 00110 2351 20	lda  	pr6|72,*		l68_core_ptw.frame
+000217  aa   000072 7730 00	lrl  	58
+000220  aa   000002 7360 00	qls  	2
+000221  la  4 00020 3735 20	epp7 	pr4|16,*		sst$cmp
+000222  aa  7 00000 3735 66	epp7 	pr7|0,*ql		cma
+000223  aa  6 00114 6535 00	spri7	pr6|76		cmep
+						STATEMENT 1 ON LINE 119
+		cme.notify_requested = "1"b;
+
+000224  aa   000040 2350 07	lda  	32,dl
+000225  aa  7 00001 2551 00	orsa 	pr7|1		cme.notify_requested
+						STATEMENT 1 ON LINE 120
+		end;
+
+						STATEMENT 1 ON LINE 124
+	     end;
+
+						STATEMENT 1 ON LINE 126
+	return;
+
+000226  aa  6 00116 6101 00	rtcd 	pr6|78
+						STATEMENT 1 ON LINE 127
+	end load_this_page;
+
+  END PROCEDURE load_this_page
+  END PROCEDURE wired_plm
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

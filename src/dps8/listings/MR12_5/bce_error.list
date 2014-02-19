@@ -1,0 +1,248 @@
+	COMPILATION LISTING OF SEGMENT bce_error
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1015.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* BCE_ERROR -- com_err_ replacement for bootload environment */
+        9 /* BIM '82 */
+       10 /* Modified by Keith Loepere in 8/83 for new bce switches */
+       11 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       12 
+       13 bce_error:
+       14      procedure (Code) /* options (variable) */;
+       15 
+       16 declare  Code			  fixed bin (35) parameter;
+       17 declare  Me			  char (*) parameter;
+       18 
+       19 declare  1 error_code		  aligned,
+       20 	 2 pad_segno		  bit (18) unaligned, /* for now, assume error_table_ */
+       21 	 2 error_table_offset	  fixed bin (18) uns unal;
+       22 declare  picture_code		  pic "------------9";
+       23 
+       24 declare  etep			  pointer;
+       25 
+       26 declare  1 error_table_entry		  aligned based (etep),
+       27 	 2 length			  fixed bin (9) unsigned unaligned,
+       28 	 2 message		  character (0 refer (error_table_entry.length)) unaligned;
+       29 
+       30 declare  length			  builtin;
+       31 declare  pointer			  builtin;
+       32 declare  unspec			  builtin;
+       33 
+       34 declare  n_args			  fixed bin;
+       35 declare  message_buffer		  char (512);
+       36 declare  work_buffer		  char (work_buffer_len) based (work_buffer_ptr);
+       37 declare  work_buffer_len		  fixed bin;
+       38 declare  work_buffer_ptr		  ptr;
+       39 declare  string_len			  fixed bin (21);
+       40 declare  tcode			  fixed bin (35);
+       41 
+       42 declare  first_ioa_arg		  fixed bin;
+       43 
+       44 declare  arg_list_ptr_		  entry () returns (pointer);
+       45 declare  cu_$arg_count		  entry (fixed bin, fixed bin (35));
+       46 declare  ioa_$general_rs		  entry (ptr, fixed bin, fixed bin, char (*), fixed bin (21), bit (1) aligned,
+       47 				  bit (1) aligned);
+       48 declare  bce_data$error_put_chars
+       49 				  entry (ptr, ptr, fixed bin, fixed bin (35)) external variable;
+       50 declare  error_table_$		  bit (36) aligned external static;
+       51 
+       52 	work_buffer_ptr = addr (message_buffer);
+       53 	work_buffer_len = length (message_buffer);
+       54 	first_ioa_arg = 2;
+       55 	goto join;
+       56 
+       57 com_err:
+       58      entry (Code, Me);				/* options (variable); for com_err_ support */
+       59 	work_buffer_ptr = addr (message_buffer);
+       60 	work_buffer_len = length (message_buffer);
+       61 	string_len = length (rtrim (Me));
+       62 	substr (work_buffer, 1, string_len) = substr (Me, 1, string_len);
+       63 	substr (work_buffer, string_len + 1, 2) = ": ";
+       64 	work_buffer_ptr = addcharno (work_buffer_ptr, string_len + 2);
+       65 	work_buffer_len = work_buffer_len - (string_len + 2);
+       66 	first_ioa_arg = 3;
+       67 
+       68 join:
+       69 	if Code ^= 0
+       70 	then do;
+       71 	     unspec (error_code) = unspec (Code);
+       72 	     if error_code.pad_segno ^= "077777"b3
+       73 	     then do;
+       74 		substr (work_buffer, 1, 5) = "Code ";
+       75 		picture_code = Code;
+       76 		string_len = length (ltrim (picture_code));
+       77 		substr (work_buffer, 6, string_len) =
+       78 		     substr (picture_code, length (picture_code) - string_len + 1, string_len);
+       79 		work_buffer_ptr = addcharno (work_buffer_ptr, 5 + string_len);
+       80 		work_buffer_len = work_buffer_len - (5 + string_len);
+       81 	     end;
+       82 	     else do;
+       83 		etep = pointer (addr (error_table_$), error_code.error_table_offset);
+       84 		substr (work_buffer, 1, error_table_entry.length) = error_table_entry.message;
+       85 		work_buffer_ptr = addcharno (work_buffer_ptr, error_table_entry.length);
+       86 		work_buffer_len = work_buffer_len - (error_table_entry.length);
+       87 	     end;
+       88 	     substr (work_buffer, 1, 1) = " ";
+       89 	     work_buffer_ptr = addcharno (work_buffer_ptr, 1);
+       90 	     work_buffer_len = work_buffer_len - 1;
+       91 	end;
+       92 	call cu_$arg_count (n_args, tcode);
+       93 	if n_args >= first_ioa_arg 
+       94 	then do;
+       95 	     call ioa_$general_rs (arg_list_ptr_ (), first_ioa_arg, first_ioa_arg + 1, work_buffer, string_len, "0"b, "0"b);
+       96 	     work_buffer_ptr = addcharno (work_buffer_ptr, string_len);
+       97 	     work_buffer_len = work_buffer_len - string_len;
+       98 	end;
+       99 	substr (work_buffer, 1, 1) = "
+      100 ";
+      101 	work_buffer_ptr = addcharno (work_buffer_ptr, 1);
+      102 	work_buffer_len = work_buffer_len - 1;
+      103 
+      104 	work_buffer_ptr = addr (message_buffer);
+      105 	work_buffer_len = length (message_buffer) - work_buffer_len;
+      106 	call bce_data$error_put_chars (addr (bce_data$error_put_chars), addr (work_buffer), length (work_buffer), (0));
+      107 	return;
+      108      end bce_error;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  bce_error.pl1                     >special_ldd>install>MR12.3-1114>bce_error.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 16 ref 13 57 68 71 75
+Me                                     parameter       char                     packed unaligned dcl 17 ref 57 61 62
+arg_list_ptr_                   000010 constant        entry                    external dcl 44 ref 95 95
+bce_data$error_put_chars        000016 external static entry variable           dcl 48 set ref 106 106 106
+cu_$arg_count                   000012 constant        entry                    external dcl 45 ref 92
+error_code                      000100 automatic       structure                level 1 dcl 19 set ref 71*
+error_table_$                   000020 external static bit(36)                  dcl 50 set ref 83
+error_table_entry                      based           structure                level 1 dcl 26
+error_table_offset        0(18) 000100 automatic       fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 19 set
+                                                                                  ref 83
+etep                            000106 automatic       pointer                  dcl 24 set ref 83* 84 84 85 86
+first_ioa_arg                   000316 automatic       fixed bin(17,0)          dcl 42 set ref 54* 66* 93 95* 95
+ioa_$general_rs                 000014 constant        entry                    external dcl 46 ref 95
+length                                                 builtin function         dcl 30 in procedure "bce_error" ref 53 60 61 76 77
+                                                                                  105 106 106
+length                                 based           fixed bin(9,0)           level 2 in structure "error_table_entry" packed
+                                                                                  packed unsigned unaligned dcl 26 in procedure
+                                                                                  "bce_error" ref 84 84 85 86
+message                   0(09)        based           char                     level 2 packed packed unaligned dcl 26 ref 84
+message_buffer                  000111 automatic       char(512)                packed unaligned dcl 35 set ref 52 53 59 60 104 105
+n_args                          000110 automatic       fixed bin(17,0)          dcl 34 set ref 92* 93
+pad_segno                       000100 automatic       bit(18)                  level 2 packed packed unaligned dcl 19 set ref 72
+picture_code                    000101 automatic       picture(13)              packed unaligned dcl 22 set ref 75* 76 77 77
+pointer                                                builtin function         dcl 31 ref 83
+string_len                      000314 automatic       fixed bin(21,0)          dcl 39 set ref 61* 62 62 63 64 65 76* 77 77 77 79 80
+                                                                                  95* 96 97
+tcode                           000315 automatic       fixed bin(35,0)          dcl 40 set ref 92*
+unspec                                                 builtin function         dcl 32 set ref 71* 71
+work_buffer                            based           char                     packed unaligned dcl 36 set ref 62* 63* 74* 77* 84*
+                                                                                  88* 95* 99* 106 106 106 106
+work_buffer_len                 000311 automatic       fixed bin(17,0)          dcl 37 set ref 53* 60* 62 63 65* 65 74 77 80* 80 84
+                                                                                  86* 86 88 90* 90 95 95 97* 97 99 102* 102 105* 105
+                                                                                  106 106 106 106
+work_buffer_ptr                 000312 automatic       pointer                  dcl 38 set ref 52* 59* 62 63 64* 64 74 77 79* 79 84
+                                                                                  85* 85 88 89* 89 95 96* 96 99 101* 101 104* 106
+                                                                                  106 106 106
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bce_error                       000015 constant        entry                    external dcl 13
+com_err                         000035 constant        entry                    external dcl 57
+join                            000107 constant        label                    dcl 68 ref 55
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addcharno                                              builtin function         ref 64 79 85 89 96 101
+addr                                                   builtin function         ref 52 59 83 104 106 106 106 106
+ltrim                                                  builtin function         ref 76
+rtrim                                                  builtin function         ref 61
+substr                                                 builtin function         set ref 62 62 63* 74* 77* 77 84* 88* 99*
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       464         506     363         474
+Length       664     363        22         141     100           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_error                           260 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_error                000100 error_code                  bce_error
+                         000101 picture_code                bce_error
+                         000106 etep                        bce_error
+                         000110 n_args                      bce_error
+                         000111 message_buffer              bce_error
+                         000311 work_buffer_len             bce_error
+                         000312 work_buffer_ptr             bce_error
+                         000314 string_len                  bce_error
+                         000315 tcode                       bce_error
+                         000316 first_ioa_arg               bce_error
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var        call_ext_out_desc   call_ext_out        return_mac          ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+arg_list_ptr_                 cu_$arg_count                 ioa_$general_rs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$error_put_chars      error_table_$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000012        52 000022        53 000024        54 000026        55 000030        57 000031        59 000050
+     60 000052        61 000054        62 000071        63 000074        64 000077        65 000102        66 000105
+     68 000107        71 000112        72 000114        74 000120        75 000123        76 000133        77 000145
+     79 000153        80 000157        81 000162        83 000163        84 000172        85 000177        86 000201
+     87 000204        88 000205        89 000210        90 000213        92 000215        93 000226        95 000231
+     96 000310        97 000314        99 000316       101 000322       102 000325       104 000327       105 000331
+    106 000333       107 000357
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

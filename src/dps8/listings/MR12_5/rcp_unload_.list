@@ -1,0 +1,1057 @@
+	COMPILATION LISTING OF SEGMENT rcp_unload_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0941.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(86-01-22,Farley), approve(86-01-22,MCR6979),
+       17*     audit(86-03-08,CLJones), install(86-03-21,MR12.0-1033):
+       18*     Modified to extend the default IOI timeout during an unload of a FIPS tape
+       19*     to include a possible full rewind time. Also changed to wait longer for
+       20*     status return.
+       21*                                                   END HISTORY COMMENTS */
+       22 
+       23 
+       24 /* format: style4 */
+       25 rcp_unload_: proc (arg_volume_type, arg_volume_name, arg_ecode);
+       26 
+       27 
+       28 /*
+       29*
+       30*   This program implements the ring 1 support for unloading volumes.
+       31*   This includes the operator's unload command and internal interfaces
+       32*   such as unloading at detach or device deletion time.
+       33*
+       34*
+       35*   Created on 04/20/78 by Michael R. Jordan
+       36*   Modified on 08/17/78 by Michael R. Jordan
+       37*   Modified on 12/09/78 by Michael R. Jordan to provide new internal interface for unloading volumes.
+       38*   Modified on 01/29/79 by Michael R. Jordan for MSS0500 subsystem support.
+       39*   Modified 6/79 by Michael R. Jordan for MR7.0R.
+       40*   Modified 1/85 by Chris Jones to stop using magic numbers.
+       41*   Modified 3/85 by Chris Jones to not use device.volume_name after it's cleared.
+       42**/
+       43 
+       44 /*	ARGUMENT DATA		*/
+       45 
+       46 
+       47 dcl  arg_clear_volume bit (1);			/* ON => clear volume info on unload */
+       48 dcl  arg_device_ptr ptr;				/* ptr to RCPD device entry */
+       49 dcl  arg_ecode fixed bin (35);			/* status code returned */
+       50 dcl  arg_volume_name char (32);			/* name of the volume */
+       51 dcl  arg_volume_type char (32);			/* type of volume */
+       52 
+       53 
+       54 /*	CONSTANT DATA		*/
+       55 
+       56 
+       57 dcl  UNLOAD_IDCW bit (36) static internal options (constant) init ("720000700201"b3);
+       58 
+       59 dcl  DEFAULT_UNLOAD_TIMEOUT fixed bin (71) static internal options (constant) init (30000000);
+       60 
+       61 dcl  FIPS_UNLOAD_TIMEOUT fixed bin (71) static internal options (constant) init (90000000);
+       62 
+       63 
+       64 /*	AUTOMATIC DATA		*/
+       65 
+       66 
+       67 dcl  alarm_channel fixed bin (71);			/* Saved alarm channel. */
+       68 dcl  alarm_time fixed bin (71);			/* Saved alarm time. */
+       69 dcl  bailout_time fixed bin (71);			/* Max wait time for status. */
+       70 dcl  caller_level fixed bin;				/* callers validation level */
+       71 dcl  device_off bit (18);				/* offset of rcpd.device entry */
+       72 dcl  drive_num fixed bin;				/* The device number of the drive being unloaded. */
+       73 dcl  ecode fixed bin (35);				/* local status code */
+       74 dcl  event_id fixed bin (71);				/* event id for IOI */
+       75 dcl  hit bit (1) aligned;
+       76 dcl  i fixed bin;
+       77 dcl  ioi_index fixed bin;				/* IOI identifier */
+       78 dcl  manual_unload_required bit (1) aligned;		/* "1"b => an error has occured and operator intervention is required. */
+       79 dcl  message (4) fixed bin (71);
+       80 dcl  volume_name char (32);				/* local copy of volume name */
+       81 dcl  volume_type char (32);				/* local copy of volume_type */
+       82 dcl  vtypex fixed bin;				/* volume type index */
+       83 dcl  wkspc_ptr ptr;					/* Pointer to the workspace for then unload command. */
+       84 dcl  sleep_time fixed bin (71);			/* Time we will wait for I/O to complete. */
+       85 
+       86 dcl  1 wait_list aligned,
+       87        2 channel_count fixed bin init (1),		/* Number of channels. */
+       88        2 channel fixed bin (71);			/* Channel to wait on. */
+       89 
+       90 
+       91 /*	BASED DATA		*/
+       92 
+       93 
+       94 dcl  1 wkspc aligned based (wkspc_ptr),
+       95        2 idcw bit (36),				/* The rewind/unload idcw. */
+       96        2 status like istat;				/* The status of the operation. */
+       97 
+       98 
+       99 /*	EXTERNAL DATA		*/
+      100 
+      101 
+      102 dcl  admin_gate_$ioi_attach entry (fixed bin, char (*) aligned, fixed bin (71), bit (1) aligned, fixed bin (35));
+      103 dcl  admin_gate_$ioi_detach entry (fixed bin, fixed bin (35));
+      104 dcl  admin_gate_$ioi_set_to_max entry (fixed bin, fixed bin (71), fixed bin (35));
+      105 dcl  admin_gate_$syserr entry options (variable);
+      106 dcl  cu_$level_get entry (fixed bin);
+      107 dcl  cu_$level_set entry (fixed bin);
+      108 dcl  cv_dec_ entry (char (*)) returns (fixed bin (35));
+      109 dcl  error_table_$media_not_removable fixed bin (35) ext;
+      110 dcl  error_table_$volume_busy fixed bin (35) ext;
+      111 dcl  error_table_$volume_not_loaded fixed bin (35) ext;
+      112 dcl  get_ring_ entry () returns (fixed bin);
+      113 dcl  hcs_$get_alarm_timer entry (fixed bin (71), fixed bin (71));
+      114 dcl  hcs_$set_alarm_timer entry (fixed bin (71), fixed bin, fixed bin (71));
+      115 dcl  ioi_$connect entry (fixed bin, fixed bin, fixed bin (35));
+      116 dcl  ioi_$set_status entry (fixed bin, fixed bin (18), fixed bin, fixed bin (35));
+      117 dcl  ioi_$timeout entry (fixed bin, fixed bin (71), fixed bin (35));
+      118 dcl  ioi_$workspace entry (fixed bin, ptr, fixed bin, fixed bin (35));
+      119 dcl  ipc_$block entry (ptr, ptr, fixed bin (35));
+      120 dcl  ipc_$create_ev_chn entry (fixed bin (71), fixed bin (35));
+      121 dcl  ipc_$delete_ev_chn entry (fixed bin (71), fixed bin (35));
+      122 dcl  rcp_lock_$lock entry (ptr, fixed bin (35));
+      123 dcl  rcp_lock_$unlock entry (ptr);
+      124 dcl  rcp_pointers_$data entry () returns (ptr);
+      125 dcl  resource_info_$get_vtypex entry (char (*), char (*), fixed bin, fixed bin (35));
+      126 
+      127 
+      128 /*	BUILTINS AND CONDITIONS	*/
+      129 
+      130 
+      131 dcl  addr builtin;
+      132 dcl  bit builtin;
+      133 dcl  cleanup condition;
+      134 dcl  clock builtin;
+      135 dcl  fixed builtin;
+      136 dcl  ptr builtin;
+      137 dcl  rel builtin;
+      138 dcl  size builtin;
+      139 dcl  substr builtin;
+      140 
+      141 /*
+      142*
+      143*   Get the callers validation level and get him set to go.
+      144*
+      145**/
+      146 
+      147 
+      148 	call cu_$level_get (caller_level);
+      149 	on cleanup begin;
+      150 	     call cu_$level_set (caller_level);
+      151 	end;
+      152 	call cu_$level_set (get_ring_ ());
+      153 	ecode = 0;
+      154 
+      155 
+      156 /*
+      157*
+      158*   Now copy all input arguments.
+      159*
+      160**/
+      161 
+      162 
+      163 	volume_type = arg_volume_type;
+      164 	volume_name = arg_volume_name;
+      165 
+      166 
+      167 /*
+      168*
+      169*   Find out what kind of device this volume might be on.
+      170*
+      171**/
+      172 
+      173 
+      174 	call resource_info_$get_vtypex (volume_type, volume_type, vtypex, ecode);
+      175 	if ecode ^= 0 then goto RETURN;
+      176 
+      177 
+      178 /*
+      179*
+      180*   Now make sure the device supports volumes and find one with this volume on it.
+      181*
+      182**/
+      183 
+      184 
+      185 	rcpd_ptr = rcp_pointers_$data ();		/* get ptr to rcp_data */
+      186 	dtype_ptr = addr (rcpd.dtype (vtypex));		/* get device type ptr */
+      187 	do device_off = dtype.first_off repeat device.next_off while (device_off ^= "0"b);
+      188 	     device_ptr = ptr (rcpd_ptr, device_off);
+      189 	     if volume_name = device.volume_name then goto GOT_DEVICE;
+      190 	end;
+      191 
+      192 	ecode = error_table_$volume_not_loaded;
+      193 	goto RETURN;
+      194 
+      195 
+      196 /*
+      197*
+      198*   Now lock the data base and unload the volume.
+      199*
+      200**/
+      201 
+      202 
+      203 GOT_DEVICE:
+      204 
+      205 	call rcp_lock_$lock (addr (rcpd.lock_info), ecode);
+      206 	if ecode ^= 0 then goto RETURN;
+      207 
+      208 	if device.flags.attached then do;		/* This volume is busy! */
+      209 	     ecode = error_table_$volume_busy;
+      210 	     goto UNLOCK_AND_RETURN;
+      211 	end;
+      212 	if volume_name ^= device.volume_name then goto UNLOCK_AND_RETURN;
+      213 
+      214 	if device.flags.not_removable_media then do;	/* ERROR */
+      215 	     ecode = error_table_$media_not_removable;
+      216 	     goto UNLOCK_AND_RETURN;
+      217 	end;
+      218 	else call UNLOAD_DEVICE ("1"b);
+      219 
+      220 
+      221 /*
+      222*
+      223*   Now unlock the data base and ...
+      224*
+      225**/
+      226 
+      227 
+      228 UNLOCK_AND_RETURN:
+      229 
+      230 	call rcp_lock_$unlock (addr (rcpd.lock_info));
+      231 
+      232 
+      233 /*
+      234*
+      235*   ... return to the caller.
+      236*
+      237**/
+      238 
+      239 
+      240 RETURN:
+      241 
+      242 	arg_ecode = ecode;
+      243 	call cu_$level_set (caller_level);
+      244 
+      245 	return;
+      246 
+      247 unload_device: entry (arg_device_ptr, arg_clear_volume);
+      248 
+      249 
+      250 	device_ptr = arg_device_ptr;			/* copy device ptr */
+      251 	rcpd_ptr = rcp_pointers_$data ();		/* get ptr to RCP Data */
+      252 
+      253 	call UNLOAD_DEVICE (arg_clear_volume);		/* unload the device */
+      254 
+      255 	return;
+      256 
+      257 UNLOAD_DEVICE: proc (clear_volume);
+      258 
+      259 
+      260 dcl  clear_volume bit (1);				/* ON => remove this volume from the device */
+      261 
+      262 
+      263 	if device.flags.not_removable_media then return;	/* Don't fool with these */
+      264 
+      265 	volume_name = device.volume_name;		/* assure that this is true for later */
+      266 	goto STATE (device.state);
+      267 
+      268 STATE (1):					/* ASSIGNED */
+      269 	if device.flags.attached then return;
+      270 
+      271 
+      272 STATE (0):					/* FREE */
+      273 STATE (4):					/* RESERVED */
+      274 	manual_unload_required = "0"b;		/* initialize */
+      275 
+      276 	call admin_gate_$syserr (0, "RCP: Unloading volume ^[scratch^s^;^a^] from device ^a", (device.volume_name = ""),
+      277 	     device.volume_name, device.device_name);
+      278 
+      279 	if clear_volume then do;			/* this volume is being removed from this device */
+      280 	     device.volume_name = "";			/* remove it from the device */
+      281 	     hit = "0"b;
+      282 	     do i = 1 to rcpd.last_volume while (^hit);	/* now find the volume entry */
+      283 		volume_ptr = addr (rcpd.volume (i));
+      284 		if (volume.volume_name = volume_name) & (volume.state = FREE) then do;
+      285 						/* got it */
+      286 		     volume.process_id = "0"b;
+      287 		     volume.volume_name = "";
+      288 		     volume.group_id = "";
+      289 		     volume.reserved_by = "";
+      290 		     volume.reservation_id = 0;
+      291 		     volume.unassign_state = FREE;
+      292 		     hit = "1"b;
+      293 		end;
+      294 	     end;
+      295 	end;
+      296 
+      297 	call ipc_$create_ev_chn (event_id, ecode);
+      298 	if ecode ^= 0 then goto MANUAL_UNLOAD;
+      299 
+      300 	call admin_gate_$ioi_attach (ioi_index, device.device_name, event_id, "0"b, ecode);
+      301 	if ecode ^= 0 then do;			/* cannot do it right */
+      302 	     call ipc_$delete_ev_chn (event_id, ecode);	/* delete the enent channel */
+      303 	     goto MANUAL_UNLOAD;
+      304 	end;
+      305 
+      306 	call ioi_$workspace (ioi_index, wkspc_ptr, size (wkspc), ecode);
+      307 	if ecode ^= 0 then do;
+      308 	     manual_unload_required = "1"b;
+      309 	     goto DETACH;
+      310 	end;
+      311 
+      312 /*
+      313*   If we are unloading a FIPS tape drive, then we need to allow for the
+      314*   case where a rewind is in progress and the FIPS adapter holds onto the
+      315*   unload connect till the rewind completes. This is because the tape
+      316*   subsystem does not allow the unload, because the rewind has it busy.
+      317**/
+      318 	if device.flags.fips then do;
+      319 	     call admin_gate_$ioi_set_to_max (ioi_index, FIPS_UNLOAD_TIMEOUT, ecode);
+      320 	     if ecode ^= 0 then do;
+      321 		manual_unload_required = "1"b;
+      322 		goto DETACH;
+      323 	     end;
+      324 	     call ioi_$timeout (ioi_index, FIPS_UNLOAD_TIMEOUT, ecode);
+      325 	     if ecode ^= 0 then do;
+      326 		manual_unload_required = "1"b;
+      327 		goto DETACH;
+      328 	     end;
+      329 	end;
+      330 
+      331 	wkspc.idcw = UNLOAD_IDCW;
+      332 	drive_num = cv_dec_ (substr (device.device_name, 6, 2));
+      333 	addr (wkspc.idcw) -> idcw.device = bit (fixed (drive_num, 6));
+      334 
+      335 	isp = addr (wkspc.status);
+      336 	call ioi_$set_status (ioi_index, fixed (rel (isp), 18), 1, ecode);
+      337 	if ecode ^= 0 then do;
+      338 	     manual_unload_required = "1"b;
+      339 	     goto DETACH;
+      340 	end;
+      341 	istat.completion.st = "0"b;
+      342 
+      343 	call ioi_$connect (ioi_index, 0, ecode);
+      344 	if ecode ^= 0 then do;
+      345 	     manual_unload_required = "1"b;
+      346 	     goto DETACH;
+      347 	end;
+      348 
+      349 
+      350 	sleep_time = rcpd.unload_sleep_time;
+      351 
+      352 	call hcs_$get_alarm_timer (alarm_time, alarm_channel);
+      353 						/* save old setting */
+      354 
+      355 	if device.flags.fips then bailout_time = clock () + FIPS_UNLOAD_TIMEOUT;
+      356 	else bailout_time = clock () + DEFAULT_UNLOAD_TIMEOUT;
+      357 
+      358 	do while (clock () < bailout_time);
+      359 	     call hcs_$set_alarm_timer (sleep_time, 1, event_id);
+      360 	     wait_list.channel = event_id;
+      361 	     call ipc_$block (addr (wait_list), addr (message), ecode);
+      362 	     if istat.completion.st then do;
+      363 		if istat.completion.time_out then manual_unload_required = "1"b;
+      364 		goto REVERT_ALARM;
+      365 	     end;
+      366 	end;
+      367 
+      368 	manual_unload_required = "1"b;		/* timed out */
+      369 REVERT_ALARM:
+      370 	call hcs_$set_alarm_timer (alarm_time, 2, alarm_channel);
+      371 						/* revert back to old setting */
+      372 
+      373 DETACH:
+      374 	call admin_gate_$ioi_detach (ioi_index, ecode);
+      375 
+      376 	call ipc_$delete_ev_chn (event_id, ecode);	/* delete the event channel created earlier */
+      377 
+      378 	if ^manual_unload_required then return;
+      379 
+      380 
+      381 MANUAL_UNLOAD:					/* Must tell the operator to do it manually. */
+      382 	call admin_gate_$syserr (3, "RCP: Manually unload volume ^a from device ^a", volume_name, device.device_name);
+      383 	ecode = 0;				/* show success */
+      384 	return;
+      385 
+      386 
+      387 STATE (2):					/* DELETED */
+      388 STATE (3):					/* STORAGE SYSTEM */
+      389 	return;
+      390 
+      391 
+      392      end UNLOAD_DEVICE;
+      393 
+  1     1 
+  1     2 /* Begin include file ...... ioi_stat.incl.pl1 */
+  1     3 /* Last modified 3/24/75 by Noel I. Morris */
+  1     4 
+  1     5 dcl  isp ptr;					/* pointer to status structure */
+  1     6 
+  1     7 dcl 1 istat based (isp) aligned,			/* I/O Interfacer status structure */
+  1     8     2 completion,					/* completion flags */
+  1     9      (3 st bit (1),					/* "1"b if status returned */
+  1    10       3 er bit (1),					/* "1"b if status indicates error condition */
+  1    11       3 run bit (1),				/* "1"b if channel still running */
+  1    12       3 time_out bit (1)) unal,			/* "1"b if time-out occurred */
+  1    13     2 level fixed bin (3),				/* IOM interrupt level */
+  1    14     2 offset fixed bin (18),				/* DCW list offset */
+  1    15     2 absaddr fixed bin (24),				/* absolute address of workspace */
+  1    16     2 iom_stat bit (72),				/* IOM status */
+  1    17     2 lpw bit (72);					/* LPW residue */
+  1    18 
+  1    19 dcl  imp ptr;					/* pointer to message structure */
+  1    20 
+  1    21 dcl 1 imess based (imp) aligned,			/* I/O Interfacer event message structure */
+  1    22    (2 completion like istat.completion,			/* completion flags */
+  1    23     2 pad bit (11),
+  1    24     2 level bit (3),				/* interrupt level */
+  1    25     2 offset bit (18),				/* DCW list offset */
+  1    26     2 status bit (36)) unal;				/* first 36 bits of status */
+  1    27 
+  1    28 /* End of include file ...... ioi_stat.incl.pl1 */
+  1    29 
+      394 
+      395 
+  2     1 
+  2     2 /* Begin include file ...... iom_pcw.incl.pl1 */
+  2     3 
+  2     4 dcl  pcwp ptr;					/* pointer to PCW */
+  2     5 
+  2     6 dcl 1 pcw based (pcwp) aligned,			/* Peripheral Control Word */
+  2     7      (2 command bit (6),				/* device command */
+  2     8       2 device bit (6),				/* device code */
+  2     9       2 ext bit (6),				/* address extension */
+  2    10       2 code bit (3),				/* should be "111"b for PCW */
+  2    11       2 mask bit (1),				/* channel mask bit */
+  2    12       2 control bit (2),				/* terminate/proceed and marker control bits */
+  2    13       2 chan_cmd bit (6),				/* type of I/O operation */
+  2    14       2 count bit (6),				/* record count or control character */
+  2    15       2 mbz1 bit (3),
+  2    16       2 channel bit (6),				/* channel number */
+  2    17       2 mbz2 bit (27)) unal;
+  2    18 
+  2    19 dcl  idcwp ptr;					/* pointer to IDCW */
+  2    20 
+  2    21 dcl 1 idcw based (idcwp) aligned,			/* Instruction DCW */
+  2    22      (2 command bit (6),				/* device command */
+  2    23       2 device bit (6),				/* device code */
+  2    24       2 ext bit (6),				/* address extension */
+  2    25       2 code bit (3),				/* should be "111"b for PCW */
+  2    26       2 ext_ctl bit (1),				/* "1"b if address extension to be used */
+  2    27       2 control bit (2),				/* terminate/proceed and marker control bits */
+  2    28       2 chan_cmd bit (6),				/* type of I/O operation */
+  2    29       2 count bit (6)) unal;				/* record count or control character */
+  2    30 
+  2    31 /* End include file ...... iom_pcw.incl.pl1 */
+  2    32 
+      396 
+      397 
+  3     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  3     2*   *
+  3     3*   *	Created on 11/20/74 by Bill Silver.
+  3     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  3     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  3     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  3     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  3     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  3     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  3    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  3    11*   *	This include file defines the Resource Control Package communication segment.
+  3    12*   *	This segment is used to communicate requests between the various internal
+  3    13*   *	parts of RCP.
+  3    14**/
+  3    15 
+  3    16 /****^  HISTORY COMMENTS:
+  3    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  3    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  3    19*     Support MCA and FIPS.
+  3    20*                                                   END HISTORY COMMENTS */
+  3    21 
+  3    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  3    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  3    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  3    25 
+  3    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  3    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  3    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  3    29 
+  3    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  3    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  3    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  3    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  3    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  3    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  3    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  3    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  3    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  3    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  3    40     2 num_entries fixed bin,				/* Total number of entries. */
+  3    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  3    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  3    43      like rcse,					/* See structure below. */
+  3    44     2 end bit (36);					/* End of rcp_com_seg. */
+  3    45 
+  3    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  3    47     2 lock bit (36),				/* The lock itself. */
+  3    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  3    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  3    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  3    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  3    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  3    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  3    54 
+  3    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  3    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  3    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  3    58     2 dtypex fixed bin,				/* Device type index. */
+  3    59     2 model fixed bin,				/* Device model number. */
+  3    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  3    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  3    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  3    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  3    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  3    65 
+  3    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  3    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  3    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  3    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  3    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  3    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  3    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  3    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  3    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  3    75     2 flags,					/* Special info flags. */
+  3    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  3    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  3    78       3 system bit (1),				/* ON => assigned to a system process. */
+  3    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  3    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  3    81       3 writing bit (1),				/* ON => writing on volume. */
+  3    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  3    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  3    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  3    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  3    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  3    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  3    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  3    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  3    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  3    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  3    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  3    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  3    94       3 fips bit (1),				/* ON => FIPS device. */
+  3    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  3    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  3    97       3 unused bit (6),
+  3    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  3    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  3   100     2 rcp_id bit (36),				/* ID of this entry. */
+  3   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  3   102     2 process_id bit (36),				/* ID of calling process. */
+  3   103     2 group_id char (32),				/* Group ID of calling process. */
+  3   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  3   105     2 version_num fixed bin,				/* Device info version number. */
+  3   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  3   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  3   108     2 ioi_index fixed bin,				/* IOI device index. */
+  3   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  3   110     2 caller_comment char (64);			/* Caller's comment. */
+  3   111 
+  3   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      398 
+      399 
+  4     1 /*	Begin  include file ... rcp_data.incl.pl1
+  4     2*   *
+  4     3*   *	Created on 09/06/74 by Bill Silver.
+  4     4*   *	This include file defines the Resource Control Package data base, rcp_data.
+  4     5*   *	It is initialized in ring 0 by rcp_init.  It is maintained in ring 1 by RCP.
+  4     6*   *	It contains information about all of the devices and volumes managed by RCP.
+  4     7*   *	This include file references rcp_com_seg.incl.pl1.
+  4     8*
+  4     9*   *	Modified by R.J.C. Kissel on 10/5/77 to add the check_label bit.
+  4    10*   *	Modified by Michael R. Jordan on 04/24/78 to add modes and attached flag.
+  4    11*   *	Modified on 12/09/78 to add removable media bit.
+  4    12*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+  4    13*   *	Modified 3/79 by C. D. Tavares for expandable RCP modes.
+  4    14*   *	Modified 11/84 by Paul Farley to add fips flag.
+  4    15*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  4    16**/
+  4    17 
+  4    18 /****^  HISTORY COMMENTS:
+  4    19*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  4    20*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  4    21*     Support FIPS and IMU.
+  4    22*                                                   END HISTORY COMMENTS */
+  4    23 
+  4    24 dcl  rcpd_ptr ptr;					/* Points to base of RCPD. */
+  4    25 dcl  dtype_ptr ptr;					/* Points to a device type entry. */
+  4    26 dcl  device_ptr ptr;				/* Points to a device entry. */
+  4    27 dcl  volume_ptr ptr;				/* Points to a volume entry. */
+  4    28 
+  4    29 dcl 1 rcpd based (rcpd_ptr) aligned,			/* Begin at word 0 of RCPD. */
+  4    30     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  4    31     2 init bit (1) unal,				/* ON => rcp_ring1_init_ has executed */
+  4    32     2 modes like rcp_init_flags unaligned,
+  4    33     2 tot_dtypes fixed bin,				/* Number of known device types. */
+  4    34     2 tot_devices fixed bin,				/* Total number of devices configured. */
+  4    35     2 tot_volumes fixed bin,				/* Number of possible attached volumes. */
+  4    36     2 last_volume fixed bin,				/* The last volume entry currently in use. */
+  4    37     2 mtimer_chan fixed bin (71),			/* Event channel for mount timer. */
+  4    38     2 mtimer_pid bit (36),				/* ID of mount timer process. */
+  4    39     2 accounting_chan fixed bin (71),			/* Event channel for device accounting */
+  4    40     2 accounting_pid bit (36),			/* ID of accounting process */
+  4    41     2 unload_sleep_time fixed bin (71),			/* Number of microseconds to wait for unload completion. */
+  4    42     2 pad (7) fixed bin,
+  4    43     2 dtype (0 refer (rcpd.tot_dtypes))			/* One entry per device type. */
+  4    44      like dtype,					/* See structure below. */
+  4    45     2 device (0 refer (rcpd.tot_devices))		/* One entry per configured device. */
+  4    46      like device,					/* See structure below. */
+  4    47     2 volume (0 refer (rcpd.tot_volumes))		/* One entry per possible attached volume. */
+  4    48      like volume,					/* See structure below. */
+  4    49     2 end bit (36) aligned;				/* End of rcp_data. */
+  4    50 
+  4    51 dcl 1 dtype based (dtype_ptr) aligned,			/* Entry for one device type. */
+  4    52     2 device_type char (32),				/* Name of this device type. */
+  4    53     2 max_concurrent fixed bin,			/* Max number of concurrently assigned devices. */
+  4    54     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  4    55     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  4    56     2 first_off bit (18),				/* Offset of first device entry. */
+  4    57     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  4    58 
+  4    59 dcl 1 device based (device_ptr) aligned,		/* Up to state must = rcs.rcse. */
+  4    60     2 device_name char (8),				/* Name of device associated with this entry. */
+  4    61     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  4    62     2 dtypex fixed bin,				/* Device type index. */
+  4    63     2 model fixed bin,				/* Device model number. */
+  4    64     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  4    65     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  4    66     2 state_time fixed bin (71),			/* Time device put into current state. */
+  4    67     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted,
+  4    68*						   3 => storage system, 4 => reserved */
+  4    69 
+  4    70 /*	*	*	*	*	** Following fields are unique to device entry. */
+  4    71 
+  4    72     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  4    73     2 acs_name char (12),				/* Entry name of ACS for this device. */
+  4    74     2 next_off bit (18),				/* Offset of next entry for this device type. */
+  4    75     2 iom_num fixed bin,				/* IOM number for this device. */
+  4    76     2 chan_num fixed bin,				/* Channel number for this device. */
+  4    77     2 num_channels fixed bin,				/* Num channels that may address device. */
+  4    78     2 flags,					/* Special info flags. */
+  4    79      (3 delete bit (1),				/* ON => Delete device when it is unassigned. */
+  4    80       3 priv bit (1),				/* ON => Deleted device assigned for priv attach. */
+  4    81       3 reservable bit (1),				/* ON => may be reserved for system process. */
+  4    82       3 reserved bit (1),				/* ON => reserved to a reserved process. */
+  4    83       3 mounting bit (1),				/* ON => mount pending. */
+  4    84       3 writing bit (1),				/* ON => mounting for writing. */
+  4    85       3 attached bit (1) unal,			/* ON => device is attached. */
+  4    86       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  4    87       3 fips bit (1),				/* ON => FIPS device. */
+  4    88       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  4    89       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  4    90       3 unused bit (25)) unal,
+  4    91     2 process_id bit (36),				/* ID of assigned process. */
+  4    92     2 group_id char (32),				/* Process group ID. */
+  4    93     2 error_count fixed bin (35),			/* Total error count.  Defined by user ring. */
+  4    94     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  4    95     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  4    96     2 histogram (4) fixed bin,			/* Assignment time histogram. */
+  4    97     2 reservation_id fixed bin (71),
+  4    98     2 reserved_by char (32),				/* Who made this reservation. */
+  4    99     2 current_authorization bit (72) aligned;		/* Authoization of process using this device. */
+  4   100 
+  4   101 dcl 1 volume based (volume_ptr) aligned,		/* Entry for one volume. */
+  4   102     2 process_id bit (36),				/* "0"b => unassigned. */
+  4   103     2 volume_name char (32),				/* Volume name. */
+  4   104     2 vtypex fixed bin,				/* Volume type index. */
+  4   105     2 group_id char (32),				/* This is used for the reserved_for field. */
+  4   106     2 reserved_by char (32),
+  4   107     2 reservation_id fixed bin (71),
+  4   108     2 state_time fixed bin (71),			/* Same as for a device. */
+  4   109     2 state fixed bin,				/* Same as for a device. */
+  4   110     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  4   111     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  4   112 
+  5     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  5     2 
+  5     3 /* Created on 04/24/78 by Michael R. Jordan */
+  5     4 /* Modified 04/10/79 by C. D. Tavares */
+  5     5 
+  5     6 dcl  rifp ptr;
+  5     7 
+  5     8 dcl 1 rcp_init_flags based (rifp),
+  5     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  5    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  5    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  5    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  5    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  5    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  5    15 
+  5    16 dcl (No_authentication initial (0),
+  5    17      Nominal_authentication initial (1),
+  5    18      Automatic_authentication initial (2),
+  5    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  5    20 
+  5    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  5    22     ("none", "nominal", "automatic", "manual");
+  5    23 
+  5    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  4   113 
+  4   114 
+  4   115 /*	End of include file ... rcp_data.incl.pl1	*/
+      400 
+      401 
+  6     1 /*        Begin include file rcp_resource_states.incl.pl1
+  6     2**
+  6     3**         Created by M. M. Pozzo on 841005
+  6     4**	Modified by Chris Jones, 12/84, to add volume states.
+  6     5**
+  6     6**/
+  6     7 
+  6     8 declare FREE fixed bin static internal options (constant) init (0);
+  6     9 declare ASSIGNED fixed bin static internal options (constant) init (1);
+  6    10 declare DELETED fixed bin static internal options (constant) init (2);
+  6    11 declare STORAGE_SYSTEM fixed bin static internal options (constant) init (3);
+  6    12 declare RESERVED fixed bin static internal options (constant) init (4);
+  6    13 
+  6    14 /* End include file ... rcp_resource_states.incl.pl1  */
+      402 
+      403 
+      404 /* BEGIN MESSAGE DOCUMENTATION
+      405*
+      406*   Message:
+      407*   RCP: Unloading volume VOLUME from device DEVICE
+      408*
+      409*   S:	$info
+      410*
+      411*   T:	$run
+      412*
+      413*   M:	The specified VOLUME is being demounted by RCP.
+      414*
+      415*   A:	Return the specified VOLUME to the library.
+      416*
+      417*
+      418*   Message:
+      419*   RCP: Manually unload volume VOLUME from device DEVICE
+      420*
+      421*   S:	$beep
+      422*
+      423*   T:	$run
+      424*
+      425*   M:	RCP could not unload the specified volume from the device on which it was loaded.
+      426*
+      427*   A:	Manually unload the volume from the device and return the volume to the library for storage.
+      428*
+      429*
+      430*   END MESSAGE DOCUMENTATION */
+      431 
+      432 
+      433      end rcp_unload_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.6  rcp_unload_.pl1                   >spec>install>1111>rcp_unload_.pl1
+394          1    08/17/79  2215.0  ioi_stat.incl.pl1                 >ldd>include>ioi_stat.incl.pl1
+396          2    05/06/74  1742.1  iom_pcw.incl.pl1                  >ldd>include>iom_pcw.incl.pl1
+398          3    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+400          4    03/27/86  1120.0  rcp_data.incl.pl1                 >ldd>include>rcp_data.incl.pl1
+4-113        5    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+402          6    03/15/85  0953.1  rcp_resource_states.incl.pl1      >ldd>include>rcp_resource_states.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DEFAULT_UNLOAD_TIMEOUT          000010 constant        fixed bin(71,0)          initial dcl 59 ref 356
+FIPS_UNLOAD_TIMEOUT             000006 constant        fixed bin(71,0)          initial dcl 61 set ref 319* 324* 355
+FREE                                   constant        fixed bin(17,0)          initial dcl 6-8 ref 284 291
+UNLOAD_IDCW                     000012 constant        bit(36)                  initial packed unaligned dcl 57 ref 331
+addr                                                   builtin function         dcl 131 ref 186 203 203 228 228 283 333 335 361 361
+                                                                                  361 361
+admin_gate_$ioi_attach          000010 constant        entry                    external dcl 102 ref 300
+admin_gate_$ioi_detach          000012 constant        entry                    external dcl 103 ref 373
+admin_gate_$ioi_set_to_max      000014 constant        entry                    external dcl 104 ref 319
+admin_gate_$syserr              000016 constant        entry                    external dcl 105 ref 276 381
+alarm_channel                   000100 automatic       fixed bin(71,0)          dcl 67 set ref 352* 369*
+alarm_time                      000102 automatic       fixed bin(71,0)          dcl 68 set ref 352* 369*
+arg_clear_volume                       parameter       bit(1)                   packed unaligned dcl 47 set ref 247 253*
+arg_device_ptr                         parameter       pointer                  dcl 48 ref 247 250
+arg_ecode                              parameter       fixed bin(35,0)          dcl 49 set ref 25 240*
+arg_volume_name                        parameter       char(32)                 packed unaligned dcl 50 ref 25 164
+arg_volume_type                        parameter       char(32)                 packed unaligned dcl 51 ref 25 163
+attached                 35(06)        based           bit(1)                   level 3 packed packed unaligned dcl 4-59 ref 208 268
+bailout_time                    000104 automatic       fixed bin(71,0)          dcl 69 set ref 355* 356* 358
+bit                                                    builtin function         dcl 132 ref 333
+caller_level                    000106 automatic       fixed bin(17,0)          dcl 70 set ref 148* 150* 243*
+channel                   2     000156 automatic       fixed bin(71,0)          level 2 dcl 86 set ref 360*
+channel_count                   000156 automatic       fixed bin(17,0)          initial level 2 dcl 86 set ref 86*
+cleanup                         000162 stack reference condition                dcl 133 ref 149
+clear_volume                           parameter       bit(1)                   packed unaligned dcl 260 ref 257 279
+clock                                                  builtin function         dcl 134 ref 355 356 358
+completion                1            based           structure                level 3 in structure "wkspc" dcl 94 in procedure
+                                                                                  "rcp_unload_"
+completion                             based           structure                level 2 in structure "istat" dcl 1-7 in procedure
+                                                                                  "rcp_unload_"
+cu_$level_get                   000020 constant        entry                    external dcl 106 ref 148
+cu_$level_set                   000022 constant        entry                    external dcl 107 ref 150 152 243
+cv_dec_                         000024 constant        entry                    external dcl 108 ref 332
+device                                 based           structure                level 1 dcl 4-59 in procedure "rcp_unload_"
+device                    0(06)        based           bit(6)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 2-21 in procedure "rcp_unload_" set ref 333*
+device_name                            based           char(8)                  level 2 dcl 4-59 set ref 276* 300* 332 332 381*
+device_off                      000107 automatic       bit(18)                  packed unaligned dcl 71 set ref 187* 187* 188*
+device_ptr                      000176 automatic       pointer                  dcl 4-26 set ref 188* 189 190 208 212 214 250* 263
+                                                                                  265 266 268 276 276 276 280 300 318 332 332 355
+                                                                                  381
+drive_num                       000110 automatic       fixed bin(17,0)          dcl 72 set ref 332* 333
+dtype                                  based           structure                level 1 dcl 4-51 in procedure "rcp_unload_"
+dtype                    43            based           structure                array level 2 in structure "rcpd" dcl 4-29
+                                                                                  in procedure "rcp_unload_" set ref 186
+dtype_ptr                       000174 automatic       pointer                  dcl 4-25 set ref 186* 187
+ecode                           000111 automatic       fixed bin(35,0)          dcl 73 set ref 153* 174* 175 192* 203* 206 209* 215*
+                                                                                  240 297* 298 300* 301 302* 306* 307 319* 320 324*
+                                                                                  325 336* 337 343* 344 361* 373* 376* 383*
+error_table_$media_not_removable
+                                000026 external static fixed bin(35,0)          dcl 109 ref 215
+error_table_$volume_busy        000030 external static fixed bin(35,0)          dcl 110 ref 209
+error_table_$volume_not_loaded  000032 external static fixed bin(35,0)          dcl 111 ref 192
+event_id                        000112 automatic       fixed bin(71,0)          dcl 74 set ref 297* 300* 302* 359* 360 376*
+fips                     35(08)        based           bit(1)                   level 3 packed packed unaligned dcl 4-59 ref 318 355
+first_off                13            based           bit(18)                  level 2 dcl 4-51 ref 187
+fixed                                                  builtin function         dcl 135 ref 333 336 336
+flags                    35            based           structure                level 2 dcl 4-59
+get_ring_                       000034 constant        entry                    external dcl 112 ref 152 152
+group_id                 12            based           char(32)                 level 2 dcl 4-101 set ref 288*
+hcs_$get_alarm_timer            000036 constant        entry                    external dcl 113 ref 352
+hcs_$set_alarm_timer            000040 constant        entry                    external dcl 114 ref 359 369
+hit                             000114 automatic       bit(1)                   dcl 75 set ref 281* 282 292*
+i                               000115 automatic       fixed bin(17,0)          dcl 76 set ref 282* 283*
+idcw                                   based           bit(36)                  level 2 in structure "wkspc" dcl 94 in procedure
+                                                                                  "rcp_unload_" set ref 331* 333
+idcw                                   based           structure                level 1 dcl 2-21 in procedure "rcp_unload_"
+ioi_$connect                    000042 constant        entry                    external dcl 115 ref 343
+ioi_$set_status                 000044 constant        entry                    external dcl 116 ref 336
+ioi_$timeout                    000046 constant        entry                    external dcl 117 ref 324
+ioi_$workspace                  000050 constant        entry                    external dcl 118 ref 306
+ioi_index                       000116 automatic       fixed bin(17,0)          dcl 77 set ref 300* 306* 319* 324* 336* 343* 373*
+ipc_$block                      000052 constant        entry                    external dcl 119 ref 361
+ipc_$create_ev_chn              000054 constant        entry                    external dcl 120 ref 297
+ipc_$delete_ev_chn              000056 constant        entry                    external dcl 121 ref 302 376
+isp                             000170 automatic       pointer                  dcl 1-5 set ref 335* 336 336 341 362 363
+istat                                  based           structure                level 1 dcl 1-7
+last_volume              20            based           fixed bin(17,0)          level 2 dcl 4-29 ref 282
+lock_info                              based           structure                level 2 in structure "rcpd" dcl 4-29 in procedure
+                                                                                  "rcp_unload_" set ref 203 203 228 228
+lock_info                              based           structure                level 1 dcl 3-46 in procedure "rcp_unload_"
+manual_unload_required          000117 automatic       bit(1)                   dcl 78 set ref 272* 308* 321* 326* 338* 345* 363*
+                                                                                  368* 378
+message                         000120 automatic       fixed bin(71,0)          array dcl 79 set ref 361 361
+next_off                 31            based           bit(18)                  level 2 dcl 4-59 ref 190
+not_removable_media      35(07)        based           bit(1)                   level 3 packed packed unaligned dcl 4-59 ref 214 263
+process_id                             based           bit(36)                  level 2 dcl 4-101 set ref 286*
+ptr                                                    builtin function         dcl 136 ref 188
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 5-8
+rcp_lock_$lock                  000060 constant        entry                    external dcl 122 ref 203
+rcp_lock_$unlock                000062 constant        entry                    external dcl 123 ref 228
+rcp_pointers_$data              000064 constant        entry                    external dcl 124 ref 185 251
+rcpd                                   based           structure                level 1 dcl 4-29
+rcpd_ptr                        000172 automatic       pointer                  dcl 4-24 set ref 185* 186 188 203 203 228 228 251*
+                                                                                  282 283 350
+rcse                                   based           structure                level 1 dcl 3-55
+rel                                                    builtin function         dcl 137 ref 336 336
+reservation_id           32            based           fixed bin(71,0)          level 2 dcl 4-101 set ref 290*
+reserved_by              22            based           char(32)                 level 2 dcl 4-101 set ref 289*
+resource_info_$get_vtypex       000066 constant        entry                    external dcl 125 ref 174
+size                                                   builtin function         dcl 138 ref 306 306
+sleep_time                      000154 automatic       fixed bin(71,0)          dcl 84 set ref 350* 359*
+st                                     based           bit(1)                   level 3 packed packed unaligned dcl 1-7 set ref 341*
+                                                                                  362
+state                    24            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_unload_" ref 266
+state                    36            based           fixed bin(17,0)          level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_unload_" ref 284
+status                    1            based           structure                level 2 dcl 94 set ref 335
+substr                                                 builtin function         dcl 139 ref 332 332
+time_out                  0(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-7 ref 363
+tot_devices              16            based           fixed bin(17,0)          level 2 dcl 4-29 ref 283
+tot_dtypes               15            based           fixed bin(17,0)          level 2 dcl 4-29 ref 283
+unassign_state           37            based           fixed bin(17,0)          level 2 dcl 4-101 set ref 291*
+unload_sleep_time        32            based           fixed bin(71,0)          level 2 dcl 4-29 ref 350
+volume                                 based           structure                level 1 dcl 4-101 in procedure "rcp_unload_"
+volume                                 based           structure                array level 2 in structure "rcpd" dcl 4-29
+                                                                                  in procedure "rcp_unload_" set ref 283
+volume_name               1            based           char(32)                 level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_unload_" set ref 284 287*
+volume_name                     000130 automatic       char(32)                 packed unaligned dcl 80 in procedure "rcp_unload_"
+                                                                                  set ref 164* 189 212 265* 284 381*
+volume_name               2            based           char(32)                 level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_unload_" set ref 189 212 265 276 276* 280*
+volume_ptr                      000200 automatic       pointer                  dcl 4-27 set ref 283* 284 284 286 287 288 289 290
+                                                                                  291
+volume_type                     000140 automatic       char(32)                 packed unaligned dcl 81 set ref 163* 174* 174*
+vtypex                          000150 automatic       fixed bin(17,0)          dcl 82 set ref 174* 186
+wait_list                       000156 automatic       structure                level 1 dcl 86 set ref 361 361
+wkspc                                  based           structure                level 1 dcl 94 set ref 306 306
+wkspc_ptr                       000152 automatic       pointer                  dcl 83 set ref 306* 306 306 331 333 335
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ASSIGNED                               internal static fixed bin(17,0)          initial dcl 6-9
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 5-16
+DELETED                                internal static fixed bin(17,0)          initial dcl 6-10
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 5-16
+No_authentication                      internal static fixed bin(17,0)          initial dcl 5-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 5-16
+RESERVED                               internal static fixed bin(17,0)          initial dcl 6-12
+STORAGE_SYSTEM                         internal static fixed bin(17,0)          initial dcl 6-11
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 5-21
+based_rcp_id                           based           structure                level 1 dcl 3-26
+idcwp                                  automatic       pointer                  dcl 2-19
+imess                                  based           structure                level 1 dcl 1-21
+imp                                    automatic       pointer                  dcl 1-19
+lock_info_ptr                          automatic       pointer                  dcl 3-22
+pcw                                    based           structure                level 1 dcl 2-6
+pcwp                                   automatic       pointer                  dcl 2-4
+rcs                                    based           structure                level 1 dcl 3-30
+rcs_ptr                                automatic       pointer                  dcl 3-23
+rcse_ptr                               automatic       pointer                  dcl 3-24
+rifp                                   automatic       pointer                  dcl 5-6
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DETACH                          001170 constant        label                    dcl 373 ref 309 322 327 339 346
+GOT_DEVICE                      000254 constant        label                    dcl 203 ref 189
+MANUAL_UNLOAD                   001215 constant        label                    dcl 381 set ref 298 303
+RETURN                          000331 constant        label                    dcl 240 ref 175 193 206
+REVERT_ALARM                    001153 constant        label                    dcl 369 ref 364
+STATE                           000000 constant        label                    array(0:4) dcl 268 ref 266
+UNLOAD_DEVICE                   000401 constant        entry                    internal dcl 257 ref 218 253
+UNLOCK_AND_RETURN               000320 constant        label                    dcl 228 ref 210 212 216
+rcp_unload_                     000077 constant        entry                    external dcl 25
+unload_device                   000350 constant        entry                    external dcl 247
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1574        1664    1260        1604
+Length      2216    1260        70         316     313           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_unload_                         206 external procedure  is an external procedure.  
+on unit on line 149                  68 on unit               
+UNLOAD_DEVICE                           internal procedure  shares stack frame of external procedure rcp_unload_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_unload_              000100 alarm_channel               rcp_unload_
+                         000102 alarm_time                  rcp_unload_
+                         000104 bailout_time                rcp_unload_
+                         000106 caller_level                rcp_unload_
+                         000107 device_off                  rcp_unload_
+                         000110 drive_num                   rcp_unload_
+                         000111 ecode                       rcp_unload_
+                         000112 event_id                    rcp_unload_
+                         000114 hit                         rcp_unload_
+                         000115 i                           rcp_unload_
+                         000116 ioi_index                   rcp_unload_
+                         000117 manual_unload_required      rcp_unload_
+                         000120 message                     rcp_unload_
+                         000130 volume_name                 rcp_unload_
+                         000140 volume_type                 rcp_unload_
+                         000150 vtypex                      rcp_unload_
+                         000152 wkspc_ptr                   rcp_unload_
+                         000154 sleep_time                  rcp_unload_
+                         000156 wait_list                   rcp_unload_
+                         000170 isp                         rcp_unload_
+                         000172 rcpd_ptr                    rcp_unload_
+                         000174 dtype_ptr                   rcp_unload_
+                         000176 device_ptr                  rcp_unload_
+                         000200 volume_ptr                  rcp_unload_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          enable_op           ext_entry
+int_entry           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$ioi_attach        admin_gate_$ioi_detach        admin_gate_$ioi_set_to_max    admin_gate_$syserr
+cu_$level_get                 cu_$level_set                 cv_dec_                       get_ring_
+hcs_$get_alarm_timer          hcs_$set_alarm_timer          ioi_$connect                  ioi_$set_status
+ioi_$timeout                  ioi_$workspace                ipc_$block                    ipc_$create_ev_chn
+ipc_$delete_ev_chn            rcp_lock_$lock                rcp_lock_$unlock              rcp_pointers_$data
+resource_info_$get_vtypex
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$media_not_removable                            error_table_$volume_busy
+error_table_$volume_not_loaded
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     86 000067        25 000073       148 000105       149 000114       150 000130       151 000137       152 000140
+    153 000156       163 000157       164 000164       174 000170       175 000213       185 000215       186 000224
+    187 000231       188 000236       189 000241       190 000245       192 000250       193 000253       203 000254
+    206 000267       208 000271       209 000275       210 000300       212 000301       214 000305       215 000310
+    216 000313       218 000314       228 000320       240 000331       243 000334       245 000343       247 000344
+    250 000356       251 000362       253 000371       255 000400       257 000401       263 000403       265 000410
+    266 000413       268 000415       272 000421       276 000422       279 000464       280 000472       281 000476
+    282 000477       283 000511       284 000532       286 000540       287 000541       288 000544       289 000547
+    290 000552       291 000554       292 000556       294 000560       297 000562       298 000573       300 000575
+    301 000630       302 000632       303 000643       306 000644       307 000663       308 000665       309 000667
+    318 000670       319 000674       320 000707       321 000711       322 000713       324 000714       325 000727
+    326 000731       327 000733       331 000734       332 000736       333 000762       335 000771       336 000774
+    337 001016       338 001020       339 001022       341 001023       343 001025       344 001041       345 001043
+    346 001045       350 001046       352 001051       355 001062       356 001072       358 001075       359 001101
+    360 001116       361 001120       362 001137       363 001142       364 001147       366 001150       368 001151
+    369 001153       373 001170       376 001201       378 001212       381 001215       383 001247       384 001250
+    387 001251
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

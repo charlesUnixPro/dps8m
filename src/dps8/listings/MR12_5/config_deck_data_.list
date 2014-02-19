@@ -1,0 +1,671 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXkwKjWdP
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1029.4 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*   *                                                         *
+        7*   *********************************************************** */
+        8 
+        9 config_deck_data_: proc (); 
+       10 
+       11 /* Written August/September of 1984 by Allen Ball to replace old, hard-to-read version. */
+       12 /* Modified March 1985 to no longer need bce/Multics versions! Keith Loepere */
+       13 
+       14 /* format: style4,initcol1,indattr,declareind8,dclind4,idind33,ifthenstmt,ifthen,^indproc,delnl,insnl */
+       15 
+       16 dcl Me			       char (17) static options (constant) init ("config_deck_data_");
+       17 dcl PAD			       (1) char (32) int static options (constant) init ("pad*");
+       18 
+       19 dcl addr			       builtin;
+       20 dcl before		       builtin;
+       21 dcl card_number		       fixed bin;
+       22 dcl code			       fixed bin (35);
+       23 dcl com_err_		       entry () options (variable);
+       24 dcl create_data_segment_	       entry (ptr, fixed bin (35));
+       25 dcl cv_dec_check_		       entry (char (*), fixed bin (35)) returns (fixed bin (35));
+       26 dcl dimension		       builtin;
+       27 dcl field			       char (12);
+       28 dcl field_counter		       fixed bin;
+       29 dcl field_pos		       fixed bin;
+       30 dcl i			       fixed bin;
+       31 dcl ioa_			       entry () options (variable);
+       32 dcl j			       fixed bin;
+       33 dcl last			       bit (1) init ("0"b);
+       34 dcl length		       builtin;
+       35 dcl ltrim			       builtin;
+       36 dcl number_of_cards		       fixed bin;
+       37 dcl number_of_repeats	       fixed bin;
+       38 dcl 1 repeating_group	       (14) aligned,
+       39       2 field_name		       char (12) varying,
+       40       2 field_type		       bit (2);
+       41 dcl repeating_group_length	       fixed bin;
+       42 dcl rtrim			       builtin;
+       43 dcl size			       builtin;
+       44 dcl substr		       builtin;
+       45 dcl test_number		       fixed bin (35);
+       46 dcl unspec		       builtin;
+       47 dcl valid_deck		       bit (1) init ("1"b);
+       48 dcl valid_field		       bit (1) init ("0"b);
+       49 
+       50 	/*** First check to see if there are valid types of fields. ***/
+       51 	number_of_cards = dimension (config_deck_cards, 1);
+       52 	do card_number = 1 to number_of_cards;
+       53 	     field_pos = 0;
+       54 	     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+       55 	     /*** Check and see if this is a valid card name. ***/
+       56 	     do i = 1 to dimension (Card_names, 1);
+       57 		if field = Card_names (i) then valid_field = "1"b;
+       58 	     end;
+       59 	     if ^valid_field | last then call bad_card;
+       60 	     valid_field = "0"b;			/* Reset the signal now. */
+       61 	     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+       62 	     /*** Check and see if the second field is a valid subname. ***/
+       63 	     do i = 1 to dimension (Card_subnames, 1);
+       64 		if field = Card_subnames (i) then valid_field = "1"b;
+       65 	     end;
+       66 	     if ^valid_field then call bad_card;
+       67 	     valid_field = "0"b;
+       68 	     if ^last then do;
+       69 		do while (^last);
+       70 		     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+       71 		     do i = 1 to dimension (Card_field_names, 1);
+       72 			if field = Card_field_names (i) then valid_field = "1"b;
+       73 		     end;
+       74 		     if ^valid_field | last then call bad_card;
+       75 						/* At this point there must be an even number of fields. */
+       76 		     valid_field = "0"b;		/* Reset before we forget. */
+       77 		     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+       78 		     do i = 1 to dimension (Card_data_types, 1);
+       79 			if field = Card_data_types (i) then valid_field = "1"b;
+       80 		     end;
+       81 		     if ^valid_field then do;
+       82 			test_number = cv_dec_check_ (field, code);
+       83 			if code ^= 0 then call bad_card;
+       84 						/* Not a chance of being valid. */
+       85 		     end;
+       86 		     valid_field = "0"b;
+       87 		end;
+       88 	     end;
+       89 	end;
+       90 	if ^valid_deck then
+       91 	     return;
+       92 	else call ioa_ ("^a: (First pass) This seems to be a valid deck.", Me);
+       93 
+       94 	/*** Now that we have a seemingly reasonable deck let's fill in the blanks. ***/
+       95 	begin;
+       96 
+       97 dcl 1 cds_data		       aligned like cds_args;
+       98 dcl 1 config_deck_data_	       aligned,
+       99 	     2 num_described_cards fixed bin aligned init (number_of_cards),
+      100 		2 Config_card_field_name (number_of_cards, 14) char (12) varying aligned,
+      101 		2 Config_card_field_type (number_of_cards, 14) bit (2) unaligned,
+      102 		2 Config_card_group_length (number_of_cards) fixed bin aligned,
+      103 		2 Config_card_min_specifiable_fields (number_of_cards) fixed bin aligned,
+      104 		2 Config_card_name (number_of_cards) char (4) aligned,
+      105 		2 Config_card_num_described_fields (number_of_cards) fixed bin aligned,
+      106 		2 Config_card_subname (number_of_cards) char (4) varying aligned;
+      107 
+      108 	     unspec (Config_card_field_name) = "0"b;
+      109 	     unspec (Config_card_field_type) = "0"b;
+      110 	     unspec (Config_card_group_length) = "0"b;
+      111 	     unspec (Config_card_min_specifiable_fields) = "0"b;
+      112 	     unspec (Config_card_name) = "0"b;
+      113 	     unspec (Config_card_num_described_fields) = "0"b;
+      114 	     unspec (Config_card_subname) = "0"b;
+      115 	     unspec (repeating_group) = "0"b;
+      116 	     do card_number = 1 to number_of_cards;
+      117 		field_pos = 0;
+      118 		call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+      119 		Config_card_name (card_number) = rtrim (field);
+      120 		call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+      121 		if field = "emp" then
+      122 		     Config_card_subname (card_number) = "";
+      123 		else Config_card_subname (card_number) = rtrim (field);
+      124 		if ^last then do;
+      125 		     do field_counter = 1 repeat field_counter + 1 while (^last);
+      126 			call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos, last);
+      127 			if field = "repeat" then do;
+      128 			     field_counter = field_counter - 1;
+      129 			     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos,
+      130 				last);
+      131 			     if last then do;
+      132 serious_error:
+      133 				call ioa_ ("^a: Serious error in:^/^a", Me, config_deck_cards (card_number));
+      134 				return;
+      135 			     end;
+      136 			     number_of_repeats = (cv_dec_check_ (field, code));
+      137 			     if code ^= 0 then goto serious_error;
+      138 			     do repeating_group_length = 1 repeat repeating_group_length + 1 while (^last);
+      139 				call get_next_field (config_deck_cards (card_number), (field_pos), field,
+      140 				     field_pos, last);
+      141 				if field = "minimum" | field = "repeat" then goto serious_error;
+      142 				repeating_group (repeating_group_length).field_name = field;
+      143 				call get_next_field (config_deck_cards (card_number), (field_pos), field,
+      144 				     field_pos, last);
+      145 				repeating_group (repeating_group_length).field_type =
+      146 				     determine_field_type (field, code);
+      147 				if code ^= 0 then goto serious_error;
+      148 			     end;
+      149 			     Config_card_group_length (card_number) = repeating_group_length - 1;
+      150 			     if (Config_card_group_length (card_number) * number_of_repeats) + field_counter > 14
+      151 				then
+      152 				goto serious_error;
+      153 			     do i = 1 to number_of_repeats;
+      154 				do j = 1 to Config_card_group_length (card_number);
+      155 				     Config_card_field_name (card_number,
+      156 					field_counter + j + (i - 1) * Config_card_group_length (card_number)) =
+      157 					rtrim (repeating_group (j).field_name);
+      158 				     Config_card_field_type (card_number,
+      159 					field_counter + j + (i - 1) * Config_card_group_length (card_number)) =
+      160 					repeating_group (j).field_type;
+      161 				end;
+      162 			     end;
+      163 			end;
+      164 			else if field = "minimum" then do;
+      165 			     field_counter = field_counter - 1;
+      166 			     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos,
+      167 				last);
+      168 			     Config_card_min_specifiable_fields (card_number) = (cv_dec_check_ (field, code));
+      169 			     if code ^= 0 then goto serious_error;
+      170 			end;
+      171 			else do;
+      172 			     Config_card_field_name (card_number, field_counter) = rtrim (field);
+      173 			     call get_next_field (config_deck_cards (card_number), (field_pos), field, field_pos,
+      174 				last);
+      175 			     Config_card_field_type (card_number, field_counter) =
+      176 				determine_field_type (field, code);
+      177 			     if code ^= 0 then goto serious_error;
+      178 			end;
+      179 		     end;
+      180 		     Config_card_num_described_fields (card_number) =
+      181 			field_counter + Config_card_group_length (card_number) * number_of_repeats - 1;
+      182 		end;
+      183 	     end;
+      184 	     /*** Seems to be completely valid. ***/
+      185 	     call ioa_ ("^a: (Second pass) This is a valid config deck.", Me);
+      186 
+      187 	     cds_data.sections (1).p = addr (config_deck_data_);
+      188 	     cds_data.sections (1).len = size (config_deck_data_);
+      189 
+      190 	     cds_data.sections (1).struct_name = Me;
+      191 
+      192 	     cds_data.seg_name = Me;
+      193 
+      194 	     cds_data.num_exclude_names = 1;
+      195 	     cds_data.exclude_array_ptr = addr (PAD);
+      196 	     string (cds_data.switches) = "0"b;
+      197 	     cds_data.switches.have_text = "1"b;
+      198 
+      199 	     call create_data_segment_ (addr (cds_data), code);
+      200 
+      201 	     if code ^= 0 then call com_err_ (code, Me);
+      202 	     return;
+      203 	end;
+      204 
+      205 
+      206 bad_card:
+      207      proc ();
+      208 	call ioa_ ("^a: Bad card.  Check '^a' in:", Me, field);
+      209 	call ioa_ ("^a", config_deck_cards (card_number));
+      210 	valid_deck = "0"b;
+      211 	return;
+      212      end;
+      213 
+      214 determine_field_type:
+      215      proc (p_string, p_code) returns (bit (2) unaligned);
+      216 
+      217 dcl i			       fixed bin;
+      218 dcl p_code		       fixed bin (35) parameter;
+      219 dcl p_string		       char (12) parameter;
+      220 
+      221 	do i = 1 to dimension (Card_data_types, 1);
+      222 	     if Card_data_types (i) = p_string then do;
+      223 		p_code = 0;
+      224 		return (Card_data_bit_strings (i));
+      225 	     end;
+      226 	end;
+      227 	p_code = -1;
+      228 	return ("00"b);
+      229      end;
+      230 
+      231 
+      232 get_next_field:
+      233      proc (card, previous_field_pos, p_field, new_field_pos, p_last);
+      234 
+      235 dcl card			       char (210) parameter;
+      236 dcl test_field		       char (210) init ("");
+      237 dcl new_field_pos		       fixed bin parameter;
+      238 dcl p_last		       bit (1) parameter;
+      239 dcl left_over_card		       char (210);
+      240 dcl p_field		       char (12) parameter;
+      241 dcl previous_field_pos	       fixed bin parameter;
+      242 
+      243 	if previous_field_pos = 0 then
+      244 	     new_field_pos = 1;			/* First field is what he wants. */
+      245 	else new_field_pos = index (substr (rtrim (card), previous_field_pos), " ") + previous_field_pos;
+      246 	/*** Skip over whitespace. ***/
+      247 	do new_field_pos = new_field_pos repeat new_field_pos + 1 while (substr (rtrim (card), new_field_pos, 1) = " ");
+      248 	end;
+      249 	left_over_card = substr (rtrim (card), new_field_pos);
+      250 	test_field = before (left_over_card, " ");
+      251 	if index (rtrim (left_over_card), " ") = 0 then
+      252 	     p_last = "1"b;
+      253 	else p_last = "0"b;
+      254 	if length (rtrim (test_field)) > 12 then
+      255 	     p_field = "";
+      256 	else p_field = ltrim (test_field);
+      257 	return;
+      258      end;
+      259 
+      260 /* format: off */
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      261 
+  2     1 /* BEGIN INCLUDE FILE ... config_deck_cards_.incl.pl1 */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  2     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  2     6*     Add Fips card.
+  2     7*  2) change(86-01-07,Fawcett), approve(86-05-13,MCR7383),
+  2     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  2     9*     Change the part and root cards -drive from OCTAL to STRING for subvolume
+  2    10*     support.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 /* Written August of 1984 by Allen Ball. */
+  2    13 /* Modified Feb 15, 185 by Fawcett to add Fips card */
+  2    14 
+  2    15 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    16 	/*									*/
+  2    17 	/* Note:  Whenever a card is added or deleted from this include file the dimension of	*/
+  2    18 	/*        the array must be adjusted accordingly.					*/
+  2    19 	/*									*/
+  2    20 	/*        If a field is to be empty then put "emp" in that field.  Un filled fields are	*/
+  2    21 	/*        assumed to be empty.  If there is no subname on the card then "emp" must	*/
+  2    22 	/*        appear in that field.						*/
+  2    23 	/*									*/
+  2    24 	/*        If there is a repeating group of fields on the card then these fields MUST	*/
+  2    25 	/*        appear last on the card and they MUST appear like:			*/
+  2    26 	/*									*/
+  2    27 	/*                 root emp repeat 7 -subsys STRING -drive STRING			*/
+  2    28 	/*									*/
+  2    29 	/*        and NOT:								*/
+  2    30 	/*									*/
+  2    31 	/*                 root emp -subsys STRING -drive STRING -subsys STRING -drive STRING ...	*/
+  2    32 	/*									*/
+  2    33 	/*        CHAR means a field of one ascii character.				*/
+  2    34 	/*        DECIMAL means a decimal number will be in that field.			*/
+  2    35 	/*        OCTAL means a octal nuber will be in that field.				*/
+  2    36 	/*        STRING means a 4 character ascii string will go in that field.		*/
+  2    37 	/*									*/
+  2    38 	/*									*/
+  2    39 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    40 
+  2    41 dcl config_deck_cards (25) char (210) init (
+  2    42 
+  2    43 "chnl  emp minimum 4 -subsys STRING repeat 4 -iom CHAR -chn OCTAL -nchan OCTAL",
+  2    44 "clok  emp minimum 2 -delta OCTAL -zone STRING -boot_delta OCTAL",
+  2    45 "cpu   emp minimum 5 -tag CHAR -port OCTAL -state STRING -type STRING -model OCTAL -cache OCTAL -exp_port CHAR",
+  2    46 "prph  fnp minimum 5 -device STRING -iom CHAR -chn OCTAL -model DECIMAL -state STRING",
+  2    47 "ipc   emp minimum 4 -type STRING -iom CHAR -chn OCTAL -nchan OCTAL",
+  2    48 "iom   emp minimum 4 -tag CHAR -port OCTAL -model STRING -state STRING",
+  2    49 "mem   emp minimum 3 -port CHAR -size OCTAL -state STRING",
+  2    50 "mpc   emp minimum 5 -ctlr STRING -model OCTAL repeat 4 -iom CHAR -chn OCTAL -nchan OCTAL",
+  2    51 "parm  emp",
+  2    52 "part  emp minimum 3 -part STRING -subsys STRING -drive STRING -real_name STRING",
+  2    53 "prph  ccu minimum 4 -device STRING -iom CHAR -chn OCTAL -model OCTAL",
+  2    54 "prph  dsk minimum 6 -subsys STRING -iom CHAR -chn OCTAL -nchan OCTAL repeat 5 -model OCTAL -number OCTAL",
+  2    55 "prph  opc minimum 6 -device STRING -iom CHAR -chn OCTAL -model OCTAL -ll OCTAL -state STRING -option STRING",
+  2    56 "prph  prt minimum 5 -device STRING -iom CHAR -chn OCTAL -model OCTAL -train OCTAL -ll OCTAL",
+  2    57 "prph  pun minimum 4 -device STRING -iom CHAR -chn OCTAL -model OCTAL",
+  2    58 "prph  rdr minimum 4 -device STRING -iom CHAR -chn OCTAL -model OCTAL",
+  2    59 "prph  tap minimum 6 -subsys STRING -iom CHAR -chn OCTAL -nchan OCTAL repeat 5 -model OCTAL -number OCTAL",
+  2    60 "root  emp minimum 2 repeat 7 -subsys STRING -drive STRING",
+  2    61 "salv  emp",
+  2    62 "schd  emp minimum 4 -wsf OCTAL -tefirst OCTAL -telast OCTAL -timax OCTAL -mine OCTAL -maxe OCTAL -maxmaxe OCTAL",
+  2    63 "sst   emp minimum 4 -4k OCTAL -16k OCTAL -64k OCTAL -256k OCTAL",
+  2    64 "tbls  emp minimum 2",
+  2    65 "tcd   emp minimum 2 -apt OCTAL -itt OCTAL",
+  2    66 "udsk  emp minimum 2 -subsys STRING -nchan OCTAL repeat 6 -drive OCTAL -number OCTAL",
+  2    67 "USER  emp");
+  2    68 
+  2    69 
+  2    70 /* END INCLUDE FILE ... config_deck_cards_.incl.pl1 */
+      262 
+  3     1 /* BEGIN INCLUDE FILE ... config_deck_keywords_.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  3     6*     audit(86-03-08,CLJones), install(86-03-21,MR12.0-1033):
+  3     7*     Add Fips card.
+  3     8*                                                   END HISTORY COMMENTS */
+  3     9 
+  3    10 /* Written August of 1984 by Allen Ball. */
+  3    11 /* Modified January 1985 by Paul Farley to add a FIPS card type. */
+  3    12 
+  3    13 dcl Card_field_names (41) char (12) static options (constant) init
+  3    14 	("-4k", "-16k", "-64k", "-256k", "-apt",
+  3    15 	 "-boot_delta", "-cache", "-chn", "-ctlr", "-delta",
+  3    16 	 "-device", "-drive", "-exp_port", "-iom", "-itt",
+  3    17 	 "-ll", "-maxe", "-maxmaxe", "-mine", "-model",
+  3    18 	 "-nchan", "-number", "-part", "-port", "-real_name",
+  3    19 	 "-size", "-state", "-subsys", "-tag", "-tefirst",
+  3    20 	 "-telast", "-timax", "-train", "-type", "-wsf",
+  3    21 	 "-zone", "-option", /* not real: */ "emp", "EMP",
+  3    22 	 "minimum", "repeat");
+  3    23 
+  3    24 dcl Card_names (18) char (4) static options (constant) init
+  3    25 	("chnl", "clok", "cpu ", "iom ", "ipc",
+  3    26 	 "mem ", "mpc ", "parm", "part", "prph",
+  3    27 	 "root", "salv", "schd", "sst ", "tbls",
+  3    28 	 "tcd ", "udsk", "USER");
+  3    29 
+  3    30 dcl Card_subnames (10) char (3) static options (constant) init
+  3    31 	("ccu", "dsk", "fnp", "opc",
+  3    32 	 "prt", "pun", "rdr", "tap",
+  3    33 	 /* not real: */ "emp", "EMP");
+  3    34 
+  3    35 dcl Card_data_types (4) char (7) static options (constant) init
+  3    36 	("CHAR", "DECIMAL", "OCTAL", "STRING");
+  3    37 
+  3    38 dcl Card_data_bit_strings (4) bit (2) static options (constant) init
+  3    39 	("01"b, "11"b, "00"b, "10"b);
+  3    40 
+  3    41 
+  3    42 /* END INCLUDE FILE ... config_deck_keywords_.incl.pl1 */
+      263 
+      264 
+      265      end /* config_deck_data_ */;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.5  !BBBJZjXkwKjWdP.pl1               >spec>install>1111>config_deck_data_.cds
+261          1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+262          2    07/24/86  2051.8  config_deck_cards_.incl.pl1       >ldd>include>config_deck_cards_.incl.pl1
+263          3    03/27/86  1120.0  config_deck_keywords_.incl.pl1    >ldd>include>config_deck_keywords_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Card_data_bit_strings           000000 constant        bit(2)                   initial array packed unaligned dcl 3-38 ref 224
+Card_data_types                 000001 constant        char(7)                  initial array packed unaligned dcl 3-35 ref 78 79
+                                                                                  221 222
+Card_field_names                000042 constant        char(12)                 initial array packed unaligned dcl 3-13 ref 71 72
+Card_names                      000020 constant        char(4)                  initial array packed unaligned dcl 3-24 ref 56 57
+Card_subnames                   000010 constant        char(3)                  initial array packed unaligned dcl 3-30 ref 63 64
+Config_card_field_name
+                          1     000145 automatic       varying char(12)         array level 2 dcl 98 set ref 108* 155* 172*
+Config_card_field_type          000145 automatic       bit(2)                   array level 2 packed packed unaligned dcl 98 set ref
+                                                                                  109* 158* 175*
+Config_card_group_length        000145 automatic       fixed bin(17,0)          array level 2 dcl 98 set ref 110* 149* 150 154 155
+                                                                                  158 180
+Config_card_min_specifiable_fields
+                                000145 automatic       fixed bin(17,0)          array level 2 dcl 98 set ref 111* 168*
+Config_card_name                000145 automatic       char(4)                  array level 2 dcl 98 set ref 112* 119*
+Config_card_num_described_fields
+                                000145 automatic       fixed bin(17,0)          array level 2 dcl 98 set ref 113* 180*
+Config_card_subname             000145 automatic       varying char(4)          array level 2 dcl 98 set ref 114* 121* 123*
+Me                              000245 constant        char(17)                 initial packed unaligned dcl 16 set ref 92* 132*
+                                                                                  185* 190 192 201* 208*
+PAD                             000235 constant        char(32)                 initial array packed unaligned dcl 17 set ref 195
+addr                                                   builtin function         dcl 19 ref 187 195 199 199
+before                                                 builtin function         dcl 20 ref 250
+card                                   parameter       char(210)                packed unaligned dcl 235 ref 232 245 247 249
+card_number                     000100 automatic       fixed bin(17,0)          dcl 21 set ref 52* 54 61 70 77* 116* 118 119 120 121
+                                                                                  123 126 129 132 139 143 149 150 154 155 155 158
+                                                                                  158 166 168 172 173 175 180 180* 209
+cds_args                               based           structure                level 1 dcl 1-3
+cds_data                        000100 automatic       structure                level 1 dcl 97 set ref 199 199
+code                            000101 automatic       fixed bin(35,0)          dcl 22 set ref 82* 83 136* 137 145* 147 168* 169
+                                                                                  175* 177 199* 201 201*
+com_err_                        000012 constant        entry                    external dcl 23 ref 201
+config_deck_cards               000226 automatic       char(210)                initial array packed unaligned dcl 2-41 set ref 51
+                                                                                  54* 61* 70* 77* 2-41* 2-41* 2-41* 2-41* 2-41*
+                                                                                  2-41* 2-41* 2-41* 2-41* 2-41* 2-41* 2-41* 2-41*
+                                                                                  2-41* 2-41* 2-41* 2-41* 2-41* 2-41* 2-41* 2-41*
+                                                                                  2-41* 2-41* 2-41* 2-41* 118* 120* 126* 129* 132*
+                                                                                  139* 143* 166* 173* 209*
+config_deck_data_               000145 automatic       structure                level 1 dcl 98 set ref 187 188
+create_data_segment_            000014 constant        entry                    external dcl 24 ref 199
+cv_dec_check_                   000016 constant        entry                    external dcl 25 ref 82 136 168
+dimension                                              builtin function         dcl 26 ref 51 56 63 71 78 221
+exclude_array_ptr        42     000100 automatic       pointer                  level 2 dcl 97 set ref 195*
+field                           000102 automatic       char(12)                 packed unaligned dcl 27 set ref 54* 57 61* 64 70* 72
+                                                                                  77* 79 82* 118* 119 120* 121 123 126* 127 129*
+                                                                                  136* 139* 141 141 142 143* 145* 164 166* 168* 172
+                                                                                  173* 175* 208*
+field_counter                   000105 automatic       fixed bin(17,0)          dcl 28 set ref 125* 128* 128 150 155 158 165* 165
+                                                                                  172 175* 179* 180
+field_name                      000114 automatic       varying char(12)         array level 2 dcl 38 set ref 142* 155
+field_pos                       000106 automatic       fixed bin(17,0)          dcl 29 set ref 53* 54 54* 61 61* 70 70* 77 77* 117*
+                                                                                  118 118* 120 120* 126 126* 129 129* 139 139* 143
+                                                                                  143* 166 166* 173 173*
+field_type                4     000114 automatic       bit(2)                   array level 2 dcl 38 set ref 145* 158
+have_text                44(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 97 set ref 197*
+i                               000162 automatic       fixed bin(17,0)          dcl 217 in procedure "determine_field_type" set ref
+                                                                                  221* 222 224*
+i                               000107 automatic       fixed bin(17,0)          dcl 30 in procedure "config_deck_data_" set ref 56*
+                                                                                  57* 63* 64* 71* 72* 78* 79* 153* 155 158*
+ioa_                            000020 constant        entry                    external dcl 31 ref 92 132 185 208 209
+j                               000110 automatic       fixed bin(17,0)          dcl 32 set ref 154* 155 155 158 158*
+last                            000111 automatic       bit(1)                   initial packed unaligned dcl 33 set ref 33* 54* 59
+                                                                                  61* 68 69 70* 74 77* 118* 120* 124 125 126* 129*
+                                                                                  131 138 139* 143* 166* 173*
+left_over_card                  000165 automatic       char(210)                packed unaligned dcl 239 set ref 249* 250 251
+len                       2     000100 automatic       fixed bin(18,0)          array level 3 dcl 97 set ref 188*
+length                                                 builtin function         dcl 34 ref 254
+ltrim                                                  builtin function         dcl 35 ref 256
+new_field_pos                          parameter       fixed bin(17,0)          dcl 237 set ref 232 243* 245* 247* 247 247* 248 249
+num_described_cards             000145 automatic       fixed bin(17,0)          initial level 2 dcl 98 set ref 98*
+num_exclude_names        40     000100 automatic       fixed bin(17,0)          level 2 dcl 97 set ref 194*
+number_of_cards                 000112 automatic       fixed bin(17,0)          dcl 36 set ref 51* 52 98 98 98 98 98 98 98 98 98 98
+                                                                                  98 98 98 98 98 98 98 98 98 98 98 98 98 98 98 98 98
+                                                                                  98 98 98 98 98 98 98 98 98 108 109 109 110 110 110
+                                                                                  111 111 111 111 112 112 112 112 112 113 113 113
+                                                                                  113 113 113 114 114 114 114 114 114 114 116 119
+                                                                                  119 119 119 121 121 121 121 121 121 123 123 123
+                                                                                  123 123 123 149 149 150 150 154 154 155 155 158
+                                                                                  158 158 168 168 168 175 180 180 180 180 180 180
+                                                                                  180 188 188 188 188 188 188 188
+number_of_repeats               000113 automatic       fixed bin(17,0)          dcl 37 set ref 136* 150 153 180
+p                               000100 automatic       pointer                  array level 3 dcl 97 set ref 187*
+p_code                                 parameter       fixed bin(35,0)          dcl 218 set ref 214 223* 227*
+p_field                                parameter       char(12)                 packed unaligned dcl 240 set ref 232 254* 256*
+p_last                                 parameter       bit(1)                   packed unaligned dcl 238 set ref 232 251* 253*
+p_string                               parameter       char(12)                 packed unaligned dcl 219 ref 214 222
+previous_field_pos                     parameter       fixed bin(17,0)          dcl 241 ref 232 243 245 245
+repeating_group                 000114 automatic       structure                array level 1 dcl 38 set ref 115*
+repeating_group_length          000222 automatic       fixed bin(17,0)          dcl 41 set ref 138* 142 145* 148* 149
+rtrim                                                  builtin function         dcl 42 ref 119 123 155 172 245 247 249 251 254
+sections                        000100 automatic       structure                array level 2 dcl 97
+seg_name                 30     000100 automatic       char(32)                 level 2 dcl 97 set ref 192*
+size                                                   builtin function         dcl 43 ref 188
+struct_name               3     000100 automatic       char(32)                 array level 3 dcl 97 set ref 190*
+substr                                                 builtin function         dcl 44 ref 245 247 249
+switches                 44     000100 automatic       structure                level 2 dcl 97 set ref 196*
+test_field                      000100 automatic       char(210)                initial packed unaligned dcl 236 set ref 236* 250*
+                                                                                  254 256
+test_number                     000223 automatic       fixed bin(35,0)          dcl 45 set ref 82*
+unspec                                                 builtin function         dcl 46 set ref 108* 109* 110* 111* 112* 113* 114*
+                                                                                  115*
+valid_deck                      000224 automatic       bit(1)                   initial packed unaligned dcl 47 set ref 47* 90 210*
+valid_field                     000225 automatic       bit(1)                   initial packed unaligned dcl 48 set ref 48* 57* 59
+                                                                                  60* 64* 66 67* 72* 74 76* 79* 81 86*
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_card                        004120 constant        entry                    internal dcl 206 ref 59 66 74 83
+config_deck_data_               001421 constant        entry                    external dcl 9
+determine_field_type            004172 constant        entry                    internal dcl 214 ref 145 175
+get_next_field                  004233 constant        entry                    internal dcl 232 ref 54 61 70 77 118 120 126 129 139
+                                                                                  143 166 173
+serious_error                   003015 constant        label                    dcl 132 ref 137 141 147 150 169 177
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+index                                                  builtin function         ref 245 251
+string                                                 builtin function         ref 196
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4540        4562    4441        4550
+Length      7262    4441        22        2463      77           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+config_deck_data_                  1521 external procedure  is an external procedure.  
+begin block on line 95              148 begin block         uses auto adjustable storage.  
+bad_card                                internal procedure  shares stack frame of external procedure config_deck_data_.  
+determine_field_type                    internal procedure  shares stack frame of begin block on line 95.  
+get_next_field                      172 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 95   000100 cds_data                    begin block on line 95
+                         000145 config_deck_data_           begin block on line 95
+                         000162 i                           determine_field_type
+config_deck_data_        000100 card_number                 config_deck_data_
+                         000101 code                        config_deck_data_
+                         000102 field                       config_deck_data_
+                         000105 field_counter               config_deck_data_
+                         000106 field_pos                   config_deck_data_
+                         000107 i                           config_deck_data_
+                         000110 j                           config_deck_data_
+                         000111 last                        config_deck_data_
+                         000112 number_of_cards             config_deck_data_
+                         000113 number_of_repeats           config_deck_data_
+                         000114 repeating_group             config_deck_data_
+                         000222 repeating_group_length      config_deck_data_
+                         000223 test_number                 config_deck_data_
+                         000224 valid_deck                  config_deck_data_
+                         000225 valid_field                 config_deck_data_
+                         000226 config_deck_cards           config_deck_data_
+get_next_field           000100 test_field                  get_next_field
+                         000165 left_over_card              get_next_field
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              enter_begin_block   call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+begin_return_mac    return_mac          alloc_auto_adj      ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          cv_dec_check_                 ioa_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      9 001420        33 001426        47 001427        48 001431    2   41 001432        51 001661        52 001663
+     53 001671        54 001672        56 001717        57 001725        58 001734        59 001736        60 001746
+     61 001747        63 001775        64 002003        65 002012        66 002014        67 002017        68 002020
+     69 002023        70 002027        71 002055        72 002063        73 002073        74 002075        76 002105
+     77 002106        78 002134        79 002141        80 002150        81 002152        82 002154        83 002174
+     86 002177        87 002200        89 002201        90 002203        92 002205        95 002225        98 002230
+    108 002257       109 002266       110 002300       111 002325       112 002353       113 002402       114 002432
+    115 002464       116 002467       117 002500       118 002501       119 002527       120 002564       121 002613
+    123 002645       124 002712       125 002715       126 002724       127 002753       128 002760       129 002762
+    131 003011       132 003015       134 003046       136 003050       137 003073       138 003076       139 003104
+    141 003133       142 003150       143 003161       145 003210       147 003233       148 003236       149 003240
+    150 003260       153 003306       154 003316       155 003342       158 003430       161 003476       162 003500
+    163 003502       164 003503       165 003507       166 003511       168 003540       169 003602       170 003606
+    172 003607       173 003640       175 003667       177 003722       179 003726       180 003731       183 003775
+    185 003777       187 004017       188 004021       190 004045       192 004050       194 004053       195 004055
+    196 004057       197 004060       199 004062       201 004075       202 004115       265 004117       206 004120
+    208 004121       209 004145       210 004170       211 004171       214 004172       221 004174       222 004201
+    223 004210       224 004211       226 004220       227 004222       228 004225       232 004232       236 004240
+    243 004243       245 004251       247 004302       248 004313       249 004315       250 004336       251 004346
+    253 004375       254 004401       256 004421       257 004437
+
+
+Object Segment >spec>install>1111>config_deck_data_
+Created on 11/11/89  1029.6 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    3044    3202    3212    3212
+Length    3557    3044     136      10     331       0
+
+
+10 Definitions:
+
+
+segname:    config_deck_data_
+
+text|1          Config_card_field_name
+text|2571       Config_card_field_type
+text|2615       Config_card_group_length
+text|2646       Config_card_min_specifiable_fiel
+text|2677       Config_card_name
+text|2730       Config_card_num_described_fields
+text|2761       Config_card_subname
+text|0          num_described_cards
+symb|0          symbol_table
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

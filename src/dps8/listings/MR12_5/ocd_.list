@@ -1,0 +1,1627 @@
+	COMPILATION LISTING OF SEGMENT ocd_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1010.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4,indattr,inddcls,dclind5,idind30,struclvlind5,ifthenstmt,ifthendo,^inditerdo,^indnoniterend,case,^tree,^indproc,^indend,^delnl,^insnl,comcol81,indcom,linecom,^indcomtxt */
+       13 
+       14 ocd_:
+       15      procedure;
+       16 	return;
+       17 
+       18 	/*	Outer module of the operator's console DIM.
+       19*   *	Recoded by  Bill Silver  on 06/26/73
+       20*   *	This procedure now calls the ring 0 operator's console DCM  "ocdcm_"
+       21*   *	instead of calling syserr_real.
+       22*   *	Modified June 1976 by Larry Johnson to support alarm order.
+       23*   *         Rearranged as a native iox_ module by Benson I. Margulies April 1981.
+       24*   *	Modified 830620 for new ocdcm_ calls... -E. A. Ranzenbach
+       25*   *	Modified 841101 for printer_(off on) control orders... -E. A. Ranzenbach
+       26**/
+       27 
+       28 
+       29 /****^  HISTORY COMMENTS:
+       30*  1) change(86-10-23,Fawcett), approve(86-10-23,MCR7517),
+       31*     audit(86-10-30,Beattie), install(86-11-03,MR12.0-1206):
+       32*     Changed to remove the word BOS from message.
+       33*                                                   END HISTORY COMMENTS */
+       34 
+       35 
+       36 	/*		PARAMETERS		*/
+       37 
+       38 	declare  (
+       39 	         IOCB_ptr		         pointer,
+       40 	         Attach_args	         (*) character (*) varying,
+       41 	         Com_err_sw		         bit (1) aligned,
+       42 	         Code		         fixed bin (35),
+       43 	         Buffer_ptr		         pointer,
+       44 	         Buffer_length	         fixed bin (21),
+       45 	         N_chars_read	         fixed bin (21),
+       46 	         Old_modes		         character (*),
+       47 	         New_modes		         character (*),
+       48 	         Mode		         fixed bin,
+       49 	         Obsolete		         bit (1) aligned,
+       50 	         Control_order_name	         character (*),
+       51 	         Order_info_ptr	         pointer
+       52 	         )		         parameter;
+       53 
+       54 	/*		AUTOMATIC  DATA		*/
+       55 
+       56 	declare  mask		         bit (36) aligned;
+       57 	dcl  code			     fixed bin (35),		/* Error code. */
+       58 	     alen			     fixed bin (21),		/* Length of an ASCII string.  */
+       59 	     ilen			     fixed bin,			/* Length of a console input string in
+       60*						   *  ASCII or BCD characters. */
+       61 	     olen			     fixed bin (19);		/* Length of a console output string in WORDS. */
+       62 	dcl  io_uid		     fixed bin (71);		/* UID of a queued I/O... */
+       63 	dcl  console_flags		     bit (36);			/* console state flags... */
+       64 
+       65 	dcl  01 console_read	     aligned like console_io;
+       66 	dcl  01 console_write	     aligned like console_io;
+       67 
+       68 	dcl  01 EWI		     aligned like event_wait_info;
+       69 
+       70 	/*	These flags are used to coordinate the conversion and writing of an output
+       71*   *	string.
+       72**/
+       73 	dcl  cont_flag		     bit (1) aligned;		/* Used by "oc_trans_output_" to indicate a
+       74*						   *  continuation line.  The oc_write entry just
+       75*						   *  has to initialize it each time it is called.  */
+       76 
+       77 
+       78 	/*	This buffer contains a converted output string  or  an unconverted input
+       79*   *	string.
+       80**/
+       81 	dcl  buffer		     char (256),
+       82 	     buf_ptr		     ptr;
+       83 
+       84 
+       85 	/*		BASED  DATA 		*/
+       86 
+       87 
+       88 	declare  attach_data_ptr	         pointer;
+       89 
+       90 	declare  1 attach_data	         based (attach_data_ptr),
+       91 		    2 device	         character (32) unaligned,
+       92 		    2 attach_description     character (72) varying,
+       93 		    2 open_description       character (64) varying,
+       94 		    2 wait_list	         aligned like event_wait_channel,
+       95 		    2 line_leng	         fixed binary,
+       96 		    2 alarm_flag	         bit (1) aligned;		/* Set if alarm pending for next write */
+       97 
+       98 
+       99 	/*		EXTERNAL ENTRIES CALLED	*/
+      100 	dcl  hphcs_$ocdcm_queue_io	     entry (ptr, fixed bin (71));
+      101 	dcl  hphcs_$ocdcm_get_input	     entry (char (256), fixed bin (17), fixed bin (35));
+      102 	dcl  hphcs_$ocdcm_console_info
+      103 				     entry (char (4), bit (36), char (8), fixed bin (17), fixed bin (17),
+      104 				     fixed bin (35));
+      105 	dcl  hphcs_$ocdcm_printer_off
+      106 				     entry ();
+      107 	dcl  hphcs_$ocdcm_printer_on
+      108 				     entry ();
+      109 	dcl  timer_manager_$sleep	     entry (fixed bin (71), bit (2));
+      110 	dcl  ipc_$block		     entry (ptr, ptr, fixed bin (35));
+      111 	dcl  ipc_$create_ev_chn	     entry (fixed bin (71), fixed bin (35));
+      112 	dcl  ipc_$delete_ev_chn	     entry (fixed bin (71), fixed bin (35));
+      113 	dcl  oc_trans_output_	     entry (ptr, fixed bin (21), fixed bin (21), ptr, fixed bin (19), fixed bin (17),
+      114 				     bit (1) aligned);
+      115 	dcl  oc_trans_input_	     entry (ptr, fixed bin, fixed bin, ptr, fixed bin);
+      116 	declare  (
+      117 	         hcs_$set_ips_mask,
+      118 	         hcs_$reset_ips_mask
+      119 	         )		         entry (bit (36) aligned, bit (36) aligned);
+      120 
+      121 	declare  (
+      122 	         error_table_$noarg,
+      123 	         error_table_$bad_mode,
+      124 	         error_table_$undefined_order_request,
+      125 	         error_table_$too_many_args,
+      126 	         error_table_$null_info_ptr,
+      127 	         error_table_$bad_arg
+      128 	         )		         fixed bin (35) ext static;
+      129 
+      130 
+      131 	dcl  (addr, addcharno, hbound, lbound, substr, unspec, multiply, null)
+      132 				     builtin;
+      133 	dcl  any_other		     condition;
+      134 
+      135 
+  1     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  1     2 
+  1     3 /* Written 05/04/78 by C. D. Tavares */
+  1     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  1     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  1     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  1     7 
+  1     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  1     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  1    10      iox_$close entry (pointer, fixed bin (35)),
+  1    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  1    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  1    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  1    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  1    15      iox_$err_not_attached entry options (variable),
+  1    16      iox_$err_not_closed entry options (variable),
+  1    17      iox_$err_no_operation entry options (variable),
+  1    18      iox_$err_not_open entry options (variable),
+  1    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  1    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  1    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  1    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  1    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  1    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  1    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  1    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  1    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  1    28      iox_$propagate entry (pointer),
+  1    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  1    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  1    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  1    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  1    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  1    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  1    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  1    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  1    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  1    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  1    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  1    40 
+  1    41 dcl (iox_$user_output,
+  1    42      iox_$user_input,
+  1    43      iox_$user_io,
+  1    44      iox_$error_output) external static pointer;
+  1    45 
+  1    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      136 
+      137 
+  2     1 /*  START OF:	oc_data.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+  2     2 
+  2     3 	
+  2     4 /****^  HISTORY COMMENTS:
+  2     5*  1) change(85-11-14,Farley), approve(85-11-14,MCR6979),
+  2     6*     audit(85-11-14,Fawcett), install(86-03-21,MR12.0-1033):
+  2     7*     Add support for MCA
+  2     8*     and IMU.
+  2     9*  2) change(85-12-03,Farley), approve(85-12-03,MCR7306),
+  2    10*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  2    11*     Fix bugs found while doing Dipper changes.
+  2    12*  3) change(85-12-03,Farley), approve(85-12-03,MCR7312),
+  2    13*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  2    14*     Add BCE MCA lock and unlock.
+  2    15*  4) change(86-08-07,Farley), approve(86-10-07,MCR7523),
+  2    16*     audit(86-10-03,Fawcett), install(86-10-09,MR12.0-1181):
+  2    17*     Removed timeout_factor, as it is nolonger needed.
+  2    18*  5) change(89-08-28,Farley), approve(89-09-18,MCR8132),
+  2    19*     audit(89-10-10,WAAnderson), install(89-10-11,MR12.3-1091):
+  2    20*     Increased MAX_IO_LENGTH from 132 to 256 to be consistent with
+  2    21*     oc_trans_output_.  This also affects the size of oc_data structures. Trace
+  2    22*     entries have been reduced from 168 to 130.
+  2    23*                                                   END HISTORY COMMENTS */
+  2    24 
+  2    25 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2    26 	/*										*/
+  2    27 	/* Purpose:									*/
+  2    28 	/*										*/
+  2    29 	/* 	This include file describes the contents of the oc_data segment as well various other 	*/
+  2    30 	/* 	static values utilized to interface operator's consoles. Changes to this structure that 	*/
+  2    31 	/* 	would affect the size of the oc_data segment will require a change in the size of oc_data */
+  2    32 	/* 	as specified in the MST header. This is true because the segment is fabricated at boot 	*/
+  2    33 	/* 	time and the size must be known prior to fabrication.				*/
+  2    34 	/*										*/
+  2    35 	/*	This include file was recoded from its original version to add support for multiple 	*/
+  2    36 	/* 	consoles.									*/
+  2    37 	/*										*/
+  2    38 	/* Re-written:		05/01/83							*/
+  2    39 	/*										*/
+  2    40 	/* Author:		E. A. Ranzenbach	(Ranzenbach.Multics@M)			*/
+  2    41 	/* Location:		System-M.							*/
+  2    42 	/* Release:		MR10.2							*/
+  2    43 	/*										*/
+  2    44 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2    45 	/*										*/
+  2    46 	/* Modifications:									*/
+  2    47 	/*										*/
+  2    48 	/*  Date	  Author			Reason						*/
+  2    49      	/*										*/
+  2    50 	/*  840410  Edward A. Ranzenbach	Cut size of I/O's to 132 chars...			*/
+  2    51 	/*  840427  Edward A. Ranzenbach	Added "off" console state..."				*/
+  2    52 	/*  850111  Edward A. Ranzenbach	Added lost special interrupt protection.		*/
+  2    53 	/*  850215  Paul K Farley               Add pcw_ignored flag in oc_entry.                           */
+  2    54 	/*  850522  Paul K Farley               Add MCA lock/unlock info.                                   */
+  2    55 	/*  850827  Paul K Farley               Add more info to event trace.				*/
+  2    56 	/*  850913  Paul K Farley               Add timeout_factor variable to oc_entry.		*/
+  2    57 	/*  851114  Paul K Farley               Remove pcw_ignored flag, imu flag will do.		*/
+  2    58 	/*										*/
+  2    59 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2    60 
+  2    61 /* format: off */
+  2    62 
+  2    63 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2    64 	/*										*/
+  2    65 	/* The DCW list consists of an array of sixteen single word Device Control Words that are used to	*/
+  2    66 	/* drive the console devices. These DCWs are listed in their stored order followed by the effects	*/
+  2    67 	/* that they produce:								*/
+  2    68 	/*										*/
+  2    69 	/*	1  =  reset status IDCW	->	Reset the console channel...			*/
+  2    70 	/*	2  =  write alert IDCW	->	Output a bell character to the console...	*/
+  2    71 	/*	3  =  write IDCW		->	Put console in output mode...			*/
+  2    72 	/*	4  =  write  DCW		->	Describes intended outgoing data transfer...	*/
+  2    73 	/*	5  =  write IDCW - newline	->	Put console in output mode...			*/
+  2    74 	/*	6  =  write  DCW - newline	->	Describes newline transfer...			*/
+  2    75 	/*	7  =  read  IDCW		->	Put the console in input mode...		*/
+  2    76 	/*	8  =  read   DCW		->	Describes intended data transfer...		*/
+  2    77 	/*	9  =  read_unechoed  IDCW	->	Put the console in unechoed input mode...	*/
+  2    78 	/*	10 =  read_unechoed  DCW	->	Describes intended data transfer...		*/
+  2    79 	/*	11 =  write IDCW - prompt							*/
+  2    80 	/*	12 =  write  DCW - prompt							*/
+  2    81 	/*	13 =  write IDCW - discard	->	Put console in output mode...			*/
+  2    82 	/*	14 =  write  DCW - discard	->	Describes discard notice...			*/
+  2    83 	/*	15 =  lock MCA IDCW		->	Disable MCA input from console...		*/
+  2    84 	/*	16 =  unlock MCA IDCW	->	Enable MCA input from console...		*/
+  2    85 	/*										*/
+  2    86 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2    87 
+  2    88      dcl	oc_data$		external;					/* so we can find it...		*/
+  2    89 	
+  2    90      dcl  1 oc_data			aligned	 based	 (oc_data_ptr),
+  2    91 	     2 lock 		bit (36),				/* global lock for all of oc_data...	*/
+  2    92 	     2 version		char	(4),			/* should equal oc_data_version...	*/
+  2    93 	     2 console_cnt		fixed bin	(17)	unaligned,	/* number of configured consoles...	*/
+  2    94 	     2 bootload_console_idx	fixed bin	(17)	unaligned,	/* index into opc of bootload console...*/
+  2    95 	     2 flags,
+  2    96 		3 in_service	bit	(1)	unaligned,	/* ON => at least one usable console... */
+  2    97 		3 crash_on_crf	bit	(1)	unaligned,	/* ON => crash on recovery failure...	*/
+  2    98 		3 mc_io_enabled	bit	(1)	unaligned,	/* ON => MC is handling I/O...	*/
+  2    99 		3 list_consoles	bit	(1)	unaligned,	/* ON => list the console assignments...*/
+  2   100 		3 printer_on	bit	(1)	unaligned,	/* ON => echo read characters...	*/
+  2   101 		3 write_q_full	bit	(1)	unaligned,	/* ON => the write queue is full...	*/
+  2   102 		3 must_have_console	bit	(1)	unaligned,	/* ON => we must have a real console... */
+  2   103 		3 pad_oc_data_flags	bit	(29)	unaligned,	/* pad to word boundry...		*/
+  2   104 	     2 no_lock_flags,					/* these flags can be modified without	*/
+  2   105 								/* lock protection...		*/
+  2   106 		3 got_special_int	bit	(1)	unaligned,	/* we could not process this special... */
+  2   107 		3 pad_no_lock_flags	bit	(35)	unaligned,
+  2   108 	     2 pad_misc		fixed bin	(35),			/* to preserve even word alignment...	*/
+  2   109 	     2 prompt		char	(8),			/* string used to prompt for input...	*/
+  2   110 	     2 discard_notice	char	(24),			/* displayed at BREAK condition...	*/
+  2   111 	     2 write_return		bit	(36),			/* newline string = PAD PAD CR NL...	*/
+  2   112 	     2 abs_addr		fixed bin (26),			/* absolute address of oc_data$...	*/
+  2   113 	     2 status_ptr		ptr,				/* points to IOM status word...	*/
+  2   114 	     2 io_ptr		ptr,				/* -> I/O being processed...		*/
+  2   115 	     2 last_read_queued	fixed bin	(71),			/* last time a READ was queued...	*/
+  2   116 	     2 last_write_queued	fixed bin (71),			/* last time a WRITE was queued...	*/
+  2   117 	     2 last_poll_time	fixed bin	(71),			/* last time of timeout poll by pxss...	*/
+  2   118 	     2 max_computed_io_time	fixed bin	(71),			/* maximum time an I/O could take...	*/
+  2   119 	     2 err_event_cid	fixed bin (71),			/* channel used to signal inop state... */
+  2   120 	     2 err_event_pid	bit	(36),			/* ID of process handling inop states...*/
+  2   121 	     2 reader_process_id	bit	(36),			/* only process allowed to read...	*/
+  2   122 	     2 next_free_write	fixed bin	(17)	unaligned,	/* index of the next free WRITE slot... */
+  2   123 	     2 next_event		fixed bin	(17)	unaligned,	/* next event index...		*/
+  2   124 	     2 stacked_read_cnt	fixed bin	(17)	unaligned,	/* READ stack...			*/
+  2   125 	     2 pad_oc_data		bit	(18)	unaligned,
+  2   126 	     2 priority_io	like	console_io,			/* oc_data|42(8)...			*/
+  2   127 	     2 read_io	like	console_io,			/* oc_data|154(8)...		*/
+  2   128 	     2 write_queue		(WRITE_QUEUE_SIZE)			/* oc_data|266(8)...		*/
+  2   129 			like	console_io,
+  2   130 	     2 meters,						/* metering cell at oc_data|1406...	*/
+  2   131 		3 pushed_read_cnt	fixed bin	(35),			/* count of times read stack was used...*/
+  2   132 		3 write_q_full_cnt	fixed bin	(35),			/* count of WRITE fails for no room...	*/
+  2   133 		3 queued_special_int_count
+  2   134 				fixed bin	(35),
+  2   135 		3 pad_meters(7)	fixed bin	(35),			/* for future use...		*/
+  2   136 	     2 opc	(MAX_OPC_CNT)				/* oc_data|1420, 1454, 1510, 1544, 1600...*/
+  2   137 			like	oc_entry,				/* 1634, 1670, 1724...		*/
+  2   138 	     2 event	(EVENT_QUEUE_SIZE)				/* oc_data|1760 thru oc_data|3777...	*/
+  2   139 			like 	oc_event;
+  2   140 
+  2   141 
+  2   142 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   143 	/*										*/
+  2   144 	/* The following structure describes a configured console.					*/
+  2   145 	/*										*/
+  2   146 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   147 
+  2   148 	
+  2   149      dcl	1 oc_entry	aligned	based	(oc_entry_ptr),		/* one for each console 34(8) words... */
+  2   150 	     2 name		char	(4),			/* name of this console, i.e. "opca"... */
+  2   151 	     2 opc_idx		fixed bin	(17)	unaligned,	/* index of this entry in opc array...	*/
+  2   152 	     2 model		fixed bin	(17)	unaligned,	/* model of the console...		*/
+  2   153 	     2 flags,
+  2   154 		3 active		bit	(1)	unaligned,	/* ON => this entry is in use...	*/
+  2   155 		3 assigned	bit	(1)	unaligned,	/* ON => io_manager knows device...	*/
+  2   156 		3 bootload_console	bit	(1)	unaligned,	/* ON => this is the bootload console...*/
+  2   157 		3 alternate	bit	(1)	unaligned,	/* ON => console used if active fails...*/
+  2   158 		3 inop_device	bit	(1)	unaligned,	/* ON => console is inoperative...	*/
+  2   159 		3 io_device	bit	(1)	unaligned,	/* ON => console is not available to us.*/
+  2   160 		3 no_device	bit	(1)	unaligned,	/* ON => console has been deleted...	*/
+  2   161 		3 config_change	bit	(1)	unaligned,	/* ON => config change has occurred...	*/
+  2   162 		3 prompt		bit	(1)	unaligned,	/* ON => prompt for input...		*/
+  2   163 		3 pcw_io		bit	(1)	unaligned,	/* ON => use PCW's instead of IDCW's... */
+  2   164 		3 io_in_progress	bit	(1)	unaligned,	/* ON => I/O op is in progress...	*/
+  2   165 		3 got_special_int	bit	(1)	unaligned,	/* ON => RE(TURN QUEST) key was hit...	*/
+  2   166 		3 oper_request	bit	(1)	unaligned,	/* ON => operator has hit request key...*/
+  2   167 		3 discard		bit	(1)	unaligned,	/* ON => discard output...		*/
+  2   168 		3 discarded	bit	(1)	unaligned,	/* ON => (output discarded) printed...	*/
+  2   169 		3 read_unechoed_option				/* ON => read_unechoed option installed.*/
+  2   170 				bit	(1)	unaligned,	/* option must not be installed...	*/
+  2   171 		3 imu		bit	(1)	unaligned,	/* ON => console located in an IMU...	*/
+  2   172 		3 pad_flag	bit	(19)	unaligned,	/* pad to word boundry...		*/
+  2   173 	     2 channel		char	(8),			/* name of this console's channel...	*/
+  2   174 	     2 device_idx		fixed bin (35),			/* operator's console device id...	*/
+  2   175 	     2 line_leng		fixed bin	(17)	unaligned,	/* line length of the console...	*/
+  2   176 	     2 dcw_list_idx		fixed bin	(17)	unaligned,	/* DCW list in progess...		*/
+  2   177 	     2 retry_cnt		fixed bin	(17)	unaligned,	/* times I/O op has been retried...	*/
+  2   178 	     2 RESERVED_PAD		fixed bin	(17)	unaligned,	/* pad to oc_entry + 10(8)...		*/
+  2   179 	     2 io_time		fixed bin (71),			/* time last I/O began...		*/
+  2   180 	     2 status_word		bit	(36),			/* last valid status word received...	*/
+  2   181 	     2 dcw_list	(16)	bit	(36),			/* DCWs used to drive the console...	*/
+  2   182 	     2 pad_oc_entry_end	bit	(36);			/* pad to 34(8) words...		*/
+  2   183 
+  2   184 
+  2   185 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   186 	/*										*/
+  2   187 	/* This is the format of a console I/O. A pointer to this structure is passed to us by the process	*/
+  2   188 	/* wishing to perform a console I/O. The caller will fill in the following things for a read I/O:	*/
+  2   189 	/*										*/
+  2   190 	/* 	console_io.event_chan	- Will be an event channel to wake the user on when the	*/
+  2   191 	/* 				  I/O completes.					*/
+  2   192 	/*										*/
+  2   193 	/* 	console_io.read		- Set to "1"b indicating a read.			*/
+  2   194 	/*										*/
+  2   195 	/*  For a write the following information is supplied:					*/
+  2   196 	/*										*/
+  2   197 	/* 	console_io.alert		- Set to "1"b if the console alarm is to be on for the	*/
+  2   198 	/* 				  write.						*/
+  2   199 	/*										*/
+  2   200 	/* 	console_io.read		- Set to "0"b.					*/
+  2   201 	/*										*/
+  2   202 	/* 	console_io.sequence_no	- Set to the syserr sequence number for syserr calls. 	*/
+  2   203 	/*										*/
+  2   204 	/* 	console_io.leng		- Set to the word length of the message to be written.	*/
+  2   205 	/*										*/
+  2   206 	/* 	console_io.text		- Set to the text of the message.			*/
+  2   207 	/*										*/
+  2   208 	/* In all cases ocdcm_ will properly reset those items not necessary to the type of I/O being 	*/
+  2   209 	/* performed.									*/
+  2   210 	/*										*/
+  2   211 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   212 
+  2   213      dcl	1 console_io		aligned 	based 	(console_io_ptr),	/* format of a I/O, 112(8) words...	*/
+  2   214 	     2 time_queued		fixed bin	(71),			/* 0 indicates a free entry...	*/
+  2   215 	     2 event_chan		fixed bin (71),			/* to send wakeup to when I/O completes.*/
+  2   216 	     2 process_id		bit	(36),			/* of the caller...			*/
+  2   217 	     2 console		char	(4),			/* name of the console the I/O went to..*/
+  2   218 	     2 flags,						/* start at console_io + 6(8)...	*/
+  2   219 		3 alert		bit	(1)	unaligned,	/* ON => ring bell first...		*/
+  2   220 		3 read		bit	(1)	unaligned,	/* ON => this is a read request...	*/
+  2   221 		3 alerted		bit	(1)	unaligned,	/* ON => we have successfully alerted...*/
+  2   222 		3 prompted	bit	(1)	unaligned,	/* ON => we have successfully prompted..*/
+  2   223 		3 in_progress	bit	(1)	unaligned,	/* ON => I/O has been started...	*/
+  2   224 		3 completed	bit	(1)	unaligned,	/* ON => the I/O has completed...	*/
+  2   225 		3 retry_reset	bit	(1)	unaligned,	/* ON => I/O was reset by retry_io...	*/
+  2   226 		3 pad_flag	bit	(29)	unaligned,	/* pad to word boundry...		*/
+  2   227 	     2 sequence_no		fixed bin	(35),			/* syserr sequence number...		*/
+  2   228 	     2 leng		fixed bin	(17)	unaligned,	/* in words of the I/O...		*/
+  2   229 	     2 MBZ		fixed bin	(17)	unaligned,	/* reserved for future use...		*/
+  2   230 	     2 pad_text		fixed bin	(35),			/* I/O must start on even word boundry..*/
+  2   231 	     2 text		char	(MAX_IO_LENGTH);		/* the actual I/O...		*/
+  2   232 
+  2   233 
+  2   234 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   235 	/*										*/
+  2   236 	/* The following structure is used to log an event occurring in in the console software.		*/
+  2   237 	/*										*/
+  2   238 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2   239 
+  2   240 	
+  2   241      dcl	1 oc_event		aligned	based	(oc_event_ptr),	/* each event is 10(8) words long...	*/
+  2   242 	     2 time		fixed bin	(71),			/* time event took place...		*/
+  2   243 	     2 opc_name		char (4),				/* bootload console at time of event... */
+  2   244 	     2 opc_flags		like oc_entry.flags,		/* bootload console flags...		*/
+  2   245 	     2 process_id		bit	(36),			/* process logging the event...	*/
+  2   246 	     2 event_number		fixed bin	(35),			/* number of the event being logged...	*/
+  2   247 	     2 event_io_ptr		ptr;				/* ptr to I/O in progress during event..*/
+  2   248 
+  2   249      dcl	(							/* indices for ease of use...		*/
+  2   250 	RESET_DCW			init	(1),
+  2   251 	ALERT_DCW			init	(2),
+  2   252 	WRITE_DCW			init	(3),
+  2   253 	NEWLINE_DCW		init	(5),
+  2   254 	READ_DCW			init	(7),
+  2   255 	READ_UNECHOED_DCW		init	(9),
+  2   256 	PROMPT_DCW		init	(11),
+  2   257 	DISCARD_DCW		init	(13),
+  2   258 	LOCK_MCA_DCW		init	(15),
+  2   259 	UNLOCK_MCA_DCW		init	(16)
+  2   260 	)			fixed bin	(17)
+  2   261 				internal static	options (constant);
+  2   262      dcl	(							/* list of event numbers...		*/
+  2   263 	INIT_OC_DATA		init	(1),
+  2   264 	GOT_SPECIAL_INT		init	(2),
+  2   265 	PRIORITY_OUTPUT		init	(3),
+  2   266 	QUEUED_READ		init	(4),
+  2   267 	QUEUED_WRITE		init	(5),
+  2   268 	STARTED_READ		init	(6),
+  2   269 	STARTED_UNECHOED_READ	init	(7),
+  2   270 	STARTED_WRITE		init	(8),
+  2   271 	RESET_CHANNEL		init	(9),
+  2   272 	SENT_ALERT		init	(10),
+  2   273 	SENT_NEWLINE		init	(11),
+  2   274 	SENT_PROMPT		init	(12),
+  2   275 	TERMINATED_RESET		init	(13),
+  2   276 	TERMINATED_ALERT		init	(14),
+  2   277 	TERMINATED_NEWLINE		init	(15),
+  2   278 	TERMINATED_PROMPT		init	(16),
+  2   279 	TERMINATED_READ		init	(17),
+  2   280 	TERMINATED_WRITE		init	(18),
+  2   281 	SENT_WAKEUP		init	(19),
+  2   282 	READ_PICKUP		init	(20),
+  2   283 	PUSHED_READ		init	(21),
+  2   284 	POPPED_READ		init	(22),
+  2   285 	READ_NOT_IN_PROGRESS	init	(23),
+  2   286 	LOGGED_ERROR		init	(24),
+  2   287 	IO_TIMEOUT		init	(25),
+  2   288 	RETRY_IO			init	(26),
+  2   289 	GOT_LOCK			init	(27),
+  2   290 	FREED_LOCK		init	(28),
+  2   291 	DISCARDED_OUTPUT		init	(29),
+  2   292 	SENT_MC_IO		init	(30),
+  2   293 	SENT_MC_PRIORITY_IO		init	(31),
+  2   294 	MC_IO_PICKUP		init	(32),
+  2   295 	MC_IO_FAILURE		init	(33),
+  2   296 	LOCK_MCA_IO		init	(34),
+  2   297 	UNLOCK_MCA_IO		init	(35),
+  2   298 	TERMINATED_MCA_LOCK		init	(36),
+  2   299 	TERMINATED_MCA_UNLOCK	init	(37)
+  2   300 	)			fixed bin	(35)
+  2   301 				internal static	options (constant);
+  2   302 
+  2   303      dcl	oc_data_version		char	(4)	init	("1.3")	/* for general information...		*/
+  2   304 				static internal	options (constant);
+  2   305 
+  2   306      dcl	(
+  2   307 	oc_data_ptr,
+  2   308 	oc_entry_ptr,
+  2   309 	oc_event_ptr,
+  2   310 	console_io_ptr
+  2   311 	)			ptr;
+  2   312 
+  2   313      dcl	(
+  2   314 	MAX_OPC_CNT		init	(8),			/* maximum number of consoles...	*/
+  2   315 	MAX_RETRIES		init	(2),			/* we retry I/O ops this many times...	*/
+  2   316 	EVENT_QUEUE_SIZE		init	(130),			/* use up the rest of the 2 pages...	*/
+  2   317 	WRITE_QUEUE_SIZE		init	(8)			/* number of queued writes allowed...	*/
+  2   318 	)
+  2   319 				fixed bin	(17)
+  2   320 				internal static	options (constant);
+  2   321 
+  2   322      dcl	MAX_IMU_IO_TIME		fixed bin	(17)			/* longest possible IMU I/O time...	*/
+  2   323 				internal static	options (constant)
+  2   324 				init	(150);			/* 2 minutes 30 seconds...		*/
+  2   325 
+  2   326      dcl	MAX_IO_TIME	(16)	fixed bin	(17)			/* maximum time the associated I/O 	*/
+  2   327 				internal static	options (constant)	/* operation is allowed to take in 	*/
+  2   328 				init				/* seconds...			*/
+  2   329 			         (
+  2   330 				1,				/* RESET_STATUS...			*/
+  2   331 				1,				/* WRITE ALERT...			*/
+  2   332 				10,				/* WRITE DATA...			*/
+  2   333 				0,				/* DUMMY for WRITE DATA DCW...	*/
+  2   334 				2,				/* WRITE CR, NL...			*/
+  2   335 				0,				/* DUMMY for WRITE CR, NL DCW...	*/
+  2   336 				90,				/* READ DATA...			*/
+  2   337 				0,				/* DUMMY for READ DATA DCW...		*/
+  2   338 				90,				/* READ_UNECHOED DATA...		*/
+  2   339 				0,				/* DUMMY for READ_UNECHOED DATA DCW...	*/
+  2   340 				1,				/* WRITE PROMPT...			*/
+  2   341 				0,				/* DUMMY for WRITE PROMPT DCW...	*/
+  2   342 				10,				/* DISCARD DCW...			*/
+  2   343 				0,				/* DUMMY for DISCARD DCW...		*/
+  2   344 				30,				/* LOCK MCA IO...			*/
+  2   345 				30				/* UNLOCK MCA IO...			*/
+  2   346 				);
+  2   347 
+  2   348      dcl	MAX_IO_LENGTH		fixed bin	(17)
+  2   349 				internal static	options (constant)
+  2   350 				init	(256);			/* in characters...			*/
+  2   351      dcl	MAX_MAX_IO_TIME		fixed bin	(17)			/* longest possible I/O time...	*/
+  2   352 				internal static	options (constant)
+  2   353 				init	(150);			/* should be the same as the longest...	*/
+  2   354 
+  2   355 
+  2   356 /*  END OF:	oc_data.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      138 
+      139 
+  3     1 /* Begin include file ..... iox_modes.incl.pl1 */
+  3     2 
+  3     3 /* Written by C. D. Tavares, 03/17/75 */
+  3     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  3     5 
+  3     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  3     7     ("stream_input", "stream_output", "stream_input_output",
+  3     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  3     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  3    10      "direct_input", "direct_output", "direct_update");
+  3    11 
+  3    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  3    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  3    14 
+  3    15 dcl (Stream_input initial (1),
+  3    16      Stream_output initial (2),
+  3    17      Stream_input_output initial (3),
+  3    18      Sequential_input initial (4),
+  3    19      Sequential_output initial (5),
+  3    20      Sequential_input_output initial (6),
+  3    21      Sequential_update initial (7),
+  3    22      Keyed_sequential_input initial (8),
+  3    23      Keyed_sequential_output initial (9),
+  3    24      Keyed_sequential_update initial (10),
+  3    25      Direct_input initial (11),
+  3    26      Direct_output initial (12),
+  3    27      Direct_update initial (13)) fixed bin int static options (constant);
+  3    28 
+  3    29 /* End include file ..... iox_modes.incl.pl1 */
+      140 
+      141 
+  4     1 /* BEGIN INCLUDE FILE ..... iocb.incl.pl1 ..... 13 Feb 1975, M. Asherman */
+  4     2 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  4     3*      version number to IOX2. */
+  4     4 /* format: style2 */
+  4     5 
+  4     6      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  4     7 	     2 version	      character (4) aligned,	/* IOX2 */
+  4     8 	     2 name	      char (32),		/* I/O name of this block. */
+  4     9 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  4    10 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  4    11 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  4    12 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  4    13 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  4    14 	     2 reserved	      bit (72),		/* Reserved for future use. */
+  4    15 	     2 detach_iocb	      entry (ptr, fixed (35)),/* detach_iocb(p,s) */
+  4    16 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed (35)),
+  4    17 						/* open(p,mode,not_used,s) */
+  4    18 	     2 close	      entry (ptr, fixed (35)),/* close(p,s) */
+  4    19 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  4    20 						/* get_line(p,bufptr,buflen,actlen,s) */
+  4    21 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  4    22 						/* get_chars(p,bufptr,buflen,actlen,s) */
+  4    23 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed (35)),
+  4    24 						/* put_chars(p,bufptr,buflen,s) */
+  4    25 	     2 modes	      entry (ptr, char (*), char (*), fixed (35)),
+  4    26 						/* modes(p,newmode,oldmode,s) */
+  4    27 	     2 position	      entry (ptr, fixed, fixed (21), fixed (35)),
+  4    28 						/* position(p,u1,u2,s) */
+  4    29 	     2 control	      entry (ptr, char (*), ptr, fixed (35)),
+  4    30 						/* control(p,order,infptr,s) */
+  4    31 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  4    32 						/* read_record(p,bufptr,buflen,actlen,s) */
+  4    33 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed (35)),
+  4    34 						/* write_record(p,bufptr,buflen,s) */
+  4    35 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed (35)),
+  4    36 						/* rewrite_record(p,bufptr,buflen,s) */
+  4    37 	     2 delete_record      entry (ptr, fixed (35)),/* delete_record(p,s) */
+  4    38 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  4    39 						/* seek_key(p,key,len,s) */
+  4    40 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  4    41 						/* read_key(p,key,len,s) */
+  4    42 	     2 read_length	      entry (ptr, fixed (21), fixed (35)),
+  4    43 						/* read_length(p,len,s) */
+  4    44 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  4    45 						/* open_file(p,mode,desc,not_used,s) */
+  4    46 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  4    47 						/* close_file(p,desc,s) */
+  4    48 	     2 detach	      entry (ptr, char (*), fixed bin (35));
+  4    49 						/* detach(p,desc,s) */
+  4    50 
+  4    51      declare iox_$iocb_version_sentinel
+  4    52 			      character (4) aligned external static;
+  4    53 
+  4    54 /* END INCLUDE FILE ..... iocb.incl.pl1 ..... */
+      142 
+      143 	declare  iocb_ptr		         pointer;
+      144 
+  5     1 /* BEGIN INCLUDE FILE event_wait_info.incl.pl1 */
+  5     2 
+  5     3 /* T. Casey, May 1978 */
+  5     4 
+  5     5 dcl  event_wait_info_ptr ptr;
+  5     6 
+  5     7 dcl 1 event_wait_info aligned based (event_wait_info_ptr),	/* argument structure filled in on return from ipc_$block */
+  5     8     2 channel_id fixed bin (71),			/* event channel on which wakeup occurred */
+  5     9     2 message fixed bin (71),				/* 72 bits of information passed by sender of wakeup */
+  5    10     2 sender bit (36),				/* process id of sender */
+  5    11     2 origin,
+  5    12       3 dev_signal bit (18) unaligned,			/* "1"b if device signal */
+  5    13       3 ring fixed bin (17) unaligned,			/* ring from which sent */
+  5    14     2 channel_index fixed bin;			/* index of this channel in the event wait list */
+  5    15 
+  5    16 /* END INCLUDE FILE event_wait_info.incl.pl1 */
+      145 
+      146 
+  6     1 /* BEGIN INCLUDE FILE ... event_wait_channel.incl.pl1 */
+  6     2 
+  6     3 /* ipc_$block wait list with one channel
+  6     4*
+  6     5*   Written 9-May-79 by M. N. Davidoff.
+  6     6**/
+  6     7 
+  6     8      declare 1 event_wait_channel   aligned,
+  6     9 	     2 n_channels	      fixed bin initial (1),	/* number of channels */
+  6    10 	     2 pad	      bit (36),
+  6    11 	     2 channel_id	      (1) fixed bin (71);	/* event channel to wait on */
+  6    12 
+  6    13 /* END INCLUDE FILE ... event_wait_channel.incl.pl1 */
+      147 
+      148 
+  7     1 /*  START OF:	oc_info.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+  7     2 
+  7     3 	
+  7     4 /****^  HISTORY COMMENTS:
+  7     5*  1) change(85-11-14,Farley), approve(85-11-14,MCR6979),
+  7     6*     audit(85-11-14,Fawcett), install(86-03-21,MR12.0-1033):
+  7     7*     Add IMU support.
+  7     8*  2) change(85-12-03,Farley), approve(85-12-03,MCR7306),
+  7     9*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  7    10*     Fix bugs found while doing Dipper changes.
+  7    11*  3) change(85-12-03,Farley), approve(85-12-03,MCR7312),
+  7    12*     audit(85-12-03,Fawcett), install(86-03-21,MR12.0-1033):
+  7    13*     Add BCE MCA lock and unlock.
+  7    14*                                                   END HISTORY COMMENTS */
+  7    15 
+  7    16 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7    17 	/*										*/
+  7    18 	/* Purpose:									*/
+  7    19 	/*										*/
+  7    20 	/* This include file is utilized to extract information about the current operator's console via	*/
+  7    21 	/* a call to iox_$control with a control order of "console_info" for  the ocd_ I/O module. The name	*/
+  7    22 	/*  of the console that information is requested on is provided in oc_info.name. If this is set to	*/
+  7    23 	/*  "" information about the bootload console is returned.					*/
+  7    24 	/*										*/
+  7    25 	/* Initial Coding:		06/20/83							*/
+  7    26 	/*										*/
+  7    27 	/* Author:		E. A. Ranzenbach	(Ranzenbach.Multics@M)			*/
+  7    28 	/* Location:		System-M.							*/
+  7    29 	/* Release:		MR10.2							*/
+  7    30 	/*										*/
+  7    31 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7    32 	/*										*/
+  7    33 	/* Modifications:									*/
+  7    34 	/*										*/
+  7    35 	/*  Date	   Author			Reason						*/
+  7    36      	/*										*/
+  7    37 	/*  84-12-05 E. A. Ranzenbach		for read_unechoed_char console option.			*/
+  7    38 	/*										*/
+  7    39 	/*  85-07-17 Paul K Farley		for IMU changes.					*/
+  7    40 	/*  85-11-14 Paul K Farley              Remove pcw_ignored flag, imu flag will do.		*/
+  7    41 	/*										*/
+  7    42 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7    43 
+  7    44 
+  7    45 	
+  7    46 
+  7    47 /* format: off */
+  7    48 
+  7    49      dcl	1 oc_info			aligned	based	(oc_info_ptr),
+  7    50 	     2 name		char	(4),			/* name of this console, i.e. "opca"... */
+  7    51 	     2 opc_idx		fixed bin	(17)	unaligned,	/* index of this entry in opc array...	*/
+  7    52 	     2 model		fixed bin	(17)	unaligned,	/* model of the console...		*/
+  7    53 	     2 flags,
+  7    54 		3 active		bit	(1)	unaligned,	/* ON => this entry is in use...	*/
+  7    55 		3 assigned	bit	(1)	unaligned,	/* ON => io_manager knows device...	*/
+  7    56 		3 bootload_console	bit	(1)	unaligned,	/* ON => this is the bootload console...*/
+  7    57 		3 alternate	bit	(1)	unaligned,	/* ON => console used if active fails...*/
+  7    58 		3 inop_device	bit	(1)	unaligned,	/* ON => console is inoperative...	*/
+  7    59 		3 io_device	bit	(1)	unaligned,	/* ON => console is not available to us.*/
+  7    60 		3 no_device	bit	(1)	unaligned,	/* ON => console has been deleted...	*/
+  7    61 		3 config_change	bit	(1)	unaligned,	/* ON => config change has occurred...	*/
+  7    62 		3 prompt		bit	(1)	unaligned,	/* ON => prompt for input...		*/
+  7    63 		3 pcw_io		bit	(1)	unaligned,	/* ON => use PCW's instead of IDCW's... */
+  7    64 		3 io_in_progress	bit	(1)	unaligned,	/* ON => I/O op is in progress...	*/
+  7    65 		3 got_special_int	bit	(1)	unaligned,	/* ON => RE(TURN QUEST) key was hit...	*/
+  7    66 		3 oper_request	bit	(1)	unaligned,	/* ON => operator has hit request key...*/
+  7    67 		3 discard		bit	(1)	unaligned,	/* ON => discard output...		*/
+  7    68 		3 discarded	bit	(1)	unaligned,	/* ON => (output discarded) printed...	*/
+  7    69 		3 read_unechoed_option				/* ON => read_unechoed option installed.*/
+  7    70 				bit	(1)	unaligned,	/* option must not be installed...	*/
+  7    71 		3 imu		bit	(1)	unaligned,	/* ON => console located in an IMU...	*/
+  7    72 		3 FLAG_PAD	bit	(19)	unaligned,	/* pad to word boundry...		*/
+  7    73 	     2 channel		char	(8),			/* name of this console's channel...	*/
+  7    74 	     2 device_idx		fixed bin (35),			/* operator's console device id...	*/
+  7    75 	     2 line_leng		fixed bin	(17)	unaligned,	/* line length of the console...	*/
+  7    76 	     2 dcw_list_idx		fixed bin	(17)	unaligned,	/* DCW list in progess...		*/
+  7    77 	     2 retry_cnt		fixed bin	(17)	unaligned,	/* times I/O op has been retried...	*/
+  7    78 	     2 RESERVED_PAD		fixed bin	(17)	unaligned,	/* pad to oc_entry + 10(8)...		*/
+  7    79 	     2 io_time		fixed bin (71),			/* time last I/O began...		*/
+  7    80 	     2 status_word		bit	(36),			/* last valid status word received...	*/
+  7    81 	     2 dcw_list	(16)	bit	(36),			/* DCWs used to drive the console...	*/
+  7    82 	     2 OC_ENTRY_END_PAD	bit	(36);			/* pad to 34(8) words...		*/
+  7    83 	
+  7    84      dcl	oc_info_ptr		ptr;
+  7    85 
+  7    86 /*  END OF:	oc_info.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      149 
+      150 
+  8     1 /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  8     2 /* format: style3 */
+  8     3 
+  8     4 /* These constants are to be used for the flags argument of sub_err_ */
+  8     5 /* They are just "string (condition_info_header.action_flags)" */
+  8     6 
+  8     7 declare	(
+  8     8 	ACTION_CAN_RESTART	init (""b),
+  8     9 	ACTION_CANT_RESTART init ("1"b),
+  8    10 	ACTION_DEFAULT_RESTART
+  8    11 			init ("01"b),
+  8    12 	ACTION_QUIET_RESTART
+  8    13 			init ("001"b),
+  8    14 	ACTION_SUPPORT_SIGNAL
+  8    15 			init ("0001"b)
+  8    16 	)		bit (36) aligned internal static options (constant);
+  8    17 
+  8    18 /* End include file */
+      151 
+      152 
+      153 	declare  (to_write_ptr, to_read_ptr)
+      154 				         pointer;
+      155 	declare  to_write_length	         fixed bin (21);
+      156 	declare  to_read_length	         fixed bin;
+      157 
+      158 
+      159 ocd_attach:
+      160      entry (IOCB_ptr, Attach_args, Com_err_sw, Code);
+      161 
+      162 
+      163 	/*	Entry to  ATTACH  Operator's Console. */
+      164 
+      165 	Code = 0;
+      166 	iocb_ptr = IOCB_ptr;
+      167 	if hbound (Attach_args, 1) < 1
+      168 	then call attach_error (error_table_$noarg, "Usage: ocd_ DEVICE.");
+      169 
+      170 	if hbound (Attach_args, 1) - lbound (Attach_args, 1) > 1
+      171 	then call attach_error (error_table_$too_many_args, "Usage: ocd_ DEVICE.");
+      172 
+      173 	if Attach_args (1) ^= "otw_"
+      174 	then call attach_error (error_table_$bad_arg, "Only the BCE console, otw_, is supported.");
+      175 
+      176 
+      177 	/*	Set up event channel used to coordinate read and write operations with ocdcm_. */
+      178 
+      179 	allocate attach_data set (attach_data_ptr);
+      180 
+      181 	attach_data.wait_list.pad = ""b;
+      182 
+      183 	attach_data.wait_list.n_channels = 1;
+      184 
+      185 	call ipc_$create_ev_chn (attach_data.wait_list.channel_id (1), code);
+      186 	if code ^= 0
+      187 	then call attach_error (code, "Could not get an event channel.");
+      188 
+      189 	attach_data.alarm_flag = "0"b;				/* No alarm pending.  */
+      190 
+      191 	attach_data.attach_description = "ocd_ otw_";
+      192 
+      193 	/*** okay, connect it up */
+      194 
+      195 	on any_other go to RESET_IPS_MASK_1;
+      196 
+      197 	call hcs_$set_ips_mask (""b, mask);
+      198 	iocb_ptr -> iocb.attach_data_ptr = attach_data_ptr;
+      199 	iocb_ptr -> iocb.attach_descrip_ptr = addr (attach_data.attach_description);
+      200 	iocb_ptr -> iocb.open = ocd_open;
+      201 	iocb_ptr -> iocb.detach_iocb = ocd_detach;
+      202 
+      203 	call hphcs_$ocdcm_console_info ("", "0"b, "", 0, attach_data.line_leng, code);
+      204 	if code ^= 0 then do;					/* only update if info is good...	*/
+      205 	     call hcs_$reset_ips_mask (mask, mask);
+      206 	     call attach_error (code, "Could not get console info.");
+      207 	end;
+      208 
+      209 	call iox_$propagate (iocb_ptr);
+      210 RESET_IPS_MASK_1:
+      211 	call hcs_$reset_ips_mask (mask, mask);
+      212 
+      213 	return;
+      214 
+      215 attach_error:
+      216      procedure (code, reason);
+      217 	declare  code		         fixed bin (35);
+      218 	declare  reason		         character (*);
+      219 	declare  sub_err_		         entry () options (variable);
+      220 	declare  com_err_		         entry () options (variable);
+      221 	declare  ME		         character (32) init ("ocd_") internal static static options (constant);
+      222 
+      223 	if Com_err_sw
+      224 	then call com_err_ (code, ME, "^a", reason);
+      225 
+      226 	else call sub_err_ (code, "odc_ attach", ACTION_DEFAULT_RESTART, null (), (0), "^a", reason);
+      227 	Code = code;
+      228 	go to RETURN;
+      229      end attach_error;
+      230 
+      231 RETURN:
+      232 	return;
+      233 
+      234 ocd_detach:
+      235      entry (IOCB_ptr, Code);
+      236 	call setup;
+      237 	call ipc_$delete_ev_chn (attach_data.wait_list.channel_id (1), (0));
+      238 	IOCB_ptr -> iocb.attach_descrip_ptr = null ();
+      239 	call iox_$propagate (IOCB_ptr);
+      240 	free attach_data;
+      241 
+      242 	return;
+      243 
+      244 ocd_open:
+      245      entry (IOCB_ptr, Mode, Obsolete, Code);
+      246 	call setup;
+      247 
+      248 	if Mode ^= Stream_input & Mode ^= Stream_output & Mode ^= Stream_input_output
+      249 	then do;
+      250 	     Code = error_table_$bad_mode;
+      251 	     return;
+      252 	end;
+      253 
+      254 	on any_other go to RESET_IPS_MASK_2;
+      255 
+      256 	call hcs_$set_ips_mask (""b, mask);
+      257 	if Mode = Stream_input | Mode = Stream_input_output
+      258 	then do;
+      259 	     iocb_ptr -> iocb.get_chars = ocd_get_chars;
+      260 	     iocb_ptr -> iocb.get_line = ocd_get_line;
+      261 	end;
+      262 	if Mode = Stream_output | Mode = Stream_input_output
+      263 	then iocb_ptr -> iocb.put_chars = ocd_put_chars;
+      264 	iocb_ptr -> iocb.close = ocd_close;
+      265 	iocb_ptr -> iocb.modes = ocd_modes;
+      266 	iocb_ptr -> iocb.control = ocd_control;
+      267 	iocb_ptr -> iocb.open_descrip_ptr = addr (attach_data.open_description);
+      268 	attach_data.open_description = iox_modes (Mode);
+      269 	call iox_$propagate (iocb_ptr);
+      270 RESET_IPS_MASK_2:
+      271 	call hcs_$reset_ips_mask (mask, mask);
+      272 	return;
+      273 
+      274 ocd_close:
+      275      entry (IOCB_ptr, Code);
+      276 
+      277 	call setup;
+      278 
+      279 	on any_other go to RESET_IPS_MASK_3;
+      280 
+      281 	call hcs_$set_ips_mask (""b, mask);
+      282 	iocb_ptr -> iocb.modes = iox_$err_not_open;
+      283 	iocb_ptr -> iocb.control = iox_$err_not_open;
+      284 	iocb_ptr -> iocb.detach_iocb = ocd_detach;
+      285 	iocb_ptr -> iocb.open = ocd_open;
+      286 	call iox_$propagate (iocb_ptr);
+      287 RESET_IPS_MASK_3:
+      288 	call hcs_$reset_ips_mask (mask, mask);
+      289 	return;
+      290 
+      291 ocd_put_chars:
+      292      entry (IOCB_ptr, Buffer_ptr, Buffer_length, Code);
+      293 
+      294 
+      295 	/*	This entry is called to write one string.  This string may be up to a segment
+      296*   *	long and consist of many lines.  Any lines that are too long to be printed on
+      297*   *	the operator's console will be broken up via continuation lines.
+      298**/
+      299 
+      300 	call setup;
+      301 
+      302 	if Buffer_length <= 0
+      303 	then do;
+      304 	     attach_data.alarm_flag = "0"b;
+      305 	     return;
+      306 	end;
+      307 
+      308 	/*	Now initialize the indexes needed for the workspace overlay and initialize the
+      309*   *	flags that control the write operation.
+      310**/
+      311 
+      312 	buf_ptr = addr (buffer);
+      313 	cont_flag = "0"b;
+      314 
+      315 /**** This flag  (cont_flag) is used by  oc_trans_output_ to decide
+      316*      *  whether or not to add a continuation character ("\c")
+      317*      *  to the beginning of the line. */
+      318 
+      319 
+      320 	/*	The output message will be written line by line.  We must translate the caller's
+      321*   *	ASCII line into an output line acceptable to the operator's console.   The
+      322*   *	procedure which does this will break up the line if the translated output line
+      323*   *	is too long for the operator's console carriage.   It returns the number of ASCII
+      324*   *	characters that have been processed  and  the WORD size of the translated
+      325*   *	output string.
+      326**/
+      327 
+      328 	to_write_ptr = Buffer_ptr;
+      329 	to_write_length = Buffer_length;
+      330 
+      331 	console_write.event_chan = 0;
+      332 	unspec (console_write.flags) = "0"b;
+      333 	console_write.console = "";
+      334 	console_write.sequence_no = 0;
+      335 
+      336 	alen = 0;
+      337 
+      338 	do while (to_write_length > 0);
+      339 	     call oc_trans_output_ (to_write_ptr, to_write_length, alen, buf_ptr, olen, attach_data.line_leng,
+      340 		cont_flag);
+      341 	     console_write.alert = attach_data.alarm_flag;		/* set by "alarm" control order...	*/
+      342 	     console_write.leng = olen;				/* setup the write as translated...	*/
+      343 	     console_write.text = substr (buffer, 1, multiply (olen, 4, 17));
+      344 	     io_uid = 0;
+      345 	     do while (io_uid = 0);
+      346 		call hphcs_$ocdcm_queue_io (addr (console_write), io_uid);
+      347 								/* queue the write...		*/
+      348 		if io_uid = 0
+      349 		then do;						/* write queue is full...		*/
+      350 		     call timer_manager_$sleep (3, "11"b);
+      351 								/* wait 3 seconds for room in the queue. */
+      352 		end;
+      353 	     end;
+      354 	     attach_data.alarm_flag = "0"b;
+      355 	     to_write_ptr = addcharno (to_write_ptr, (alen));
+      356 	     to_write_length = to_write_length - alen;
+      357 	end;
+      358 
+      359 	/*	We know that this line has been written by ocdcm_.
+      360*   *	Now we must move the window on the caller's workspace - skipping the line
+      361*   *	that was just written.  We don't have to worry about continuation lines.
+      362**/
+      363 
+      364 	/*	We have finished processing all of the data in the user's workspace.  We will
+      365*   *	return status indicating that everything was completed OK.
+      366**/
+      367 
+      368 	return;
+      369 
+      370 
+      371 	/* Noone in the initializer calls get_chars, at least unless
+      372*   get_line returns long record. We could save up leftover input
+      373*   in the attach data for later return, but the old IOS dim
+      374*   got away without it, so we can presumably as well. Thus
+      375*   we assume that the callers buffer is always long enough
+      376*   (256 characters) and don't even try to return long_record. */
+      377 
+      378 ocd_get_chars:
+      379 ocd_get_line:
+      380      entry (IOCB_ptr, Buffer_ptr, Buffer_length, N_chars_read, Code);
+      381 
+      382 
+      383 	/*	This entry is called to read a line from the operator's console.  Note, when there
+      384*   *	is no input to read we will go blocked.  We will be waked up when the input string
+      385*   *	arrives.
+      386**/
+      387 
+      388 	call setup;
+      389 	N_chars_read = 0;
+      390 	to_read_ptr = Buffer_ptr;
+      391 	to_read_length = Buffer_length;
+      392 
+      393 	if Buffer_length <= 0					/* Make sure caller really wants something. */
+      394 	then return;
+      395 
+      396 
+      397 	/*	Now initialize the indexes needed for the workspace overlay.  We need them so we
+      398*   *	can get a pointer to the area where the  ASCII input string will be placed.
+      399**/
+      400 	buf_ptr = addr (buffer);
+      401 
+      402 
+      403 	/*	Now we will call into the ring 0 DIM to read.  If there is no input message then
+      404*   *	we will block ourselves.   ocdcm_ will wake us up when the input string arrives.
+      405**/
+      406 
+      407 	console_read.event_chan = attach_data.wait_list.channel_id (1);
+      408 	unspec (console_read.flags) = "0"b;
+      409 	console_read.sequence_no = 0;
+      410 	console_read.console = "";
+      411 	console_read.read = "1"b;
+      412 	console_read.leng = 0;
+      413 	console_read.text = "";
+      414 
+      415 READ_LOOP:
+      416 	call hphcs_$ocdcm_queue_io (addr (console_read), io_uid);
+      417 								/* queue the I/O...			*/
+      418 
+      419 	ilen = 0;
+      420 
+      421 	do while (ilen = 0);
+      422 	     call BLOCK;						/* go blocked awaiting completion...	*/
+      423 	     if code ^= 0
+      424 	     then do;
+      425 		Code = code;
+      426 		return;
+      427 	     end;
+      428 
+      429 	     /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      430 	     /*										*/
+      431 	     /* At this point ocdcm_ has sent a wakeup bring us out of the blocked state and informing us that	*/
+      432 	     /* the read has completed. We must now call down into ocdcm_ to retrieve the input from oc_data.	*/
+      433 	     /*										*/
+      434 	     /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      435 
+      436 	     call hphcs_$ocdcm_get_input (buffer, ilen, code);
+      437 								/* retrieve the input...		*/
+      438 	     if code ^= 0
+      439 	     then do;
+      440 		Code = code;
+      441 		return;
+      442 	     end;
+      443 	end;
+      444 
+      445 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      446 	/*										*/
+      447 	/* Now we call oc_trans_input_ to translate the input string and do canonicalization.		*/
+      448 	/*										*/
+      449 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      450 
+      451 	begin;
+      452 	     declare  fb_n_read		    fixed bin;
+      453 	     call oc_trans_input_ (to_read_ptr, to_read_length, fb_n_read, buf_ptr, ilen);
+      454 	     N_chars_read = fb_n_read;
+      455 	end;
+      456 
+      457 	return;
+      458 
+      459 
+      460 
+      461 
+      462 
+      463 ocd_control:
+      464      entry (IOCB_ptr, Control_order_name, Order_info_ptr, Code);
+      465 
+      466 	call setup;
+      467 
+      468 	/*	This entry supports the following order calls:
+      469*   start
+      470*   alarm
+      471*   console_info
+      472*   update_attach_data
+      473*   printer_off
+      474*   printer_on
+      475*
+      476*   The reset_read and reset_write orders are ignored but provided for
+      477*   compatibility.
+      478*
+      479*   The error code error_table_$undefined_order_request is returned for all others.
+      480**/
+      481 
+      482 	if Control_order_name = "start"				/* simulated START actutally does nothing... */
+      483 	then do;
+      484 	     return;
+      485 	end;
+      486 	else if Control_order_name = "alarm"
+      487 	then do;
+      488 	     attach_data.alarm_flag = "1"b;
+      489 	     return;
+      490 	end;
+      491 	else if Control_order_name = "resetread"			/** **/
+      492 		| Control_order_name = "resetwrite"
+      493 	then do;
+      494 	     Code = 0;
+      495 	     return;
+      496 	end;
+      497 
+      498 	else if Control_order_name = "console_info"
+      499 	then do;
+      500 	     if Order_info_ptr = null
+      501 	     then do;						/* got to provide a ptr...		*/
+      502 		code = error_table_$null_info_ptr;
+      503 		return;
+      504 	     end;
+      505 	     oc_info_ptr = Order_info_ptr;				/* overlay the order info structure...	*/
+      506 	     call hphcs_$ocdcm_console_info ((oc_info.name), console_flags, (oc_info.channel),
+      507 		(oc_info.device_idx), (oc_info.line_leng), code);
+      508 	     unspec (oc_info.flags) = unspec (console_flags);
+      509 	     return;
+      510 	end;
+      511 
+      512 	if Control_order_name = "update_attach_data"
+      513 	then do;							/* called during reconfig...		*/
+      514 	     call hphcs_$ocdcm_console_info ("", "0"b, "", 0, attach_data.line_leng, code);
+      515 	     Code = code;
+      516 	     return;
+      517 	end;
+      518 
+      519 	else if Control_order_name = "printer_off"
+      520 	then do;
+      521 	     allocate oc_info set (oc_info_ptr);
+      522 	     call hphcs_$ocdcm_console_info ("", console_flags, "", 0, attach_data.line_leng, code);
+      523 	     if code = 0
+      524 	     then do;						/* only update if info is good...	*/
+      525 		unspec (oc_info.flags) = unspec (console_flags);
+      526 		if ^oc_info.flags.read_unechoed_option then Code = error_table_$undefined_order_request;
+      527 		else call hphcs_$ocdcm_printer_off ();
+      528 	     end;
+      529 	     free oc_info;
+      530 	     return;
+      531 	end;
+      532 	else if Control_order_name = "printer_on"
+      533 	then do;
+      534 	     call hphcs_$ocdcm_printer_on ();
+      535 	     return;
+      536 	end;
+      537 
+      538 	else Code = error_table_$undefined_order_request;
+      539 	return;
+      540 
+      541 ocd_modes:
+      542      entry (IOCB_ptr, Old_modes, New_modes, Code);			/* MODES are ignored...										*/
+      543 	Code = 0;
+      544 	return;
+      545 
+      546 
+      547 
+      548 BLOCK:
+      549      procedure;
+      550 
+      551 
+      552 	/*	This internal procedure is called when we must go blocked in order to
+      553*   *	wait for an I/O operation to complete.
+      554**/
+      555 
+      556 	call ipc_$block (addr (attach_data.wait_list), addr (EWI), code);
+      557 
+      558      end BLOCK;
+      559 
+      560 setup:
+      561      procedure;
+      562 
+      563 	iocb_ptr = IOCB_ptr -> iocb.actual_iocb_ptr;
+      564 	attach_data_ptr = iocb_ptr -> iocb.attach_data_ptr;
+      565 	Code = 0;
+      566      end setup;
+      567 
+      568      end ocd_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  ocd_.pl1                          >spec>install>1111>ocd_.pl1
+136          1    05/23/83  0916.6  iox_entries.incl.pl1              >ldd>include>iox_dcls.incl.pl1
+138          2    10/12/89  2017.7  oc_data.incl.pl1                  >ldd>include>oc_data.incl.pl1
+140          3    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+142          4    05/20/83  1846.4  iocb.incl.pl1                     >ldd>include>iocb.incl.pl1
+145          5    06/29/79  1727.8  event_wait_info.incl.pl1          >ldd>include>event_wait_info.incl.pl1
+147          6    06/29/79  1728.0  event_wait_channel.incl.pl1       >ldd>include>event_wait_channel.incl.pl1
+149          7    03/27/86  1120.0  oc_info.incl.pl1                  >ldd>include>oc_info.incl.pl1
+151          8    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_DEFAULT_RESTART          000010 constant        bit(36)                  initial dcl 8-7 set ref 226*
+Attach_args                            parameter       varying char             array dcl 38 ref 159 167 170 170 173
+Buffer_length                          parameter       fixed bin(21,0)          dcl 38 ref 291 302 329 378 378 391 393
+Buffer_ptr                             parameter       pointer                  dcl 38 ref 291 328 378 378 390
+Code                                   parameter       fixed bin(35,0)          dcl 38 set ref 159 165* 227* 234 244 250* 274 291
+                                                                                  378 378 425* 440* 463 494* 515* 526* 538* 541 543*
+                                                                                  565*
+Com_err_sw                             parameter       bit(1)                   dcl 38 ref 159 223
+Control_order_name                     parameter       char                     packed unaligned dcl 38 ref 463 482 486 491 491 498
+                                                                                  512 519 532
+EWI                             000112 automatic       structure                level 1 dcl 68 set ref 556 556
+IOCB_ptr                               parameter       pointer                  dcl 38 set ref 159 166 234 238 239* 244 274 291 378
+                                                                                  378 463 541 563
+MAX_IO_LENGTH                          constant        fixed bin(17,0)          initial dcl 2-348 ref 65 66 343 413
+ME                              000000 constant        char(32)                 initial packed unaligned dcl 221 set ref 223*
+Mode                                   parameter       fixed bin(17,0)          dcl 38 ref 244 248 248 248 257 257 262 262 268
+N_chars_read                           parameter       fixed bin(21,0)          dcl 38 set ref 378 378 389* 454*
+New_modes                              parameter       char                     packed unaligned dcl 38 ref 541
+Obsolete                               parameter       bit(1)                   dcl 38 ref 244
+Old_modes                              parameter       char                     packed unaligned dcl 38 ref 541
+Order_info_ptr                         parameter       pointer                  dcl 38 ref 463 500 505
+Stream_input                           constant        fixed bin(17,0)          initial dcl 3-15 ref 248 257
+Stream_input_output                    constant        fixed bin(17,0)          initial dcl 3-15 ref 248 257 262
+Stream_output                          constant        fixed bin(17,0)          initial dcl 3-15 ref 248 262
+actual_iocb_ptr          12            based           pointer                  level 2 dcl 4-6 ref 563
+addcharno                                              builtin function         dcl 131 ref 355
+addr                                                   builtin function         dcl 131 ref 199 267 312 346 346 400 415 415 556 556
+                                                                                  556 556
+alarm_flag               61            based           bit(1)                   level 2 dcl 90 set ref 189* 304* 341 354* 488*
+alen                            000102 automatic       fixed bin(21,0)          dcl 57 set ref 336* 339* 355 356
+alert                     6     000112 automatic       bit(1)                   level 3 packed packed unaligned dcl 66 set ref 341*
+any_other                       000226 stack reference condition                dcl 133 ref 195 254 279
+attach_data                            based           structure                level 1 unaligned dcl 90 set ref 179 240
+attach_data_ptr                 000224 automatic       pointer                  dcl 88 in procedure "ocd_" set ref 179* 181 183 185
+                                                                                  189 191 198 199 203 237 240 267 268 304 339 341
+                                                                                  354 407 488 514 522 556 556 564*
+attach_data_ptr          16            based           pointer                  level 2 in structure "iocb" dcl 4-6 in procedure
+                                                                                  "ocd_" set ref 198* 564
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 4-6 set ref 199* 238*
+attach_description       10            based           varying char(72)         level 2 dcl 90 set ref 191* 199
+buf_ptr                         000222 automatic       pointer                  dcl 81 set ref 312* 339* 400* 453*
+buffer                          000122 automatic       char(256)                packed unaligned dcl 81 set ref 312 343 400 436*
+channel                   3            based           char(8)                  level 2 dcl 7-49 ref 506
+channel_id               56            based           fixed bin(71,0)          array level 3 dcl 90 set ref 185* 237* 407
+close                    36            based           entry variable           level 2 dcl 4-6 set ref 264*
+code                                   parameter       fixed bin(35,0)          dcl 217 in procedure "attach_error" set ref 215 223*
+                                                                                  226* 227
+code                            000101 automatic       fixed bin(35,0)          dcl 57 in procedure "ocd_" set ref 185* 186 186*
+                                                                                  203* 204 206* 423 425 436* 438 440 502* 506* 514*
+                                                                                  515 522* 523 556*
+com_err_                        000064 constant        entry                    external dcl 220 ref 223
+console                   5     000112 automatic       char(4)                  level 2 in structure "console_write" dcl 66
+                                                                                  in procedure "ocd_" set ref 333*
+console                   5     000112 automatic       char(4)                  level 2 in structure "console_read" dcl 65
+                                                                                  in procedure "ocd_" set ref 410*
+console_flags                   000110 automatic       bit(36)                  packed unaligned dcl 63 set ref 506* 508 522* 525
+console_io                             based           structure                level 1 dcl 2-213
+console_read                    000112 automatic       structure                level 1 dcl 65 set ref 415 415
+console_write                   000112 automatic       structure                level 1 dcl 66 set ref 346 346
+cont_flag                       000121 automatic       bit(1)                   dcl 73 set ref 313* 339*
+control                  66            based           entry variable           level 2 dcl 4-6 set ref 266* 283*
+detach_iocb              26            based           entry variable           level 2 dcl 4-6 set ref 201* 284*
+device_idx                5            based           fixed bin(35,0)          level 2 dcl 7-49 ref 506
+error_table_$bad_arg            000054 external static fixed bin(35,0)          dcl 121 set ref 173*
+error_table_$bad_mode           000044 external static fixed bin(35,0)          dcl 121 ref 250
+error_table_$noarg              000042 external static fixed bin(35,0)          dcl 121 set ref 167*
+error_table_$null_info_ptr      000052 external static fixed bin(35,0)          dcl 121 ref 502
+error_table_$too_many_args      000050 external static fixed bin(35,0)          dcl 121 set ref 170*
+error_table_$undefined_order_request
+                                000046 external static fixed bin(35,0)          dcl 121 ref 526 538
+event_chan                2     000112 automatic       fixed bin(71,0)          level 2 in structure "console_read" dcl 65
+                                                                                  in procedure "ocd_" set ref 407*
+event_chan                2     000112 automatic       fixed bin(71,0)          level 2 in structure "console_write" dcl 66
+                                                                                  in procedure "ocd_" set ref 331*
+event_wait_channel              000236 automatic       structure                level 1 dcl 6-8
+event_wait_info                        based           structure                level 1 dcl 5-7
+fb_n_read                       000266 automatic       fixed bin(17,0)          dcl 452 set ref 453* 454
+flags                     2            based           structure                level 2 in structure "oc_entry" dcl 2-149
+                                                                                  in procedure "ocd_"
+flags                     2            based           structure                level 2 in structure "oc_info" dcl 7-49 in procedure
+                                                                                  "ocd_" set ref 508* 525*
+flags                                  based           structure                array level 3 in structure "oc_data" dcl 2-90
+                                                                                  in procedure "ocd_"
+flags                     6     000112 automatic       structure                level 2 in structure "console_read" dcl 65
+                                                                                  in procedure "ocd_" set ref 408*
+flags                     6     000112 automatic       structure                level 2 in structure "console_write" dcl 66
+                                                                                  in procedure "ocd_" set ref 332*
+get_chars                46            based           entry variable           level 2 dcl 4-6 set ref 259*
+get_line                 42            based           entry variable           level 2 dcl 4-6 set ref 260*
+hbound                                                 builtin function         dcl 131 ref 167 170
+hcs_$reset_ips_mask             000040 constant        entry                    external dcl 116 ref 205 210 270 287
+hcs_$set_ips_mask               000036 constant        entry                    external dcl 116 ref 197 256 281
+hphcs_$ocdcm_console_info       000014 constant        entry                    external dcl 102 ref 203 506 514 522
+hphcs_$ocdcm_get_input          000012 constant        entry                    external dcl 101 ref 436
+hphcs_$ocdcm_printer_off        000016 constant        entry                    external dcl 105 ref 527
+hphcs_$ocdcm_printer_on         000020 constant        entry                    external dcl 107 ref 534
+hphcs_$ocdcm_queue_io           000010 constant        entry                    external dcl 100 ref 346 415
+ilen                            000103 automatic       fixed bin(17,0)          dcl 57 set ref 419* 421 436* 453*
+io_uid                          000106 automatic       fixed bin(71,0)          dcl 62 set ref 344* 345 346* 348 415*
+iocb                                   based           structure                level 1 dcl 4-6
+iocb_ptr                        000234 automatic       pointer                  dcl 143 set ref 166* 198 199 200 201 209* 259 260
+                                                                                  262 264 265 266 267 269* 282 283 284 285 286* 563*
+                                                                                  564
+iox_$err_not_open               000056 constant        entry                    external dcl 1-8 ref 282 283
+iox_$propagate                  000060 constant        entry                    external dcl 1-8 ref 209 239 269 286
+iox_modes                       000011 constant        char(24)                 initial array dcl 3-6 ref 268
+ipc_$block                      000024 constant        entry                    external dcl 110 ref 556
+ipc_$create_ev_chn              000026 constant        entry                    external dcl 111 ref 185
+ipc_$delete_ev_chn              000030 constant        entry                    external dcl 112 ref 237
+lbound                                                 builtin function         dcl 131 ref 170
+leng                     10     000112 automatic       fixed bin(17,0)          level 2 in structure "console_write" packed packed
+                                                                                  unaligned dcl 66 in procedure "ocd_" set ref 342*
+leng                     10     000112 automatic       fixed bin(17,0)          level 2 in structure "console_read" packed packed
+                                                                                  unaligned dcl 65 in procedure "ocd_" set ref 412*
+line_leng                 6            based           fixed bin(17,0)          level 2 in structure "oc_info" packed packed
+                                                                                  unaligned dcl 7-49 in procedure "ocd_" ref 506
+line_leng                60            based           fixed bin(17,0)          level 2 in structure "attach_data" dcl 90
+                                                                                  in procedure "ocd_" set ref 203* 339* 514* 522*
+mask                            000100 automatic       bit(36)                  dcl 56 set ref 197* 205* 205* 210* 210* 256* 270*
+                                                                                  270* 281* 287* 287*
+modes                    56            based           entry variable           level 2 dcl 4-6 set ref 265* 282*
+multiply                                               builtin function         dcl 131 ref 343
+n_channels                      000236 automatic       fixed bin(17,0)          initial level 2 in structure "event_wait_channel"
+                                                                                  dcl 6-8 in procedure "ocd_" set ref 6-8*
+n_channels               54            based           fixed bin(17,0)          initial level 3 in structure "attach_data" dcl 90
+                                                                                  in procedure "ocd_" set ref 179* 183*
+name                                   based           char(4)                  level 2 dcl 7-49 ref 506
+null                                                   builtin function         dcl 131 ref 226 226 238 500
+oc_entry                               based           structure                level 1 dcl 2-149
+oc_event                               based           structure                level 1 dcl 2-241
+oc_info                                based           structure                level 1 dcl 7-49 set ref 521 529
+oc_info_ptr                     000242 automatic       pointer                  dcl 7-84 set ref 505* 506 506 506 506 508 521* 525
+                                                                                  526 529
+oc_trans_input_                 000034 constant        entry                    external dcl 115 ref 453
+oc_trans_output_                000032 constant        entry                    external dcl 113 ref 339
+olen                            000104 automatic       fixed bin(19,0)          dcl 57 set ref 339* 342 343
+open                     32            based           entry variable           level 2 dcl 4-6 set ref 200* 285*
+open_descrip_ptr         20            based           pointer                  level 2 dcl 4-6 set ref 267*
+open_description         33            based           varying char(64)         level 2 dcl 90 set ref 267 268*
+pad                      55            based           bit(36)                  level 3 dcl 90 set ref 181*
+put_chars                52            based           entry variable           level 2 dcl 4-6 set ref 262*
+read                      6(01) 000112 automatic       bit(1)                   level 3 packed packed unaligned dcl 65 set ref 411*
+read_unechoed_option      2(15)        based           bit(1)                   level 3 packed packed unaligned dcl 7-49 set ref 526
+reason                                 parameter       char                     packed unaligned dcl 218 set ref 215 223* 226*
+sequence_no               7     000112 automatic       fixed bin(35,0)          level 2 in structure "console_read" dcl 65
+                                                                                  in procedure "ocd_" set ref 409*
+sequence_no               7     000112 automatic       fixed bin(35,0)          level 2 in structure "console_write" dcl 66
+                                                                                  in procedure "ocd_" set ref 334*
+sub_err_                        000062 constant        entry                    external dcl 219 ref 226
+substr                                                 builtin function         dcl 131 ref 343
+text                     12     000112 automatic       char                     level 2 in structure "console_read" dcl 65
+                                                                                  in procedure "ocd_" set ref 413*
+text                     12     000112 automatic       char                     level 2 in structure "console_write" dcl 66
+                                                                                  in procedure "ocd_" set ref 343*
+timer_manager_$sleep            000022 constant        entry                    external dcl 109 ref 350
+to_read_length                  000251 automatic       fixed bin(17,0)          dcl 156 set ref 391* 453*
+to_read_ptr                     000246 automatic       pointer                  dcl 153 set ref 390* 453*
+to_write_length                 000250 automatic       fixed bin(21,0)          dcl 155 set ref 329* 338 339* 356* 356
+to_write_ptr                    000244 automatic       pointer                  dcl 153 set ref 328* 339* 355* 355
+unspec                                                 builtin function         dcl 131 set ref 332* 408* 508* 508 525* 525
+wait_list                54            based           structure                level 2 dcl 90 set ref 556 556
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CANT_RESTART                    internal static bit(36)                  initial dcl 8-7
+ACTION_CAN_RESTART                     internal static bit(36)                  initial dcl 8-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 8-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 8-7
+ALERT_DCW                              internal static fixed bin(17,0)          initial dcl 2-249
+DISCARDED_OUTPUT                       internal static fixed bin(35,0)          initial dcl 2-262
+DISCARD_DCW                            internal static fixed bin(17,0)          initial dcl 2-249
+Direct_input                           internal static fixed bin(17,0)          initial dcl 3-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 3-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 3-15
+EVENT_QUEUE_SIZE                       internal static fixed bin(17,0)          initial dcl 2-313
+FREED_LOCK                             internal static fixed bin(35,0)          initial dcl 2-262
+GOT_LOCK                               internal static fixed bin(35,0)          initial dcl 2-262
+GOT_SPECIAL_INT                        internal static fixed bin(35,0)          initial dcl 2-262
+INIT_OC_DATA                           internal static fixed bin(35,0)          initial dcl 2-262
+IO_TIMEOUT                             internal static fixed bin(35,0)          initial dcl 2-262
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 3-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 3-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 3-15
+LOCK_MCA_DCW                           internal static fixed bin(17,0)          initial dcl 2-249
+LOCK_MCA_IO                            internal static fixed bin(35,0)          initial dcl 2-262
+LOGGED_ERROR                           internal static fixed bin(35,0)          initial dcl 2-262
+MAX_IMU_IO_TIME                        internal static fixed bin(17,0)          initial dcl 2-322
+MAX_IO_TIME                            internal static fixed bin(17,0)          initial array dcl 2-326
+MAX_MAX_IO_TIME                        internal static fixed bin(17,0)          initial dcl 2-351
+MAX_OPC_CNT                            internal static fixed bin(17,0)          initial dcl 2-313
+MAX_RETRIES                            internal static fixed bin(17,0)          initial dcl 2-313
+MC_IO_FAILURE                          internal static fixed bin(35,0)          initial dcl 2-262
+MC_IO_PICKUP                           internal static fixed bin(35,0)          initial dcl 2-262
+NEWLINE_DCW                            internal static fixed bin(17,0)          initial dcl 2-249
+POPPED_READ                            internal static fixed bin(35,0)          initial dcl 2-262
+PRIORITY_OUTPUT                        internal static fixed bin(35,0)          initial dcl 2-262
+PROMPT_DCW                             internal static fixed bin(17,0)          initial dcl 2-249
+PUSHED_READ                            internal static fixed bin(35,0)          initial dcl 2-262
+QUEUED_READ                            internal static fixed bin(35,0)          initial dcl 2-262
+QUEUED_WRITE                           internal static fixed bin(35,0)          initial dcl 2-262
+READ_DCW                               internal static fixed bin(17,0)          initial dcl 2-249
+READ_NOT_IN_PROGRESS                   internal static fixed bin(35,0)          initial dcl 2-262
+READ_PICKUP                            internal static fixed bin(35,0)          initial dcl 2-262
+READ_UNECHOED_DCW                      internal static fixed bin(17,0)          initial dcl 2-249
+RESET_CHANNEL                          internal static fixed bin(35,0)          initial dcl 2-262
+RESET_DCW                              internal static fixed bin(17,0)          initial dcl 2-249
+RETRY_IO                               internal static fixed bin(35,0)          initial dcl 2-262
+SENT_ALERT                             internal static fixed bin(35,0)          initial dcl 2-262
+SENT_MC_IO                             internal static fixed bin(35,0)          initial dcl 2-262
+SENT_MC_PRIORITY_IO                    internal static fixed bin(35,0)          initial dcl 2-262
+SENT_NEWLINE                           internal static fixed bin(35,0)          initial dcl 2-262
+SENT_PROMPT                            internal static fixed bin(35,0)          initial dcl 2-262
+SENT_WAKEUP                            internal static fixed bin(35,0)          initial dcl 2-262
+STARTED_READ                           internal static fixed bin(35,0)          initial dcl 2-262
+STARTED_UNECHOED_READ                  internal static fixed bin(35,0)          initial dcl 2-262
+STARTED_WRITE                          internal static fixed bin(35,0)          initial dcl 2-262
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 3-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 3-15
+TERMINATED_ALERT                       internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_MCA_LOCK                    internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_MCA_UNLOCK                  internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_NEWLINE                     internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_PROMPT                      internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_READ                        internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_RESET                       internal static fixed bin(35,0)          initial dcl 2-262
+TERMINATED_WRITE                       internal static fixed bin(35,0)          initial dcl 2-262
+UNLOCK_MCA_DCW                         internal static fixed bin(17,0)          initial dcl 2-249
+UNLOCK_MCA_IO                          internal static fixed bin(35,0)          initial dcl 2-262
+WRITE_DCW                              internal static fixed bin(17,0)          initial dcl 2-249
+WRITE_QUEUE_SIZE                       internal static fixed bin(17,0)          initial dcl 2-313
+console_io_ptr                         automatic       pointer                  dcl 2-306
+event_wait_info_ptr                    automatic       pointer                  dcl 5-5
+iox_$attach_loud                000000 constant        entry                    external dcl 1-8
+iox_$attach_name                000000 constant        entry                    external dcl 1-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 1-8
+iox_$close                      000000 constant        entry                    external dcl 1-8
+iox_$close_file                 000000 constant        entry                    external dcl 1-8
+iox_$control                    000000 constant        entry                    external dcl 1-8
+iox_$delete_record              000000 constant        entry                    external dcl 1-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 1-8
+iox_$detach                     000000 constant        entry                    external dcl 1-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 1-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 1-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 1-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 1-8
+iox_$error_output                      external static pointer                  dcl 1-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 1-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 1-8
+iox_$get_chars                  000000 constant        entry                    external dcl 1-8
+iox_$get_line                   000000 constant        entry                    external dcl 1-8
+iox_$iocb_version_sentinel             external static char(4)                  dcl 4-51
+iox_$look_iocb                  000000 constant        entry                    external dcl 1-8
+iox_$modes                      000000 constant        entry                    external dcl 1-8
+iox_$move_attach                000000 constant        entry                    external dcl 1-8
+iox_$open                       000000 constant        entry                    external dcl 1-8
+iox_$open_file                  000000 constant        entry                    external dcl 1-8
+iox_$position                   000000 constant        entry                    external dcl 1-8
+iox_$put_chars                  000000 constant        entry                    external dcl 1-8
+iox_$read_key                   000000 constant        entry                    external dcl 1-8
+iox_$read_length                000000 constant        entry                    external dcl 1-8
+iox_$read_record                000000 constant        entry                    external dcl 1-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 1-8
+iox_$seek_key                   000000 constant        entry                    external dcl 1-8
+iox_$user_input                        external static pointer                  dcl 1-41
+iox_$user_io                           external static pointer                  dcl 1-41
+iox_$user_output                       external static pointer                  dcl 1-41
+iox_$write_record               000000 constant        entry                    external dcl 1-8
+oc_data                                based           structure                level 1 dcl 2-90
+oc_data$                               external static fixed bin(17,0)          dcl 2-88
+oc_data_ptr                            automatic       pointer                  dcl 2-306
+oc_data_version                        internal static char(4)                  initial packed unaligned dcl 2-303
+oc_entry_ptr                           automatic       pointer                  dcl 2-306
+oc_event_ptr                           automatic       pointer                  dcl 2-306
+short_iox_modes                        internal static char(4)                  initial array dcl 3-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BLOCK                           002234 constant        entry                    internal dcl 548 ref 422
+READ_LOOP                       001466 constant        label                    dcl 415
+RESET_IPS_MASK_1                000641 constant        label                    dcl 210 ref 195
+RESET_IPS_MASK_2                001101 constant        label                    dcl 270 ref 254
+RESET_IPS_MASK_3                001204 constant        label                    dcl 287 ref 279
+RETURN                          000652 constant        label                    dcl 231 ref 228
+attach_error                    002105 constant        entry                    internal dcl 215 ref 167 170 173 186 206
+ocd_                            000304 constant        entry                    external dcl 14
+ocd_attach                      000320 constant        entry                    external dcl 159
+ocd_close                       001114 constant        entry                    external dcl 274 ref 264
+ocd_control                     001561 constant        entry                    external dcl 463 ref 266
+ocd_detach                      000657 constant        entry                    external dcl 234 ref 201 284
+ocd_get_chars                   001422 constant        entry                    external dcl 378 ref 259
+ocd_get_line                    001406 constant        entry                    external dcl 378 ref 260
+ocd_modes                       002057 constant        entry                    external dcl 541 ref 265
+ocd_open                        000730 constant        entry                    external dcl 244 ref 200 285
+ocd_put_chars                   001222 constant        entry                    external dcl 291 ref 262
+setup                           002256 constant        entry                    internal dcl 560 ref 236 246 277 300 388 466
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2730        3016    2316        2740
+Length      3422    2316        66         367     411           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ocd_                                340 external procedure  is an external procedure.  
+on unit on line 195                  64 on unit               
+attach_error                            internal procedure  shares stack frame of external procedure ocd_.  
+on unit on line 254                  64 on unit               
+on unit on line 279                  64 on unit               
+begin block on line 451                 begin block         shares stack frame of external procedure ocd_.  
+BLOCK                                   internal procedure  shares stack frame of external procedure ocd_.  
+setup                                   internal procedure  shares stack frame of external procedure ocd_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ocd_                     000100 mask                        ocd_
+                         000101 code                        ocd_
+                         000102 alen                        ocd_
+                         000103 ilen                        ocd_
+                         000104 olen                        ocd_
+                         000106 io_uid                      ocd_
+                         000110 console_flags               ocd_
+                         000112 EWI                         ocd_
+                         000112 console_read                ocd_
+                         000112 console_write               ocd_
+                         000121 cont_flag                   ocd_
+                         000122 buffer                      ocd_
+                         000222 buf_ptr                     ocd_
+                         000224 attach_data_ptr             ocd_
+                         000234 iocb_ptr                    ocd_
+                         000236 event_wait_channel          ocd_
+                         000242 oc_info_ptr                 ocd_
+                         000244 to_write_ptr                ocd_
+                         000246 to_read_ptr                 ocd_
+                         000250 to_write_length             ocd_
+                         000251 to_read_length              ocd_
+                         000266 fb_n_read                   begin block on line 451
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           alloc_auto_adj
+enable_op           ext_entry           ext_entry_desc      int_entry           alloc_storage       op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      hcs_$reset_ips_mask           hcs_$set_ips_mask             hphcs_$ocdcm_console_info
+hphcs_$ocdcm_get_input        hphcs_$ocdcm_printer_off      hphcs_$ocdcm_printer_on       hphcs_$ocdcm_queue_io
+iox_$err_not_open             iox_$propagate                ipc_$block                    ipc_$create_ev_chn
+ipc_$delete_ev_chn            oc_trans_input_               oc_trans_output_              sub_err_
+timer_manager_$sleep
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_arg          error_table_$bad_mode         error_table_$noarg            error_table_$null_info_ptr
+error_table_$too_many_args    error_table_$undefined_order_request
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     65 000265        66 000274    6    8 000277        14 000303        16 000312       159 000313       165 000337
+    166 000340       167 000344       170 000371       173 000417       179 000455       181 000463       185 000464
+    186 000475       189 000505       191 000507       195 000514       197 000533       198 000546       199 000551
+    200 000553       201 000557       203 000562       204 000612       205 000614       206 000624       209 000632
+    210 000641       213 000651       231 000652       234 000653       236 000670       237 000671       238 000704
+    239 000711       240 000720       242 000722       244 000723       246 000741       248 000742       250 000752
+    251 000755       254 000756       256 000775       257 001010       259 001020       260 001025       262 001030
+    264 001042       265 001047       266 001052       267 001055       268 001060       269 001072       270 001101
+    272 001111       274 001112       277 001125       279 001126       281 001145       282 001160       283 001166
+    284 001170       285 001173       286 001176       287 001204       289 001214       291 001215       300 001233
+    302 001234       304 001237       305 001241       312 001242       313 001244       328 001245       329 001250
+    331 001251       332 001254       333 001255       334 001257       336 001260       338 001261       339 001264
+    341 001310       342 001316       343 001321       344 001327       345 001331       346 001334       348 001347
+    350 001351       353 001366       354 001367       355 001371       356 001375       357 001377       368 001400
+    378 001401       388 001433       389 001434       390 001436       391 001441       393 001443       400 001444
+    407 001446       408 001452       409 001453       410 001454       411 001456       412 001460       413 001462
+    415 001466       419 001501       421 001502       422 001504       423 001505       425 001507       426 001510
+    436 001511       438 001524       440 001526       441 001527       443 001530       453 001531       454 001550
+    457 001553       463 001554       466 001600       482 001601       484 001610       486 001611       488 001615
+    489 001620       491 001621       494 001631       495 001632       498 001633       500 001637       502 001643
+    503 001646       505 001647       506 001652       508 001705       509 001710       512 001711       514 001715
+    515 001746       516 001750       519 001751       521 001755       522 001761       523 002010       525 002012
+    526 002015       527 002024       529 002031       530 002033       532 002034       534 002040       535 002045
+    538 002046       539 002051       541 002052       543 002103       544 002104       215 002105       223 002116
+    226 002154       227 002230       228 002233       548 002234       556 002235       558 002255       560 002256
+    563 002257       564 002264       565 002266       566 002267
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

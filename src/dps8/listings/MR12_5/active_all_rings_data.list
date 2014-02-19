@@ -1,0 +1,251 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXlPNHkKF
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1037.2 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 active_all_rings_data: procedure;
+       14 
+       15 /* CDS source for the former active_all_rings_data.alm */
+       16 /* This data is only accessable out to ring 5. */
+       17 /* coded by Benson I. Margulies April 1981. */
+       18 /* the data is in the text section, but it gets patched in initialization */
+       19 /* Modified November 1984 by Keith Loepere to move pam flush stuff to
+       20*   active_hardcore_data. */
+       21 /* format: style2 */
+       22 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       23 
+       24 	declare 1 cdsa		 aligned like cds_args;
+       25 
+       26 	declare com_err_		 entry () options (variable);
+       27 	declare create_data_segment_	 entry (ptr, fixed bin (35));
+       28 
+       29 	declare code		 fixed bin (35);
+       30 	declare (addr, currentsize, string, unspec)
+       31 				 builtin;
+       32 
+       33 	declare 1 aard		 aligned,		/* automatic structure */
+       34 		2 system_id	 character (32),	/* sysid from system tape. */
+       35 		2 version_id	 character (32),	/* supervisor version, = MIT system # */
+       36 		2 initializer_tty	 character (32),	/* initial console attachment name. */
+       37 		2 initializer_dim	 character (32),	/* initial console io module */
+       38 		2 hcscnt		 fixed bin (35),	/* # of hardcore segments */
+       39 		2 default_max_segno	 fixed bin (35),	/* dseg size by default */
+       40 		2 max_segno	 fixed bin (35),	/* max Multics can do */
+       41 		2 maxlinks	 fixed bin (35),	/* we will not chase past this many */
+       42 		2 max_tree_depth	 fixed bin (35),	/* this many greater thans */
+       43 		2 stack_base_segno	 fixed bin (35);	/* stack 0 */
+       44 
+       45 	unspec (aard) = ""b;
+       46 
+       47 	aard.max_tree_depth = 15;			/* that many >'s in a pathname */
+       48 
+       49 /* These next two should be filled in by generate_mst, but
+       50*   this puts something recognizable in just in case */
+       51 
+       52 	aard.system_id, aard.version_id = "Unknown";
+       53 
+       54 /* otw_ is a magic thing that means to call ocdcm_ through hphcs_
+       55*   to share a console with the hardcore. other things would allow
+       56*   the use of, say, lcc channels. */
+       57 
+       58 	aard.initializer_tty = "otw_";
+       59 
+       60 /* ocd_ runs a console. FNP channels cannot be used because 
+       61*   they are not loaded in ring 1. */
+       62 
+       63 	aard.initializer_dim = "ocd_";
+       64 
+       65 	aard.default_max_segno = 1023;
+       66 	aard.max_segno = 4093;
+       67 	aard.maxlinks = 10;
+       68 	aard.max_tree_depth = 15;
+       69 
+       70 	cdsa.sections (1).p = addr (aard);
+       71 	cdsa.sections (1).len = currentsize (aard);
+       72 	cdsa.sections (1).struct_name = "aard";
+       73 	cdsa.seg_name = "active_all_rings_data";
+       74 	cdsa.num_exclude_names = 0;			/* no pad fields to flush */
+       75 	string (cdsa.switches) = ""b;
+       76 	cdsa.switches.have_text = "1"b;
+       77 	call create_data_segment_ (addr (cdsa), code);
+       78 	if code ^= 0
+       79 	then call com_err_ (code, "active_all_rings_data");
+       80 	return;
+       81      end active_all_rings_data;
+       82 
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0824.4  !BBBJZjXlPNHkKF.pl1               >special_ldd>install>MR12.3-1114>active_all_rings_data.cds
+23           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+aard                            000146 automatic       structure                level 1 dcl 33 set ref 45* 70 71
+addr                                                   builtin function         dcl 30 ref 70 77 77
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000100 automatic       structure                level 1 dcl 24 set ref 77 77
+code                            000145 automatic       fixed bin(35,0)          dcl 29 set ref 77* 78 78*
+com_err_                        000012 constant        entry                    external dcl 26 ref 78
+create_data_segment_            000014 constant        entry                    external dcl 27 ref 77
+currentsize                                            builtin function         dcl 30 ref 71
+default_max_segno        41     000146 automatic       fixed bin(35,0)          level 2 dcl 33 set ref 65*
+have_text                44(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 24 set ref 76*
+initializer_dim          30     000146 automatic       char(32)                 level 2 dcl 33 set ref 63*
+initializer_tty          20     000146 automatic       char(32)                 level 2 dcl 33 set ref 58*
+len                       2     000100 automatic       fixed bin(18,0)          array level 3 dcl 24 set ref 71*
+max_segno                42     000146 automatic       fixed bin(35,0)          level 2 dcl 33 set ref 66*
+max_tree_depth           44     000146 automatic       fixed bin(35,0)          level 2 dcl 33 set ref 47* 68*
+maxlinks                 43     000146 automatic       fixed bin(35,0)          level 2 dcl 33 set ref 67*
+num_exclude_names        40     000100 automatic       fixed bin(17,0)          level 2 dcl 24 set ref 74*
+p                               000100 automatic       pointer                  array level 3 dcl 24 set ref 70*
+sections                        000100 automatic       structure                array level 2 dcl 24
+seg_name                 30     000100 automatic       char(32)                 level 2 dcl 24 set ref 73*
+string                                                 builtin function         dcl 30 set ref 75*
+struct_name               3     000100 automatic       char(32)                 array level 3 dcl 24 set ref 72*
+switches                 44     000100 automatic       structure                level 2 dcl 24 set ref 75*
+system_id                       000146 automatic       char(32)                 level 2 dcl 33 set ref 52*
+unspec                                                 builtin function         dcl 30 set ref 45*
+version_id               10     000146 automatic       char(32)                 level 2 dcl 33 set ref 52*
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+active_all_rings_data           000017 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       210         226     133         220
+Length      1326     133        16        1064      55           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+active_all_rings_data               158 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+active_all_rings_data    000100 cdsa                        active_all_rings_data
+                         000145 code                        active_all_rings_data
+                         000146 aard                        active_all_rings_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000016        45 000024        47 000027        52 000031        58 000037        63 000042        65 000045
+     66 000047        67 000051        68 000053        70 000055        71 000057        72 000061        73 000064
+     74 000067        75 000070        76 000071        77 000073        78 000105        80 000132
+
+
+Object Segment >special_ldd>install>MR12.3-1114>active_all_rings_data
+Created on 11/11/89  1037.3 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0      46     174     204     204
+Length     367      46     126      10     147       0
+
+
+12 Definitions:
+
+
+segname:    active_all_rings_data
+
+text|41         default_max_segno
+text|40         hcscnt
+text|30         initializer_dim
+text|20         initializer_tty
+text|42         max_segno
+text|44         max_tree_depth
+text|43         maxlinks
+text|45         stack_base_segno
+symb|0          symbol_table
+text|0          system_id
+text|10         version_id
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

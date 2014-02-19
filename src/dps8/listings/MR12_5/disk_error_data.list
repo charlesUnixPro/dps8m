@@ -1,0 +1,849 @@
+	COMPILATION LISTING OF SEGMENT !BBBJbZwzgmqFfF
+	Compiled by: Multics PL/I Compiler, Release 33a, of May 30, 1990
+	Compiled at: ACTC Technologies Inc.          
+	Compiled on: 10/01/90  1627.6 mdt Mon
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*   *                                                         *
+        7*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*   *                                                         *
+        9*   * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*   * Technology and Honeywell Information Systems, Inc.      *
+       11*   *                                                         *
+       12*   *********************************************************** */
+       13 
+       14 
+       15 /* HISTORY COMMENTS:
+       16*  1) change(87-05-27,Fawcett), approve(87-05-27,MCR7704),
+       17*     audit(87-07-08,Farley), install(87-07-17,MR12.1-1043):
+       18*     Change the wording for the major status number 19. This is not a real
+       19*     major status but rather the entry uesd for I/O system faults. The old
+       20*     wording was just system fault.
+       21*  2) change(88-02-23,Farley), approve(88-02-23,MCR7793),
+       22*     audit(88-02-24,Fawcett), install(88-03-01,MR12.2-1029):
+       23*     Removed "rsr" from the "power off" major status. If the path is bad
+       24*     attempting to do a RSR will only complicate things..
+       25*  3) change(89-06-23,Farley), approve(89-07-26,MCR8122),
+       26*     audit(89-09-11,WAAnderson), install(89-09-22,MR12.3-1072):
+       27*     Added functionality to seperate some of the FIPS status interpretations,
+       28*     while still keeping the space required to a minimum.
+       29*  4) change(90-06-27,WAAnderson), approve(90-08-28,MCR8188),
+       30*     audit(90-09-21,Schroth), install(90-10-01,MR12.4-1035):
+       31*     Added substat 'count field uncorrectable'.
+       32*                                                   END HISTORY COMMENTS */
+       33 
+       34 
+       35 /* DISK_ERROR_DATA - This is the Database for Interpreting Disk Error Status.
+       36*	created 5/19/76 by Noel I. Morris	
+       37*
+       38*   Last Modified:
+       39*
+       40*   November 1982, J. Bongiovanni, to fix bug in dev busy, alt channel in control
+       41**/
+       42 
+       43 
+       44 disk_error_data: proc;
+       45 
+       46 dcl 1 cdsa like cds_args aligned auto;
+       47 dcl  xnames (1) char (32) aligned auto init ("*");
+       48 
+       49 dcl 1 data based (tempp (1)) aligned,
+       50     2 maj_array (0: 23) like disk_error_data,
+       51     2 sub_array (nsub) like disk_error_interp;
+       52 
+       53 dcl  nsub fixed bin,				/* number of substatuses */
+       54      charwds fixed bin,				/* number of words of characters allocated */
+       55      tempp (2) ptr,					/* temp segs pointers */
+       56      i fixed bin,					/* iteration variable */
+       57      rcode fixed bin (35),				/* error code */
+       58      nulldescriprel bit (18) aligned,			/* rel ptr to null char string */
+       59      deirel bit (18) aligned,				/* rel pointer to interpretation data */
+       60      dsdrel bit (18) aligned;				/* rel pointer to charactr string */
+       61 
+       62 dcl  get_temp_segments_ entry (char (*), (*) ptr, fixed bin (35)),
+       63      release_temp_segments_ entry (char (*), (*) ptr, fixed bin (35)),
+       64      create_data_segment_ entry (ptr, fixed bin (35)),
+       65      com_err_ entry options (variable);
+       66 
+       67 dcl  copy_chars (charwds) fixed bin (35) based;		/* structure for copying characters */
+       68 
+       69 dcl (NRETRIES init (5),
+       70      NONE init (0),
+       71      ONCE init (1)) fixed bin (5) static options (constant);
+       72 
+       73 dcl (addr, addrel, bin, bit, divide, hbound, index, length, rel, size, translate, string, unspec) builtin;
+       74 
+       75 
+       76 
+  1     1 /* Begin include file ...... disk_error_interp.incl.pl1 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(89-06-23,Farley), approve(89-07-26,MCR8122),
+  1     6*     audit(89-09-11,WAAnderson), install(89-09-22,MR12.3-1072):
+  1     7*     Added "finterp" and "fnamep" to major status array to allow seperation of
+  1     8*     some of the FIPS statuses, due to different processing requirements.
+  1     9*     Also added "just_log" flag to substatus entry to allow some errors to
+  1    10*     only be logged and not displayed on the console.
+  1    11*                                                   END HISTORY COMMENTS */
+  1    12 
+  1    13 
+  1    14 /* last modified 5/19/76 by Noel I. Morris */
+  1    15 
+  1    16 /* Breakdown of disk error status. */
+  1    17 
+  1    18 dcl  disk_error_data$ ext;				/* disk error status data segment */
+  1    19 
+  1    20 dcl  dedp ptr;					/* pointer to major status structure */
+  1    21 
+  1    22 dcl 1 disk_error_data (0: 23) aligned based (dedp),	/* major status array */
+  1    23    (2 interp bit (18),				/* pointer to substatus data for this major status */
+  1    24     2 namep bit (18),				/* rel pointer to major status description */
+  1    25     2 finterp bit (18),				/* pointer to FIPS substatus data for this major status */
+  1    26     2 fnamep bit (18)) unal;				/* rel pointer to FIPS major status description */
+  1    27 
+  1    28 dcl  dskerap ptr;					/* pointer to substatus array */
+  1    29 
+  1    30 dcl 1 disk_status_interp_array (100) like disk_error_interp based (dskerap) aligned;
+  1    31 						/* array of substatus interpretations */
+  1    32 
+  1    33 dcl  dskerp ptr;					/* pointer to error interpretation data */
+  1    34 
+  1    35 dcl 1 disk_error_interp based (dskerp) aligned,		/* substatus interpretation structure */
+  1    36    (2 bitson bit (6),				/* substatus bits which must be ON */
+  1    37     2 bitmask bit (6),				/* substatus bits which must be checked */
+  1    38     2 max_retries fixed bin (5),			/* maximum no. of retries for this error */
+  1    39     2 reseek bit (1),				/* "1"b if restore and reseek required */
+  1    40     2 rsr bit (1),					/* "1"b if detailed status should be read */
+  1    41     2 bad_addr bit (1),				/* "1"b if disk address is defective */
+  1    42     2 bad_dev bit (1),				/* "1"b if device is inoperative */
+  1    43     2 bad_path bit (1),				/* "1"b if disk data path is defective */
+  1    44     2 bad_mem bit (1),				/* "1"b if memory may be defective */
+  1    45     2 just_log bit (1),				/* "1"b if error is only to be logged */
+  1    46     2 pad1 bit (11),
+  1    47     2 namep bit (18),				/* rel pointer to substatus description */
+  1    48     2 pad2 bit (18)) unal;
+  1    49 
+  1    50 dcl  dsdp ptr;					/* pointer to status description */
+  1    51 
+  1    52 dcl 1 disk_status_descrip based (dsdp) aligned,		/* status description string */
+  1    53    (2 lth fixed bin (8),				/* length of string */
+  1    54     2 chr char (32 refer (disk_status_descrip.lth))) unal;	/* status description string */
+  1    55 
+  1    56 /* End of include file ...... disk_error_interp.incl.pl1 */
+       77 
+       78 
+       79 
+       80 
+  2     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  2     2 
+  2     3 dcl 1 cds_args based aligned,
+  2     4     2 sections (2),
+  2     5       3 p ptr,					/* pointer to data for text/static section */
+  2     6       3 len fixed bin (18),				/* size of text/static section */
+  2     7       3 struct_name char (32),			/* name of declared structure for this section */
+  2     8     2 seg_name char (32),				/* name to create segment by */
+  2     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  2    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  2    11     2 switches,					/* control switches */
+  2    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  2    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  2    14       3 have_text bit (1) unal,			/* ON if text section given */
+  2    15       3 have_static bit (1) unal,			/* ON if static section given */
+  2    16       3 pad bit (32) unal;
+  2    17 
+  2    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  2    19 
+  2    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       81 
+       82 
+       83 
+       84 
+       85 	call get_temp_segments_ ("disk_error_data", tempp, rcode);
+       86 	if rcode ^= 0 then
+       87 	     call com_err_ (rcode, "disk_error_data", "get_temp_segments_");
+       88 
+       89 	dedp = tempp (1);
+       90 	dsdp = tempp (2);
+       91 
+       92 	nsub = 1;
+       93 	dskerp = addr (data.sub_array (1));
+       94 	charwds = 0;
+       95 
+       96 	nulldescriprel = allocate_dsd ("");
+       97 	deirel = compute_rel (dedp, dskerp);
+       98 	dsdrel = allocate_dsd ("error");
+       99 	do i = 0 to hbound (data.maj_array, 1);
+      100 	     data.maj_array (i).interp = deirel;
+      101 	     data.maj_array (i).namep = dsdrel;
+      102 	     data.maj_array (i).finterp = deirel;
+      103 	     data.maj_array (i).fnamep = dsdrel;
+      104 	end;
+      105 	call set_substat ("XXXXXX", NONE, "", "");
+      106 
+      107 
+      108 
+      109 	call set_majstat (1, "dev busy");
+      110 	call set_fmajstat (1, "dev busy");
+      111 	call set_substat ("000000", NRETRIES, "dev positioning",                "reseek");
+      112 	call set_substat ("100000", NRETRIES, "alt chan in control",            "bad_dev,reseek,rsr");
+      113 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      114 
+      115 	call set_majstat (2, "dev attention");
+      116 	call set_fmajstat (2, "dev attention");
+      117 	call set_substat ("0000X1",     NONE, "write inhib",                    "bad_dev");
+      118 	call set_substat ("00001X", NRETRIES, "seek incomplete",                "bad_dev,reseek,rsr");
+      119 	call set_substat ("001000",     NONE, "dev inop",                       "bad_dev,reseek,rsr");
+      120 	call set_substat ("010000",     NONE, "dev in standby",                 "bad_dev,rsr");
+      121 	call set_substat ("100000",     NONE, "dev offline",                    "bad_dev");
+      122 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      123 
+      124 	call set_majstat (3, "dev data alert");
+      125 	call set_fmajstat (3, "dev data alert");
+      126 	call set_substat ("000001", NRETRIES, "xfer timing alert",              "bad_path");
+      127 	call set_substat ("000010", NRETRIES, "xmission parity alert",          "bad_path");
+      128 	call set_substat ("000100", NRETRIES, "invalid seek addr",              "bad_addr,reseek,rsr");
+      129 	call set_substat ("0X1000", NRETRIES, "hdr ver failure",                "bad_addr,reseek,rsr");
+      130 	call set_substat ("X1X000", NRETRIES, "check char alert",               "bad_addr,reseek,rsr");
+      131 	call set_substat ("1X0000", NRETRIES, "compare alert",                  "bad_addr,reseek,rsr");
+      132 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      133 
+      134 	call set_majstat (4, "end of file");
+      135 	call set_fmajstat (4, "end of file");
+      136 	call set_substat ("000000",     ONCE, "good track",                     "bad_addr,reseek,rsr");
+      137 	call set_substat ("0000X1",     ONCE, "last consec block",              "bad_addr,reseek,rsr");
+      138 	call set_substat ("00001X",     ONCE, "sect limit exceeded",            "bad_path,reseek,rsr");
+      139 	call set_substat ("000100",     ONCE, "defect trk, alt assnd",          "bad_addr,reseek,rsr");
+      140 	call set_substat ("001000",     ONCE, "defect trk, no alt",             "bad_addr,reseek,rsr");
+      141 	call set_substat ("010000",     ONCE, "alt trk detected",               "bad_addr,reseek,rsr");
+      142 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      143 
+      144 	call set_majstat (5, "cmd reject");
+      145 	call set_substat ("000XX1",     ONCE, "invalid op code",                "bad_path,rsr");
+      146 	call set_substat ("000010",     ONCE, "invalid dev code",               "bad_path,rsr");
+      147 	call set_substat ("000100", NRETRIES, "invalid IDCW parity",            "bad_path,rsr");
+      148 	call set_substat ("001000",     ONCE, "invalid instruction seq",        "bad_path,reseek,rsr");
+      149 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      150 
+      151 	call set_fmajstat (5, "cmd reject");
+      152 	call set_substat ("000XX1",     ONCE, "invalid op code",                "bad_path,rsr");
+      153 	call set_substat ("000010",     ONCE, "invalid dev code",               "bad_path,rsr");
+      154 	call set_substat ("001000",     ONCE, "invalid instruction seq",        "bad_path,reseek,rsr");
+      155 	call set_substat ("XXXXXX",     ONCE, "",                               "reseek,rsr");
+      156 
+      157 	call set_majstat (8, "channel busy");
+      158 	call set_fmajstat (8, "channel busy");
+      159 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      160 
+      161 	call set_majstat (10, "MPC attention");
+      162 	call set_substat ("000001",     NONE, "config switch err",              "bad_path,rsr");
+      163 	call set_substat ("000010",     NONE, "multiple devs",                  "bad_path,rsr");
+      164 	call set_substat ("000011",     NONE, "illeg dev no",                   "bad_path,rsr");
+      165 	call set_substat ("001011",     NONE, "CA err or OPI down",             "bad_path,rsr");
+      166 	call set_substat ("001100",     ONCE, "unexpected EN1",                 "bad_dev,reseek,rsr");
+      167 	call set_substat ("001101",     ONCE, "CA EN1 err",                     "bad_dev,reseek,rsr");
+      168 	call set_substat ("001110",     ONCE, "no EN1",                         "bad_dev,reseek,rsr");
+      169 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      170 
+      171 	call set_fmajstat (10, "IPC-FIPS device attention");
+      172 	call set_substat ("000010",     NONE, "multiple devs",                  "bad_path,rsr");
+      173 	call set_substat ("000011",     NONE, "illeg dev no",                   "bad_path,rsr");
+      174 	call set_substat ("001011",     ONCE, "usage/error stat overflow",      "just_log,rsr");
+      175 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      176 
+      177 	call set_majstat (11, "MPC data alert");
+      178 	call set_substat ("000001", NRETRIES, "xmission parity alert",          "bad_path,rsr");
+      179 	call set_substat ("000010",     ONCE, "inconsistent command",           "bad_path,rsr");
+      180 	call set_substat ("000011",     ONCE, "sum check err",                  "bad_path,rsr");
+      181 	call set_substat ("000100",     ONCE, "byte locked out",                "bad_path,rsr");
+      182           call set_substat ("001010", NRETRIES, "count field uncorrectable",      "bad_addr,rsr");
+      183 	call set_substat ("001110", NRETRIES, "EDAC parity err",                "bad_addr,rsr");
+      184 	call set_substat ("010001", NRETRIES, "sect size err",                  "bad_addr,rsr");
+      185 	call set_substat ("010010", NRETRIES, "nonstandard sect size",          "bad_addr,rsr");
+      186 	call set_substat ("010011", NRETRIES, "search alert (first)",           "bad_addr,rsr");
+      187 	call set_substat ("010100", NRETRIES, "cyclic code err",                "bad_addr,rsr");
+      188 	call set_substat ("010101", NRETRIES, "search err (not first)",         "bad_addr,rsr");
+      189 	call set_substat ("010110", NRETRIES, "sync byte not HEX 19",           "bad_addr,rsr");
+      190 	call set_substat ("010111", NRETRIES, "auto alt trk err",               "bad_addr,rsr");
+      191 	call set_substat ("011001", NRETRIES, "EDAC, last sect",                "bad_addr,rsr");
+      192 	call set_substat ("011010", NRETRIES, "EDAC, not last sect",            "bad_addr,rsr");
+      193 	call set_substat ("011011", NRETRIES, "EDAC, block count limit",        "bad_addr,rsr");
+      194 	call set_substat ("011100", NRETRIES, "uncorrectable err",              "bad_addr,rsr");
+      195 	call set_substat ("011101", NRETRIES, "EDAC, short block",              "bad_addr,rsr");
+      196 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      197 
+      198 	call set_fmajstat (11, "IPC-FIPS device data alert");
+      199 	call set_substat ("010001", NRETRIES, "sect size err",                  "bad_addr,rsr");
+      200 	call set_substat ("010010", NRETRIES, "nonstandard sect size",          "bad_addr,rsr");
+      201 	call set_substat ("010011", NRETRIES, "search alert (first)",           "bad_addr,rsr");
+      202 	call set_substat ("010100", NRETRIES, "cyclic code err",                "bad_addr,rsr");
+      203 	call set_substat ("010101", NRETRIES, "search err (not first)",         "bad_addr,rsr");
+      204 	call set_substat ("010111", NRETRIES, "auto alt trk err",               "bad_addr,rsr");
+      205 	call set_substat ("100001", NRETRIES, "write buffer parity err",        "bad_path,rsr");
+      206 	call set_substat ("100010", NRETRIES, "uncorrectable read substatus",   "bad_path,rsr");
+      207 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      208 
+      209 	call set_majstat (13, "MPC cmd reject");
+      210 	call set_substat ("000001",     NONE, "illeg procedure",                "bad_path,rsr");
+      211 	call set_substat ("000010",     NONE, "illeg log chan",                 "bad_path,rsr");
+      212 	call set_substat ("000011",     NONE, "illeg susp log chan",            "bad_path,rsr");
+      213 	call set_substat ("000100",     NONE, "continue bit not set",           "bad_path,rsr");
+      214 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      215 
+      216 	call set_fmajstat (13, "IPC-FIPS cmd reject");
+      217 	call set_substat ("000001",     NONE, "invalid operation code",         "bad_path,rsr");
+      218 	call set_substat ("XXXXXX",     ONCE, "",                               "bad_path,rsr");
+      219 
+      220 	call set_majstat (16, "power off");
+      221 	call set_fmajstat (16, "power off");
+      222 	call set_substat ("XXXXXX", NRETRIES, "",                               "bad_path");
+      223 
+      224 	call set_majstat (17, "chan stat");
+      225 	call set_fmajstat (17, "chan stat");
+      226 	call set_substat ("001000",     ONCE, "connect while busy",             "");
+      227 	call set_substat ("010000",     ONCE, "illeg chan instruct",            "");
+      228 	call set_substat ("011000",     ONCE, "incorrect DCW",                  "");
+      229 	call set_substat ("100000",     ONCE, "incomplete instruct seq",        "bad_path");
+      230 	call set_substat ("110000", NRETRIES, "PSI parity err",                 "bad_path");
+      231 	call set_substat ("111000", NRETRIES, "parity err, I/O bus to chan",    "bad_path");
+      232 	call set_substat ("XXXXXX", NRETRIES, "",                               "bad_path,rsr");
+      233 
+      234 	call set_majstat (18, "central stat");
+      235 	call set_fmajstat (18, "central stat");
+      236 	call set_substat ("111000",     ONCE, "parity err, I/O bus from chan",  "bad_path");
+      237 	call set_substat ("XXXXXX", NRETRIES, "",                               "bad_path,rsr");
+      238 
+      239 	call set_majstat (19, "I/O system fault");
+      240 	call set_fmajstat (19, "I/O system fault");
+      241 	call set_substat ("XXXXXX",     ONCE, "",			  "bad_path");
+      242 
+      243 	call set_majstat (20, "nonzero tally residue");
+      244 	call set_fmajstat (20, "nonzero tally residue");
+      245 	call set_substat ("XXXXXX",     ONCE, "",			  "bad_dev");
+      246 
+      247 	call set_majstat (21, "Auto retries");
+      248 	call set_fmajstat (21, "Auto retries");
+      249 	call set_substat ("XXXXXX",     ONCE, "",			  "just_log");
+      250 
+      251 	call set_majstat (22, "EDAC performed");
+      252 	call set_fmajstat (22, "EDAC performed");
+      253 	call set_substat ("XXXXXX",     ONCE, "",			  "just_log");
+      254 
+      255 	call set_majstat (23, "Data parity");
+      256 	call set_fmajstat (23, "Data parity");
+      257 	call set_substat ("XXXXXX",     ONCE, "",			  "bad_mem");
+      258 
+      259 
+      260 
+      261 	dskerp -> copy_chars = tempp (2) -> copy_chars;	/* copy the characters now. */
+      262 
+      263 	nsub = nsub - 1;				/* back down one */
+      264 
+      265 	do i = 0 to hbound (data.maj_array, 1);
+      266 	     call relocate_rel (data.maj_array (i).namep);
+      267 	     call relocate_rel (data.maj_array (i).fnamep);
+      268 	end;
+      269 
+      270 	do i = 1 to nsub;
+      271 	     call relocate_rel (data.sub_array (i).namep);
+      272 	end;
+      273 
+      274 
+      275 	cdsa.sections (1).p = tempp (1);
+      276 	cdsa.sections (1).len = size (data) + charwds;
+      277 	cdsa.sections (1).struct_name = "data";
+      278 
+      279 	cdsa.seg_name = "disk_error_data";
+      280 	cdsa.num_exclude_names = 1;
+      281 	cdsa.exclude_array_ptr = addr (xnames);
+      282 
+      283 	string (cdsa.switches) = "0"b;
+      284 	cdsa.switches.have_text = "1"b;
+      285 
+      286 	call create_data_segment_ (addr (cdsa), rcode);
+      287 	if rcode ^= 0 then
+      288 	     call com_err_ (rcode, "disk_error_data", "create_data_segment_");
+      289 
+      290 nl_exit:
+      291 	call release_temp_segments_ ("disk_error_data", tempp, rcode);
+      292 	if rcode ^= 0 then
+      293 	     call com_err_ (rcode, "disk_error_data", "release_temp_segments_");
+      294 
+      295 	return;
+      296 
+      297 
+      298 
+      299 
+      300 set_majstat: proc (mjs, descrip);			/* proc to fill in major status array */
+      301 
+      302 dcl  mjs fixed bin (5),				/* major status */
+      303      descrip char (*) aligned;			/* major status description */
+      304 
+      305 
+      306 	if mjs > hbound (data.maj_array, 1) then do;
+      307 	     call com_err_ (0, "disk_error_data", "The bounds of the major status array have been exceeded.");
+      308 	     call com_err_ (0, "disk_error_data", "Current value = ^d, must be at least ^d.",
+      309 		hbound (data.maj_array, 1), mjs);
+      310 	     go to nl_exit;
+      311 	end;
+      312 	data.maj_array (mjs).interp = compute_rel (dedp, dskerp);
+      313 	data.maj_array (mjs).namep = allocate_dsd (descrip);
+      314 
+      315 	return;
+      316 
+      317 
+      318      end set_majstat;
+      319 
+      320 set_fmajstat: proc (mjs, descrip);			/* proc to fill in FIPS major status array items */
+      321 
+      322 dcl  mjs fixed bin (5),				/* major status */
+      323      descrip char (*) aligned;			/* major status description */
+      324 
+      325 
+      326 	if mjs > hbound (data.maj_array, 1) then do;
+      327 	     call com_err_ (0, "disk_error_data", "The bounds of the major status array have been exceeded.");
+      328 	     call com_err_ (0, "disk_error_data", "Current value = ^d, must be at least ^d.",
+      329 		hbound (data.maj_array, 1), mjs);
+      330 	     go to nl_exit;
+      331 	end;
+      332 	data.maj_array (mjs).finterp = compute_rel (dedp, dskerp);
+      333 	data.maj_array (mjs).fnamep = allocate_dsd (descrip);
+      334 
+      335 	return;
+      336 
+      337 
+      338      end set_fmajstat;
+      339 
+      340 
+      341 
+      342 set_substat: proc (stat, retry, descrip, errs);		/* proc to allocate disk_error_interp structure */
+      343 
+      344 dcl  stat char (6) aligned,
+      345      retry fixed bin (5),
+      346      descrip char (*) aligned,
+      347      errs char (*) aligned;
+      348 
+      349 
+      350 	unspec (disk_error_interp) = "0"b;
+      351 
+      352 	disk_error_interp.bitson = bit (translate (stat, "0", "X"), 6);
+      353 	disk_error_interp.bitmask = bit (translate (stat, "10", "0X"), 6);
+      354 	disk_error_interp.max_retries = retry;
+      355 	if descrip ^= "" then
+      356 	     disk_error_interp.namep = allocate_dsd (descrip);
+      357 	else
+      358 	     disk_error_interp.namep = nulldescriprel;
+      359 
+      360 	call seterr (errs, "bad_addr", disk_error_interp.bad_addr);
+      361 	call seterr (errs, "bad_path", disk_error_interp.bad_path);
+      362 	call seterr (errs, "bad_dev", disk_error_interp.bad_dev);
+      363 	call seterr (errs, "bad_mem", disk_error_interp.bad_mem);
+      364 	call seterr (errs, "just_log", disk_error_interp.just_log);
+      365 	call seterr (errs, "reseek", disk_error_interp.reseek);
+      366 	call seterr (errs, "rsr", disk_error_interp.rsr);
+      367 
+      368 	nsub = nsub + 1;				/* Count one more. */
+      369 	dskerp = addr (data.sub_array (nsub));
+      370 
+      371 	return;
+      372 
+      373 
+      374      end set_substat;
+      375 
+      376 
+      377 seterr: proc (errstring, errname, errbit);		/* procedure to set error bit */
+      378 
+      379 dcl  errstring char (*) aligned,
+      380      errname char (*) aligned,
+      381      errbit bit (1) unal;
+      382 
+      383 
+      384 	if index (errstring, errname) > 0 then
+      385 	     errbit = "1"b;
+      386 
+      387 	return;
+      388 
+      389 
+      390      end seterr;
+      391 
+      392 
+      393 
+      394 allocate_dsd: proc (descrip) returns (bit (18) aligned);	/* procedure to allocate character string */
+      395 
+      396 dcl  descrip char (*) aligned;
+      397 
+      398 dcl  old_dsdp ptr,
+      399      temp_dsdp ptr,
+      400      chlth fixed bin;
+      401 
+      402 /**** Scan existing strings for a match.  Allocate new string only when no match is found. */
+      403 
+      404 	do temp_dsdp = tempp(2)
+      405 	     repeat addrel (temp_dsdp, divide (temp_dsdp -> disk_status_descrip.lth, 4, 17, 0) + 1)
+      406 	     while (rel (temp_dsdp) < rel (dsdp));
+      407 	     if temp_dsdp -> disk_status_descrip.chr = descrip
+      408 		then return (compute_rel (tempp(2), temp_dsdp));
+      409 	end;
+      410 
+      411 	disk_status_descrip.lth = length (descrip);
+      412 	disk_status_descrip.chr = descrip;
+      413 
+      414 	chlth = divide (length (descrip), 4, 17, 0) + 1;
+      415 	charwds = charwds + chlth;
+      416 	old_dsdp = dsdp;
+      417 	dsdp = addrel (dsdp, chlth);
+      418 
+      419 	return (compute_rel (tempp (2), old_dsdp));
+      420 
+      421 
+      422      end allocate_dsd;
+      423 
+      424 
+      425 
+      426 compute_rel: proc (basep, strucp) returns (bit (18) aligned);  /* procedure to compute relative offset */
+      427 
+      428 dcl  basep ptr,					/* pointer to database */
+      429      strucp ptr;					/* pointer to structure */
+      430 
+      431 
+      432 	return (bit (bin (bin (rel (strucp), 18) - bin (rel (basep), 18), 18), 18));
+      433 
+      434 
+      435      end compute_rel;
+      436 
+      437 
+      438 
+      439 relocate_rel: proc (relp);				/* proc to relocate name pointers */
+      440 
+      441 dcl  relp bit (18) unal;				/* name relative pointer */
+      442 
+      443 
+      444 	relp = bit (bin (bin (relp, 18) + bin (rel (dskerp), 18), 18), 18);
+      445 
+      446 	return;
+      447 
+      448 
+      449      end relocate_rel;
+      450 
+      451 
+      452 
+      453      end disk_error_data;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    10/01/90  1627.6  !BBBJbZwzgmqFfF.pl1               >spec>install>1035>disk_error_data.cds
+77           1    09/28/89  1407.9  disk_error_interp.incl.pl1        >ldd>include>disk_error_interp.incl.pl1
+81           2    04/01/76  2309.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+NONE                            000047 constant        fixed bin(5,0)           initial dcl 69 set ref 105* 117* 119* 120* 121* 162*
+                                                                                  163* 164* 165* 172* 173* 210* 211* 212* 213* 217*
+NRETRIES                        000024 constant        fixed bin(5,0)           initial dcl 69 set ref 111* 112* 118* 126* 127* 128*
+                                                                                  129* 130* 131* 147* 178* 182* 183* 184* 185* 186*
+                                                                                  187* 188* 189* 190* 191* 192* 193* 194* 195* 199*
+                                                                                  200* 201* 202* 203* 204* 205* 206* 222* 230* 231*
+                                                                                  232* 237*
+ONCE                            000050 constant        fixed bin(5,0)           initial dcl 69 set ref 113* 122* 132* 136* 137* 138*
+                                                                                  139* 140* 141* 142* 145* 146* 148* 149* 152* 153*
+                                                                                  154* 155* 159* 166* 167* 168* 169* 174* 175* 179*
+                                                                                  180* 181* 196* 207* 214* 218* 226* 227* 228* 229*
+                                                                                  236* 241* 245* 249* 253* 257*
+addr                                                   builtin function         dcl 73 ref 93 281 286 286 369
+addrel                                                 builtin function         dcl 73 ref 409 417
+bad_addr                  0(20)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  360*
+bad_dev                   0(21)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  362*
+bad_mem                   0(23)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  363*
+bad_path                  0(22)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  361*
+basep                                  parameter       pointer                  dcl 428 ref 426 432
+bin                                                    builtin function         dcl 73 ref 432 432 432 444 444 444
+bit                                                    builtin function         dcl 73 ref 352 353 432 444
+bitmask                   0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  353*
+bitson                                 based           bit(6)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  352*
+cds_args                               based           structure                level 1 dcl 2-3
+cdsa                            000100 automatic       structure                level 1 dcl 46 set ref 286 286
+charwds                         000156 automatic       fixed bin(17,0)          dcl 53 set ref 67 94* 261 276 415* 415
+chlth                           000246 automatic       fixed bin(17,0)          dcl 398 set ref 414* 415 417
+chr                       0(09)        based           char                     level 2 packed packed unaligned dcl 1-52 set ref 407
+                                                                                  412*
+com_err_                        000020 constant        entry                    external dcl 62 ref 86 287 292 307 308 327 328
+copy_chars                             based           fixed bin(35,0)          array dcl 67 set ref 261* 261
+create_data_segment_            000016 constant        entry                    external dcl 62 ref 286
+data                                   based           structure                level 1 dcl 49 set ref 276
+dedp                            000172 automatic       pointer                  dcl 1-20 set ref 89* 97* 312* 332* 1-22 1-22 1-22
+                                                                                  1-22 1-22
+deirel                          000167 automatic       bit(18)                  dcl 53 set ref 97* 100 102
+descrip                                parameter       char                     dcl 344 in procedure "set_substat" set ref 342 355
+                                                                                  355*
+descrip                                parameter       char                     dcl 396 in procedure "allocate_dsd" ref 394 407 411
+                                                                                  412 414
+descrip                                parameter       char                     dcl 302 in procedure "set_majstat" set ref 300 313*
+descrip                                parameter       char                     dcl 322 in procedure "set_fmajstat" set ref 320 333*
+disk_error_data                        based           structure                array level 1 dcl 1-22
+disk_error_interp                      based           structure                level 1 dcl 1-35 set ref 350*
+disk_status_descrip                    based           structure                level 1 dcl 1-52
+divide                                                 builtin function         dcl 73 ref 409 414
+dsdp                            000200 automatic       pointer                  dcl 1-50 set ref 90* 404 411 412 416 417* 417 1-52
+                                                                                  1-52 1-52
+dsdrel                          000170 automatic       bit(18)                  dcl 53 set ref 98* 101 103
+dskerp                          000176 automatic       pointer                  dcl 1-33 set ref 93* 97* 261 312* 332* 350 352 353
+                                                                                  354 355 357 360 361 362 363 364 365 366 369* 444
+                                                                                  1-35 1-35 1-35 1-35 1-35 1-35 1-35 1-35 1-35 1-35
+                                                                                  1-35 1-35 1-35 1-35
+errbit                                 parameter       bit(1)                   packed unaligned dcl 379 set ref 377 384*
+errname                                parameter       char                     dcl 379 ref 377 384
+errs                                   parameter       char                     dcl 344 set ref 342 360* 361* 362* 363* 364* 365*
+                                                                                  366*
+errstring                              parameter       char                     dcl 379 ref 377 384
+exclude_array_ptr        42     000100 automatic       pointer                  level 2 dcl 46 set ref 281*
+finterp                   1            based           bit(18)                  array level 3 packed packed unaligned dcl 49 set ref
+                                                                                  102* 332*
+fnamep                    1(18)        based           bit(18)                  array level 3 packed packed unaligned dcl 49 set ref
+                                                                                  103* 267* 333*
+get_temp_segments_              000012 constant        entry                    external dcl 62 ref 85
+have_text                44(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 46 set ref 284*
+hbound                                                 builtin function         dcl 73 ref 99 265 306 308 308 326 328 328
+i                               000164 automatic       fixed bin(17,0)          dcl 53 set ref 99* 100 101 102 103* 265* 266 267*
+                                                                                  270* 271*
+index                                                  builtin function         dcl 73 ref 384
+interp                                 based           bit(18)                  array level 3 packed packed unaligned dcl 49 set ref
+                                                                                  100* 312*
+just_log                  0(24)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  364*
+len                       2     000100 automatic       fixed bin(18,0)          array level 3 dcl 46 set ref 276*
+length                                                 builtin function         dcl 73 ref 411 414
+lth                                    based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-52 set ref 407
+                                                                                  409 411* 412 1-52
+maj_array                              based           structure                array level 2 dcl 49 set ref 99 265 306 308 308 326
+                                                                                  328 328
+max_retries               0(12)        based           fixed bin(5,0)           level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  354*
+mjs                                    parameter       fixed bin(5,0)           dcl 302 in procedure "set_majstat" set ref 300 306
+                                                                                  308* 312 313
+mjs                                    parameter       fixed bin(5,0)           dcl 322 in procedure "set_fmajstat" set ref 320 326
+                                                                                  328* 332 333
+namep                     1            based           bit(18)                  level 2 in structure "disk_error_interp" packed
+                                                                                  packed unaligned dcl 1-35 in procedure
+                                                                                  "disk_error_data" set ref 355* 357*
+namep                     0(18)        based           bit(18)                  array level 3 in structure "data" packed packed
+                                                                                  unaligned dcl 49 in procedure "disk_error_data"
+                                                                                  set ref 101* 266* 313*
+namep                    61            based           bit(18)                  array level 3 in structure "data" packed packed
+                                                                                  unaligned dcl 49 in procedure "disk_error_data"
+                                                                                  set ref 271*
+nsub                            000155 automatic       fixed bin(17,0)          dcl 53 set ref 49 49 49 49 49 49 49 49 49 49 49 49
+                                                                                  49 49 92* 263* 263 270 276 368* 368 369
+nulldescriprel                  000166 automatic       bit(18)                  dcl 53 set ref 96* 357
+num_exclude_names        40     000100 automatic       fixed bin(17,0)          level 2 dcl 46 set ref 280*
+old_dsdp                        000242 automatic       pointer                  dcl 398 set ref 416* 419*
+p                               000100 automatic       pointer                  array level 3 dcl 46 set ref 275*
+rcode                           000165 automatic       fixed bin(35,0)          dcl 53 set ref 85* 86 86* 286* 287 287* 290* 292
+                                                                                  292*
+rel                                                    builtin function         dcl 73 ref 404 404 432 432 444
+release_temp_segments_          000014 constant        entry                    external dcl 62 ref 290
+relp                                   parameter       bit(18)                  packed unaligned dcl 441 set ref 439 444* 444
+reseek                    0(18)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  365*
+retry                                  parameter       fixed bin(5,0)           dcl 344 ref 342 354
+rsr                       0(19)        based           bit(1)                   level 2 packed packed unaligned dcl 1-35 set ref
+                                                                                  366*
+sections                        000100 automatic       structure                array level 2 dcl 46
+seg_name                 30     000100 automatic       char(32)                 level 2 dcl 46 set ref 279*
+size                                                   builtin function         dcl 73 ref 276
+stat                                   parameter       char(6)                  dcl 344 ref 342 352 353
+string                                                 builtin function         dcl 73 set ref 283*
+strucp                                 parameter       pointer                  dcl 428 ref 426 432
+struct_name               3     000100 automatic       char(32)                 array level 3 dcl 46 set ref 277*
+sub_array                60            based           structure                array level 2 dcl 49 set ref 93 369
+switches                 44     000100 automatic       structure                level 2 dcl 46 set ref 283*
+temp_dsdp                       000244 automatic       pointer                  dcl 398 set ref 404* 404* 407 407* 409 409
+tempp                           000160 automatic       pointer                  array dcl 53 set ref 49 49 49 49 49 49 49 49 49 49
+                                                                                  49 49 49 49 49 49 49 49 49 49 85* 89 90 93 99 100
+                                                                                  101 102 103 261 265 266 267 271 275 276 290* 306
+                                                                                  308 308 312 313 326 328 328 332 333 369 404 407*
+                                                                                  419*
+translate                                              builtin function         dcl 73 ref 352 353
+unspec                                                 builtin function         dcl 73 set ref 350*
+xnames                          000145 automatic       char(32)                 initial array dcl 47 set ref 47* 281
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+disk_error_data$                000022 external static fixed bin(17,0)          dcl 1-18
+disk_status_interp_array               based           structure                array level 1 dcl 1-30
+dskerap                         000174 automatic       pointer                  dcl 1-28
+exclude_names                          based           char(32)                 array packed unaligned dcl 2-18
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+allocate_dsd                    005354 constant        entry                    internal dcl 394 ref 96 98 313 333 355
+compute_rel                     005461 constant        entry                    internal dcl 426 ref 97 312 332 407 419
+disk_error_data                 001115 constant        entry                    external dcl 44
+nl_exit                         004323 constant        label                    dcl 290 ref 310 330
+relocate_rel                    005503 constant        entry                    internal dcl 439 ref 266 267 271
+set_fmajstat                    004557 constant        entry                    internal dcl 320 ref 110 116 125 135 151 158 171 198
+                                                                                  216 221 225 235 240 244 248 252 256
+set_majstat                     004403 constant        entry                    internal dcl 300 ref 109 115 124 134 144 157 161 177
+                                                                                  209 220 224 234 239 243 247 251 255
+set_substat                     004735 constant        entry                    internal dcl 342 ref 105 111 112 113 117 118 119 120
+                                                                                  121 122 126 127 128 129 130 131 132 136 137 138
+                                                                                  139 140 141 142 145 146 147 148 149 152 153 154
+                                                                                  155 159 162 163 164 165 166 167 168 169 172 173
+                                                                                  174 175 178 179 180 181 182 183 184 185 186 187
+                                                                                  188 189 190 191 192 193 194 195 196 199 200 201
+                                                                                  202 203 204 205 206 207 210 211 212 213 214 217
+                                                                                  218 222 226 227 228 229 230 231 232 236 237 241
+                                                                                  245 249 253 257
+seterr                          005321 constant        entry                    internal dcl 377 ref 360 361 362 363 364 365 366
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0     11322       11346   11223       11332
+Length     15130   11223        24        3546      77           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+disk_error_data                     503 external procedure  is an external procedure.  
+set_majstat                             internal procedure  shares stack frame of external procedure disk_error_data.  
+set_fmajstat                            internal procedure  shares stack frame of external procedure disk_error_data.  
+set_substat                             internal procedure  shares stack frame of external procedure disk_error_data.  
+seterr                                  internal procedure  shares stack frame of external procedure disk_error_data.  
+allocate_dsd                            internal procedure  shares stack frame of external procedure disk_error_data.  
+compute_rel                             internal procedure  shares stack frame of external procedure disk_error_data.  
+relocate_rel                            internal procedure  shares stack frame of external procedure disk_error_data.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+disk_error_data          000100 cdsa                        disk_error_data
+                         000145 xnames                      disk_error_data
+                         000155 nsub                        disk_error_data
+                         000156 charwds                     disk_error_data
+                         000160 tempp                       disk_error_data
+                         000164 i                           disk_error_data
+                         000165 rcode                       disk_error_data
+                         000166 nulldescriprel              disk_error_data
+                         000167 deirel                      disk_error_data
+                         000170 dsdrel                      disk_error_data
+                         000172 dedp                        disk_error_data
+                         000174 dskerap                     disk_error_data
+                         000176 dskerp                      disk_error_data
+                         000200 dsdp                        disk_error_data
+                         000242 old_dsdp                    allocate_dsd
+                         000244 temp_dsdp                   allocate_dsd
+                         000246 chlth                       allocate_dsd
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           int_entry           set_chars_eis
+index_chars_eis     any_to_any_truncate_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          get_temp_segments_            release_temp_segments_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     44 001114        47 001122        85 001132        86 001156        89 001213        90 001215        92 001217
+     93 001221        94 001224        96 001225        97 001230        98 001232        99 001237       100 001243
+    101 001247       102 001255       103 001263       104 001272       105 001274       109 001301       110 001310
+    111 001317       112 001332       113 001350       115 001362       116 001373       117 001404       118 001417
+    119 001436       120 001453       121 001471       122 001504       124 001516       125 001527       126 001540
+    127 001552       128 001564       129 001602       130 001616       131 001632       132 001646       134 001660
+    135 001672       136 001704       137 001720       138 001736       139 001754       140 001767       141 002002
+    142 002016       144 002030       145 002042       146 002057       147 002074       148 002113       149 002131
+    151 002143       152 002155       153 002172       154 002207       155 002225       157 002237       158 002251
+    159 002263       161 002274       162 002305       163 002321       164 002336       165 002353       166 002372
+    167 002411       168 002431       169 002446       171 002457       172 002467       173 002504       174 002521
+    175 002535       177 002546       178 002557       179 002573       180 002607       181 002624       182 002641
+    183 002656       184 002674       185 002712       186 002727       187 002747       188 002765       189 003002
+    190 003017       191 003035       192 003053       193 003073       194 003110       195 003125       196 003145
+    198 003156       199 003166       200 003204       201 003221       202 003241       203 003257       204 003274
+    205 003312       206 003326       207 003342       209 003353       210 003364       211 003401       212 003416
+    213 003432       214 003451       216 003462       217 003472       218 003506       220 003517       221 003530
+    222 003541       224 003550       225 003562       226 003574       227 003607       228 003617       229 003630
+    230 003642       231 003655       232 003667       234 003700       235 003711       236 003722       237 003734
+    239 003745       240 003756       241 003767       243 003776       244 004006       245 004016       247 004025
+    248 004037       249 004051       251 004060       252 004071       253 004102       255 004111       256 004122
+    257 004133       261 004142       263 004151       265 004153       266 004157       267 004170       268 004203
+    270 004205       271 004215       272 004225       275 004227       276 004231       277 004236       279 004241
+    280 004244       281 004246       283 004250       284 004251       286 004253       287 004266       290 004323
+    292 004350       295 004402       300 004403       306 004414       307 004420       308 004451       310 004514
+    312 004515       313 004527       315 004556       320 004557       326 004570       327 004574       328 004625
+    330 004670       332 004671       333 004704       335 004734       342 004735       350 004753       352 004757
+    353 004776       354 005017       355 005024       357 005054       360 005057       361 005106       362 005134
+    363 005162       364 005210       365 005236       366 005264       368 005312       369 005313       371 005320
+    377 005321       384 005337       387 005353       394 005354       404 005365       407 005375       409 005416
+    411 005425       412 005431       414 005442       415 005446       416 005447       417 005450       419 005452
+    426 005461       432 005463       439 005503       444 005505       446 005527
+
+
+Object Segment >spec>install>1035>disk_error_data
+Created on 10/01/90  1627.8 mdt Mon
+by Fudge.SysMaint.a
+using create_data_segment_, Version II of Friday, May 18, 1990
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    1166    1210    1220    1220
+Length    1442    1166      22      10     206       0
+
+
+2 Definitions:
+
+
+segname:    disk_error_data
+
+symb|0          symbol_table
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

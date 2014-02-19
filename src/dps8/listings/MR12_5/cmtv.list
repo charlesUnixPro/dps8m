@@ -1,0 +1,1366 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>cmtv.alm                                                                                                                               
+ASSEMBLED ON:	11/11/89  0954.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Bull Inc., 1988                *
+                                     6  " *                                                         *
+                                     7  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     8  " *                                                         *
+                                     9  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                    10  " * Technology and Honeywell Information Systems, Inc.      *
+                                    11  " *                                                         *
+                                    12  " ***********************************************************
+                                    13  
+                                    14  " HISTORY COMMENTS:
+                                    15  "  1) change(88-06-15,Berno), approve(88-07-13,MCR7928),
+                                    16  "     audit(88-07-05,Parisek), install(88-07-19,MR12.2-1061):
+                                    17  "     Add transfers to the uncp multiplexer interface for the DSA gateway.
+                                    18  "  2) change(88-07-07,Beattie), approve(88-06-27,MCR7926),
+                                    19  "     audit(88-08-03,Brunelle), install(88-08-08,MR12.2-1082):
+                                    20  "     Add transfers for X.25 lap multiplexer.
+                                    21  "  3) change(89-03-20,Parisek), approve(89-06-01,MCR8110),
+                                    22  "     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+                                    23  "     Add transfers to protocol_mpx entries.
+                                    24  "                                                      END HISTORY COMMENTS
+                                    25  
+                                    26  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                    27  "
+                                    28  "	cmtv --- channel manager transfer vector
+                                    29  "
+                                    30  "	This source segment defines a data base containing a transfer
+                                    31  "	vector used by the channel_manager and priv_channel_manager
+                                    32  "	procedures.  It has the following structure:
+                                    33  "
+                                    34  "
+                                    35  "	dcl 1 cmtv aligned based (addr (cmtv$)),
+                                    36  "	      2 no_channel_types fixed bin,
+                                    37  "	      2 pad fixed bin,
+                                    38  "	      2 chan_type_index (0:16) fixed bin,
+                                    39  "	      2 entries (no_entry_types, 0 refer (cmtv.no_channel_types)) bit (72);
+                                    40  "
+                                    41  "
+                                    42  "	Created 9/21/78 by J. Stern
+                                    43  """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                    44  
+                                    45  
+                                    46  	macro	prologue
+                              1     47  
+                              2     48  	name	cmtv
+                              3     49  	set	.cur_index,0
+                              4     50  	set	.tty_index,0
+                              5     51  	set	.fnp_index,0
+                              6     52  	set	.user1_index,0
+                              7     53  	set	.user2_index,0
+                              8     54  	set	.user3_index,0
+                              9     55  	set	.user4_index,0
+                             10     56  	set	.user5_index,0
+                             11     57  	set	.ibm3270_index,0
+                             12     58  	set	.vip7760_index,0
+                             13     59  	set	.sty_index,0
+                             14     60  	set	.lap_index,0
+                             15     61  	set	.x25_index,0
+                             16     62  	set	.hasp_index,0
+                             17     63  	set	.uncp_index,0
+                             18     64  	set	.cxi_index,0
+                             19     65  	set	.system1_index,0
+                             20     66  	set	.protocol_index,0
+                             21     67  
+                             22     68  	&end
+                                    69  
+                                    70  
+                                    71  	macro	epilogue
+                              1     72  
+                              2     73  	use	.text.
+                              3     74  	segdef	cmtv
+                              4     75  cmtv:	null
+                              5     76  	zero	0,.cur_index
+                              6     77  	dec	0
+                              7     78  	zero	0,.tty_index
+                              8     79  	zero	0,.fnp_index
+                              9     80  	zero	0,.user1_index
+                             10     81  	zero	0,.user2_index
+                             11     82  	zero	0,.user3_index
+                             12     83  	zero	0,.user4_index
+                             13     84  	zero	0,.user5_index
+                             14     85  	zero	0,.ibm3270_index
+                             15     86  	zero	0,.vip7760_index
+                             16     87  	zero	0,.sty_index
+                             17     88  	zero	0,.lap_index
+                             18     89  	zero	0,.x25_index
+                             19     90  	zero	0,.hasp_index
+                             20     91  	zero	0,.uncp_index
+                             21     92  	zero	0,.cxi_index
+                             22     93  	zero	0,.system1_index
+                             23     94  	zero	0,.protocol_index
+                             24     95  
+                             25     96  
+                             26     97  	join	/text/.init_channel.
+                             27     98  	join	/text/.terminate_channel.
+                             28     99  	join	/text/.init_multiplexer.
+                             29    100  	join	/text/.terminate_multiplexer.
+                             30    101  	join	/text/.start.
+                             31    102  	join	/text/.stop.
+                             32    103  	join	/text/.shutdown.
+                             33    104  	join	/text/.priv_control.
+                             34    105  	join	/text/.hpriv_control.
+                             35    106  	join	/text/.read.
+                             36    107  	join	/text/.write.
+                             37    108  	join	/text/.control.
+                             38    109  	join	/text/.set_modes.
+                             39    110  	join	/text/.check_modes.
+                             40    111  	join	/text/.get_modes.
+                             41    112  	join	/text/.interrupt.
+                             42    113  
+                             43    114  	maclist	on
+                             44    115  	end
+                             45    116  
+                             46    117  	&end
+                                   118  
+                                   119  " The following macros define valid entry type names:
+                                   120  
+                                   121  	macro	init_channel
+                              1    122  	&end
+                                   123  	macro	terminate_channel
+                              1    124  	&end
+                                   125  	macro	init_multiplexer
+                              1    126  	&end
+                                   127  	macro	terminate_multiplexer
+                              1    128  	&end
+                                   129  	macro	start
+                              1    130  	&end
+                                   131  	macro	stop
+                              1    132  	&end
+                                   133  	macro	shutdown
+                              1    134  	&end
+                                   135  	macro	priv_control
+                              1    136  	&end
+                                   137  	macro	hpriv_control
+                              1    138  	&end
+                                   139  	macro	read
+                              1    140  	&end
+                                   141  	macro	write
+                              1    142  	&end
+                                   143  	macro	control
+                              1    144  	&end
+                                   145  	macro	set_modes
+                              1    146  	&end
+                                   147  	macro	check_modes
+                              1    148  	&end
+                                   149  	macro	get_modes
+                              1    150  	&end
+                                   151  	macro	interrupt
+                              1    152  	&end
+                                   153  
+                                   154  
+                                   155  " The following macros define valid channel type names:
+                                   156  
+                                   157  	macro	tty
+                              1    158  	&end
+                                   159  	macro	fnp
+                              1    160  	&end
+                                   161  	macro	user1
+                              1    162  	&end
+                                   163  	macro	user2
+                              1    164  	&end
+                                   165  	macro	user3
+                              1    166  	&end
+                                   167  	macro	user4
+                              1    168  	&end
+                                   169  	macro	user5
+                              1    170  	&end
+                                   171  	macro	ibm3270
+                              1    172  	&end
+                                   173  	macro	vip7760
+                              1    174  	&end
+                                   175  	macro	sty
+                              1    176  	&end
+                                   177  	macro	lap
+                              1    178  	&end
+                                   179  	macro	x25
+                              1    180  	&end
+                                   181  	macro	hasp
+                              1    182  	&end
+                                   183  	macro	uncp
+                              1    184  	&end
+                                   185  	macro	cxi
+                              1    186  	&end
+                                   187  	macro	system1
+                              1    188  	&end
+                                   189  	macro	protocol
+                              1    190  	&end
+                                   191  
+                                   192  	macro	add_entry
+                              1    193  
+                              2    194  	&1
+                              3    195  	use	.&1.
+                              4    196  	getlp
+                              5    197  	tra	&2$&1
+                              6    198  	set	.&1_incr,0
+                              7    199  
+                              8    200  	&end
+                                   201  
+                                   202  
+                                   203  	macro	type
+                              1    204  
+                              2    205  	&1
+                              3    206  	set	.cur_index,.cur_index+1
+                              4    207  	set	.&1_index,.cur_index
+                              5    208  
+                              6    209  	set	.init_channel_incr,2
+                              7    210  	set	.terminate_channel_incr,2
+                              8    211  	set	.init_multiplexer_incr,2
+                              9    212  	set	.terminate_multiplexer_incr,2
+                             10    213  	set	.start_incr,2
+                             11    214  	set	.stop_incr,2
+                             12    215  	set	.shutdown_incr,2
+                             13    216  	set	.priv_control_incr,2
+                             14    217  	set	.hpriv_control_incr,2
+                             15    218  	set	.read_incr,2
+                             16    219  	set	.write_incr,2
+                             17    220  	set	.control_incr,2
+                             18    221  	set	.set_modes_incr,2
+                             19    222  	set	.check_modes_incr,2
+                             20    223  	set	.get_modes_incr,2
+                             21    224  	set	.interrupt_incr,2
+                             22    225  
+                             23    226  &R3&(	add_entry	&i,&2
+                             24    227  &)
+                             25    228  
+                             26    229  	use	.init_channel.
+                             27    230  	bss	,.init_channel_incr
+                             28    231  	use	.terminate_channel.
+                             29    232  	bss	,.terminate_channel_incr
+                             30    233  	use	.init_multiplexer.
+                             31    234  	bss	,.init_multiplexer_incr
+                             32    235  	use	.terminate_multiplexer.
+                             33    236  	bss	,.terminate_multiplexer_incr
+                             34    237  	use	.start.
+                             35    238  	bss	,.start_incr
+                             36    239  	use	.stop.
+                             37    240  	bss	,.stop_incr
+                             38    241  	use	.shutdown.
+                             39    242  	bss	,.shutdown_incr
+                             40    243  	use	.priv_control.
+                             41    244  	bss	,.priv_control_incr
+                             42    245  	use	.hpriv_control.
+                             43    246  	bss	,.hpriv_control_incr
+                             44    247  	use	.read.
+                             45    248  	bss	,.read_incr
+                             46    249  	use	.write.
+                             47    250  	bss	,.write_incr
+                             48    251  	use	.control.
+                             49    252  	bss	,.control_incr
+                             50    253  	use	.set_modes.
+                             51    254  	bss	,.set_modes_incr
+                             52    255  	use	.check_modes.
+                             53    256  	bss	,.check_modes_incr
+                             54    257  	use	.get_modes.
+                             55    258  	bss	,.get_modes_incr
+                             56    259  	use	.interrupt.
+                             57    260  	bss	,.interrupt_incr
+                             58    261  
+                             59    262  	&end
+                                   263  
+    000000                         264  	maclist	off
+                                   265  
+                                   266  " The transfer vector definition has the following syntax:
+                                   267  "
+                                   268  "
+                                   269  " <transfer_vector> := prologue <type_list> epilogue
+                                   270  " <type_list> := <type_stmt> | <type_stmt> <type_list>
+                                   271  " <type_stmt> := type <channel_type> , <global_seg_name> , <entry_list>
+                                   272  " <entry_list> := <entry> | <entry> , <entry_list>
+                                   273  " <entry> := <entry_type> | ( <entry_type> , <local_seg_name> )
+                                   274  " <channel_type> := tty | fnp | user1 | user2 | user3 | user4 | user5 | ibm3270
+                                   275  "		| vip7760 | sty | lap | x25 | hasp | uncp | cxi | system1
+                                   276  "	          | protocol
+                                   277  " <entry_type> := init_channel | terminate_channel | init_multiplexer | terminate_multiplexer |
+                                   278  		start | stop | shutdown | priv_control | hpriv_control | read | write |
+                                   279  		control | set_modes | check_modes | get_modes | interrupt
+                                   280  " <global_seg_name> := {the name of a procedure segment}
+                                   281  " <local_seg_name> := {the name of a procedure segment}
+                                   282  "
+                                   283  "
+                                   284  " Each "type" statement defines a channel type.
+                                   285  " It specifies the valid entry types for the channel type.
+                                   286  " It specifies the transfer vector target for each valid entry type.
+                                   287  " The transfer vector target for an entry type is an entrypoint
+                                   288  " in a procedure segment.
+                                   289  " The name of the entrypoint is always the name of the entry type.
+                                   290  " The segment name may optionally be specified by a local segment name.
+                                   291  " If no local segment name is given, then the global segment name is used.
+                                   292  
+                                   293  
+                                   294  
+                                   295  	prologue
+                                   296  
+                                   297  	type	tty,tty_index,
+                                   298  		init_channel,
+                                   299  		terminate_channel,
+                                   300  		(interrupt,tty_interrupt)
+                                   301  
+                                   302  	type	fnp,fnp_multiplexer,
+                                   303  		init_multiplexer,
+                                   304  		terminate_multiplexer,
+                                   305  		start,
+                                   306  		stop,
+                                   307  		shutdown,
+                                   308  		priv_control,
+                                   309  		hpriv_control,
+                                   310  		read,
+                                   311  		write,
+                                   312  		control,
+                                   313  		set_modes,
+                                   314  		check_modes,
+                                   315  		get_modes
+                                   316  
+                                   317  	type	vip7760,polled_vip_mpx,
+                                   318  		(init_multiplexer,priv_polled_vip_mpx),
+                                   319  		(terminate_multiplexer,priv_polled_vip_mpx),
+                                   320  		(start,priv_polled_vip_mpx),
+                                   321  		(stop,priv_polled_vip_mpx),
+                                   322  		(shutdown,priv_polled_vip_mpx),
+                                   323  		(hpriv_control,priv_polled_vip_mpx),
+                                   324  		(priv_control,priv_polled_vip_mpx),
+                                   325  		read,
+                                   326  		write,
+                                   327  		check_modes,
+                                   328  		set_modes,
+                                   329  		get_modes,
+                                   330  		control,
+                                   331  		interrupt
+                                   332  
+                                   333  	type	ibm3270,ibm3270_mpx,
+                                   334  		(init_multiplexer,priv_ibm3270_mpx),
+                                   335  		(terminate_multiplexer,priv_ibm3270_mpx),
+                                   336  		(start,priv_ibm3270_mpx),
+                                   337  		(stop,priv_ibm3270_mpx),
+                                   338  		(shutdown,priv_ibm3270_mpx),
+                                   339  		(priv_control,priv_ibm3270_mpx),
+                                   340  		(hpriv_control,priv_ibm3270_mpx),
+                                   341  		control,
+                                   342  		read,
+                                   343  		check_modes,
+                                   344  		set_modes,
+                                   345  		get_modes,
+                                   346  		write,
+                                   347  		interrupt
+                                   348  
+                                   349            type      lap,lap_simplex,
+                                   350                      init_multiplexer,terminate_multiplexer,
+                                   351                      start,stop,shutdown,
+                                   352                      hpriv_control,priv_control,control,
+                                   353                      check_modes,set_modes,get_modes,
+                                   354                      write,
+                                   355                      interrupt
+                                   356  
+                                   357  	type	x25,x25_mpx,
+                                   358  		(init_multiplexer,priv_x25_mpx),
+                                   359  		(terminate_multiplexer,priv_x25_mpx),
+                                   360  		(start,priv_x25_mpx),
+                                   361  		(stop,priv_x25_mpx),
+                                   362  		(shutdown,priv_x25_mpx),
+                                   363  		(hpriv_control,priv_x25_mpx),
+                                   364  		(priv_control,priv_x25_mpx),
+                                   365  		control,
+                                   366  		check_modes,set_modes,get_modes,
+                                   367  		write,
+                                   368  		interrupt
+                                   369  
+                                   370  	type	sty,sty_mpx,
+                                   371  		init_multiplexer,terminate_multiplexer,
+                                   372  		start,stop,shutdown,
+                                   373  		read,write,control,
+                                   374  		get_modes,set_modes,check_modes
+                                   375  
+                                   376  	type	hasp,hasp_mpx,
+                                   377  		(init_multiplexer,priv_hasp_mpx),
+                                   378  		(terminate_multiplexer,priv_hasp_mpx),
+                                   379  		(start,priv_hasp_mpx),
+                                   380  		(stop,priv_hasp_mpx),
+                                   381  		(shutdown,priv_hasp_mpx),
+                                   382  		(priv_control,priv_hasp_mpx),
+                                   383  		(hpriv_control,priv_hasp_mpx),
+                                   384  		read,write,interrupt,control,
+                                   385  		check_modes,set_modes,get_modes
+                                   386  
+                                   387  	type	uncp,uncp_multiplexer,
+                                   388  		init_multiplexer,
+                                   389  		terminate_multiplexer,
+                                   390  		start,
+                                   391  		stop,
+                                   392  		shutdown,
+                                   393  		priv_control,
+                                   394  		hpriv_control,
+                                   395  		read,
+                                   396  		write,
+                                   397  		control,
+                                   398  		set_modes,
+                                   399  		check_modes,
+                                   400  		get_modes
+                                   401                                            
+                                   402  	type	protocol,protocol_mpx,
+                                   403  		init_multiplexer,
+                                   404  		terminate_multiplexer,
+                                   405  		start,
+                                   406  		stop,
+                                   407  		shutdown,
+                                   408  		priv_control,
+                                   409  		hpriv_control,
+                                   410  		interrupt
+                                   411  	epilogue
+                                        	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000524  5a   000003 000000 
+    000525  5a   000024 600000 
+    000526  aa   000000 000000 
+    000527  55   000010 000002 
+    000530  5a   000002 400003 
+    000531  55   000006 000010 
+    000532  aa  004 143 155 164
+    000533  aa  166 000 000 000
+    000534  55   000015 000003 
+    000535  0a   000000 400000 
+    000536  55   000013 000003 
+    000537  aa  004 143 155 164         cmtv
+    000540  aa  166 000 000 000
+    000541  55   000002 000010 
+    000542  6a   000000 400002 
+    000543  55   000020 000003 
+    000544  aa  014 163 171 155         symbol_table
+    000545  aa  142 157 154 137
+    000546  aa  164 141 142 154
+    000547  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000550  aa   000000 000015 
+    000551  aa   000000 000000 
+    000552  aa   000000 000000 
+    000553  aa   000000 000000 
+    000554  aa   000000 000000 
+    000555  aa   000000 000000 
+    000556  aa   000000 000000 
+    000557  5a   000015 000000 
+    000560  aa   000000 000000 
+    000561  aa   000000 000000 
+    000562  5a   000010 000000 
+    000563  aa   000000 000000 
+    000564  aa   000000 000000 
+    000565  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000566  aa  014 160 162 157         protocol_mpx
+    000567  aa  164 157 143 157
+    000570  aa  154 137 155 160
+    000571  aa  170 000 000 000
+    000572  aa  020 165 156 143         uncp_multiplexer
+    000573  aa  160 137 155 165
+    000574  aa  154 164 151 160
+    000575  aa  154 145 170 145
+    000576  aa  162 000 000 000
+    000577  aa  010 150 141 163         hasp_mpx
+    000600  aa  160 137 155 160
+    000601  aa  170 000 000 000
+    000602  aa  015 160 162 151         priv_hasp_mpx
+    000603  aa  166 137 150 141
+    000604  aa  163 160 137 155
+    000605  aa  160 170 000 000
+    000606  aa  007 163 164 171         sty_mpx
+    000607  aa  137 155 160 170
+    000610  aa  007 170 062 065         x25_mpx
+    000611  aa  137 155 160 170
+    000612  aa  014 160 162 151         priv_x25_mpx
+    000613  aa  166 137 170 062
+    000614  aa  065 137 155 160
+    000615  aa  170 000 000 000
+    000616  aa  013 154 141 160         lap_simplex
+    000617  aa  137 163 151 155
+    000620  aa  160 154 145 170
+    000621  aa  013 151 142 155         ibm3270_mpx
+    000622  aa  063 062 067 060
+    000623  aa  137 155 160 170
+    000624  aa  020 160 162 151         priv_ibm3270_mpx
+    000625  aa  166 137 151 142
+    000626  aa  155 063 062 067
+    000627  aa  060 137 155 160
+    000630  aa  170 000 000 000
+    000631  aa  016 160 157 154         polled_vip_mpx
+    000632  aa  154 145 144 137
+    000633  aa  166 151 160 137
+    000634  aa  155 160 170 000
+    000635  aa  023 160 162 151         priv_polled_vip_mpx
+    000636  aa  166 137 160 157
+    000637  aa  154 154 145 144
+    000640  aa  137 166 151 160
+    000641  aa  137 155 160 170
+    000642  aa  011 147 145 164         get_modes
+    000643  aa  137 155 157 144
+    000644  aa  145 163 000 000
+    000645  aa  013 143 150 145         check_modes
+    000646  aa  143 153 137 155
+    000647  aa  157 144 145 163
+    000650  aa  011 163 145 164         set_modes
+    000651  aa  137 155 157 144
+    000652  aa  145 163 000 000
+    000653  aa  007 143 157 156         control
+    000654  aa  164 162 157 154
+    000655  aa  005 167 162 151         write
+    000656  aa  164 145 000 000
+    000657  aa  004 162 145 141         read
+    000660  aa  144 000 000 000
+    000661  aa  015 150 160 162         hpriv_control
+    000662  aa  151 166 137 143
+    000663  aa  157 156 164 162
+    000664  aa  157 154 000 000
+    000665  aa  014 160 162 151         priv_control
+    000666  aa  166 137 143 157
+    000667  aa  156 164 162 157
+    000670  aa  154 000 000 000
+    000671  aa  010 163 150 165         shutdown
+    000672  aa  164 144 157 167
+    000673  aa  156 000 000 000
+    000674  aa  004 163 164 157         stop
+    000675  aa  160 000 000 000
+    000676  aa  005 163 164 141         start
+    000677  aa  162 164 000 000
+    000700  aa  025 164 145 162         terminate_multiplexer
+    000701  aa  155 151 156 141
+    000702  aa  164 145 137 155
+    000703  aa  165 154 164 151
+    000704  aa  160 154 145 170
+    000705  aa  145 162 000 000
+    000706  aa  020 151 156 151         init_multiplexer
+    000707  aa  164 137 155 165
+    000710  aa  154 164 151 160
+    000711  aa  154 145 170 145
+    000712  aa  162 000 000 000
+    000713  aa  017 146 156 160         fnp_multiplexer
+    000714  aa  137 155 165 154
+    000715  aa  164 151 160 154
+    000716  aa  145 170 145 162
+    000717  aa  011 151 156 164         interrupt
+    000720  aa  145 162 162 165
+    000721  aa  160 164 000 000
+    000722  aa  015 164 164 171         tty_interrupt
+    000723  aa  137 151 156 164
+    000724  aa  145 162 162 165
+    000725  aa  160 164 000 000
+    000726  aa  021 164 145 162         terminate_channel
+    000727  aa  155 151 156 141
+    000730  aa  164 145 137 143
+    000731  aa  150 141 156 156
+    000732  aa  145 154 000 000
+    000733  aa  014 151 156 151         init_channel
+    000734  aa  164 137 143 150
+    000735  aa  141 156 156 145
+    000736  aa  154 000 000 000
+    000737  aa  011 164 164 171         tty_index
+    000740  aa  137 151 156 144
+    000741  aa  145 170 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000742  aa   000004 000000 
+    000743  55   000042 000173 
+    000744  aa   000004 000000 
+    000745  55   000042 000135 
+    000746  aa   000004 000000 
+    000747  55   000042 000141 
+    000750  aa   000004 000000 
+    000751  55   000042 000145 
+    000752  aa   000004 000000 
+    000753  55   000042 000150 
+    000754  aa   000004 000000 
+    000755  55   000042 000152 
+    000756  aa   000004 000000 
+    000757  55   000042 000154 
+    000760  aa   000004 000000 
+    000761  55   000042 000162 
+    000762  aa   000004 000000 
+    000763  55   000046 000116 
+    000764  aa   000004 000000 
+    000765  55   000046 000121 
+    000766  aa   000004 000000 
+    000767  55   000046 000124 
+    000770  aa   000004 000000 
+    000771  55   000046 000127 
+    000772  aa   000004 000000 
+    000773  55   000046 000131 
+    000774  aa   000004 000000 
+    000775  55   000046 000133 
+    000776  aa   000004 000000 
+    000777  55   000046 000135 
+    001000  aa   000004 000000 
+    001001  55   000046 000141 
+    001002  aa   000004 000000 
+    001003  55   000046 000145 
+    001004  aa   000004 000000 
+    001005  55   000046 000150 
+    001006  aa   000004 000000 
+    001007  55   000046 000152 
+    001010  aa   000004 000000 
+    001011  55   000046 000154 
+    001012  aa   000004 000000 
+    001013  55   000046 000162 
+    001014  aa   000004 000000 
+    001015  55   000053 000116 
+    001016  aa   000004 000000 
+    001017  55   000053 000124 
+    001020  aa   000004 000000 
+    001021  55   000053 000121 
+    001022  aa   000004 000000 
+    001023  55   000053 000127 
+    001024  aa   000004 000000 
+    001025  55   000053 000173 
+    001026  aa   000004 000000 
+    001027  55   000053 000131 
+    001030  aa   000004 000000 
+    001031  55   000053 000133 
+    001032  aa   000004 000000 
+    001033  55   000056 000135 
+    001034  aa   000004 000000 
+    001035  55   000056 000141 
+    001036  aa   000004 000000 
+    001037  55   000056 000145 
+    001040  aa   000004 000000 
+    001041  55   000056 000150 
+    001042  aa   000004 000000 
+    001043  55   000056 000152 
+    001044  aa   000004 000000 
+    001045  55   000056 000154 
+    001046  aa   000004 000000 
+    001047  55   000056 000162 
+    001050  aa   000004 000000 
+    001051  55   000062 000121 
+    001052  aa   000004 000000 
+    001053  55   000062 000124 
+    001054  aa   000004 000000 
+    001055  55   000062 000116 
+    001056  aa   000004 000000 
+    001057  55   000062 000127 
+    001060  aa   000004 000000 
+    001061  55   000062 000131 
+    001062  aa   000004 000000 
+    001063  55   000062 000133 
+    001064  aa   000004 000000 
+    001065  55   000062 000145 
+    001066  aa   000004 000000 
+    001067  55   000062 000150 
+    001070  aa   000004 000000 
+    001071  55   000062 000152 
+    001072  aa   000004 000000 
+    001073  55   000062 000154 
+    001074  aa   000004 000000 
+    001075  55   000062 000162 
+    001076  aa   000004 000000 
+    001077  55   000064 000173 
+    001100  aa   000004 000000 
+    001101  55   000064 000131 
+    001102  aa   000004 000000 
+    001103  55   000064 000116 
+    001104  aa   000004 000000 
+    001105  55   000064 000124 
+    001106  aa   000004 000000 
+    001107  55   000064 000121 
+    001110  aa   000004 000000 
+    001111  55   000064 000127 
+    001112  aa   000004 000000 
+    001113  55   000066 000141 
+    001114  aa   000004 000000 
+    001115  55   000066 000135 
+    001116  aa   000004 000000 
+    001117  55   000066 000145 
+    001120  aa   000004 000000 
+    001121  55   000066 000150 
+    001122  aa   000004 000000 
+    001123  55   000066 000152 
+    001124  aa   000004 000000 
+    001125  55   000066 000154 
+    001126  aa   000004 000000 
+    001127  55   000066 000162 
+    001130  aa   000004 000000 
+    001131  55   000072 000173 
+    001132  aa   000004 000000 
+    001133  55   000072 000131 
+    001134  aa   000004 000000 
+    001135  55   000072 000116 
+    001136  aa   000004 000000 
+    001137  55   000072 000124 
+    001140  aa   000004 000000 
+    001141  55   000072 000121 
+    001142  aa   000004 000000 
+    001143  55   000072 000127 
+    001144  aa   000004 000000 
+    001145  55   000072 000141 
+    001146  aa   000004 000000 
+    001147  55   000072 000135 
+    001150  aa   000004 000000 
+    001151  55   000072 000145 
+    001152  aa   000004 000000 
+    001153  55   000072 000150 
+    001154  aa   000004 000000 
+    001155  55   000072 000152 
+    001156  aa   000004 000000 
+    001157  55   000072 000154 
+    001160  aa   000004 000000 
+    001161  55   000072 000162 
+    001162  aa   000004 000000 
+    001163  55   000075 000173 
+    001164  aa   000004 000000 
+    001165  55   000075 000131 
+    001166  aa   000004 000000 
+    001167  55   000075 000116 
+    001170  aa   000004 000000 
+    001171  55   000075 000124 
+    001172  aa   000004 000000 
+    001173  55   000075 000121 
+    001174  aa   000004 000000 
+    001175  55   000075 000133 
+    001176  aa   000004 000000 
+    001177  55   000075 000127 
+    001200  aa   000004 000000 
+    001201  55   000100 000135 
+    001202  aa   000004 000000 
+    001203  55   000100 000141 
+    001204  aa   000004 000000 
+    001205  55   000100 000145 
+    001206  aa   000004 000000 
+    001207  55   000100 000150 
+    001210  aa   000004 000000 
+    001211  55   000100 000152 
+    001212  aa   000004 000000 
+    001213  55   000100 000154 
+    001214  aa   000004 000000 
+    001215  55   000100 000162 
+    001216  aa   000004 000000 
+    001217  55   000105 000173 
+    001220  aa   000004 000000 
+    001221  55   000105 000127 
+    001222  aa   000004 000000 
+    001223  55   000105 000116 
+    001224  aa   000004 000000 
+    001225  55   000105 000124 
+    001226  aa   000004 000000 
+    001227  55   000105 000121 
+    001230  aa   000004 000000 
+    001231  55   000105 000131 
+    001232  aa   000004 000000 
+    001233  55   000105 000133 
+    001234  aa   000004 000000 
+    001235  55   000111 000141 
+    001236  aa   000004 000000 
+    001237  55   000111 000135 
+    001240  aa   000004 000000 
+    001241  55   000111 000145 
+    001242  aa   000004 000000 
+    001243  55   000111 000150 
+    001244  aa   000004 000000 
+    001245  55   000111 000152 
+    001246  aa   000004 000000 
+    001247  55   000111 000154 
+    001250  aa   000004 000000 
+    001251  55   000111 000162 
+    001252  aa   000004 000000 
+    001253  55   000167 000116 
+    001254  aa   000004 000000 
+    001255  55   000167 000121 
+    001256  aa   000004 000000 
+    001257  55   000167 000124 
+    001260  aa   000004 000000 
+    001261  55   000167 000127 
+    001262  aa   000004 000000 
+    001263  55   000167 000131 
+    001264  aa   000004 000000 
+    001265  55   000167 000133 
+    001266  aa   000004 000000 
+    001267  55   000167 000135 
+    001270  aa   000004 000000 
+    001271  55   000167 000141 
+    001272  aa   000004 000000 
+    001273  55   000167 000145 
+    001274  aa   000004 000000 
+    001275  55   000167 000150 
+    001276  aa   000004 000000 
+    001277  55   000167 000152 
+    001300  aa   000004 000000 
+    001301  55   000167 000154 
+    001302  aa   000004 000000 
+    001303  55   000167 000162 
+    001304  aa   000004 000000 
+    001305  55   000176 000173 
+    001306  aa   000004 000000 
+    001307  55   000213 000202 
+    001310  aa   000004 000000 
+    001311  55   000213 000207 
+    001312  aa   000001 000000 
+    001313  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001314  5a   000216 000000 
+    001315  5a   000220 000000 
+    001316  5a   000222 000000 
+    001317  5a   000224 000000 
+    001320  5a   000226 000000 
+    001321  5a   000230 000000 
+    001322  5a   000232 000000 
+    001323  5a   000234 000000 
+    001324  5a   000236 000000 
+    001325  5a   000240 000000 
+    001326  5a   000242 000000 
+    001327  5a   000244 000000 
+    001330  5a   000246 000000 
+    001331  5a   000250 000000 
+    001332  5a   000252 000000 
+    001333  5a   000254 000000 
+    001334  5a   000256 000000 
+    001335  5a   000260 000000 
+    001336  5a   000262 000000 
+    001337  5a   000264 000000 
+    001340  5a   000266 000000 
+    001341  5a   000270 000000 
+    001342  5a   000272 000000 
+    001343  5a   000274 000000 
+    001344  5a   000276 000000 
+    001345  5a   000300 000000 
+    001346  5a   000302 000000 
+    001347  5a   000304 000000 
+    001350  5a   000306 000000 
+    001351  5a   000310 000000 
+    001352  5a   000312 000000 
+    001353  5a   000314 000000 
+    001354  5a   000316 000000 
+    001355  5a   000320 000000 
+    001356  5a   000322 000000 
+    001357  5a   000324 000000 
+    001360  5a   000326 000000 
+    001361  5a   000330 000000 
+    001362  5a   000332 000000 
+    001363  5a   000334 000000 
+    001364  5a   000336 000000 
+    001365  5a   000340 000000 
+    001366  5a   000342 000000 
+    001367  5a   000344 000000 
+    001370  5a   000346 000000 
+    001371  5a   000350 000000 
+    001372  5a   000352 000000 
+    001373  5a   000354 000000 
+    001374  5a   000356 000000 
+    001375  5a   000360 000000 
+    001376  5a   000362 000000 
+    001377  5a   000364 000000 
+    001400  5a   000366 000000 
+    001401  5a   000370 000000 
+    001402  5a   000372 000000 
+    001403  5a   000374 000000 
+    001404  5a   000376 000000 
+    001405  5a   000400 000000 
+    001406  5a   000402 000000 
+    001407  5a   000404 000000 
+    001410  5a   000406 000000 
+    001411  5a   000410 000000 
+    001412  5a   000412 000000 
+    001413  5a   000414 000000 
+    001414  5a   000416 000000 
+    001415  5a   000420 000000 
+    001416  5a   000422 000000 
+    001417  5a   000424 000000 
+    001420  5a   000426 000000 
+    001421  5a   000430 000000 
+    001422  5a   000432 000000 
+    001423  5a   000434 000000 
+    001424  5a   000436 000000 
+    001425  5a   000440 000000 
+    001426  5a   000442 000000 
+    001427  5a   000444 000000 
+    001430  5a   000446 000000 
+    001431  5a   000450 000000 
+    001432  5a   000452 000000 
+    001433  5a   000454 000000 
+    001434  5a   000456 000000 
+    001435  5a   000460 000000 
+    001436  5a   000462 000000 
+    001437  5a   000464 000000 
+    001440  5a   000466 000000 
+    001441  5a   000470 000000 
+    001442  5a   000472 000000 
+    001443  5a   000474 000000 
+    001444  5a   000476 000000 
+    001445  5a   000500 000000 
+    001446  5a   000502 000000 
+    001447  5a   000504 000000 
+    001450  5a   000506 000000 
+    001451  5a   000510 000000 
+    001452  5a   000512 000000 
+    001453  5a   000514 000000 
+    001454  5a   000516 000000 
+    001455  5a   000520 000000 
+    001456  5a   000522 000000 
+    001457  5a   000524 000000 
+    001460  5a   000526 000000 
+    001461  5a   000530 000000 
+    001462  5a   000532 000000 
+    001463  5a   000534 000000 
+    001464  5a   000536 000000 
+    001465  5a   000540 000000 
+    001466  5a   000542 000000 
+    001467  5a   000544 000000 
+    001470  5a   000546 000000 
+    001471  5a   000550 000000 
+    001472  5a   000552 000000 
+    001473  5a   000554 000000 
+    001474  5a   000556 000000 
+    001475  5a   000560 000000 
+    001476  5a   000562 000000 
+    001477  5a   000564 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000524 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000360 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         tty_index|init_channel
+    000011  5a   000753 0000 00
+    000012  9a   777766 0000 46         tty_index|terminate_channel
+    000013  5a   000752 0000 00
+    000014  9a   777764 0000 46         tty_interrupt|interrupt
+    000015  5a   000751 0000 00
+    000016  9a   777762 0000 46         fnp_multiplexer|init_multiplexer
+    000017  5a   000750 0000 00
+    000020  9a   777760 0000 46         fnp_multiplexer|terminate_multiplexer
+    000021  5a   000747 0000 00
+    000022  9a   777756 0000 46         fnp_multiplexer|start
+    000023  5a   000746 0000 00
+    000024  9a   777754 0000 46         fnp_multiplexer|stop
+    000025  5a   000745 0000 00
+    000026  9a   777752 0000 46         fnp_multiplexer|shutdown
+    000027  5a   000744 0000 00
+    000030  9a   777750 0000 46         fnp_multiplexer|priv_control
+    000031  5a   000743 0000 00
+    000032  9a   777746 0000 46         fnp_multiplexer|hpriv_control
+    000033  5a   000742 0000 00
+    000034  9a   777744 0000 46         fnp_multiplexer|read
+    000035  5a   000741 0000 00
+    000036  9a   777742 0000 46         fnp_multiplexer|write
+    000037  5a   000740 0000 00
+    000040  9a   777740 0000 46         fnp_multiplexer|control
+    000041  5a   000737 0000 00
+    000042  9a   777736 0000 46         fnp_multiplexer|set_modes
+    000043  5a   000736 0000 00
+    000044  9a   777734 0000 46         fnp_multiplexer|check_modes
+    000045  5a   000735 0000 00
+    000046  9a   777732 0000 46         fnp_multiplexer|get_modes
+    000047  5a   000734 0000 00
+    000050  9a   777730 0000 46         priv_polled_vip_mpx|init_multiplexer
+    000051  5a   000733 0000 00
+    000052  9a   777726 0000 46         priv_polled_vip_mpx|terminate_multiplexer
+    000053  5a   000732 0000 00
+    000054  9a   777724 0000 46         priv_polled_vip_mpx|start
+    000055  5a   000731 0000 00
+    000056  9a   777722 0000 46         priv_polled_vip_mpx|stop
+    000057  5a   000730 0000 00
+    000060  9a   777720 0000 46         priv_polled_vip_mpx|shutdown
+    000061  5a   000727 0000 00
+    000062  9a   777716 0000 46         priv_polled_vip_mpx|hpriv_control
+    000063  5a   000726 0000 00
+    000064  9a   777714 0000 46         priv_polled_vip_mpx|priv_control
+    000065  5a   000725 0000 00
+    000066  9a   777712 0000 46         polled_vip_mpx|read
+    000067  5a   000724 0000 00
+    000070  9a   777710 0000 46         polled_vip_mpx|write
+    000071  5a   000723 0000 00
+    000072  9a   777706 0000 46         polled_vip_mpx|check_modes
+    000073  5a   000722 0000 00
+    000074  9a   777704 0000 46         polled_vip_mpx|set_modes
+    000075  5a   000721 0000 00
+    000076  9a   777702 0000 46         polled_vip_mpx|get_modes
+    000077  5a   000720 0000 00
+    000100  9a   777700 0000 46         polled_vip_mpx|control
+    000101  5a   000717 0000 00
+    000102  9a   777676 0000 46         polled_vip_mpx|interrupt
+    000103  5a   000716 0000 00
+    000104  9a   777674 0000 46         priv_ibm3270_mpx|init_multiplexer
+    000105  5a   000715 0000 00
+    000106  9a   777672 0000 46         priv_ibm3270_mpx|terminate_multiplexer
+    000107  5a   000714 0000 00
+    000110  9a   777670 0000 46         priv_ibm3270_mpx|start
+    000111  5a   000713 0000 00
+    000112  9a   777666 0000 46         priv_ibm3270_mpx|stop
+    000113  5a   000712 0000 00
+    000114  9a   777664 0000 46         priv_ibm3270_mpx|shutdown
+    000115  5a   000711 0000 00
+    000116  9a   777662 0000 46         priv_ibm3270_mpx|priv_control
+    000117  5a   000710 0000 00
+    000120  9a   777660 0000 46         priv_ibm3270_mpx|hpriv_control
+    000121  5a   000707 0000 00
+    000122  9a   777656 0000 46         ibm3270_mpx|control
+    000123  5a   000706 0000 00
+    000124  9a   777654 0000 46         ibm3270_mpx|read
+    000125  5a   000705 0000 00
+    000126  9a   777652 0000 46         ibm3270_mpx|check_modes
+    000127  5a   000704 0000 00
+    000130  9a   777650 0000 46         ibm3270_mpx|set_modes
+    000131  5a   000703 0000 00
+    000132  9a   777646 0000 46         ibm3270_mpx|get_modes
+    000133  5a   000702 0000 00
+    000134  9a   777644 0000 46         ibm3270_mpx|write
+    000135  5a   000701 0000 00
+    000136  9a   777642 0000 46         ibm3270_mpx|interrupt
+    000137  5a   000700 0000 00
+    000140  9a   777640 0000 46         lap_simplex|init_multiplexer
+    000141  5a   000677 0000 00
+    000142  9a   777636 0000 46         lap_simplex|terminate_multiplexer
+    000143  5a   000676 0000 00
+    000144  9a   777634 0000 46         lap_simplex|start
+    000145  5a   000675 0000 00
+    000146  9a   777632 0000 46         lap_simplex|stop
+    000147  5a   000674 0000 00
+    000150  9a   777630 0000 46         lap_simplex|shutdown
+    000151  5a   000673 0000 00
+    000152  9a   777626 0000 46         lap_simplex|hpriv_control
+    000153  5a   000672 0000 00
+    000154  9a   777624 0000 46         lap_simplex|priv_control
+    000155  5a   000671 0000 00
+    000156  9a   777622 0000 46         lap_simplex|control
+    000157  5a   000670 0000 00
+    000160  9a   777620 0000 46         lap_simplex|check_modes
+    000161  5a   000667 0000 00
+    000162  9a   777616 0000 46         lap_simplex|set_modes
+    000163  5a   000666 0000 00
+    000164  9a   777614 0000 46         lap_simplex|get_modes
+    000165  5a   000665 0000 00
+    000166  9a   777612 0000 46         lap_simplex|write
+    000167  5a   000664 0000 00
+    000170  9a   777610 0000 46         lap_simplex|interrupt
+    000171  5a   000663 0000 00
+    000172  9a   777606 0000 46         priv_x25_mpx|init_multiplexer
+    000173  5a   000662 0000 00
+    000174  9a   777604 0000 46         priv_x25_mpx|terminate_multiplexer
+    000175  5a   000661 0000 00
+    000176  9a   777602 0000 46         priv_x25_mpx|start
+    000177  5a   000660 0000 00
+    000200  9a   777600 0000 46         priv_x25_mpx|stop
+    000201  5a   000657 0000 00
+    000202  9a   777576 0000 46         priv_x25_mpx|shutdown
+    000203  5a   000656 0000 00
+    000204  9a   777574 0000 46         priv_x25_mpx|hpriv_control
+    000205  5a   000655 0000 00
+    000206  9a   777572 0000 46         priv_x25_mpx|priv_control
+    000207  5a   000654 0000 00
+    000210  9a   777570 0000 46         x25_mpx|control
+    000211  5a   000653 0000 00
+    000212  9a   777566 0000 46         x25_mpx|check_modes
+    000213  5a   000652 0000 00
+    000214  9a   777564 0000 46         x25_mpx|set_modes
+    000215  5a   000651 0000 00
+    000216  9a   777562 0000 46         x25_mpx|get_modes
+    000217  5a   000650 0000 00
+    000220  9a   777560 0000 46         x25_mpx|write
+    000221  5a   000647 0000 00
+    000222  9a   777556 0000 46         x25_mpx|interrupt
+    000223  5a   000646 0000 00
+    000224  9a   777554 0000 46         sty_mpx|init_multiplexer
+    000225  5a   000645 0000 00
+    000226  9a   777552 0000 46         sty_mpx|terminate_multiplexer
+    000227  5a   000644 0000 00
+    000230  9a   777550 0000 46         sty_mpx|start
+    000231  5a   000643 0000 00
+    000232  9a   777546 0000 46         sty_mpx|stop
+    000233  5a   000642 0000 00
+    000234  9a   777544 0000 46         sty_mpx|shutdown
+    000235  5a   000641 0000 00
+    000236  9a   777542 0000 46         sty_mpx|read
+    000237  5a   000640 0000 00
+    000240  9a   777540 0000 46         sty_mpx|write
+    000241  5a   000637 0000 00
+    000242  9a   777536 0000 46         sty_mpx|control
+    000243  5a   000636 0000 00
+    000244  9a   777534 0000 46         sty_mpx|get_modes
+    000245  5a   000635 0000 00
+    000246  9a   777532 0000 46         sty_mpx|set_modes
+    000247  5a   000634 0000 00
+    000250  9a   777530 0000 46         sty_mpx|check_modes
+    000251  5a   000633 0000 00
+    000252  9a   777526 0000 46         priv_hasp_mpx|init_multiplexer
+    000253  5a   000632 0000 00
+    000254  9a   777524 0000 46         priv_hasp_mpx|terminate_multiplexer
+    000255  5a   000631 0000 00
+    000256  9a   777522 0000 46         priv_hasp_mpx|start
+    000257  5a   000630 0000 00
+    000260  9a   777520 0000 46         priv_hasp_mpx|stop
+    000261  5a   000627 0000 00
+    000262  9a   777516 0000 46         priv_hasp_mpx|shutdown
+    000263  5a   000626 0000 00
+    000264  9a   777514 0000 46         priv_hasp_mpx|priv_control
+    000265  5a   000625 0000 00
+    000266  9a   777512 0000 46         priv_hasp_mpx|hpriv_control
+    000267  5a   000624 0000 00
+    000270  9a   777510 0000 46         hasp_mpx|read
+    000271  5a   000623 0000 00
+    000272  9a   777506 0000 46         hasp_mpx|write
+    000273  5a   000622 0000 00
+    000274  9a   777504 0000 46         hasp_mpx|interrupt
+    000275  5a   000621 0000 00
+    000276  9a   777502 0000 46         hasp_mpx|control
+    000277  5a   000620 0000 00
+    000300  9a   777500 0000 46         hasp_mpx|check_modes
+    000301  5a   000617 0000 00
+    000302  9a   777476 0000 46         hasp_mpx|set_modes
+    000303  5a   000616 0000 00
+    000304  9a   777474 0000 46         hasp_mpx|get_modes
+    000305  5a   000615 0000 00
+    000306  9a   777472 0000 46         uncp_multiplexer|init_multiplexer
+    000307  5a   000614 0000 00
+    000310  9a   777470 0000 46         uncp_multiplexer|terminate_multiplexer
+    000311  5a   000613 0000 00
+    000312  9a   777466 0000 46         uncp_multiplexer|start
+    000313  5a   000612 0000 00
+    000314  9a   777464 0000 46         uncp_multiplexer|stop
+    000315  5a   000611 0000 00
+    000316  9a   777462 0000 46         uncp_multiplexer|shutdown
+    000317  5a   000610 0000 00
+    000320  9a   777460 0000 46         uncp_multiplexer|priv_control
+    000321  5a   000607 0000 00
+    000322  9a   777456 0000 46         uncp_multiplexer|hpriv_control
+    000323  5a   000606 0000 00
+    000324  9a   777454 0000 46         uncp_multiplexer|read
+    000325  5a   000605 0000 00
+    000326  9a   777452 0000 46         uncp_multiplexer|write
+    000327  5a   000604 0000 00
+    000330  9a   777450 0000 46         uncp_multiplexer|control
+    000331  5a   000603 0000 00
+    000332  9a   777446 0000 46         uncp_multiplexer|set_modes
+    000333  5a   000602 0000 00
+    000334  9a   777444 0000 46         uncp_multiplexer|check_modes
+    000335  5a   000601 0000 00
+    000336  9a   777442 0000 46         uncp_multiplexer|get_modes
+    000337  5a   000600 0000 00
+    000340  9a   777440 0000 46         protocol_mpx|init_multiplexer
+    000341  5a   000577 0000 00
+    000342  9a   777436 0000 46         protocol_mpx|terminate_multiplexer
+    000343  5a   000576 0000 00
+    000344  9a   777434 0000 46         protocol_mpx|start
+    000345  5a   000575 0000 00
+    000346  9a   777432 0000 46         protocol_mpx|stop
+    000347  5a   000574 0000 00
+    000350  9a   777430 0000 46         protocol_mpx|shutdown
+    000351  5a   000573 0000 00
+    000352  9a   777426 0000 46         protocol_mpx|priv_control
+    000353  5a   000572 0000 00
+    000354  9a   777424 0000 46         protocol_mpx|hpriv_control
+    000355  5a   000571 0000 00
+    000356  9a   777422 0000 46         protocol_mpx|interrupt
+    000357  5a   000570 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   257661 116341 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000336 
+    000020  aa   000000 000105 
+    000021  aa   000221 000147 
+    000022  aa   000330 000105 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000051 
+    000067  aa   175453 020773 
+    000070  aa   000000 117547 
+    000071  aa   207521 200000 
+    000072  aa   076163 160145          >special_ldd>install>MR12.3-1114>cmtv.alm
+    000073  aa   143151 141154 
+    000074  aa   137154 144144 
+    000075  aa   076151 156163 
+    000076  aa   164141 154154 
+    000077  aa   076115 122061 
+    000100  aa   062056 063055 
+    000101  aa   061061 061064 
+    000102  aa   076143 155164 
+    000103  aa   166056 141154 
+    000104  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         427    .check_modes.            cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .check_modes_incr        cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         357    .control.                cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .control_incr            cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+          12    .cur_index               cmtv:         295,  300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .cxi_index               cmtv:         295,  411.
+           2    .fnp_index               cmtv:         295,  315,  411.
+         453    .get_modes.              cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .get_modes_incr          cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+          10    .hasp_index              cmtv:         295,  385,  411.
+         263    .hpriv_control.          cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .hpriv_control_incr      cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+           4    .ibm3270_index           cmtv:         295,  347,  411.
+          23    .init_channel.           cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .init_channel_incr       cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+          73    .init_multiplexer.       cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .init_multiplexer_incr   cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         477    .interrupt.              cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .interrupt_incr          cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+           5    .lap_index               cmtv:         295,  355,  411.
+         237    .priv_control.           cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .priv_control_incr       cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+          12    .protocol_index          cmtv:         295,  410,  411.
+         307    .read.                   cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .read_incr               cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         403    .set_modes.              cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .set_modes_incr          cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         213    .shutdown.               cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .shutdown_incr           cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         143    .start.                  cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .start_incr              cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         167    .stop.                   cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .stop_incr               cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+           7    .sty_index               cmtv:         295,  374,  411.
+           0    .system1_index           cmtv:         295,  411.
+          47    .terminate_channel.      cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .terminate_channel_incr  cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+         117    .terminate_multiplexer.  cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           0    .terminate_multiplexer_incr    cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+           0    .text.                   cmtv:         411.
+           1    .tty_index               cmtv:         295,  300,  411.
+          11    .uncp_index              cmtv:         295,  400,  411.
+           0    .user1_index             cmtv:         295,  411.
+           0    .user2_index             cmtv:         295,  411.
+           0    .user3_index             cmtv:         295,  411.
+           0    .user4_index             cmtv:         295,  411.
+           0    .user5_index             cmtv:         295,  411.
+           3    .vip7760_index           cmtv:         295,  331,  411.
+         333    .write.                  cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410,  411.
+           2    .write_incr              cmtv:         300,  315,  331,  347,  355,  368,  374,  385,  400,  410.
+           6    .x25_index               cmtv:         295,  368,  411.
+                check_modes              cmtv:         315,  331,  347,  355,  368,  374,  385,  400.
+           0    cmtv                     cmtv:         411.
+                control                  cmtv:         315,  331,  347,  355,  368,  374,  385,  400.
+                fnp_multiplexer          cmtv:         315.
+                get_modes                cmtv:         315,  331,  347,  355,  368,  374,  385,  400.
+                hasp_mpx                 cmtv:         385.
+                hpriv_control            cmtv:         315,  331,  347,  355,  368,  385,  400,  410.
+                ibm3270_mpx              cmtv:         347.
+                init_channel             cmtv:         300.
+                init_multiplexer         cmtv:         315,  331,  347,  355,  368,  374,  385,  400,  410.
+                interrupt                cmtv:         300,  331,  347,  355,  368,  385,  410.
+                lap_simplex              cmtv:         355.
+                polled_vip_mpx           cmtv:         331.
+                priv_control             cmtv:         315,  331,  347,  355,  368,  385,  400,  410.
+                priv_hasp_mpx            cmtv:         385.
+                priv_ibm3270_mpx         cmtv:         347.
+                priv_polled_vip_mpx      cmtv:         331.
+                priv_x25_mpx             cmtv:         368.
+                protocol_mpx             cmtv:         410.
+                read                     cmtv:         315,  331,  347,  374,  385,  400.
+                set_modes                cmtv:         315,  331,  347,  355,  368,  374,  385,  400.
+                shutdown                 cmtv:         315,  331,  347,  355,  368,  374,  385,  400,  410.
+                start                    cmtv:         315,  331,  347,  355,  368,  374,  385,  400,  410.
+                stop                     cmtv:         315,  331,  347,  355,  368,  374,  385,  400,  410.
+                sty_mpx                  cmtv:         374.
+                terminate_channel        cmtv:         300.
+                terminate_multiplexer    cmtv:         315,  331,  347,  355,  368,  374,  385,  400,  410.
+                tty_index                cmtv:         300.
+                tty_interrupt            cmtv:         300.
+                uncp_multiplexer         cmtv:         400.
+                write                    cmtv:         315,  331,  347,  355,  368,  374,  385,  400.
+                x25_mpx                  cmtv:         368.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

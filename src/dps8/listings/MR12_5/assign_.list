@@ -1,0 +1,1498 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>assign_.alm                                                                                                                                          
+ASSEMBLED ON:	11/11/89  0950.5 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************************
+                                     2  " *                                                    *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987           *
+                                     4  " *                                                    *
+                                     5  " * Copyright (c) 1987 by Massachusetts Institute of   *
+                                     6  " * Technology and Honeywell Information Systems, Inc. *
+                                     7  " *                                                    *
+                                     8  " * Copyright (c) 1972 by Massachusetts Institute of   *
+                                     9  " * Technology and Honeywell Information Systems, Inc. *
+                                    10  " *                                                    *
+                                    11  " ******************************************************
+                                    12  
+                                    13  "
+                                    14  "	Modified: 01/04/79 by PCK to fix bug 1809
+                                    15  "	Modified: 12 July 79 by JRD to add computational_ entry pt.
+                                    16  "	Modified: 12 Nov 79 by JRD fix overpunched table entries
+                                    17  
+                                    18  "     Following 23 Jan 84 Modifications covered by MTB672
+                                    19  
+                                    20  "	Modified: 23 Jan 84 by TGO fix get_picture_type (pict_type_to_etype has length 0)
+                                    21  "	Modified: 23 Jan 84 by TGO update computational_ to use re-written
+                                    22  "	     any_to_any_ which understands uns, ts_overp, ls_overp.
+                                    23  "	Modified: 23 Jan 84 by TGO to use desc9a, rather than desc6a.
+                                    24  "	Modified: 23 Jan 84 by TGO to recover lp correctly using * tag modification
+                                    25  "	Modified: 23 Jan 84 by TGO to utilize picture's precision and scale
+                                    26  "	     for ata call.  Otherwise we blow conversion to common type.
+                                    27  
+                        000000      28  	entry	arith_to_char_
+                        000000      29  	entry	arith_to_bit_
+                        000036      30  	entry	bit_to_char_
+                        000036      31  	entry	char_to_bit_
+                        000062      32  	entry	arith_to_arith_
+                        000110      33  	entry	char_to_arith_
+                        000110      34  	entry	bit_to_arith_
+                        000135      35  	entry	assign_
+                        000172      36  	entry	assign_round_
+                        000174      37  	entry	assign_truncate_
+                        000176      38  	entry	char_to_numeric_
+                        000226      39  	entry	computational_
+                                    40  "
+                                    41  	tempd	work(100)
+                                    42  
+                                    43  " the following temps are only used by the computational_ entry pt.
+                                    44  " although I dont object if others use them, too.
+                                    45  "
+                                    46  	temp	src_temp(256)	"if source must go to int. form
+                                    47  	temp	tar_temp(256)	"if target must go to int. form
+                                    48  	temp	type_save		"save internal type of target
+                                    49  	temp	temp1		"a temp target for EIS instructions
+                                    50  	tempd	str_ptr_save	"save one of the structure ptrs
+                                    51  	tempd	arglist(4)	"for calling picture conversion  utils
+                                    52  "Include Files
+                                    53  	include	stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                    54  	include	stack_headerConversion Calls.
+                                   2-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   2-2  "
+                                   2-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   2-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   2-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   2-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   2-7  
+                                   2-8  " HISTORY COMMENTS:
+                                   2-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  2-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  2-11  "     added the heap_header_ptr definition
+                                  2-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  2-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  2-14  "     Modified to support control point management.  These changes were
+                                  2-15  "     actually made in February 1985 by G. Palter.
+                                  2-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  2-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  2-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  2-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  2-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  2-21  "     cpm_data_ptr (ITS pair).
+                                  2-22  "                                                      END HISTORY COMMENTS
+                                  2-23  
+                        000004    2-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    2-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  2-26  
+                        000010    2-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    2-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    2-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    2-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    2-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    2-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    2-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    2-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  2-35  
+                        000020    2-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    2-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    2-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    2-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  2-40  
+                        000030    2-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    2-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    2-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    2-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  2-45  
+                        000040    2-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    2-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    2-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    2-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  2-50  
+                        000050    2-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    2-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    2-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    2-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  2-55  
+                        000060    2-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    2-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    2-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    2-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    2-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    2-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    2-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    2-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    2-64  	equ	stack_header_end,64			length of stack header
+                                  2-65  
+                                  2-66  
+                                  2-67  
+                                  2-68  
+                        000000    2-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    2-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  2-71  
+                                  2-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  2-73  "	It  references a  transfer vector table.
+                                  2-74  
+                        000551    2-75  	bool	tv_offset,551
+                                  2-76  
+                                  2-77  
+                                  2-78  "	The  following constants are offsets within this transfer vector table.
+                                  2-79  
+                        001170    2-80  	equ	call_offset,tv_offset+271
+                        001171    2-81  	equ	push_offset,tv_offset+272
+                        001172    2-82  	equ	return_offset,tv_offset+273
+                        001173    2-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    2-84  	equ	entry_offset,tv_offset+275
+                                  2-85  
+                                  2-86  
+                                  2-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                    55  
+                                    56  
+    000000                          57  arith_to_char_:
+    000000                          58  arith_to_bit_:
+    000000  aa   001400 6270 00     59  	push
+    000001  aa  7 00040 2721 20
+    000002  aa   000200 2350 07     60  	lda	stack_frame.support_bit,dl
+    000003  aa  6 00020 2551 00     61  	orsa	sp|stack_frame.flag_word
+    000004  aa  0 00004 2351 20     62  	lda	0|4,*		target descriptor
+    000005  aa   000034 7730 00     63  	lrl	28
+    000006  aa   000177 3750 07     64  	ana	=o177,dl
+    000007  aa   000000 6260 05     65  	eax6	0,al
+    000010  aa   000000 2350 07     66  	lda	0,dl
+    000011  aa   000004 7360 00     67  	qls	4
+    000012  aa   000030 7370 00     68  	lls	24
+    000013  aa  6 00050 7551 00     69  	sta	work
+    000014  aa  0 00010 2351 20     70  	lda	0|8,*		source descriptor
+    000015  aa   000034 7730 00     71  	lrl	28
+    000016  aa   000177 3750 07     72  	ana	=o177,dl
+    000017  aa   000000 6270 05     73  	eax7	0,al
+    000020  aa   000050 7370 00     74  	lls	28+12
+    000021  aa   000030 7330 00     75  	lrs	24
+    000022  aa   000006 7320 00     76  	qrs	6
+    000023  aa   000022 7370 00     77  	lls	18
+    000024  aa  6 00051 7551 00     78  go:	sta	work+1
+    000025  aa  0 00002 3515 20     79  	epp1	0|2,*		target
+    000026  aa  0 00006 3535 20     80  	epp3	0|6,*		source
+    000027  aa  6 00050 3715 00     81  	epp5	work
+    000030  0a   000030 3520 00     82  	epp2	*
+    000031  aa  6 00046 2525 00     83  	spbp2	sp|38		text base ptr
+    000032  aa  6 00050 2371 00     84  	ldaq	work
+    000033  4a  4 00010 7001 20     85  	tsx0	lp|ata,*
+    000034  aa  6 00000 3731 00     86  	epbp7	sp|0
+    000035  aa  7 00042 7101 20     87  	return
+                                    88  
+                                    89  
+                                    90  
+                                    91  
+    000036                          92  bit_to_char_:
+    000036                          93  char_to_bit_:
+    000036  aa   001400 6270 00     94  	push
+    000037  aa  7 00040 2721 20
+    000040  aa   000200 2350 07     95  	lda	stack_frame.support_bit,dl
+    000041  aa  6 00020 2551 00     96  	orsa	sp|stack_frame.flag_word
+    000042  aa  0 00004 2351 20     97  	lda	0|4,*		target descriptor
+    000043  aa   000034 7730 00     98  	lrl	28
+    000044  aa   000177 3750 07     99  	ana	=o177,dl
+    000045  aa   000000 6260 05    100  	eax6	0,al
+    000046  aa   000000 2350 07    101  	lda	0,dl
+    000047  aa   000004 7360 00    102  	qls	4
+    000050  aa   000030 7370 00    103  	lls	24
+    000051  aa  6 00050 7551 00    104  	sta	work
+    000052  aa  0 00010 2351 20    105  	lda	0|8,*		source descriptor
+    000053  aa   000034 7730 00    106  	lrl	28
+    000054  aa   000177 3750 07    107  	ana	=o177,dl
+    000055  aa   000000 6270 05    108  	eax7	0,al
+    000056  aa   000000 2350 07    109  	lda	0,dl
+    000057  aa   000004 7360 00    110  	qls	4
+    000060  aa   000030 7370 00    111  	lls	24
+    000061  0a   000024 7100 00    112  	tra	go
+                                   113  "
+                                   114  
+                                   115  
+                                   116  
+    000062                         117  arith_to_arith_:
+    000062  aa   001400 6270 00    118  	push
+    000063  aa  7 00040 2721 20
+    000064  aa   000200 2350 07    119  	lda	stack_frame.support_bit,dl
+    000065  aa  6 00020 2551 00    120  	orsa	sp|stack_frame.flag_word
+    000066  aa  0 00004 2351 20    121  	lda	0|4,*		target descriptor
+    000067  aa   000034 7730 00    122  	lrl	28
+    000070  aa   000177 3750 07    123  	ana	=o177,dl
+    000071  aa   000000 6260 05    124  	eax6	0,al
+    000072  aa   000050 7370 00    125  	lls	28+12
+    000073  aa   000030 7330 00    126  	lrs	24
+    000074  aa   000006 7320 00    127  	qrs	6
+    000075  aa   000022 7370 00    128  	lls	18
+    000076  aa  6 00050 7551 00    129  	sta	work
+    000077  aa  0 00010 2351 20    130  	lda	0|8,*		source descriptor
+    000100  aa   000034 7730 00    131  	lrl	28
+    000101  aa   000177 3750 07    132  	ana	=o177,dl
+    000102  aa   000000 6270 05    133  	eax7	0,al
+    000103  aa   000050 7370 00    134  	lls	28+12
+    000104  aa   000030 7330 00    135  	lrs	24
+    000105  aa   000006 7320 00    136  	qrs	6
+    000106  aa   000022 7370 00    137  	lls	18
+    000107  0a   000024 7100 00    138  	tra	go
+                                   139  
+                                   140  
+                                   141  
+                                   142  
+    000110                         143  char_to_arith_:
+    000110                         144  bit_to_arith_:
+    000110  aa   001400 6270 00    145  	push
+    000111  aa  7 00040 2721 20
+    000112  aa   000200 2350 07    146  	lda	stack_frame.support_bit,dl
+    000113  aa  6 00020 2551 00    147  	orsa	sp|stack_frame.flag_word
+    000114  aa  0 00004 2351 20    148  	lda	0|4,*		target descriptor
+    000115  aa   000034 7730 00    149  	lrl	28
+    000116  aa   000177 3750 07    150  	ana	=o177,dl
+    000117  aa   000000 6260 05    151  	eax6	0,al
+    000120  aa   000050 7370 00    152  	lls	28+12
+    000121  aa   000030 7330 00    153  	lrs	24
+    000122  aa   000006 7320 00    154  	qrs	6
+    000123  aa   000022 7370 00    155  	lls	18
+    000124  aa  6 00050 7551 00    156  	sta	work
+    000125  aa  0 00010 2351 20    157  	lda	0|8,*		source descriptor
+    000126  aa   000034 7730 00    158  	lrl	28
+    000127  aa   000177 3750 07    159  	ana	=o177,dl
+    000130  aa   000000 6270 05    160  	eax7	0,al
+    000131  aa   000000 2350 07    161  	lda	0,dl
+    000132  aa   000004 7360 00    162  	qls	4
+    000133  aa   000030 7370 00    163  	lls	24
+    000134  0a   000024 7100 00    164  	tra	go
+                                   165  "
+                                   166  
+                                   167  
+    000135  2a   000010 6200 00    168  assign_:	eax0	ata
+    000136  aa   001400 6270 00    169  	push
+    000137  aa  7 00040 2721 20
+    000140  aa   000200 2350 07    170  	lda	stack_frame.support_bit,dl
+    000141  aa  6 00020 2551 00    171  	orsa	sp|stack_frame.flag_word
+    000142  aa  0 00004 7261 20    172  	lxl6	ap|4,*		target type
+    000143  aa  0 00012 7271 20    173  	lxl7	ap|10,*		source type
+    000144  aa  0 00006 2351 20    174  	lda	ap|6,*		target length
+    000145  aa  0 00014 2361 20    175  	ldq	ap|12,*		source length
+    000146  aa  0 00002 3515 20    176  	epp1	ap|2,*		target ptr
+    000147  aa  1 00000 3515 20    177  	epp1	1|0,*
+    000150  aa  0 00010 3535 20    178  	epp3	ap|8,*		source ptr
+    000151  aa  3 00000 3535 20    179  	epp3	3|0,*
+    000152  aa  6 00050 3715 00    180  	epp5	work
+    000153  aa   000000 0664 16    181  	cmpb	(x6),(0)		is target varying
+    000154  0a   000221 000001     182  	descb	varying_info,1
+    000155  aa   000000 000000     183  	zero
+    000156  aa   000002 6000 04    184  	tze	2,ic
+    000157  aa  1 00001 3515 00    185  	epp1	1|1		yes, skip over length
+    000160  aa   000000 0664 17    186  	cmpb	(x7),(0)		is source varying
+    000161  0a   000221 000001     187  	descb	varying_info,1
+    000162  aa   000000 000000     188  	zero
+    000163  aa   000002 6000 04    189  	tze	2,ic
+    000164  aa  3 00001 3535 00    190  	epp3	3|1		yes, skip over length
+    000165  0a   000165 3520 00    191  	epp2	*
+    000166  aa  6 00046 2525 00    192  	spbp2	sp|38
+    000167  aa  4 00000 7001 30    193  	tsx0	lp|0,0*
+    000170  aa  6 00000 3731 00    194  	epbp7	sp|0
+    000171  aa  7 00042 7101 20    195  	return
+                                   196  "
+    000172                         197  assign_round_:
+    000172  2a   000012 6200 00    198  	eax0	ata_round
+    000173  0a   000136 7100 00    199  	tra	assign_+1
+                                   200  "
+    000174                         201  assign_truncate_:
+    000174  2a   000014 6200 00    202  	eax0	ata_truncate
+    000175  0a   000136 7100 00    203  	tra	assign_+1
+                                   204  "
+    000176                         205  char_to_numeric_:
+    000176  aa   001400 6270 00    206  	push
+    000177  aa  7 00040 2721 20
+    000200  aa   000200 2350 07    207  	lda	stack_frame.support_bit,dl
+    000201  aa  6 00020 2551 00    208  	orsa	sp|stack_frame.flag_word
+    000202  aa  0 00010 3535 20    209  	epp3	ap|8,*		source ptr
+    000203  aa  3 00000 3535 20    210  	epp3	3|0,*
+    000204  aa  0 00002 3515 20    211  	epp1	ap|2,*		target ptr
+    000205  aa  1 00000 3515 20    212  	epp1	1|0,*
+    000206  aa  0 00012 2361 20    213  	ldq	ap|10,*		source length
+    000207  aa  6 00050 3715 00    214  	epp5	work
+    000210  0a   000210 3520 00    215  	epp2	*
+    000211  aa  6 00046 2525 00    216  	spbp2	sp|38
+    000212  4a  4 00016 7001 20    217  	tsx0	lp|ctn_link,*
+    000213  aa  6 00000 3731 00    218  	epbp7	sp|0
+    000214  aa  6 00032 3501 20    219  	epp0	sp|26,*
+    000215  aa  0 00006 7551 20    220  	sta	ap|6,*		precision & scale
+    000216  aa  0 00004 4501 20    221  	stz	ap|4,*
+    000217  aa  0 00004 4471 20    222  	sxl7	ap|4,*		type
+    000220  aa  7 00042 7101 20    223  	return
+                                   224  "
+    000221                         225  varying_info:
+    000221  aa   000000 000000     226  	oct	0,031400000000,0
+    000222  aa   031400 000000 
+    000223  aa   000000 000000 
+                                   227  "
+                        000010     228  	link	ata,<any_to_any_>|[any_to_any_]
+                        000012     229  	link	ata_round,<any_to_any_>|[any_to_any_round_]
+                        000014     230  	link	ata_truncate,<any_to_any_>|[any_to_any_truncate_]
+                        000016     231  	link	ctn_link,<any_to_any_>|[char_to_numeric_]
+                                   232  
+                                   233  "
+                                   234  
+                                   235  " Convert any computational type to any other computational type
+                                   236  
+                                   237  " Most types are handled directly by any_to_any_, but certain types are
+                                   238  " handled by us.  If the source is "special" we convert it to a type that
+                                   239  " any_to_any_ can handle.  If the target is "special", we convert to a close
+                                   240  " type, then convert to final type ourself.
+                                   241  
+                                   242  " Because there is certain to be one call to any_to_any_, we need not worry
+                                   243  " about scale any_to_any_ will deal with it for us.
+                                   244  
+                                   245  
+                                   246  
+                        000002     247  	equ	target_str_ptr_arg,2	" offset from ap for arg
+                        000004     248  	equ	source_str_ptr_arg,4
+                        000006     249  	equ	error_code_arg,6
+                                   250  
+                                   251  "     The computational_ entry point has three arguments, the first
+                                   252  " two args, are each a structure given by computational_data.incl.pl1.  The
+                                   253  " last argument is a standard error code.
+                                   254  "
+                                   255  "     dcl 1 computational_data 	aligned based,
+                                   256  "           2 address		ptr aligned,
+                                   257  "           2 data_type		fixed bin (17),
+                                   258  "           2 flags			aligned,
+                                   259  "             3 packed		bit (1) unal,
+                                   260  "             3 pad			bit (35) unal,
+                                   261  "           2 prec_or_length		fixed bin (24),
+                                   262  "           2 scale			fixed bin (35),
+                                   263  "           2 picture_image_ptr	ptr aligned;
+                                   264  
+                                   265  "
+                        000000     266  	equ	address_offset,0
+                        000002     267  	equ	data_type_offset,2
+                        000003     268  	equ	flags_offset,3
+                        000004     269  	equ	prec_or_length_offset,4
+                        000005     270  	equ	scale_offset,5
+                        000006     271  	equ	picture_image_ptr_offset,6
+                                   272  
+                                   273  
+                                   274  
+                                   275  "REGISTER USAGE
+                                   276  				"x0 random
+                                   277  				"x1 random
+                                   278  				"x2 random
+                                   279  				"x3 random
+                        000004     280  	equ	maj_call,4	"x4 return offset for major subroutines
+                        000005     281  	equ	min_call,5	"x5 return offset for minor subroutines
+                        000006     282  	equ	tar_type,6	"x6 type code of target
+                        000007     283  	equ	src_type,7	"x7 type code of source
+                                   284  
+                                   285  				"pr0 is ap
+                        000001     286  	equ	tar_ptr,1		"pr1 -> target
+                        000002     287  	equ	src_str_pr,2	"pr2 -> source structure
+                        000003     288  	equ	src_ptr,3		"pr3 -> source
+                                   289  				"pr4 is lp
+                        000005     290  	equ	tar_str_pr,5	"pr5 -> target structure
+                                   291  				"pr6 is sp
+                                   292  				"pr7 is sb
+                                   293  
+                                   294  " A holds target precision, Q holds source precision
+                                   295  
+                                   296  
+                                   297  " There are two levels of subroutines in this program - major and minor.  Each
+                                   298  " level has a dedicated index register used for saving return linkage.  No "
+                                   299  " minor routine calls any other routine, no major routine calls any but a "
+                                   300  " minor routine.  Scale and precision for source and target are setup in the "
+                                   301  " target buffer, permitting special source/target handling to modify initial
+                                   302  " settings.  This is used for PICTURE processing.
+                                   303  
+                                   304  
+    000224                         305  arg_header:
+    000224  aa   000006 000004     306  	oct	000006000004		" 3 args, inter_seg call
+    000225  aa   000000 000000     307  	oct	0			" no descriptors
+                                   308  
+                                   309  
+                        000010     310  	link	ata,any_to_any_$any_to_any_
+                                   311  "Computational assignment/source
+                                   312  
+                                   313  "     This entry will accept any valid MULTICS type for a source or target,
+                                   314  "     including picture items.
+                                   315  
+                                   316  
+    000226                         317  computational_:
+    000226  aa   001400 6270 00    318  	push
+    000227  aa  7 00040 2721 20
+                                   319  
+    000230  aa  0 00006 4501 20    320  	stz	ap|error_code_arg,*			" optimism
+    000231  aa  0 00004 3521 20    321  	epp	src_str_pr,ap|source_str_ptr_arg,*	" ptr to arg (ptr to str)
+    000232  aa  2 00000 3521 20    322  	epp	src_str_pr,src_str_pr|0,*		" get ptr to str
+                                   323  
+    000233  aa  2 00002 7201 00    324  	lxl	0,src_str_pr|data_type_offset
+    000234  0a   000434 7050 00    325  	tsx	min_call,get_internal_type		"into x0
+                                   326  
+                                   327  "     Pre-set source precision and scale.
+                                   328  
+    000235  aa  2 00005 2361 00    329  	ldq	src_str_pr|scale_offset
+    000236  aa   000022 7360 00    330  	qls	18
+    000237  aa  2 00004 2761 00    331  	orq	src_str_pr|prec_or_length_offset
+    000240  aa  6 00761 7561 00    332  	stq	tar_temp+1			" save scale/prec
+    000241  aa  2 00000 3535 20    333  	epp	src_ptr,src_str_pr|address_offset,*
+    000242  0a   000305 7040 30    334  	tsx	maj_call,source_dispatch_table,x0*
+                                   335  
+                                   336  "source has been converted, if necessary
+                                   337  "src_ptr and src_type are LIVE - they must be preserved
+                                   338  "the prec and scale are that of the source
+                                   339  
+    000243  aa  0 00002 3715 20    340  	epp	tar_str_pr,ap|target_str_ptr_arg,*
+    000244  aa  5 00000 3715 20    341  	epp	tar_str_pr,tar_str_pr|0,*
+                                   342  
+    000245  aa  5 00002 7201 00    343  	lxl	0,tar_str_pr|data_type_offset
+    000246  0a   000434 7050 00    344  	tsx	min_call,get_internal_type
+    000247  aa  6 01360 7401 00    345  	stx	0,type_save
+                                   346  
+                                   347  "     Pre-set target precision and scale.
+                                   348  
+    000250  aa  5 00005 2351 00    349  	lda	tar_str_pr|scale_offset
+    000251  aa   000022 7350 00    350  	als	18			" get scale in high half
+    000252  aa  5 00004 2751 00    351  	ora	tar_str_pr|prec_or_length_offset	" this could be > 16383 for string
+    000253  aa  6 00760 7551 00    352  	sta	tar_temp
+    000254  aa  5 00000 3515 20    353  	epp	tar_ptr,tar_str_pr|address_offset,*
+    000255  0a   000311 7040 30    354  	tsx	maj_call,target_dispatch_table,x0*
+                                   355  
+                                   356  "tar_ptr and tar_type are LIVE
+                                   357  " it is known that any_to_any_ can handle what we have
+                                   358  "now set up for the call to any_to_any_
+                                   359  "
+                                   360  " pr1 -> target		pr3 -> source
+                                   361  "  x6    target type	 x7    source type
+                                   362  "   A    target encoded prec.   Q    source encoded prec
+                                   363  "                    pr5 -> work area
+                                   364  "
+                                   365  "  a data type to any_to_any_ is a standard Multics type * 2
+                                   366  " with the LSB set if the data is 'packed'
+                                   367  "    we must shift tar_type and src_type
+                                   368  
+    000256  aa  6 01361 7461 00    369  	stx	tar_type,temp1
+    000257  aa  6 01361 0261 00    370  	adlx	tar_type,temp1		" times 2
+    000260  aa  5 00003 2341 00    371  	szn	tar_str_pr|flags_offset	"packed is in MSB
+    000261  aa   000002 6050 04    372  	tpl	2,ic
+    000262  aa   000001 0660 03    373  	adx	tar_type,1,du		"set LSB for unaligned
+                                   374  
+    000263  aa  6 01361 7471 00    375  	stx	src_type,temp1
+    000264  aa  6 01361 0271 00    376  	adlx	src_type,temp1
+    000265  aa  2 00003 2341 00    377  	szn	src_str_pr|flags_offset
+    000266  aa   000002 6050 04    378  	tpl	2,ic
+    000267  aa   000001 0670 03    379  	adx	src_type,1,du
+                                   380  
+    000270  0a   000270 3714 00    381  	epp	5,*
+    000271  aa  6 00046 6511 00    382  	spbp	5,sp|38			"calling a pl1 operator!
+    000272  aa  6 00050 3715 00    383  	epp	5,work
+    000273  aa  6 00760 2351 00    384  	lda	tar_temp			" pick up target scale/len
+    000274  aa  6 00761 2361 00    385  	ldq	tar_temp+1		" pick up source scale/len
+    000275  4a  4 00010 7001 20    386  	tsx0	lp|ata,*			"use x0 for pl1_operator callProcessing after any_to_any_ conversion.
+                                   387  
+                                   388  "everything but ap and sp is now clobbered - recover
+                                   389  
+    000276  aa  6 00000 3731 00    390  	epbpsb	sp|0
+                                   391  
+    000277  aa  0 00002 3715 20    392  	epp	tar_str_pr,ap|target_str_ptr_arg,*
+    000300  aa  5 00000 3715 20    393  	epp	tar_str_pr,tar_str_pr|0,*
+    000301  aa  5 00004 2351 00    394  	lda	tar_str_pr|prec_or_length_offset
+    000302  aa  5 00000 3515 20    395  	epp	tar_ptr,tar_str_pr|address_offset,*
+    000303  aa  6 01360 2201 00    396  	ldx	0,type_save
+    000304  0a   000315 7100 30    397  	tra	final_dispatch_table,x0*
+                                   398  
+                                   399  
+                                   400  
+                                   401  "
+                                   402  "	here are the dispatch tables
+                                   403  "
+                                   404  
+                        000000     405  	equ	normal_,0
+                        000001     406  	equ	varying,1
+                        000002     407  	equ	picture,2
+                        000003     408  	equ	not_com,3
+                                   409  
+                                   410  
+    000305                         411  source_dispatch_table:
+    000305  0a   000325 0000 00    412  	arg normal_src			"any_to_any_ can handle it
+    000306  0a   000324 0000 00    413  	arg varying_src			"must bump address past varying word
+    000307  0a   000327 0000 00    414  	arg picture_src
+    000310  0a   000321 0000 00    415  	arg not_comput_type
+                                   416  
+    000311                         417  target_dispatch_table:
+    000311  0a   000371 0000 00    418  	arg normal_tar
+    000312  0a   000370 0000 00    419  	arg varying_tar
+    000313  0a   000373 0000 00    420  	arg picture_tar
+    000314  0a   000321 0000 00    421  	arg not_comput_type
+                                   422  
+    000315                         423  final_dispatch_table:
+    000315  0a   000413 0000 00    424  	arg just_go
+    000316  0a   000413 0000 00    425  	arg just_go
+    000317  0a   000414 0000 00    426  	arg cnv_to_picture
+    000320  0a   000321 0000 00    427  	arg not_comput_type
+                                   428  "Major processing routines.
+                                   429  
+                                   430  " Now come the major routines - first those that convert from source to
+                                   431  " intermediate.  Then those that prepare for any_to_any_ to convert to
+                                   432  " intermediate.  Then those tra'd to to finish up.
+                                   433  
+                                   434  
+    000321                         435  not_comput_type:
+    000321  4a  4 00024 2351 20    436  	lda	error_table_$bad_conversion
+    000322  aa  0 00006 7551 20    437  	sta	ap|error_code_arg,*
+    000323  aa  7 00042 7101 20    438  	return
+                                   439  
+                                   440  
+    000324                         441  varying_src:
+    000324  aa  3 00001 3535 00    442  	epp	src_ptr,src_ptr|1
+    000325                         443  normal_src:
+    000325  aa  2 00002 7271 00    444  	lxl	src_type,src_str_pr|data_type_offset
+    000326  aa   000000 7100 14    445  	tra	0,maj_call
+                                   446  
+                                   447  
+    000327                         448  picture_src:
+                                   449  
+    000327  0a   000224 2370 00    450  	ldaq	arg_header
+    000330  aa  6 01364 7571 00    451  	staq	arglist
+    000331  aa  6 01362 6515 00    452  	spri5	str_ptr_save		"must preserve 2
+    000332  aa  6 00360 3715 00    453  	epp5	src_temp
+    000333  aa  6 01366 6515 00    454  	spri5	arglist+2
+    000334  aa  2 00006 3715 20    455  	epp5	src_str_pr|picture_image_ptr_offset,*
+    000335  aa  6 01370 6515 00    456  	spri5	arglist+4
+    000336  aa  2 00000 3715 20    457  	epp5	src_str_pr|address_offset,*
+    000337  aa  6 01372 6515 00    458  	spri5	arglist+6
+                                   459  
+    000340  aa  6 00000 2541 00    460  	call	unpack_picture_$unpack_picture_(arglist)
+    000341  aa  6 01364 3501 00
+    000342  4a  4 00020 3521 20
+    000343  aa  6 00040 7531 00
+    000344  aa  7 00036 6701 20
+    000345  aa  6 00000 1731 00
+    000346  aa  6 00040 0731 00
+                                   461  
+    000347  aa  6 01362 3715 20    462  	epp5	str_ptr_save,*
+    000350  aa   000000 2230 03    463  	ldx	3,picture_image.type_word,du
+    000351  aa  2 00006 2361 73    464  	ldq	src_str_pr|picture_image_ptr_offset,*3
+    000352  0a   000444 7050 00    465  	tsx	min_call,get_picture_type
+    000353  aa   000000 6270 06    466  	eax	src_type,0,ql		"what was pic converted to?
+    000354  aa  6 00360 3535 00    467  	epp	src_ptr,src_temp
+                                   468  
+                                   469  "     Get precision and scale of source.
+                                   470  
+    000355  aa  2 00006 3521 20    471  	epp2	src_str_pr|picture_image_ptr_offset,*	" pointer to picture_image
+    000356  aa  2 00000 2351 00    472  	lda	pr2|picture_image.prec_word
+    000357  aa   000022 7310 00    473  	ars	picture_image.prec_shift	" position
+    000360  aa   000777 3750 07    474  	ana	picture_image.prec_mask,dl	" isolate
+    000361  aa  6 00761 7551 00    475  	sta	tar_temp+1
+    000362  aa  2 00000 2351 00    476  	lda	pr2|picture_image.scale_word
+    000363  aa   000011 7310 00    477  	ars	picture_image.scale_shift	" position
+    000364  aa   000777 3750 07    478  	ana	picture_image.prec_mask,dl	" isolate
+    000365  aa   000022 7350 00    479  	als	18
+    000366  aa  6 00761 2551 00    480  	orsa	tar_temp+1			" integrate
+    000367  aa   000000 7100 14    481  	tra	0,maj_call
+                                   482  "Conversion of any_to_any_ output to final target
+                                   483  
+                                   484  "  routines to set up for any_to_any_ call to int. target
+                                   485  
+                                   486  
+    000370                         487  varying_tar:
+    000370  aa  1 00001 3515 00    488  	epp	tar_ptr,tar_ptr|1
+    000371                         489  normal_tar:
+    000371  aa  5 00002 7261 00    490  	lxl	tar_type,tar_str_pr|data_type_offset
+    000372  aa   000000 7100 14    491  	tra	0,maj_call
+                                   492  
+                                   493  
+    000373                         494  picture_tar:
+    000373  aa   000000 2230 03    495  	ldx	3,picture_image.type_word,du
+    000374  aa  5 00006 2361 73    496  	ldq	tar_str_pr|picture_image_ptr_offset,*x3
+    000375  0a   000444 7050 00    497  	tsx	min_call,get_picture_type	"what is most like the target?
+    000376  aa   000000 6260 06    498  	eax	tar_type,0,ql
+    000377  aa  6 00760 3515 00    499  	epp	tar_ptr,tar_temp
+                                   500  
+                                   501  "     Get precision and scale of target.
+                                   502  
+    000400  aa  5 00006 3521 20    503  	epp2	tar_str_pr|picture_image_ptr_offset,*	" pointer to picture_image
+    000401  aa  2 00000 2351 00    504  	lda	pr2|picture_image.prec_word
+    000402  aa   000022 7310 00    505  	ars	picture_image.prec_shift	" position
+    000403  aa   000777 3750 07    506  	ana	picture_image.prec_mask,dl	" isolate
+    000404  aa  6 00760 7551 00    507  	sta	tar_temp
+    000405  aa  2 00000 2351 00    508  	lda	pr2|picture_image.scale_word
+    000406  aa   000011 7310 00    509  	ars	picture_image.scale_shift	" position
+    000407  aa   000777 3750 07    510  	ana	picture_image.prec_mask,dl	" isolate
+    000410  aa   000022 7350 00    511  	als	18
+    000411  aa  6 00760 2551 00    512  	orsa	tar_temp			" integrate
+    000412  aa   000000 7100 14    513  	tra	0,maj_call
+                                   514  
+                                   515  "
+                                   516  " now the final routines
+                                   517  "  note that lp must be restored - any_to_any_ has clobbered it
+                                   518  "
+                                   519  
+    000413                         520  just_go:
+    000413  aa  7 00042 7101 20    521  	return				"target was reachable by any_to_any_
+                                   522  
+                                   523  
+                                   524  
+    000414                         525  cnv_to_picture:
+                                   526  
+                                   527  
+                                   528  " 	we must carefully avoid clobberring pr5 it is the tar_str_pr
+    000414  aa  6 00030 3701 20    529  	epp	lp,sp|stack_frame.lp_ptr,*	"must reload, been clobbered
+                                   530  
+    000415  0a   000224 2370 00    531  	ldaq	arg_header
+    000416  aa  6 01364 7571 00    532  	staq	arglist
+    000417  aa  6 01366 2515 00    533  	spri1	arglist+2			"target ptr
+    000420  aa  5 00006 3521 20    534  	epp2	tar_str_pr|picture_image_ptr_offset,*
+    000421  aa  6 01370 2521 00    535  	spri2	arglist+4
+    000422  aa  6 00760 3521 00    536  	epp	2,tar_temp
+    000423  aa  6 01372 2521 00    537  	spri2	arglist+6
+                                   538  
+    000424  aa  6 00000 2541 00    539  	call	pack_picture_$pack_picture_(arglist)
+    000425  aa  6 01364 3501 00
+    000426  4a  4 00022 3521 20
+    000427  aa  6 00040 7531 00
+    000430  aa  7 00036 6701 20
+    000431  aa  6 00000 1731 00
+    000432  aa  6 00040 0731 00
+                                   540  
+    000433  aa  7 00042 7101 20    541  	return
+                                   542  
+                                   543  "Minor routines for conversion of data types and picture types.
+                                   544  
+    000434                         545  get_internal_type:
+                                   546  
+                                   547  "given external data type in x0
+                                   548  "return internal type in x0
+                                   549  
+    000434  aa  6 01361 4501 00    550  	stz	temp1
+    000435  aa   000127 1000 03    551  	cmpx0	type_index_limit,du		See if we know it
+    000436  0a   000321 6054 00    552  	tpnz	not_comput_type		Too big for table
+    000437  aa   000100 1004 10    553  	mlr	(x0),(pr)
+    000440  0a   000503 000001     554  	desc9a	type_index,1
+    000441  aa   601361 200001     555  	desc9a	temp1(1),1
+    000442  aa  6 01361 2201 00    556  	ldx	0,temp1
+    000443  aa   000000 7100 15    557  	tra	0,min_call
+                                   558  
+    000444                         559  get_picture_type:
+                                   560  "	call with picture_image.type_word in Q
+                                   561  "	return equivalent external type in QL
+                                   562  
+    000444  aa   000033 7320 00    563  	qrs	picture_image.type_shift
+    000445  aa  6 01361 4501 00    564  	stz	temp1
+    000446  aa   000127 1160 07    565  	cmpq	pict_type_to_etype_limit,dl	Is it in table?
+    000447  0a   000321 6054 00    566  	tpnz	not_comput_type
+    000450  aa   000100 1004 06    567  	mlr	(ql),(pr)
+    000451  0a   000455 000001     568  	desc9a	pict_type_to_etype,1
+    000452  aa   601361 600001     569  	desc9a	temp1(3),1
+    000453  aa  6 01361 2361 00    570  	ldq	temp1
+    000454  aa   000000 7100 15    571  	tra	0,min_call
+                                   572  
+    000455                         573  pict_type_to_etype:
+                                   574  "	4 entries per word
+                                   575  "	in octal 
+                                   576  "
+                                   577  	macro	pict_type
+                              1    578  	vfd	9/&1,9/&2,9/&3,9/&4
+                              2    579  	&endm
+                                   580  
+    000455                         581  	maclist	object
+                                   582  
+                                   583  	pict_type	00,00,00,00	" 0 - 3
+    000455  aa   000000 000000 
+                                   584  	pict_type 00,00,00,00	" 4 - 7
+    000456  aa   000000 000000 
+                                   585  	pict_type 00,00,00,00	" 8 - 11
+    000457  aa   000000 000000 
+                                   586  	pict_type 00,00,00,00	" 12 - 15
+    000460  aa   000000 000000 
+                                   587  	pict_type 00,00,00,00	" 16 - 19
+    000461  aa   000000 000000 
+                                   588  	pict_type 00,00,00,00	" 20 - 23
+    000462  aa   000000 000000 
+                                   589  	pict_type 21,09,11,10	" 24 - 27
+    000463  aa   025011 013012 
+                                   590  	pict_type 12,00,00,00	" 28 - 31
+    000464  aa   014000 000000 
+                                   591  	pict_type 00,00,00,00	" 32 - 35
+    000465  aa   000000 000000 
+                                   592  	pict_type 00,00,00,00	" 36 - 39
+    000466  aa   000000 000000 
+                                   593  	pict_type 00,00,00,00	" 40 - 43
+    000467  aa   000000 000000 
+                                   594  	pict_type 00,00,00,00	" 44 - 47
+    000470  aa   000000 000000 
+                                   595  	pict_type 00,00,00,00	" 48 - 51
+    000471  aa   000000 000000 
+                                   596  	pict_type 00,00,00,00	" 52 - 55
+    000472  aa   000000 000000 
+                                   597  	pict_type 00,00,00,00	" 56 - 59
+    000473  aa   000000 000000 
+                                   598  	pict_type 00,00,00,00	" 60 - 63
+    000474  aa   000000 000000 
+                                   599  	pict_type 00,00,00,00	" 64 - 67
+    000475  aa   000000 000000 
+                                   600  	pict_type 00,00,00,00	" 68 - 71
+    000476  aa   000000 000000 
+                                   601  	pict_type 00,00,00,00	" 72 - 75
+    000477  aa   000000 000000 
+                                   602  	pict_type 00,00,00,00	" 76 - 79
+    000500  aa   000000 000000 
+                                   603  	pict_type 00,00,00,00	" 80 - 83
+    000501  aa   000000 000000 
+                                   604  	pict_type 00,00,00,00	" 84 - 87
+    000502  aa   000000 000000 
+                                   605  
+                        000127     606  	equ	pict_type_to_etype_limit,87Type conversion and picture defintion
+                                   607  
+                                   608  
+                                   609  "	map all data types (0 -87)
+                                   610  "	into internal type code
+                                   611  "	4 bits per code
+                                   612  "	internal type is used as index into dispatch tables
+                                   613  
+                                   614  	macro	type_table
+                              1    615  	vfd	9/&1,9/&2,9/&3,9/&4
+                              2    616  	&endm
+                                   617  
+    000503                         618  type_index:
+                                   619  	type_table normal_,normal_,normal_,normal_	" 00 - 03
+    000503  aa   000000 000000 
+                                   620  	type_table normal_,normal_,normal_,normal_	" 04 - 07
+    000504  aa   000000 000000 
+                                   621  	type_table normal_,normal_,normal_,normal_	" 08 - 11
+    000505  aa   000000 000000 
+                                   622  	type_table normal_,not_com,not_com,not_com	" 12 - 15
+    000506  aa   000003 003003 
+                                   623  	type_table not_com,not_com,not_com,normal_	" 16 - 19
+    000507  aa   003003 003000 
+                                   624  	type_table varying,normal_,varying,not_com	" 20 - 23
+    000510  aa   001000 001003 
+                                   625  	type_table not_com,not_com,not_com,not_com	" 24 - 27
+    000511  aa   003003 003003 
+                                   626  	type_table not_com,normal_,normal_,not_com	" 28 - 31
+    000512  aa   003000 000003 
+                                   627  	type_table not_com,normal_,normal_,normal_	" 32 - 35
+    000513  aa   003000 000000 
+                                   628  	type_table normal_,normal_,normal_,normal_	" 36 - 39
+    000514  aa   000000 000000 
+                                   629  	type_table normal_,normal_,normal_,normal_	" 40 - 43
+    000515  aa   000000 000000 
+                                   630  	type_table normal_,normal_,normal_,normal_	" 44 - 47
+    000516  aa   000000 000000 
+                                   631  	type_table normal_,normal_,normal_,not_com	" 48 - 51
+    000517  aa   000000 000003 
+                                   632  	type_table not_com,not_com,not_com,not_com	" 52 - 55
+    000520  aa   003003 003003 
+                                   633  	type_table not_com,not_com,not_com,not_com	" 56 - 59
+    000521  aa   003003 003003 
+                                   634  	type_table not_com,not_com,not_com,picture	" 60 - 63
+    000522  aa   003003 003002 
+                                   635  	type_table not_com,not_com,not_com,not_com	" 64 - 67
+    000523  aa   003003 003003 
+                                   636  	type_table not_com,not_com,not_com,not_com	" 68 - 71
+    000524  aa   003003 003003 
+                                   637  	type_table not_com,not_com,not_com,not_com	" 72 - 75
+    000525  aa   003003 003003 
+                                   638  	type_table not_com,not_com,not_com,not_com	" 76 - 79
+    000526  aa   003003 003003 
+                                   639  	type_table not_com,normal_,normal_,normal_	" 80 - 83
+    000527  aa   003000 000000 
+                                   640  	type_table normal_,normal_,normal_,not_com	" 84 - 87
+    000530  aa   000000 000003 
+                                   641  
+                        000127     642  	equ	type_index_limit,87
+                                   643  
+                                   644  	include	picture_image
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE picture_image.incl.alm
+                                   3-4  
+                                   3-5  	"Created 06/11/79  1216.2 edt Mon by convert_include_file,
+                                   3-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   3-7  "
+                                   3-8  "  modified from that by JRD, cause convert_include_file has bugs
+                                   3-9  "
+                                  3-10  
+                                  3-11  	"Made from >udd>Multics>JRDavis>as>picture_image.incl.pl1,
+                                  3-12  	"   modified 06/11/79  1216.2 edt Mon
+                                  3-13  
+                                  3-14  "
+                                  3-15  "	Structure picture_image
+                                  3-16  "
+                        000000    3-17  	equ	picture_image.type_word,0
+                        000033    3-18  	equ	picture_image.type_shift,27
+                        000777    3-19  	bool	picture_image.type_mask,000777
+                                  3-20  
+                        000000    3-21  	equ	picture_image.prec_word,0
+                        000022    3-22  	equ	picture_image.prec_shift,18
+                        000777    3-23  	bool	picture_image.prec_mask,000777
+                                  3-24  
+                        000000    3-25  	equ	picture_image.scale_word,0
+                        000011    3-26  	equ	picture_image.scale_shift,9
+                        000777    3-27  	bool	picture_image.scale_mask,000777
+                                  3-28  
+                        000000    3-29  	equ	picture_image.piclength_word,0
+                        000000    3-30  	equ	picture_image.piclength_shift,0
+                        000777    3-31  	bool	picture_image.piclength_mask,000777
+                                  3-32  
+                        000001    3-33  	equ	picture_image.varlength_word,1
+                        000033    3-34  	equ	picture_image.varlength_shift,27
+                        000777    3-35  	bool	picture_image.varlength_mask,000777
+                                  3-36  
+                        000001    3-37  	equ	picture_image.scalefactor_word,1
+                        000022    3-38  	equ	picture_image.scalefactor_shift,18
+                        000777    3-39  	bool	picture_image.scalefactor_mask,000777
+                                  3-40  
+                        000001    3-41  	equ	picture_image.explength_word,1
+                        000011    3-42  	equ	picture_image.explength_shift,9
+                        000777    3-43  	bool	picture_image.explength_mask,000777
+                                  3-44  
+                        000001    3-45  	equ	picture_image.drift_char_word,1
+                                  3-46  
+                        000002    3-47  	equ	picture_image.chars_word,2
+                                  3-48  
+                        000030    3-49  	equ	picture_char_type,24
+                        000031    3-50  	equ	picture_realfix_type,25
+                        000032    3-51  	equ	picture_complexfix_type,26
+                        000033    3-52  	equ	picture_realflo_type,27
+                        000034    3-53  	equ	picture_complexflo_type,28
+                                  3-54  	
+                                  3-55  "  dcl 1 picture_image	aligned based
+                                  3-56  "        2 type		fixed bin (8) unal,
+                                  3-57  "        2 prec		fixed bin (8) unal,
+                                  3-58  "        2 scale		fixed bin (8) unal,
+                                  3-59  "        2 piclength	fixed bin (8) unal,
+                                  3-60  "
+                                  3-61  "        2 varlength	fixed bin (8) unal,
+                                  3-62  "        2 scalefactor	fixed bin (8) unal,
+                                  3-63  "        2 explength	fixed bin (8) unal,
+                                  3-64  "        2 drift_char	char (1) unal,
+                                  3-65  "
+                                  3-66  "        2 chars		char (0 refer (picture_image.piclength));
+                                  3-67  "
+                                  3-68  "END INCLUDE FILE picture_image.incl.alm
+                                   645  
+                                   646  	end
+ENTRY SEQUENCES
+     
+    000531  5a   000125 0000 00
+    000532  aa  7 00046 2721 20
+    000533  0a   000000 7100 00
+    000534  5a   000116 0000 00
+    000535  aa  7 00046 2721 20
+    000536  0a   000000 7100 00
+    000537  5a   000107 0000 00
+    000540  aa  7 00046 2721 20
+    000541  0a   000036 7100 00
+    000542  5a   000100 0000 00
+    000543  aa  7 00046 2721 20
+    000544  0a   000036 7100 00
+    000545  5a   000071 0000 00
+    000546  aa  7 00046 2721 20
+    000547  0a   000062 7100 00
+    000550  5a   000062 0000 00
+    000551  aa  7 00046 2721 20
+    000552  0a   000110 7100 00
+    000553  5a   000053 0000 00
+    000554  aa  7 00046 2721 20
+    000555  0a   000110 7100 00
+    000556  5a   000046 0000 00
+    000557  aa  7 00046 2721 20
+    000560  0a   000135 7100 00
+    000561  5a   000037 0000 00
+    000562  aa  7 00046 2721 20
+    000563  0a   000172 7100 00
+    000564  5a   000027 0000 00
+    000565  aa  7 00046 2721 20
+    000566  0a   000174 7100 00
+    000567  5a   000017 0000 00
+    000570  aa  7 00046 2721 20
+    000571  0a   000176 7100 00
+    000572  5a   000010 0000 00
+    000573  aa  7 00046 2721 20
+    000574  0a   000226 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000576  5a   000003 000000 
+    000577  5a   000143 600000 
+    000600  aa   000000 000000 
+    000601  55   000010 000002 
+    000602  5a   000002 400003 
+    000603  55   000006 000010 
+    000604  aa  007 141 163 163
+    000605  aa  151 147 156 137
+    000606  55   000017 000003 
+    000607  0a   000573 500000 
+    000610  55   000013 000003 
+    000611  aa  016 143 157 155         computational_
+    000612  aa  160 165 164 141
+    000613  aa  164 151 157 156
+    000614  aa  141 154 137 000
+    000615  55   000027 000010 
+    000616  0a   000570 500000 
+    000617  55   000022 000003 
+    000620  aa  020 143 150 141         char_to_numeric_
+    000621  aa  162 137 164 157
+    000622  aa  137 156 165 155
+    000623  aa  145 162 151 143
+    000624  aa  137 000 000 000
+    000625  55   000037 000017 
+    000626  0a   000565 500000 
+    000627  55   000032 000003 
+    000630  aa  020 141 163 163         assign_truncate_
+    000631  aa  151 147 156 137
+    000632  aa  164 162 165 156
+    000633  aa  143 141 164 145
+    000634  aa  137 000 000 000
+    000635  55   000046 000027 
+    000636  0a   000562 500000 
+    000637  55   000042 000003 
+    000640  aa  015 141 163 163         assign_round_
+    000641  aa  151 147 156 137
+    000642  aa  162 157 165 156
+    000643  aa  144 137 000 000
+    000644  55   000053 000037 
+    000645  0a   000557 500000 
+    000646  55   000051 000003 
+    000647  aa  007 141 163 163         assign_
+    000650  aa  151 147 156 137
+    000651  55   000062 000046 
+    000652  0a   000554 500000 
+    000653  55   000056 000003 
+    000654  aa  015 142 151 164         bit_to_arith_
+    000655  aa  137 164 157 137
+    000656  aa  141 162 151 164
+    000657  aa  150 137 000 000
+    000660  55   000071 000053 
+    000661  0a   000551 500000 
+    000662  55   000065 000003 
+    000663  aa  016 143 150 141         char_to_arith_
+    000664  aa  162 137 164 157
+    000665  aa  137 141 162 151
+    000666  aa  164 150 137 000
+    000667  55   000100 000062 
+    000670  0a   000546 500000 
+    000671  55   000074 000003 
+    000672  aa  017 141 162 151         arith_to_arith_
+    000673  aa  164 150 137 164
+    000674  aa  157 137 141 162
+    000675  aa  151 164 150 137
+    000676  55   000107 000071 
+    000677  0a   000543 500000 
+    000700  55   000103 000003 
+    000701  aa  014 143 150 141         char_to_bit_
+    000702  aa  162 137 164 157
+    000703  aa  137 142 151 164
+    000704  aa  137 000 000 000
+    000705  55   000116 000100 
+    000706  0a   000540 500000 
+    000707  55   000112 000003 
+    000710  aa  014 142 151 164         bit_to_char_
+    000711  aa  137 164 157 137
+    000712  aa  143 150 141 162
+    000713  aa  137 000 000 000
+    000714  55   000125 000107 
+    000715  0a   000535 500000 
+    000716  55   000121 000003 
+    000717  aa  015 141 162 151         arith_to_bit_
+    000720  aa  164 150 137 164
+    000721  aa  157 137 142 151
+    000722  aa  164 137 000 000
+    000723  55   000134 000116 
+    000724  0a   000532 500000 
+    000725  55   000130 000003 
+    000726  aa  016 141 162 151         arith_to_char_
+    000727  aa  164 150 137 164
+    000730  aa  157 137 143 150
+    000731  aa  141 162 137 000
+    000732  55   000002 000125 
+    000733  6a   000000 400002 
+    000734  55   000137 000003 
+    000735  aa  014 163 171 155         symbol_table
+    000736  aa  142 157 154 137
+    000737  aa  164 141 142 154
+    000740  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000741  aa   000000 000033 
+    000742  5a   000027 000000 
+    000743  aa   000000 000000 
+    000744  5a   000010 000000 
+    000745  5a   000037 000000 
+    000746  aa   000000 000000 
+    000747  aa   000000 000000 
+    000750  aa   000000 000000 
+    000751  aa   000000 000000 
+    000752  aa   000000 000000 
+    000753  5a   000046 000000 
+    000754  5a   000134 000000 
+    000755  aa   000000 000000 
+    000756  aa   000000 000000 
+    000757  aa   000000 000000 
+    000760  aa   000000 000000 
+    000761  5a   000053 000000 
+    000762  5a   000107 000000 
+    000763  aa   000000 000000 
+    000764  aa   000000 000000 
+    000765  5a   000071 000000 
+    000766  5a   000125 000000 
+    000767  5a   000116 000000 
+    000770  5a   000017 000000 
+    000771  aa   000000 000000 
+    000772  5a   000062 000000 
+    000773  aa   000000 000000 
+    000774  5a   000100 000000 
+
+EXTERNAL NAMES
+
+    000775  aa  016 142 141 144         bad_conversion
+    000776  aa  137 143 157 156
+    000777  aa  166 145 162 163
+    001000  aa  151 157 156 000
+    001001  aa  014 145 162 162         error_table_
+    001002  aa  157 162 137 164
+    001003  aa  141 142 154 145
+    001004  aa  137 000 000 000
+    001005  aa  015 160 141 143         pack_picture_
+    001006  aa  153 137 160 151
+    001007  aa  143 164 165 162
+    001010  aa  145 137 000 000
+    001011  aa  017 165 156 160         unpack_picture_
+    001012  aa  141 143 153 137
+    001013  aa  160 151 143 164
+    001014  aa  165 162 145 137
+    001015  aa  024 141 156 171         any_to_any_truncate_
+    001016  aa  137 164 157 137
+    001017  aa  141 156 171 137
+    001020  aa  164 162 165 156
+    001021  aa  143 141 164 145
+    001022  aa  137 000 000 000
+    001023  aa  021 141 156 171         any_to_any_round_
+    001024  aa  137 164 157 137
+    001025  aa  141 156 171 137
+    001026  aa  162 157 165 156
+    001027  aa  144 137 000 000
+    001030  aa  013 141 156 171         any_to_any_
+    001031  aa  137 164 157 137
+    001032  aa  141 156 171 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001033  aa   000004 000000 
+    001034  55   000203 000177 
+    001035  aa   000004 000000 
+    001036  55   000207 000207 
+    001037  aa   000004 000000 
+    001040  55   000213 000213 
+    001041  aa   000004 000000 
+    001042  55   000232 000022 
+    001043  aa   000004 000000 
+    001044  55   000232 000217 
+    001045  aa   000004 000000 
+    001046  55   000232 000225 
+    001047  aa   000004 000000 
+    001050  55   000232 000232 
+    001051  aa   000001 000000 
+    001052  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001053  5a   000235 000000 
+    001054  5a   000237 000000 
+    001055  5a   000241 000000 
+    001056  5a   000243 000000 
+    001057  5a   000245 000000 
+    001060  5a   000247 000000 
+    001061  5a   000251 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000576 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000026 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         any_to_any_|any_to_any_
+    000011  5a   000263 0000 00
+    000012  9a   777766 0000 46         any_to_any_|any_to_any_round_
+    000013  5a   000262 0000 00
+    000014  9a   777764 0000 46         any_to_any_|any_to_any_truncate_
+    000015  5a   000261 0000 00
+    000016  9a   777762 0000 46         any_to_any_|char_to_numeric_
+    000017  5a   000260 0000 00
+    000020  9a   777760 0000 46         unpack_picture_|unpack_picture_
+    000021  5a   000257 0000 00
+    000022  9a   777756 0000 46         pack_picture_|pack_picture_
+    000023  5a   000256 0000 00
+    000024  9a   777754 0000 46         error_table_|bad_conversion
+    000025  5a   000255 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   255746 333424 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000256 
+    000020  aa   000000 000151 
+    000021  aa   000216 000210 
+    000022  aa   000246 000151 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000004 
+    000066  aa   000106 000036 
+    000067  aa   175453 017552 
+    000070  aa   000000 117547 
+    000071  aa   176216 000000 
+    000072  aa   000116 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   000127 000042 
+    000077  aa   147777 464111 
+    000100  aa   000000 115000 
+    000101  aa   507463 000000 
+    000102  aa   000140 000043 
+    000103  aa   065455 333557 
+    000104  aa   000000 106546 
+    000105  aa   350357 200000 
+    000106  aa   076163 160145          >spec>install>1110>assign_.alm
+    000107  aa   143076 151156 
+    000110  aa   163164 141154 
+    000111  aa   154076 061061 
+    000112  aa   061060 076141 
+    000113  aa   163163 151147 
+    000114  aa   156137 056141 
+    000115  aa   154155 040040 
+    000116  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000117  aa   076151 156143 
+    000120  aa   154165 144145 
+    000121  aa   076163 164141 
+    000122  aa   143153 137146 
+    000123  aa   162141 155145 
+    000124  aa   056151 156143 
+    000125  aa   154056 141154 
+    000126  aa   155040 040040 
+    000127  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000130  aa   076151 156143 
+    000131  aa   154165 144145 
+    000132  aa   076163 164141 
+    000133  aa   143153 137150 
+    000134  aa   145141 144145 
+    000135  aa   162056 151156 
+    000136  aa   143154 056141 
+    000137  aa   154155 040040 
+    000140  aa   076154 144144          >ldd>include>picture_image.incl.alm
+    000141  aa   076151 156143 
+    000142  aa   154165 144145 
+    000143  aa   076160 151143 
+    000144  aa   164165 162145 
+    000145  aa   137151 155141 
+    000146  aa   147145 056151 
+    000147  aa   156143 154056 
+    000150  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    address_offset           assign_:      266,  333,  353,  395,  457.
+                any_to_any_              assign_:      228,  229,  230,  231,  310.
+                any_to_any_round_        assign_:      229.
+                any_to_any_truncate_     assign_:      230.
+        1364    arglist                  assign_:       51,  451,  454,  456,  458,  460,  532,  533,  535,  537,  539.
+         224    arg_header               assign_:      305,  450,  531.
+          62    arith_to_arith_          assign_:       32,  117.
+           0    arith_to_bit_            assign_:       29,   58.
+           0    arith_to_char_           assign_:       28,   57.
+         135    assign_                  assign_:       35,  168,  199,  203.
+         172    assign_round_            assign_:       36,  197.
+         174    assign_truncate_         assign_:       37,  201.
+          10    ata                      assign_:       85,  168,  228,  310,  386.
+          12    ata_round                assign_:      198,  229.
+          14    ata_truncate             assign_:      202,  230.
+                bad_conversion           assign_:      436.
+         110    bit_to_arith_            assign_:       34,  144.
+          36    bit_to_char_             assign_:       30,   92.
+        1170    call_offset              stack_header:        80.
+         110    char_to_arith_           assign_:       33,  143.
+          36    char_to_bit_             assign_:       31,   93.
+         176    char_to_numeric_         assign_:       38,  205,  231.
+         414    cnv_to_picture           assign_:      426,  525.
+         226    computational_           assign_:       39,  317.
+          16    ctn_link                 assign_:      217,  231.
+           2    data_type_offset         assign_:      267,  324,  343,  444,  490.
+        1174    entry_offset             stack_header:        84.
+           6    error_code_arg           assign_:      249,  320,  437.
+                error_table_             assign_:      436.
+         315    final_dispatch_table     assign_:      397,  423.
+           3    flags_offset             assign_:      268,  371,  377.
+         434    get_internal_type        assign_:      325,  344,  545.
+         444    get_picture_type         assign_:      465,  497,  559.
+          24    go                       assign_:       78,  112,  138,  164.
+         413    just_go                  assign_:      424,  425,  520.
+           4    maj_call                 assign_:      280,  334,  354,  445,  481,  491,  513.
+           5    min_call                 assign_:      281,  325,  344,  465,  497,  557,  571.
+           0    normal_                  assign_:      405,  619,  620,  621,  622,  623,  624,  626,  627,  628,  629,  630,
+                                                       631,  639,  640.
+         325    normal_src               assign_:      412,  443.
+         371    normal_tar               assign_:      418,  489.
+           3    not_com                  assign_:      408,  622,  623,  624,  625,  626,  627,  631,  632,  633,  634,  635,
+                                                       636,  637,  638,  639,  640.
+         321    not_comput_type          assign_:      415,  421,  427,  435,  552,  566.
+                pack_picture_            assign_:      539.
+           2    picture                  assign_:      407,  634.
+          30    picture_char_type        picture_image:       49.
+          32    picture_complexfix_type  picture_image:       51.
+          34    picture_complexflo_type  picture_image:       53.
+           2    picture_image.chars_word       picture_image:       47.
+           1    picture_image.drift_char_word  picture_image:       45.
+         777    picture_image.explength_mask   picture_image:       43.
+          11    picture_image.explength_shift  picture_image:       42.
+           1    picture_image.explength_word   picture_image:       41.
+         777    picture_image.piclength_mask   picture_image:       31.
+           0    picture_image.piclength_shift  picture_image:       30.
+           0    picture_image.piclength_word   picture_image:       29.
+         777    picture_image.prec_mask  assign_:      474,  478,  506,  510,
+                                         picture_image:       23.
+          22    picture_image.prec_shift       assign_:      473,  505,
+                                               picture_image:       22.
+           0    picture_image.prec_word  assign_:      472,  504,
+                                         picture_image:       21.
+         777    picture_image.scalefactor_mask       picture_image:       39.
+          22    picture_image.scalefactor_shift      picture_image:       38.
+           1    picture_image.scalefactor_word       picture_image:       37.
+         777    picture_image.scale_mask       picture_image:       27.
+          11    picture_image.scale_shift      assign_:      477,  509,
+                                               picture_image:       26.
+           0    picture_image.scale_word       assign_:      476,  508,
+                                               picture_image:       25.
+         777    picture_image.type_mask  picture_image:       19.
+          33    picture_image.type_shift       assign_:      563,
+                                               picture_image:       18.
+           0    picture_image.type_word  assign_:      463,  495,
+                                         picture_image:       17.
+         777    picture_image.varlength_mask   picture_image:       35.
+          33    picture_image.varlength_shift  picture_image:       34.
+           1    picture_image.varlength_word   picture_image:       33.
+           6    picture_image_ptr_offset       assign_:      271,  455,  464,  471,  496,  503,  534.
+          31    picture_realfix_type     picture_image:       50.
+          33    picture_realflo_type     picture_image:       52.
+         327    picture_src              assign_:      414,  448.
+         373    picture_tar              assign_:      420,  494.
+         455    pict_type_to_etype       assign_:      568,  573.
+         127    pict_type_to_etype_limit       assign_:      565,  606.
+           4    prec_or_length_offset    assign_:      269,  331,  351,  394.
+        1171    push_offset              stack_header:        81.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+           5    scale_offset             assign_:      270,  329,  349.
+         305    source_dispatch_table    assign_:      334,  411.
+           4    source_str_ptr_arg       assign_:      248,  321.
+           3    src_ptr                  assign_:      288,  333,  442,  467.
+           2    src_str_pr               assign_:      287,  321,  322,  324,  329,  331,  333,  377,  444,  455,  457,  464,  471.
+         360    src_temp                 assign_:       46,  453,  467.
+           7    src_type                 assign_:      283,  375,  376,  379,  444,  466.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    assign_:       61,   96,  120,  147,  171,  208,
+                                         stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       assign_:      529,
+                                         stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  assign_:       60,   95,  119,  146,  170,  207,
+                                         stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   stack_header:        37.
+          24    stack_header.stack_end_ptr     stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+        1362    str_ptr_save             assign_:       50,  452,  462.
+         311    target_dispatch_table    assign_:      354,  417.
+           2    target_str_ptr_arg       assign_:      247,  340,  392.
+           1    tar_ptr                  assign_:      286,  353,  395,  488,  499.
+           5    tar_str_pr               assign_:      290,  340,  341,  343,  349,  351,  353,  371,  392,  393,  394,  395,
+                                                       490,  496,  503,  534.
+         760    tar_temp                 assign_:       47,  332,  352,  384,  385,  475,  480,  499,  507,  512,  536.
+           6    tar_type                 assign_:      282,  369,  370,  373,  490,  498.
+        1361    temp1                    assign_:       49,  369,  370,  375,  376,  550,  555,  556,  564,  569,  570.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+         503    type_index               assign_:      554,  618.
+         127    type_index_limit         assign_:      551,  642.
+        1360    type_save                assign_:       48,  345,  396.
+                unpack_picture_          assign_:      460.
+           1    varying                  assign_:      406,  624.
+         221    varying_info             assign_:      182,  187,  225.
+         324    varying_src              assign_:      413,  441.
+         370    varying_tar              assign_:      419,  487.
+          50    work                     assign_:       41,   69,   78,   81,   84,  104,  129,  156,  180,  214,  383.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

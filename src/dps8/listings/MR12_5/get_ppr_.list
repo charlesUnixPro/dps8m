@@ -1,0 +1,1407 @@
+	COMPILATION LISTING OF SEGMENT get_ppr_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0959.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************************
+        2*        *                                                    *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*        *                                                    *
+        5*        * Copyright (c) 1987 by Massachusetts Institute of   *
+        6*        * Technology and Honeywell Information Systems, Inc. *
+        7*        *                                                    *
+        8*        * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*        * Technology and Honeywell Information Systems, Inc. *
+       10*        *                                                    *
+       11*        ****************************************************** */
+       12 
+       13 /* format: style1 */
+       14 
+       15 get_ppr_:
+       16      proc (length_sw, asp, sptr, pname1, pname2, pname3);
+       17 
+       18 /* This procedure returns the name(s) and location(s)  of the procedure(s)
+       19*   active when a condition occurred. If the condition occurred in a support 3
+       20*   procedure, the name of the most recent non-support procedure will also be returned. */
+       21 
+       22 /* last modified by M. Weaver 23 October 1973 */
+       23 /* Modified by B. Margulies for include files and cleanup */
+       24 /* Further modified to check the ring brackets of the ppr segment before
+       25*   calling object_info on it */
+       26 /* Changed to use interpret_link_info.incl.pl1 05/12/83 S. Herbst */
+       27 
+       28 	declare (pname1, pname2, pname3, ptemp)
+       29 				 char (500) aligned;
+       30 	declare (link_segname, op_seg_name)
+       31 				 char (32) aligned;
+       32 
+       33 /* enttypoint is either the file system entryname or the 
+       34*   entrypoint name. The first comes from get_entry_name_, the second
+       35*   from interpret_link_. Note that interpret_link_ truncates to 32 */
+       36 
+       37 	declare (entryname, entrypoint)
+       38 				 char (256) aligned;
+       39 	declare lang		 char (8) aligned;
+       40 
+       41 	declare spno		 bit (18) aligned;
+       42 	declare find_op		 bit (1) aligned;
+       43 
+       44 	declare length_sw		 fixed bin;
+       45 	declare lng		 fixed bin;
+       46 	declare segno		 fixed bin (18);
+       47 	declare code		 fixed bin (35);
+       48 
+       49 	declare (asp, nsp, use_ptr, last_ptr, sptr)
+       50 				 ptr;
+       51 
+       52 	declare (addr, after, baseno, baseptr, before, byte, bin, null, ptr, rel, rtrim, substr)
+       53 				 builtin;
+       54 
+       55 	declare ioa_$rsnnl		 entry options (variable);
+       56 	declare stack_frame_exit_	 entry (ptr, ptr, ptr, bit (1) unaligned, ptr, char (32) aligned, ptr);
+       57 
+       58 	declare get_entry_name_	 entry (ptr, char (*) aligned, fixed bin (18), char (8) aligned, fixed bin (35));
+       59 	declare is_cls_		 entry (ptr) returns (bit (1) aligned);
+       60 
+  1     1 /* BEGIN INCLUDE FILE ... condition_info.incl.pl1 */
+  1     2 
+  1     3 /* Structure for find_condition_info_.
+  1     4*
+  1     5*   Written 1-Mar-79 by M. N. Davidoff.
+  1     6**/
+  1     7 
+  1     8 /* automatic */
+  1     9 
+  1    10      declare condition_info_ptr     pointer;
+  1    11 
+  1    12 /* based */
+  1    13 
+  1    14      declare 1 condition_info	      aligned based (condition_info_ptr),
+  1    15 	     2 mc_ptr	      pointer,		/* pointer to machine conditions at fault time */
+  1    16 	     2 version	      fixed binary,		/* Must be 1 */
+  1    17 	     2 condition_name     char (32) varying,	/* name of condition */
+  1    18 	     2 info_ptr	      pointer,		/* pointer to the condition data structure */
+  1    19 	     2 wc_ptr	      pointer,		/* pointer to wall crossing machine conditions */
+  1    20 	     2 loc_ptr	      pointer,		/* pointer to location where condition occured */
+  1    21 	     2 flags	      unaligned,
+  1    22 	       3 crawlout	      bit (1),		/* on if condition occured in lower ring */
+  1    23 	       3 pad1	      bit (35),
+  1    24 	     2 pad2	      bit (36),
+  1    25 	     2 user_loc_ptr	      pointer,		/* ptr to most recent nonsupport loc before condition occurred */
+  1    26 	     2 pad3	      (4) bit (36);
+  1    27 
+  1    28 /* internal static */
+  1    29 
+  1    30      declare condition_info_version_1
+  1    31 			      fixed binary internal static options (constant) initial (1);
+  1    32 
+  1    33 /* END INCLUDE FILE ... condition_info.incl.pl1 */
+       61 
+       62 	declare 1 cond_info		 aligned like condition_info based (sptr);
+       63 
+       64 	declare 1 situation		 aligned,
+       65 	        ( 2 bad_frame,
+       66 		2 exists_ppr,
+       67 		2 ppr_is_owner,
+       68 		2 ppr_is_ops,
+       69 		2 caller_is_owner,
+       70 		2 entry_ptr_invalid,
+       71 		2 ret_ptr_is_ops
+       72 		)		 bit (1) unal,
+       73 		2 pad		 bit (29) unal;
+       74 
+  2     1 /*  BEGIN INCLUDE FILE interpret_link_info.incl.pl1  */
+  2     2 
+  2     3 /* Written 05/12/83 by S. Herbst */
+  2     4 
+  2     5 dcl 1 interpret_link_info aligned based (interpret_link_info_ptr),
+  2     6    2 version char (8),
+  2     7    2 segment_name char (32) aligned,
+  2     8    2 entry_point_name char (260) aligned,
+  2     9    2 expression char (8) aligned,
+  2    10    2 modifier char (4) aligned,
+  2    11    2 trap char (48) aligned;
+  2    12 
+  2    13 dcl INTERPRET_LINK_INFO_VERSION_1 char (8) int static options (constant) init ("ILI 1.0");
+  2    14 
+  2    15 dcl interpret_link_info_ptr ptr;
+  2    16 
+  2    17 /* END INCLUDE FILE interpret_link_info.incl.pl1  */
+       75 
+       76 
+  3     1 /*  */
+  3     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+  3     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+  3     4 /* Modified 07/07/76 by Morris for fault register data */
+  3     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+  3     6 /* Modified '82 to make values constant */
+  3     7 
+  3     8 /* words 0-15 pointer registers */
+  3     9 
+  3    10 dcl  mcp ptr;
+  3    11 
+  3    12 dcl 1 mc based (mcp) aligned,
+  3    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+  3    14    (2 regs,					/* registers */
+  3    15       3 x (0:7) bit (18),				/* index registers */
+  3    16       3 a bit (36),					/* accumulator */
+  3    17       3 q bit (36),					/* q-register */
+  3    18       3 e bit (8),					/* exponent */
+  3    19       3 pad1 bit (28),
+  3    20       3 t bit (27),					/* timer register */
+  3    21       3 pad2 bit (6),
+  3    22       3 ralr bit (3),				/* ring alarm register */
+  3    23 
+  3    24     2 scu (0:7) bit (36),
+  3    25 
+  3    26     2 mask bit (72),				/* mem controller mask at time of fault */
+  3    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+  3    28     2 errcode fixed bin (35),				/* fault handler's error code */
+  3    29     2 fim_temp,
+  3    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+  3    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+  3    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+  3    33     2 fault_reg bit (36),				/* fault register */
+  3    34     2 pad2 bit (1),
+  3    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+  3    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+  3    37     2 fault_time bit (54),				/* time of fault */
+  3    38 
+  3    39     2 eis_info (0:7) bit (36)) unaligned;
+  3    40 
+  3    41 
+  3    42 dcl (apx fixed bin init (0),
+  3    43      abx fixed bin init (1),
+  3    44      bpx fixed bin init (2),
+  3    45      bbx fixed bin init (3),
+  3    46      lpx fixed bin init (4),
+  3    47      lbx fixed bin init (5),
+  3    48      spx fixed bin init (6),
+  3    49      sbx fixed bin init (7)) internal static options (constant);
+  3    50 
+  3    51 
+  3    52 
+  3    53 
+  3    54 dcl  scup ptr;
+  3    55 
+  3    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+  3    57 
+  3    58 
+  3    59 /*	WORD (0)		*/
+  3    60 
+  3    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+  3    62       3 prr bit (3),				/* procedure ring register */
+  3    63       3 psr bit (15),				/* procedure segment register */
+  3    64       3 p bit (1),					/* procedure privileged bit */
+  3    65 
+  3    66     2 apu,					/* APPENDING UNIT STATUS */
+  3    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+  3    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+  3    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+  3    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+  3    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+  3    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+  3    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+  3    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+  3    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+  3    76       3 ptw bit (1),				/* Fetch of PTW */
+  3    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+  3    78       3 fap bit (1),				/* Fetch of final address paged */
+  3    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+  3    80       3 fabs bit (1),				/* Fetch of final address absolute */
+  3    81 
+  3    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+  3    83 
+  3    84 
+  3    85 /*	WORD (1)		*/
+  3    86 
+  3    87     2 fd,						/* FAULT  DATA */
+  3    88       3 iro bit (1),				/* illegal ring order */
+  3    89       3 oeb bit (1),				/* out of execute bracket */
+  3    90       3 e_off bit (1),				/* no execute */
+  3    91       3 orb bit (1),				/* out of read bracket */
+  3    92       3 r_off bit (1),				/* no read */
+  3    93       3 owb bit (1),				/* out of write bracket */
+  3    94       3 w_off bit (1),				/* no write */
+  3    95       3 no_ga bit (1),				/* not a gate */
+  3    96       3 ocb bit (1),				/* out of call bracket */
+  3    97       3 ocall bit (1),				/* outward call */
+  3    98       3 boc bit (1),				/* bad outward call */
+  3    99       3 inret bit (1),				/* inward return */
+  3   100       3 crt bit (1),				/* cross ring transfer */
+  3   101       3 ralr bit (1),				/* ring alarm register */
+  3   102       3 am_er bit (1),				/* associative memory fault */
+  3   103       3 oosb bit (1),				/* out of segment bounds */
+  3   104       3 paru bit (1),				/* processor parity upper */
+  3   105       3 parl bit (1),				/* processor parity lower */
+  3   106       3 onc_1 bit (1),				/* op not complete type 1 */
+  3   107       3 onc_2 bit (1),				/* op not complete type 2 */
+  3   108 
+  3   109     2 port_stat,					/* PORT  STATUS */
+  3   110       3 ial bit (4),				/* illegal action lines */
+  3   111       3 iac bit (3),				/* illegal action channel */
+  3   112       3 con_chan bit (3),				/* connect channel */
+  3   113 
+  3   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+  3   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+  3   116 
+  3   117 
+  3   118 /*	WORD (2)		*/
+  3   119 
+  3   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+  3   121       3 trr bit (3),				/* temporary ring register */
+  3   122       3 tsr bit (15),				/* temporary segment register */
+  3   123 
+  3   124     2 pad2 bit (9),
+  3   125 
+  3   126     2 cpu_no bit (3),				/* CPU number */
+  3   127 
+  3   128     2 delta bit (6),				/* tally modification DELTA */
+  3   129 
+  3   130 
+  3   131 /*	WORD (3)		*/
+  3   132 
+  3   133     2 word3 bit (18),
+  3   134 
+  3   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+  3   136       3 tsna,					/* Word 1 status */
+  3   137         4 prn bit (3),				/* Word 1  PR  number */
+  3   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+  3   139       3 tsnb,					/* Word 2  status */
+  3   140         4 prn bit (3),				/* Word 2  PR  number */
+  3   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+  3   142       3 tsnc,					/* Word 3  status */
+  3   143         4 prn bit (3),				/* Word 3  PR  number */
+  3   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+  3   145 
+  3   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+  3   147 
+  3   148 
+  3   149 /* 	WORD (4)		*/
+  3   150 
+  3   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+  3   152 
+  3   153     2 ir,						/* INDICATOR  REGISTERS */
+  3   154       3 zero bit (1),				/* zero indicator */
+  3   155       3 neg bit (1),				/* negative indicator */
+  3   156       3 carry bit (1),				/* carryry indicator */
+  3   157       3 ovfl bit (1),				/* overflow indicator */
+  3   158       3 eovf bit (1),				/* eponent overflow */
+  3   159       3 eufl bit (1),				/* exponent underflow */
+  3   160       3 oflm bit (1),				/* overflow mask */
+  3   161       3 tro bit (1),				/* tally runout */
+  3   162       3 par bit (1),				/* parity error */
+  3   163       3 parm bit (1),				/* parity mask */
+  3   164       3 bm bit (1),					/* ^bar mode */
+  3   165       3 tru bit (1),				/* truncation mode */
+  3   166       3 mif bit (1),				/* multi-word instruction mode */
+  3   167       3 abs bit (1),				/* absolute mode */
+  3   168       3 hex bit (1),				/* hexadecimal exponent mode */
+  3   169       3 pad bit (3),
+  3   170 
+  3   171 
+  3   172 /*	WORD (5)		*/
+  3   173 
+  3   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+  3   175 
+  3   176     2 cu,						/* CONTROL UNIT STATUS */
+  3   177       3 rf bit (1),					/* on first cycle of repeat instr */
+  3   178       3 rpt bit (1),				/* repeat instruction */
+  3   179       3 rd bit (1),					/* repeat double instruction */
+  3   180       3 rl bit (1),					/* repeat link instruciton */
+  3   181       3 pot bit (1),				/* IT  modification */
+  3   182       3 pon bit (1),				/* return type instruction */
+  3   183       3 xde bit (1),				/* XDE from Even location */
+  3   184       3 xdo bit (1),				/* XDE from Odd  location */
+  3   185       3 poa bit (1),				/* operation preparation */
+  3   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+  3   187       3 its bit (1),				/* ITS modification */
+  3   188       3 if bit (1),					/* fault occured during instruction fetch */
+  3   189 
+  3   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+  3   191 
+  3   192 
+  3   193 /*	WORDS (6,7)	*/
+  3   194 
+  3   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+  3   196 
+  3   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+  3   198 
+  3   199 
+  3   200 
+  3   201 
+  3   202 
+  3   203 
+  3   204 /*	ALTERNATE   SCU  DECLARATION		*/
+  3   205 
+  3   206 
+  3   207 dcl 1 scux based (scup) aligned,
+  3   208 
+  3   209    (2 pad0 bit (36),
+  3   210 
+  3   211     2 fd,						/* GROUP II  FAULT DATA */
+  3   212       3 isn bit (1),				/* illegal segment number */
+  3   213       3 ioc bit (1),				/* illegal op  code  */
+  3   214       3 ia_am bit (1),				/* illegal address - modifier */
+  3   215       3 isp bit (1),				/* illegal slave  procedure */
+  3   216       3 ipr bit (1),				/* illegal procedure */
+  3   217       3 nea bit (1),				/* non existent address */
+  3   218       3 oobb bit (1),				/* out of bounds */
+  3   219       3 pad bit (29),
+  3   220 
+  3   221     2 pad2 bit (36),
+  3   222 
+  3   223     2 pad3a bit (18),
+  3   224 
+  3   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+  3   226       3 prn bit (3),				/* PR  number */
+  3   227       3 prv bit (1),				/* PR  valid bit */
+  3   228 
+  3   229     2 pad3b bit (6)) unaligned,
+  3   230 
+  3   231     2 pad45 (0:1) bit (36),
+  3   232 
+  3   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+  3   234 
+  3   235 
+  3   236 
+  3   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+       77 
+       78 
+  4     1 /* 	BEGIN INCLUDE FILE ... stack_frame.incl.pl1 ... */
+  4     2 
+  4     3 /* format: off */
+  4     4 
+  4     5 /* Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr and pl1_ps_ptr */
+  4     6 /* Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager bit & main_proc bit */
+  4     7 /* Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr */
+  4     8 /* Modified: 03/01/84, S. Herbst - Added RETURN_PTR_MASK */
+  4     9 
+  4    10 
+  4    11 /****^  HISTORY COMMENTS:
+  4    12*  1) change(86-09-15,Kissel), approve(86-09-15,MCR7473),
+  4    13*     audit(86-10-01,Fawcett), install(86-11-03,MR12.0-1206):
+  4    14*     Modified to add constants for the translator_id field in the stack_frame
+  4    15*     structure.
+  4    16*                                                   END HISTORY COMMENTS */
+  4    17 
+  4    18 
+  4    19 dcl RETURN_PTR_MASK bit (72) int static options (constant)  /* mask to be AND'd with stack_frame.return_ptr */
+  4    20 	init ("777777777777777777000000"b3);		/* when copying, to ignore bits that a call fills */
+  4    21 						/* with indicators (nonzero for Fortran hexfp caller) */
+  4    22 			/* say: unspec(ptr) = unspec(stack_frame.return_ptr) & RETURN_PTR_MASK; */
+  4    23 
+  4    24 dcl TRANSLATOR_ID_PL1V2 bit (18) internal static options (constant) init ("000000"b3);
+  4    25 dcl TRANSLATOR_ID_ALM bit (18) internal static options (constant) init ("000001"b3);
+  4    26 dcl TRANSLATOR_ID_PL1V1 bit (18) internal static options (constant) init ("000002"b3);
+  4    27 dcl TRANSLATOR_ID_SIGNAL_CALLER bit (18) internal static options (constant) init ("000003"b3);
+  4    28 dcl TRANSLATOR_ID_SIGNALLER bit (18) internal static options (constant) init ("000004"b3);
+  4    29 
+  4    30 
+  4    31 dcl  sp pointer;					/* pointer to beginning of stack frame */
+  4    32 
+  4    33 dcl  stack_frame_min_length fixed bin static init(48);
+  4    34 
+  4    35 
+  4    36 dcl 1 stack_frame based(sp) aligned,
+  4    37     2 pointer_registers(0 : 7) ptr,
+  4    38     2 prev_sp pointer,
+  4    39     2 next_sp pointer,
+  4    40     2 return_ptr pointer,
+  4    41     2 entry_ptr pointer,
+  4    42     2 operator_and_lp_ptr ptr,			/* serves as both */
+  4    43     2 arg_ptr pointer,
+  4    44     2 static_ptr ptr unaligned,
+  4    45     2 support_ptr ptr unal, /* only used by fortran I/O */
+  4    46     2 on_unit_relp1 bit(18) unaligned,
+  4    47     2 on_unit_relp2 bit(18) unaligned,
+  4    48     2 translator_id bit(18) unaligned,			/* Translator ID (see constants above)
+  4    49*						   0 => PL/I version II
+  4    50*						   1 => ALM
+  4    51*						   2 => PL/I version I   
+  4    52*						   3 => signal caller frame
+  4    53*						   4 => signaller frame */
+  4    54     2 operator_return_offset bit(18) unaligned,
+  4    55     2 x(0: 7) bit(18) unaligned,			/* index registers */
+  4    56     2 a bit(36),					/* accumulator */
+  4    57     2 q bit(36),					/* q-register */
+  4    58     2 e bit(36),					/* exponent */
+  4    59     2 timer bit(27) unaligned,				/* timer */
+  4    60     2 pad bit(6) unaligned,
+  4    61     2 ring_alarm_reg bit(3) unaligned;
+  4    62 
+  4    63 
+  4    64 dcl 1 stack_frame_flags based(sp) aligned,
+  4    65     2 pad(0 : 7) bit(72),				/* skip over prs */
+  4    66     2 xx0 bit(22) unal,
+  4    67     2 main_proc bit(1) unal,				/* on if frame belongs to a main procedure */
+  4    68     2 run_unit_manager bit(1) unal,			/* on if frame belongs to run unit manager */
+  4    69     2 signal bit(1) unal,				/* on if frame belongs to logical signal_ */
+  4    70     2 crawl_out bit(1) unal,				/* on if this is a signal caller frame */
+  4    71     2 signaller bit(1) unal,				/* on if next frame is signaller's */
+  4    72     2 link_trap bit(1) unal,				/* on if this frame was made by the linker */
+  4    73     2 support bit(1) unal,				/* on if frame belongs to a support proc */
+  4    74     2 condition bit(1) unal,				/* on if condition established in this frame */
+  4    75     2 xx0a bit(6) unal,
+  4    76     2 xx1 fixed bin,
+  4    77     2 xx2 fixed bin,
+  4    78     2 xx3 bit(25) unal,
+  4    79     2 old_crawl_out bit (1) unal,			/* on if this is a signal caller frame */
+  4    80     2 old_signaller bit(1) unal,			/* on if next frame is signaller's */
+  4    81     2 xx3a bit(9) unaligned,
+  4    82     2 xx4(9) bit(72) aligned,
+  4    83     2 v2_pl1_op_ret_base ptr,				/* When a V2 PL/I program calls an operator the
+  4    84*						*  operator puts a pointer to the base of
+  4    85*						*  the calling procedure here. (text base ptr)  */
+  4    86     2 xx5 bit(72) aligned,
+  4    87     2 pl1_ps_ptr ptr;				/* ptr to ps for this frame; also used by fio. */
+  4    88 
+  4    89 /* format: on */
+  4    90 
+  4    91 /* 	END INCLUDE FILE ... stack_frame.incl.pl1 */
+       79 
+       80 
+       81 	pname1, pname2, pname3, ptemp = "";
+       82 	sp = asp;
+       83 	if cond_info.loc_ptr = null
+       84 	then return;
+       85 
+       86 	if cond_info.user_loc_ptr ^= cond_info.loc_ptr
+       87 	then do;					/* get info from first non-support frame */
+       88 		spno = baseno (sp);			/* get segno of sp */
+       89 		nsp = sp;
+       90 		do while (baseno (nsp -> stack_frame.prev_sp) = spno);
+       91 		     nsp = nsp -> stack_frame.prev_sp;
+       92 		     if ^nsp -> stack_frame_flags.support
+       93 		     then do;			/* found non-support frame */
+       94 			     entryname, link_segname, entrypoint, op_seg_name = "";
+       95 			     find_op = "0"b;	/* no operator involved */
+       96 			     use_ptr = cond_info.user_loc_ptr;
+       97 			     call get_entry_name_ (nsp -> stack_frame.entry_ptr, entryname, segno, lang, code);
+       98 			     call check_call_link_ (nsp);
+       99 						/* see how frame's proc was called */
+      100 			     call put_together_ (pname1);
+      101 						/* format full name and offset */
+      102 			     if length_sw = 2
+      103 			     then go to find_real;	/* print support proc as well */
+      104 			     else go to test_crawlout;
+      105 			end;
+      106 		end;
+      107 	     end;
+      108 
+      109 find_real:					/* obtain loc where condition occurred */
+      110 	entryname, link_segname, entrypoint = "";
+      111 	use_ptr = cond_info.loc_ptr;
+      112 	call stack_frame_exit_ (sp, cond_info.mc_ptr, cond_info.wc_ptr, cond_info.crawlout, last_ptr, op_seg_name,
+      113 	     addr (situation));
+      114 
+      115 	if (ppr_is_owner | caller_is_owner | ^exists_ppr)
+      116 	then do;					/* use owner of stack frame */
+      117 		if ^entry_ptr_invalid
+      118 		then call get_entry_name_ (sp -> stack_frame.entry_ptr, entryname, segno, lang, code);
+      119 		call check_call_link_ (sp);		/* find out how owner was called */
+      120 	     end;
+      121 	else do;					/* know ppr is not owner */
+      122 		if is_cls_ (use_ptr)
+      123 		then do;				/* print frame owner anyway--don't want cls */
+      124 			use_ptr = last_ptr;
+      125 			call get_entry_name_ (sp -> stack_frame.entry_ptr, entryname, segno, lang, code);
+      126 		     end;				/* what frame owner last called seems to mislead as much as it helps */
+      127 						/*
+      128*						   else call check_call_link_(sp -> stack_frame.next_sp);
+      129*						   */
+      130 	     end;
+      131 
+      132 	if ppr_is_ops
+      133 	then find_op = "1"b;			/* print operator name as well */
+      134 	else find_op = "0"b;
+      135 
+      136 	call put_together_ (ptemp);			/* format name with offset */
+      137 	if (length_sw = 1) | (pname1 = " ")
+      138 	then pname1 = ptemp;
+      139 	else call ioa_$rsnnl ("^/  (actually by support procedure ^a)", pname2, lng, ptemp);
+      140 
+      141 test_crawlout:
+      142 	if cond_info.crawlout
+      143 	then do;					/* if possible, get name of real faulting proc */
+      144 		if cond_info.mc_ptr ^= null
+      145 		then do;				/* have some info from lower ring */
+      146 			entryname, link_segname, entrypoint, op_seg_name = "";
+      147 			find_op = "0"b;
+      148 			scup = addr (cond_info.mc_ptr -> mc.scu (0));
+      149 			use_ptr = ptr (baseptr (bin (bin (scup -> scu.ppr.psr, 15), 18)), scup -> scu.ilc);
+      150 			call put_together_ (pname3);
+      151 		     end;
+      152 	     end;
+      153 	return;
+      154 
+      155 check_call_link_:
+      156      proc (asp);
+      157 
+      158 /* This internal procedure tries to find out how the owner of the specified
+      159*   stack frame was called by looking at the last reference from the preceding
+      160*   stack frame */
+      161 
+      162 	declare (asp, csp, callp, entry_ptr, link_ptr)
+      163 				 ptr;
+      164 
+      165 	declare frame_flag		 bit (1) aligned;
+      166 
+      167 	declare op_seg		 char (32) aligned;
+      168 
+      169 	declare get_link_ptr_	 entry (ptr, ptr, ptr);
+      170 	declare interpret_link_	 entry (ptr, ptr, fixed bin (35));
+      171 	declare interpret_op_ptr_	 entry (ptr, ptr, ptr, char (32) aligned, bit (1) aligned);
+      172 
+      173 	declare 1 auto_interpret_link_info aligned like interpret_link_info;
+      174 
+      175 
+      176 	csp = asp -> stack_frame.prev_sp;		/* get ptr to previous frame */
+      177 	if csp = null
+      178 	then return;				/* no previous frame */
+      179 
+      180 /* get last location in owner of previous frame */
+      181 
+      182 	call interpret_op_ptr_ (null, csp, callp, op_seg, frame_flag);
+      183 	if callp = null
+      184 	then callp = ptr (csp -> stack_frame.return_ptr, rel (csp -> stack_frame.return_ptr));
+      185 						/* return_ptr may have indicators in modifier */
+      186 
+      187 	call get_link_ptr_ (callp, link_ptr, entry_ptr);
+      188 
+      189 	if link_ptr ^= null
+      190 	then do;					/* link name probably more accurate */
+      191 		auto_interpret_link_info.version = INTERPRET_LINK_INFO_VERSION_1;
+      192 
+      193 		call interpret_link_ (addr (auto_interpret_link_info), link_ptr, code);
+      194 		if code = 0
+      195 		then do;				/* use link name */
+      196 			link_segname = auto_interpret_link_info.segment_name;
+      197 			auto_interpret_link_info.entry_point_name =
+      198 			     substr (auto_interpret_link_info.entry_point_name, 2);
+      199 		     end;
+      200 		return;
+      201 	     end;
+      202 
+      203 	if entry_ptr ^= null
+      204 	then /* see if we have reference to an entry */
+      205 	     call get_entry_name_ (entry_ptr, auto_interpret_link_info.entry_point_name, segno, lang, code);
+      206 	return;
+      207      end;
+      208 
+      209 put_together_:
+      210      procedure (pname);
+      211 
+      212 /* This internal procedure finds the rest of the pathname, figures out which of
+      213*   of the entry name pieces are appropriate, tries to avoid duplications and
+      214*   extra dollar signs, and formats the complete name */
+      215 
+      216 /* If the segname is foo, and the entrypoint is foo$SOMETHING,
+      217*   then improve the message removing the second foo.
+      218*   foo. Admittedly, ALM or hand construction could make an object
+      219*   segment with both foo and foo$foo for entrypoints, but there
+      220*   is no reason users should see foo$foo$foo just in case that happens.
+      221*   This is a temporary measure until pl1 does multiple segnames right,
+      222*   and we can display the segment-entrypoint instead of the 
+      223*   entryname-pl1_entry_name_from_symbol_table. 
+      224**/
+      225 
+      226 	declare pname		 char (500) aligned;
+      227 	declare r_entrypoint	 char (256) var;
+      228 	declare r_entryname		 char (32);	/* fs entryname or segname */
+      229 	declare op_name		 char (32) aligned;
+      230 	declare op_msg		 char (57) aligned;
+      231 	declare line_msg		 char (13);	/* from get_line_no_ */
+      232 
+      233 	declare formatx		 fixed bin;
+      234 	declare (add_offset, use_offset)
+      235 				 char (7);
+      236 
+      237 
+      238 	declare ioa_$rsnnl		 entry options (variable);
+      239 	declare find_operator_name_	 entry (char (*) aligned, ptr, char (32) aligned);
+      240 	declare find_pathname_	 entry (ptr, ptr, fixed bin (35));
+      241 
+      242 	declare 1 name_info		 aligned like find_pathname_info;
+      243 
+      244 
+      245 	call find_pathname_ (use_ptr, addr (name_info), code);
+      246 						/* get pathname and offset pieces */
+      247 
+      248 	if name_info.adjusted_offset ^= ""		/* if bound segment */
+      249 	then do;
+      250 		add_offset = name_info.real_offset;	/* for msg in () */
+      251 		use_offset = name_info.adjusted_offset; /* in component */
+      252 	     end;
+      253 	else do;
+      254 		use_offset = name_info.real_offset;
+      255 		add_offset = "";
+      256 	     end;
+      257 
+      258 	op_msg = "";				/* assume no operator involved */
+      259 
+      260 	if op_seg_name ^= ""			/* operator */
+      261 	then if find_op				/* global from main block -- operator is interesting */
+      262 	     then do;				/* condition happened in operator */
+      263 		     call find_operator_name_ (op_seg_name, use_ptr, op_name);
+      264 		     if op_name ^= ""		/* was an operator we could find */
+      265 		     then if substr (op_name, 1, 4) ^= "call"
+      266 			then op_msg =
+      267 				byte (10 /* NL */) || /* NL */ "(while in operator " || rtrim (op_name)
+      268 				|| ")";
+      269 		end;
+      270 
+      271 	call get_line_no_ ();			/* try to find source line */
+      272 
+      273 /* figure out which names and format to use */
+      274 
+      275 	formatx = 0;				/* assume no dirname but full seg$entry|offset */
+      276 
+      277 	if entryname ^= ""				/* main block found full description, probably from stack_frame.entry_ptr */
+      278 	then r_entrypoint = entryname;		/*  we like that */
+      279 	else if entrypoint ^= ""			/* link target entryname in file system */
+      280 	then r_entrypoint = entrypoint;		/* that will do */
+      281 	else do;					/* no obvious entrypoint description */
+      282 		r_entrypoint = "";
+      283 		formatx = 1;			/* so skip to format 1, use refname */
+      284 	     end;
+      285 
+      286 /* Now, what goes in for a segname?? */
+      287 /* put the result in entryname as the putative fs entryname */
+      288 
+      289 	if link_segname ^= ""			/* If a link was involved, use that */
+      290 	then r_entryname = link_segname;
+      291 
+      292 /* resort to find_pathname_ */
+      293 
+      294 	else if name_info.component_ename ^= ""		/* bound seg, show both component name and entryname */
+      295 	then r_entryname = name_info.component_ename;
+      296 	else do;
+      297 		r_entryname = "";
+      298 		/*** skip to one-entryname formats */
+      299 		formatx = formatx + 2;		/* 0, 1 go to 2, 3 */
+      300 	     end;
+      301 
+      302 	if formatx = 3				/* we know all we are gonna know */
+      303 	then go to format (3);
+      304 
+      305 
+      306 	if formatx ^= 0
+      307 	then if (r_entryname = r_entrypoint)
+      308 	     then formatx = formatx + 1;
+      309 
+      310 	if formatx < 2				/* r_entryname is in use */
+      311 	then if name_info.real_ename = r_entryname	/* but its the same as the find_pathname_ entryname, so punt it */
+      312 	     then formatx = formatx + 2;
+      313 	if formatx = 2
+      314 	then if (name_info.real_ename = r_entrypoint) /* redundant  */ | (r_entrypoint = "")
+      315 						/* unknown */
+      316 	     then formatx = 3;
+      317 
+      318 	go to format (formatx);
+      319 
+      320 format (0):
+      321 
+      322 /* r_entryname$r_entrypoint_name|offset (line #)
+      323*   dirname>bound_seg_entryname|offset in pdir
+      324*   in operator operator name */
+      325 
+      326 	if r_entryname = before (r_entrypoint, "$")
+      327 	then r_entrypoint = after (r_entrypoint, "$");
+      328 
+      329 	if length_sw ^= 2				/* Dont want super-verbose */
+      330 	then add_offset = "";
+      331 	call ioa_$rsnnl ("^a$^a^a ^a^/(^a^a^a^a^a)^a^a", pname, lng, r_entryname, r_entrypoint, use_offset, line_msg,
+      332 	     name_info.dirname, name_info.gt_char, name_info.real_ename, add_offset, name_info.pdir_string, op_msg,
+      333 	     offset_msg);
+      334 	return;
+      335 
+      336 format (1):
+      337 
+      338 /* entryname|adj_offset (dname>real_entryname|real_off) */
+      339 
+      340 
+      341 	if length_sw ^= 2
+      342 	then add_offset = "";
+      343 	call ioa_$rsnnl ("^a^a ^a^/(^a^a^a^a^a) ^a^a", pname, lng, r_entryname, use_offset, line_msg, name_info.dirname,
+      344 	     name_info.gt_char, name_info.real_ename, add_offset, name_info.pdir_string, op_msg, offset_msg);
+      345 	return;
+      346 
+      347 format (2):
+      348 
+      349 /* dname>real_entryname$entrypoint_name|adj_offset */
+      350 
+      351 	if name_info.real_ename = before (r_entrypoint, "$")
+      352 	then r_entrypoint = after (r_entrypoint, "$");
+      353 
+      354 	call ioa_$rsnnl ("^a^a^a$^a^a^a ^a^a^a", pname, lng, name_info.dirname, name_info.gt_char, name_info.real_ename,
+      355 	     r_entrypoint, use_offset, name_info.pdir_string, line_msg, op_msg, offset_msg);
+      356 	return;
+      357 
+      358 format (3):
+      359 
+      360 /* dname>real_entryname|offset */
+      361 
+      362 	call ioa_$rsnnl ("^a^a^a^a^a ^a^a^a", pname, lng, name_info.dirname, name_info.gt_char,
+      363 	     name_info.real_ename, use_offset, name_info.pdir_string, line_msg, op_msg, offset_msg);
+      364 	return;
+      365 
+      366 get_line_no_:
+      367      procedure;
+      368 
+      369 /* This procedure finds the source line number corresponding to a given location */
+      370 
+      371 	dcl     (segp, symbp)	 ptr;
+      372 
+      373 	dcl     (start, num, line_no, offset)
+      374 				 fixed bin (18);
+      375 	dcl     bitcnt		 fixed bin (24);
+      376 	declare mode		 fixed bin (5);
+      377 	dcl     code		 fixed bin (35);
+      378 
+      379 	dcl     std		 bit (1) aligned;
+      380 
+      381 	dcl     (addr, addrel, baseptr, bin, bit, ptr, rel)
+      382 				 builtin;
+      383 
+      384 	dcl     component_info_$offset entry (ptr, fixed bin (18), ptr, fixed bin (35));
+      385 	dcl     object_info_$brief	 entry (ptr, fixed bin (24), ptr, fixed bin (35));
+      386 	dcl     (
+      387 	        stu_$get_line_no,
+      388 	        stu_$get_runtime_line_no
+      389 	        )			 entry (ptr, fixed bin (18), fixed bin (18), fixed bin (18), fixed bin (18));
+      390 
+      391 
+      392 
+      393 	dcl     ioa_$rsnnl		 entry options (variable);
+      394 	declare hcs_$status_mins	 entry (pointer, fixed bin (2), fixed bin (24), fixed bin (35));
+      395 	declare hcs_$fs_get_mode	 entry (pointer, fixed bin (5), fixed bin (35));
+      396 
+  5     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  5     2*
+  5     3*   Values for the "access mode" argument so often used in hardcore
+  5     4*   James R. Davis 26 Jan 81  MCR 4844
+  5     5*   Added constants for SM access 4/28/82 Jay Pattin
+  5     6*   Added text strings 03/19/85 Chris Jones
+  5     7**/
+  5     8 
+  5     9 
+  5    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  5    11 dcl	(
+  5    12 	N_ACCESS		   init ("000"b),
+  5    13 	R_ACCESS		   init ("100"b),
+  5    14 	E_ACCESS		   init ("010"b),
+  5    15 	W_ACCESS		   init ("001"b),
+  5    16 	RE_ACCESS		   init ("110"b),
+  5    17 	REW_ACCESS	   init ("111"b),
+  5    18 	RW_ACCESS		   init ("101"b),
+  5    19 	S_ACCESS		   init ("100"b),
+  5    20 	M_ACCESS		   init ("010"b),
+  5    21 	A_ACCESS		   init ("001"b),
+  5    22 	SA_ACCESS		   init ("101"b),
+  5    23 	SM_ACCESS		   init ("110"b),
+  5    24 	SMA_ACCESS	   init ("111"b)
+  5    25 	)		   bit (3) internal static options (constant);
+  5    26 
+  5    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  5    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  5    29 
+  5    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  5    31 			   static options (constant);
+  5    32 
+  5    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  5    34 			   static options (constant);
+  5    35 
+  5    36 dcl	(
+  5    37 	N_ACCESS_BIN	   init (00000b),
+  5    38 	R_ACCESS_BIN	   init (01000b),
+  5    39 	E_ACCESS_BIN	   init (00100b),
+  5    40 	W_ACCESS_BIN	   init (00010b),
+  5    41 	RW_ACCESS_BIN	   init (01010b),
+  5    42 	RE_ACCESS_BIN	   init (01100b),
+  5    43 	REW_ACCESS_BIN	   init (01110b),
+  5    44 	S_ACCESS_BIN	   init (01000b),
+  5    45 	M_ACCESS_BIN	   init (00010b),
+  5    46 	A_ACCESS_BIN	   init (00001b),
+  5    47 	SA_ACCESS_BIN	   init (01001b),
+  5    48 	SM_ACCESS_BIN	   init (01010b),
+  5    49 	SMA_ACCESS_BIN	   init (01011b)
+  5    50 	)		   fixed bin (5) internal static options (constant);
+  5    51 
+  5    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      397 
+      398 /* Include file symbol_header follows */
+  6     1 dcl	1 symbol_header	aligned based,
+  6     2 	2 translator,			/* dope for translator name */
+  6     3 	  3 offset	fixed bin(35),
+  6     4 	  3 code		unal bit(9),
+  6     5 	  3 size		unal bit(27),
+  6     6 	2 version,			/* dope for version name */
+  6     7 	  3 offset	fixed bin(35),
+  6     8 	  3 code		unal bit(9),
+  6     9 	  3 size		unal bit(27),
+  6    10 	2 times,
+  6    11 	  3 creation	fixed bin(71),
+  6    12 	  3 translation	fixed bin(71),
+  6    13 	2 root		unal bit(18),
+  6    14 	2 extension	unal bit(18),
+  6    15 	2 map		unal bit(18),
+  6    16 	2 n_files		unal bit(18),
+  6    17 	2 next_header	unal bit(18),
+  6    18 	2 bind_indicator	unal bit(18),
+  6    19 	2 text_size	unal bit(18),
+  6    20 	2 link_size	unal bit(18),
+  6    21 	2 program,			/* dope for program name */
+  6    22 	  3 offset	fixed bin(35),
+  6    23 	  3 code		unal bit(9),
+  6    24 	  3 size		unal bit(27);
+      399 
+  7     1 	/* BEGIN INCLUDE SEGMENT ...  component_info.incl.pl1   M. Weaver  4/26/72  */
+  7     2 
+  7     3 declare	1 ci aligned,
+  7     4 	2 dcl_version fixed bin,		/* version number of this structure */
+  7     5 	2 name char(32) aligned,		/* objectname of component segment */
+  7     6 	2 text_start pointer,		/* ptr to component's section of text */
+  7     7 	2 stat_start pointer,		/* pointer to component's section of internal static */
+  7     8 	2 symb_start pointer,		/* pointer to component's first symbol block */
+  7     9 	2 defblock_ptr pointer,		/* ptr to component's definition block */
+  7    10 	2 text_lng fixed bin,		/* length of text section */
+  7    11 	2 stat_lng fixed bin,		/* length of internal static */
+  7    12 	2 symb_lng fixed bin,		/* length of symbol section */
+  7    13 	2 n_blocks fixed bin,		/* number of symbol blocks in component's symbol section */
+  7    14 	2 standard bit(1) aligned,		/* indicates whether component is in standard (new) format */
+  7    15 	2 compiler char(8) aligned,		/* name of component's compiler */
+  7    16 	2 compile_time fixed bin(71),		/* time component was compiled */
+  7    17 	2 userid char(32) aligned,		/* id of creator of component */
+  7    18 	2 cvers aligned,			/* version of component's compiler in printable form */
+  7    19 	  3 offset bit(18) unaligned,		/* offset in words relative to symb_start */
+  7    20 	  3 length bit(18) unaligned,		/* length of name in characters */
+  7    21 	2 comment aligned,			/* component's comment */
+  7    22 	  3 offset bit(18) unaligned,		/* offset in words relative to symb_start */
+  7    23 	  3 length bit(18) unaligned,		/* length of comment in characters */
+  7    24 	2 source_map fixed bin;		/* offset, rel to beg of symbol block, of component's source map */
+  7    25 
+  7    26 	/* END INCLUDE SEGMENT ... component_info.incl.pl1 */
+      400 
+      401 
+      402 	dcl     1 oi		 aligned like object_info;
+      403 
+  8     1 /* BEGIN INCLUDE FILE ... object_info.incl.pl1
+  8     2*coded February 8, 1972 by Michael J. Spier	*/
+  8     3 /* modified May 26, 1972 by M. Weaver */
+  8     4 /* modified 15 April, 1975 by M. Weaver */
+  8     5 
+  8     6 declare	1 object_info aligned based,		/* structure containing object info based, returned by object_info_ */
+  8     7 	2 version_number fixed bin,		/* version number of current structure format (=2) */
+  8     8 	2 textp pointer,			/* pointer to beginning of text section */
+  8     9 	2 defp pointer,			/* pointer to beginning of definition section */
+  8    10 	2 linkp pointer,			/* pointer to beginning of linkage section */
+  8    11 	2 statp pointer,			/* pointer to beginning of static section */
+  8    12 	2 symbp pointer,			/* pointer to beginning of symbol section */
+  8    13 	2 bmapp pointer,			/* pointer to beginning of break map (may be null) */
+  8    14 	2 tlng fixed bin,			/* length in words of text section */
+  8    15 	2 dlng fixed bin,			/* length in words of definition section */
+  8    16 	2 llng fixed bin,			/* length in words of linkage section */
+  8    17 	2 ilng fixed bin,			/* length in words of static section */
+  8    18 	2 slng fixed bin,			/* length in words of symbol section */
+  8    19 	2 blng fixed bin,			/* length in words of break map */
+  8    20 	2 format,				/* word containing bit flags about object type */
+  8    21 	  3 old_format bit(1) unaligned,	/* on if segment isn't in new format, i.e. has old style object map */
+  8    22 	  3 bound bit(1) unaligned,		/* on if segment is bound */
+  8    23 	  3 relocatable bit(1) unaligned,	/* on if seg has relocation info in its first symbol block */
+  8    24 	  3 procedure bit(1) unaligned,	/* on if segment is an executable object program */
+  8    25 	  3 standard bit(1) unaligned,	/* on if seg is in standard format (more than just standard map) */
+  8    26 	  3 gate bit(1) unaligned,		/* on if segment is a gate */
+  8    27 	  3 separate_static bit(1) unaligned,	/* on if static not in linkage */
+  8    28 	  3 links_in_text bit(1) unaligned,	/* on if there are threaded links in text */
+  8    29 	  3 perprocess_static bit (1) unaligned, /* on if static is not to be per run unit */
+  8    30 	  3 pad bit(27) unaligned,
+  8    31 	2 entry_bound fixed bin,		/* entry bound if segment is a gate */
+  8    32 	2 textlinkp pointer,		/* ptr to first link in text */
+  8    33 
+  8    34 	/* LIMIT OF BRIEF STRUCTURE */
+  8    35 
+  8    36 	2 compiler char(8) aligned,		/* name of processor which generated segment */
+  8    37 	2 compile_time fixed bin(71),		/* clock reading of date/time object was generated */
+  8    38 	2 userid char(32) aligned,		/* standard Multics id of creator of object segment */
+  8    39 	2 cvers aligned,			/* generator version name in printable char string form */
+  8    40 	  3 offset bit(18) unaligned,		/* offset of name in words relative to base of symbol section */
+  8    41 	  3 length bit(18) unaligned,		/* length of name in characters */
+  8    42 	2 comment aligned,			/* printable comment concerning generator or generation of segment */
+  8    43 	  3 offset bit(18) unaligned,		/* offset of comment in words relative to base of symbol section */
+  8    44 	  3 length bit(18) unaligned,		/* length of comment in characters */
+  8    45 	2 source_map fixed bin,		/* offset, relative to base of symbol section, of source map structure */
+  8    46 
+  8    47 	/* LIMIT OF DISPLAY STRUCTURE */
+  8    48 
+  8    49 	2 rel_text pointer,			/* pointer to text section relocation info */
+  8    50 	2 rel_def pointer,			/* pointer to definition section relocation info */
+  8    51 	2 rel_link pointer,			/* pointer to linkage section relocation info */
+  8    52 	2 rel_static pointer,		/* pointer to static section relocation info */
+  8    53 	2 rel_symbol pointer,		/* pointer to symbol section relocation info */
+  8    54 	2 text_boundary fixed bin,		/* specifies mod  of text section base boundary */
+  8    55 	2 static_boundary fixed bin,		/* specifies mod of internal static base boundary */
+  8    56 					/* currently not used by system */
+  8    57 	2 default_truncate fixed bin,		/* offset rel to symbp for binder to automatically trunc. symb sect. */
+  8    58 	2 optional_truncate fixed bin;	/* offset rel to symbp for binder to optionally trunc. symb sect. */
+  8    59 
+  8    60 declare	object_info_version_2 fixed bin int static init(2);
+  8    61 
+  8    62 /* END INCLUDE FILE ... object_info.incl.pl1 */
+      404 
+      405 
+      406 
+      407 	line_msg = "";
+      408 	segp = baseptr (baseno (use_ptr));		/* get ptr to beginning of seg */
+      409 	offset = bin (rel (use_ptr), 18);		/* extract offset of location */
+      410 
+      411 /* First see if we have access to touch the segment AT ALL */
+      412 
+      413 	call hcs_$fs_get_mode (segp, mode, code);
+      414 	if code ^= 0 /* Should not happen, but .. */
+      415 	     | ((bit (mode, 5) & bit (R_ACCESS_BIN, 5)) = "00000"b) /* no R */
+      416 	then return;
+      417 
+      418 /* first see if seg is bound; if so use only component info */
+      419 
+      420 	call component_info_$offset (segp, offset, addr (ci), code);
+      421 	if code = 0
+      422 	then do;					/* use info for component */
+      423 		symbp = ci.symb_start;
+      424 		std = ci.standard;
+      425 		go to call_stu;
+      426 	     end;
+      427 
+      428 /* segment is not bound; see if seg itself has statement map */
+      429 
+      430 	call hcs_$status_mins (segp, (0), bitcnt, code);
+      431 	if code ^= 0
+      432 	then return;
+      433 
+      434 	oi.version_number = object_info_version_2;
+      435 	call object_info_$brief (segp, bitcnt, addr (oi), code);
+      436 	if code ^= 0
+      437 	then return;				/* no symbol section so no map */
+      438 
+      439 	symbp = oi.symbp;
+      440 	std = oi.format.standard;
+      441 
+      442 call_stu:
+      443 	start = -1;
+      444 	if std
+      445 	then call stu_$get_runtime_line_no (symbp, offset, start, num, line_no);
+      446 	else if symbp -> symbol_header.root
+      447 	then call stu_$get_line_no (addrel (symbp, symbp -> symbol_header.root), offset, start, num, line_no);
+      448 
+      449 	if start > -1
+      450 	then call ioa_$rsnnl ("(line ^d)", line_msg, num, line_no);
+      451 
+      452 	return;
+      453 
+      454      end get_line_no_;
+      455 
+      456      end put_together_;
+      457 
+  9     1 /* BEGIN INCLUDE FILE find_pathname_info.incl.pl1 BIM April 1981 */
+  9     2 /* format: style2 */
+  9     3 
+  9     4      declare find_pathname_info_ptr pointer;
+  9     5 
+  9     6      declare 1 find_pathname_info   aligned based (find_pathname_info_ptr),
+  9     7 	     2 strings	      unaligned,
+  9     8 	       3 component_ename  character (32),
+  9     9 	       3 adjusted_offset  character (7),
+  9    10 	       3 dirname	      character (168),
+  9    11 	       3 gt_char	      character (1),
+  9    12 	       3 real_ename	      character (32),
+  9    13 	       3 real_offset      character (7),
+  9    14 	       3 pdir_string      character (17),
+  9    15 	       3 offset_msg	      character (40),
+  9    16 	     2 bin_adjusted_off   fixed bin (18),
+  9    17 	     2 bin_real_off	      fixed bin (18);
+  9    18 
+  9    19 /* END INCLUDE FILE find_pathname_info */
+      458 
+      459      end get_ppr_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.0  get_ppr_.pl1                      >special_ldd>install>MR12.3-1114>get_ppr_.pl1
+61           1    06/28/79  1204.8  condition_info.incl.pl1           >ldd>include>condition_info.incl.pl1
+75           2    06/06/83  0917.4  interpret_link_info.incl.pl1      >ldd>include>interpret_link_info.incl.pl1
+77           3    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+79           4    11/07/86  1550.3  stack_frame.incl.pl1              >ldd>include>stack_frame.incl.pl1
+397          5    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+399          6    05/06/74  1752.6  symbol_header.incl.pl1            >ldd>include>symbol_header.incl.pl1
+400          7    05/06/74  1741.0  component_info.incl.pl1           >ldd>include>component_info.incl.pl1
+404          8    08/05/77  1022.5  object_info.incl.pl1              >ldd>include>object_info.incl.pl1
+458          9    07/18/81  1100.0  find_pathname_info.incl.pl1       >ldd>include>find_pathname_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+INTERPRET_LINK_INFO_VERSION_1   000004 constant        char(8)                  initial packed unaligned dcl 2-13 ref 191
+R_ACCESS_BIN                           constant        fixed bin(5,0)           initial dcl 5-36 ref 414
+add_offset                      001100 automatic       char(7)                  packed unaligned dcl 234 set ref 250* 255* 329* 331*
+                                                                                  336* 343*
+addr                                                   builtin function         dcl 52 in procedure "get_ppr_" ref 112 112 148 193
+                                                                                  193 245 245
+addr                                                   builtin function         dcl 381 in procedure "get_line_no_" ref 420 420 435
+                                                                                  435
+addrel                                                 builtin function         dcl 381 ref 446 446
+adjusted_offset          10     001104 automatic       char(7)                  level 3 packed packed unaligned dcl 242 set ref 248
+                                                                                  251
+after                                                  builtin function         dcl 52 ref 320 347
+asp                                    parameter       pointer                  dcl 49 in procedure "get_ppr_" ref 15 82
+asp                                    parameter       pointer                  dcl 162 in procedure "check_call_link_" ref 155 176
+auto_interpret_link_info        000571 automatic       structure                level 1 dcl 173 set ref 193 193
+baseno                                                 builtin function         dcl 52 ref 88 90 408
+baseptr                                                builtin function         dcl 52 in procedure "get_ppr_" ref 149
+baseptr                                                builtin function         dcl 381 in procedure "get_line_no_" ref 408
+before                                                 builtin function         dcl 52 ref 320 347
+bin                                                    builtin function         dcl 52 in procedure "get_ppr_" ref 149 149
+bin                                                    builtin function         dcl 381 in procedure "get_line_no_" ref 409
+bit                                                    builtin function         dcl 381 ref 414 414
+bitcnt                          001240 automatic       fixed bin(24,0)          dcl 375 set ref 430* 435*
+byte                                                   builtin function         dcl 52 ref 264
+caller_is_owner           0(04) 000534 automatic       bit(1)                   level 2 packed packed unaligned dcl 64 set ref 115
+callp                           000552 automatic       pointer                  dcl 162 set ref 182* 183 183* 187*
+ci                              001244 automatic       structure                level 1 dcl 7-3 set ref 420 420
+code                            001242 automatic       fixed bin(35,0)          dcl 377 in procedure "get_line_no_" set ref 413* 414
+                                                                                  420* 421 430* 431 435* 436
+code                            000524 automatic       fixed bin(35,0)          dcl 47 in procedure "get_ppr_" set ref 97* 117* 125*
+                                                                                  193* 194 203* 245*
+component_ename                 001104 automatic       char(32)                 level 3 packed packed unaligned dcl 242 set ref 294
+                                                                                  294
+component_info_$offset          000034 constant        entry                    external dcl 384 ref 420
+cond_info                              based           structure                level 1 dcl 62
+condition_info                         based           structure                level 1 dcl 1-14
+crawlout                 22            based           bit(1)                   level 3 packed packed unaligned dcl 62 set ref 112*
+                                                                                  141
+csp                             000550 automatic       pointer                  dcl 162 set ref 176* 177 182* 183 183
+dirname                  11(27) 001104 automatic       char(168)                level 3 packed packed unaligned dcl 242 set ref 331*
+                                                                                  343* 354* 358*
+entry_point_name         12     000571 automatic       char(260)                level 2 dcl 173 set ref 197* 197 203*
+entry_ptr                       000554 automatic       pointer                  dcl 162 in procedure "check_call_link_" set ref 187*
+                                                                                  203 203*
+entry_ptr                26            based           pointer                  level 2 in structure "stack_frame" dcl 4-36
+                                                                                  in procedure "get_ppr_" set ref 97* 117* 125*
+entry_ptr_invalid         0(05) 000534 automatic       bit(1)                   level 2 packed packed unaligned dcl 64 set ref 117
+entryname                       000315 automatic       char(256)                dcl 37 set ref 94* 97* 109* 117* 125* 146* 277 277
+entrypoint                      000415 automatic       char(256)                dcl 37 set ref 94* 109* 146* 279 279
+exists_ppr                0(01) 000534 automatic       bit(1)                   level 2 packed packed unaligned dcl 64 set ref 115
+find_op                         000521 automatic       bit(1)                   dcl 42 set ref 95* 132* 134* 147* 260
+find_operator_name_             000030 constant        entry                    external dcl 239 ref 263
+find_pathname_                  000032 constant        entry                    external dcl 240 ref 245
+find_pathname_info                     based           structure                level 1 dcl 9-6
+flags                    22            based           structure                level 2 packed packed unaligned dcl 62
+format                   24     001314 automatic       structure                level 2 dcl 402
+formatx                         001076 automatic       fixed bin(17,0)          dcl 233 set ref 275* 283* 299* 299 302 306 306* 306
+                                                                                  310 310* 310 313 313* 318
+frame_flag                      000560 automatic       bit(1)                   dcl 165 set ref 182*
+get_entry_name_                 000014 constant        entry                    external dcl 58 ref 97 117 125 203
+get_link_ptr_                   000020 constant        entry                    external dcl 169 ref 187
+gt_char                  63(27) 001104 automatic       char(1)                  level 3 packed packed unaligned dcl 242 set ref 331*
+                                                                                  343* 354* 358*
+hcs_$fs_get_mode                000050 constant        entry                    external dcl 395 ref 413
+hcs_$status_mins                000046 constant        entry                    external dcl 394 ref 430
+ilc                       4            based           bit(18)                  level 2 packed packed unaligned dcl 3-56 ref 149
+interpret_link_                 000022 constant        entry                    external dcl 170 ref 193
+interpret_link_info                    based           structure                level 1 dcl 2-5
+interpret_op_ptr_               000024 constant        entry                    external dcl 171 ref 182
+ioa_$rsnnl                      000026 constant        entry                    external dcl 238 in procedure "put_together_" ref
+                                                                                  331 343 354 358
+ioa_$rsnnl                      000044 constant        entry                    external dcl 393 in procedure "get_line_no_" ref 449
+ioa_$rsnnl                      000010 constant        entry                    external dcl 55 in procedure "get_ppr_" ref 139
+is_cls_                         000016 constant        entry                    external dcl 59 ref 122
+lang                            000516 automatic       char(8)                  dcl 39 set ref 97* 117* 125* 203*
+last_ptr                        000532 automatic       pointer                  dcl 49 set ref 112* 124
+length_sw                              parameter       fixed bin(17,0)          dcl 44 ref 15 102 137 329 336
+line_msg                        001072 automatic       char(13)                 packed unaligned dcl 231 set ref 331* 343* 354* 358*
+                                                                                  407* 449*
+line_no                         001236 automatic       fixed bin(18,0)          dcl 373 set ref 444* 446* 449*
+link_ptr                        000556 automatic       pointer                  dcl 162 set ref 187* 189 193*
+link_segname                    000275 automatic       char(32)                 dcl 30 set ref 94* 109* 146* 196* 289 289
+lng                             000522 automatic       fixed bin(17,0)          dcl 45 set ref 139* 331* 343* 354* 358*
+loc_ptr                  20            based           pointer                  level 2 dcl 62 ref 83 86 111
+mc                                     based           structure                level 1 dcl 3-12
+mc_ptr                                 based           pointer                  level 2 dcl 62 set ref 112* 144 148
+mode                            001241 automatic       fixed bin(5,0)           dcl 376 set ref 413* 414
+name_info                       001104 automatic       structure                level 1 dcl 242 set ref 245 245
+nsp                             000526 automatic       pointer                  dcl 49 set ref 89* 90 91* 91 92 97 98*
+null                                                   builtin function         dcl 52 ref 83 144 177 182 182 183 189 203
+num                             001235 automatic       fixed bin(18,0)          dcl 373 set ref 444* 446* 449*
+object_info                            based           structure                level 1 dcl 8-6
+object_info_$brief              000036 constant        entry                    external dcl 385 ref 435
+object_info_version_2                  constant        fixed bin(17,0)          initial dcl 8-60 ref 434
+offset                          001237 automatic       fixed bin(18,0)          dcl 373 set ref 409* 420* 444* 446*
+offset_msg              102     001104 automatic       char(40)                 level 3 packed packed unaligned dcl 242 set ref 331*
+                                                                                  343* 354* 358*
+oi                              001314 automatic       structure                level 1 dcl 402 set ref 435 435
+op_msg                          001053 automatic       char(57)                 dcl 230 set ref 258* 264* 331* 343* 354* 358*
+op_name                         001043 automatic       char(32)                 dcl 229 set ref 263* 264 264 264
+op_seg                          000561 automatic       char(32)                 dcl 167 set ref 182*
+op_seg_name                     000305 automatic       char(32)                 dcl 30 set ref 94* 112* 146* 260 263*
+pdir_string              75(27) 001104 automatic       char(17)                 level 3 packed packed unaligned dcl 242 set ref 331*
+                                                                                  343* 354* 358*
+pname                                  parameter       char(500)                dcl 226 set ref 209 331* 343* 354* 358*
+pname1                                 parameter       char(500)                dcl 28 set ref 15 81* 100* 137 137*
+pname2                                 parameter       char(500)                dcl 28 set ref 15 81* 139*
+pname3                                 parameter       char(500)                dcl 28 set ref 15 81* 150*
+ppr                                    based           structure                level 2 packed packed unaligned dcl 3-56
+ppr_is_ops                0(03) 000534 automatic       bit(1)                   level 2 packed packed unaligned dcl 64 set ref 132
+ppr_is_owner              0(02) 000534 automatic       bit(1)                   level 2 packed packed unaligned dcl 64 set ref 115
+prev_sp                  20            based           pointer                  level 2 dcl 4-36 ref 90 91 176
+psr                       0(03)        based           bit(15)                  level 3 packed packed unaligned dcl 3-56 ref 149
+ptemp                           000100 automatic       char(500)                dcl 28 set ref 81* 136* 137 139*
+ptr                                                    builtin function         dcl 52 ref 149 183
+r_entryname                     001033 automatic       char(32)                 packed unaligned dcl 228 set ref 289* 294* 297* 306
+                                                                                  310 320 331* 343*
+r_entrypoint                    000732 automatic       varying char(256)        dcl 227 set ref 277* 279* 282* 306 313 313 320 320*
+                                                                                  320 331* 347 347* 347 354*
+real_ename               64     001104 automatic       char(32)                 level 3 packed packed unaligned dcl 242 set ref 310
+                                                                                  313 331* 343* 347 354* 358*
+real_offset              74     001104 automatic       char(7)                  level 3 packed packed unaligned dcl 242 set ref 250
+                                                                                  254
+rel                                                    builtin function         dcl 381 in procedure "get_line_no_" ref 409
+rel                                                    builtin function         dcl 52 in procedure "get_ppr_" ref 183
+return_ptr               24            based           pointer                  level 2 dcl 4-36 ref 183 183
+root                     10            based           bit(18)                  level 2 packed packed unaligned dcl 6-1 ref 446 446
+                                                                                  446
+rtrim                                                  builtin function         dcl 52 ref 264
+scu                                    based           structure                level 1 dcl 3-56 in procedure "get_ppr_"
+scu                      30            based           bit(36)                  array level 2 in structure "mc" packed packed
+                                                                                  unaligned dcl 3-12 in procedure "get_ppr_" set ref
+                                                                                  148
+scup                            000536 automatic       pointer                  dcl 3-54 set ref 148* 149 149
+segment_name              2     000571 automatic       char(32)                 level 2 dcl 173 set ref 196
+segno                           000523 automatic       fixed bin(18,0)          dcl 46 set ref 97* 117* 125* 203*
+segp                            001230 automatic       pointer                  dcl 371 set ref 408* 413* 420* 430* 435*
+situation                       000534 automatic       structure                level 1 dcl 64 set ref 112 112
+sp                              000540 automatic       pointer                  dcl 4-31 set ref 82* 88 89 112* 117 119* 125
+spno                            000520 automatic       bit(18)                  dcl 41 set ref 88* 90
+sptr                                   parameter       pointer                  dcl 49 ref 15 83 86 86 96 111 112 112 112 141 144
+                                                                                  148
+stack_frame                            based           structure                level 1 dcl 4-36
+stack_frame_exit_               000012 constant        entry                    external dcl 56 ref 112
+stack_frame_flags                      based           structure                level 1 dcl 4-64
+standard                 24(04) 001314 automatic       bit(1)                   level 3 in structure "oi" packed packed unaligned
+                                                                                  dcl 402 in procedure "get_line_no_" set ref 440
+standard                 26     001244 automatic       bit(1)                   level 2 in structure "ci" dcl 7-3 in procedure
+                                                                                  "get_line_no_" set ref 424
+start                           001234 automatic       fixed bin(18,0)          dcl 373 set ref 442* 444* 446* 449
+std                             001243 automatic       bit(1)                   dcl 379 set ref 424* 440* 444
+strings                         001104 automatic       structure                level 2 packed packed unaligned dcl 242
+stu_$get_line_no                000040 constant        entry                    external dcl 386 ref 446
+stu_$get_runtime_line_no        000042 constant        entry                    external dcl 386 ref 444
+substr                                                 builtin function         dcl 52 ref 197 264
+support                  20(28)        based           bit(1)                   level 2 packed packed unaligned dcl 4-64 ref 92
+symb_start               16     001244 automatic       pointer                  level 2 dcl 7-3 set ref 423
+symbol_header                          based           structure                level 1 dcl 6-1
+symbp                    12     001314 automatic       pointer                  level 2 in structure "oi" dcl 402 in procedure
+                                                                                  "get_line_no_" set ref 439
+symbp                           001232 automatic       pointer                  dcl 371 in procedure "get_line_no_" set ref 423*
+                                                                                  439* 444* 446 446 446 446 446
+use_offset                      001102 automatic       char(7)                  packed unaligned dcl 234 set ref 251* 254* 331* 343*
+                                                                                  354* 358*
+use_ptr                         000530 automatic       pointer                  dcl 49 set ref 96* 111* 122* 124* 149* 245* 263* 408
+                                                                                  409
+user_loc_ptr             24            based           pointer                  level 2 dcl 62 ref 86 96
+version                         000571 automatic       char(8)                  level 2 dcl 173 set ref 191*
+version_number                  001314 automatic       fixed bin(17,0)          level 2 dcl 402 set ref 434*
+wc_ptr                   16            based           pointer                  level 2 dcl 62 set ref 112*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 5-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+RETURN_PTR_MASK                        internal static bit(72)                  initial packed unaligned dcl 4-19
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 5-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 5-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 5-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 5-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 5-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+TRANSLATOR_ID_ALM                      internal static bit(18)                  initial packed unaligned dcl 4-25
+TRANSLATOR_ID_PL1V1                    internal static bit(18)                  initial packed unaligned dcl 4-26
+TRANSLATOR_ID_PL1V2                    internal static bit(18)                  initial packed unaligned dcl 4-24
+TRANSLATOR_ID_SIGNALLER                internal static bit(18)                  initial packed unaligned dcl 4-28
+TRANSLATOR_ID_SIGNAL_CALLER            internal static bit(18)                  initial packed unaligned dcl 4-27
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+abx                                    internal static fixed bin(17,0)          initial dcl 3-42
+apx                                    internal static fixed bin(17,0)          initial dcl 3-42
+bbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 3-42
+condition_info_ptr                     automatic       pointer                  dcl 1-10
+condition_info_version_1               internal static fixed bin(17,0)          initial dcl 1-30
+find_pathname_info_ptr                 automatic       pointer                  dcl 9-4
+interpret_link_info_ptr                automatic       pointer                  dcl 2-15
+lbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+lpx                                    internal static fixed bin(17,0)          initial dcl 3-42
+mcp                                    automatic       pointer                  dcl 3-10
+ptr                                                    builtin function         dcl 381
+sbx                                    internal static fixed bin(17,0)          initial dcl 3-42
+scux                                   based           structure                level 1 dcl 3-207
+spx                                    internal static fixed bin(17,0)          initial dcl 3-42
+stack_frame_min_length                 internal static fixed bin(17,0)          initial dcl 4-33
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+call_stu                        002137 constant        label                    dcl 442 ref 425
+check_call_link_                000611 constant        entry                    internal dcl 155 ref 98 119
+find_real                       000276 constant        label                    dcl 109 ref 102
+format                          000000 constant        label                    array(0:3) dcl 320 ref 302 318
+get_line_no_                    001771 constant        entry                    internal dcl 366 ref 271
+get_ppr_                        000124 constant        entry                    external dcl 15
+put_together_                   000764 constant        entry                    internal dcl 209 ref 100 136 150
+test_crawlout                   000535 constant        label                    dcl 141 ref 104
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2502        2554    2267        2512
+Length      3144    2267        52         354     212           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+get_ppr_                            986 external procedure  is an external procedure.  
+check_call_link_                        internal procedure  shares stack frame of external procedure get_ppr_.  
+put_together_                           internal procedure  shares stack frame of external procedure get_ppr_.  
+get_line_no_                            internal procedure  shares stack frame of external procedure get_ppr_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+get_ppr_                 000100 ptemp                       get_ppr_
+                         000275 link_segname                get_ppr_
+                         000305 op_seg_name                 get_ppr_
+                         000315 entryname                   get_ppr_
+                         000415 entrypoint                  get_ppr_
+                         000516 lang                        get_ppr_
+                         000520 spno                        get_ppr_
+                         000521 find_op                     get_ppr_
+                         000522 lng                         get_ppr_
+                         000523 segno                       get_ppr_
+                         000524 code                        get_ppr_
+                         000526 nsp                         get_ppr_
+                         000530 use_ptr                     get_ppr_
+                         000532 last_ptr                    get_ppr_
+                         000534 situation                   get_ppr_
+                         000536 scup                        get_ppr_
+                         000540 sp                          get_ppr_
+                         000550 csp                         check_call_link_
+                         000552 callp                       check_call_link_
+                         000554 entry_ptr                   check_call_link_
+                         000556 link_ptr                    check_call_link_
+                         000560 frame_flag                  check_call_link_
+                         000561 op_seg                      check_call_link_
+                         000571 auto_interpret_link_info    check_call_link_
+                         000732 r_entrypoint                put_together_
+                         001033 r_entryname                 put_together_
+                         001043 op_name                     put_together_
+                         001053 op_msg                      put_together_
+                         001072 line_msg                    put_together_
+                         001076 formatx                     put_together_
+                         001100 add_offset                  put_together_
+                         001102 use_offset                  put_together_
+                         001104 name_info                   put_together_
+                         001230 segp                        get_line_no_
+                         001232 symbp                       get_line_no_
+                         001234 start                       get_line_no_
+                         001235 num                         get_line_no_
+                         001236 line_no                     get_line_no_
+                         001237 offset                      get_line_no_
+                         001240 bitcnt                      get_line_no_
+                         001241 mode                        get_line_no_
+                         001242 code                        get_line_no_
+                         001243 std                         get_line_no_
+                         001244 ci                          get_line_no_
+                         001314 oi                          get_line_no_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac          shorten_stack
+ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+component_info_$offset        find_operator_name_           find_pathname_                get_entry_name_
+get_link_ptr_                 hcs_$fs_get_mode              hcs_$status_mins              interpret_link_
+interpret_op_ptr_             ioa_$rsnnl                    ioa_$rsnnl                    ioa_$rsnnl
+is_cls_                       object_info_$brief            stack_frame_exit_             stu_$get_line_no
+stu_$get_runtime_line_no
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000116        81 000131        82 000151        83 000154        86 000162        88 000166        89 000171
+     90 000172        91 000177        92 000201        94 000204        95 000220        96 000221        97 000226
+     98 000257       100 000261       102 000270       104 000274       106 000275       109 000276       111 000307
+    112 000314       115 000341       117 000347       119 000404       120 000406       122 000407       124 000423
+    125 000425       132 000457       134 000465       136 000466       137 000470       139 000506       141 000535
+    144 000543       146 000547       147 000563       148 000564       149 000567       150 000601       153 000610
+    155 000611       176 000613       177 000617       182 000624       183 000645       187 000656       189 000671
+    191 000675       193 000700       194 000715       196 000717       197 000722       200 000725       203 000726
+    206 000763       209 000764       245 000766       248 001003       250 001013       251 001016       252 001020
+    254 001021       255 001024       258 001027       260 001032       263 001040       264 001060       269 001137
+    271 001140       275 001141       277 001142       279 001154       282 001166       283 001167       289 001171
+    294 001201       297 001211       299 001214       302 001216       306 001221       310 001231       313 001242
+    318 001261       320 001262       329 001317       331 001326       334 001431       336 001432       343 001441
+    345 001540       347 001541       354 001576       356 001676       358 001677       364 001770       366 001771
+    407 001772       408 001775       409 002002       413 002005       414 002020       420 002036       421 002055
+    423 002057       424 002061       425 002063       430 002064       431 002102       434 002105       435 002107
+    436 002126       439 002131       440 002133       442 002137       444 002141       446 002163       449 002211
+    452 002244
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

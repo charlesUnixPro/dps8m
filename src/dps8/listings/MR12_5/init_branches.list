@@ -1,0 +1,2529 @@
+	COMPILATION LISTING OF SEGMENT init_branches
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1019.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 init_branches:
+       14      procedure;
+       15 
+       16 /* init_branches is called during system initialization to create directories
+       17*   and branches for all segments already loaded. The AST entries for these
+       18*   segments are linked to the AST entries of their parents and the newly created
+       19*   branches.
+       20*
+       21*   Last Modified: (Date and Reason)
+       22*   12/27/84 by Keith Loepere for pdd dir_quota.
+       23*   10/19/84 by Keith Loepere to set soos on old >sl1.
+       24*   6/2/82 by J. Bongiovanni to remove restriction of >sl1 to RPV, save UID
+       25*          of >sl1 and >pdd in active_hardcore_data
+       26*   3/82 BIM to unalign strings in call to asd_
+       27*   3/82 CAH for salvaging of dirs and recreating >sl1
+       28*   04/22/81, WOS, for ADP SDWs
+       29*   04/19/81, W. Olin Sibert, to stop maintaining aste.ic
+       30*   May 1978 by T. Casey to set initial quota of >pdd to largest possible value.
+       31*   6/23/76 by B. Greenberg for reverse-deciduous >online_salvager_output
+       32*   2/24/76 by R. Bratt to set per-process-sw in >pdd
+       33*   4/24/75, 11/4/75 by B. Greenberg for NSS
+       34*   741115 by PG to add name sl1 to >system_library_1.
+       35*   740821	by PG to remove status permission on >pdd and >pdd>!zzzzzzzbBBBBBB to *.*.*
+       36*   03/74  by Greenberg to remove hardcore gate kludge in favor of a real mechanism.
+       37*   02/74  by E Stone to set the max length of segments created during system initialization.
+       38*   10/73	by Steve Webber to add KLUDGE for hardcore gate entry bounds.
+       39*   09/03/71 by Richard H. Gumpertz for page multi-level
+       40*
+       41*   USAGE:	call init_branches;
+       42*   DOCUMENTED IN: AN70
+       43*
+       44**/
+       45 
+       46 	dcl     (ntp, segp, pastep)	 ptr,
+       47 	        relp		 bit (18) aligned,
+       48 	        write_lock		 bit (36) aligned,
+       49 	        (fi, i, pddq)	 fixed bin,
+       50 	        ustr		 char (15),
+       51 	        (code, ercode)	 fixed bin (35),
+       52 	        ename		 char (32),
+       53 	        next_astep		 ptr,
+       54 	        rb		 (3) fixed bin (3),
+       55 	        correct_max_length	 fixed bin (9),
+       56 	        pds$process_group_id	 char (32) aligned ext,
+       57 	        pds$		 ext,
+       58 	        dseg$		 (0:4095) fixed bin (71) external static,
+       59 	        (
+       60 	        slt$,
+       61 	        name_table$
+       62 	        )			 fixed bin ext;
+       63 
+       64 	dcl     1 sdwi		 aligned like sdw_info automatic;
+       65 
+       66 	dcl     zzBB		 char (15) static options (constant) init ("!zzzzzzzbBBBBBB");
+       67 						/* From Heb., "Directory of Flies" */
+       68 	dcl     No_daemon		 bit (1) aligned static options (constant) init ("1"b);
+       69 						/* Don't put *.SysDaemon on ACL */
+       70 						/* Name of Initializer's Pdir */
+       71 
+       72 	dcl     (
+       73 	        error_table_$noentry,
+       74 	        error_table_$namedup
+       75 	        )			 fixed bin (35) external static,
+       76 	        active_hardcore_data$sl1_uid bit (36) aligned ext,
+       77 	        active_hardcore_data$pdd_uid bit (36) aligned ext,
+       78 	        active_hardcore_data$pdir_quota fixed bin ext,
+       79 	        active_hardcore_data$pdir_dir_quota fixed bin ext;
+       80 	dcl     pvt$rlv_needs_salv	 bit (1) aligned external;
+       81 
+       82 	dcl     1 dir_acl		 (2) aligned like directory_acl_entry;
+       83 	dcl     1 del_acl		 (1) aligned like delete_acl_entry;
+       84 
+       85 	dcl     1 branch		 aligned like status_branch;
+       86 
+       87 	dcl     update_vtoce	 entry (ptr),
+       88 	        thread$out		 ext entry (ptr, bit (18)),
+       89 	        search_ast$hash_in	 entry (ptr),
+       90 	        quota$dqset		 entry (char (*), fixed bin, fixed bin (35)),
+       91 	        quota$dqmove	 entry (char (*), char (*), fixed bin, fixed bin (35)),
+       92 	        quota$qset		 entry (char (*), fixed bin, fixed bin (35)),
+       93 	        quota$qmove		 entry (char (*), char (*), fixed bin, fixed bin (35)),
+       94 	        get_ptrs_$given_segno	 ext entry (fixed bin (18)) returns (ptr),
+       95 	        sum$getbranch_root_my	 entry (ptr, bit (36) aligned, ptr, fixed bin (35)),
+       96 	        asd_$del_sentries	 entry (char (*), char (*), ptr, fixed bin, fixed bin (35)),
+       97 	        asd_$replace_dall	 entry (char (*), char (*), ptr, fixed bin, bit (1) aligned, fixed bin (35)),
+       98 	        unique_chars_	 entry (bit (*)) returns (char (15)),
+       99 	        append$branchx	 entry (char (*), char (*), fixed bin (5), (3) fixed bin (3), char (*), fixed bin (1),
+      100 				 fixed bin (1), fixed bin (24), fixed bin (35)),
+      101 	        sdw_util_$dissect	 entry (pointer, pointer),
+      102 	        syserr		 entry options (variable),
+      103 	        syserr$error_code	 entry options (variable),
+      104 	        (addr, baseno, binary, bin, bit, divide, fixed, max, null, ptr, rel, rtrim) builtin,
+      105 	        lock$dir_unlock	 ext entry (ptr),
+      106 	        chname$cfile	 entry (char (*), char (*), char (*), char (*), fixed bin (35)),
+      107 	        get_ptrs_$given_astep	 entry (ptr, fixed bin (71)),
+      108 	        initiate		 entry (char (*), char (*), char (*), fixed bin, fixed bin, ptr, fixed bin (35)),
+      109 	        make_branches	 entry (ptr, ptr, fixed bin (24), ptr, (3) fixed bin (3), bit (3), fixed bin (35)),
+      110 	        set$max_length_path	 entry (char (*), char (*), fixed bin (19), fixed bin (35)),
+      111 	        status_$long	 entry (char (*), char (*), fixed bin (1), ptr, ptr, fixed bin (35)),
+      112 	        terminate_$teseg	 entry (ptr, fixed bin, fixed bin (35));
+      113 	dcl     salvager$dir_salv_boot entry (char (*));
+      114 
+      115 
+      116 
+      117 /*  Rename the previous instance of process_dir_dir.  This allows the old
+      118*   one to be deleted without regard to name conflicts, and gives the Initializer
+      119*   a clean slate in the new zzBB. */
+      120 
+      121 	ustr = unique_chars_ (""b);			/* Make up some stuff */
+      122 	call chname$cfile (">", "process_dir_dir", "process_dir_dir", "process_dir_dir." || ustr, code);
+      123 						/* rename long name */
+      124 	if (code ^= 0) & (code ^= error_table_$noentry)
+      125 	then call syserr$error_code (CRASH, code, "init_branches: renaming process_dir_dir:");
+      126 
+      127 	call chname$cfile (">", "pdd", "pdd", "pdd." || ustr, code);
+      128 						/* drop the short name if there */
+      129 	if (code ^= 0) & (code ^= error_table_$noentry)
+      130 	then call syserr$error_code (CRASH, code, "init_branches: renaming old pdd:");
+      131 
+      132 	rb (*) = 7;
+      133 
+      134 	dir_acl (1).access_name = pds$process_group_id;
+      135 	dir_acl (1).mode = SMA_ACCESS;		/* sma for initializer */
+      136 
+      137 /* Make a new process_dir_dir */
+      138 
+      139 	call append$branchx (">", "process_dir_dir", SMA_ACCESS_BIN, rb, (pds$process_group_id), 1, 0, 0, code);
+      140 	if code ^= 0 then call syserr$error_code (CRASH, code, "init_branches: unable to make process_dir_dir:");
+      141 
+      142 	call chname$cfile (">", "process_dir_dir", "", "pdd", ercode);
+      143 						/* add name pdd to process_dir_dir */
+      144 	if ercode ^= 0
+      145 	then call syserr$error_code (ANNOUNCE, ercode, "init_branches: couldn't add name pdd to process_dir_dir:");
+      146 
+      147 /* now force on per-process-sw */
+      148 
+      149 	call initiate (">", "process_dir_dir", "", 0, 1, dp, code);
+      150 	if code ^= 0 then call syserr$error_code (CRASH, code, "init_branches: unable to initiate >pdd:");
+      151 	dp -> dir.per_process_sw = "1"b;		/* yeh, i know i dont have it locked */
+      152 	active_hardcore_data$pdd_uid = dp -> dir.uid;
+      153 
+      154 	pddq = 131071;				/* give >pdd largest possible quota (2**17-1), to start with; answering
+      155*						   service must keep track of it, and set it back up higher if
+      156*						   it is in danger of running out because of lots of processes */
+      157 	call quota$qset (">process_dir_dir", pddq, code); /* give PDD quota (makes it terminal) */
+      158 	if code ^= 0 then call syserr$error_code (ANNOUNCE, code, "init_branches: couldn't set quota on >pdd to ^d ", pddq);
+      159 	call quota$dqset (">process_dir_dir", pddq, code);/* give PDD quota (makes it terminal) */
+      160 	if code ^= 0 then call syserr$error_code (ANNOUNCE, code, "init_branches: couldn't set dir quota on >pdd to ^d ", pddq);
+      161 
+      162 /* Create >system_library_1 */
+      163 
+      164 	ename = "";				/* name to set soos on */
+      165 	call chname$cfile (">", "system_library_1", "system_library_1", "system_library_1." || ustr, code);
+      166 						/* rename the old one */
+      167 	if code = 0 then ename = "system_library_1." || ustr;
+      168 	else if code ^= error_table_$noentry
+      169 	then call syserr$error_code (CRASH, code, "init_branches: Renaming >system_library_1.");
+      170 
+      171 	call chname$cfile (">", "sl1", "sl1", "sl1." || ustr, code);
+      172 	if code = 0 then ename = "sl1." || ustr;
+      173 	else if code ^= error_table_$noentry
+      174 	then call syserr$error_code (CRASH, code, "init_branches: Renaming >sl1.");
+      175 
+      176 	if ename ^= "" then do;
+      177 		call dc_find$obj_status_write_priv (">", ename, DC_FIND_NO_CHASE, FS_OBJ_SOOS_MOD, ep, code);
+      178 		if code ^= 0
+      179 		then call syserr$error_code (CRASH, code, "init_branches: Setting security_oosw for old >system_library_1.");
+      180 		ep -> entry.security_oosw = "1"b;
+      181 		call dc_find$finished (ptr (ep, 0), DC_FIND_UNLOCK_DIR);
+      182 	     end;
+      183 
+      184 	call append$branchx (">", "system_library_1", SMA_ACCESS_BIN, rb, (pds$process_group_id), 1, 0, 0, code);
+      185 	if code ^= 0 then call syserr$error_code (CRASH, code, "init_branches: unable to make >system_library_1:");
+      186 
+      187 /* give everyone access to >system_library_1 */
+      188 
+      189 	dir_acl (2).access_name = "*.*.*";
+      190 	dir_acl (2).mode = S_ACCESS;			/* s to all */
+      191 	call asd_$replace_dall (">", "system_library_1", addr (dir_acl), 2, No_daemon, ercode);
+      192 	if ercode ^= 0 then call syserr$error_code (ANNOUNCE, ercode, "init_branches: error in replacing acl of >sl1.");
+      193 
+      194 /* Add name "sl1" to "system_library_1" */
+      195 
+      196 	call chname$cfile (">", "system_library_1", "", "sl1", ercode);
+      197 	if ercode ^= 0
+      198 	then call syserr$error_code (ANNOUNCE, ercode, "init_branches: couldn't add name sl1 to system_library_1:");
+      199 
+      200 /* Save off the unique ID of >sl1 */
+      201 
+      202 	call initiate (">", "sl1", "", 0, 1, dp, code);
+      203 	if code ^= 0 then call syserr$error_code (CRASH, code, "init_branches: unable to initiate >sl1");
+      204 	active_hardcore_data$sl1_uid = dp -> dir.uid;
+      205 
+      206 /* Create a branch for every segment in the SLT which needs one */
+      207 
+      208 	sltp = addr (slt$);				/* Pointer to the SLT. */
+      209 	ntp = addr (name_table$);			/* Pointer to names segment. */
+      210 	sstp = addr (sst_seg$);			/* Pointer to SST. */
+      211 	write_lock = "1"b;				/* directories will be locked for write */
+      212 	do fi = 0 to 3;				/* loop through all AST lists */
+      213 	     relp = sstp -> sst.ausedp (fi);		/* Rel. pointer to start of circular list. */
+      214 	     if relp ^= "0"b then do;			/* Do for all segs. on the list. */
+      215 		     astep = ptr (sstp, relp);	/* Pointer to first entry. */
+      216 back:
+      217 		     next_astep = ptr (astep, aste.fp); /* I might just unthread this one */
+      218 		     if astep -> aste.usedf & /* if entry is free skip it */
+      219 			astep -> aste.hc_sdw then do; /* We only want prodigy of make_sdw */
+      220 			     i = fixed (astep -> aste.strp, 18); /* segno left for us by make_sdw */
+      221 			     astep -> aste.strp = ""b;/* zero strp field so that legitimate trailers can be made */
+      222 			     sltep = addr (sltp -> slt.seg (i)); /* Pointer to SLT entry. */
+      223 
+      224 /* Here we mask off the P bit, since append is not interested. */
+      225 
+      226 			     call create_branch (ptr (ntp, sltep -> slte.path_ptr), ptr (ntp, sltep -> slte.names_ptr),
+      227 				sltep, bit (sltep -> slte.access, 3), segp, correct_max_length);
+      228 						/* Call to set up segment. */
+      229 			     call sum$getbranch_root_my (segp, write_lock, ep, ercode);
+      230 						/* get pointer to directory */
+      231 			     if ercode ^= 0 then call syserr$error_code (CRASH, ercode, "init_branches: getting dir entry pointer:");
+      232 			     dp = ptr (ep, 0);	/* Generate pointer to directory. */
+      233 			     pastep = get_ptrs_$given_segno (fixed (baseno (dp), 18));
+      234 						/* Get parent astep */
+      235 			     if pastep = null then call syserr (CRASH, "init_branches: Mysterious directory deactivation ");
+      236 			     astep -> aste.par_astep = rel (pastep); /* Thread active to father */
+      237 			     astep -> aste.infl = pastep -> aste.infp;
+      238 						/* thread into inferior list */
+      239 			     pastep -> aste.infp = rel (astep); /* ditto */
+      240 						/* it is ok to touch the parent dir here - we have assured its
+      241*						   activity via the ic field and infl thread */
+      242 			     astep -> aste.per_process = ep -> entry.per_process_sw;
+      243 						/* Set per-process sw */
+      244 			     astep -> aste.msl = bit (correct_max_length, 9);
+      245 						/* take what i_b$b left */
+      246 			     astep -> aste.uid = ep -> entry.uid; /* Get uid into aste, so that segfault can find it. */
+      247 			     call thread$out (astep, sst.ausedp (fixed (aste.ptsi, 2)));
+      248 						/* No need to have him threaded. */
+      249 			     call search_ast$hash_in (astep); /* Make aste locatable */
+      250 			     astep -> aste.vtocx = ep -> entry.vtocx; /* Set up for update_vtoce */
+      251 
+      252 			     call sdw_util_$dissect (addr (dseg$ (i)), addr (sdwi));
+      253 						/* Set entrypoint bound, etc. */
+      254 			     ep -> entrypt_sw = (sdwi.gate_entry_bound > 0);
+      255 			     if sdwi.gate_entry_bound > 0
+      256 			     then ep -> entrypt_bound = bit (binary (sdwi.gate_entry_bound - 1, 14), 14);
+      257 			     else ep -> entrypt_bound = ""b;
+      258 
+      259 			     nm_astep = astep;	/* update sstnt */
+      260 			     temp_entry_name = (addr (ep -> entry.primary_name) -> names.name);
+  1     1 /* Begin include file make_sstnt_entry.incl.pl1 Bernard Greenberg 2/18/75 */
+  1     2 /* Modified 84-01-08 BIM for sst$ versus sst. */
+  1     3 
+  1     4 	/* If the SST name table is enabled, fill in the name table slot. */
+  1     5 
+  1     6     begin; /* quick */
+  1     7        declare sst$ast_track bit (1) aligned external static;
+  1     8       
+  1     9 	if sst$ast_track then do;
+  1    10 
+  1    11 	     sstnp = addr (sst_names_$);		/* Establish name seg addressability */
+  1    12 	     ptsi_a= bin (nm_astep -> aste.ptsi, 2);	/* Pick up PT size index */
+  1    13 	     sstnmx = sstnt.ast_name_offsets (ptsi_a)
+  1    14 			+ divide (bin (rel (nm_astep), 18)
+  1    15 				- sstnt.ast_offsets (ptsi_a),
+  1    16 				sstnt.ast_sizes (ptsi_a), 17, 0);
+  1    17 
+  1    18 	     sstnp -> sstnt.names (sstnmx) = rtrim (temp_entry_name);
+  1    19 
+  1    20 	end;
+  1    21       end;
+  1    22 
+  1    23        declare temp_entry_name char (32) aligned;
+  1    24 
+  1    25 /* End of include file make_sstnt_entry.incl.pl1 */
+      261 
+      262 			     call update_vtoce (astep); /* Update the vtoc, get seg ctl working here */
+      263 			     call lock$dir_unlock (dp); /* Unlock the directory now. */
+      264 			     call terminate_$teseg (segp, 0, ercode);
+      265 						/* remove seg. from KST. */
+      266 			     if ercode ^= 0 then call syserr$error_code (CRASH, ercode, "init_branches: error from terminate_:");
+      267 			end;
+      268 		     astep = next_astep;		/* Bump ptr to next AST */
+      269 		     if rel (astep) ^= relp then go to back; /* Go back for more. */
+      270 		end;
+      271 	end;
+      272 
+      273 
+      274 /* Now find the ASTE for >pdd, and turn on aste.per_process, so that activate can
+      275*   turn it on for sons activated off of that. */
+      276 
+      277 	astep = get_ptrs_$given_segno (fixed (baseno (addr (pds$)), 18));
+      278 						/* I K_N_O_W_ that pds is in >pdd>zzz... */
+      279 	astep = ptr (sstp, astep -> aste.par_astep);	/* Now this is >pdd>!zzz..... */
+      280 	astep -> aste.per_process = "1"b;		/* activate won't do this for me */
+      281 	ptr (sstp, astep -> aste.par_astep) -> aste.per_process = "1"b;
+      282 						/* do this for >pdd */
+      283 	do astep = ptr (sstp, astep -> aste.infp) /* Walk the sons of zzzzzbBBBBB */
+      284 	     repeat ptr (sstp, astep -> aste.infl) while (astep ^= sstp);
+      285 
+      286 	     astep -> aste.per_process = "1"b;
+      287 	end;
+      288 
+      289 	call set_ml ("slt");			/* special case setting max length of slt and name table */
+      290 	call set_ml ("name_table");			/* since the lengths in their SLTEs are not accurate */
+      291 
+      292 	call quota$qmove (">process_dir_dir", zzBB, active_hardcore_data$pdir_quota, code);
+      293 	if code ^= 0 then call syserr$error_code (ANNOUNCE, code, "init_branches: quotas for pdir:");
+      294 	call quota$dqmove (">process_dir_dir", zzBB, active_hardcore_data$pdir_dir_quota, code);
+      295 	if code ^= 0 then call syserr$error_code (ANNOUNCE, code, "init_branches: dir quotas for pdir:");
+      296 
+      297 	call asd_$replace_dall (">", "process_dir_dir", addr (dir_acl), 1, No_daemon, ercode);
+      298 	if ercode ^= 0 then call syserr$error_code (ANNOUNCE, ercode, "init_branches: replacing >pdd acl:");
+      299 
+      300 /* Give Initializer access to its own process directory. */
+      301 
+      302 	call asd_$replace_dall (">process_dir_dir", zzBB, addr (dir_acl), 1, No_daemon, ercode);
+      303 	if ercode ^= 0 then call syserr$error_code (ANNOUNCE, ercode, "init_branches: replacing acl of >pdd for Initializer:");
+      304 
+      305 /* create >dumps and set access */
+      306 	rb (1), rb (2), rb (3) = 7;
+      307 	call append$branchx (">", "dumps", A_ACCESS_BIN, rb, "*.*.*", 1, 0, 0, code);
+      308 	if code ^= 0
+      309 	then if code ^= error_table_$namedup
+      310 	     then call syserr$error_code (BEEP, code, "init_branches: unable to append dumps directory.");
+      311 	     else if pvt$rlv_needs_salv then call salvager$dir_salv_boot (">dumps");
+      312 
+      313 
+      314 	return;
+      315 
+      316 
+      317 /* Internal Procedure to set the max length based on the current length */
+      318 
+      319 set_ml:
+      320      proc (entry_name);
+      321 
+      322 	dcl     entry_name		 char (*);
+      323 
+      324 	call status_$long (">system_library_1", entry_name, 0, addr (branch), (null), ercode);
+      325 	if ercode ^= 0 then call syserr$error_code (CRASH, ercode, "init_branches: From status_$long.");
+      326 
+      327 	call set$max_length_path (">system_library_1", entry_name, branch.current_length * 1024, ercode);
+      328 	if ercode ^= 0 then call syserr$error_code (CRASH, ercode, "init_branches: From set$max_length: ");
+      329 
+      330      end set_ml;
+      331 
+      332 
+      333 branch:
+      334      entry (a_dirp, a_namep, a_sltep, a_access, a_segp);
+      335 
+      336 	dcl     (a_dirp, a_namep, a_sltep, a_segp) pointer;
+      337 	dcl     a_access		 bit (3);
+      338 
+      339 	call create_branch (a_dirp, a_namep, a_sltep, a_access, a_segp, (0)); /* max length unneeded for callers of this */
+      340 	return;
+      341 
+      342 /* Subroutine to create and makeknown a branch */
+      343 
+      344 /*   USAGE:	call init_branches$branch (dirp, namep, sltep, access, segp);
+      345*
+      346*   1) dirp ptr --- pointer the the directory name of the segment's parent
+      347*   2) namep ptr --- pointer to the name of the segment
+      348*   3) sltep ptr --- pointer to an SLT entry for the segment
+      349*   4) access bit (3) --- an access field for the segment's SDW
+      350*   5) segp ptr --- pointer to the segment (output)
+      351*
+      352**/
+      353 create_branch:
+      354      procedure (pp, a_np, slep, access, sp, ml_to_return);	/* Entry to append and makeknown a seg. */
+      355 
+      356 	dcl     (pp, a_np, slep, sp)	 ptr,
+      357 	        access		 bit (3);
+      358 	dcl     rb		 (3) fixed bin (3);
+      359 	dcl     pname		 char (168);
+      360 	dcl     ename		 char (32);
+      361 	dcl     bc		 fixed bin (24);
+      362 	dcl     max_length		 fixed bin (19);
+      363 	dcl     ml_to_return	 fixed bin (9);
+      364 
+      365 	rb (1) = fixed (slep -> slte.ringbrack (1), 6);	/* Copy ring brackets into fixed array. */
+      366 	rb (2) = fixed (slep -> slte.ringbrack (2), 6);
+      367 	rb (3) = fixed (slep -> slte.ringbrack (3), 6);
+      368 	pname = pp -> path.name;			/* PL/1 may be smarter than you think. */
+      369 	ename = a_np -> segnam.names (1).name;		/* Put name on even boundary */
+      370 	if slep -> slte.acl_provided
+      371 	then aclp = addr (pp -> path.acls);
+      372 	else aclp = null;				/* Generate pointer to ACL structure if present. */
+      373 	bc = fixed (slep -> slte.bit_count, 24);
+      374 	call make_branches (pp, a_np, bc, aclp, rb, access, 0);
+      375 
+      376 /* If no acl was specified on the header/slte, then there is an acl like:
+      377*    rw *.SysDaemon.*  
+      378*    mode-from-slte *.*.*
+      379* 
+      380*   So we delete the SysDaemon acl.
+      381**/
+      382 
+      383 	if aclp = null then do;			/* remove *.SysDaemon.* entry if acl was not replaced */
+      384 		del_acl (1).access_name = "*.SysDaemon.*"; /* this acl is placed when the branch is created */
+      385 		aclp = addr (del_acl);
+      386 		call asd_$del_sentries (pname, ename, aclp, 1, ercode);
+      387 		if ercode ^= 0 then call syserr$error_code (ANNOUNCE, ercode, "init_branches: $branch From asd_$del_sentries: ");
+      388 	     end;
+      389 	call initiate (pname, ename, "", 0, 1, sp, ercode);
+      390 	if sp = null then call syserr$error_code (CRASH, ercode, "init_branches: error from initiate. ");
+      391 	max_length =
+      392 	     max (divide (divide (bc + 35, 36, 19, 0) + 1023, 1024, 9, 0), fixed (slep -> slte.cur_length, 9),
+      393 	     fixed (slep -> slte.max_length, 9));	/* Calculate max length */
+      394 	if max_length = 0 then max_length = 4;		/* As a last resort. */
+      395 	call set$max_length_path (pname, ename, max_length * 1024, ercode);
+      396 						/* Prevent the segment from growing more than it should. */
+      397 	if ercode ^= 0 then call syserr$error_code (CRASH, ercode, "init_branches: error from set$max_length ");
+      398 	ml_to_return = max_length;
+      399 	return;
+      400      end create_branch;
+      401 
+      402 
+  2     1 /* Begin include file -- acl_structures.incl.pl1 BIM 3/82 */
+  2     2 /* format: style3,indcomtxt,idind30 */
+  2     3 
+  2     4 declare   acl_ptr                       pointer;
+  2     5 declare   acl_count                     fixed bin;
+  2     6 
+  2     7 declare 1 general_acl                   aligned based (acl_ptr), /* for fs_util_ */
+  2     8           2 version                     char (8) aligned,
+  2     9           2 count                       fixed bin,
+  2    10           2 entries                     (acl_count refer (general_acl.count)) aligned like general_acl_entry;
+  2    11 
+  2    12 declare 1 general_acl_entry             based,
+  2    13           2 access_name                 character (32) unaligned,
+  2    14           2 mode                        bit (36) aligned,
+  2    15           2 status_code                 fixed bin (35);
+  2    16 
+  2    17 
+  2    18 declare 1 general_extended_acl          aligned based (acl_ptr), /* for fs_util_ */
+  2    19           2 version                     char (8) aligned,
+  2    20           2 count                       fixed bin,
+  2    21           2 entries                     (acl_count refer (general_extended_acl.count)) aligned like general_extended_acl_entry;
+  2    22 
+  2    23 declare 1 general_extended_acl_entry    aligned based,
+  2    24           2 access_name                 character (32) unaligned,
+  2    25           2 mode                        bit (36) aligned,
+  2    26           2 extended_mode               bit (36) aligned,
+  2    27           2 status_code                 fixed bin (35);
+  2    28 
+  2    29 
+  2    30 declare 1 general_delete_acl            aligned based (acl_ptr), /* for file_system_ */
+  2    31           2 version                     char (8) aligned,
+  2    32           2 count                       fixed bin,
+  2    33           2 entries                     (acl_count refer (general_delete_acl.count)) aligned like delete_acl_entry;
+  2    34 
+  2    35 declare 1 general_delete_acl_entry      aligned based,
+  2    36           2 access_name                 character (32) unaligned,
+  2    37           2 status_code                 fixed bin (35);
+  2    38 
+  2    39 
+  2    40 declare 1 segment_acl                   aligned based (acl_ptr),
+  2    41           2 version                     fixed bin,
+  2    42           2 count                       fixed bin,
+  2    43           2 entries                     (acl_count refer (segment_acl.count)) aligned like segment_acl_entry;
+  2    44 
+  2    45 declare 1 segment_acl_entry             like general_extended_acl_entry aligned based;
+  2    46 declare 1 segment_acl_array             (acl_count) aligned like segment_acl_entry based (acl_ptr);
+  2    47 
+  2    48 
+  2    49 declare 1 directory_acl                 aligned based (acl_ptr),
+  2    50           2 version                     fixed bin,
+  2    51           2 count                       fixed bin,
+  2    52           2 entries                     (acl_count refer (directory_acl.count)) aligned like directory_acl_entry;
+  2    53 
+  2    54 declare 1 directory_acl_entry           like general_acl_entry aligned based;
+  2    55 declare 1 directory_acl_array           (acl_count) aligned like directory_acl_entry based (acl_ptr);
+  2    56 
+  2    57 
+  2    58 declare 1 delete_acl                    based (acl_ptr) aligned,
+  2    59           2 version                     fixed bin,
+  2    60           2 count                       fixed bin,
+  2    61           2 entries                     (acl_count refer (delete_acl.count)) aligned like delete_acl_entry;
+  2    62 
+  2    63 declare 1 delete_acl_entry              like general_delete_acl_entry aligned based;
+  2    64 declare 1 delete_acl_array              (acl_count) aligned like delete_acl_entry based (acl_ptr);
+  2    65 
+  2    66 
+  2    67 declare  (SEG_ACL_VERSION_1             init ("sga1"),
+  2    68           DIR_ACL_VERSION_1             init ("dra1"),
+  2    69           DELETE_ACL_VERSION_1          init ("dla1"))
+  2    70                                         char (4) int static options (constant);
+  2    71 
+  2    72 declare  (GENERAL_ACL_VERSION_1         init ("gacl001"),
+  2    73           GENERAL_EXTENDED_ACL_VERSION_1 init ("gxacl001"),
+  2    74           GENERAL_DELETE_ACL_VERSION_1  init ("gdacl001"))
+  2    75                                         char (8) internal static options (constant);
+  2    76 
+  2    77 declare   ACL_VERSION_1                 fixed bin init (1) int static options (constant);
+  2    78 
+  2    79 /* End include file acl_structures.incl.pl1 */
+      403 
+      404 
+  3     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  3     2*
+  3     3*   Values for the "access mode" argument so often used in hardcore
+  3     4*   James R. Davis 26 Jan 81  MCR 4844
+  3     5*   Added constants for SM access 4/28/82 Jay Pattin
+  3     6*   Added text strings 03/19/85 Chris Jones
+  3     7**/
+  3     8 
+  3     9 
+  3    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3    11 dcl	(
+  3    12 	N_ACCESS		   init ("000"b),
+  3    13 	R_ACCESS		   init ("100"b),
+  3    14 	E_ACCESS		   init ("010"b),
+  3    15 	W_ACCESS		   init ("001"b),
+  3    16 	RE_ACCESS		   init ("110"b),
+  3    17 	REW_ACCESS	   init ("111"b),
+  3    18 	RW_ACCESS		   init ("101"b),
+  3    19 	S_ACCESS		   init ("100"b),
+  3    20 	M_ACCESS		   init ("010"b),
+  3    21 	A_ACCESS		   init ("001"b),
+  3    22 	SA_ACCESS		   init ("101"b),
+  3    23 	SM_ACCESS		   init ("110"b),
+  3    24 	SMA_ACCESS	   init ("111"b)
+  3    25 	)		   bit (3) internal static options (constant);
+  3    26 
+  3    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  3    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  3    29 
+  3    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  3    31 			   static options (constant);
+  3    32 
+  3    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  3    34 			   static options (constant);
+  3    35 
+  3    36 dcl	(
+  3    37 	N_ACCESS_BIN	   init (00000b),
+  3    38 	R_ACCESS_BIN	   init (01000b),
+  3    39 	E_ACCESS_BIN	   init (00100b),
+  3    40 	W_ACCESS_BIN	   init (00010b),
+  3    41 	RW_ACCESS_BIN	   init (01010b),
+  3    42 	RE_ACCESS_BIN	   init (01100b),
+  3    43 	REW_ACCESS_BIN	   init (01110b),
+  3    44 	S_ACCESS_BIN	   init (01000b),
+  3    45 	M_ACCESS_BIN	   init (00010b),
+  3    46 	A_ACCESS_BIN	   init (00001b),
+  3    47 	SA_ACCESS_BIN	   init (01001b),
+  3    48 	SM_ACCESS_BIN	   init (01010b),
+  3    49 	SMA_ACCESS_BIN	   init (01011b)
+  3    50 	)		   fixed bin (5) internal static options (constant);
+  3    51 
+  3    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      405 
+      406 
+  4     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  4     2 
+  4     3 /* Template for an AST entry. Length = 12 words. */
+  4     4 
+  4     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  4     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  4     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  4     8 
+  4     9 dcl  astep ptr;
+  4    10 
+  4    11 dcl 1 aste based (astep) aligned,
+  4    12 
+  4    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  4    14     2 bp bit (18),					/* backward used list rel pointer */
+  4    15 
+  4    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  4    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  4    18 
+  4    19     2 strp bit (18),				/* rel pointer to process trailer */
+  4    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  4    21 
+  4    22     2 uid bit (36),					/* segment unique id */
+  4    23 
+  4    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  4    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  4    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  4    27 
+  4    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  4    29     2 init bit (1),					/* used bit - insure 1 lap */
+  4    30     2 gtus bit (1),					/* global transparent usage switch */
+  4    31     2 gtms bit (1),					/* global transparent modified switch */
+  4    32     2 hc bit (1),					/* hard core segment */
+  4    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  4    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  4    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  4    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  4    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  4    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  4    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  4    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  4    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  4    42     2 pad1 bit (2),					/* OO */
+  4    43     2 dius bit (1),					/* dumper in use switch */
+  4    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  4    45     2 dmpr_pad bit (1),
+  4    46     2 ehs bit (1),					/* entry hold switch */
+  4    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  4    48     2 dirsw bit (1),				/* directory switch */
+  4    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  4    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  4    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  4    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  4    53 
+  4    54     2 dtu bit (36),					/* date and time segment last used */
+  4    55 
+  4    56     2 dtm bit (36),					/* date and time segment last modified */
+  4    57 
+  4    58 
+  4    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  4    60 
+  4    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  4    62 
+  4    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  4    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  4    65     2 fms bit (1),					/* file modified switch */
+  4    66     2 npfs bit (1),					/* no page fault switch */
+  4    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  4    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  4    69     2 per_process bit (1),				/* use master quota for this entry */
+  4    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  4    71     2 pad2 bit (2),
+  4    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  4    73     2 np bit (9),					/* number of pages in core */
+  4    74 
+  4    75 
+  4    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  4    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  4    78     2 damaged bit (1),				/* PC declared segment unusable */
+  4    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  4    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  4    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  4    82     2 ptsi bit (2),					/* page table size index */
+  4    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  4    84 
+  4    85 
+  4    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  4    87 
+  4    88 
+  4    89 dcl 1 aste_part aligned based (astep),
+  4    90 
+  4    91     2 one bit (36) unaligned,				/* fp and bp */
+  4    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  4    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  4    94 
+  4    95 
+  4    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  4    97     2 pad1 bit (8*36),
+  4    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  4    99     2 pad2 bit (3*36);
+  4   100 
+  4   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      407 
+      408 
+  5     1 /* BEGIN include file dc_find_dcls.incl.pl1 */
+  5     2 
+  5     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  5     4 /* Added a few more, October 1984. */
+  5     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  5     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  5     7 
+  5     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  5     9 
+  5    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  5    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  5    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  5    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  5    14 
+  5    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  5    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  5    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  5    18 
+  5    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  5    20 
+  5    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  5    22 
+  5    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  5    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  5    25 
+  5    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  5    27 
+  5    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  5    29 
+  5    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  5    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  5    32 
+  5    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  5    34 
+  5    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  5    36 
+  5    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  5    38 
+  5    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  5    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  5    41 
+  5    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  5    44 
+  5    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  5    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  5    47 
+  5    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  5    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  5    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  5    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  5    52 
+  5    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  5    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  5    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  5    58 
+  5    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  5    60 
+  5    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  5    62 
+  5    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  5    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  5    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  5    66 
+  5    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  5    68 
+  5    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  5    70 
+  5    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  5    72 
+  5    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    74 
+  5    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  5    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  5    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  5    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  5    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  5    82 
+  5    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  5    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  5    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  5    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  5    87 
+  5    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  5    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  5    90 
+  5    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  5    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  5    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  5    94 
+  5    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  5    96 
+  5    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  5    98 
+  5    99 /* END include file dc_find_dcls.incl.pl1 */
+      409 
+      410 
+  6     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  6     2 
+  6     3 
+  6     4 /* Template for an entry. Length = 38 words */
+  6     5 
+  6     6 dcl  ep ptr;
+  6     7 
+  6     8 dcl 1 entry based (ep) aligned,
+  6     9 
+  6    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  6    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  6    12 
+  6    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  6    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  6    15 
+  6    16     2 uid bit (36),					/* unique id of entry */
+  6    17 
+  6    18     2 dtem bit (36),				/* date-time entry modified */
+  6    19 
+  6    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  6    21     2 pad0 bit (17),
+  6    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  6    23 
+  6    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  6    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  6    26 
+  6    27     2 author,					/* user who created branch */
+  6    28       3 pers_rp bit (18),				/* name of user who created branch */
+  6    29       3 proj_rp bit (18),				/* project of user who created branch */
+  6    30 
+  6    31       3 tag char (1),				/* tag of user who created branch */
+  6    32       3 pad1 char (3),
+  6    33 
+  6    34     2 primary_name bit (504),				/* first name on name list */
+  6    35 
+  6    36     2 dtd bit (36),					/* date time dumped */
+  6    37 
+  6    38     2 pad2 bit (36),
+  6    39 
+  6    40 
+  6    41 /* the declarations below are for branch only */
+  6    42 
+  6    43 
+  6    44     2 pvid bit (36),				/* physical volume id */
+  6    45 
+  6    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  6    47     2 pad3 bit (18),
+  6    48 
+  6    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  6    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  6    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  6    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  6    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  6    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  6    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  6    56     2 security_oosw bit (1),				/* security out of service switch */
+  6    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  6    58     2 master_dir bit (1),				/* TRUE for master directory */
+  6    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  6    60     2 pad4 bit (11),
+  6    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  6    62 
+  6    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  6    64 
+  6    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  6    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  6    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  6    68 
+  6    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  6    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  6    71 
+  6    72     2 bc_author,					/* user who last set the bit count */
+  6    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  6    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  6    75 
+  6    76       3 tag char (1),				/* tag of user who set the bit count */
+  6    77       3 pad5 bit (2),
+  6    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  6    79 
+  6    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  6    81 
+  6    82     2 pad6 bit (36),
+  6    83 
+  6    84     2 checksum bit (36),				/* checksum from dtd */
+  6    85 
+  6    86     2 owner bit (36);				/* uid of containing directory */
+  6    87 
+  6    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      411 
+      412 
+  7     1 /*     BEGIN INCLUDE FILE ... dir_name.incl.pl1 ... last modified Nov 1975 for nss */
+  7     2 
+  7     3 /* Template for names of branches or links. Length = 14 words. */
+  7     4 
+  7     5 dcl np ptr;
+  7     6 
+  7     7 dcl 1 names based aligned,				/* based on ptr(dp,ep->entry.name_frp) */
+  7     8     2 fp bit(18) unaligned,				/* rel ptr to next name */
+  7     9     2 bp bit(18) unaligned,				/* rel ptr to prev name */
+  7    10 
+  7    11     2 type bit (18) unaligned,			/* type = dir name */
+  7    12     2 size fixed bin (17) unaligned,			/* size of dir name */
+  7    13 
+  7    14     2 entry_rp bit(18) unaligned,			/* rel ptr to entry */
+  7    15     2 ht_index fixed bin(17) unaligned,			/* index of hash table entry */
+  7    16 
+  7    17     2 hash_thread bit (18) unal,			/* relative ptr to next hash  entry */
+  7    18     2 pad3 bit (18) unal,
+  7    19 
+  7    20     2 name char(32) aligned,
+  7    21 
+  7    22     2 checksum bit (36),				/* checksum from entry_rp */
+  7    23 
+  7    24     2 owner bit (36);				/* uid of entry */
+  7    25 
+  7    26 
+  7    27 /*     END INCLUDE FILE ... dir_name.incl.pl1 */
+      413 
+      414 
+  8     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  8     2 /* Modified 8/74 for NSS */
+  8     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  8     4 /* Modified 3/82 BIM for change pclock */
+  8     5 /* format: style3 */
+  8     6 
+  8     7 /* Template for the directory header. Length = 64 words. */
+  8     8 
+  8     9 dcl  dp ptr;
+  8    10 
+  8    11 dcl 1 dir based (dp) aligned,
+  8    12 
+  8    13    2 modify bit (36),				/* Process ID of last modifier */
+  8    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  8    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  8    16     2 dtc (3),					/* date-time checked by salvager array */
+  8    17       3 date bit (36),				/* the date */
+  8    18       3 error bit (36),				/* what errors were discovered */
+  8    19 
+  8    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  8    21 
+  8    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  8    23 
+  8    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  8    25 
+  8    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  8    27 
+  8    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  8    29     2 version_number fixed bin (17),			/* version number of header */
+  8    30 
+  8    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  8    32     2 pad2 bit (18),
+  8    33 
+  8    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  8    35     2 pad3 bit (18),
+  8    36 
+  8    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  8    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  8    39 
+  8    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  8    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  8    42 
+  8    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  8    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  8    45 
+  8    46     2 lcount fixed bin (17),				/* number of links */
+  8    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  8    48 
+  8    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  8    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  8    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  8    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  8    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  8    54     2 pad4 bit (14),
+  8    55 
+  8    56     2 iacl_count (0:7),
+  8    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  8    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  8    59 
+  8    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  8    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  8    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  8    63 
+  8    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  8    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  8    66 
+  8    67     2 htsize fixed bin (17),				/* size of hash table */
+  8    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  8    69 
+  8    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  8    71     2 pad6 fixed bin (17),
+  8    72 
+  8    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  8    74     2 pad7 bit (18)) unaligned,
+  8    75 
+  8    76     2 dts bit (36),					/* date-time directory last salvaged */
+  8    77 
+  8    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  8    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  8    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  8    81     2 checksum bit (36),				/* checksummed from uid on */
+  8    82     2 owner bit (36);				/* uid of parent dir */
+  8    83 
+  8    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  8    85 
+  8    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      415 
+      416 
+  9     1 /* BEGIN include file fs_obj_access_codes.incl.pl1 */
+  9     2 
+  9     3 
+  9     4 /****^  HISTORY COMMENTS:
+  9     5*  1) change(88-05-12,Lippard), approve(88-05-02,MCR7881),
+  9     6*     audit(88-06-16,Fawcett), install(88-08-02,MR12.2-1074):
+  9     7*     Changed to add the FS_OBJ_AUDIT_FLAG_MOD constant.
+  9     8*                                                   END HISTORY COMMENTS */
+  9     9 
+  9    10 
+  9    11 /* The possible events within the file system; access codes and
+  9    12*   detailed operation codes.  October 1984, Keith Loepere. */
+  9    13 
+  9    14 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  9    15 
+  9    16 /* Major file system operations. */
+  9    17 
+  9    18 dcl  access_operations_$fs_obj_create bit (36) aligned ext;
+  9    19 dcl  access_operations_$fs_obj_delete bit (36) aligned ext;
+  9    20 dcl  access_operations_$fs_obj_initiate bit (36) aligned ext;
+  9    21 dcl  access_operations_$fs_obj_terminate bit (36) aligned ext;
+  9    22 dcl  access_operations_$fs_obj_contents_read bit (36) aligned ext;
+  9    23 dcl  access_operations_$fs_obj_contents_mod bit (36) aligned ext;
+  9    24 dcl  access_operations_$fs_obj_prop_read bit (36) aligned ext;
+  9    25 dcl  access_operations_$fs_obj_attr_mod bit (36) aligned ext;
+  9    26 dcl  access_operations_$fs_obj_status_mod bit (36) aligned ext;
+  9    27 dcl  access_operations_$fs_obj_access_mod bit (36) aligned ext;
+  9    28 
+  9    29 /* Detailed operations. */
+  9    30 
+  9    31 dcl  FS_OBJ_CONNECT fixed bin (18) uns init (1) static options (constant);
+  9    32 dcl  FS_OBJ_BC_MOD fixed bin (18) uns init (2) static options (constant);
+  9    33 dcl  FS_OBJ_TRUNCATE fixed bin (18) uns init (3) static options (constant);
+  9    34 dcl  FS_OBJ_ACL_MOD fixed bin (18) uns init (4) static options (constant);
+  9    35 dcl  FS_OBJ_RING_MOD fixed bin (18) uns init (5) static options (constant);
+  9    36 dcl  FS_OBJ_ACL_RING_MOD fixed bin (18) uns init (6) static options (constant);
+  9    37 dcl  FS_OBJ_RENAME fixed bin (18) uns init (7) static options (constant);
+  9    38 dcl  FS_OBJ_COPY_SW_MOD fixed bin (18) uns init (8) static options (constant);
+  9    39 dcl  FS_OBJ_DAMAGED_SW_MOD fixed bin (18) uns init (9) static options (constant);
+  9    40 dcl  FS_OBJ_DNZP_MOD fixed bin (18) uns init (10) static options (constant);
+  9    41 dcl  FS_OBJ_ENTRY_BOUND_MOD fixed bin (18) uns init (11) static options (constant);
+  9    42 dcl  FS_OBJ_MAX_LEN_MOD fixed bin (18) uns init (12) static options (constant);
+  9    43 dcl  FS_OBJ_SAFETY_SW_MOD fixed bin (18) uns init (13) static options (constant);
+  9    44 dcl  FS_OBJ_SYNC_SW_MOD fixed bin (18) uns init (14) static options (constant);
+  9    45 dcl  FS_OBJ_VOL_DUMP_SW_MOD fixed bin (18) uns init (15) static options (constant);
+  9    46 dcl  FS_OBJ_AUTHOR_MOD fixed bin (18) uns init (16) static options (constant);
+  9    47 dcl  FS_OBJ_BC_AUTHOR_MOD fixed bin (18) uns init (17) static options (constant);
+  9    48 dcl  FS_OBJ_BACKUP_TIMES_MOD fixed bin (18) uns init (18) static options (constant);
+  9    49 dcl  FS_OBJ_DATES_MOD fixed bin (18) uns init (19) static options (constant);
+  9    50 dcl  FS_OBJ_DT_DUMPED_MOD fixed bin (18) uns init (20) static options (constant);
+  9    51 dcl  FS_OBJ_FOR_RELOADER_MOD fixed bin (18) uns init (21) static options (constant);
+  9    52 dcl  FS_OBJ_SONS_LVID_MOD fixed bin (18) uns init (22) static options (constant);
+  9    53 dcl  FS_OBJ_SOOS_MOD fixed bin (18) uns init (23) static options (constant);
+  9    54 dcl  FS_OBJ_MOVE_QUOTA fixed bin (18) uns init (24) static options (constant);
+  9    55 dcl  FS_OBJ_CORRECT_QUSED fixed bin (18) uns init (25) static options (constant);
+  9    56 dcl  FS_OBJ_DIR_SALVAGE fixed bin (18) uns init (26) static options (constant);
+  9    57 dcl  FS_OBJ_MDIR_QUOTA_MOD fixed bin (18) uns init (27) static options (constant);
+  9    58 dcl  FS_OBJ_QUOTA_MOD fixed bin (18) uns init (28) static options (constant);
+  9    59 dcl  FS_OBJ_QUOTA_RELOAD fixed bin (18) uns init (29) static options (constant);
+  9    60 dcl  FS_OBJ_RECLASSIFY fixed bin (18) uns init (30) static options (constant);
+  9    61 dcl  FS_OBJ_RECLASSIFY_NODE fixed bin (18) uns init (31) static options (constant);
+  9    62 dcl  FS_OBJ_SEG_MOVE fixed bin (18) uns init (32) static options (constant);
+  9    63 dcl  FS_OBJ_TRP_MOD fixed bin (18) uns init (33) static options (constant);
+  9    64 dcl  FS_OBJ_VOLUME_RETRIEVE fixed bin (18) uns init (34) static options (constant);
+  9    65 dcl  FS_OBJ_IACL_MOD fixed bin (18) uns init (35) static options (constant);
+  9    66 dcl  FS_OBJ_CREATE_BRANCH fixed bin (18) uns init (36) static options (constant);
+  9    67 dcl  FS_OBJ_AUDIT_FLAG_MOD fixed bin (18) uns init (37) static options (constant);
+  9    68 
+  9    69 /* END include file fs_obj_access_codes.incl.pl1 */
+      417 
+      418 
+ 10     1 /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+ 10     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+ 10     3 
+ 10     4 dcl  sdw_info_ptr pointer;
+ 10     5 
+ 10     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+ 10     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+ 10     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+ 10     9 
+ 10    10     2 access unaligned,				/* REWP */
+ 10    11       3 read bit (1) unaligned,
+ 10    12       3 execute bit (1) unaligned,
+ 10    13       3 write bit (1) unaligned,
+ 10    14       3 privileged bit (1) unaligned,
+ 10    15 
+ 10    16     2 pad1 bit (32) unaligned,
+ 10    17 
+ 10    18     2 rings unaligned,				/* Ring brackets */
+ 10    19       3 r1 bit (3) unaligned,
+ 10    20       3 r2 bit (3) unaligned,
+ 10    21       3 r3 bit (3) unaligned,
+ 10    22 
+ 10    23     2 pad2 bit (27) unaligned,
+ 10    24 
+ 10    25     2 flags aligned,
+ 10    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+ 10    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+ 10    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+ 10    29       3 pad3 bit (33) unaligned,
+ 10    30 
+ 10    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+ 10    32 
+ 10    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      419 
+      420 
+ 11     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+ 11     2 
+ 11     3 /* Declarations for Segment Loading Table header and array.
+ 11     4*
+ 11     5*   Used by Initialization and MST Checker subroutines */
+ 11     6 
+ 11     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+ 11     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+ 11     9     namep ptr,					/* pointer to segment name list block */
+ 11    10     pathp ptr,					/* pointer to segment's directory path name */
+ 11    11     aclp ptr;					/* pointer to acl structure */
+ 11    12 
+ 11    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+ 11    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+ 11    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+ 11    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+ 11    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+ 11    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+ 11    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+ 11    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+ 11    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+ 11    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+ 11    23 
+ 11    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+ 11    25 
+ 11    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+ 11    27 	2 pad bit (18) unal,
+ 11    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+ 11    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+ 11    30 
+ 11    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+ 11    32 	2 count fixed bin (17),			/* number of segment names in this block */
+ 11    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+ 11    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+ 11    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+ 11    36 	  3 pad bit (5) unal,
+ 11    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+ 11    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+ 11    39 
+ 11    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+ 11    41 	2 size fixed bin (17),			/* length of pathname */
+ 11    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+ 11    43 	2 acls fixed bin;				/* ACL list starts here */
+ 11    44 
+ 11    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+ 11    46 	2 count fixed bin,				/* number of entries in acl list */
+ 11    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+ 11    48 	  3 userid char (32),			/* user specification */
+ 11    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+ 11    50 	  3 pad bit (36) aligned,
+ 11    51 	  3 code fixed bin;
+ 11    52 
+ 11    53 
+ 11    54 /* END INCLUDE FILE slt.incl.pl1 */
+      421 
+      422 
+ 12     1 /* BEGIN INCLUDE FILE slte.incl.pl1 */
+ 12     2 /* Declaration for Segment Loading Table Entry structure.
+ 12     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+ 12     4 /* modified 5/4/76 by Noel I. Morris	*/
+ 12     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+ 12     6 /* format: style3 */
+ 12     7 
+ 12     8 dcl	sltep		ptr;
+ 12     9 
+ 12    10 dcl	1 slte_uns	based (sltep) aligned,
+ 12    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+ 12    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+ 12    13 /**** End of word 1 */
+ 12    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+ 12    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+ 12    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+ 12    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+ 12    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+ 12    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+ 12    20 	  2 pad1		bit (3),			/* unused */
+ 12    21 	  2 wired		bit (1),			/* segment is wired if ON */
+ 12    22 	  2 paged		bit (1),			/* segment is paged if ON */
+ 12    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+ 12    24 	  2 pad3		bit (2),
+ 12    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+ 12    26 /**** End of 1st half of word 2 */
+ 12    27 	  2 pad4		bit (3),
+ 12    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+ 12    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+ 12    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+ 12    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+ 12    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+ 12    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+ 12    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+ 12    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+ 12    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+ 12    37 /***** End of word 2 */
+ 12    38 	  2 pad5		bit (6),
+ 12    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+ 12    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+ 12    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+ 12    42 /***** End of word 3 */
+ 12    43 	  2 pad7		bit (3),
+ 12    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+ 12    45 	  2 bit_count	fixed bin (24) uns
+ 12    46 	  )		unaligned;		/* bitcount of segment */
+ 12    47 
+ 12    48 dcl	1 slte		based (sltep) aligned,
+ 12    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+ 12    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+ 12    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+ 12    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+ 12    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+ 12    54 	  2 firmware_seg    bit (1),
+ 12    55 	  2 layout_seg      bit (1),
+ 12    56 	  2 breakpointable  bit (1),
+ 12    57 	  2 pad2		bit (3),
+ 12    58 	  2 wired		bit (1),			/* segment is wired if ON */
+ 12    59 	  2 paged		bit (1),			/* segment is paged if ON */
+ 12    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+ 12    61 	  2 pad3		bit (2),
+ 12    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+ 12    63 	  2 pad4		bit (3),
+ 12    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+ 12    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+ 12    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+ 12    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+ 12    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+ 12    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+ 12    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+ 12    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+ 12    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+ 12    73 	  2 pad5		bit (6),
+ 12    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+ 12    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+ 12    76 	  2 segno		bit (18),			/* text/link segment number */
+ 12    77 	  2 pad6		bit (3),
+ 12    78 	  2 max_length	bit (9),			/* maximum length for segment */
+ 12    79 	  2 bit_count	bit (24)
+ 12    80 	  )		unaligned;		/* bitcount of segment */
+ 12    81 
+ 12    82 /* END INCLUDE FILE slte.incl.pl1 */
+      423 
+      424 
+ 13     1 /*   BEGIN INCLUDE FILE ... sst.incl.pl1 ... January 1971 */
+ 13     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+ 13     3 /* Deleted paging device info and added pc segmove info, Benson Margulies 84-01-03 */
+ 13     4 /* Added covert channel meters, Keith Loepere 85-01-08. */
+ 13     5 
+ 13     6 dcl  sst_seg$ external;
+ 13     7 dcl  sstp ptr;
+ 13     8 
+ 13     9 dcl 1 sst based (sstp) aligned,
+ 13    10     2 space (8) fixed bin,				/* empty space to watch for bugs */
+ 13    11 
+ 13    12 /* SST HEADER */
+ 13    13 
+ 13    14     2 pre_page_time fixed bin (71),			/* total time spent pre-paging */
+ 13    15     2 post_purge_time fixed bin (71),			/* total time spent post-purging */
+ 13    16     2 post_in_core fixed bin,				/* total pages in core (and in list) at purge time */
+ 13    17     2 thrashing fixed bin,				/* meter of thrashing being done on system */
+ 13    18     2 npfs_misses fixed bin,				/* meter of times npfs was on when pre-paging */
+ 13    19     2 salv fixed bin,				/* flag which is ^=0 if and only if salvaging */
+ 13    20 
+ 13    21     2 ptl bit (36),					/* global page table loop lock */
+ 13    22     2 astl bit (36),				/* global ast allocation block lock */
+ 13    23     2 astl_event bit (36),				/* event used when waiting for AST lock */
+ 13    24     2 astl_notify_requested bit (1) aligned,		/* flag to notify AST lock */
+ 13    25     2 nused fixed bin,				/* number of pages on used list */
+ 13    26     2 ptwbase fixed bin (24),				/* absolute address of page table array */
+ 13    27     2 tfreep ptr,					/* pointer to first trailer on free list */
+ 13    28 
+ 13    29     2 astap ptr,					/* aste array pointer */
+ 13    30     2 ptl_wait_ct fixed bin,				/* pxss: number is >= # of processes waiting to ptl */
+ 13    31     2 astsize fixed bin,				/* size of an AST entry */
+ 13    32     2 cmesize fixed bin,				/* size of a CME entry */
+ 13    33     2 root_astep ptr,				/* pointer to the root AST entry */
+ 13    34 
+ 13    35     2 pts (0: 3) fixed bin,				/* array of page table sizes */
+ 13    36     2 level (0:3),					/* per-list information about ASTE's */
+ 13    37       3 (ausedp, no_aste) bit (18) unaligned,		/* used list and count of number of entries */
+ 13    38 
+ 13    39     2 (atempp, atempp1) bit (18) unal,			/* temp seg list pointer */
+ 13    40     2 dm_enabled bit (1) aligned,			/* ON => journal seg exists */
+ 13    41     2 (ainitp, ainitp1) bit (18) unal,			/* init seg list pointer */
+ 13    42     2 strsize fixed bin,				/* Trailer size in words. */
+ 13    43 
+ 13    44 /* CORE MAP HEADER */
+ 13    45 
+ 13    46     2 cmp ptr,					/* pointer to start of core map */
+ 13    47     2 usedp bit (18),				/* pointer to first used core block */
+ 13    48     2 wtct fixed bin,				/* count of pages being written */
+ 13    49 
+ 13    50     2 startp bit (18),				/* pointer to solid page for lap counting (fsdct) */
+ 13    51     2 removep bit (18),				/* pointer to list of pages being removed from use */
+ 13    52 						/* MISC */
+ 13    53 
+ 13    54     2 double_write fixed bin,				/* trigger for store through scheme */
+ 13    55 						/* 0 = no double writes,
+ 13    56*						   1 = all non-pd pages get written,
+ 13    57*						   2 = all directories get written */
+ 13    58     2 temp_w_event bit (36) aligned,			/* wait event for temp wiring lock */
+ 13    59     2 root_pvtx fixed bin,				/* pvtx or rpv */
+ 13    60     2 nolock bit (1) aligned,				/* if on, don't lock ptl on interrupts */
+ 13    61 
+ 13    62     2 fc_skips_pinned fixed bin (35),			/* number of skips over pinned page in find_core */
+ 13    63     2 cl_skips_pinned fixed bin (35),			/* number of skips over pinned page in claim_mod_core */
+ 13    64     2 ast_ht_ptr ptr,				/* AST hast table pointer */
+ 13    65     2 ast_ht_n_buckets fixed bin,			/* number of buckets in AST hash table */
+ 13    66     2 ast_ht_uid_mask bit (36) aligned,			/* mask to strip out low-order bits of uid */
+ 13    67     2 meter_ast_locking fixed bin,			/* non-zero enables AST lock meters */
+ 13    68     2 checksum_filemap fixed bin,			/* non-zero enables filemap checksumming */
+ 13    69 
+ 13    70     2 page_read_errors fixed bin,			/* read errors posted to page control */
+ 13    71     2 page_write_errors fixed bin,			/* write errors posted to page control */
+ 13    72 
+ 13    73     2 cycle_pv_allocation fixed bin,			/* flag to cycle VTOCE allocation among PVs */
+ 13    74 
+ 13    75     2 n_trailers fixed bin,				/* Number of trailer entries in str_seg */
+ 13    76     2 synch_activations fixed bin (35),			/* Activation attempts for synchronized segs */
+ 13    77     2 synch_skips fixed bin (35),			/* get_aste skips because not synchronized */
+ 13    78 
+ 13    79     2 lock_waits fixed bin,				/* Number of times we had to wait for a lock */
+ 13    80     2 total_locks_set fixed bin,			/* Total number of block locks set */
+ 13    81     2 pdir_page_faults fixed bin,			/* total page faults off >pdd */
+ 13    82     2 level_1_page_faults fixed bin,			/* total page faults in sys libes */
+ 13    83     2 dir_page_faults fixed bin,			/* Total page faults on directories */
+ 13    84     2 ring_0_page_faults fixed bin,			/* page faults in ring 0 */
+ 13    85     2 rqover fixed bin (35),				/* errcode for record quota overflow */
+ 13    86     2 pc_io_waits fixed bin,				/* Number of times pc had to wait on io */
+ 13    87 
+ 13    88 
+ 13    89 /*  The following (until pdmap) used to be the 'cnt' in cnt.incl.pl1 */
+ 13    90 
+ 13    91     2 steps fixed bin,				/* number of steps taken around used list */
+ 13    92     2 needc fixed bin,				/* number of times core page needed */
+ 13    93     2 ceiling fixed bin,				/* number of times ceiling hit */
+ 13    94     2 ctwait fixed bin,				/* number of times write counter was full */
+ 13    95     2 wired fixed bin,				/* number of pages wired by pc */
+ 13    96     2 laps fixed bin,				/* number of times around used list */
+ 13    97     2 skipw fixed bin,				/* number of pages skiped because they were wired */
+ 13    98     2 skipu fixed bin,				/* because of being used */
+ 13    99 
+ 13   100     2 skipm fixed bin,				/* because of being modified */
+ 13   101     2 skipos fixed bin,				/* because out of service */
+ 13   102     2 aused fixed bin,				/* number of AST entries on used list */
+ 13   103     2 damaged_ct fixed bin,				/* count of segments that system damaged */
+ 13   104     2 deact_count fixed bin,				/* count of deactivations */
+ 13   105     2 demand_deact_attempts fixed bin,			/* user requested deactivations */
+ 13   106     2 demand_deactivations fixed bin,			/* user instigated deactivations */
+ 13   107 
+ 13   108     2 reads (8) fixed bin,				/* number of reads for each did */
+ 13   109     2 writes (8) fixed bin,				/* number of writes for each did */
+ 13   110 
+ 13   111     2 short_pf_count fixed bin,			/* count of page faults on out of service pages */
+ 13   112     2 loop_locks fixed bin,				/* count of times locked PTL */
+ 13   113     2 loop_lock_time fixed bin (71),			/* time spent looping on PTL */
+ 13   114     2 cpu_sf_time fixed bin (71),			/* cpu time spent in seg_fault */
+ 13   115     2 total_sf_pf fixed bin,				/* total page faults while in seg_fault */
+ 13   116     2 total_sf fixed bin,				/* total number of seg_faults */
+ 13   117     2 pre_page_size fixed bin,			/* total pre-pagings expected */
+ 13   118     2 post_list_size fixed bin,
+ 13   119     2 post_purgings fixed bin,			/* total number of post-purgings */
+ 13   120     2 post_purge_calls fixed bin,			/* total number of calls to post-purge */
+ 13   121     2 pre_page_calls fixed bin,			/* total number of calls tp pre-page */
+ 13   122     2 pre_page_list_size fixed bin,
+ 13   123     2 pre_page_misses fixed bin,			/* total number of misses in pre-page list */
+ 13   124     2 pre_pagings fixed bin,				/* total number of pre-pagings */
+ 13   125 
+ 13   126 /*  TEMPORARY WIRED PROCEDURE INFO  */
+ 13   127 
+ 13   128     2 wire_proc_data (8) fixed bin (71),		/* data for wire_proc */
+ 13   129 
+ 13   130 /* MAIN MEMORY USAGE INFORMATION */
+ 13   131 
+ 13   132     2 abs_wired_count fixed bin,			/* count of abs-wired pages */
+ 13   133     2 system_type fixed bin,				/* ADP_SYSTEM or L68_SYSTEM */
+ 13   134     2 wired_copies fixed bin,				/* number of times a wired page was copied */
+ 13   135     2 recopies fixed bin,				/* number of times recopied because modified */
+ 13   136     2 first_core_block fixed bin,			/* core map index for first block of core */
+ 13   137     2 last_core_block fixed bin,			/* core map index for last block of core */
+ 13   138     2 fw_retries fixed bin (35),			/* force_write retries due to ASTE move */
+ 13   139     2 pvhtp ptr unaligned,				/* ptr to PV hold table for debugging */
+ 13   140 
+ 13   141 /*  AST METERS  */
+ 13   142 
+ 13   143     2 askipsize (0: 3) fixed bin,			/* array of skips because wrong AST size */
+ 13   144     2 aneedsize (0: 3) fixed bin,			/* array of times needed each size */
+ 13   145 
+ 13   146     2 stepsa fixed bin,				/* count of steps taken looking for an AST entry */
+ 13   147     2 askipsehs fixed bin,				/* count of skips because EHS was ON */
+ 13   148     2 asearches fixed bin,				/* count of full searches made */
+ 13   149     2 askipslevel fixed bin,				/* count of skips because pages were in core */
+ 13   150     2 askipsinit fixed bin,				/* count of times turned OFF init switch */
+ 13   151     2 acost fixed bin,				/* cumulative cost of deactivations */
+ 13   152     2 askipslock fixed bin,				/* count of skips because couldn't lock parent */
+ 13   153     2 askipdius fixed bin,				/* count of skips because DIUS was on */
+ 13   154 
+ 13   155     2 alaps fixed bin,				/* lap counter for AST list */
+ 13   156     2 updates fixed bin,				/* calls to updateb */
+ 13   157     2 setfaults_all fixed bin,			/* setfaults done to the entire SDW */
+ 13   158     2 setfaults_acc fixed bin,			/* setfaults done to the access field */
+ 13   159     2 total_bf fixed bin,				/* count of bound faults */
+ 13   160     2 total_bf_pf fixed bin,				/* page faults during bound faults */
+ 13   161     2 cpu_bf_time fixed bin (71),			/* cpu time spent in bound fault */
+ 13   162 
+ 13   163     2 asteps (0: 3) fixed bin,			/* per-size AST step counters */
+ 13   164 
+ 13   165     2 ast_locked_at_time fixed bin (71),		/* clock reading when ast last locked */
+ 13   166     2 ast_locked_total_time fixed bin (71),		/* total real time the ast lock was locked */
+ 13   167     2 ast_lock_wait_time fixed bin (71),		/* total real time of all waiting on ast lock */
+ 13   168     2 ast_locking_count fixed bin (35),			/* number of times ast was locked */
+ 13   169     2 cleanup_count fixed bin,			/* calls to pc$cleanup */
+ 13   170     2 cleanup_real_time fixed bin (71),			/* total real time in pc$cleanup */
+ 13   171 
+ 13   172 /* PRE-PAGE METERS */
+ 13   173 
+ 13   174     2 tree_count (0: 63) fixed bin,			/* counters for pre-page decisions */
+ 13   175 
+ 13   176     2 pp_meters (0: 63) fixed bin,			/* counters for measuring pre-page success */
+ 13   177 
+ 13   178 
+ 13   179     2 wusedp bit (18) aligned,			/* Relative cmep to next cme for writing */
+ 13   180     2 write_hunts fixed bin,				/* Times claim_mod_core invoked */
+ 13   181     2 claim_skip_cme fixed bin,			/* Times unacceptable cme found by c_m_c */
+ 13   182     2 claim_skip_free fixed bin,			/* Times free cme passed by c_m_c */
+ 13   183     2 claim_notmod fixed bin,				/* Times c_m_c passed pure page */
+ 13   184     2 claim_passed_used fixed bin,			/* Times used page seen */
+ 13   185     2 claim_skip_ptw fixed bin,			/* Times c_m_c saw unacceptable ptw */
+ 13   186     2 claim_writes fixed bin,				/* Writes queued by c_m_c */
+ 13   187     2 claim_steps fixed bin,				/* Steps passed in core claiming */
+ 13   188     2 pre_seeks_failed fixed bin,			/* counter of times quick find_core_ failed */
+ 13   189     2 resurrections fixed bin,			/* nulled addresses reinstated */
+ 13   190     2 volmap_seg_page_faults fixed bin (35),		/* Pseudo-page faults on volmap_seg */
+ 13   191     2 oopv fixed bin,				/* out-of-physical-volume page faults */
+ 13   192     2 dblw_resurrections fixed bin,			/* addresses resurrected by double-writing */
+ 13   193     2 sgm_time fixed bin (71),			/* Time (VCPU) in seg mover */
+ 13   194     2 sgm_pf fixed bin,				/* Page faults in seg moving */
+ 13   195     2 bad_sgms fixed bin,				/* Seg moves that failed */
+ 13   196     2 sgm_sgft fixed bin,				/* Seg faults in seg moves */
+ 13   197     2 good_sgms fixed bin,				/* Seg moves that completed */
+ 13   198     2 claim_runs fixed bin,				/* Times claim_mod_core had to run */
+ 13   199     2 activations fixed bin,				/* total count of activations */
+ 13   200     2 dir_activations fixed bin,			/* count of directory activations */
+ 13   201     2 hedge_updatevs fixed bin,			/* call-in updatevs */
+ 13   202     2 hedge_writes fixed bin,				/* call in core flush writes */
+ 13   203     2 evict_recover_data,				/* see evict_page.alm */
+ 13   204      3 evict_ptp bit (18) unal,			/* ptp of page being moved */
+ 13   205      3 evict_phmbit bit (18) unal,			/* N/Z if page was mod */
+ 13   206 
+ 13   207 /* Data for metering force_write facility 08/19/78 */
+ 13   208 
+ 13   209     2 force_swrites fixed bin,			/* Calls on segments to force write */
+ 13   210     2 force_pwrites fixed bin,			/* Mod pages so written */
+ 13   211     2 fw_none fixed bin,				/* Force write wrote none */
+ 13   212     2 force_updatevs fixed bin,			/* Updatev's so forced */
+ 13   213 
+ 13   214     2 pf_unlock_ptl_time fixed bin (71),		/* Time unlocking ptln page faults */
+ 13   215     2 pf_unlock_ptl_meterings fixed bin,
+ 13   216 
+ 13   217     2 makeknown_activations fixed bin (35),		/* activations at makeknown time */
+ 13   218     2 backup_activations fixed bin (35),		/* activations for backup */
+ 13   219     2 metering_flags aligned,				/* small chunks of misc. information */
+ 13   220       3 activate_activated bit (1) unal,		/* ON => last call to activate entry actually activated something */
+ 13   221       3 pad bit (35) unal,
+ 13   222     2 seg_fault_calls fixed bin (35),			/* number calls to seg_fault for explicit activation */
+ 13   223 
+ 13   224 /* METERS FOR STACK TRUNCATION */
+ 13   225 
+ 13   226     2 (stk_truncate_should_didnt,			/* counts */
+ 13   227        stk_truncate_should_did,
+ 13   228        stk_truncate_shouldnt_didnt,
+ 13   229        stk_truncate_shouldnt_did) fixed bin (35),
+ 13   230     2 stk_pages_truncated fixed bin (35),
+ 13   231     2 stk_pages_truncated_in_core fixed bin (35),
+ 13   232 
+ 13   233 /* SUPPORT FOR PC SEGMOVES */
+ 13   234 
+ 13   235     2 segmove_lock aligned,
+ 13   236       3 pid bit (36) aligned,
+ 13   237       3 event bit (36) aligned,
+ 13   238       3 notify bit (1) aligned,
+ 13   239     2 segmove_io_limit fixed bin, /* max read aheads */
+ 13   240     2 segmove_found_synch fixed bin (35), /* cme.synch_held */
+ 13   241     2 segmove_synch_disappeared fixed bin (35), /* page$check_synch fixed */
+ 13   242     2 segmove_n_reads fixed bin (35), /* total IO's queued. */
+ 13   243     2 segmove_max_tries fixed bin (35), /* max times through the read loop */
+ 13   244 
+ 13   245     2 segmove_astep ptr unal,				/* if non-null, addresses to be rescued from old_addr_astep */
+ 13   246     2 segmove_pvtx fixed bin,				/* if segmove_astep nonnull, valid */
+ 13   247     2 segmove_vtocx fixed bin,			/* ditto */
+ 13   248     2 segmove_old_addr_astep ptr unaligned,		/* ditto */
+ 13   249     2 segmove_new_addr_astep ptr unaligned,		/* if non-null, the addresses must be deposited. */
+ 13   250 
+ 13   251     2 mod_during_write fixed bin,			/* times a page was modified while it was being written */
+ 13   252     2 zero_pages fixed bin,				/* count of pages truncated because all zero */
+ 13   253     2 trace_sw aligned,				/* tracing control flags */
+ 13   254       3 pad_trace bit (32) unaligned,
+ 13   255       3 pc_trace_pf bit (1) unaligned,			/* tracing for page faults, done, etc. */
+ 13   256       3 tty_trace bit (1) unaligned,
+ 13   257       3 pc_trace bit (1) unaligned,			/* flag used by page control primitives */
+ 13   258       3 sc_trace bit (1) unaligned,			/* flag used by segment control primitives */
+ 13   259     2 new_pages fixed bin,				/* newly created pages */
+ 13   260     2 ast_track bit (1) aligned,			/* "1"b => keep SST name table */
+ 13   261     2 dirlock_writebehind fixed bin,			/* =1 to flush modified dir pages in lock$unlock */
+ 13   262     2 write_limit fixed bin,				/* Max # of outstanding writes by page control */
+ 13   263     2 crash_test_segmove bit (1) aligned,		/* crash in mid-segmove */
+ 13   264     2 delayed_seg_state_chg fixed bin (35),		/* count of times a process was delayed in affecting a seg state */
+ 13   265     2 audit_seg_state_chg fixed bin (35),		/* count of times a process was audited for excessive seg state changes */
+ 13   266     2 seg_state_chg_delay fixed bin (52),		/* total times processes were delayed for covert channels */
+ 13   267     2 seg_state_change_limit fixed bin,			/* number of events over which we determine covert channel bandwidth */
+ 13   268     2 max_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we delay */
+ 13   269     2 audit_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we audit */
+ 13   270     2 seg_state_chg_operation bit (36) aligned,		/* access_operation_ value for excessive_seg_state_chg */
+ 13   271     2 pad4 (126) bit (36) aligned;			/* padding to 512 words (1000)8 */
+ 13   272 
+ 13   273 /* END INCLUDE FILE sst.incl.pl1 */
+      425 
+      426 
+ 14     1 /* Begin include file sstnt.incl.pl1   */
+ 14     2 
+ 14     3 /* Created 10/03/74 by Bernard Greenberg */
+ 14     4 /* modified 08/24/79 by J. A. Bush  for easier calculation of size of sstnt */
+ 14     5 /* Modified 08/27/84 by Keith Loepere to purge BOS */
+ 14     6 
+ 14     7 dcl  sst_names_$ ext;				/* Segment containing sst name table */
+ 14     8 
+ 14     9 dcl  sstnp ptr;					/* Pointer to sst name segment */
+ 14    10 
+ 14    11 dcl 1 sstnt based (sstnp) aligned,			/* Major structure */
+ 14    12     2 valid bit (1) aligned,				/* 1 => structure filled by Multics */
+ 14    13     2 multics_or_bce char (4) aligned,			/* Origin of data in table */
+ 14    14     2 nentries fixed bin,				/* number of entries in the sstnt */
+ 14    15     2 pad1 (5) fixed bin,
+ 14    16 
+ 14    17     2 (ast_sizes,					/* Sizes of ASTE's at each level */
+ 14    18      ast_name_offsets,				/* Starting index for names at each level */
+ 14    19      ast_offsets,					/* Starting rel addr of each AST region */
+ 14    20      pad2) (0 : 3) fixed bin,
+ 14    21 
+ 14    22     2 names (0 : 0 refer (sstnt.nentries)) char (32) varying; /* Names of AST entries */
+ 14    23 
+ 14    24 dcl (sstnmx, ptsi_a) fixed bin (17);			/* Index into name table */
+ 14    25 
+ 14    26 dcl  nm_astep ptr;					/* astep to be used */
+ 14    27 
+ 14    28 /* End include file sstnt.incl.pl1 */
+      427 
+      428 
+ 15     1 /* --------------- BEGIN include file status_structures.incl.pl1 --------------- */
+ 15     2 
+ 15     3 /* Revised from existing include files 09/26/78 by C. D. Tavares */
+ 15     4 
+ 15     5 /* This include file contains branch and link structures returned by
+ 15     6*   hcs_$status_ and hcs_$status_long. */
+ 15     7 
+ 15     8 dcl 1 status_branch aligned based (status_ptr),
+ 15     9     2 short aligned,
+ 15    10       3 type fixed bin (2) unaligned unsigned,		/* seg, dir, or link */
+ 15    11       3 nnames fixed bin (16) unaligned unsigned,		/* number of names */
+ 15    12       3 names_relp bit (18) unaligned,			/* see entry_names dcl */
+ 15    13       3 dtcm bit (36) unaligned,			/* date/time contents last modified */
+ 15    14       3 dtu bit (36) unaligned,			/* date/time last used */
+ 15    15       3 mode bit (5) unaligned,			/* caller's effective access */
+ 15    16       3 raw_mode bit (5) unaligned,			/* caller's raw "rew" modes */
+ 15    17       3 pad1 bit (8) unaligned,
+ 15    18       3 records_used fixed bin (18) unaligned unsigned,	/* number of NONZERO pages used */
+ 15    19 
+ 15    20 /* Limit of information returned by hcs_$status_ */
+ 15    21 
+ 15    22     2 long aligned,
+ 15    23       3 dtd bit (36) unaligned,			/* date/time last dumped */
+ 15    24       3 dtem bit (36) unaligned,			/* date/time branch last modified */
+ 15    25       3 lvid bit (36) unaligned,			/* logical volume ID */
+ 15    26       3 current_length fixed bin (12) unaligned unsigned,	/* number of last page used */
+ 15    27       3 bit_count fixed bin (24) unaligned unsigned,	/* reported length in bits */
+ 15    28       3 pad2 bit (8) unaligned,
+ 15    29       3 copy_switch bit (1) unaligned,			/* copy switch */
+ 15    30       3 tpd_switch bit (1) unaligned,			/* transparent to paging device switch */
+ 15    31       3 mdir_switch bit (1) unaligned,			/* is a master dir */
+ 15    32       3 damaged_switch bit (1) unaligned,		/* salvager warned of possible damage */
+ 15    33       3 synchronized_switch bit (1) unaligned,		/* DM synchronized file */
+ 15    34       3 pad3 bit (5) unaligned,
+ 15    35       3 ring_brackets (0:2) fixed bin (6) unaligned unsigned, 
+ 15    36       3 uid bit (36) unaligned;			/* unique ID */
+ 15    37 
+ 15    38 dcl 1 status_link aligned based (status_ptr),
+ 15    39     2 type fixed bin (2) unaligned unsigned,		/* as above */
+ 15    40     2 nnames fixed bin (16) unaligned unsigned,
+ 15    41     2 names_relp bit (18) unaligned,
+ 15    42     2 dtem bit (36) unaligned,
+ 15    43     2 dtd bit (36) unaligned,
+ 15    44     2 pathname_length fixed bin (17) unaligned,		/* see pathname */
+ 15    45     2 pathname_relp bit (18) unaligned;			/* see pathname */
+ 15    46 
+ 15    47 dcl  status_entry_names (status_branch.nnames) character (32) aligned
+ 15    48 	based (pointer (status_area_ptr, status_branch.names_relp)),
+ 15    49 						/* array of names returned */
+ 15    50      status_pathname character (status_link.pathname_length) aligned
+ 15    51 	based (pointer (status_area_ptr, status_link.pathname_relp)),
+ 15    52 						/* link target path */
+ 15    53      status_area_ptr pointer,
+ 15    54      status_ptr pointer;
+ 15    55 
+ 15    56 dcl (Link initial (0),
+ 15    57      Segment initial (1),
+ 15    58      Directory initial (2)) fixed bin internal static options (constant);
+ 15    59 						/* values for type fields declared above */
+ 15    60 
+ 15    61 /* ---------------- END include file status_structures.incl.pl1 ---------------- */
+      429 
+      430 
+ 16     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 16     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 16     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 16     4 
+ 16     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 16     6 
+ 16     7 dcl (
+ 16     8 
+ 16     9 /* The following constants define the message action codes.  This indicates
+ 16    10*how a message is to be handled.  */
+ 16    11 
+ 16    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 16    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 16    14 
+ 16    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 16    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 16    17 
+ 16    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 16    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 16    20 
+ 16    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 16    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 16    23 
+ 16    24      SYSERR_LOG_OR_PRINT	init (4),
+ 16    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 16    26 
+ 16    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 16    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 16    29 
+ 16    30 
+ 16    31 /* The following constants are added to the normal severities to indicate
+ 16    32*different sorting classes of messages.  */
+ 16    33 
+ 16    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 16    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 16    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 16    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 16    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 16    39 	) fixed bin internal static options (constant);
+ 16    40 
+ 16    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      431 
+      432 
+      433 
+      434 /* BEGIN MESSAGE DOCUMENTATION
+      435*
+      436*   Message:
+      437*   init_branches: $branch From asd_:  ERRORMESSAGE
+      438*
+      439*   S:	$info
+      440*
+      441*   T:	$init
+      442*
+      443*   M:	$err
+      444*   Initialization continues.
+      445*
+      446*   A:	$notify
+      447*
+      448*
+      449*   Message:
+      450*   init_branches: From set$max_length:  ERRORMESSAGE
+      451*
+      452*   S:	$crash
+      453*
+      454*   T:	$init
+      455*
+      456*   M:	$err
+      457*
+      458*   A:	$recover
+      459*
+      460*
+      461*   Message:
+      462*   init_branches: From status_$long:  ERRORMESSAGE
+      463*
+      464*   S:	$crash
+      465*
+      466*   T:	$init
+      467*
+      468*   M:	$err
+      469*
+      470*   A:	$recover
+      471*
+      472*
+      473*   Message:
+      474*   init_branches: Mysterious directory deactivation
+      475*
+      476*   S:	$crash
+      477*
+      478*   T:	$init
+      479*
+      480*   M:	$err
+      481*
+      482*   A:	$recover
+      483*
+      484*
+      485*   Message:
+      486*   init_branches: couldn't add name pdd to process_dir_dir: ERRORMESSAGE
+      487*
+      488*   S:	$info
+      489*
+      490*   T:	$init
+      491*
+      492*   M:	$err
+      493*   Initialization continues.
+      494*   Certain application programs may fail to work.
+      495*
+      496*   A:	$notify
+      497*
+      498*
+      499*   Message:
+      500*   init_branches: couldn't add name sl1 to system_library_1: ERRORMESSAGE
+      501*
+      502*   S:	$info
+      503*
+      504*   T:	$init
+      505*
+      506*   M:	$err
+      507*   Initialization continues.
+      508*   Certain application programs may fail to work.
+      509*
+      510*   A:	$notify
+      511*
+      512*
+      513*   Message:
+      514*   init_branches: couldn't set {dir}quota on >pdd to XXXX: ERRORMESSAGE
+      515*
+      516*   S:	$info
+      517*
+      518*   T:	$init
+      519*
+      520*   M:	$err
+      521*   Initialization continues.
+      522*   The answering service may encounter trouble in creating processes.
+      523*
+      524*   A:	$notify
+      525*
+      526*
+      527*   Message:
+      528*   init_branches: deleting old pdd: ERRORMESSAGE
+      529*
+      530*   S:	$crash
+      531*
+      532*   T:	$init
+      533*
+      534*   M: The name pdd could not be removed from >pdd.
+      535*   $err
+      536*
+      537*   A:	$recover
+      538*
+      539*
+      540*   Message:
+      541*   init_branches: error from initiate.  ERRORMESSAGE
+      542*
+      543*   S:	$crash
+      544*
+      545*   T:	$init
+      546*
+      547*   M: A deciduous segment could not be made known.
+      548*   $err
+      549*
+      550*   A:	$recover
+      551*
+      552*
+      553*   Message:
+      554*   init_branches: error from terminate_: ERRORMESSAGE
+      555*
+      556*   S:	$crash
+      557*
+      558*   T:	$init
+      559*
+      560*   M:	$err
+      561*
+      562*   A:	$recover
+      563*
+      564*
+      565*   Message:
+      566*   init_branches: error from set$max_length  ERRORMESSAGE
+      567*
+      568*   S:	$crash
+      569*
+      570*   T:	$init
+      571*
+      572*   M:	$err
+      573*
+      574*   A:	$recover
+      575*
+      576*
+      577*   Message:
+      578*   init_branches: error in adding acl of dumps: ERRORMESSAGE
+      579*
+      580*   S:	$info
+      581*
+      582*   T:	$init
+      583*
+      584*   M:	$err
+      585*   Initialization continues.
+      586*   The copy_fdump command may fail.
+      587*   The online  salvager may fail to make stack and directory copies in >dumps.
+      588*
+      589*   A:	$notify
+      590*
+      591*
+      592*   Message:
+      593*   init_branches: error in replacing acl of >sl1. ERRORMESSAGE
+      594*
+      595*   S:	$info
+      596*
+      597*   T:	$init
+      598*
+      599*   M:	$err
+      600*   Initialization continues.
+      601*   User and daemon processes may malfunction.
+      602*
+      603*   A:	$notify
+      604*
+      605*
+      606*   Message:
+      607*   init_branches: getting dir entry pointer: ERRORMESSAGE
+      608*
+      609*   S:	$crash
+      610*
+      611*   T:	$init
+      612*
+      613*   M:	$err
+      614*
+      615*   A:	$recover
+      616*
+      617*
+      618*   Message:
+      619*   init_branches: {dir}quotas for pdir: ERRORMESSAGE
+      620*
+      621*   S:	$info
+      622*
+      623*   T:	$init
+      624*
+      625*   M:	$err
+      626*   Initialization continues.
+      627*
+      628*   A:	$notify
+      629*
+      630*
+      631*   Message:
+      632*   init_branches: renaming old pdd: ERRORMESSAGE
+      633*
+      634*   S:	$crash
+      635*
+      636*   T:	$init
+      637*
+      638*   M:	$err
+      639*
+      640*   A:	$recover
+      641*
+      642*
+      643*   Message:
+      644*   init_branches: renaming process_dir_dir: ERRORMESSAGE
+      645*
+      646*   S:	$crash
+      647*
+      648*   T:	$init
+      649*
+      650*   M:	$err
+      651*
+      652*   A:	$recover
+      653*
+      654*
+      655*   Message:
+      656*   init_branches: replacing >pdd acl: ERRORMESSAGE
+      657*
+      658*   S:	$info
+      659*
+      660*   T:	$init
+      661*
+      662*   M:	$err
+      663*   Initialization continues.
+      664*
+      665*   A:	$notify
+      666*
+      667*
+      668*   Message:
+      669*   init_branches: replacing acl of >pdd for Initializer: ERRORMESSAGE
+      670*
+      671*   S:	$info
+      672*
+      673*   T:	$init
+      674*
+      675*   M:	$err
+      676*   Initialization continues.
+      677*
+      678*   A:	$notify
+      679*
+      680*
+      681*   Message:
+      682*   init_branches: unable to append dumps directory. ERRORMESSAGE
+      683*
+      684*   S:	$beep
+      685*
+      686*   T:	$init
+      687*
+      688*   M:	$err
+      689*   Initialization continues.
+      690*
+      691*   A:	$notify
+      692*
+      693*
+      694*   Message:
+      695*   init_branches: unable to initiate >DIRNAME: ERRORMESSAGE
+      696*
+      697*   S:	$crash
+      698*
+      699*   T:	$init
+      700*
+      701*   M:	$err
+      702*
+      703*   A:	$recover
+      704*
+      705*
+      706*   Message:
+      707*   init_branches: unable to make >system_library_1: ERRORMESSAGE
+      708*
+      709*   S:	$crash
+      710*
+      711*   T:	$init
+      712*
+      713*   M:	$err
+      714*
+      715*   A:	$recover
+      716*
+      717*
+      718*   Message:
+      719*   init_branches: unable to make process_dir_dir: ERRORMESSAGE
+      720*
+      721*   S:	$crash
+      722*
+      723*   T:	$init
+      724*
+      725*   M:	$err
+      726*
+      727*   A:	$recover
+      728*
+      729*
+      730*   END MESSAGE DOCUMENTATION */
+      731 
+      732      end init_branches;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  init_branches.pl1                 >spec>install>1110>init_branches.pl1
+261          1    07/11/84  0937.3  make_sstnt_entry.incl.pl1         >ldd>include>make_sstnt_entry.incl.pl1
+403          2    10/14/83  1606.6  acl_structures.incl.pl1           >ldd>include>acl_structures.incl.pl1
+405          3    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+407          4    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+409          5    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+411          6    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+413          7    11/02/76  1414.7  dir_name.incl.pl1                 >ldd>include>dir_name.incl.pl1
+415          8    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+417          9    08/04/88  2054.1  fs_obj_access_codes.incl.pl1      >ldd>include>fs_obj_access_codes.incl.pl1
+419         10    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+421         11    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+423         12    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+425         13    01/30/85  1523.9  sst.incl.pl1                      >ldd>include>sst.incl.pl1
+427         14    11/02/84  0912.2  sstnt.incl.pl1                    >ldd>include>sstnt.incl.pl1
+429         15    11/22/82  0955.7  status_structures.incl.pl1        >ldd>include>status_structures.incl.pl1
+431         16    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000062 constant        fixed bin(17,0)          initial dcl 16-7 set ref 144* 158* 160* 192* 197*
+                                                                                  293* 295* 298* 303* 387*
+A_ACCESS_BIN                    000075 constant        fixed bin(5,0)           initial dcl 3-36 set ref 307*
+BEEP                            000072 constant        fixed bin(17,0)          initial dcl 16-7 set ref 308*
+CRASH                           000075 constant        fixed bin(17,0)          initial dcl 16-7 set ref 124* 129* 140* 150* 168*
+                                                                                  173* 178* 185* 203* 231* 235* 266* 325* 328* 390*
+                                                                                  397*
+DC_FIND_NO_CHASE                000062 constant        fixed bin(1,0)           initial dcl 5-11 set ref 177*
+DC_FIND_UNLOCK_DIR              000043 constant        bit(1)                   initial dcl 5-13 set ref 181*
+FS_OBJ_SOOS_MOD                 000000 constant        fixed bin(18,0)          initial unsigned dcl 9-53 set ref 177*
+No_daemon                       000043 constant        bit(1)                   initial dcl 68 set ref 191* 297* 302*
+SMA_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 3-11 ref 135
+SMA_ACCESS_BIN                  000070 constant        fixed bin(5,0)           initial dcl 3-36 set ref 139* 184*
+S_ACCESS                               constant        bit(3)                   initial packed unaligned dcl 3-11 ref 190
+a_access                               parameter       bit(3)                   packed unaligned dcl 337 set ref 333 339*
+a_dirp                                 parameter       pointer                  dcl 336 set ref 333 339*
+a_namep                                parameter       pointer                  dcl 336 set ref 333 339*
+a_np                                   parameter       pointer                  dcl 356 set ref 353 369 374*
+a_segp                                 parameter       pointer                  dcl 336 set ref 333 339*
+a_sltep                                parameter       pointer                  dcl 336 set ref 333 339*
+access                    1            based           bit(4)                   level 2 in structure "slte" packed packed unaligned
+                                                                                  dcl 12-48 in procedure "init_branches" ref 226 226
+access                                 parameter       bit(3)                   packed unaligned dcl 356 in procedure
+                                                                                  "create_branch" set ref 353 374*
+access_name                     000146 automatic       char(32)                 array level 2 in structure "dir_acl" packed packed
+                                                                                  unaligned dcl 82 in procedure "init_branches" set
+                                                                                  ref 134* 189*
+access_name                     000172 automatic       char(32)                 array level 2 in structure "del_acl" packed packed
+                                                                                  unaligned dcl 83 in procedure "init_branches" set
+                                                                                  ref 384*
+acl_provided              1(17)        based           bit(1)                   level 2 packed packed unaligned dcl 12-48 ref 370
+aclp                            000236 automatic       pointer                  dcl 11-7 set ref 370* 372* 374* 383 385* 386*
+acls                                   based           fixed bin(17,0)          level 2 dcl 11-40 set ref 370
+active_hardcore_data$pdd_uid    000030 external static bit(36)                  dcl 72 set ref 152*
+active_hardcore_data$pdir_dir_quota
+                                000034 external static fixed bin(17,0)          dcl 72 set ref 294*
+active_hardcore_data$pdir_quota 000032 external static fixed bin(17,0)          dcl 72 set ref 292*
+active_hardcore_data$sl1_uid    000026 external static bit(36)                  dcl 72 set ref 204*
+addr                                                   builtin function         dcl 87 ref 191 191 208 209 210 222 252 252 252 252
+                                                                                  260 277 277 297 297 302 302 1-11 324 324 370 385
+append$branchx                  000070 constant        entry                    external dcl 87 ref 139 184 307
+asd_$del_sentries               000062 constant        entry                    external dcl 87 ref 386
+asd_$replace_dall               000064 constant        entry                    external dcl 87 ref 191 297 302
+ast_name_offsets         14            based           fixed bin(17,0)          array level 2 dcl 14-11 ref 1-13
+ast_offsets              20            based           fixed bin(17,0)          array level 2 dcl 14-11 ref 1-13
+ast_sizes                10            based           fixed bin(17,0)          array level 2 dcl 14-11 ref 1-13
+aste                                   based           structure                level 1 dcl 4-11
+astep                           000226 automatic       pointer                  dcl 4-9 set ref 215* 216 216 218 218 220 221 236 237
+                                                                                  239 242 244 246 247* 247 249* 250 259 262* 268*
+                                                                                  269 277* 279* 279 280 281 283* 283 283* 286* 287
+ausedp                   44            based           bit(18)                  array level 3 packed packed unaligned dcl 13-9 set
+                                                                                  ref 213 247*
+baseno                                                 builtin function         dcl 87 ref 233 233 277 277
+bc                              000355 automatic       fixed bin(24,0)          dcl 361 set ref 373* 374* 391
+bin                                                    builtin function         dcl 87 ref 1-12 1-13
+binary                                                 builtin function         dcl 87 ref 255
+bit                                                    builtin function         dcl 87 ref 226 226 244 255
+bit_count                 3(12)        based           bit(24)                  level 2 packed packed unaligned dcl 12-48 ref 373
+branch                          000203 automatic       structure                level 1 dcl 85 set ref 324 324
+chname$cfile                    000102 constant        entry                    external dcl 87 ref 122 127 142 165 171 196
+code                            000117 automatic       fixed bin(35,0)          dcl 46 set ref 122* 124 124 124* 127* 129 129 129*
+                                                                                  139* 140 140* 149* 150 150* 157* 158 158* 159* 160
+                                                                                  160* 165* 167 168 168* 171* 172 173 173* 177* 178
+                                                                                  178* 184* 185 185* 202* 203 203* 292* 293 293*
+                                                                                  294* 295 295* 307* 308 308 308*
+correct_max_length              000137 automatic       fixed bin(9,0)           dcl 46 set ref 226* 244
+cur_length                2            based           bit(9)                   level 2 packed packed unaligned dcl 12-48 ref 391
+current_length            7     000203 automatic       fixed bin(12,0)          level 3 packed packed unsigned unaligned dcl 85 set
+                                                                                  ref 327
+dc_find$finished                000120 constant        entry                    external dcl 5-33 ref 181
+dc_find$obj_status_write_priv   000122 constant        entry                    external dcl 5-84 ref 177
+del_acl                         000172 automatic       structure                array level 1 dcl 83 set ref 385
+delete_acl_entry                       based           structure                level 1 dcl 2-63
+dir                                    based           structure                level 1 dcl 8-11
+dir_acl                         000146 automatic       structure                array level 1 dcl 82 set ref 191 191 297 297 302 302
+directory_acl_entry                    based           structure                level 1 dcl 2-54
+divide                                                 builtin function         dcl 87 ref 1-13 391 391
+dp                              000232 automatic       pointer                  dcl 8-9 set ref 149* 151 152 202* 204 232* 233 233
+                                                                                  263*
+dseg$                           000014 external static fixed bin(71,0)          array dcl 46 set ref 252 252
+ename                           000121 automatic       char(32)                 packed unaligned dcl 46 in procedure "init_branches"
+                                                                                  set ref 164* 167* 172* 176 177*
+ename                           000345 automatic       char(32)                 packed unaligned dcl 360 in procedure
+                                                                                  "create_branch" set ref 369* 386* 389* 395*
+entry                                  based           structure                level 1 dcl 6-8
+entry_name                             parameter       char                     packed unaligned dcl 322 set ref 319 324* 327*
+entrypt_bound            32(22)        based           bit(14)                  level 2 packed packed unaligned dcl 6-8 set ref 255*
+                                                                                  257*
+entrypt_sw               32(08)        based           bit(1)                   level 2 packed packed unaligned dcl 6-8 set ref 254*
+ep                              000230 automatic       pointer                  dcl 6-6 set ref 177* 180 181 181 229* 232 242 246
+                                                                                  250 254 255 257 260
+ercode                          000120 automatic       fixed bin(35,0)          dcl 46 set ref 142* 144 144* 191* 192 192* 196* 197
+                                                                                  197* 229* 231 231* 264* 266 266* 297* 298 298*
+                                                                                  302* 303 303* 324* 325 325* 327* 328 328* 386* 387
+                                                                                  387* 389* 390* 395* 397 397*
+error_table_$namedup            000024 external static fixed bin(35,0)          dcl 72 ref 308
+error_table_$noentry            000022 external static fixed bin(35,0)          dcl 72 ref 124 129 168 173
+fi                              000110 automatic       fixed bin(17,0)          dcl 46 set ref 212* 213*
+fixed                                                  builtin function         dcl 87 ref 220 233 233 247 277 277 365 366 367 373
+                                                                                  391 391
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 4-11 ref 216
+gate_entry_bound          5     000140 automatic       fixed bin(14,0)          level 2 dcl 64 set ref 254 255 255
+general_acl_entry                      based           structure                level 1 unaligned dcl 2-12
+general_delete_acl_entry               based           structure                level 1 dcl 2-35
+general_extended_acl_entry             based           structure                level 1 dcl 2-23
+get_ptrs_$given_segno           000056 constant        entry                    external dcl 87 ref 233 277
+hc_sdw                    5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 4-11 ref 218
+i                               000111 automatic       fixed bin(17,0)          dcl 46 set ref 220* 222 252 252
+infl                      1            based           bit(18)                  level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  237* 287
+infp                      1(18)        based           bit(18)                  level 2 packed packed unaligned dcl 4-11 set ref 237
+                                                                                  239* 283
+initiate                        000104 constant        entry                    external dcl 87 ref 149 202 389
+level                    44            based           structure                array level 2 dcl 13-9
+lock$dir_unlock                 000100 constant        entry                    external dcl 87 ref 263
+long                      4     000203 automatic       structure                level 2 dcl 85
+make_branches                   000106 constant        entry                    external dcl 87 ref 374
+max                                                    builtin function         dcl 87 ref 391
+max_length                3(03)        based           bit(9)                   level 2 in structure "slte" packed packed unaligned
+                                                                                  dcl 12-48 in procedure "init_branches" ref 391
+max_length                      000356 automatic       fixed bin(19,0)          dcl 362 in procedure "create_branch" set ref 391*
+                                                                                  394 394* 395 398
+ml_to_return                           parameter       fixed bin(9,0)           dcl 363 set ref 353 398*
+mode                     10     000146 automatic       bit(36)                  array level 2 dcl 82 set ref 135* 190*
+msl                       4            based           bit(9)                   level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  244*
+name                      4            based           char(32)                 level 2 in structure "names" dcl 7-7 in procedure
+                                                                                  "init_branches" ref 260
+name                      1            based           char                     level 2 in structure "path" packed packed unaligned
+                                                                                  dcl 11-40 in procedure "init_branches" ref 368
+name                      2            based           char(32)                 array level 3 in structure "segnam" packed packed
+                                                                                  unaligned dcl 11-31 in procedure "init_branches"
+                                                                                  ref 369
+name_table$                     000020 external static fixed bin(17,0)          dcl 46 set ref 209
+names                                  based           structure                level 1 dcl 7-7 in procedure "init_branches"
+names                     1            based           structure                array level 2 in structure "segnam" dcl 11-31
+                                                                                  in procedure "init_branches"
+names                    30            based           varying char(32)         array level 2 in structure "sstnt" dcl 14-11
+                                                                                  in procedure "init_branches" set ref 1-18*
+names_ptr                              based           bit(18)                  level 2 packed packed unaligned dcl 12-48 ref 226
+                                                                                  226
+next_astep                      000132 automatic       pointer                  dcl 46 set ref 216* 268
+nm_astep                        000250 automatic       pointer                  dcl 14-26 set ref 259* 1-12 1-13
+ntp                             000100 automatic       pointer                  dcl 46 set ref 209* 226 226 226 226
+null                                                   builtin function         dcl 87 ref 235 324 372 383 390
+par_astep                 2(18)        based           bit(18)                  level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  236* 279 281
+pastep                          000104 automatic       pointer                  dcl 46 set ref 233* 235 236 237 239
+path                                   based           structure                level 1 dcl 11-40
+path_ptr                  0(18)        based           bit(18)                  level 2 packed packed unaligned dcl 12-48 ref 226
+                                                                                  226
+pddq                            000112 automatic       fixed bin(17,0)          dcl 46 set ref 154* 157* 158* 159* 160*
+pds$                            000012 external static fixed bin(17,0)          dcl 46 set ref 277 277
+pds$process_group_id            000010 external static char(32)                 dcl 46 ref 134 139 184
+per_process              12(14)        based           bit(1)                   level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  242* 280* 281* 286*
+per_process_sw           24(18)        based           bit(1)                   level 2 in structure "dir" packed packed unaligned
+                                                                                  dcl 8-11 in procedure "init_branches" set ref 151*
+per_process_sw           32(02)        based           bit(1)                   level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 6-8 in procedure "init_branches" ref 242
+pname                           000273 automatic       char(168)                packed unaligned dcl 359 set ref 368* 386* 389* 395*
+pp                                     parameter       pointer                  dcl 356 set ref 353 368 370 374*
+primary_name             10            based           bit(504)                 level 2 packed packed unaligned dcl 6-8 set ref 260
+ptr                                                    builtin function         dcl 87 ref 181 181 215 216 226 226 226 226 232 279
+                                                                                  281 283 287
+ptsi                     13(28)        based           bit(2)                   level 2 packed packed unaligned dcl 4-11 ref 247
+                                                                                  1-12
+ptsi_a                          000247 automatic       fixed bin(17,0)          dcl 14-24 set ref 1-12* 1-13 1-13 1-13
+pvt$rlv_needs_salv              000036 external static bit(1)                   dcl 80 ref 311
+quota$dqmove                    000050 constant        entry                    external dcl 87 ref 294
+quota$dqset                     000046 constant        entry                    external dcl 87 ref 159
+quota$qmove                     000054 constant        entry                    external dcl 87 ref 292
+quota$qset                      000052 constant        entry                    external dcl 87 ref 157
+rb                              000134 automatic       fixed bin(3,0)           array dcl 46 in procedure "init_branches" set ref
+                                                                                  132* 139* 184* 306* 306* 306* 307*
+rb                              000270 automatic       fixed bin(3,0)           array dcl 358 in procedure "create_branch" set ref
+                                                                                  365* 366* 367* 374*
+rel                                                    builtin function         dcl 87 ref 236 239 269 1-13
+relp                            000106 automatic       bit(18)                  dcl 46 set ref 213* 214 215 269
+ringbrack                 2(09)        based           bit(3)                   array level 2 packed packed unaligned dcl 12-48 ref
+                                                                                  365 366 367
+rtrim                                                  builtin function         dcl 87 ref 1-18
+salvager$dir_salv_boot          000116 constant        entry                    external dcl 113 ref 311
+sdw_info                               based           structure                level 1 dcl 10-6
+sdw_util_$dissect               000072 constant        entry                    external dcl 87 ref 252
+sdwi                            000140 automatic       structure                level 1 dcl 64 set ref 252 252
+search_ast$hash_in              000044 constant        entry                    external dcl 87 ref 249
+security_oosw            32(07)        based           bit(1)                   level 2 packed packed unaligned dcl 6-8 set ref 180*
+seg                      10            based           structure                array level 2 dcl 11-13 set ref 222
+segment_acl_entry                      based           structure                level 1 dcl 2-45
+segnam                                 based           structure                level 1 dcl 11-31
+segp                            000102 automatic       pointer                  dcl 46 set ref 226* 229* 264*
+set$max_length_path             000110 constant        entry                    external dcl 87 ref 327 395
+size                                   based           fixed bin(17,0)          level 2 dcl 11-40 ref 368 370
+slep                                   parameter       pointer                  dcl 356 ref 353 365 366 367 370 373 391 391
+slt                                    based           structure                level 1 dcl 11-13
+slt$                            000016 external static fixed bin(17,0)          dcl 46 set ref 208
+slte                                   based           structure                level 1 dcl 12-48
+sltep                           000240 automatic       pointer                  dcl 12-8 set ref 222* 226 226 226 226 226* 226 226
+sltp                            000234 automatic       pointer                  dcl 11-7 set ref 208* 222
+sp                                     parameter       pointer                  dcl 356 set ref 353 389* 390
+sst                                    based           structure                level 1 dcl 13-9
+sst$ast_track                   000130 external static bit(1)                   dcl 1-7 ref 1-9
+sst_names_$                     000126 external static fixed bin(17,0)          dcl 14-7 set ref 1-11
+sst_seg$                        000124 external static fixed bin(17,0)          dcl 13-6 set ref 210
+sstnmx                          000246 automatic       fixed bin(17,0)          dcl 14-24 set ref 1-13* 1-18
+sstnp                           000244 automatic       pointer                  dcl 14-9 set ref 1-11* 1-13 1-13 1-13 1-18
+sstnt                                  based           structure                level 1 dcl 14-11
+sstp                            000242 automatic       pointer                  dcl 13-7 set ref 210* 213 215 247 279 281 283 283
+                                                                                  287
+status_$long                    000112 constant        entry                    external dcl 87 ref 324
+status_branch                          based           structure                level 1 dcl 15-8
+strp                      2            based           bit(18)                  level 2 packed packed unaligned dcl 4-11 set ref 220
+                                                                                  221*
+sum$getbranch_root_my           000060 constant        entry                    external dcl 87 ref 229
+syserr                          000074 constant        entry                    external dcl 87 ref 235
+syserr$error_code               000076 constant        entry                    external dcl 87 ref 124 129 140 144 150 158 160 168
+                                                                                  173 178 185 192 197 203 231 266 293 295 298 303
+                                                                                  308 325 328 387 390 397
+temp_entry_name                 000215 automatic       char(32)                 dcl 1-23 set ref 260* 1-18
+terminate_$teseg                000114 constant        entry                    external dcl 87 ref 264
+thread$out                      000042 constant        entry                    external dcl 87 ref 247
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 6-8 in procedure
+                                                                                  "init_branches" ref 246
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 4-11 in procedure "init_branches" set ref 246*
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 8-11 in procedure
+                                                                                  "init_branches" ref 152 204
+unique_chars_                   000066 constant        entry                    external dcl 87 ref 121
+update_vtoce                    000040 constant        entry                    external dcl 87 ref 262
+usedf                     5            based           bit(1)                   level 2 packed packed unaligned dcl 4-11 ref 218
+ustr                            000113 automatic       char(15)                 packed unaligned dcl 46 set ref 121* 122 127 165 167
+                                                                                  171 172
+vtocx                    31            based           fixed bin(17,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 6-8 in procedure "init_branches" ref 250
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 4-11 in procedure "init_branches" set ref 250*
+write_lock                      000107 automatic       bit(36)                  dcl 46 set ref 211* 229*
+zzBB                            000001 constant        char(15)                 initial packed unaligned dcl 66 set ref 292* 294*
+                                                                                  302*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACL_VERSION_1                          internal static fixed bin(17,0)          initial dcl 2-77
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 5-10
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 5-12
+DELETE_ACL_VERSION_1                   internal static char(4)                  initial packed unaligned dcl 2-67
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-33
+DIR_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 2-67
+Directory                              internal static fixed bin(17,0)          initial dcl 15-56
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+FS_OBJ_ACL_MOD                         internal static fixed bin(18,0)          initial unsigned dcl 9-34
+FS_OBJ_ACL_RING_MOD                    internal static fixed bin(18,0)          initial unsigned dcl 9-36
+FS_OBJ_AUDIT_FLAG_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 9-67
+FS_OBJ_AUTHOR_MOD                      internal static fixed bin(18,0)          initial unsigned dcl 9-46
+FS_OBJ_BACKUP_TIMES_MOD                internal static fixed bin(18,0)          initial unsigned dcl 9-48
+FS_OBJ_BC_AUTHOR_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 9-47
+FS_OBJ_BC_MOD                          internal static fixed bin(18,0)          initial unsigned dcl 9-32
+FS_OBJ_CONNECT                         internal static fixed bin(18,0)          initial unsigned dcl 9-31
+FS_OBJ_COPY_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 9-38
+FS_OBJ_CORRECT_QUSED                   internal static fixed bin(18,0)          initial unsigned dcl 9-55
+FS_OBJ_CREATE_BRANCH                   internal static fixed bin(18,0)          initial unsigned dcl 9-66
+FS_OBJ_DAMAGED_SW_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 9-39
+FS_OBJ_DATES_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 9-49
+FS_OBJ_DIR_SALVAGE                     internal static fixed bin(18,0)          initial unsigned dcl 9-56
+FS_OBJ_DNZP_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 9-40
+FS_OBJ_DT_DUMPED_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 9-50
+FS_OBJ_ENTRY_BOUND_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 9-41
+FS_OBJ_FOR_RELOADER_MOD                internal static fixed bin(18,0)          initial unsigned dcl 9-51
+FS_OBJ_IACL_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 9-65
+FS_OBJ_MAX_LEN_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 9-42
+FS_OBJ_MDIR_QUOTA_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 9-57
+FS_OBJ_MOVE_QUOTA                      internal static fixed bin(18,0)          initial unsigned dcl 9-54
+FS_OBJ_QUOTA_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 9-58
+FS_OBJ_QUOTA_RELOAD                    internal static fixed bin(18,0)          initial unsigned dcl 9-59
+FS_OBJ_RECLASSIFY                      internal static fixed bin(18,0)          initial unsigned dcl 9-60
+FS_OBJ_RECLASSIFY_NODE                 internal static fixed bin(18,0)          initial unsigned dcl 9-61
+FS_OBJ_RENAME                          internal static fixed bin(18,0)          initial unsigned dcl 9-37
+FS_OBJ_RING_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 9-35
+FS_OBJ_SAFETY_SW_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 9-43
+FS_OBJ_SEG_MOVE                        internal static fixed bin(18,0)          initial unsigned dcl 9-62
+FS_OBJ_SONS_LVID_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 9-52
+FS_OBJ_SYNC_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 9-44
+FS_OBJ_TRP_MOD                         internal static fixed bin(18,0)          initial unsigned dcl 9-63
+FS_OBJ_TRUNCATE                        internal static fixed bin(18,0)          initial unsigned dcl 9-33
+FS_OBJ_VOLUME_RETRIEVE                 internal static fixed bin(18,0)          initial unsigned dcl 9-64
+FS_OBJ_VOL_DUMP_SW_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 9-45
+GENERAL_ACL_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 2-72
+GENERAL_DELETE_ACL_VERSION_1           internal static char(8)                  initial packed unaligned dcl 2-72
+GENERAL_EXTENDED_ACL_VERSION_1         internal static char(8)                  initial packed unaligned dcl 2-72
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 16-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 16-7
+Link                                   internal static fixed bin(17,0)          initial dcl 15-56
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 3-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 3-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-30
+SEG_ACL_VERSION_1                      internal static char(4)                  initial packed unaligned dcl 2-67
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 16-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 16-7
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+Segment                                internal static fixed bin(17,0)          initial dcl 15-56
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 16-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+access_operations_$fs_obj_access_mod   external static bit(36)                  dcl 9-27
+access_operations_$fs_obj_attr_mod     external static bit(36)                  dcl 9-25
+access_operations_$fs_obj_contents_mod external static bit(36)                  dcl 9-23
+access_operations_$fs_obj_contents_read
+                                       external static bit(36)                  dcl 9-22
+access_operations_$fs_obj_create       external static bit(36)                  dcl 9-18
+access_operations_$fs_obj_delete       external static bit(36)                  dcl 9-19
+access_operations_$fs_obj_initiate     external static bit(36)                  dcl 9-20
+access_operations_$fs_obj_prop_read    external static bit(36)                  dcl 9-24
+access_operations_$fs_obj_status_mod   external static bit(36)                  dcl 9-26
+access_operations_$fs_obj_terminate    external static bit(36)                  dcl 9-21
+acl_count                              automatic       fixed bin(17,0)          dcl 2-5
+acl_ptr                                automatic       pointer                  dcl 2-4
+acls                                   based           structure                level 1 dcl 11-45
+asta                                   based           bit(432)                 array dcl 4-86
+aste_part                              based           structure                level 1 dcl 4-89
+dc_find$dir_for_append          000000 constant        entry                    external dcl 5-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 5-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 5-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 5-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 5-21
+dc_find$dir_read                000000 constant        entry                    external dcl 5-23
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 5-24
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 5-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 5-28
+dc_find$dir_write               000000 constant        entry                    external dcl 5-30
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 5-31
+dc_find$link_target             000000 constant        entry                    external dcl 5-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 5-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 5-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 5-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 5-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 5-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 5-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 5-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 5-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 5-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 5-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 5-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 5-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 5-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 5-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 5-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 5-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 5-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 5-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 5-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 5-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 5-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 5-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 5-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 5-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 5-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 5-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 5-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 5-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 5-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 5-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 5-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 5-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 5-83
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 5-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 5-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 5-88
+dc_find$obj_terminate_ptr       000000 constant        entry                    external dcl 5-89
+dc_find$obj_truncate            000000 constant        entry                    external dcl 5-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 5-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 5-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 5-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 5-97
+delete_acl                             based           structure                level 1 dcl 2-58
+delete_acl_array                       based           structure                array level 1 dcl 2-64
+directory_acl                          based           structure                level 1 dcl 2-49
+directory_acl_array                    based           structure                array level 1 dcl 2-55
+general_acl                            based           structure                level 1 dcl 2-7
+general_delete_acl                     based           structure                level 1 dcl 2-30
+general_extended_acl                   based           structure                level 1 dcl 2-18
+get_ptrs_$given_astep           000000 constant        entry                    external dcl 87
+name_seg                               based           structure                level 1 dcl 11-26
+namep                                  automatic       pointer                  dcl 11-7
+names_ptr                              automatic       pointer                  dcl 11-7
+np                                     automatic       pointer                  dcl 7-5
+pathp                                  automatic       pointer                  dcl 11-7
+sdw_info_ptr                           automatic       pointer                  dcl 10-4
+seg_aste                               based           structure                level 1 dcl 4-96
+segment_acl                            based           structure                level 1 dcl 2-40
+segment_acl_array                      based           structure                array level 1 dcl 2-46
+slte_uns                               based           structure                level 1 dcl 12-10
+status_area_ptr                        automatic       pointer                  dcl 15-47
+status_entry_names                     based           char(32)                 array dcl 15-47
+status_link                            based           structure                level 1 dcl 15-38
+status_pathname                        based           char                     dcl 15-47
+status_ptr                             automatic       pointer                  dcl 15-47
+version_number_2                       internal static fixed bin(17,0)          initial dcl 8-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+back                            002527 constant        label                    dcl 216 ref 269
+branch                          003755 constant        entry                    external dcl 333
+create_branch                   004177 constant        entry                    internal dcl 353 ref 226 339
+init_branches                   000627 constant        entry                    external dcl 13
+set_ml                          004005 constant        entry                    internal dcl 319 ref 289 290
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5330        5462    4641        5340
+Length      6264    4641       132         566     466           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_branches                       500 external procedure  is an external procedure.  
+begin block on line 1-6                 begin block         shares stack frame of external procedure init_branches.  
+set_ml                                  internal procedure  shares stack frame of external procedure init_branches.  
+create_branch                           internal procedure  shares stack frame of external procedure init_branches.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_branches            000100 ntp                         init_branches
+                         000102 segp                        init_branches
+                         000104 pastep                      init_branches
+                         000106 relp                        init_branches
+                         000107 write_lock                  init_branches
+                         000110 fi                          init_branches
+                         000111 i                           init_branches
+                         000112 pddq                        init_branches
+                         000113 ustr                        init_branches
+                         000117 code                        init_branches
+                         000120 ercode                      init_branches
+                         000121 ename                       init_branches
+                         000132 next_astep                  init_branches
+                         000134 rb                          init_branches
+                         000137 correct_max_length          init_branches
+                         000140 sdwi                        init_branches
+                         000146 dir_acl                     init_branches
+                         000172 del_acl                     init_branches
+                         000203 branch                      init_branches
+                         000215 temp_entry_name             init_branches
+                         000226 astep                       init_branches
+                         000230 ep                          init_branches
+                         000232 dp                          init_branches
+                         000234 sltp                        init_branches
+                         000236 aclp                        init_branches
+                         000240 sltep                       init_branches
+                         000242 sstp                        init_branches
+                         000244 sstnp                       init_branches
+                         000246 sstnmx                      init_branches
+                         000247 ptsi_a                      init_branches
+                         000250 nm_astep                    init_branches
+                         000270 rb                          create_branch
+                         000273 pname                       create_branch
+                         000345 ename                       create_branch
+                         000355 bc                          create_branch
+                         000356 max_length                  create_branch
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_g_a               alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack
+ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branchx                asd_$del_sentries             asd_$replace_dall             chname$cfile
+dc_find$finished              dc_find$obj_status_write_priv get_ptrs_$given_segno         initiate
+lock$dir_unlock               make_branches                 quota$dqmove                  quota$dqset
+quota$qmove                   quota$qset                    salvager$dir_salv_boot        sdw_util_$dissect
+search_ast$hash_in            set$max_length_path           status_$long                  sum$getbranch_root_my
+syserr                        syserr$error_code             terminate_$teseg              thread$out
+unique_chars_                 update_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_hardcore_data$pdd_uid  active_hardcore_data$pdir_dir_quota
+active_hardcore_data$pdir_quota                             active_hardcore_data$sl1_uid  dseg$
+error_table_$namedup          error_table_$noentry          name_table$                   pds$
+pds$process_group_id          pvt$rlv_needs_salv            slt$                          sst$ast_track
+sst_names_$                   sst_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000626       121 000634       122 000650       124 000724       127 000754       129 001017       132 001047
+    134 001061       135 001066       139 001070       140 001156       142 001204       144 001247       149 001275
+    150 001350       151 001376       152 001401       154 001404       157 001406       158 001434       159 001465
+    160 001514       164 001545       165 001550       167 001624       168 001635       171 001663       172 001726
+    173 001744       176 001773       177 001777       178 002023       180 002051       181 002054       184 002067
+    185 002157       189 002205       190 002210       191 002212       192 002263       196 002311       197 002354
+    202 002402       203 002451       204 002477       208 002503       209 002505       210 002507       211 002511
+    212 002513       213 002517       214 002523       215 002524       216 002527       218 002534       220 002541
+    221 002544       222 002546       226 002552       229 002571       231 002606       232 002634       233 002636
+    235 002653       236 002677       237 002703       239 002707       242 002712       244 002720       246 002725
+    247 002727       249 002744       250 002753       252 002760       254 002777       255 003006       257 003022
+    259 003024       260 003026    1    9 003031    1   11 003034    1   12 003036    1   13 003043    1   18 003052
+    262 003075       263 003103       264 003112       266 003126       268 003154       269 003156       271 003161
+    277 003163       279 003202       280 003210       281 003212       283 003220       286 003232       287 003235
+    289 003243       290 003250       292 003257       293 003312       294 003340       295 003373       297 003421
+    298 003472       302 003520       303 003567       306 003615       307 003621       308 003702       311 003733
+    314 003747       333 003750       339 003762       340 004004       319 004005       324 004016       325 004064
+    327 004112       328 004150       330 004176       353 004177       365 004201       366 004207       367 004213
+    368 004217       369 004225       370 004232       372 004244       373 004246       374 004253       383 004300
+    384 004304       385 004307       386 004311       387 004344       389 004372       390 004436       391 004467
+    394 004517       395 004523       397 004552       398 004600       399 004603
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

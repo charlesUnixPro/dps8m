@@ -1,0 +1,2320 @@
+	COMPILATION LISTING OF SEGMENT rldr_output_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0957.9 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(86-01-16,Fawcett), approve(86-04-11,MCR7383),
+       16*     audit(86-06-03,GWMay), install(86-07-17,MR12.0-1097):
+       17*     Add support for subvolumes, and 512_WORD_IO, 3380 and 3390.
+       18*                                                   END HISTORY COMMENTS */
+       19 
+       20 
+       21 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+       22 
+       23 rldr_output_: proc;
+       24 
+       25 /* This routine provides read and write functions for pages and vtoces on the physical volume being reloaded. */
+       26 
+       27 /* Modified 5/79 by D. Vinograd to change attach description for disk, so
+       28*   that rdisk_ will use less wired buffer */
+       29 /* Modified: 03/83 by GA Texada to support multiple physical volume reloading.			 */
+       30 
+       31 dcl att_desc	     char (256);
+       32 dcl code		     fixed bin (35);
+       33 dcl (idx, parts, csl, last_page_writ, pages_to_write, n_read, vtocx, record, pvindex) fixed bin;
+       34 dcl (datap, pagep)	     ptr;
+       35 dcl add		     bit (18);
+       36 
+       37 dcl myname	     char (32) int static init ("rldr_output_") options (constant);
+       38 
+       39 dcl vtoce_part_size	     (3) fixed bin int static init (64, 128, 192);
+       40 dcl sys_info$page_size   fixed bin ext;
+       41 
+       42 dcl ioa_$rsnnl	     entry options (variable);
+       43 dcl iox_$attach_ioname   entry (char (*), ptr, char (*), fixed bin (35));
+       44 dcl iox_$position	     entry (ptr, fixed bin, fixed bin, fixed bin (35));
+       45 dcl iox_$get_chars	     entry (ptr, ptr, fixed bin, fixed bin, fixed bin (35));
+       46 dcl iox_$put_chars	     entry (ptr, ptr, fixed bin, fixed bin (35));
+       47 dcl iox_$open	     entry (ptr, fixed bin, bit (36), fixed bin (35));
+       48 dcl rldr_report_$error_output entry options (variable);
+       49 dcl unique_chars_	     entry (bit (*)) returns (char (15));
+       50 
+       51 
+       52 dcl (fixed, divide, mod, ptr) builtin;
+       53 
+       54 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       55 
+       56 
+       57 read_vtoce: entry (rldr_datap, pvindex, vtocep, vtocx, parts, code);
+       58 
+       59 /* This entry reads a vtoc entry given its index. Parts 1, 1 and 2 or 1, 2 and 3  can be read. */
+       60 
+       61 /* position to sector */
+       62     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, vtoce_sector (vtocx), code);
+       63     if code ^= 0 then return;
+       64 						/* read vtoce */
+       65     call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), vtocep, vtoce_part_size (parts) * 4, n_read, code);
+       66 
+       67     return;
+       68 
+       69 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       70 
+       71 
+       72 write_vtoce: entry (rldr_datap, pvindex, vtocep, vtocx, parts, code);
+       73 
+       74 /* This entry writes a vtoce given its index. Parts 1, 1 and 2, or 1, 2, and 3 can be written. */
+       75 
+       76 /* position to sector */
+       77     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, vtoce_sector (vtocx), code);
+       78     if code ^= 0 then return;
+       79 						/* write vtoce */
+       80     call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), vtocep, vtoce_part_size (parts) * 4, code);
+       81 
+       82     return;
+       83 
+       84 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       85 
+       86 
+       87 read_page: entry (rldr_datap, pvindex, pagep, add, code);
+       88 
+       89 /* This entry reads a page given its Multics address. */
+       90 
+       91 /* position to sector */
+       92     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (add), code);
+       93     if code ^= 0 then return;
+       94 						/* read page */
+       95     call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), pagep, sys_info$page_size * 4, n_read, code);
+       96     return;
+       97 
+       98 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       99 
+      100 
+      101 write_page: entry (rldr_datap, pvindex, pagep, add, code);
+      102 
+      103 /* This entry writes a page given its Multics address */
+      104 /* position to sector */
+      105     call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (add), code);
+      106     if code ^= 0 then return;
+      107 						/* write page */
+      108     call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), pagep, sys_info$page_size * 4, code);
+      109     return;
+      110 
+      111 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      112 
+      113 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      114 
+      115 
+      116 write_seg: entry (rldr_datap, pvindex, vtocep, code);
+      117     datap = rldr_data_.data_object_bp;
+      118     csl = fixed (vtoce.csl);
+      119     last_page_writ = -1;
+      120     do while (last_page_writ < csl - 1);
+      121       pages_to_write = 0;
+      122       do idx = last_page_writ + 1 to csl - 1 while (sector (vtoce.fm (idx + 1)) = sector (vtoce.fm (idx)) + 16);
+      123         pages_to_write = pages_to_write + 1;
+      124       end;
+      125       if pages_to_write = 0 then pages_to_write = 1;
+      126       call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (vtoce.fm (last_page_writ + 1)), code);
+      127       if code ^= 0 then return;
+      128       call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), datap, 4096 * pages_to_write, code);
+      129       if code ^= 0 then return;
+      130       last_page_writ = last_page_writ + pages_to_write;
+      131       datap = ptr (datap, (last_page_writ + 1) * 1024);
+      132     end;
+      133     return;
+      134 
+      135 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      136 
+      137 
+      138 init: entry (rldr_datap, pvindex, code);
+      139 
+      140 /* This entry attaches and opens the output switch */
+      141 
+      142     code = 0;
+      143 						/* set up attach description for output */
+      144     if rldr_data_.output_volume_desc ^= "" then
+      145       call ioa_$rsnnl (rldr_data_.output_volume_desc, att_desc, (0), rldr_data_.pvname (pvindex));
+      146 
+      147     else if rldr_data_.device_name (pvindex) = "" then
+      148       call ioa_$rsnnl ("rdisk_ ^a ^a -write -size 20480 -system",
+      149 	 att_desc, (0), device_type_ (), rldr_data_.pvname (pvindex));
+      150 
+      151     else call ioa_$rsnnl ("rdisk_ ^a ^a -dv ^a -write -size 20480 -system",
+      152 	    att_desc, (0), device_type_ (), rldr_data_.pvname (pvindex),
+      153 	    rldr_data_.device_name (pvindex));
+      154 						/* setup attachment and open output */
+      155     call iox_$attach_ioname (unique_chars_ ("0"b), rldr_data_.outputvol_iocbp (pvindex), att_desc, code);
+      156     if code ^= 0 then do;
+      157         call rldr_report_$error_output (rldr_datap, code, myname, "Output volume attachment failed for pv ^a",
+      158 	   rldr_data_.pvname (pvindex));
+      159         return;
+      160       end;
+      161 
+      162     call iox_$open (rldr_data_.outputvol_iocbp (pvindex), Stream_input_output, "0"b, code);
+      163     if code ^= 0 then
+      164       call rldr_report_$error_output (rldr_datap, code, myname, "Output volume opening failed fpr pv ^a",
+      165 	 rldr_data_.pvname (pvindex));
+      166     return;
+      167 
+      168 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      169 
+      170 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      171 
+      172 
+      173 device_type_: proc returns (char (32));
+      174 
+      175 /* This proc returns the device type of physical volume being reloaded */
+      176 
+      177     if rldr_data_.disk_model (pvindex) ^= "" then return (rldr_data_.disk_model (pvindex));
+      178     else return (device_names (rldr_data_.disk_type (pvindex)));
+      179   end device_type_;
+      180 
+      181 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      182 
+      183 
+      184 vtoce_sector: proc (vtocx) returns (fixed bin);
+      185 
+      186 /* This proc converts a vtoc index into a sector number */
+      187 
+      188 dcl (dev_idx, sector, vtocx) fixed bin;
+      189     dev_idx = rldr_data_.disk_type (pvindex);
+      190     record = VTOC_ORIGIN + divide (vtocx, VTOCES_PER_RECORD (dev_idx), 17, 0);
+      191     sector = record * SECTORS_PER_RECORD (dev_idx);
+      192     sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0)
+      193          * rldr_data_.unusable_sectors (pvindex);
+      194     sector = sector + mod (vtocx, VTOCES_PER_RECORD (dev_idx)) * SECTORS_PER_VTOCE (dev_idx);
+      195     return (sector * words_per_sect (dev_idx) * 4);
+      196   end vtoce_sector;
+      197 
+      198 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+      199 
+      200 
+      201 sector: proc (add) returns (fixed bin);
+      202 
+      203 /* This proc converts a Multics record number into a sector number */
+      204 
+      205 dcl add		     bit (18);
+      206 dcl (dev_idx, sector)    fixed bin;
+      207 
+      208     dev_idx = rldr_data_.disk_type (pvindex);
+      209     sector = fixed (add, 18) * SECTORS_PER_RECORD (dev_idx);
+      210     sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0)
+      211          * rldr_data_.unusable_sectors (pvindex);
+      212     return (sector * words_per_sect (dev_idx) * 4);
+      213   end sector;
+      214 
+  1     1 /* BEGIN INCLUDE FILE ... rldr_data_.incl.pl1 ... March 1976 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  1     6*     audit(86-05-22,GWMay), install(86-07-18,MR12.0-1098):
+  1     7*     Add device_name to support the -pvname_device argument to reload.
+  1     8*  2) change(88-10-05,GWMay), approve(88-10-05,MCR8005), audit(88-10-12,Farley),
+  1     9*     install(88-10-17,MR12.2-1173):
+  1    10*     Added pointer and length values for use as an input_buffer for
+  1    11*     intermediate reads.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 
+  1    15 /* Severely modified 3/1/83 by GA Texada to support multiple physical */
+  1    16 /*          volume reloading.				          */
+  1    17 /*          Modified: 3/5/84 by GA Texada to make restart a per pv attribute */
+  1    18 /*		  and add stranger flag.			*/
+  1    19 
+  1    20 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+  1    21 
+  1    22 
+  1    23 dcl rldr_datap	     ptr,
+  1    24   rldr_data_max_pvs	     fixed bin,
+  1    25 
+  1    26   1 rldr_data_	     aligned based (rldr_datap),
+  1    27     2 common	     like rldr_data_common,		/* only one of each needed			*/
+  1    28     2 per_pv	     (rldr_data_max_pvs refer (rldr_data_.npvs)) like rldr_data_perpv,
+  1    29 
+  1    30   1 rldr_data_common     aligned,
+  1    31     2 bits,
+  1    32     ( 3 save	     bit (1),			/* if on can use disk pack restored by BOS */
+  1    33       3 first_volume     bit (1),			/* if on indicates we are on first volume */
+  1    34       3 rpv	     bit (1),			/* if on indicates we are reloading rpv */
+  1    35       3 data_init	     bit (1),			/* if on data structure initialized to null state */
+  1    36       3 arg_init	     bit (1),			/* on if arguments have been processed */
+  1    37       3 disable_error_report bit (1),			/* if on will disable error messages */
+  1    38       3 no_object	     bit (1),			/* if on only vtoces will be reloaded */
+  1    39       3 err_online	     bit (1),			/* if on error messages written to error output */
+  1    40       3 detach	     bit (1),			/* if on attached media will  be detached */
+  1    41       3 brief	     bit (1),			/* if on brief mode enabled */
+  1    42       3 manual	     bit (1),			/* if on operator will select input volumes */
+  1    43       3 restart	     bit (1),			/* -restart was supplied			*/
+  1    44       3 stranger	     bit (1),			/* ON if the pv's do not belong to the mounted RPV*/
+  1    45       3 pad0	     bit (23)) unal,
+  1    46       3 old_256K_switch  bit (2) aligned,		/* state of 256KW connection switch before we came along*/
+  1    47       (3 last_pvid,					/* pvid of last good object read		*/
+  1    48       3 rpv_pvid,					/* rpv pvid */
+  1    49       3 rpv_lvid)	     bit (36),			/* rpv lvid */
+  1    50       3 last_valid_puid  (0:15) bit (36),		/* last non-zero path uid read from input medium */
+  1    51     2 chars,
+  1    52     ( 3 sys_dir,					/* directory where vologs are */
+  1    53       3 default_sys_dir) char (168),			/* default directory where vologs are */
+  1    54       (3 last_valid_vtoce_ename,			/* last valid entry name from VTOCE */
+  1    55       3 operator,					/* operator's name or initials */
+  1    56       3 io_module)	     char (32),			/* name of io outer module used to read input */
+  1    57       (3 input_volume_desc,				/* optional input medium attach description */
+  1    58       3 output_volume_desc) char (256),			/* optional output medium attach description */
+  1    59     2 fixed,
+  1    60     ( 3 num_abandoned,				/* count these as we go along			*/
+  1    61       3 last_vtocx,					/* vtocx of last valid object read		*/
+  1    62       3 npvs,					/* the number of pv names given to the reload_volume command*/
+  1    63       3 rpv_disk_type)   fixed bin,			/* model index of rpv disk drive */
+  1    64       (3 start_time,				/* time reload started */
+  1    65       3 from_time)	     fixed bin (71),		/*  time from which dump tapes should be skipped */
+  1    66       3 input_buffer_len fixed bin (21),		/* length of the data in the read buffer */
+  1    67       3 input_buffer_start fixed bin (21),		/* position in read buffer where new data begins */
+  1    68     2 ptrs,
+  1    69     ( 3 inputvol_iocbp,				/* iocb ptr for input */
+  1    70       3 error_iocbp,				/* iocb ptr for error output */
+  1    71       3 skip,					/* ptr to skip list */
+  1    72       3 volume_record_bp,				/* ptr to temp seg containing most recent volume record */
+  1    73       3 infop,					/* ptr to temp seg containig tdump info */
+  1    74       3 data_object_bp,				/* ptr to temp seg containing most recent object from input medium */
+  1    75       3 input_vol_lstp  ptr,				/* ptr to temp seg containing list of input media */
+  1    76       3 input_buffer_ptr)  ptr,			/* ptr to read buffer */
+  1    77  
+  1    78 
+  1    79   1 rldr_data_perpv	     aligned,			/* one entry per physical volume to be reloaded	*/
+  1    80     2 flags,
+  1    81       3 abandoned	     bit (1) unal,			/* we quit due to some error			*/
+  1    82       3 restart	     bit (1),			/* if on unitialized volume ok and reload will restart */
+  1    83       3 mbz0	     bit (34) unal,			/* beware, RFU				*/
+  1    84     (2 pvname,					/* physical volume name */
+  1    85     2 lvname,					/* logical volume name of physical volume being reloaded */
+  1    86     2 disk_model)	     char (32),			/* model name of disk drive */
+  1    87     2 device_name	     char (8),
+  1    88     (2 lvid,					/* logical volume id of volume being reloaded */
+  1    89     2 pvid)	     bit (36),			/* physical volume id of volume being reloaded */
+  1    90     (2 prev_wordx,					/* index to fsmap */
+  1    91     2 prev_bitx,					/* index to fsmap */
+  1    92     2 disk_type,					/* model index of disk drive */
+  1    93     2 usable_sectors,				/* usable sectors per cylinder of disk pack */
+  1    94     2 unusable_sectors,				/* unusable sectors per cylinder of disk pack */
+  1    95     2 n_vtoce)	     fixed bin,			/* number of vtoce on disk pack */
+  1    96     (2 vtocbp,					/* ptr to vtoc buffer seg */
+  1    97     2 vtoc_headerp,					/* ptr to temp seg containing the vtoc header */
+  1    98     2 labelp,					/* ptr to temp seg containing pack label */
+  1    99     2 bvlp,					/* ptr to volume log */
+  1   100     2 outputvol_iocbp,				/* iocb ptr for output */
+  1   101     2 controlp,					/* ptr to seg containing reload control info about vtoc */
+  1   102     2 vol_mapp)	     ptr,				/* ptr to temp seg containing volume map */
+  1   103 
+  1   104   1 rldr_data_nulled_pv  aligned int static options (constant),
+  1   105     2 flags,
+  1   106       3 abandoned	     bit (1) init ("0"b) unal,
+  1   107       3 restart	     bit (1) init ("0"b) unal,
+  1   108       3 mbz0	     bit (34) init ((34)"0"b) unal,
+  1   109       (2 pvname,
+  1   110     2 lvname,
+  1   111     2 disk_model)	     char (32) init (""),
+  1   112     2 device_name	     char (8) init (""),
+  1   113     (2 lvid,
+  1   114     2 pvid)	     bit (36) init ("0"b),
+  1   115     (2 prev_wordx,
+  1   116     2 prev_bitx,
+  1   117     2 disk_type,
+  1   118     2 usable_sectors,
+  1   119     2 unusable_sectors,
+  1   120     2 n_vtoce)	     fixed bin init (0),
+  1   121     (2 vtocbp,
+  1   122     2 vtoc_headerp,
+  1   123     2 labelp,
+  1   124     2 bvlp,
+  1   125     2 outputvol_iocbp,
+  1   126     2 controlp,
+  1   127     2 vol_mapp)	     ptr init (null ());
+  1   128 
+  1   129 
+  1   130 /* END INCLUDE FILE rldr_data_.incl.pl1 */
+      215 
+      216 
+  2     1 /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  2     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  2     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  2     4 
+  2     5 dcl  vtocep ptr;
+  2     6 
+  2     7 dcl 1 vtoce based (vtocep) aligned,
+  2     8 
+  2     9 
+  2    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  2    11 
+  2    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  2    13 
+  2    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  2    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  2    17     2 pad2 bit (9),
+  2    18 
+  2    19     2 dtu bit (36),					/* date and time segment was last used */
+  2    20 
+  2    21     2 dtm bit (36),					/* date and time segment was last modified */
+  2    22 
+  2    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    24     2 deciduous bit (1),				/* true if hc_sdw */
+  2    25     2 nid bit (1),					/* no incremental dump switch */
+  2    26     2 dnzp bit (1),					/* Dont null zero pages */
+  2    27     2 gtpd bit (1),					/* Global transparent paging device */
+  2    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  2    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  2    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  2    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  2    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  2    33     2 pad3 bit (8),
+  2    34     2 dirsw bit (1),				/* directory switch */
+  2    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  2    36     2 pad4 bit (16)) unaligned,			/* not used */
+  2    37 
+  2    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  2    39 
+  2    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    41 
+  2    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    43 
+  2    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  2    45 
+  2    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  2    47 
+  2    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  2    49 
+  2    50 
+  2    51 
+  2    52 
+  2    53 
+  2    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  2    55 
+  2    56     2 pad6 (10) bit (36),				/* not used */
+  2    57 
+  2    58     2 ncd bit (1),					/* no complete dump switch */
+  2    59     2 pad7 bit (17),
+  2    60     2 pad8 bit (18),
+  2    61 
+  2    62     2 dtd bit (36),					/* date-time-dumped */
+  2    63 
+  2    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  2    65 
+  2    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  2    67 
+  2    68 
+  2    69 
+  2    70 
+  2    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  2    72 
+  2    73     2 primary_name char (32),				/* primary name of the segment */
+  2    74 
+  2    75     2 time_created bit (36),				/* time the segment was created */
+  2    76 
+  2    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  2    78 
+  2    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  2    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  2    81 
+  2    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  2    83 
+  2    84     2 access_class bit (72),				/* access class in branch */
+  2    85     2 perm_flags aligned,
+  2    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  2    87       3 pad9 bit (35) unal,
+  2    88     2 owner bit (36);				/* pvid of this volume */
+  2    89 
+  2    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  2    91 
+  2    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  2    93     2 pad1 bit (7*36),
+  2    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    95     2 pad2 bit (184*36);
+  2    96 
+  2    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      217 
+      218 
+  3     1 /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  3     2 
+  3     3 
+  3     4 
+  3     5 
+  3     6 /****^  HISTORY COMMENTS:
+  3     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  3     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  3     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  3    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  3    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  3    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  3    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  3    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  3    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  3    16*                                                   END HISTORY COMMENTS */
+  3    17 
+  3    18 
+  3    19 /*
+  3    20*   All disk packs have the standard layout described below:
+  3    21*
+  3    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  3    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  3    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  3    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  3    26*   Record  7		: formerly contained bad track list; no longer used.
+  3    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  3    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  3    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  3    30*
+  3    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  3    32*   of the particular partition.
+  3    33*
+  3    34*
+  3    35*
+  3    36*   A conceptual declaration for a disk pack could be:
+  3    37*
+  3    38*   dcl 1 disk_pack,
+  3    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  3    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  3    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  3    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  3    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  3    44*   2 vtoc_array_records	(8 : n-1),
+  3    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  3    46*   3 unused				bit(36 * 64),
+  3    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  3    48*
+  3    49*
+  3    50*
+  3    51*
+  3    52**/
+  3    53 
+  3    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  3    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  3    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  3    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  3    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  3    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  3    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  3    61 		         fixed bin (17) int static options (constant);
+  3    62 
+  3    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  3    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  3    65 /* or the physical volume table entry (pvte) device type.		      */
+  3    66 
+  3    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  3    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  3    69 
+  3    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  3    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  3    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  3    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  3    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  3    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  3    76 
+  3    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      219 
+      220 
+  4     1 /* Begin include file ...... fs_dev_types.incl.pl1 */
+  4     2 
+  4     3 /****^  HISTORY COMMENTS:
+  4     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  4     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  4     6*     Add support for FIPS
+  4     7*     3380.
+  4     8*  2) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  4     9*     audit(86-05-15,Coppola), install(86-07-18,MR12.0-1098):
+  4    10*     Add the support for subvolumes for the MSU3380 and MSU3390.
+  4    11*  3) change(86-10-02,Fawcett), approve(86-10-02,PBF7383),
+  4    12*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+  4    13*     Changed 3390 to 3381, "d338" to "3380" & "d339" to "3381".
+  4    14*                                                   END HISTORY COMMENTS */
+  4    15 
+  4    16 /* Modified 5/19/76 by N. I. Morris */
+  4    17 /* Modified 12/27/78 by Michael R. Jordan to correct MSS0500 information */
+  4    18 /* Modified 4/79 by R.J.C. Kissel to add msu0501 information. */
+  4    19 /* Modified '82 by BIM for needs_alt_part */
+  4    20 /* Modified 4/84 by Chris Jones for FIPS disks */
+  4    21 /* Modified 12/84 by Paul Farley for FIPS disks formatted for 512wd sectors */
+  4    22 /* Modified 1/85 by Paul Farley to decrease the size of the 3380, until the
+  4    23*   volmap and record stock can be expanded. */
+  4    24 
+  4    25 /*
+  4    26********************************************************************************
+  4    27**							        *
+  4    28**                           WARNING:                                          *
+  4    29**							        *
+  4    30**   There exists fs_dev_types.incl.alm that must me updated when a new device *
+  4    31**   type is added.						        *
+  4    32**							        *
+  4    33**   There are other include files that contain arrays indexed by the device   *
+  4    34**   index obtained by references to MODELX or MODELN in this include file.    *
+  4    35**   These must be modified when a new device type is added:		        *
+  4    36**   disk_pack.incl.pl1					        *
+  4    37**   fs_dev_types_sector.incl.pl1 (included in this include)		        *
+  4    38**							        *
+  4    39********************************************************************************
+  4    40**/
+  4    41 
+  4    42 
+  4    43 dcl (maxdevt init (9),				/* maximum legal devt */
+  4    44      bulkdevt init (1),				/* bulk store devt */
+  4    45      msu0500devt init (2),				/* MSU0500 device type */
+  4    46      msu0451devt init (3),				/* MSU0451 device type */
+  4    47      msu0450devt init (3),				/* MSU0450 device type */
+  4    48      msu0400devt init (4),				/* MSU0400 device type */
+  4    49      dsu191devt init (4),				/* DSU191 device type */
+  4    50      dsu190devt init (5),				/* DSU190 device type */
+  4    51      dsu181devt init (6),				/* DSU181 device type */
+  4    52      msu0501devt init (7),				/* MSU0501 device type */
+  4    53      fips3380devt init (8),				/* 3380D FIPS device type */
+  4    54      fips3381devt init (9)				/* 3380E FIPS device type */
+  4    55      ) fixed bin (4) static options (constant);
+  4    56 
+  4    57 dcl  MODEL (12) fixed bin static options (constant) init	/* Known device model numbers */
+  4    58      (0, 500, 451, 450, 400, 402, 191, 190, 181, 501, 3380, 3381);
+  4    59 
+  4    60 dcl  MODELX (12) fixed bin static options (constant) init	/* translation from model number to device type */
+  4    61      (1, 2, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9);
+  4    62 
+  4    63 dcl  MODELN (9) fixed bin static options (constant) init	/* translation from device type to model number */
+  4    64      (0, 500, 451, 400, 190, 181, 501, 3380, 3381);
+  4    65 
+  4    66 dcl  device_names (9) char (4) aligned static options (constant) init /* device names indexed by device type */
+  4    67      ("bulk", "d500", "d451", "d400", "d190", "d181", "d501", "3380", "3381");
+  4    68 
+  4    69 dcl  first_dev_number (9) fixed bin (17) static options (constant) init /* First valid device_number */
+  4    70      (1, 1, 1, 1, 1, 1, 1, 0, 0);
+  4    71 
+  4    72 dcl  fips_type_disk (9) bit (1) unal static options (constant) init /* ON => FIPS disk */
+  4    73      ("0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"1"b,"1"b);
+  4    74 
+  4    75 dcl  media_removable (9) bit (1) static options (constant) init /* ON => demountable pack on device */
+  4    76      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  4    77 
+  4    78 dcl  shared_spindle (9) bit (1) static options (constant) init /* ON => 2 devices per spindle */
+  4    79      ("0"b, "1"b, "0"b, "0"b, "0"b, "0"b, "1"b, "0"b, "0"b);
+  4    80 
+  4    81 dcl  needs_alt_part (9) bit (1) static options (constant) init /* ON => needs alternate partition to run alternate tracks */
+  4    82      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  4    83 
+  4    84 dcl  seek_command (9) bit (6) init /* Seek command: 00 => N/A, 30 => Seek_512, 34 => seek_64 */
+  4    85      ("00"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"30"b3, "30"b3);
+  4    86 
+  4    87 dcl  rec_per_dev (9) fixed bin (21) static options (constant) init /* table of # of records on each device */
+  4    88      (0, 38258, 38258, 19270, 14760, 4444, 67200, 112395, 224790);
+  4    89 
+  4    90 dcl  rec_per_sv (9) fixed bin static options (constant) init /* table of  # of records on each subvol */
+  4    91      (0, 38258, 38258, 19270, 14760, 4444, 67200, 56134, 74930);
+  4    92 
+  4    93 dcl  number_of_sv (9) fixed bin static options (constant) init /* table of subvolumes */
+  4    94      (0, 0, 0, 0, 0, 0, 0, 2, 3);
+  4    95 
+  4    96 dcl  valid_sv_string char (3) static options (constant) init  /* string of valid subvolume names */
+  4    97      ("abc");
+  4    98 
+  4    99 dcl  valid_sv_array (0:2) char (1) static options (constant) /* array of valid subvolume names */
+  4   100      init ("a","b","c");
+  4   101 
+  4   102 dcl  cyl_per_dev (9) fixed bin static options (constant) init /* table of # of cylinders on each device */
+  4   103      (0, 814, 814, 410, 410, 202, 840, 885, 1770);
+  4   104 
+  4   105 dcl  cyl_per_sv (9) fixed bin static options (constant) init /* table of # of cylinders on each subvolume */
+  4   106      (0, 814, 814, 410, 410, 202, 840, 442, 590);
+  4   107 
+  4   108 dcl  rec_per_cyl (9) fixed bin static options (constant) init /* table of # of records per cylinder on each device */
+  4   109      (0, 47, 47, 47, 36, 22, 80, 127, 127);
+  4   110 
+  4   111 dcl  tracks_per_cyl (9) fixed bin static options (constant) init /* table of # of tracks per cylinder on each device */
+  4   112      (0, 19, 19, 19, 19, 20, 20, 15, 15);
+  4   113 
+  4   114 
+  4   115 dcl  first_rec_num (9) fixed bin static options (constant) init /* table of # of first record on each device */
+  4   116      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  4   117 
+  4   118 dcl  last_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each device */
+  4   119      (0, 38257, 38116, 19128, 14651, 4399, 67199, 112394, 224789);
+  4   120 
+  4   121 dcl  last_sv_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each subvolume */
+  4   122      (0, 38257, 38116, 19128, 14651, 4399, 67199, 56133, 74929);
+  4   123 
+  4   124 dcl  first_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector for each device */
+  4   125      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  4   126 
+  4   127 dcl  last_sect_num (9) fixed bin (24) static options (constant) init /* table of # last sector number for each device */
+  4   128      (0, 618639, 616359, 309319, 239722, 71999, 1075199, 225674, 451349);
+  4   129 
+  4   130 dcl  first_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector of alt partition */
+  4   131      (0, 638400, 616360, 309320, 239723, 72000, 1075200, 225675, 451350);
+  4   132 
+  4   133 dcl  last_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector of alt partition */
+  4   134      (0, 639919, 618639, 311599, 241489, 72719, 1077759, 225930, 451605);
+  4   135 
+  4   136 dcl  last_physical_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector on device (includes T&D cylinders) */
+  4   137      (0, 639919, 619399, 312359, 242249, 72359, 1077759, 225674, 451859);
+  4   138 
+  4   139 dcl  dev_time (9) float bin (27) static options (constant) init /* table of average access times for each device */
+  4   140      (384e0, 33187e0, 33187e0, 34722e0, 46935e0, 52631e0, 33187e0, 26260e0, 26260e0);
+  4   141 
+  5     1 /* Begin fs_dev_types_sector.incl.pl1 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  5     6*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  5     7*     Add the sector differance for devices that do 64 word IO and devices that
+  5     8*     do 512 word IO.
+  5     9*                                                   END HISTORY COMMENTS */
+  5    10 
+  5    11 /* Created by R. A. Fawcett for 512 word IO. for procedures that do not
+  5    12*	 need all the data in fs_dev_types. This is also included in
+  5    13*	 fs_dev_types.incl.pl1  */
+  5    14 
+  5    15 dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
+  5    16     (0, 760, 760, 760, 589, 360, 1280, 255, 255);
+  5    17 
+  5    18 dcl  sect_per_sv (9) fixed bin (24) static options (constant) init /* table of # of sectors per cylinder on each subvolume */
+  5    19      (0, 0, 0, 0, 0, 0, 0, 112710, 150450);
+  5    20 
+  5    21 dcl  sect_per_rec (9) fixed bin static options (constant) init
+  5    22  /* table of # of sectors per record on each device */
+  5    23  /* coresponding array in disk_pack.incl.pl1 called SECTORS_PER_RECORD */
+  5    24     (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  5    25 
+  5    26 dcl  sect_per_vtoc (9) fixed bin static options (constant) init
+  5    27      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  5    28 	
+  5    29 dcl  vtoc_per_rec (9) fixed bin  static options  (constant) init
+  5    30 /* corespending array in disk_pack.incl.pl1 named VTOCES_PER_RECORD */
+  5    31      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  5    32 
+  5    33 dcl  sect_per_track (9) fixed bin static options (constant) init /* table of # of sectors per track on each device */
+  5    34     (0, 40, 40, 40, 31, 18, 64, 17, 17);
+  5    35 
+  5    36 dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
+  5    37     (0, 64, 64, 64, 64, 64, 64, 512, 512);
+  5    38 
+  5    39 /* End fs_dev_types_sector.incl.pl1 */
+  5    40 
+  4   142 
+  4   143 
+  4   144 /* End of include file ...... fs_dev_types.incl.pl1 */
+      221 
+      222 
+  6     1 /* Begin include file ..... iox_modes.incl.pl1 */
+  6     2 
+  6     3 /* Written by C. D. Tavares, 03/17/75 */
+  6     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  6     5 
+  6     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  6     7     ("stream_input", "stream_output", "stream_input_output",
+  6     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  6     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  6    10      "direct_input", "direct_output", "direct_update");
+  6    11 
+  6    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  6    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  6    14 
+  6    15 dcl (Stream_input initial (1),
+  6    16      Stream_output initial (2),
+  6    17      Stream_input_output initial (3),
+  6    18      Sequential_input initial (4),
+  6    19      Sequential_output initial (5),
+  6    20      Sequential_input_output initial (6),
+  6    21      Sequential_update initial (7),
+  6    22      Keyed_sequential_input initial (8),
+  6    23      Keyed_sequential_output initial (9),
+  6    24      Keyed_sequential_update initial (10),
+  6    25      Direct_input initial (11),
+  6    26      Direct_output initial (12),
+  6    27      Direct_update initial (13)) fixed bin int static options (constant);
+  6    28 
+  6    29 /* End include file ..... iox_modes.incl.pl1 */
+      223 
+  7     1 /* BEGIN INCLUDE FILE ... backup_static_variables.incl.pl1 ... March 1976 */
+  7     2 
+  7     3 
+  7     4 dcl  incr fixed bin init (1) internal static options (constant); /* incremental dump mode */
+  7     5 dcl  cons fixed bin init (2) internal static options (constant); /* consolidated dump mode */
+  7     6 dcl  comp fixed bin init (3) internal static options (constant); /* complete dump mode */
+  7     7 dcl  backup_version_1 fixed bin init (1) static internal options (constant); /* backup_version_1 of input/output structures */
+  7     8 
+  7     9 
+  7    10 
+  7    11 /* END INCLUDE FILE ... backup_static_variables.incl.pl1 */
+      224 
+      225 
+      226 /* BEGIN MESSAGE DOCUMENTATION
+      227*
+      228*   Message:
+      229*   rldr_output_: Output volume attachment failed: ERROR_MESS
+      230*
+      231*   S:	$rld_out
+      232*
+      233*   T:	$reload
+      234*
+      235*   M:	$err
+      236*
+      237*   A:	Mount a different output volume and try again.
+      238*
+      239*
+      240*   Message:
+      241*   rldr_output_: Output volume opening failed: ERROR_MESS
+      242*
+      243*   S:	$rld_out
+      244*
+      245*   T:	$reload
+      246*
+      247*   M:	$err
+      248*
+      249*   A:	Mount a different output volume and try again.
+      250*
+      251*
+      252*   END MESSAGE DOCUMENTATION */
+      253 
+      254   end rldr_output_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.4  rldr_output_.pl1                  >spec>install>1115>rldr_output_.pl1
+215          1    10/18/88  1215.0  rldr_data_.incl.pl1               >ldd>include>rldr_data_.incl.pl1
+217          2    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+219          3    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+221          4    10/30/86  2010.5  fs_dev_types.incl.pl1             >ldd>include>fs_dev_types.incl.pl1
+4-142        5    07/24/86  2051.8  fs_dev_types_sector.incl.pl1      >ldd>include>fs_dev_types_sector.incl.pl1
+223          6    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+224          7    09/05/80  1136.5  backup_static_variables.incl.pl1  >ldd>include>backup_static_variables.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SECTORS_PER_RECORD              000022 constant        fixed bin(17,0)          initial array dcl 3-74 ref 191 209
+SECTORS_PER_VTOCE               000044 constant        fixed bin(17,0)          initial array dcl 3-70 ref 194
+Stream_input_output             000106 constant        fixed bin(17,0)          initial dcl 6-15 set ref 162*
+VTOCES_PER_RECORD               000033 constant        fixed bin(17,0)          initial array dcl 3-72 ref 190 194
+VTOC_ORIGIN                            constant        fixed bin(17,0)          initial dcl 3-54 ref 190
+add                                    parameter       bit(18)                  packed unaligned dcl 205 in procedure "sector" ref
+                                                                                  201 209
+add                                    parameter       bit(18)                  packed unaligned dcl 35 in procedure "rldr_output_"
+                                                                                  set ref 87 92* 92* 101 105* 105*
+att_desc                        000100 automatic       char(256)                packed unaligned dcl 31 set ref 144* 147* 151* 155*
+chars                    25            based           structure                level 3 dcl 1-23
+code                                   parameter       fixed bin(35,0)          dcl 32 set ref 57 62* 63 65* 72 77* 78 80* 87 92* 93
+                                                                                  95* 101 105* 106 108* 116 126* 127 128* 129 138
+                                                                                  142* 155* 156 157* 162* 163 163*
+common                                 based           structure                level 2 dcl 1-23
+csl                             000201 automatic       fixed bin(17,0)          dcl 33 in procedure "rldr_output_" set ref 118* 120
+                                                                                  122
+csl                       2(09)        based           bit(9)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 2-7 in procedure "rldr_output_" ref 118
+data_object_bp          426            based           pointer                  level 4 dcl 1-23 ref 117
+datap                           000206 automatic       pointer                  dcl 34 set ref 117* 128* 131* 131
+dev_idx                         000762 automatic       fixed bin(17,0)          dcl 206 in procedure "sector" set ref 208* 209 212
+dev_idx                         000752 automatic       fixed bin(17,0)          dcl 188 in procedure "vtoce_sector" set ref 189* 190
+                                                                                  191 194 194 195
+device_name             467            based           char(8)                  array level 3 dcl 1-23 set ref 147 151*
+device_names                    000011 constant        char(4)                  initial array dcl 4-66 ref 178
+disk_model              457            based           char(32)                 array level 3 dcl 1-23 ref 177 177
+disk_type               475            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 178 189 208
+divide                                                 builtin function         dcl 52 ref 190 192 210
+fixed                                                  builtin function         dcl 52 ref 118 209
+fm                       20            based           bit(18)                  array level 2 packed packed unaligned dcl 2-7 set
+                                                                                  ref 122* 122* 126* 126*
+idx                             000200 automatic       fixed bin(17,0)          dcl 33 set ref 122* 122 122*
+ioa_$rsnnl                      000012 constant        entry                    external dcl 42 ref 144 147 151
+iox_$attach_ioname              000014 constant        entry                    external dcl 43 ref 155
+iox_$get_chars                  000020 constant        entry                    external dcl 45 ref 65 95
+iox_$open                       000024 constant        entry                    external dcl 47 ref 162
+iox_$position                   000016 constant        entry                    external dcl 44 ref 62 77 92 105 126
+iox_$put_chars                  000022 constant        entry                    external dcl 46 ref 80 108 128
+last_page_writ                  000202 automatic       fixed bin(17,0)          dcl 33 set ref 119* 120 122 126 126 130* 130 131
+mod                                                    builtin function         dcl 52 ref 194
+myname                          000060 constant        char(32)                 initial packed unaligned dcl 37 set ref 157* 163*
+n_read                          000204 automatic       fixed bin(17,0)          dcl 33 set ref 65* 95*
+output_volume_desc      301            based           char(256)                level 4 dcl 1-23 set ref 144 144*
+outputvol_iocbp         512            based           pointer                  array level 3 dcl 1-23 set ref 62* 65* 77* 80* 92*
+                                                                                  95* 105* 108* 126* 128* 155* 162*
+pagep                                  parameter       pointer                  dcl 34 set ref 87 95* 101 108*
+pages_to_write                  000203 automatic       fixed bin(17,0)          dcl 33 set ref 121* 123* 123 125 125* 128 130
+parts                                  parameter       fixed bin(17,0)          dcl 33 ref 57 65 72 80
+per_pv                  434            based           structure                array level 2 dcl 1-23
+ptr                                                    builtin function         dcl 52 ref 131
+ptrs                    414            based           structure                level 3 dcl 1-23
+pvindex                                parameter       fixed bin(17,0)          dcl 33 ref 57 62 65 72 77 80 87 92 95 101 105 108
+                                                                                  116 126 128 138 144 147 147 151 151 155 157 162
+                                                                                  163 177 177 178 189 192 192 208 210 210
+pvname                  437            based           char(32)                 array level 3 dcl 1-23 set ref 144* 147* 151* 157*
+                                                                                  163*
+record                          000205 automatic       fixed bin(17,0)          dcl 33 set ref 190* 191
+rldr_data_                             based           structure                level 1 dcl 1-23
+rldr_data_common                000210 automatic       structure                level 1 dcl 1-23
+rldr_data_perpv                 000644 automatic       structure                level 1 dcl 1-23
+rldr_datap                             parameter       pointer                  dcl 1-23 set ref 57 62 65 72 77 80 87 92 95 101 105
+                                                                                  108 116 117 126 128 138 144 144 144 147 147 151
+                                                                                  151 155 157* 157 162 163* 163 177 177 178 189 192
+                                                                                  192 208 210 210
+rldr_report_$error_output       000026 constant        entry                    external dcl 48 ref 157 163
+sector                          000753 automatic       fixed bin(17,0)          dcl 188 in procedure "vtoce_sector" set ref 191*
+                                                                                  192* 192 192 194* 194 195
+sector                          000763 automatic       fixed bin(17,0)          dcl 206 in procedure "sector" set ref 209* 210* 210
+                                                                                  210 212
+seek_command                    000730 automatic       bit(6)                   initial array packed unaligned dcl 4-84 set ref
+                                                                                  4-84* 4-84* 4-84* 4-84* 4-84* 4-84* 4-84* 4-84*
+                                                                                  4-84*
+sys_info$page_size              000010 external static fixed bin(17,0)          dcl 40 ref 95 108
+unique_chars_                   000030 constant        entry                    external dcl 49 ref 155 155
+unusable_sectors        477            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 192 210
+usable_sectors          476            based           fixed bin(17,0)          array level 3 dcl 1-23 ref 192 210
+vtoce                                  based           structure                level 1 dcl 2-7
+vtoce_part_size                 000055 constant        fixed bin(17,0)          initial array dcl 39 ref 65 80
+vtocep                                 parameter       pointer                  dcl 2-5 set ref 57 65* 72 80* 116 118 122 122 126
+                                                                                  126
+vtocx                                  parameter       fixed bin(17,0)          dcl 188 in procedure "vtoce_sector" ref 184 190 194
+vtocx                                  parameter       fixed bin(17,0)          dcl 33 in procedure "rldr_output_" set ref 57 62*
+                                                                                  62* 72 77* 77*
+words_per_sect                  000000 constant        fixed bin(17,0)          initial array dcl 5-36 ref 195 212
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 3-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 3-54
+Direct_input                           internal static fixed bin(17,0)          initial dcl 6-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 6-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 6-15
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 6-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 6-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 6-15
+LABEL_ADDR                             internal static fixed bin(17,0)          initial dcl 3-54
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 3-54
+MODEL                                  internal static fixed bin(17,0)          initial array dcl 4-57
+MODELN                                 internal static fixed bin(17,0)          initial array dcl 4-63
+MODELX                                 internal static fixed bin(17,0)          initial array dcl 4-60
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 3-67
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 6-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 6-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 6-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 6-15
+Stream_input                           internal static fixed bin(17,0)          initial dcl 6-15
+Stream_output                          internal static fixed bin(17,0)          initial dcl 6-15
+VOLMAP_ADDR                            internal static fixed bin(17,0)          initial dcl 3-54
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 3-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 3-54
+backup_version_1                       internal static fixed bin(17,0)          initial dcl 7-7
+bulkdevt                               internal static fixed bin(4,0)           initial dcl 4-43
+comp                                   internal static fixed bin(17,0)          initial dcl 7-6
+cons                                   internal static fixed bin(17,0)          initial dcl 7-5
+cyl_per_dev                            internal static fixed bin(17,0)          initial array dcl 4-102
+cyl_per_sv                             internal static fixed bin(17,0)          initial array dcl 4-105
+dev_time                               internal static float bin(27)            initial array dcl 4-139
+dsu181devt                             internal static fixed bin(4,0)           initial dcl 4-43
+dsu190devt                             internal static fixed bin(4,0)           initial dcl 4-43
+dsu191devt                             internal static fixed bin(4,0)           initial dcl 4-43
+fips3380devt                           internal static fixed bin(4,0)           initial dcl 4-43
+fips3381devt                           internal static fixed bin(4,0)           initial dcl 4-43
+fips_type_disk                         internal static bit(1)                   initial array packed unaligned dcl 4-72
+first_alt_sect_num                     internal static fixed bin(24,0)          initial array dcl 4-130
+first_dev_number                       internal static fixed bin(17,0)          initial array dcl 4-69
+first_rec_num                          internal static fixed bin(17,0)          initial array dcl 4-115
+first_sect_num                         internal static fixed bin(24,0)          initial array dcl 4-124
+incr                                   internal static fixed bin(17,0)          initial dcl 7-4
+iox_modes                              internal static char(24)                 initial array dcl 6-6
+last_alt_sect_num                      internal static fixed bin(24,0)          initial array dcl 4-133
+last_physical_sect_num                 internal static fixed bin(24,0)          initial array dcl 4-136
+last_rec_num                           internal static fixed bin(18,0)          initial array dcl 4-118
+last_sect_num                          internal static fixed bin(24,0)          initial array dcl 4-127
+last_sv_rec_num                        internal static fixed bin(18,0)          initial array dcl 4-121
+maxdevt                                internal static fixed bin(4,0)           initial dcl 4-43
+media_removable                        internal static bit(1)                   initial array packed unaligned dcl 4-75
+msu0400devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0450devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0451devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0500devt                            internal static fixed bin(4,0)           initial dcl 4-43
+msu0501devt                            internal static fixed bin(4,0)           initial dcl 4-43
+needs_alt_part                         internal static bit(1)                   initial array packed unaligned dcl 4-81
+number_of_sv                           internal static fixed bin(17,0)          initial array dcl 4-93
+rec_per_cyl                            internal static fixed bin(17,0)          initial array dcl 4-108
+rec_per_dev                            internal static fixed bin(21,0)          initial array dcl 4-87
+rec_per_sv                             internal static fixed bin(17,0)          initial array dcl 4-90
+rldr_data_max_pvs                      automatic       fixed bin(17,0)          dcl 1-23
+rldr_data_nulled_pv                    internal static structure                level 1 dcl 1-23
+sect_per_cyl                           internal static fixed bin(17,0)          initial array dcl 5-15
+sect_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-21
+sect_per_sv                            internal static fixed bin(24,0)          initial array dcl 5-18
+sect_per_track                         internal static fixed bin(17,0)          initial array dcl 5-33
+sect_per_vtoc                          internal static fixed bin(17,0)          initial array dcl 5-26
+seg_vtoce                              based           structure                level 1 dcl 2-92
+shared_spindle                         internal static bit(1)                   initial array packed unaligned dcl 4-78
+short_iox_modes                        internal static char(4)                  initial array dcl 6-12
+tracks_per_cyl                         internal static fixed bin(17,0)          initial array dcl 4-111
+valid_sv_array                         internal static char(1)                  initial array packed unaligned dcl 4-99
+valid_sv_string                        internal static char(3)                  initial packed unaligned dcl 4-96
+vtoc_per_rec                           internal static fixed bin(17,0)          initial array dcl 5-29
+vtoce_parts                            based           bit(2304)                array dcl 2-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+device_type_                    001602 constant        entry                    internal dcl 173 ref 147 147 151 151
+init                            001157 constant        entry                    external dcl 138
+read_page                       000512 constant        entry                    external dcl 87
+read_vtoce                      000275 constant        entry                    external dcl 57
+rldr_output_                    000260 constant        entry                    external dcl 23
+sector                          001677 constant        entry                    internal dcl 201 ref 92 92 105 105 122 122 126 126
+vtoce_sector                    001633 constant        entry                    internal dcl 184 ref 62 62 77 77
+write_page                      000617 constant        entry                    external dcl 101
+write_seg                       000725 constant        entry                    external dcl 116
+write_vtoce                     000403 constant        entry                    external dcl 72
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2134        2166    1742        2144
+Length      2526    1742        32         324     172           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rldr_output_                        603 external procedure  is an external procedure.  
+device_type_                            internal procedure  shares stack frame of external procedure rldr_output_.  
+vtoce_sector                            internal procedure  shares stack frame of external procedure rldr_output_.  
+sector                                  internal procedure  shares stack frame of external procedure rldr_output_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rldr_output_             000100 att_desc                    rldr_output_
+                         000200 idx                         rldr_output_
+                         000201 csl                         rldr_output_
+                         000202 last_page_writ              rldr_output_
+                         000203 pages_to_write              rldr_output_
+                         000204 n_read                      rldr_output_
+                         000205 record                      rldr_output_
+                         000206 datap                       rldr_output_
+                         000210 rldr_data_common            rldr_output_
+                         000644 rldr_data_perpv             rldr_output_
+                         000730 seek_command                rldr_output_
+                         000752 dev_idx                     vtoce_sector
+                         000753 sector                      vtoce_sector
+                         000762 dev_idx                     sector
+                         000763 sector                      sector
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ioa_$rsnnl                    iox_$attach_ioname            iox_$get_chars                iox_$open
+iox_$position                 iox_$put_chars                rldr_report_$error_output     unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sys_info$page_size
+
+
+CONSTANTS
+001734  aa     000002000000
+001735  aa     000000000000
+001736  aa     600000000041
+001737  aa     000770000000
+
+000000  aa     000000000000
+000001  aa     000000000100
+000002  aa     000000000100
+000003  aa     000000000100
+000004  aa     000000000100
+000005  aa     000000000100
+000006  aa     000000000100
+000007  aa     000000001000
+000010  aa     000000001000
+
+000011  aa  142 165 154 153	bulk
+000012  aa  144 065 060 060	d500
+000013  aa  144 064 065 061	d451
+000014  aa  144 064 060 060	d400
+000015  aa  144 061 071 060	d190
+000016  aa  144 061 070 061	d181
+000017  aa  144 065 060 061	d501
+000020  aa  063 063 070 060	3380
+000021  aa  063 063 070 061	3381
+
+000022  aa     000000000000
+000023  aa     000000000020
+000024  aa     000000000020
+000025  aa     000000000020
+000026  aa     000000000020
+000027  aa     000000000020
+000030  aa     000000000020
+000031  aa     000000000002
+000032  aa     000000000002
+
+000033  aa     000000000000
+000034  aa     000000000005
+000035  aa     000000000005
+000036  aa     000000000005
+000037  aa     000000000005
+000040  aa     000000000005
+000041  aa     000000000005
+000042  aa     000000000002
+000043  aa     000000000002
+
+000044  aa     000000000000
+000045  aa     000000000003
+000046  aa     000000000003
+000047  aa     000000000003
+000050  aa     000000000003
+000051  aa     000000000003
+000052  aa     000000000003
+000053  aa     000000000001
+000054  aa     000000000001
+
+000055  aa     000000000100
+000056  aa     000000000200
+000057  aa     000000000300
+
+000060  aa  162 154 144 162	rldr
+000061  aa  137 157 165 164	_out
+000062  aa  160 165 164 137	put_
+000063  aa  040 040 040 040	    
+000064  aa  040 040 040 040	    
+000065  aa  040 040 040 040	    
+000066  aa  040 040 040 040	    
+000067  aa  040 040 040 040	    
+
+
+001740  aa     300000000000
+
+001741  aa     340000000000
+
+000070  aa     524000000046
+
+000071  aa     524000000051
+
+000072  aa     524000000017
+
+000073  aa     514000000001
+
+000074  aa     524000000010
+
+000075  aa     524000000056
+
+000076  aa     524000000047
+
+000077  aa     524000000040
+
+000100  aa     404000000005
+
+000101  aa     526000000400
+
+000102  aa     524000000400
+
+000103  aa     526000000040
+
+000104  aa     526000000017
+
+000105  aa     516000000022
+
+000106  aa     000000000003
+
+000107  aa     464000000000
+
+000110  aa     404000000021
+
+000111  aa     404000000043
+
+000112  aa  117 165 164 160	Outp
+000113  aa  165 164 040 166	ut v
+000114  aa  157 154 165 155	olum
+000115  aa  145 040 157 160	e op
+000116  aa  145 156 151 156	enin
+000117  aa  147 040 146 141	g fa
+000120  aa  151 154 145 144	iled
+000121  aa  040 146 160 162	 fpr
+000122  aa  040 160 166 040	 pv 
+000123  aa  136 141 000 000	^a
+
+000124  aa  162 144 151 163	rdis
+000125  aa  153 137 040 136	k_ ^
+000126  aa  141 040 136 141	a ^a
+000127  aa  040 055 167 162	 -wr
+000130  aa  151 164 145 040	ite 
+000131  aa  055 163 151 172	-siz
+000132  aa  145 040 062 060	e 20
+000133  aa  064 070 060 040	480 
+000134  aa  055 163 171 163	-sys
+000135  aa  164 145 155 000	tem
+
+000136  aa  117 165 164 160	Outp
+000137  aa  165 164 040 166	ut v
+000140  aa  157 154 165 155	olum
+000141  aa  145 040 141 164	e at
+000142  aa  164 141 143 150	tach
+000143  aa  155 145 156 164	ment
+000144  aa  040 146 141 151	 fai
+000145  aa  154 145 144 040	led 
+000146  aa  146 157 162 040	for 
+000147  aa  160 166 040 136	pv ^
+000150  aa  141 000 000 000	a
+
+000151  aa  162 144 151 163	rdis
+000152  aa  153 137 040 136	k_ ^
+000153  aa  141 040 136 141	a ^a
+000154  aa  040 055 144 166	 -dv
+000155  aa  040 136 141 040	 ^a 
+000156  aa  055 167 162 151	-wri
+000157  aa  164 145 040 055	te -
+000160  aa  163 151 172 145	size
+000161  aa  040 062 060 064	 204
+000162  aa  070 060 040 055	80 -
+000163  aa  163 171 163 164	syst
+000164  aa  145 155 000 000	em
+
+BEGIN PROCEDURE rldr_output_
+PROLOGUE SEQUENCE
+000165  aa  6 00764 4401 00	sxl0 	pr6|500
+						STATEMENT 1 ON LINE 84 OF FILE 4
+000166  aa  6 00734 4501 00	stz  	pr6|476
+000167  aa  6 00734 0541 00	aos  	pr6|476
+000170  aa  6 00734 2361 00	ldq  	pr6|476
+000171  aa   000006 4020 07	mpy  	6,dl
+000172  aa  003 106 060 400	csl  	(),(pr,ql),fill(0),bool(move)
+000173  aa   000000 00 0000	descb	0,0
+000174  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000175  aa  6 00734 0541 00	aos  	pr6|476
+000176  aa  6 00734 2361 00	ldq  	pr6|476
+000177  aa   000006 4020 07	mpy  	6,dl
+000200  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000201  aa   001541 00 0006	descb	865,6		001741 = 340000000000
+000202  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000203  aa  6 00734 0541 00	aos  	pr6|476
+000204  aa  6 00734 2361 00	ldq  	pr6|476
+000205  aa   000006 4020 07	mpy  	6,dl
+000206  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000207  aa   001533 00 0006	descb	859,6		001741 = 340000000000
+000210  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000211  aa  6 00734 0541 00	aos  	pr6|476
+000212  aa  6 00734 2361 00	ldq  	pr6|476
+000213  aa   000006 4020 07	mpy  	6,dl
+000214  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000215  aa   001525 00 0006	descb	853,6		001741 = 340000000000
+000216  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000217  aa  6 00734 0541 00	aos  	pr6|476
+000220  aa  6 00734 2361 00	ldq  	pr6|476
+000221  aa   000006 4020 07	mpy  	6,dl
+000222  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000223  aa   001517 00 0006	descb	847,6		001741 = 340000000000
+000224  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000225  aa  6 00734 0541 00	aos  	pr6|476
+000226  aa  6 00734 2361 00	ldq  	pr6|476
+000227  aa   000006 4020 07	mpy  	6,dl
+000230  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000231  aa   001511 00 0006	descb	841,6		001741 = 340000000000
+000232  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000233  aa  6 00734 0541 00	aos  	pr6|476
+000234  aa  6 00734 2361 00	ldq  	pr6|476
+000235  aa   000006 4020 07	mpy  	6,dl
+000236  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000237  aa   001503 00 0006	descb	835,6		001741 = 340000000000
+000240  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000241  aa  6 00734 0541 00	aos  	pr6|476
+000242  aa  6 00734 2361 00	ldq  	pr6|476
+000243  aa   000006 4020 07	mpy  	6,dl
+000244  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000245  aa   001474 00 0006	descb	828,6		001740 = 300000000000
+000246  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000247  aa  6 00734 0541 00	aos  	pr6|476
+000250  aa  6 00734 2361 00	ldq  	pr6|476
+000251  aa   000006 4020 07	mpy  	6,dl
+000252  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000253  aa   001466 00 0006	descb	822,6		001740 = 300000000000
+000254  aa  6 00727 63 0006	descb	pr6|471(30),6	seek_command
+000255  aa  6 00764 7201 00	lxl0 	pr6|500
+000256  aa   000000 7100 10	tra  	0,0
+MAIN SEQUENCE
+ENTRY TO rldr_output_                                       STATEMENT 1 ON LINE 23
+rldr_output_: proc;
+
+000257  da     000123200000
+000260  aa   001140 6270 00	eax7 	608
+000261  aa  7 00034 3521 20	epp2 	pr7|28,*
+000262  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000263  aa     000000000000
+000264  aa     000000000000
+000265  aa   777700 7000 04	tsx0 	-64,ic		000165
+						STATEMENT 1 ON LINE 57
+read_vtoce: entry (rldr_datap, pvindex, vtocep, vtocx, parts, code);
+
+000266  aa   000020 7100 04	tra  	16,ic		000306
+ENTRY TO read_vtoce                                         STATEMENT 1 ON LINE 57
+read_vtoce: entry (rldr_datap, pvindex, vtocep, vtocx, parts, code);
+
+000267  at     000006000107
+000270  tt     000110000107
+000271  tt     000110000110
+000272  ta     000111000000
+000273  ta     000267000000
+000274  da     000131300000
+000275  aa   001140 6270 00	eax7 	608
+000276  aa  7 00034 3521 20	epp2 	pr7|28,*
+000277  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000300  aa     000014000000
+000301  aa     000000000000
+000302  aa  6 00032 3735 20	epp7 	pr6|26,*
+000303  aa  7 00014 3715 20	epp5 	pr7|12,*
+000304  aa  6 00732 6515 00	spri5	pr6|474
+000305  aa   777660 7000 04	tsx0 	-80,ic		000165
+						STATEMENT 1 ON LINE 62
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, vtoce_sector (vtocx), code);
+
+000306  aa  6 00032 3735 20	epp7 	pr6|26,*
+000307  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000310  aa   000064 4020 07	mpy  	52,dl
+000311  aa  6 00766 7561 00	stq  	pr6|502
+000312  aa   000002 2360 07	ldq  	2,dl
+000313  aa  6 00765 7561 00	stq  	pr6|501
+000314  aa  7 00010 3521 20	epp2 	pr7|8,*		vtocx
+000315  aa  6 00772 2521 00	spri2	pr6|506
+000316  aa  6 00767 3521 00	epp2 	pr6|503
+000317  aa  6 00774 2521 00	spri2	pr6|508
+000320  aa  6 00770 3521 00	epp2 	pr6|504
+000321  aa   010000 4310 07	fld  	4096,dl
+000322  aa  2 00000 7571 00	staq 	pr2|0
+000323  aa   001310 6700 04	tsp4 	712,ic		001633
+000324  aa  6 00032 3735 20	epp7 	pr6|26,*
+000325  aa  6 00766 7271 00	lxl7 	pr6|502
+000326  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000327  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000330  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000331  aa  6 01002 2521 00	spri2	pr6|514
+000332  aa  6 00765 3521 00	epp2 	pr6|501
+000333  aa  6 01004 2521 00	spri2	pr6|516
+000334  aa  6 00767 3521 00	epp2 	pr6|503
+000335  aa  6 01006 2521 00	spri2	pr6|518
+000336  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000337  aa  6 01010 2521 00	spri2	pr6|520
+000340  aa  6 01000 6211 00	eax1 	pr6|512
+000341  aa   020000 4310 07	fld  	8192,dl
+000342  aa  6 00044 3701 20	epp4 	pr6|36,*
+000343  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$position
+000344  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 63
+    if code ^= 0 then return;
+
+000345  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+000346  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 65
+    call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), vtocep, vtoce_part_size (parts) * 4, n_read, code);
+
+000347  aa  6 00032 3735 20	epp7 	pr6|26,*
+000350  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000351  aa   000064 4020 07	mpy  	52,dl
+000352  aa   000000 6260 06	eax6 	0,ql
+000353  aa   000004 2360 07	ldq  	4,dl
+000354  aa  7 00012 7271 20	lxl7 	pr7|10,*		parts
+000355  ta   000054 4020 17	mpy  	44,7
+000356  aa  6 00767 7561 00	stq  	pr6|503
+000357  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000360  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000361  aa  5 00426 3521 16	epp2 	pr5|278,6		rldr_data_.outputvol_iocbp
+000362  aa  6 01014 2521 00	spri2	pr6|524
+000363  aa  7 00006 3521 20	epp2 	pr7|6,*		vtocep
+000364  aa  6 01016 2521 00	spri2	pr6|526
+000365  aa  6 00767 3521 00	epp2 	pr6|503
+000366  aa  6 01020 2521 00	spri2	pr6|528
+000367  aa  6 00204 3521 00	epp2 	pr6|132		n_read
+000370  aa  6 01022 2521 00	spri2	pr6|530
+000371  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000372  aa  6 01024 2521 00	spri2	pr6|532
+000373  aa  6 01012 6211 00	eax1 	pr6|522
+000374  aa   024000 4310 07	fld  	10240,dl
+000375  aa  6 00044 3701 20	epp4 	pr6|36,*
+000376  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$get_chars
+000377  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 67
+    return;
+
+000400  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO write_vtoce                                        STATEMENT 1 ON LINE 72
+write_vtoce: entry (rldr_datap, pvindex, vtocep, vtocx, parts, code);
+
+000401  ta     000267000000
+000402  da     000137300000
+000403  aa   001140 6270 00	eax7 	608
+000404  aa  7 00034 3521 20	epp2 	pr7|28,*
+000405  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000406  aa     000014000000
+000407  aa     000000000000
+000410  aa  6 00032 3735 20	epp7 	pr6|26,*
+000411  aa  7 00014 3715 20	epp5 	pr7|12,*
+000412  aa  6 00732 6515 00	spri5	pr6|474
+000413  aa   777552 7000 04	tsx0 	-150,ic		000165
+						STATEMENT 1 ON LINE 77
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, vtoce_sector (vtocx), code);
+
+000414  aa  6 00032 3735 20	epp7 	pr6|26,*
+000415  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000416  aa   000064 4020 07	mpy  	52,dl
+000417  aa  6 00765 7561 00	stq  	pr6|501
+000420  aa   000002 2360 07	ldq  	2,dl
+000421  aa  6 00767 7561 00	stq  	pr6|503
+000422  aa  7 00010 3521 20	epp2 	pr7|8,*		vtocx
+000423  aa  6 00772 2521 00	spri2	pr6|506
+000424  aa  6 00766 3521 00	epp2 	pr6|502
+000425  aa  6 00774 2521 00	spri2	pr6|508
+000426  aa  6 00770 3521 00	epp2 	pr6|504
+000427  aa   010000 4310 07	fld  	4096,dl
+000430  aa  2 00000 7571 00	staq 	pr2|0
+000431  aa   001202 6700 04	tsp4 	642,ic		001633
+000432  aa  6 00032 3735 20	epp7 	pr6|26,*
+000433  aa  6 00765 7271 00	lxl7 	pr6|501
+000434  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000435  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000436  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000437  aa  6 01002 2521 00	spri2	pr6|514
+000440  aa  6 00767 3521 00	epp2 	pr6|503
+000441  aa  6 01004 2521 00	spri2	pr6|516
+000442  aa  6 00766 3521 00	epp2 	pr6|502
+000443  aa  6 01006 2521 00	spri2	pr6|518
+000444  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000445  aa  6 01010 2521 00	spri2	pr6|520
+000446  aa  6 01000 6211 00	eax1 	pr6|512
+000447  aa   020000 4310 07	fld  	8192,dl
+000450  aa  6 00044 3701 20	epp4 	pr6|36,*
+000451  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$position
+000452  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 78
+    if code ^= 0 then return;
+
+000453  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+000454  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 80
+    call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), vtocep, vtoce_part_size (parts) * 4, code);
+
+000455  aa  6 00032 3735 20	epp7 	pr6|26,*
+000456  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000457  aa   000064 4020 07	mpy  	52,dl
+000460  aa   000000 6260 06	eax6 	0,ql
+000461  aa   000004 2360 07	ldq  	4,dl
+000462  aa  7 00012 7271 20	lxl7 	pr7|10,*		parts
+000463  ta   000054 4020 17	mpy  	44,7
+000464  aa  6 00766 7561 00	stq  	pr6|502
+000465  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000466  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000467  aa  5 00426 3521 16	epp2 	pr5|278,6		rldr_data_.outputvol_iocbp
+000470  aa  6 01002 2521 00	spri2	pr6|514
+000471  aa  7 00006 3521 20	epp2 	pr7|6,*		vtocep
+000472  aa  6 01004 2521 00	spri2	pr6|516
+000473  aa  6 00766 3521 00	epp2 	pr6|502
+000474  aa  6 01006 2521 00	spri2	pr6|518
+000475  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000476  aa  6 01010 2521 00	spri2	pr6|520
+000477  aa  6 01000 6211 00	eax1 	pr6|512
+000500  aa   020000 4310 07	fld  	8192,dl
+000501  aa  6 00044 3701 20	epp4 	pr6|36,*
+000502  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$put_chars
+000503  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 82
+    return;
+
+000504  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO read_page                                          STATEMENT 1 ON LINE 87
+read_page: entry (rldr_datap, pvindex, pagep, add, code);
+
+000505  at     000005000107
+000506  tt     000110000107
+000507  tt     000105000111
+000510  ta     000505000000
+000511  da     000145300000
+000512  aa   001140 6270 00	eax7 	608
+000513  aa  7 00034 3521 20	epp2 	pr7|28,*
+000514  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000515  aa     000012000000
+000516  aa     000000000000
+000517  aa  6 00032 3735 20	epp7 	pr6|26,*
+000520  aa  7 00012 3715 20	epp5 	pr7|10,*
+000521  aa  6 00732 6515 00	spri5	pr6|474
+000522  aa   777443 7000 04	tsx0 	-221,ic		000165
+						STATEMENT 1 ON LINE 92
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (add), code);
+
+000523  aa  6 00032 3735 20	epp7 	pr6|26,*
+000524  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000525  aa   000064 4020 07	mpy  	52,dl
+000526  aa  6 00767 7561 00	stq  	pr6|503
+000527  aa   000002 2360 07	ldq  	2,dl
+000530  aa  6 00766 7561 00	stq  	pr6|502
+000531  aa  7 00010 3521 20	epp2 	pr7|8,*		add
+000532  aa  6 00772 2521 00	spri2	pr6|506
+000533  aa  6 00765 3521 00	epp2 	pr6|501
+000534  aa  6 00774 2521 00	spri2	pr6|508
+000535  aa  6 00770 3521 00	epp2 	pr6|504
+000536  aa   010000 4310 07	fld  	4096,dl
+000537  aa  2 00000 7571 00	staq 	pr2|0
+000540  aa   001137 6700 04	tsp4 	607,ic		001677
+000541  aa  6 00032 3735 20	epp7 	pr6|26,*
+000542  aa  6 00767 7271 00	lxl7 	pr6|503
+000543  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000544  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000545  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000546  aa  6 01002 2521 00	spri2	pr6|514
+000547  aa  6 00766 3521 00	epp2 	pr6|502
+000550  aa  6 01004 2521 00	spri2	pr6|516
+000551  aa  6 00765 3521 00	epp2 	pr6|501
+000552  aa  6 01006 2521 00	spri2	pr6|518
+000553  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000554  aa  6 01010 2521 00	spri2	pr6|520
+000555  aa  6 01000 6211 00	eax1 	pr6|512
+000556  aa   020000 4310 07	fld  	8192,dl
+000557  aa  6 00044 3701 20	epp4 	pr6|36,*
+000560  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$position
+000561  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 93
+    if code ^= 0 then return;
+
+000562  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+000563  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 95
+    call iox_$get_chars (rldr_data_.outputvol_iocbp (pvindex), pagep, sys_info$page_size * 4, n_read, code);
+
+000564  aa  6 00032 3735 20	epp7 	pr6|26,*
+000565  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000566  aa   000064 4020 07	mpy  	52,dl
+000567  aa  6 00044 3701 20	epp4 	pr6|36,*
+000570  aa   000000 6270 06	eax7 	0,ql
+000571  la  4 00010 2361 20	ldq  	pr4|8,*		sys_info$page_size
+000572  aa   000002 7360 00	qls  	2
+000573  aa  6 00765 7561 00	stq  	pr6|501
+000574  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000575  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000576  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000577  aa  6 01014 2521 00	spri2	pr6|524
+000600  aa  7 00006 3521 20	epp2 	pr7|6,*		pagep
+000601  aa  6 01016 2521 00	spri2	pr6|526
+000602  aa  6 00765 3521 00	epp2 	pr6|501
+000603  aa  6 01020 2521 00	spri2	pr6|528
+000604  aa  6 00204 3521 00	epp2 	pr6|132		n_read
+000605  aa  6 01022 2521 00	spri2	pr6|530
+000606  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000607  aa  6 01024 2521 00	spri2	pr6|532
+000610  aa  6 01012 6211 00	eax1 	pr6|522
+000611  aa   024000 4310 07	fld  	10240,dl
+000612  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$get_chars
+000613  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 96
+    return;
+
+000614  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO write_page                                         STATEMENT 1 ON LINE 101
+write_page: entry (rldr_datap, pvindex, pagep, add, code);
+
+000615  ta     000505000000
+000616  da     000153300000
+000617  aa   001140 6270 00	eax7 	608
+000620  aa  7 00034 3521 20	epp2 	pr7|28,*
+000621  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000622  aa     000012000000
+000623  aa     000000000000
+000624  aa  6 00032 3735 20	epp7 	pr6|26,*
+000625  aa  7 00012 3715 20	epp5 	pr7|10,*
+000626  aa  6 00732 6515 00	spri5	pr6|474
+000627  aa   777336 7000 04	tsx0 	-290,ic		000165
+						STATEMENT 1 ON LINE 105
+    call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (add), code);
+
+000630  aa  6 00032 3735 20	epp7 	pr6|26,*
+000631  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000632  aa   000064 4020 07	mpy  	52,dl
+000633  aa  6 00766 7561 00	stq  	pr6|502
+000634  aa   000002 2360 07	ldq  	2,dl
+000635  aa  6 00765 7561 00	stq  	pr6|501
+000636  aa  7 00010 3521 20	epp2 	pr7|8,*		add
+000637  aa  6 00772 2521 00	spri2	pr6|506
+000640  aa  6 00767 3521 00	epp2 	pr6|503
+000641  aa  6 00774 2521 00	spri2	pr6|508
+000642  aa  6 00770 3521 00	epp2 	pr6|504
+000643  aa   010000 4310 07	fld  	4096,dl
+000644  aa  2 00000 7571 00	staq 	pr2|0
+000645  aa   001032 6700 04	tsp4 	538,ic		001677
+000646  aa  6 00032 3735 20	epp7 	pr6|26,*
+000647  aa  6 00766 7271 00	lxl7 	pr6|502
+000650  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000651  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000652  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000653  aa  6 01002 2521 00	spri2	pr6|514
+000654  aa  6 00765 3521 00	epp2 	pr6|501
+000655  aa  6 01004 2521 00	spri2	pr6|516
+000656  aa  6 00767 3521 00	epp2 	pr6|503
+000657  aa  6 01006 2521 00	spri2	pr6|518
+000660  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000661  aa  6 01010 2521 00	spri2	pr6|520
+000662  aa  6 01000 6211 00	eax1 	pr6|512
+000663  aa   020000 4310 07	fld  	8192,dl
+000664  aa  6 00044 3701 20	epp4 	pr6|36,*
+000665  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$position
+000666  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 106
+    if code ^= 0 then return;
+
+000667  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+000670  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 108
+    call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), pagep, sys_info$page_size * 4, code);
+
+000671  aa  6 00032 3735 20	epp7 	pr6|26,*
+000672  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000673  aa   000064 4020 07	mpy  	52,dl
+000674  aa  6 00044 3701 20	epp4 	pr6|36,*
+000675  aa   000000 6270 06	eax7 	0,ql
+000676  la  4 00010 2361 20	ldq  	pr4|8,*		sys_info$page_size
+000677  aa   000002 7360 00	qls  	2
+000700  aa  6 00767 7561 00	stq  	pr6|503
+000701  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000702  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000703  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+000704  aa  6 01002 2521 00	spri2	pr6|514
+000705  aa  7 00006 3521 20	epp2 	pr7|6,*		pagep
+000706  aa  6 01004 2521 00	spri2	pr6|516
+000707  aa  6 00767 3521 00	epp2 	pr6|503
+000710  aa  6 01006 2521 00	spri2	pr6|518
+000711  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+000712  aa  6 01010 2521 00	spri2	pr6|520
+000713  aa  6 01000 6211 00	eax1 	pr6|512
+000714  aa   020000 4310 07	fld  	8192,dl
+000715  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$put_chars
+000716  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 109
+    return;
+
+000717  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO write_seg                                          STATEMENT 1 ON LINE 116
+write_seg: entry (rldr_datap, pvindex, vtocep, code);
+
+000720  at     000004000107
+000721  tt     000110000107
+000722  ta     000111000000
+000723  ta     000720000000
+000724  da     000161300000
+000725  aa   001140 6270 00	eax7 	608
+000726  aa  7 00034 3521 20	epp2 	pr7|28,*
+000727  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000730  aa     000010000000
+000731  aa     000000000000
+000732  aa  6 00032 3735 20	epp7 	pr6|26,*
+000733  aa  7 00010 3715 20	epp5 	pr7|8,*
+000734  aa  6 00732 6515 00	spri5	pr6|474
+000735  aa   777230 7000 04	tsx0 	-360,ic		000165
+						STATEMENT 1 ON LINE 117
+    datap = rldr_data_.data_object_bp;
+
+000736  aa  6 00032 3735 20	epp7 	pr6|26,*
+000737  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000740  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000741  aa  5 00426 3535 20	epp3 	pr5|278,*		rldr_data_.data_object_bp
+000742  aa  6 00206 2535 00	spri3	pr6|134		datap
+						STATEMENT 1 ON LINE 118
+    csl = fixed (vtoce.csl);
+
+000743  aa  7 00006 3515 20	epp1 	pr7|6,*		vtocep
+000744  aa  1 00000 3515 20	epp1 	pr1|0,*		vtocep
+000745  aa  1 00002 2351 00	lda  	pr1|2		vtoce.csl
+000746  aa   000011 7350 00	als  	9
+000747  aa   000077 7730 00	lrl  	63
+000750  aa  6 00201 7561 00	stq  	pr6|129		csl
+						STATEMENT 1 ON LINE 119
+    last_page_writ = -1;
+
+000751  aa   000001 3360 07	lcq  	1,dl
+000752  aa  6 00202 7561 00	stq  	pr6|130		last_page_writ
+						STATEMENT 1 ON LINE 120
+    do while (last_page_writ < csl - 1);
+
+000753  aa   000000 0110 03	nop  	0,du
+000754  aa  6 00201 2361 00	ldq  	pr6|129		csl
+000755  aa   000001 1760 07	sbq  	1,dl
+000756  aa  6 00202 1161 00	cmpq 	pr6|130		last_page_writ
+000757  aa   000173 6044 04	tmoz 	123,ic		001152
+						STATEMENT 1 ON LINE 121
+      pages_to_write = 0;
+
+000760  aa  6 00203 4501 00	stz  	pr6|131		pages_to_write
+						STATEMENT 1 ON LINE 122
+      do idx = last_page_writ + 1 to csl - 1 while (sector (vtoce.fm (idx + 1)) = sector (vtoce.fm (idx)) + 16);
+
+000761  aa  6 00201 2361 00	ldq  	pr6|129		csl
+000762  aa   000001 1760 07	sbq  	1,dl
+000763  aa  6 00735 7561 00	stq  	pr6|477
+000764  aa  6 00202 2361 00	ldq  	pr6|130		last_page_writ
+000765  aa   000001 0760 07	adq  	1,dl
+000766  aa  6 00200 7561 00	stq  	pr6|128		idx
+000767  aa   000000 0110 03	nop  	0,du
+000770  aa  6 00200 2361 00	ldq  	pr6|128		idx
+000771  aa  6 00735 1161 00	cmpq 	pr6|477
+000772  aa   000044 6054 04	tpnz 	36,ic		001036
+000773  aa   000022 4020 07	mpy  	18,dl
+000774  aa   000022 0760 07	adq  	18,dl
+000775  aa  6 00032 3735 20	epp7 	pr6|26,*
+000776  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000777  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+001000  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+001001  aa  2 00000 5035 06	abd  	pr2|0,ql
+001002  aa  6 00772 2521 00	spri2	pr6|506
+001003  aa  6 00767 3521 00	epp2 	pr6|503
+001004  aa  6 00774 2521 00	spri2	pr6|508
+001005  aa  6 00770 3521 00	epp2 	pr6|504
+001006  aa   010000 4310 07	fld  	4096,dl
+001007  aa  2 00000 7571 00	staq 	pr2|0
+001010  aa   000667 6700 04	tsp4 	439,ic		001677
+001011  aa  6 00200 2361 00	ldq  	pr6|128		idx
+001012  aa   000022 4020 07	mpy  	18,dl
+001013  aa  6 00032 3735 20	epp7 	pr6|26,*
+001014  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+001015  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+001016  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+001017  aa  2 00000 5035 06	abd  	pr2|0,ql
+001020  aa  6 00772 2521 00	spri2	pr6|506
+001021  aa  6 00765 3521 00	epp2 	pr6|501
+001022  aa  6 00774 2521 00	spri2	pr6|508
+001023  aa  6 00770 3521 00	epp2 	pr6|504
+001024  aa   010000 4310 07	fld  	4096,dl
+001025  aa  2 00000 7571 00	staq 	pr2|0
+001026  aa   000651 6700 04	tsp4 	425,ic		001677
+001027  aa  6 00765 2361 00	ldq  	pr6|501
+001030  aa   000020 0760 07	adq  	16,dl
+001031  aa  6 00767 1161 00	cmpq 	pr6|503
+001032  aa   000004 6010 04	tnz  	4,ic		001036
+						STATEMENT 1 ON LINE 123
+        pages_to_write = pages_to_write + 1;
+
+001033  aa  6 00203 0541 00	aos  	pr6|131		pages_to_write
+						STATEMENT 1 ON LINE 124
+      end;
+
+001034  aa  6 00200 0541 00	aos  	pr6|128		idx
+001035  aa   777733 7100 04	tra  	-37,ic		000770
+						STATEMENT 1 ON LINE 125
+      if pages_to_write = 0 then pages_to_write = 1;
+
+001036  aa  6 00203 2361 00	ldq  	pr6|131		pages_to_write
+001037  aa   000003 6010 04	tnz  	3,ic		001042
+001040  aa   000001 2360 07	ldq  	1,dl
+001041  aa  6 00203 7561 00	stq  	pr6|131		pages_to_write
+						STATEMENT 1 ON LINE 126
+      call iox_$position (rldr_data_.outputvol_iocbp (pvindex), 2, sector (vtoce.fm (last_page_writ + 1)), code);
+
+001042  aa  6 00032 3735 20	epp7 	pr6|26,*
+001043  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001044  aa   000064 4020 07	mpy  	52,dl
+001045  aa  6 00765 7561 00	stq  	pr6|501
+001046  aa   000002 2360 07	ldq  	2,dl
+001047  aa  6 00767 7561 00	stq  	pr6|503
+001050  aa  6 00202 2361 00	ldq  	pr6|130		last_page_writ
+001051  aa   000022 4020 07	mpy  	18,dl
+001052  aa   000022 0760 07	adq  	18,dl
+001053  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+001054  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+001055  aa  5 00020 3521 00	epp2 	pr5|16		vtoce.fm
+001056  aa  2 00000 5035 06	abd  	pr2|0,ql
+001057  aa  6 00772 2521 00	spri2	pr6|506
+001060  aa  6 00766 3521 00	epp2 	pr6|502
+001061  aa  6 00774 2521 00	spri2	pr6|508
+001062  aa  6 00770 3521 00	epp2 	pr6|504
+001063  aa   010000 4310 07	fld  	4096,dl
+001064  aa  2 00000 7571 00	staq 	pr2|0
+001065  aa   000612 6700 04	tsp4 	394,ic		001677
+001066  aa  6 00032 3735 20	epp7 	pr6|26,*
+001067  aa  6 00765 7271 00	lxl7 	pr6|501
+001070  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001071  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001072  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+001073  aa  6 01002 2521 00	spri2	pr6|514
+001074  aa  6 00767 3521 00	epp2 	pr6|503
+001075  aa  6 01004 2521 00	spri2	pr6|516
+001076  aa  6 00766 3521 00	epp2 	pr6|502
+001077  aa  6 01006 2521 00	spri2	pr6|518
+001100  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001101  aa  6 01010 2521 00	spri2	pr6|520
+001102  aa  6 01000 6211 00	eax1 	pr6|512
+001103  aa   020000 4310 07	fld  	8192,dl
+001104  aa  6 00044 3701 20	epp4 	pr6|36,*
+001105  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$position
+001106  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 127
+      if code ^= 0 then return;
+
+001107  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+001110  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 128
+      call iox_$put_chars (rldr_data_.outputvol_iocbp (pvindex), datap, 4096 * pages_to_write, code);
+
+001111  aa  6 00032 3735 20	epp7 	pr6|26,*
+001112  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001113  aa   000064 4020 07	mpy  	52,dl
+001114  aa   000000 6270 06	eax7 	0,ql
+001115  aa  6 00203 2361 00	ldq  	pr6|131		pages_to_write
+001116  aa   000014 7360 00	qls  	12
+001117  aa  6 00766 7561 00	stq  	pr6|502
+001120  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001121  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001122  aa  5 00426 3521 17	epp2 	pr5|278,7		rldr_data_.outputvol_iocbp
+001123  aa  6 01002 2521 00	spri2	pr6|514
+001124  aa  6 00206 3521 00	epp2 	pr6|134		datap
+001125  aa  6 01004 2521 00	spri2	pr6|516
+001126  aa  6 00766 3521 00	epp2 	pr6|502
+001127  aa  6 01006 2521 00	spri2	pr6|518
+001130  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001131  aa  6 01010 2521 00	spri2	pr6|520
+001132  aa  6 01000 6211 00	eax1 	pr6|512
+001133  aa   020000 4310 07	fld  	8192,dl
+001134  aa  6 00044 3701 20	epp4 	pr6|36,*
+001135  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$put_chars
+001136  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 129
+      if code ^= 0 then return;
+
+001137  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+001140  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 130
+      last_page_writ = last_page_writ + pages_to_write;
+
+001141  aa  6 00203 2361 00	ldq  	pr6|131		pages_to_write
+001142  aa  6 00202 0561 00	asq  	pr6|130		last_page_writ
+						STATEMENT 1 ON LINE 131
+      datap = ptr (datap, (last_page_writ + 1) * 1024);
+
+001143  aa  6 00202 2361 00	ldq  	pr6|130		last_page_writ
+001144  aa   000001 0760 07	adq  	1,dl
+001145  aa   000012 7360 00	qls  	10
+001146  aa  6 00206 3521 20	epp2 	pr6|134,*		datap
+001147  aa   000000 3120 06	eawp2	0,ql
+001150  aa  6 00206 2521 00	spri2	pr6|134		datap
+						STATEMENT 1 ON LINE 132
+    end;
+
+001151  aa   777603 7100 04	tra  	-125,ic		000754
+						STATEMENT 1 ON LINE 133
+    return;
+
+001152  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO init                                               STATEMENT 1 ON LINE 138
+init: entry (rldr_datap, pvindex, code);
+
+001153  at     000003000107
+001154  tt     000110000111
+001155  ta     001153000000
+001156  da     000166300000
+001157  aa   001140 6270 00	eax7 	608
+001160  aa  7 00034 3521 20	epp2 	pr7|28,*
+001161  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001162  aa     000006000000
+001163  aa     000000000000
+001164  aa  6 00032 3735 20	epp7 	pr6|26,*
+001165  aa  7 00006 3715 20	epp5 	pr7|6,*
+001166  aa  6 00732 6515 00	spri5	pr6|474
+001167  aa   776776 7000 04	tsx0 	-514,ic		000165
+						STATEMENT 1 ON LINE 142
+    code = 0;
+
+001170  aa  6 00732 4501 20	stz  	pr6|474,*		code
+						STATEMENT 1 ON LINE 144
+    if rldr_data_.output_volume_desc ^= "" then
+      call ioa_$rsnnl (rldr_data_.output_volume_desc, att_desc, (0), rldr_data_.pvname (pvindex));
+
+001171  aa  6 00032 3735 20	epp7 	pr6|26,*
+001172  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001173  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001174  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001175  aa  5 00301 00 0400	desc9a	pr5|193,256	rldr_data_.output_volume_desc
+001176  aa   000544 00 0000	desc9a	356,0		001740 = 300000000000
+001177  aa   000034 6000 04	tze  	28,ic		001233
+001200  aa   776677 2360 04	ldq  	-577,ic		000077 = 524000000040
+001201  aa  6 00766 7561 00	stq  	pr6|502
+001202  aa  6 00767 4501 00	stz  	pr6|503
+001203  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001204  aa   000064 4020 07	mpy  	52,dl
+001205  aa  5 00301 3521 00	epp2 	pr5|193		rldr_data_.output_volume_desc
+001206  aa  6 01030 2521 00	spri2	pr6|536
+001207  aa  6 00100 3521 00	epp2 	pr6|64		att_desc
+001210  aa  6 01032 2521 00	spri2	pr6|538
+001211  aa  6 00767 3521 00	epp2 	pr6|503
+001212  aa  6 01034 2521 00	spri2	pr6|540
+001213  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+001214  aa  6 01036 2521 00	spri2	pr6|542
+001215  aa   776665 3520 04	epp2 	-587,ic		000102 = 524000000400
+001216  aa  6 01040 2521 00	spri2	pr6|544
+001217  aa   776662 3520 04	epp2 	-590,ic		000101 = 526000000400
+001220  aa  6 01042 2521 00	spri2	pr6|546
+001221  aa   776657 3520 04	epp2 	-593,ic		000100 = 404000000005
+001222  aa  6 01044 2521 00	spri2	pr6|548
+001223  aa  6 00766 3521 00	epp2 	pr6|502
+001224  aa  6 01046 2521 00	spri2	pr6|550
+001225  aa  6 01026 6211 00	eax1 	pr6|534
+001226  aa   020000 4310 07	fld  	8192,dl
+001227  aa  6 00044 3701 20	epp4 	pr6|36,*
+001230  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rsnnl
+001231  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001232  aa   000135 7100 04	tra  	93,ic		001367
+						STATEMENT 1 ON LINE 147
+    else if rldr_data_.device_name (pvindex) = "" then
+      call ioa_$rsnnl ("rdisk_ ^a ^a -write -size 20480 -system",
+	 att_desc, (0), device_type_ (), rldr_data_.pvname (pvindex));
+
+001233  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001234  aa   000064 4020 07	mpy  	52,dl
+001235  aa   000000 6270 06	eax7 	0,ql
+001236  aa   000000 4310 07	fld  	0,dl
+001237  aa  0 00440 2771 00	oraq 	pr0|288		= 040040040040 040040040040
+001240  aa  5 00403 1151 17	cmpa 	pr5|259,7		rldr_data_.device_name
+001241  aa   000002 6010 04	tnz  	2,ic		001243
+001242  aa  5 00404 1161 17	cmpq 	pr5|260,7		rldr_data_.device_name
+001243  aa   000050 6010 04	tnz  	40,ic		001313
+001244  aa   776633 2360 04	ldq  	-613,ic		000077 = 524000000040
+001245  aa  6 00766 7561 00	stq  	pr6|502
+001246  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001247  aa   776656 00 0050	desc9a	-594,40		000124 = 162144151163
+001250  aa  6 01000 00 0050	desc9a	pr6|512,40
+001251  aa  6 00767 4501 00	stz  	pr6|503
+001252  aa   000462 3520 04	epp2 	306,ic		001734 = 000002000000
+001253  aa   000327 6700 04	tsp4 	215,ic		001602
+001254  aa  6 00032 3735 20	epp7 	pr6|26,*
+001255  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001256  aa   000064 4020 07	mpy  	52,dl
+001257  aa  6 01000 3521 00	epp2 	pr6|512
+001260  aa  6 01052 2521 00	spri2	pr6|554
+001261  aa  6 00100 3521 00	epp2 	pr6|64		att_desc
+001262  aa  6 01054 2521 00	spri2	pr6|556
+001263  aa  6 00767 3521 00	epp2 	pr6|503
+001264  aa  6 01056 2521 00	spri2	pr6|558
+001265  aa  6 00770 3521 00	epp2 	pr6|504
+001266  aa  6 01060 2521 00	spri2	pr6|560
+001267  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001270  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001271  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+001272  aa  6 01062 2521 00	spri2	pr6|562
+001273  aa   776603 3520 04	epp2 	-637,ic		000076 = 524000000047
+001274  aa  6 01064 2521 00	spri2	pr6|564
+001275  aa   776604 3520 04	epp2 	-636,ic		000101 = 526000000400
+001276  aa  6 01066 2521 00	spri2	pr6|566
+001277  aa   776601 3520 04	epp2 	-639,ic		000100 = 404000000005
+001300  aa  6 01070 2521 00	spri2	pr6|568
+001301  aa   776576 3520 04	epp2 	-642,ic		000077 = 524000000040
+001302  aa  6 01072 2521 00	spri2	pr6|570
+001303  aa  6 00766 3521 00	epp2 	pr6|502
+001304  aa  6 01074 2521 00	spri2	pr6|572
+001305  aa  6 01050 6211 00	eax1 	pr6|552
+001306  aa   024000 4310 07	fld  	10240,dl
+001307  aa  6 00044 3701 20	epp4 	pr6|36,*
+001310  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rsnnl
+001311  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001312  aa   000055 7100 04	tra  	45,ic		001367
+						STATEMENT 1 ON LINE 151
+    else call ioa_$rsnnl ("rdisk_ ^a ^a -dv ^a -write -size 20480 -system",
+	    att_desc, (0), device_type_ (), rldr_data_.pvname (pvindex),
+	    rldr_data_.device_name (pvindex));
+
+001313  aa   776564 2360 04	ldq  	-652,ic		000077 = 524000000040
+001314  aa  6 00766 7561 00	stq  	pr6|502
+001315  aa   776557 2360 04	ldq  	-657,ic		000074 = 524000000010
+001316  aa  6 00767 7561 00	stq  	pr6|503
+001317  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001320  aa   776632 00 0060	desc9a	-614,48		000151 = 162144151163
+001321  aa  6 01012 00 0060	desc9a	pr6|522,48
+001322  aa  6 00765 4501 00	stz  	pr6|501
+001323  aa   000411 3520 04	epp2 	265,ic		001734 = 000002000000
+001324  aa   000256 6700 04	tsp4 	174,ic		001602
+001325  aa  6 00032 3735 20	epp7 	pr6|26,*
+001326  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001327  aa   000064 4020 07	mpy  	52,dl
+001330  aa  6 01012 3521 00	epp2 	pr6|522
+001331  aa  6 01100 2521 00	spri2	pr6|576
+001332  aa  6 00100 3521 00	epp2 	pr6|64		att_desc
+001333  aa  6 01102 2521 00	spri2	pr6|578
+001334  aa  6 00765 3521 00	epp2 	pr6|501
+001335  aa  6 01104 2521 00	spri2	pr6|580
+001336  aa  6 00770 3521 00	epp2 	pr6|504
+001337  aa  6 01106 2521 00	spri2	pr6|582
+001340  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001341  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001342  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+001343  aa  6 01110 2521 00	spri2	pr6|584
+001344  aa  5 00403 3521 06	epp2 	pr5|259,ql	rldr_data_.device_name
+001345  aa  6 01112 2521 00	spri2	pr6|586
+001346  aa   776527 3520 04	epp2 	-681,ic		000075 = 524000000056
+001347  aa  6 01114 2521 00	spri2	pr6|588
+001350  aa   776531 3520 04	epp2 	-679,ic		000101 = 526000000400
+001351  aa  6 01116 2521 00	spri2	pr6|590
+001352  aa   776526 3520 04	epp2 	-682,ic		000100 = 404000000005
+001353  aa  6 01120 2521 00	spri2	pr6|592
+001354  aa   776523 3520 04	epp2 	-685,ic		000077 = 524000000040
+001355  aa  6 01122 2521 00	spri2	pr6|594
+001356  aa  6 00766 3521 00	epp2 	pr6|502
+001357  aa  6 01124 2521 00	spri2	pr6|596
+001360  aa  6 00767 3521 00	epp2 	pr6|503
+001361  aa  6 01126 2521 00	spri2	pr6|598
+001362  aa  6 01076 6211 00	eax1 	pr6|574
+001363  aa   030000 4310 07	fld  	12288,dl
+001364  aa  6 00044 3701 20	epp4 	pr6|36,*
+001365  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rsnnl
+001366  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 155
+    call iox_$attach_ioname (unique_chars_ ("0"b), rldr_data_.outputvol_iocbp (pvindex), att_desc, code);
+
+001367  aa   464000 2360 03	ldq  	157696,du
+001370  aa  6 00766 7561 00	stq  	pr6|502
+001371  aa   000000 2350 07	lda  	0,dl
+001372  aa  6 00767 7551 00	sta  	pr6|503
+001373  aa  6 00767 3521 00	epp2 	pr6|503
+001374  aa  6 01002 2521 00	spri2	pr6|514
+001375  aa  6 00770 3521 00	epp2 	pr6|504
+001376  aa  6 01004 2521 00	spri2	pr6|516
+001377  aa   776474 3520 04	epp2 	-708,ic		000073 = 514000000001
+001400  aa  6 01006 2521 00	spri2	pr6|518
+001401  aa   776503 3520 04	epp2 	-701,ic		000104 = 526000000017
+001402  aa  6 01010 2521 00	spri2	pr6|520
+001403  aa  6 01000 6211 00	eax1 	pr6|512
+001404  aa   010000 4310 07	fld  	4096,dl
+001405  aa  6 00044 3701 20	epp4 	pr6|36,*
+001406  la  4 00030 3521 20	epp2 	pr4|24,*		unique_chars_
+001407  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001410  aa  6 00032 3735 20	epp7 	pr6|26,*
+001411  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001412  aa   000064 4020 07	mpy  	52,dl
+001413  aa  6 00770 3521 00	epp2 	pr6|504
+001414  aa  6 01030 2521 00	spri2	pr6|536
+001415  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001416  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001417  aa  5 00426 3521 06	epp2 	pr5|278,ql	rldr_data_.outputvol_iocbp
+001420  aa  6 01032 2521 00	spri2	pr6|538
+001421  aa  6 00100 3521 00	epp2 	pr6|64		att_desc
+001422  aa  6 01034 2521 00	spri2	pr6|540
+001423  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001424  aa  6 01036 2521 00	spri2	pr6|542
+001425  aa   776445 3520 04	epp2 	-731,ic		000072 = 524000000017
+001426  aa  6 01040 2521 00	spri2	pr6|544
+001427  aa  6 00766 3521 00	epp2 	pr6|502
+001430  aa  6 01042 2521 00	spri2	pr6|546
+001431  aa   776450 3520 04	epp2 	-728,ic		000101 = 526000000400
+001432  aa  6 01044 2521 00	spri2	pr6|548
+001433  aa   776456 3520 04	epp2 	-722,ic		000111 = 404000000043
+001434  aa  6 01046 2521 00	spri2	pr6|550
+001435  aa  6 01026 6211 00	eax1 	pr6|534
+001436  aa   020000 4310 07	fld  	8192,dl
+001437  aa  6 00044 3701 20	epp4 	pr6|36,*
+001440  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$attach_ioname
+001441  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 156
+    if code ^= 0 then do;
+
+001442  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+001443  aa   000045 6000 04	tze  	37,ic		001510
+						STATEMENT 1 ON LINE 157
+        call rldr_report_$error_output (rldr_datap, code, myname, "Output volume attachment failed for pv ^a",
+	   rldr_data_.pvname (pvindex));
+
+001444  aa   776433 2360 04	ldq  	-741,ic		000077 = 524000000040
+001445  aa  6 00766 7561 00	stq  	pr6|502
+001446  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001447  aa   776470 00 0054	desc9a	-712,44		000136 = 117165164160
+001450  aa  6 01012 00 0054	desc9a	pr6|522,44
+001451  aa  6 00032 3735 20	epp7 	pr6|26,*
+001452  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001453  aa   000064 4020 07	mpy  	52,dl
+001454  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+001455  aa  6 01052 2521 00	spri2	pr6|554
+001456  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001457  aa  6 01054 2521 00	spri2	pr6|556
+001460  aa   776400 3520 04	epp2 	-768,ic		000060 = 162154144162
+001461  aa  6 01056 2521 00	spri2	pr6|558
+001462  aa  6 01012 3521 00	epp2 	pr6|522
+001463  aa  6 01060 2521 00	spri2	pr6|560
+001464  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001465  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001466  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+001467  aa  6 01062 2521 00	spri2	pr6|562
+001470  aa   776417 3520 04	epp2 	-753,ic		000107 = 464000000000
+001471  aa  6 01064 2521 00	spri2	pr6|564
+001472  aa   776417 3520 04	epp2 	-753,ic		000111 = 404000000043
+001473  aa  6 01066 2521 00	spri2	pr6|566
+001474  aa   776407 3520 04	epp2 	-761,ic		000103 = 526000000040
+001475  aa  6 01070 2521 00	spri2	pr6|568
+001476  aa   776373 3520 04	epp2 	-773,ic		000071 = 524000000051
+001477  aa  6 01072 2521 00	spri2	pr6|570
+001500  aa  6 00766 3521 00	epp2 	pr6|502
+001501  aa  6 01074 2521 00	spri2	pr6|572
+001502  aa  6 01050 6211 00	eax1 	pr6|552
+001503  aa   024000 4310 07	fld  	10240,dl
+001504  aa  6 00044 3701 20	epp4 	pr6|36,*
+001505  la  4 00026 3521 20	epp2 	pr4|22,*		rldr_report_$error_output
+001506  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 159
+        return;
+
+001507  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 160
+      end;
+
+						STATEMENT 1 ON LINE 162
+    call iox_$open (rldr_data_.outputvol_iocbp (pvindex), Stream_input_output, "0"b, code);
+
+001510  aa  6 00032 3735 20	epp7 	pr6|26,*
+001511  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001512  aa   000064 4020 07	mpy  	52,dl
+001513  aa   000000 2350 07	lda  	0,dl
+001514  aa  6 00766 7551 00	sta  	pr6|502
+001515  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001516  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001517  aa  5 00426 3521 06	epp2 	pr5|278,ql	rldr_data_.outputvol_iocbp
+001520  aa  6 01002 2521 00	spri2	pr6|514
+001521  aa   776365 3520 04	epp2 	-779,ic		000106 = 000000000003
+001522  aa  6 01004 2521 00	spri2	pr6|516
+001523  aa  6 00766 3521 00	epp2 	pr6|502
+001524  aa  6 01006 2521 00	spri2	pr6|518
+001525  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001526  aa  6 01010 2521 00	spri2	pr6|520
+001527  aa  6 01000 6211 00	eax1 	pr6|512
+001530  aa   020000 4310 07	fld  	8192,dl
+001531  aa  6 00044 3701 20	epp4 	pr6|36,*
+001532  la  4 00024 3521 20	epp2 	pr4|20,*		iox_$open
+001533  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 163
+    if code ^= 0 then
+      call rldr_report_$error_output (rldr_datap, code, myname, "Output volume opening failed fpr pv ^a",
+	 rldr_data_.pvname (pvindex));
+
+001534  aa  6 00732 2361 20	ldq  	pr6|474,*		code
+001535  aa   000044 6000 04	tze  	36,ic		001601
+001536  aa   776341 2360 04	ldq  	-799,ic		000077 = 524000000040
+001537  aa  6 00766 7561 00	stq  	pr6|502
+001540  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001541  aa   776352 00 0050	desc9a	-790,40		000112 = 117165164160
+001542  aa  6 01000 00 0050	desc9a	pr6|512,40
+001543  aa  6 00032 3735 20	epp7 	pr6|26,*
+001544  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001545  aa   000064 4020 07	mpy  	52,dl
+001546  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+001547  aa  6 01052 2521 00	spri2	pr6|554
+001550  aa  6 00732 3521 20	epp2 	pr6|474,*		code
+001551  aa  6 01054 2521 00	spri2	pr6|556
+001552  aa   776306 3520 04	epp2 	-826,ic		000060 = 162154144162
+001553  aa  6 01056 2521 00	spri2	pr6|558
+001554  aa  6 01000 3521 00	epp2 	pr6|512
+001555  aa  6 01060 2521 00	spri2	pr6|560
+001556  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001557  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001560  aa  5 00353 3521 06	epp2 	pr5|235,ql	rldr_data_.pvname
+001561  aa  6 01062 2521 00	spri2	pr6|562
+001562  aa   776325 3520 04	epp2 	-811,ic		000107 = 464000000000
+001563  aa  6 01064 2521 00	spri2	pr6|564
+001564  aa   776325 3520 04	epp2 	-811,ic		000111 = 404000000043
+001565  aa  6 01066 2521 00	spri2	pr6|566
+001566  aa   776315 3520 04	epp2 	-819,ic		000103 = 526000000040
+001567  aa  6 01070 2521 00	spri2	pr6|568
+001570  aa   776300 3520 04	epp2 	-832,ic		000070 = 524000000046
+001571  aa  6 01072 2521 00	spri2	pr6|570
+001572  aa  6 00766 3521 00	epp2 	pr6|502
+001573  aa  6 01074 2521 00	spri2	pr6|572
+001574  aa  6 01050 6211 00	eax1 	pr6|552
+001575  aa   024000 4310 07	fld  	10240,dl
+001576  aa  6 00044 3701 20	epp4 	pr6|36,*
+001577  la  4 00026 3521 20	epp2 	pr4|22,*		rldr_report_$error_output
+001600  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 166
+    return;
+
+001601  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 254
+  end rldr_output_;
+
+BEGIN PROCEDURE device_type_
+ENTRY TO device_type_                                       STATEMENT 1 ON LINE 173
+device_type_: proc returns (char (32));
+
+001602  aa  6 00736 6501 00	spri4	pr6|478
+001603  aa  6 00740 2521 00	spri2	pr6|480
+						STATEMENT 1 ON LINE 177
+    if rldr_data_.disk_model (pvindex) ^= "" then return (rldr_data_.disk_model (pvindex));
+
+001604  aa  6 00032 3735 20	epp7 	pr6|26,*
+001605  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001606  aa   000064 4020 07	mpy  	52,dl
+001607  aa  6 01130 7561 00	stq  	pr6|600
+001610  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001611  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001612  aa  5 00373 3535 06	epp3 	pr5|251,ql	rldr_data_.disk_model
+001613  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001614  aa  3 00000 00 0040	desc9a	pr3|0,32		rldr_data_.disk_model
+001615  aa   000125 00 0000	desc9a	85,0		001740 = 300000000000
+001616  aa   000006 6000 04	tze  	6,ic		001624
+001617  aa  2 00002 3515 20	epp1 	pr2|2,*
+001620  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001621  aa  3 00000 00 0040	desc9a	pr3|0,32		rldr_data_.disk_model
+001622  aa  1 00000 00 0040	desc9a	pr1|0,32
+001623  aa  6 00736 6101 00	rtcd 	pr6|478
+						STATEMENT 1 ON LINE 178
+    else return (device_names (rldr_data_.disk_type (pvindex)));
+
+001624  aa  2 00002 3515 20	epp1 	pr2|2,*
+001625  aa  5 00411 7271 06	lxl7 	pr5|265,ql	rldr_data_.disk_type
+001626  ta   000010 3534 17	epp3 	8,7
+001627  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001630  aa  3 00000 00 0004	desc9a	pr3|0,4		device_names
+001631  aa  1 00000 00 0040	desc9a	pr1|0,32
+001632  aa  6 00736 6101 00	rtcd 	pr6|478
+						STATEMENT 1 ON LINE 179
+  end device_type_;
+
+  END PROCEDURE device_type_
+BEGIN PROCEDURE vtoce_sector
+ENTRY TO vtoce_sector                                       STATEMENT 1 ON LINE 184
+vtoce_sector: proc (vtocx) returns (fixed bin);
+
+001633  aa  6 00744 6501 00	spri4	pr6|484
+001634  aa  6 00746 2521 00	spri2	pr6|486
+						STATEMENT 1 ON LINE 189
+    dev_idx = rldr_data_.disk_type (pvindex);
+
+001635  aa  6 00032 3735 20	epp7 	pr6|26,*
+001636  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001637  aa   000064 4020 07	mpy  	52,dl
+001640  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001641  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001642  aa   000000 6260 06	eax6 	0,ql
+001643  aa  5 00411 2361 06	ldq  	pr5|265,ql	rldr_data_.disk_type
+001644  aa  6 00752 7561 00	stq  	pr6|490		dev_idx
+						STATEMENT 1 ON LINE 190
+    record = VTOC_ORIGIN + divide (vtocx, VTOCES_PER_RECORD (dev_idx), 17, 0);
+
+001645  aa  2 00002 2361 20	ldq  	pr2|2,*		vtocx
+001646  aa  6 00752 7271 00	lxl7 	pr6|490		dev_idx
+001647  ta   000032 5060 17	div  	26,7
+001650  aa   000010 0760 07	adq  	8,dl
+001651  aa  6 00205 7561 00	stq  	pr6|133		record
+						STATEMENT 1 ON LINE 191
+    sector = record * SECTORS_PER_RECORD (dev_idx);
+
+001652  ta   000021 4020 17	mpy  	17,7
+001653  aa  6 00753 7561 00	stq  	pr6|491		sector
+						STATEMENT 1 ON LINE 192
+    sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0)
+         * rldr_data_.unusable_sectors (pvindex);
+
+001654  aa  5 00412 5061 16	div  	pr5|266,6		rldr_data_.usable_sectors
+001655  aa  5 00413 4021 16	mpy  	pr5|267,6		rldr_data_.unusable_sectors
+001656  aa   000044 7770 00	llr  	36
+001657  aa   000044 7330 00	lrs  	36
+001660  aa  6 00753 0331 00	adl  	pr6|491		sector
+001661  aa  6 00753 7561 00	stq  	pr6|491		sector
+						STATEMENT 1 ON LINE 194
+    sector = sector + mod (vtocx, VTOCES_PER_RECORD (dev_idx)) * SECTORS_PER_VTOCE (dev_idx);
+
+001662  aa  2 00002 2361 20	ldq  	pr2|2,*		vtocx
+001663  ta   000032 3520 17	epp2 	26,7
+001664  aa  0 00704 7001 00	tsx0 	pr0|452		mdfx1
+001665  ta   000043 4020 17	mpy  	35,7
+001666  aa   000044 7770 00	llr  	36
+001667  aa   000044 7330 00	lrs  	36
+001670  aa  6 00753 0331 00	adl  	pr6|491		sector
+001671  aa  6 00753 7561 00	stq  	pr6|491		sector
+						STATEMENT 1 ON LINE 195
+    return (sector * words_per_sect (dev_idx) * 4);
+
+001672  ta   777777 4020 17	mpy  	-1,7
+001673  aa   000004 4020 07	mpy  	4,dl
+001674  aa  6 00746 3535 20	epp3 	pr6|486,*
+001675  aa  3 00004 7561 20	stq  	pr3|4,*
+001676  aa  6 00744 6101 00	rtcd 	pr6|484
+						STATEMENT 1 ON LINE 196
+  end vtoce_sector;
+
+  END PROCEDURE vtoce_sector
+BEGIN PROCEDURE sector
+ENTRY TO sector                                             STATEMENT 1 ON LINE 201
+sector: proc (add) returns (fixed bin);
+
+001677  aa  6 00754 6501 00	spri4	pr6|492
+001700  aa  6 00756 2521 00	spri2	pr6|494
+						STATEMENT 1 ON LINE 208
+    dev_idx = rldr_data_.disk_type (pvindex);
+
+001701  aa  6 00032 3735 20	epp7 	pr6|26,*
+001702  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+001703  aa   000064 4020 07	mpy  	52,dl
+001704  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+001705  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+001706  aa   000000 6260 06	eax6 	0,ql
+001707  aa  5 00411 2361 06	ldq  	pr5|265,ql	rldr_data_.disk_type
+001710  aa  6 00762 7561 00	stq  	pr6|498		dev_idx
+						STATEMENT 1 ON LINE 209
+    sector = fixed (add, 18) * SECTORS_PER_RECORD (dev_idx);
+
+001711  aa  2 00002 3535 20	epp3 	pr2|2,*
+001712  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001713  aa  3 00000 00 0022	descb	pr3|0,18		add
+001714  aa  6 00056 00 0044	descb	pr6|46,36
+001715  aa  6 00056 2351 00	lda  	pr6|46
+001716  aa   000066 7730 00	lrl  	54
+001717  aa  6 00762 7271 00	lxl7 	pr6|498		dev_idx
+001720  ta   000021 4020 17	mpy  	17,7
+001721  aa  6 00763 7561 00	stq  	pr6|499		sector
+						STATEMENT 1 ON LINE 210
+    sector = sector + divide (sector, rldr_data_.usable_sectors (pvindex), 17, 0)
+         * rldr_data_.unusable_sectors (pvindex);
+
+001722  aa  5 00412 5061 16	div  	pr5|266,6		rldr_data_.usable_sectors
+001723  aa  5 00413 4021 16	mpy  	pr5|267,6		rldr_data_.unusable_sectors
+001724  aa   000044 7770 00	llr  	36
+001725  aa   000044 7330 00	lrs  	36
+001726  aa  6 00763 0331 00	adl  	pr6|499		sector
+001727  aa  6 00763 7561 00	stq  	pr6|499		sector
+						STATEMENT 1 ON LINE 212
+    return (sector * words_per_sect (dev_idx) * 4);
+
+001730  ta   777777 4020 17	mpy  	-1,7
+001731  aa   000004 4020 07	mpy  	4,dl
+001732  aa  2 00004 7561 20	stq  	pr2|4,*
+001733  aa  6 00754 6101 00	rtcd 	pr6|492
+						STATEMENT 1 ON LINE 213
+  end sector;
+
+  END PROCEDURE sector
+  END PROCEDURE rldr_output_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,2288 @@
+	COMPILATION LISTING OF SEGMENT scas_init
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0950.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* SCAS_INIT - Initialize the System Controller Addressing Segment.
+       14*   7/24/69 - Noel I. Morris
+       15*   Modified for follow-on 8/72 by C. L. Jensen & N. I. Morris
+       16*   Modified 2/76 by Noel I. Morris for 4MW SCU and new reconfig
+       17*   Modified 2/79 by Bernard S. Greenberg for port expanders/8 cpus.
+       18*   Modified 6/79 by Mike Grady to improve mem/port config checks
+       19*   Modified 12/79 by Mike Grady to fix bugs in above change
+       20*   Modified 9/08/80 by J. A. Bush for the DPS8/70M CPU
+       21*   Modified 01/04/81, W. Olin Sibert, to convert to new config cards and for
+       22*   scs$scas_page_table.
+       23*   Modified January 1981 by C. Hornig to enable ports.
+       24*   Modified by J. Bongiovanni April 1981 for anti-hog switch setting
+       25*   Modified April 1982 by J. Bongiovanni to check CPU data switches
+       26*   Modified 7/82 BIM merge in the Sibert changes.
+       27*   Modified 10/82 BIM to not set the mask instructions to rmcm/smcm
+       28*   until AFTER setting the port enable bits.
+       29*   Modified 8/83 K. Loepere for bootload Multics toehold
+       30*   Modified 9/83 E. N. Kittlitz to not enable scu port for an OFF IOM.
+       31*   Modified 4/84 K. Loepere to be less fussy when initializing for bce.
+       32*   Modified 8/84 K. Loepere to keep cpu ports on bootload scu enabled 
+       33*   after crash.
+       34**/
+       35 
+       36 
+       37 /****^  HISTORY COMMENTS:
+       38*  1) change(88-07-27,Farley), approve(88-10-05,MCR7968),
+       39*     audit(88-10-10,Beattie), install(88-10-14,MR12.2-1166):
+       40*     Added check for new rcerr_addscu_memoverlap error code.
+       41*                                                   END HISTORY COMMENTS */
+       42 
+       43 
+       44 
+       45 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+       46 scas_init:
+       47      procedure;
+       48 
+       49 dcl  (i, j) fixed bin,				/* iteration variables */
+       50      found bit (1) aligned,				/* useful indicator bit */
+       51      dps8 bit (1) aligned,				/*  dps8 indicaor used for checking mem tags */
+       52      n_cpus fixed bin,				/* count of CPU config cards */
+       53      n_mems fixed bin,				/* count of MEM config cards */
+       54      cport fixed bin (3),				/* port index of SCU port of CPU being configured */
+       55      masks_found (4) bit (1) unal,			/* used in interrupt cpu assignment */
+       56      exp_port fixed bin (2),				/* port expander subport index */
+       57      tag fixed bin (3),				/* tag from CPU or MEM card */
+       58      errtag fixed bin (3),				/* tag of CPU or mask in error */
+       59      enabled bit (1) aligned,				/* port enabled bit */
+       60      base fixed bin (17),				/* system controller base address */
+       61      size fixed bin (17),				/* system controller size */
+       62      interlace fixed bin (3),				/* memory interlace type */
+       63      expected_base fixed bin (17),			/* expected base by config deck */
+       64      code fixed bin (35),				/* error code */
+       65      cpu_low_port fixed bin,				/* low-order cpu port			*/
+       66      cpu_high_port fixed bin,				/* high-order cpu port			*/
+       67      cpu_ports bit (36) aligned,			/* mask for cpu ports			*/
+       68      iom_low_port fixed bin,				/* low-order iom port			*/
+       69      iom_high_port fixed bin,				/* high-order iom port			*/
+       70      iom_ports bit (36) aligned,			/* mask for iom ports			*/
+       71      toehold_abs fixed bin (24),			/* absolute address of toehold */
+       72      severity fixed bin;				/* for syserr calls (implies whether we try to fix up errors) */
+       73 
+       74 declare  1 sdwi aligned like sdw_info;
+       75 declare  tsdw fixed bin (71);
+       76 
+       77 dcl  tag_letter (0:7) char (1) aligned static init ("A", "B", "C", "D", "E", "F", "G", "H");
+       78 						/* for message */
+       79 dcl  (
+       80      ALL_ONES bit (36) aligned init ("777777777777"b3),
+       81      MAX_CYCLE_GROUP fixed bin init (5),
+       82      XED_INHIB bit (18) init ("717200"b3)
+       83      ) int static options (constant);
+       84 
+       85 dcl  1 cdata like scs$controller_data based (cdp) aligned,	/* single element of array */
+       86      cdp ptr,					/* pointer to the above */
+       87      1 pdata like scs$processor_data based (pdp) aligned,	/* single element of array */
+       88      pdp ptr;					/* pointer to the above */
+       89 
+       90 dcl  scas$ ext,
+       91      toehold$ ext;
+       92 
+       93 dcl  privileged_mode_ut$swap_sdw entry (ptr, ptr),
+       94      absadr entry (ptr, fixed bin (35)) returns (fixed bin (24)),
+       95      init_scu entry (fixed bin (3), fixed bin (3), fixed bin (35)),
+       96      rsw_util$port_info entry (fixed bin (3), bit (1) aligned, fixed bin (17), fixed bin (17), fixed bin (3)),
+       97      rsw_util$set_rsw_mask entry (fixed bin (3), bit (1) aligned),
+       98      rsw_util$init_rsw_mask entry (fixed bin (3), bit (1) aligned),
+       99      scr_util$set_port_enable_bit entry (fixed bin (3), bit (1)),
+      100      scr_util$set_port_enable entry (fixed bin (3), bit (1)),
+      101      scr_util$set_cfg entry (fixed bin (3)),
+      102      sdw_util_$construct entry (ptr, ptr),
+      103      mask_instruction$smcm entry returns (bit (36) aligned),
+      104      mask_instruction$rmcm entry returns (bit (36) aligned),
+      105      config_$find entry (char (4) aligned, ptr),
+      106      syserr entry options (variable);
+      107 
+      108 dcl  (addr, binary, bin, bit, divide, hbound, null, rel, string, substr, unspec) builtin;
+      109 
+      110 	if ((sys_info$collection_1_phase = EARLY_INITIALIZATION) | (sys_info$collection_1_phase = BOOT_INITIALIZATION)
+      111 	     | (sys_info$collection_1_phase = SERVICE_INITIALIZATION))
+      112 	then severity = CRASH;
+      113 	else severity = ANNOUNCE;
+      114 
+      115 /* Initialize SCAS to contain 32 SDW's with DF3. */
+      116 
+      117 	unspec (scs$scas_page_table) = ""b;		/* Clear it out first */
+      118 	do i = 0 to 31;				/* Go through the page table. */
+      119 	     addr (scs$scas_page_table (i)) -> l68_ptw.df_no = "11"b;
+      120 						/* DF3 */
+      121 	end;					/* cause signalled crawlout on touching bad page */
+      122 
+      123 	unspec (sdwi) = ""b;			/* Construct the SCAS SDW */
+      124 	sdwi.address = absadr (addr (scs$scas_page_table), code);
+      125 	if code ^= 0 then call syserr (CRASH, "scas_init: Error from absadr setting up SCAS.");
+      126 	sdwi.read = "1"b;				/* RW access */
+      127 	sdwi.write = "1"b;
+      128 	sdwi.paged = "1"b;				/* SCAS is a "paged" segment */
+      129 	sdwi.size = 32 * 1024;			/* 32 pages */
+      130 
+      131 	call sdw_util_$construct (addr (tsdw), addr (sdwi));
+      132 						/* Do it */
+      133 
+      134 	call privileged_mode_ut$swap_sdw (addr (scas$), addr (tsdw));
+      135 						/* Pop it in */
+      136 
+      137 /* Require port enable bits for all unused processor ports to be set correctly. */
+      138 
+      139 	do tag = 0 to 7;
+      140 	     call rsw_util$set_rsw_mask (tag, "1"b);
+      141 	end;
+      142 
+      143 
+      144 /* Fill in processor switch template info by copying rsw data read in scs_and_clock_init. */
+      145 
+      146 	scs$processor_switch_template = scs$processor_switch_data;
+      147 
+      148 /* Compute the proper value for the CPU data switches. Print a warning if
+      149*   they're not set to this. */
+      150 
+      151 	toehold_abs = absadr (addr (toehold$), code);
+      152 	scs$processor_data_switch_value = bit (bin (toehold_abs, 18), 18) || XED_INHIB;
+      153 	if sys_info$collection_1_phase = EARLY_INITIALIZATION | sys_info$collection_1_phase = BOOT_INITIALIZATION
+      154 	     | sys_info$collection_1_phase = SERVICE_INITIALIZATION
+      155 	then if scs$processor_switch_data (0) ^= scs$processor_data_switch_value
+      156 	     then call syserr (ANNOUNCE, "scas_init: CPU data switches are ^w, should be ^w",
+      157 		     scs$processor_switch_data (0), scs$processor_data_switch_value);
+      158 
+      159 
+      160 /* Set up for computation of cycle port template */
+      161 
+      162 	iom_low_port, cpu_low_port = 36;
+      163 	iom_high_port, cpu_high_port = -1;
+      164 	iom_ports, cpu_ports = "0"b;
+      165 
+      166 /* Get info about each configured CPU. */
+      167 
+      168 	n_cpus = 0;				/* Initialize count of CPU's. */
+      169 	found = "0"b;				/* Clear bootload CPU found indicator. */
+      170 	dps8 = "0"b;				/* clear dps8 indicator flag */
+      171 
+      172 	do i = 0 to 7;				/* Mark all potential CPU's as halted. */
+      173 	     scs$processor_data (i).halted_cpu = "1"b;
+      174 	end;
+      175 
+      176 	cpu_cardp = null ();			/* Initialize config deck pointer. */
+      177 cpu_loop:
+      178 	call config_$find (CPU_CARD_WORD, cpu_cardp);	/* Look for CPU card. */
+      179 	if cpu_cardp = null () then go to cpu_loop_end;	/* If null pointer, no more CPU cards. */
+      180 	n_cpus = n_cpus + 1;			/* Count a CPU. */
+      181 
+      182 	tag = cpu_card.tag - 1;			/* Get expected CPU tag. */
+      183 	if (tag < 0) | (tag > 7)
+      184 	then					/* Make sure tag is legit. */
+      185 	     call syserr (CRASH, "scas_init: Illegal tag on ^a config card.", CPU_CARD_WORD);
+      186 
+      187 	pdp = addr (scs$processor_data (tag));		/* Get pointer to data block for this CPU. */
+      188 	if pdata.offline
+      189 	then					/* If we already saw config card for this CPU ... */
+      190 	     call syserr (CRASH, "scas_init: ^a ^a appears twice in config deck.", CPU_CARD_WORD, tag_letter (tag));
+      191 
+      192 	if tag = scs$bos_processor_tag then do;		/* If this is CPU running ... */
+      193 	     found = "1"b;				/* Indicate bootload CPU found. */
+      194 	     if cpu_card.state ^= "on  " then do;	/* Config card should not lie. */
+      195 		call syserr (severity, "scas_init: Config card for bootload ^a ^a is ^a, must be on.", CPU_CARD_WORD,
+      196 		     tag_letter (tag), cpu_card.state);
+      197 		cpu_card.state = "on";		/* Try to fix */
+      198 		end;
+      199 	     rswp = addr (scs$processor_switch_data (2)); /* get ptr to rsw (2) data */
+      200 	     if dps8_rsw_2.cpu_type > 0 then dps8 = "1"b; /* set flag for checking memories */
+      201 	     end;
+      202 	else if cpu_card.type = "dps8" then dps8 = "1"b;	/*  set switch for checking memory tags */
+      203 
+      204 	cport = cpu_card.port;			/* Get controller port. */
+      205 
+      206 	if cport < cpu_low_port then cpu_low_port = cport;
+      207 	if cport > cpu_high_port then cpu_high_port = cport;
+      208 
+      209 	if cpu_card.expander_port ^= -1 then do;	/* Expander port */
+      210 	     exp_port = cpu_card.expander_port - 1;	/* Get the subport #. */
+      211 	     if (exp_port < 0 | exp_port > 3)
+      212 	     then call syserr (CRASH, "scas_init: Illegal expander subport tag on CPU ^a config card.",
+      213 		     tag_letter (tag));
+      214 	     if tag = scs$bos_processor_tag
+      215 	     then call syserr (CRASH, "scas_init: Bootload CPU may not be on an expander port.");
+      216 	     do i = 0 to 7;				/* Search for duplication. */
+      217 		if scs$processor_data (i).offline then do;
+      218 						/* Already filled ? */
+      219 		     if scs$processor_data (i).controller_port = cport then do;
+      220 			if ^scs$expanded_ports (cport)
+      221 			then call syserr (CRASH,
+      222 				"scas_init: SCU port ^d configured as both expanded and non-expanded.", cport);
+      223 			if scs$processor_data (i).expander_port = exp_port
+      224 			then call syserr (CRASH,
+      225 				"scas_init: CPU ^a and CPU ^a both configured for port ^d subport ^a.",
+      226 				tag_letter (tag), tag_letter (i), cport, tag_letter (cport));
+      227 			end;
+      228 		     end;
+      229 	     end;
+      230 	     scs$cow (tag).expander_port = exp_port;	/*  Set necessary flags */
+      231 	     scs$cow (tag).expanded_port = "1"b;
+      232 	     scs$cow (tag).expander_command = "0"b3;	/* Set connect command */
+      233 	     pdata.expanded_port = "1"b;
+      234 	     scs$expanded_ports (cport) = "1"b;
+      235 	     pdata.expander_port = exp_port;
+      236 	     end;
+      237 	else if scs$expanded_ports (cport)
+      238 	     then call syserr (CRASH, "scas_init: SCU port ^d configured as both expanded and non-expanded port.",
+      239 		     cport);
+      240 	pdata.controller_port = cport;		/* Get it in the processor data. */
+      241 	scs$cow (tag).controller_port = cport;
+      242 	scs$cow_ptrs (tag).rel_cow_ptr = rel (addr (scs$cow (tag).cow));
+      243 						/* Set up indexable ptrs. */
+      244 	scs$cow_ptrs (tag).tag = "00"b3;		/* No indirection. */
+      245 	pdata.offline = "1"b;			/* Set offline state. */
+      246 
+      247 	if sys_info$collection_1_phase = CRASH_INITIALIZATION
+      248 						/* keep all on cpu's enabled on bootload scu */
+      249 	then if cpu_card.state = "on  " then call scr_util$set_port_enable_bit (cport, "1"b);
+      250 	go to cpu_loop;				/* Look for next CPU card. */
+      251 
+      252 cpu_loop_end:
+      253 	if n_cpus < 1
+      254 	then					/* Must be at least one card. */
+      255 	     call syserr (CRASH, "scas_init: No ^a config card.", CPU_CARD_WORD);
+      256 
+      257 	if ^found then call syserr (CRASH, "scas_init: No config card for bootload ^a.", CPU_CARD_WORD);
+      258 
+      259 /* Get info about each configured System Controller. */
+      260 
+      261 	n_mems = 0;				/* Initialize number of controllers. */
+      262 	found = "0"b;				/* Initialize switch. */
+      263 	expected_base = 0;				/* Count config deck size */
+      264 
+      265 	mem_cardp = null ();			/* Initialize config card pointer. */
+      266 mem_loop:
+      267 	call config_$find ("mem ", mem_cardp);		/* Look for a MEM card. */
+      268 	if mem_cardp = null () then go to mem_loop_end;	/* Exit loop when no more MEM cards. */
+      269 	n_mems = n_mems + 1;			/* Increment number of system controllers. */
+      270 
+      271 	tag = mem_card.tag - 1;			/* Get CPU port of controller. */
+      272 	if (tag < 0) | (tag > 7)
+      273 	then					/* Make sure tag is legitimate. */
+      274 	     call syserr (CRASH, "scas_init: Illegal tag on ^a config card.", MEM_CARD_WORD);
+      275 
+      276 	if dps8
+      277 	then					/* if  a dps8 cpu in config deck... */
+      278 	     if tag > 3
+      279 	     then call syserr (CRASH,			/* only  MEM tags A, B, C, and D are allowed */
+      280 		     "scas_init: ^a ^a. Tags greater than ""D"" not supported by DPS8 CPUs", MEM_CARD_WORD,
+      281 		     tag_letter (tag));
+      282 
+      283 	cdp = addr (scs$controller_data (tag));		/* Get pointer to correct element of array. */
+      284 	if cdata.online | cdata.offline
+      285 	then					/* See if controller already found. */
+      286 	     call syserr (CRASH, "scas_init: ^a ^a appears twice in config deck.", MEM_CARD_WORD, tag_letter (tag));
+      287 
+      288 	if mem_card.state = "on  "
+      289 	then					/* See if controller is online. */
+      290 	     cdata.online = "1"b;			/* Controller is online. */
+      291 	else if mem_card.state = "off "
+      292 	     then					/* See if it's offline. */
+      293 		cdata.offline = "1"b;		/* Indicate controller offline. */
+      294 	     else					/* If neither on nor off ... */
+      295 		call syserr (CRASH, "scas_init: Config card for ^a ^a is neither on nor off.", MEM_CARD_WORD,
+      296 		     tag_letter (tag));
+      297 
+      298 	call rsw_util$port_info (tag, enabled, base, size, interlace);
+      299 						/* Get info from processor switches. */
+      300 
+      301 	if base = 0 then do;			/* Test for low-order controller. */
+      302 	     if found
+      303 	     then					/* If more than one low-order system controller ... */
+      304 		call syserr (CRASH, "scas_init: More than one low-order MEM.");
+      305 	     else do;
+      306 		found = "1"b;			/* Set the switch. */
+      307 		if cdata.offline then do;		/* Must not be offline. */
+      308 		     call syserr (severity, "scas_init: Config card for bootload ^a indicates unit is offline.",
+      309 			MEM_CARD_WORD);
+      310 		     mem_card.state = "on";
+      311 		     cdata.offline = "0"b;		/* Try to fix */
+      312 		     cdata.online = "1"b;
+      313 		     end;
+      314 		end;
+      315 	     end;
+      316 
+      317 	if cdata.online & ^enabled then do;		/* If controller is online but not enabled ... */
+      318 	     call syserr (severity, "scas_init: MEM ^a is not enabled.", tag_letter (tag));
+      319 	     mem_card.state = "off";			/* Try to fix */
+      320 	     cdata.online = "0"b;
+      321 	     cdata.offline = "1"b;
+      322 	     end;
+      323 	call rsw_util$init_rsw_mask (tag, (cdata.online));/* Set mask for checking processor switches. */
+      324 
+      325 	cdata.size = size;				/* Set size of memory. */
+      326 	cdata.base = base;				/* Set base of memory. */
+      327 	if sys_info$collection_1_phase > SERVICE_INITIALIZATION
+      328 	then scs$controller_config_size (tag) = 512;	/* Officially recognize only 512k during crash */
+      329 	else scs$controller_config_size (tag) = mem_card.size;
+      330 						/* Save for init_sst. */
+      331 
+      332 	if base < expected_base
+      333 	then call syserr (CRASH, "scas_init: MEM ^a address assignment disagrees with config deck.", tag_letter (tag));
+      334 	if mem_card.size > size
+      335 	then					/* More specified than is possible */
+      336 	     call syserr (CRASH, "scas_init: Size too large on config card for MEM ^a.", tag_letter (tag));
+      337 
+      338 	expected_base = base + size;			/* Set up for next controller */
+      339 
+      340 	cdata.ext_interlaced = (interlace ^= 0);	/* Indicate if memory is interlaced with another. */
+      341 	cdata.four_word = (interlace = 4);		/* Indicate if two or four word interlace. */
+      342 
+      343 	if cdata.online then do;			/* If controller is available now ... */
+      344 	     call init_scu (tag, errtag, code);		/* Initialize it. */
+      345 	     if code ^= 0
+      346 	     then					/* Check for error. */
+      347 		if /* case */ code = rcerr_addscu_size
+      348 		then call syserr (CRASH, "scas_init: MEM ^a has more memory than indicated by CPU switches.",
+      349 			tag_letter (tag));
+      350 		else if code = rcerr_addscu_dup_mask
+      351 		then call syserr (CRASH, "scas_init: MEM ^a has duplicate mask assignments to CPU ^a.",
+      352 			tag_letter (tag), tag_letter (errtag));
+      353 		else if code = rcerr_addscu_no_mask
+      354 		then call syserr (CRASH, "scas_init: MEM ^a has no mask assigned to CPU ^a.", tag_letter (tag),
+      355 			tag_letter (errtag));
+      356 		else if code = rcerr_addscu_bad_mask
+      357 		then call syserr (CRASH, "scas_init: MEM ^a has mask ^a assigned to non-processor port.",
+      358 			tag_letter (tag), tag_letter (errtag));
+      359 		else if code = rcerr_addscu_manual
+      360 		then call syserr (CRASH, "scas_init: MEM ^a is not in PROGRAM mode.", tag_letter (tag));
+      361 		else if code = rcerr_addscu_oldexpand
+      362 		then call syserr (CRASH, "scas_init: MEM ^a is an old SCU with port expander", tag_letter (tag));
+      363 		else if code = rcerr_addscu_bigconfig
+      364 		then				/* Config more than real mem, die */
+      365 		     call syserr (CRASH, "scas_init: Size too large on config card for MEM ^a.", tag_letter (tag));
+      366 		else if code = rcerr_addscu_memoverlap
+      367 		then				/* Mem store size or switches wrong */
+      368 		     call syserr (CRASH, "scas_init: Possible memory address overlap in MEM ^a.", tag_letter (tag));
+      369 
+      370 
+      371 	     end;
+      372 	if sys_info$collection_1_phase > SERVICE_INITIALIZATION then go to mem_loop_end;
+      373 						/* only low 512k memory officially counts during crash */
+      374 	go to mem_loop;				/* Iterate for next MEM card. */
+      375 
+      376 mem_loop_end:
+      377 	if n_mems < 1
+      378 	then					/* Must be at least one card. */
+      379 	     call syserr (CRASH, "scas_init: No ^a config card.", MEM_CARD_WORD);
+      380 
+      381 	if ^found then call syserr (CRASH, "scas_init: No config card for bootload ^a.", MEM_CARD_WORD);
+      382 
+      383 /* Check to make sure that bootload CPU port is correct. */
+      384 
+      385 	scrp = addr (scs$cfg_data (scs$interrupt_controller));
+      386 						/* Get pointer to RSCR CFG data for bootload controller. */
+      387 	if bin (scr_cfg1.port_no, 4) ^= scs$processor_data (scs$bos_processor_tag).controller_port
+      388 	then call syserr (CRASH, "scas_init: CPU config card specifies wrong controller port number.");
+      389 
+      390 /* Make sure that no unconfigured port is enabled. */
+      391 /* Unless we are in early initialization, when this is normal. */
+      392 
+      393 	if ^(sys_info$collection_1_phase = EARLY_INITIALIZATION | sys_info$collection_1_phase > SERVICE_INITIALIZATION)
+      394 	then do tag = 0 to 7;			/* Test all ports. */
+      395 	     if ^scs$controller_data (tag).offline & ^scs$controller_data (tag).online then do;
+      396 		call rsw_util$port_info (tag, enabled, base, size, interlace);
+      397 		if enabled
+      398 		then				/* If unused port is enabled ... */
+      399 		     call syserr (severity,
+      400 			"scas_init: MEM ^a is not in the configuration, but is enabled by the CPU switches.",
+      401 			tag_letter (tag));
+      402 		end;
+      403 	end;
+      404 
+      405 /* enable all the IOM's */
+      406 
+      407 	iom_data_ptr = addr (iom_data$);
+      408 	do tag = 0 to 7;
+      409 	     if scs$port_data (tag).assigned = IOM_PORT then do;
+      410 		if iom_data.per_iom (scs$port_data (tag).iom_number).flags.on_line
+      411 		then				/* someday this will be an scs flag */
+      412 		     call scr_util$set_port_enable_bit (tag, "1"b);
+      413 		if tag < iom_low_port then iom_low_port = tag;
+      414 		if tag > iom_high_port then iom_high_port = tag;
+      415 		end;
+      416 	end;
+      417 
+      418 /* and the BOS processor */
+      419 
+      420 	call scr_util$set_port_enable (binary (scs$processor_data (scs$bos_processor_tag).controller_port, 3), "1"b);
+      421 
+      422 
+      423 /* Determine which CPU's have assigned masks. */
+      424 
+      425 	cdp = addr (scs$controller_data (scs$interrupt_controller));
+      426 						/* Get pointer to info for bootload controller. */
+      427 
+      428 	string (masks_found) = "0000"b;		/* Found no masks. */
+      429 	do i = 0 to 7;				/* Look at all CPU's. */
+      430 	     pdp = addr (scs$processor_data (i));	/* Get pointer to correct array element. */
+      431 	     if pdata.offline then do;
+      432 		do j = 1 to 4;			/* If CPU is to be used, look at masks. */
+      433 		     if cdata.eima_data (j).mask_assigned & ^masks_found (j)
+      434 		     then if cdata.eima_data (j).mask_assignment = pdata.controller_port then do;
+      435 			     masks_found (j) = "1"b;
+      436 			     pdata.interrupt_cpu = "1"b;
+      437 			     scs$set_mask (i) = mask_instruction$smcm ();
+      438 			     scs$read_mask (i) = mask_instruction$rmcm ();
+      439 			     scs$mask_ptr (i) = addr (scs$port_addressing_word (scs$interrupt_controller));
+      440 			     end;
+      441 		end;
+      442 		end;
+      443 	end;
+      444 
+      445 
+      446 /* Check to make sure that bootload CPU has mask assigned to it. */
+      447 
+      448 	if ^scs$processor_data (scs$bos_processor_tag).interrupt_cpu
+      449 	then call syserr (CRASH, "scas_init: Bootload CPU has no system controller mask assigned.");
+      450 
+      451 
+      452 
+      453 
+      454 /* Setup to set cyclic port priority switches (anti-hog).  The strategy
+      455*   is to put all IOMs on a cyclic priority group, all bulk stores on
+      456*   a cyclic priority group, and all CPUs on a cyclic priority group.
+      457*   This can only be done if the ranges of ports within each group
+      458*   do not overlap.  The following checks for overlap.  */
+      459 
+      460 
+      461 	substr (iom_ports, iom_low_port + 1, iom_high_port - iom_low_port + 1) =
+      462 	     substr (ALL_ONES, 1, iom_high_port - iom_low_port + 1);
+      463 	substr (cpu_ports, cpu_low_port + 1, cpu_high_port - cpu_low_port + 1) =
+      464 	     substr (ALL_ONES, 1, cpu_high_port - cpu_low_port + 1);
+      465 
+      466 	if (iom_ports & cpu_ports) = ""b		/* no overlap				*/
+      467 	then do;
+      468 	     call set_cycle_group (iom_low_port, iom_high_port);
+      469 	     call set_cycle_group (cpu_low_port, cpu_high_port);
+      470 	     scs$set_cycle_switches = "1"b;
+      471 	     do i = 0 to hbound (scs$controller_data, 1); /* set switches on all active SCUs		*/
+      472 		if scs$controller_data (i).online then call scr_util$set_cfg (bin (i));
+      473 	     end;
+      474 	     end;
+      475 	else do;					/* cannot set switches			*/
+      476 	     scs$set_cycle_switches = "0"b;
+      477 	     call syserr (ANNOUNCE,
+      478 		"scs_init: CPU/IOM port range overlap. Using manual settings for cycle port priority.");
+      479 	     end;
+      480 
+      481 	return;
+      482 
+      483 /* SET_CYCLE_GROUP - internal procedure to setup cfg bits for a cycle (anti-hog)
+      484*   group											*/
+      485 
+      486 set_cycle_group:
+      487      proc (low_port, high_port);
+      488 
+      489 dcl  low_port fixed bin;
+      490 dcl  high_port fixed bin;
+      491 
+      492 dcl  middle_port fixed bin;
+      493 
+      494 
+      495 	if high_port <= low_port then return;
+      496 	if high_port - low_port > MAX_CYCLE_GROUP then do;/* too many for one group			*/
+      497 	     middle_port = low_port + divide (high_port - low_port - 1, 2, 17);
+      498 						/* split evenly, with larger group higher */
+      499 	     call set_cycle_group (low_port, middle_port);
+      500 	     call set_cycle_group (middle_port + 1, high_port);
+      501 	     end;
+      502 	else substr (scs$cycle_priority_template, low_port + 1, high_port - low_port) =
+      503 		substr (ALL_ONES, 1, high_port - low_port);
+      504 
+      505      end set_cycle_group;
+      506 
+  1     1 /* BEGIN include file collection_1_phases.incl.pl1 */
+  1     2 
+  1     3 /* Symbolic names for the various collection1 phases.
+  1     4*Keith Loepere, October 1983. */
+  1     5 
+  1     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  1     7 
+  1     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  1     9 
+  1    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  1    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  1    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  1    13 
+  1    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  1    15*programs can simply tell apart the booting phases from all others (crash or
+  1    16*recovery type phases). */
+  1    17 
+  1    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  1    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  1    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  1    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  1    22 
+  1    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  1    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  1    25 
+  1    26 /* END include file collection_1_phases.incl.pl1 */
+      507 
+      508 
+  2     1 /* BEGIN INCLUDE FILE ... config_mem_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  mem_cardp pointer;				/* pointer to MEM card */
+  2     4 
+  2     5 dcl 1 mem_card aligned based (mem_cardp),		/* MEM card declaration */
+  2     6     2 word char (4),				/* "mem" */
+  2     7     2 tag fixed bin (3),				/* One more than module port to which controller is attached */
+  2     8     2 size fixed bin (18),				/* Number of pages in memory controller */
+  2     9     2 state char (4),				/* State: "on" or "off" */
+  2    10 
+  2    11     2 pad (11) bit (36) aligned,			/* Pad to 15 fields */
+  2    12 
+  2    13     2 type_word aligned,
+  2    14       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    15       3 pad1 bit (4) unaligned,
+  2    16       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    17 
+  2    18 dcl  MEM_CARD_WORD char (4) aligned internal static options (constant) init ("mem");
+  2    19 
+  2    20 /* END INCLUDE FILE ... config_mem_card.incl.pl1 */
+      509 
+      510 
+  3     1 /* BEGIN INCLUDE FILE ... config_cpu_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  3     2 /* format: style4 */
+  3     3 
+  3     4 dcl  cpu_cardp pointer;				/* pointer to CPU card */
+  3     5 
+  3     6 dcl  1 cpu_card aligned based (cpu_cardp),		/* CPU card declaration */
+  3     7        2 word char (4),				/* "cpu" */
+  3     8        2 tag fixed bin (3),				/* CPU tag from switches, plus one */
+  3     9        2 port fixed bin (3),				/* Controller port for CPU */
+  3    10        2 state char (4),				/* "on", "off", "shut", or "test" */
+  3    11        2 type char (4),				/* "l68", "dps", "dps8" */
+  3    12 
+  3    13        2 model fixed bin,				/* 60., 80., or 70. */
+  3    14        2 cache_size fixed bin,			/* either 0. 2. 8. 16. or 32. */
+  3    15        2 expander_port fixed bin (3),			/* If present, indicates expander sub-port */
+  3    16 
+  3    17        2 pad (7) bit (36) aligned,			/* Pad to 15 fields */
+  3    18 
+  3    19        2 type_word aligned,
+  3    20          3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  3    21          3 pad1 bit (4) unaligned,
+  3    22          3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  3    23 
+  3    24 dcl  CPU_CARD_WORD char (4) aligned internal static options (constant) init ("cpu");
+  3    25 
+  3    26 /* END INCLUDE FILE ... config_cpu_card.incl.pl1 */
+      511 
+      512 
+  4     1 /* Begin include file ...... iom_data.incl.pl1
+  4     2*   First written in August 1971 by R F Mabee.
+  4     3*   Modified for paged IOM November 1980 by C. Hornig.
+  4     4*   More IIOC changes by C. Hornig, June 1982.
+  4     5*   Modified for channel reconfiguration by Chris Jones, January 1984.
+  4     6*   Modified to remove support of non-paged IOMs by Chris Jones, August 1984.
+  4     7*   Modified to add IMW read protocol flags by M. Pandolf, January 1985.
+  4     8**/
+  4     9 
+  4    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  4    11 dcl	iom_data$		   external;
+  4    12 dcl	iom_mailbox$	   external;
+  4    13 
+  4    14 dcl	n_devices		   fixed bin;
+  4    15 dcl	iom_data_ptr	   ptr;
+  4    16 
+  4    17 dcl	1 iom_data	   based (iom_data_ptr) aligned,
+  4    18 	  2 n_devices	   fixed bin,		/* (0) Maximum number of channels. */
+  4    19 	  2 stop_lpw	   bit (36),		/* (1) LPW pointing to stop_dcw. */
+  4    20 	  2 stop_dcw	   bit (36),		/* (2) DCW to stop channel, probably storing bad status. */
+  4    21 	  2 stop_scw	   bit (36),		/* (3) SCW for same */
+  4    22 	  2 imw_lock	   fixed bin (35),		/* (4) Essentially a lock for iom switch checking: */
+  4    23 						/* 1  : OK to poll IMW */
+  4    24 						/* 0  : lock in transition */
+  4    25 						/* -1 : DONT poll IMW */
+  4    26 	  2 n_intr_procs fixed bin (35),		/* (5) Number of processors in interrupt handler */
+  4    27 	  2 pad1		   (2) bit (36),
+  4    28 	  2 stop_status	   bit (72),		/* (10) All unused channels store status here. */
+  4    29 	  2 rfh1		   (6) bit (36),		/* can't use this */
+  4    30 	  2 stop_ext_status	   bit (8 * 36),		/* (20) Unused channels' extended status */
+  4    31 	  2 pad3		   (5) bit (36),
+  4    32 	  2 invalid_interrupts fixed bin (35),		/* (35) interrupts on unused channels */
+  4    33 	  2 null_interrupts	   fixed bin (35),		/* (36) spurious interrupts */
+  4    34 	  2 multiple_interrupts
+  4    35 			   fixed bin (35),		/* (37) several interrupts at a time */
+  4    36 	  2 per_iom	   (4) like per_iom,	/* (40) for each IOM */
+  4    37 	  2 per_device	   (n_devices refer (iom_data.n_devices)) like per_device;
+  4    38 						/* (240) Data for assigned channels. */
+  4    39 
+  4    40 dcl	1 per_iom		   aligned based,
+  4    41 	  2 lock		   bit (36),		/* (40) connect mailbox lock */
+  4    42 	  2 flags,				/* (41) */
+  4    43 	    3 configured	   bit (1) unal,		/* is configured */
+  4    44 	    3 on_line	   bit (1) unal,		/* is ON */
+  4    45 	    3 pad1	   bit (34) unal,
+  4    46 	  2 model		   char (4),		/* (42) what kind of IOM */
+  4    47 	  2 port		   fixed bin (3),		/* (43) SC port */
+  4    48 	  2 connect_time	   fixed bin (71),		/* (44) time of last connect */
+  4    49 	  2 connect_lpw	   bit (36),		/* (46) LPW for connect channel */
+  4    50 	  2 cow		   bit (36),		/* (47) Connect Operand Word */
+  4    51 	  2 special_chx	   fixed bin (35),		/* (50) chx of special status channel */
+  4    52 	  2 fault_chx	   fixed bin (35),		/* (51) chx of system fault channel */
+  4    53 	  2 pad2		   (4) bit (36),
+  4    54 	  2 abandoned_connects fixed bin (35),		/* (56) times we couldn't get IOM to listen at all */
+  4    55 	  2 reconnects	   fixed bin (35),		/* (57) times a connect was lost */
+  4    56 	  2 chantab	   (0:63) uns fixed bin (9) unal;
+  4    57 						/* (60) packed devtab indices */
+  4    58 
+  4    59 dcl	1 per_device	   aligned based,
+  4    60 	  2 status	   bit (72),		/* (0) Status for channel is stored here. */
+  4    61 	  2 rfh1		   (6) bit (36),
+  4    62 	  2 ext_status	   bit (8 * 36),		/* (10) extended status stored by IIOC */
+  4    63 	  2 iom		   uns fixed bin (3),	/* (20) IOM# (1-4) */
+  4    64 	  2 channel	   uns fixed bin (6),	/* (21) channel # */
+  4    65 	  2 handler	   entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  4    66 						/* (22) Interrupt handler for device. */
+  4    67 	  2 flags,				/* (26) */
+  4    68 	    3 in_use	   bit (1) unal,		/* assigned */
+  4    69 	    3 queue_status	   bit (1) unal,		/* maintain status queue */
+  4    70 	    3 on_line	   bit (1) unal,		/* can be assigned */
+  4    71 	  2 index		   fixed bin (35),		/* (27) Channel identification index. */
+  4    72 	  2 pcw		   bit (72),		/* (30) Peripheral Control Word */
+  4    73 	  2 lpw		   bit (72),		/* (32) List Pointer Word */
+  4    74 	  2 scw		   bit (36),		/* (34) Status Control Word */
+  4    75 	  2 pad1		   fixed bin (35),
+  4    76 	  2 status_queue_ptr   ptr,			/* (36) Status queue */
+  4    77 	  2 connect_time	   fixed bin (71),		/* (40) time of last connect */
+  4    78 	  2 connects	   fixed bin (71),		/* (42) Total connects */
+  4    79 	  2 interrupts	   fixed bin (71),		/* (44) Total number of interrupts for this channel. */
+  4    80 	  2 interrupt_time	   fixed bin (71);		/* (46) Total interrupt time for this channel. */
+  4    81 
+  4    82 dcl	iom_mailbox_seg_ptr	   ptr;
+  4    83 dcl	1 iom_mailbox_seg	   aligned based (iom_mailbox_seg_ptr),
+  4    84 	  2 imw_array	   (0:31) bit (32),		/* Indexed by interrupt cell number. One bit for each channel. */
+  4    85 	  2 system_fault	   (4) aligned like status_queue,
+  4    86 						/* system faults store here (12 words/IOM) */
+  4    87 	  2 special_status	   (4) aligned like status_queue,
+  4    88 						/* special status words here (12 words/IOM) */
+  4    89 	  2 iom_mailbox	   (4) like iom_mailbox;	/* Used to communicate with the IOM. */
+  4    90 
+  4    91 dcl	status_queue_ptr	   ptr;
+  4    92 dcl	1 status_queue	   aligned based (status_queue_ptr),
+  4    93 	  2 status	   (12) bit (36);
+  4    94 
+  4    95 dcl	1 iom_mailbox	   aligned based,
+  4    96 	  2 channel_mailbox	   (0:63) like channel_mailbox;
+  4    97 
+  4    98 dcl	1 channel_mailbox	   aligned based,
+  4    99 	  2 lpw		   bit (72),		/* List pointer word. Points to DCW list. */
+  4   100 	  2 scw		   bit (36),		/* Status control word. Points to channel_table.status. */
+  4   101 	  2 dcw		   bit (36);		/* Data control word. Primarily scratch space for IOM. */
+  4   102 
+  4   103 /* Defined channel numbers. */
+  4   104 
+  4   105 dcl	(
+  4   106 	system_fault_channel   init (1),		/* Stores system fault words using LPW and DCW. */
+  4   107 	connect_channel	   init (2),		/* Starts other channels using LPW pointing to PCW. */
+  4   108 	special_status_channel init (6)		/* Stores special status using LPW and DCW. */
+  4   109 	)		   fixed bin (6) static options (constant);
+  4   110 
+  4   111 /* End of include file ..... iom_data.incl.pl1 */
+      513 
+      514 
+      515 dcl  ptp pointer;
+  5     1 /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  5     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  5     3 
+  5     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  5     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  5     6     2 pad1 bit (4) unaligned,
+  5     7     2 flags unaligned like l68_ptw_flags;
+  5     8 
+  5     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  5    10     2 add bit (18) unaligned,
+  5    11     2 flags like l68_ptw_flags unaligned;
+  5    12 
+  5    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  5    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  5    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  5    16 
+  5    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  5    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  5    19     2 first bit (1),				/* the page has not yet been written out */
+  5    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  5    21 
+  5    22     2 pad1 bit (1),
+  5    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  5    24     2 phu bit (1),					/* page has been used bit */
+  5    25 
+  5    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  5    27     2 nypd bit (1), 				/* must be moved to paging device */
+  5    28     2 phm bit (1),					/* page has been modified bit */
+  5    29 
+  5    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  5    31     2 wired bit (1),				/* page is to remain in core */
+  5    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  5    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  5    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  5    35 
+  5    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      516 
+      517 
+  6     1 
+  6     2 /* Begin include file ...... rcerr.incl.pl1 */
+  6     3 /* These are the reconfiguration error codes. */
+  6     4 /*	Created 4/5/76 by Noel I. Morris	*/
+  6     5 /* Modified 5/25/78 by J. A. Bush to add ISOLTS  reconfig error codes */
+  6     6 /* Modified 5/79 by BSG for port expander */
+  6     7 
+  6     8 
+  6     9 /****^  HISTORY COMMENTS:
+  6    10*  1) change(88-07-27,Farley), approve(88-10-05,MCR7968),
+  6    11*     audit(88-10-10,Beattie), install(88-10-14,MR12.2-1166):
+  6    12*     Added new rcerr_addscu_memoverlap error code.
+  6    13*                                                   END HISTORY COMMENTS */
+  6    14 
+  6    15 
+  6    16 dcl (rcerr_addcpu_no_response init (1),			/* no response from CPU */
+  6    17      rcerr_addcpu_bad_switches init (2),		/* CPU config switches set improperly */
+  6    18      rcerr_addcpu_trouble init (3),			/* trouble fault adding CPU */
+  6    19      rcerr_addcpu_startup init (4),			/* startup fault adding CPU */
+  6    20      rcerr_addcpu_lockup init (5),			/* lockup fault adding CPU */
+  6    21      rcerr_addcpu_gcos init (6),			/* attempt to add processor in GCOS mode */
+  6    22      rcerr_addcpu_amoff init (7),			/* attempt to add processor with assoc mem off */
+  6    23      rcerr_addcpu_enable init (8)			/* controller port for CPU not enabled */
+  6    24      ) fixed bin static options (constant);
+  6    25 
+  6    26 dcl (rcerr_delcpu_no_stop init (1),			/* CPU did not stop running */
+  6    27      rcerr_delcpu_last init (2),			/* attempt to delete last CPU */
+  6    28      rcerr_delcpu_no_good_blcpu init (3)		/* no suitable bootload CPU left */
+  6    29      ) fixed bin static options (constant);
+  6    30 
+  6    31 dcl (rcerr_addscu_size init (1),			/* memory size discrepancy */
+  6    32      rcerr_addscu_dup_mask init (2),			/* duplicate mask assignment */
+  6    33      rcerr_addscu_no_mask init (3),			/* no mask assigned to CPU */
+  6    34      rcerr_addscu_bad_mask init (4),			/* mask assigned to non-CPU port */
+  6    35      rcerr_addscu_fault init (5),			/* fault trying to add controller */
+  6    36      rcerr_addscu_switches init (6),			/* some active module has incorrect switches */
+  6    37      rcerr_addscu_enable init (7),			/* some active module not enabled */
+  6    38      rcerr_addscu_manual init (8),			/* 4MW SCU is in manual mode */
+  6    39      rcerr_addscu_oldexpand init (9),			/* Adding 6000 SCU with port expander */
+  6    40      rcerr_addscu_bigconfig init (10),			/* SCU has less memory than config cards say */
+  6    41      rcerr_addscu_memoverlap init (11)			/* SCU has possible memory address overlap */
+  6    42      ) fixed bin static options (constant);
+  6    43 
+  6    44 dcl (rcerr_delmain_nomem init (1),			/* not enough main memory left */
+  6    45      rcerr_delmain_abs_wired init (2)			/* abs wired pages in memory */
+  6    46      ) fixed bin static options (constant);
+  6    47 
+  6    48 dcl (rcerr_locked init (12),				/* database already locked */
+  6    49      rcerr_online init (13),				/* device already online */
+  6    50      rcerr_no_config init (14),			/* device not in configuration */
+  6    51      rcerr_not_online init (15),			/* device not online */
+  6    52      rcerr_range init (16),				/* request is out of range */
+  6    53      rcerr_sprq_failed init (17)			/* could not set CPU required */
+  6    54 
+  6    55      ) fixed bin static options (constant);
+  6    56 
+  6    57 dcl (rcerr_isolts_locked init (1),			/* reconfig_lock locked to another process */
+  6    58      rcerr_isolts_illegal_cpu init (2),			/* illegal cpu tag */
+  6    59      rcerr_isolts_cpu_online init (3),			/* requested cpu is online */
+  6    60      rcerr_isolts_no_config init (4),			/* requested cpu is not configured */
+  6    61      rcerr_isolts_two_scu init (5),			/* Must have at least two SCUs to run ISOLTS */
+  6    62      rcerr_isolts_illegal_scu init (6),			/* illegal scu tag */
+  6    63      rcerr_isolts_bootload_scu init (7),		/* requested scu is the bootload memory */
+  6    64      rcerr_isolts_scu_not init (8),			/* requested scu is not configured */
+  6    65      rcerr_isolts_not init (9),			/* requesting process is not ISOLTS process */
+  6    66      rcerr_isolts_wrong_cell init (10),			/* interrupt answered in correct scu but wrong cell */
+  6    67      rcerr_isolts_wrong_scu init (11),			/* interrupt answered in wrong scu */
+  6    68      rcerr_isolts_wrong_scu_cell init (12),		/* interrupt answered in wrong scu on wrong cell */
+  6    69      rcerr_isolts_no_response init (13),		/* No response to a processor start interrupt */
+  6    70      rcerr_isolts_bad_switches init (14),		/* read switch data is not in expected format */
+  6    71      rcerr_isolts_lda_fail init (15),			/* A LDA 2 did not operate correctly */
+  6    72      rcerr_isolts_no_str_flt init (16),			/* No store falt when a LDA 64k was executed */
+  6    73      rcerr_isolts_no_mask init (17)			/* No mask set for test cpu */
+  6    74      ) fixed bin static options (constant);
+  6    75 
+  6    76 dcl 1 switch_w1 aligned based,			/* template for switch word 1, when containing diagnostic info */
+  6    77    (2 cell fixed bin (5),				/* interrupt cell being used */
+  6    78     2 errtag fixed bin (5),				/* tag of scu in error */
+  6    79     2 valid bit (1),				/* if on then offset field is valid */
+  6    80     2 pad bit (5),
+  6    81     2 offset bit (18)) unaligned;			/* offset of error if any */
+  6    82 
+  6    83 /* End of include file ...... rcerr.incl.pl1 */
+  6    84 
+      518 
+      519 
+  7     1 /* ***********************************************************
+  7     2*   *                                                         *
+  7     3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+  7     4*   *                                                         *
+  7     5*   *********************************************************** */
+  7     6 /* Begin include file ...... rsw.incl.pl1
+  7     7*   Modified 3/26/77 by Noel I. Morris
+  7     8*   Modified 9/03/80 by J. A. Bush for the DPS8/70M CPU
+  7     9*   Modified 3/24/82 by J. A. Bush to allow the L68 CPU to address 4MW/port */
+  7    10 
+  7    11 dcl  rswp ptr;
+  7    12 
+  7    13 dcl 1 dps_rsw_2 aligned based (rswp),			/* rsw 2 template for DPS and L68 CPUs */
+  7    14    (2 pad1 bit (4),
+  7    15     2 cpu_type fixed bin (2) unsigned,			/* 0 = L68 or DPS, 1 = DPS8 */
+  7    16     2 fault_base bit (7),				/* high order bits of fault vector */
+  7    17     2 pad2 bit (6),
+  7    18     2 dps_option bit (1),				/* "1"b => DPS CPU, "0"b => L68 CPU */
+  7    19     2 pad3 bit (7),
+  7    20     2 cache2 bit (1),				/* "1"b => 2k cache installed, "0"b => no cache */
+  7    21     2 ext_gcos bit (1),				/* "1"b => ext gcos option installed */
+  7    22     2 id bit (4),					/* CPU ID - "1110"b => L68 */
+  7    23     2 cpu_num fixed bin (3) unsigned) unaligned;		/* processor number */
+  7    24 
+  7    25 dcl 1 dps8_rsw_2 aligned based (rswp),			/* rsw 2 template for DPS8 CPUs */
+  7    26    (2 interlace_info (0:3) bit (1),			/* if interlace enabled; "0"b => 4-word, "1"b => 2-word */
+  7    27     2 cpu_type fixed bin (2) unsigned,			/* 0 = L68 or DPS, 1 = DPS8 */
+  7    28     2 fault_base bit (7),				/* high order bits of fault vector */
+  7    29     2 id_prom bit (1),				/* "1"b => id_prom present */
+  7    30     2 pad1 bit (5),
+  7    31     2 dps_option bit (1),				/* always "1"b for DPS8 CPU */
+  7    32     2 cache8 bit (1),				/* "1"b => 8k cache installed, "0"b => no cache */
+  7    33     2 pad2 bit (2),
+  7    34     2 multics_cpu bit (1),				/* always "1"b for Multics cpu */
+  7    35     2 pad3 bit (5),
+  7    36     2 cpu_speed bit (4),				/* cpu speed options */
+  7    37     2 cpu_num fixed bin (3) unsigned) unaligned;		/* processor number */
+  7    38 
+  7    39 dcl 1 rsw_1_3 aligned based (rswp),			/* rsw 3 only valid on DPS and L68 CPUs */
+  7    40    (2 port_info (0:3),				/* controller port information */
+  7    41       3 port_assignment bit (3),			/* port address assignment */
+  7    42       3 port_enable bit (1),				/* "1"b => port enabled */
+  7    43       3 initialize_enable bit (1),			/* "1"b => system initialize enabled */
+  7    44       3 interlace_enable bit (1),			/* "1"b => port is interlaced with neighbor */
+  7    45       3 mem_size fixed bin (3) unsigned) unaligned;	/* encoded memory size on port */
+  7    46 
+  7    47 dcl 1 rsw_4 aligned based (rswp),			/* rsw 4 only valid on DPS and L68 CPUs */
+  7    48    (2 pad1 bit (13),
+  7    49     2 port_info (0:7),				/* additional controller port information */
+  7    50       3 four bit (1),				/* "0"b => 4-word interlace - "1"b => 2-word interlace */
+  7    51       3 half bit (1),				/* "1"b => only half of memory on controller in use */
+  7    52     2 pad2 bit (7)) unaligned;
+  7    53 
+  7    54 dcl  dps_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS and L68 memory sizes */
+  7    55     (32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144);
+  7    56 
+  7    57 /* Note that the third array element above, is changed incompatibly in MR10.0.
+  7    58*   In previous releases, this array element was used to decode a port size of
+  7    59*   98304 (96K). With MR10.0 it is now possible to address 4MW per CPU port, by
+  7    60*   installing  FCO # PHAF183 and using a group 10 patch plug, on L68 and DPS CPUs.
+  7    61**/
+  7    62 
+  7    63 dcl  dps8_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS8 memory sizes */
+  7    64     (32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304);
+  7    65 
+  7    66 dcl  rsw_valid (0:1) fixed bin static options (constant) init (5, 3); /* # of rsw valid per cpu type */
+  7    67 
+  7    68 /* End of include file ...... rsw.incl.pl1 */
+      520 
+      521 
+  8     1 /* Begin include file ...... scr.incl.pl1
+  8     2*   modified 5/75 by Noel I. Morris
+  8     3*   modified 10/81 by M.R. Jordan for 64K chip, M64 memory 
+  8     4*   modified '83 to make values constant */
+  8     5 
+  8     6 /* This include file is to be used in conjunction with pmut$rscr and pmut$sscr.
+  8     7*   Wherever possible the terms in the processor manual are used in the declaration. */
+  8     8 
+  8     9 dcl (SC_MR init (0),				/* SC Mode Register */
+  8    10      SC_CFG init (1),				/* SC Configuration Switches */
+  8    11      SC_MSK init (2),				/* SC Interrupt Mask */
+  8    12      SC_IC init (3),				/* SC Interrupt Cells */
+  8    13      SC_ETC init (4),				/* SC Elapsed Time Clock */
+  8    14      SC_SU init (6)) fixed bin (6) static options (constant); /* SU Mode Register */
+  8    15 
+  8    16 
+  8    17 dcl  scrp ptr;					/* pointer to SC data */
+  8    18 
+  8    19 dcl 1 scr_cfg1 based (scrp) aligned,			/* configuration data for 6000 SC */
+  8    20 
+  8    21    (2 mode_a bit (3),				/* 000 => on-line
+  8    22*						   001 => test mode
+  8    23*						   010 => off-line */
+  8    24     2 bdry_a bit (3),				/* 000 => 32K, 001 => 64K, etc */
+  8    25     2 mode_b bit (3),				/* see mode_a */
+  8    26     2 bdry_b bit (3),				/* see bdry_a */
+  8    27     2 int bit (1),					/* 1 => stores are internally interlaced */
+  8    28     2 lwr bit (1),					/* 1 => store B is low */
+  8    29     2 addr_offset bit (2),				/* 00 => no offset, 01 => 32K offset, etc. */
+  8    30     2 port_no bit (4),				/* requester's port number */
+  8    31     2 port_enable (0:7) bit (2),			/* 00 => port disabled
+  8    32*						   01 => port under program control
+  8    33*						   11 => port enabled */
+  8    34     2 pima (4) bit (9)) unaligned;			/* program interrupt mask assignments
+  8    35*						   000 => unassigned
+  8    36*						   400 => assigned to port 0
+  8    37*						   200 => assigned to port 1
+  8    38*						   .
+  8    39*						   .
+  8    40*						   .
+  8    41*						   002 => assigned to port 7
+  8    42*						   001 => assigned to maint. panel */
+  8    43 
+  8    44 
+  8    45 dcl 1 scr_cfg2 based (scrp) aligned,			/* configuration data for 4MW SCU */
+  8    46 
+  8    47    (2 mask_a_assign bit (9),				/* interrupt mask "A" port assignment
+  8    48*						   400 => assigned to port 0
+  8    49*						   .
+  8    50*						   .
+  8    51*						   002 => assigned to port 7
+  8    52*						   001 => mask off */
+  8    53     2 size bit (3),					/* size of lower store */
+  8    54     2 a_online bit (1),				/* 1 => store A online */
+  8    55     2 a1_online bit (1),				/* 1 => store A1 online */
+  8    56     2 b_online bit (1),				/* 1 => store B online */
+  8    57     2 b1_online bit (1),				/* 1 => store B1 online */
+  8    58     2 port_no bit (4),				/* requester's port number */
+  8    59     2 pad1 bit (1),
+  8    60     2 mode bit (1),					/* 1 => programmable mode */
+  8    61     2 nea_enabled bit (1),				/* 1 => non-existent address logic enabled */
+  8    62     2 nea bit (7),					/* 001 => 32K, 002 => 64K, 003 => 96K, etc. */
+  8    63     2 int bit (1),					/* 1 => stores are internally interlaced */
+  8    64     2 lwr bit (1),					/* 1 => store B is low */
+  8    65     2 port_mask_0_3 bit (4),				/* 1 => corresponding port enabled */
+  8    66 
+  8    67     2 mask_b_assign bit (9),				/* interrupt mask "B" port assignment */
+  8    68     2 pad2 bit (12),
+  8    69     2 cyclic_prior bit (7),				/* cyclic port priority switches */
+  8    70     2 pad3 bit (4),
+  8    71     2 port_mask_4_7 bit (4)) unal;			/* 1 => corresponding port enabled */
+  8    72 
+  8    73 
+  8    74 dcl 1 scr_mr based (scrp) aligned,			/* SC mode register */
+  8    75 
+  8    76    (2 pad1 bit (50),
+  8    77     2 identification bit (4),				/* 0000 => 8034, 8035
+  8    78*						   0001 => 6000 SC
+  8    79*						   0010 => 4MW SCU */
+  8    80     2 TS_strobe_margin bit (2),			/* 00 => normal timing
+  8    81*						   01 => slow timing
+  8    82*						   10 => inhibit strobe
+  8    83*						   11 => fast timing */
+  8    84     2 G0_strobe_margin bit (2),
+  8    85     2 ANSWER_strobe_margin bit (2),
+  8    86     2 DA_strobe_margin bit (2),
+  8    87     2 EOC_strobe_margin bit (2),
+  8    88     2 PLUS_5_VOLT_margin bit (2),			/* 00 => normal voltage
+  8    89*						   01 => -5%
+  8    90*						   10 => normal voltage
+  8    91*						   11 => +5% */
+  8    92     2 parity_override bit (1),			/* 1 => SU forced to accept data with incorrect parity */
+  8    93     2 parity_disable bit (1),				/* 1 => disable data and ZAC parity checking */
+  8    94     2 store_IA_disable bit (1),			/* 1 => disable illegal action indication */
+  8    95     2 ZAC_parity_error bit (1),			/* 1 => cause ZAC parity error */
+  8    96     2 SGR_accepted bit (1),				/* 1 => SGR command accepted by SC */
+  8    97     2 pad2 bit (1)) unal;
+  8    98 
+  8    99 
+  8   100 dcl 1 scr_msk based (scrp) aligned,			/* SC mask register */
+  8   101 
+  8   102    (2 interrupt_mask_1 bit (16),			/* mask bits for interrupts 0 thru 15 */
+  8   103     2 pad1 bit (16),
+  8   104     2 port_mask_1 bit (4),				/* mask bits for ports 0 thru 3 */
+  8   105 
+  8   106     2 interrupt_mask_2 bit (16),			/* mask bits for interrupts 16 thru 31 */
+  8   107     2 pad2 bit (16),
+  8   108     2 port_mask_2 bit (4)) unal;			/* mask bits for ports 4 thru 7 */
+  8   109 
+  8   110 
+  8   111 dcl 1 scr_su based (scrp) aligned,			/* store unit mode register */
+  8   112 
+  8   113    (2 pad1 bit (36),
+  8   114     2 ZAC_line bit (6),				/* EDAC mode only - address field */
+  8   115     2 syndrome bit (8),				/* EDAC mode only - failure syndrome */
+  8   116     2 identification bit (4),				/* 0000 => High Speed Core Model AA1
+  8   117*						   0001 => High Speed Core Model AA3
+  8   118*						   0011 => 4K, 16 pin chip, MOS memory, M32 boards
+  8   119*						   0100 => 1K chip MOS memory with EDAC enabled
+  8   120*						   1010 => 64K, 16 pin chip, MOS memory, M64 boards
+  8   121*						   1011 => 16K, 16 pin chip, MOS memory, M264 boards
+  8   122*						   1100 => 1K chip MOS memory with EDAC disabled
+  8   123*						   1110 => 16K, 16 pin chip, MOS memory, M128 boards
+  8   124*						   1111 => 4K, 22 pin chip MOS memory, M16 boards */
+  8   125     2 EDAC_disabled bit (1),				/* 1 => correction disabled but detection still enabled */
+  8   126     2 pad2 bit (4),
+  8   127     2 MINUS_5_VOLT_margin bit (2),
+  8   128     2 PLUS_5_VOLT_margin bit (2),
+  8   129     2 spare_margin bit (2),
+  8   130     2 PLUS_19_VOLT_margin bit (2),
+  8   131     2 pad3 bit (1),
+  8   132     2 SENSE_strobe_margin bit (2),			/* core only */
+  8   133     2 pad4 bit (1),
+  8   134     2 maint_functions_enabled bit (1)) unal;		/* 1 => maintenance functions enabled */
+  8   135 
+  8   136 /* End of include file ...... scr.incl.pl1 */
+  8   137 
+      522 
+      523 
+  9     1 /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  9     2 /* format: style4 */
+  9     3 
+  9     4 /* Information about system controllers */
+  9     5 
+  9     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  9     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  9     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  9     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  9    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  9    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  9    12          3 mbz bit (3) unaligned,
+  9    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  9    14        2 info aligned,
+  9    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  9    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  9    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  9    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  9    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  9    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  9    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  9    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  9    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  9    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  9    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  9    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  9    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  9    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  9    29          3 mbz bit (13) unaligned,
+  9    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  9    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  9    32 
+  9    33 /* Information about CPUs */
+  9    34 
+  9    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  9    36        (
+  9    37        2 online bit (1),				/* "1"b if CPU is online */
+  9    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  9    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  9    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  9    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  9    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  9    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  9    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  9    45        2 mbz1 bit (6),
+  9    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  9    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  9    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  9    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  9    50        2 mbz2 bit (12),
+  9    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  9    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  9    53        2 controller_port fixed bin (3) unsigned
+  9    54        ) unaligned;					/* Port on controller */
+  9    55 
+  9    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  9    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  9    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  9    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  9    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  9    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  9    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  9    63        2 pad bit (12) unaligned;
+  9    64 
+  9    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  9    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  9    67        2 cow,
+  9    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  9    69          3 mbz1 bit (13) unaligned,
+  9    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  9    71          3 mbz2 bit (2) unaligned,
+  9    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  9    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  9    74          3 mbz3 bit (3) unaligned,
+  9    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  9    76 
+  9    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  9    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  9    79        2 pad bit (12) unal,
+  9    80        2 tag bit (6) unal;				/* Better be zero. */
+  9    81 
+  9    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  9    83        2 pad bit (36) aligned,
+  9    84        2 cow,					/* Connect operand word, in odd location. */
+  9    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  9    86          3 mbz1 bit (13) unaligned,
+  9    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  9    88          3 mbz2 bit (9) unaligned,
+  9    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  9    90 
+  9    91 /* MASKS and PATTERNS */
+  9    92 
+  9    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  9    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  9    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  9    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  9    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  9    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  9    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  9   100 
+  9   101 /* CAM and CACHE clear info */
+  9   102 
+  9   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  9   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  9   105 
+  9   106 /* MASKING INSTRUCTIONS & POINTERS */
+  9   107 
+  9   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  9   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  9   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  9   111 
+  9   112 /* MISCELLANEOUS */
+  9   113 
+  9   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  9   115        (
+  9   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  9   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  9   118        2 pad1 bit (4),
+  9   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  9   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  9   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  9   122        2 mask_cpu fixed bin (5)
+  9   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  9   124 
+  9   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  9   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  9   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  9   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  9   129 
+  9   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  9   131 
+  9   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  9   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  9   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  9   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  9   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  9   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  9   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  9   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  9   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  9   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  9   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  9   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  9   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  9   145 
+  9   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  9   147 
+  9   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  9   149 
+  9   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  9   151 
+  9   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  9   153 
+  9   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  9   155 						/* Which ports have expanders */
+  9   156 
+  9   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  9   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  9   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  9   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  9   161 
+  9   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  9   163 
+  9   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  9   165 						/* Controller size on config card */
+  9   166 
+  9   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  9   168 
+  9   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  9   170 						/* PTWs for SCAS pages */
+  9   171 
+  9   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  9   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  9   174 
+  9   175 
+  9   176 dcl  (
+  9   177      IOM_PORT init (1),
+  9   178      CPU_PORT init (2),
+  9   179      BULK_PORT init (3)
+  9   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  9   181 
+  9   182 
+  9   183 /* END INCLUDE FILE scs.incl.pl1 */
+      524 
+      525 
+ 10     1 /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+ 10     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+ 10     3 
+ 10     4 dcl  sdw_info_ptr pointer;
+ 10     5 
+ 10     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+ 10     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+ 10     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+ 10     9 
+ 10    10     2 access unaligned,				/* REWP */
+ 10    11       3 read bit (1) unaligned,
+ 10    12       3 execute bit (1) unaligned,
+ 10    13       3 write bit (1) unaligned,
+ 10    14       3 privileged bit (1) unaligned,
+ 10    15 
+ 10    16     2 pad1 bit (32) unaligned,
+ 10    17 
+ 10    18     2 rings unaligned,				/* Ring brackets */
+ 10    19       3 r1 bit (3) unaligned,
+ 10    20       3 r2 bit (3) unaligned,
+ 10    21       3 r3 bit (3) unaligned,
+ 10    22 
+ 10    23     2 pad2 bit (27) unaligned,
+ 10    24 
+ 10    25     2 flags aligned,
+ 10    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+ 10    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+ 10    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+ 10    29       3 pad3 bit (33) unaligned,
+ 10    30 
+ 10    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+ 10    32 
+ 10    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      526 
+      527 
+ 11     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 11     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 11     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 11     4 
+ 11     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 11     6 
+ 11     7 dcl (
+ 11     8 
+ 11     9 /* The following constants define the message action codes.  This indicates
+ 11    10*how a message is to be handled.  */
+ 11    11 
+ 11    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 11    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 11    14 
+ 11    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 11    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 11    17 
+ 11    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 11    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 11    20 
+ 11    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 11    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 11    23 
+ 11    24      SYSERR_LOG_OR_PRINT	init (4),
+ 11    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 11    26 
+ 11    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 11    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 11    29 
+ 11    30 
+ 11    31 /* The following constants are added to the normal severities to indicate
+ 11    32*different sorting classes of messages.  */
+ 11    33 
+ 11    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 11    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 11    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 11    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 11    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 11    39 	) fixed bin internal static options (constant);
+ 11    40 
+ 11    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      528 
+      529 
+      530 /* BEGIN MESSAGE DOCUMENTATION
+      531*
+      532*   Message:
+      533*   scas_init: Illegal tag on CPU config card.
+      534*
+      535*   S:	$crash
+      536*
+      537*   T:	$init
+      538*
+      539*   M:	One or more CPU cards is incorrect. Tag must be one of A, B, C, D, E, F, G, H.
+      540*
+      541*   A:	Correct the configuration or the configuration deck, and reboot.
+      542*
+      543*
+      544*   Message:
+      545*   scas_init: CPU X appears twice in config deck.
+      546*
+      547*   S:	$crash
+      548*
+      549*   T:	$init
+      550*
+      551*   M:	The configuration deck is incorrect.
+      552*
+      553*   A:	Correct the the configuration deck and reboot.
+      554*
+      555*
+      556*   Message:
+      557*   scas_init: Config card for bootload CPU indicates unit is offline.
+      558*
+      559*   S:	$crash
+      560*
+      561*   T:	$init
+      562*
+      563*   M:	The configuration deck is incorrect.
+      564*
+      565*   A:	Correct the configuration or the configuration deck, and reboot.
+      566*
+      567*
+      568*   Message:
+      569*   scas_init: Config card for CPU X is neither on nor off.
+      570*
+      571*   S:	$crash
+      572*
+      573*   T:	$init
+      574*
+      575*   M:	The configuration deck is incorrect.
+      576*
+      577*   A:	Correct the the configuration deck and reboot.
+      578*
+      579*
+      580*   Message:
+      581*   scas_init: No CPU config card.
+      582*
+      583*   S:	$crash
+      584*
+      585*   T:	$init
+      586*
+      587*   M:	The configuration deck is incorrect.
+      588*
+      589*   A:	Correct the the configuration deck and reboot.
+      590*
+      591*
+      592*   Message:
+      593*   scas_init: No config card for bootload CPU.
+      594*
+      595*   S:	$crash
+      596*
+      597*   T:	$init
+      598*
+      599*   M:	The configuration deck is incorrect.
+      600*
+      601*   A:	Correct the configuration or the configuration deck, and reboot.
+      602*
+      603*
+      604*   Message:
+      605*   scas_init: Illegal tag on MEM config card.
+      606*
+      607*   S:	$crash
+      608*
+      609*   T:	$init
+      610*
+      611*   M:	The configuration deck is incorrect. Tag must be one of A, B, C, D, E, F, G, H.
+      612*
+      613*   A:	Correct the the configuration deck and reboot.
+      614*
+      615*   Message:
+      616*   "scas_init:  MEM Y. Tags greater than "D" not supported by DPS8 CPUs",
+      617*
+      618*   S:	$crash
+      619*
+      620*   T:	$init
+      621*
+      622*   M:	The physical configuration or the configuration deck is incorrect. DPS8 CPUs
+      623*   have only 4 memory ports, therefore Multics systems comprised of DPS8 cpus or
+      624*   mixed systems of DPS, L68 and DPS8 cpus can only have 4 memories configured.
+      625*   (i.e. Memory tags A, B, C, and D).
+      626*
+      627*   A:	Correct the physical configuration and/or the configuration deck and reboot.
+      628*
+      629*
+      630*   Message:
+      631*   scas_init: MEM Y appears twice in config deck.
+      632*
+      633*   S:	$crash
+      634*
+      635*   T:	$init
+      636*
+      637*   M:	The configuration deck is incorrect.
+      638*
+      639*   A:	Correct the the configuration deck and reboot.
+      640*
+      641*
+      642*   Message:
+      643*   scas_init: Config card for MEM Y is neither on nor off.
+      644*
+      645*   S:	$crash
+      646*
+      647*   T:	$init
+      648*
+      649*   M:	The configuration deck is incorrect.
+      650*
+      651*   A:	Correct the the configuration deck and reboot.
+      652*
+      653*
+      654*   Message:
+      655*   scas_init: More than one low-order MEM.
+      656*
+      657*   S:	$crash
+      658*
+      659*   T:	$init
+      660*
+      661*   M:	The configuration deck is incorrect.
+      662*
+      663*   A:	Correct the the configuration deck and reboot.
+      664*
+      665*
+      666*   Message:
+      667*   scas_init: Config card for bootload MEM indicates unit is offline.
+      668*
+      669*   S:	$crash
+      670*
+      671*   T:	$init
+      672*
+      673*   M:	The configuration deck is incorrect.
+      674*
+      675*   A:	Correct the the configuration deck and reboot.
+      676*
+      677*
+      678*   Message:
+      679*   scas_init: MEM X is not enabled.
+      680*
+      681*   S:	$crash
+      682*
+      683*   T:	$init
+      684*
+      685*   M:	The bootload CPU does not have MEM X enabled.
+      686*
+      687*   A:	Correct the configuration or the configuration deck, and reboot.
+      688*
+      689*
+      690*   Message:
+      691*   scas_init: Size too large on config card for MEM Y.
+      692*
+      693*   S:	$crash
+      694*
+      695*   T:	$init
+      696*
+      697*   M:	Either the PORT SIZE plug on the free edge of the PQ board
+      698*   of the bootload CPU does not agree with the configuration deck, or the
+      699*   actual amount of memory present in MEM Y does not agree with the
+      700*   config deck.
+      701*
+      702*
+      703*   A:	Correct the configuration or the configuration deck, and reboot.
+      704*
+      705*
+      706*   Message:
+      707*   scas_init: MEM Y has more memory than indicated by CPU switches.
+      708*
+      709*   S:	$crash
+      710*
+      711*   T:	$init
+      712*
+      713*   M:	The PORT SIZE plug on the free edge of the PQ board
+      714*   of the bootload CPU does not agree with the STORE SIZE switch on MEM Y.
+      715*
+      716*   A:	Correct the configuration and reboot.
+      717*
+      718*
+      719*   Message:
+      720*   scas_init: MEM Y has duplicate mask assignments to CPU X.
+      721*
+      722*   S:	$crash
+      723*
+      724*   T:	$init
+      725*
+      726*   M:	The EXECUTE INTERRUPT MASK ASSIGNMENT
+      727*   or MASK/PORT ASSIGNMENT on memory Y is incorrect.
+      728*
+      729*   A:	Correct the configuration and reboot.
+      730*
+      731*
+      732*   Message:
+      733*   scas_init: MEM Y has no mask assigned to CPU X.
+      734*
+      735*   S:	$crash
+      736*
+      737*   T:	$init
+      738*
+      739*   M:	The EXECUTE INTERRUPT MASK ASSIGNMENT
+      740*   or MASK/PORT ASSIGNMENT on memory Y is incorrect.
+      741*
+      742*   A:	Correct the configuration and reboot.
+      743*
+      744*
+      745*   Message:
+      746*   scas_init: MEM Y address assignment disagrees with config deck.
+      747*
+      748*   S:	$crash
+      749*
+      750*   T:	$init
+      751*
+      752*   M:	The address assignment of memory Y, as read from the
+      753*   address assignment switches on the maintenance panel of the bootload CPU,
+      754*   disagrees with the address assignment
+      755*   of this memory as indicated by the relative position of its MEM card in
+      756*   the configuration deck.
+      757*
+      758*   A:	If the configuration deck is wrong, correct it and reboot. If the
+      759*   configuration deck is correct, check all address assignment
+      760*   switches on processors, IOMs, and the Bulk Store Controller, correct them,
+      761*   reboot bce, and reboot.
+      762*
+      763*   Message:
+      764*   scas_init: MEM Y has mask Z assigned to non-processor port.
+      765*
+      766*   S:	$crash
+      767*
+      768*   T:	$init
+      769*
+      770*   M:	The EXECUTE INTERRUPT MASK ASSIGNMENT
+      771*   or MASK/PORT ASSIGNMENT on memory Y is incorrect.
+      772*
+      773*   A:	Correct the configuration and reboot.
+      774*
+      775*
+      776*   Message:
+      777*   scas_init: MEM Y is not in PROGRAM mode.
+      778*
+      779*   S:	$crash
+      780*
+      781*   T:	$init
+      782*
+      783*   M:	The MODE switch for memory Y is incorrect.
+      784*
+      785*   A:	Correct the configuration and reboot.
+      786*
+      787*
+      788*   Message:
+      789*   scas_init: No MEM config card.
+      790*
+      791*   S:	$crash
+      792*
+      793*   T:	$init
+      794*
+      795*   M:	The configuration deck is incorrect.
+      796*
+      797*   A:	Correct the the configuration deck and reboot.
+      798*
+      799*
+      800*   Message:
+      801*   scas_init: No config card for bootload MEM
+      802*
+      803*   S:	$crash
+      804*
+      805*   T:	$init
+      806*
+      807*   M:	The configuration deck is incorrect.
+      808*
+      809*   A:	Correct the the configuration deck and reboot.
+      810*
+      811*
+      812*   Message:
+      813*   scas_init: Possible memory address overlap in MEM Y.
+      814*
+      815*   S:	$crash
+      816*
+      817*   T:	$init
+      818*
+      819*   M:	This indicates that the lower store size does not agree with
+      820*   the actual memory available in the store unit.  A possible example
+      821*   of this is when the lower store is actually in two store units
+      822*   (A and A1) and the secondary unit (A1) is not enabled.
+      823*
+      824*   A:	Correct the configuration and reboot.
+      825*
+      826*
+      827*   Message:
+      828*   scas_init: CPU config card specifies wrong controller port number.
+      829*
+      830*   S:	$crash
+      831*
+      832*   T:	$init
+      833*
+      834*   M:	The configuration deck is incorrect.
+      835*
+      836*   A:	Correct the configuration or the configuration deck, and reboot.
+      837*
+      838*
+      839*   Message:
+      840*   scas_init: Bootload CPU has no system controller mask assigned.
+      841*
+      842*   S:	$crash
+      843*
+      844*   T:	$init
+      845*
+      846*   M:	No memory assigns a mask register to the bootload CPU.
+      847*
+      848*   A:	Correct the configuration and reboot.
+      849*
+      850*
+      851*   Message:
+      852*   scas_init: MEM Y is not in the configuration, but is enabled by the CPU switches.
+      853*
+      854*   S:	$crash
+      855*
+      856*   T:	$init
+      857*
+      858*   M:	The bootload CPU enables memory Y.
+      859*   But there is no MEM card for this memory.
+      860*
+      861*   A:	Correct the configuration or the configuration deck, and reboot.
+      862*
+      863*
+      864*   Message:
+      865*   scas_init: Illegal expander subport tag on CPU X config card.
+      866*
+      867*   S:	$crash
+      868*
+      869*   T:	$init
+      870*
+      871*   M:	A CPU config card, for CPU X, specifies an illegal value
+      872*   for a port-expander subport.  The only legal values for
+      873*   expander subports are A, B, C, and D.
+      874*
+      875*   A:	Correct the config deck and reboot.
+      876*
+      877*
+      878*   Message:
+      879*   scas_init: Bootload CPU may not be on an expander port.
+      880*
+      881*   S:	$crash
+      882*
+      883*   T:	$init
+      884*
+      885*   M:	The CPU config card for the bootload CPU indicates
+      886*   that the bootload CPU is on an expanded port.  This is not
+      887*   permitted.
+      888*
+      889*   A:	Correct the configuration or the configuration deck, and reboot.
+      890*
+      891*   Message:
+      892*   scas_init: SCU port P configured as both expanded and non-expanded.
+      893*
+      894*   S:	$crash
+      895*
+      896*   T:	$init
+      897*
+      898*   M:	CPU configuration cards imply that Port P on SCU's
+      899*   (P is the port number, from 0 to 7) is both an expander port
+      900*   (by being named as the CPU port in a CPU card with an
+      901*   expander_port field), and not an expander port (by being named
+      902*   in one that has none).
+      903*
+      904*   A:	Correct the configuratin deck and reboot.
+      905*
+      906*   Message:
+      907*   scas_init: CPU X and CPU Y both configured for port P subport S
+      908*
+      909*   S:	$crash
+      910*
+      911*   T:	$init
+      912*
+      913*   M:	The CPU CONFIG cards for CPU's X and Y both indicate that
+      914*   they are connected to subport S of expanded SCU port P.
+      915*   This is clearly impossible.
+      916*
+      917*   A:	Correct the configuration deck and reboot.
+      918*
+      919*   Message:
+      920*   scas_init: MEM X is an old SCU with port expander
+      921*
+      922*   S:	$crash
+      923*
+      924*   T:	$init
+      925*
+      926*   M:	System controller X is an old-style SCU, but configuration cards
+      927*   indicate that it has at least one expanded port, because there is
+      928*   a CPU on an expanded port in the system.  Old-style system controllers
+      929*   may not have expanded ports.
+      930*
+      931*   A:	The configuration deck is in error. Fix it and reboot.
+      932*
+      933*   Message:
+      934*   scs_init: CPU/IOM port range overlap. Using manual settings for cycle port priority.
+      935*
+      936*   S:     $info
+      937*
+      938*   T:	$init
+      939*
+      940*   M:	The cycle port priority on the SCUs cannot be set optimally because
+      941*   the range of port numbers for CPUs and IOMs overlap.  The
+      942*   manual settings of the cycle port priority switches on the SCUs will
+      943*   be used instead.  The system may experience problems as a result, with
+      944*   the typical symptom being op-not-complete faults at random times
+      945*   by CPUs with higher port numbers (lower SCU port priority).
+      946*
+      947*   A:     Continue to operate the system normally, but consult with
+      948*   Field Engineering personnel.  If possible, the system should be
+      949*   reconfigured so that the range of port numbers of IOMs
+      950*   and CPU do not overlap.  Further, CPU should be on higher-numbered
+      951*   ports than IOMs and Bulk Stores.
+      952*
+      953*   Message:
+      954*   scas_init: CPU data switches are XXXXXXXXXXXX, should be YYYYYYYYYYYY
+      955*
+      956*   S:     $info
+      957*
+      958*   T:	$init
+      959*
+      960*   M:	The CPU data switches are not set properly. The proper values are
+      961*   displayed.
+      962*
+      963*   A:     The incorrect value will prevent returning to bce on that CPU
+      964*   by means of EXECUTE SWITCHES. Certain incorrect values will activate
+      965*   software debugging traps. The switches should be corrected. This
+      966*   can be done while the CPU is running.
+      967*
+      968*
+      969*   END MESSAGE DOCUMENTATION */
+      970 
+      971      end scas_init;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0816.1  scas_init.pl1                     >spec>install>1112>scas_init.pl1
+507          1    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+509          2    05/08/81  1853.6  config_mem_card.incl.pl1          >ldd>include>config_mem_card.incl.pl1
+511          3    10/14/83  0957.2  config_cpu_card.incl.pl1          >ldd>include>config_cpu_card.incl.pl1
+513          4    04/11/85  1452.4  iom_data.incl.pl1                 >ldd>include>iom_data.incl.pl1
+516          5    03/27/82  0430.2  ptw.l68.incl.pl1                  >ldd>include>ptw.l68.incl.pl1
+518          6    10/18/88  1206.7  rcerr.incl.pl1                    >ldd>include>rcerr.incl.pl1
+520          7    06/10/82  1045.2  rsw.incl.pl1                      >ldd>include>rsw.incl.pl1
+522          8    08/17/83  1135.7  scr.incl.pl1                      >ldd>include>scr.incl.pl1
+524          9    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+526         10    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+528         11    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALL_ONES                        004013 constant        bit(36)                  initial dcl 79 ref 461 463 502
+ANNOUNCE                        000041 constant        fixed bin(17,0)          initial dcl 11-7 set ref 113 153* 477*
+BOOT_INITIALIZATION                    constant        fixed bin(17,0)          initial dcl 1-11 ref 110 153
+CPU_CARD_WORD                   000000 constant        char(4)                  initial dcl 3-24 set ref 177* 183* 188* 195* 252*
+                                                                                  257*
+CRASH                           000044 constant        fixed bin(17,0)          initial dcl 11-7 set ref 110 125* 183* 188* 211*
+                                                                                  214* 220* 223* 237* 252* 257* 272* 276* 284* 294*
+                                                                                  302* 332* 334* 345* 350* 353* 356* 359* 361* 363*
+                                                                                  366* 376* 381* 387* 448*
+CRASH_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 1-18 ref 247
+EARLY_INITIALIZATION                   constant        fixed bin(17,0)          initial dcl 1-10 ref 110 153 393
+IOM_PORT                               constant        fixed bin(17,0)          initial dcl 9-176 ref 409
+MAX_CYCLE_GROUP                        constant        fixed bin(17,0)          initial dcl 79 ref 496
+MEM_CARD_WORD                   000017 constant        char(4)                  initial dcl 2-18 set ref 272* 276* 284* 294* 308*
+                                                                                  376* 381*
+SERVICE_INITIALIZATION                 constant        fixed bin(17,0)          initial dcl 1-12 ref 110 153 327 372 393
+XED_INHIB                              constant        bit(18)                  initial packed unaligned dcl 79 ref 152
+absadr                          000026 constant        entry                    external dcl 93 ref 124 151
+access                    2     000131 automatic       structure                level 2 packed packed unaligned dcl 74
+addr                                                   builtin function         dcl 108 ref 119 124 124 131 131 131 131 134 134 134
+                                                                                  134 151 151 187 199 242 283 385 407 425 430 439
+address                         000131 automatic       fixed bin(26,0)          level 2 dcl 74 set ref 124*
+assigned                        000070 external static fixed bin(4,0)           array level 2 packed packed unsigned unaligned
+                                                                                  dcl 9-56 ref 409
+base                            000114 automatic       fixed bin(17,0)          dcl 49 in procedure "scas_init" set ref 298* 301 326
+                                                                                  332 338 396*
+base                      0(18)        based           fixed bin(17,0)          level 2 in structure "cdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 326*
+bin                                                    builtin function         dcl 108 ref 152 387 472 472
+binary                                                 builtin function         dcl 108 ref 420 420
+bit                                                    builtin function         dcl 108 ref 152
+cdata                                  based           structure                level 1 dcl 85
+cdp                             000142 automatic       pointer                  dcl 85 set ref 283* 284 284 288 291 307 311 312 317
+                                                                                  320 321 323 325 326 340 341 343 425* 433 433
+channel_mailbox                        based           structure                level 1 dcl 4-98
+code                            000120 automatic       fixed bin(35,0)          dcl 49 set ref 124* 125 151* 344* 345 345 350 353
+                                                                                  356 359 361 363 366
+config_$find                    000054 constant        entry                    external dcl 93 ref 177 266
+controller_port           1(33) 000072 external static fixed bin(3,0)           array level 3 in structure "scs$cow" packed packed
+                                                                                  unsigned unaligned dcl 9-65 in procedure
+                                                                                  "scas_init" set ref 241*
+controller_port           0(33) 000066 external static fixed bin(3,0)           array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unsigned unaligned dcl 9-35
+                                                                                  in procedure "scas_init" set ref 219 387 420 420
+controller_port           0(33)        based           fixed bin(3,0)           level 2 in structure "pdata" packed packed unsigned
+                                                                                  unaligned dcl 85 in procedure "scas_init" set ref
+                                                                                  240* 433
+cow                       1     000072 external static structure                array level 2 dcl 9-65 set ref 242
+cport                           000106 automatic       fixed bin(3,0)           dcl 49 set ref 204* 206 206 207 207 219 220 220*
+                                                                                  223* 223 234 237 237* 240 241 247*
+cpu_card                               based           structure                level 1 dcl 3-6
+cpu_cardp                       000150 automatic       pointer                  dcl 3-4 set ref 176* 177* 179 182 194 195 197 202
+                                                                                  204 209 210 247
+cpu_high_port                   000122 automatic       fixed bin(17,0)          dcl 49 set ref 163* 207 207* 463 463 469*
+cpu_low_port                    000121 automatic       fixed bin(17,0)          dcl 49 set ref 162* 206 206* 463 463 463 469*
+cpu_ports                       000123 automatic       bit(36)                  dcl 49 set ref 164* 463* 466
+cpu_type                  0(04)        based           fixed bin(2,0)           level 2 packed packed unsigned unaligned dcl 7-25
+                                                                                  ref 200
+df_no                     0(34)        based           bit(2)                   level 3 packed packed unaligned dcl 5-9 set ref 119*
+divide                                                 builtin function         dcl 108 ref 497
+dps8                            000103 automatic       bit(1)                   dcl 49 set ref 170* 200* 202* 276
+dps8_rsw_2                             based           structure                level 1 dcl 7-25
+eima_data                 1            based           structure                array level 2 packed packed unaligned dcl 85
+enabled                         000113 automatic       bit(1)                   dcl 49 set ref 298* 317 396* 397
+errtag                          000112 automatic       fixed bin(3,0)           dcl 49 set ref 344* 350 353 356
+exp_port                        000110 automatic       fixed bin(2,0)           dcl 49 set ref 210* 211 211 223 230 235
+expanded_port             0(30)        based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 233*
+expanded_port             1(26) 000072 external static bit(1)                   array level 3 in structure "scs$cow" packed packed
+                                                                                  unaligned dcl 9-65 in procedure "scas_init" set
+                                                                                  ref 231*
+expander_command          1(21) 000072 external static bit(3)                   array level 3 packed packed unaligned dcl 9-65 set
+                                                                                  ref 232*
+expander_port             7            based           fixed bin(3,0)           level 2 in structure "cpu_card" dcl 3-6 in procedure
+                                                                                  "scas_init" ref 209 210
+expander_port             0(31) 000066 external static fixed bin(2,0)           array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unsigned unaligned dcl 9-35
+                                                                                  in procedure "scas_init" set ref 223
+expander_port             1(27) 000072 external static fixed bin(3,0)           array level 3 in structure "scs$cow" packed packed
+                                                                                  unsigned unaligned dcl 9-65 in procedure
+                                                                                  "scas_init" set ref 230*
+expander_port             0(31)        based           fixed bin(2,0)           level 2 in structure "pdata" packed packed unsigned
+                                                                                  unaligned dcl 85 in procedure "scas_init" set ref
+                                                                                  235*
+expected_base                   000117 automatic       fixed bin(17,0)          dcl 49 set ref 263* 332 338*
+ext_interlaced            2(07)        based           bit(1)                   level 3 packed packed unaligned dcl 85 set ref 340*
+flags                     4     000131 automatic       structure                level 2 in structure "sdwi" dcl 74 in procedure
+                                                                                  "scas_init"
+flags                    41            based           structure                array level 3 in structure "iom_data" dcl 4-17
+                                                                                  in procedure "scas_init"
+flags                     0(18)        based           structure                level 2 in structure "l68_ptw" packed packed
+                                                                                  unaligned dcl 5-9 in procedure "scas_init"
+found                           000102 automatic       bit(1)                   dcl 49 set ref 169* 193* 257 262* 302 306* 381
+four_word                 2(09)        based           bit(1)                   level 3 packed packed unaligned dcl 85 set ref 341*
+halted_cpu                0(06) 000066 external static bit(1)                   array level 2 packed packed unaligned dcl 9-35 set
+                                                                                  ref 173*
+hbound                                                 builtin function         dcl 108 ref 471
+high_port                              parameter       fixed bin(17,0)          dcl 490 set ref 486 495 496 497 500* 502 502
+i                               000100 automatic       fixed bin(17,0)          dcl 49 set ref 118* 119* 172* 173* 216* 217 219 223
+                                                                                  223* 429* 430 437 438 439* 471* 472 472 472*
+info                      2            based           structure                level 2 in structure "cdata" dcl 85 in procedure
+                                                                                  "scas_init"
+info                      2     000064 external static structure                array level 2 in structure "scs$controller_data"
+                                                                                  dcl 9-6 in procedure "scas_init"
+init_scu                        000030 constant        entry                    external dcl 93 ref 344
+interlace                       000116 automatic       fixed bin(3,0)           dcl 49 set ref 298* 340 341 396*
+interrupt_cpu             0(05)        based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 436*
+interrupt_cpu             0(05) 000066 external static bit(1)                   array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unaligned dcl 9-35 in procedure
+                                                                                  "scas_init" set ref 448
+iom_data                               based           structure                level 1 dcl 4-17
+iom_data$                       000062 external static fixed bin(17,0)          dcl 4-11 set ref 407
+iom_data_ptr                    000152 automatic       pointer                  dcl 4-15 set ref 407* 410
+iom_high_port                   000125 automatic       fixed bin(17,0)          dcl 49 set ref 163* 414 414* 461 461 468*
+iom_low_port                    000124 automatic       fixed bin(17,0)          dcl 49 set ref 162* 413 413* 461 461 461 468*
+iom_mailbox                            based           structure                level 1 dcl 4-95
+iom_number                0(09) 000070 external static fixed bin(3,0)           array level 2 packed packed unsigned unaligned
+                                                                                  dcl 9-56 ref 410
+iom_ports                       000126 automatic       bit(36)                  dcl 49 set ref 164* 461* 466
+j                               000101 automatic       fixed bin(17,0)          dcl 49 set ref 432* 433 433 433 435*
+l68_ptw                                based           structure                level 1 dcl 5-9
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 5-17
+low_port                               parameter       fixed bin(17,0)          dcl 489 set ref 486 495 496 497 497 499* 502 502 502
+mask_assigned             1(01)        based           bit(1)                   array level 3 packed packed unaligned dcl 85 ref 433
+mask_assignment           1(05)        based           fixed bin(3,0)           array level 3 packed packed unaligned dcl 85 ref 433
+mask_instruction$rmcm           000052 constant        entry                    external dcl 93 ref 438
+mask_instruction$smcm           000050 constant        entry                    external dcl 93 ref 437
+masks_found                     000107 automatic       bit(1)                   array packed unaligned dcl 49 set ref 428* 433 435*
+mem_card                               based           structure                level 1 dcl 2-5
+mem_cardp                       000146 automatic       pointer                  dcl 2-3 set ref 265* 266* 268 271 288 291 310 319
+                                                                                  329 334
+middle_port                     000100 automatic       fixed bin(17,0)          dcl 492 set ref 497* 499* 500
+n_cpus                          000104 automatic       fixed bin(17,0)          dcl 49 set ref 168* 180* 180 252
+n_mems                          000105 automatic       fixed bin(17,0)          dcl 49 set ref 261* 269* 269 376
+null                                                   builtin function         dcl 108 ref 176 179 265 268
+offline                   2(01)        based           bit(1)                   level 3 in structure "cdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 284 291*
+                                                                                  307 311* 321*
+offline                   0(01) 000066 external static bit(1)                   array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unaligned dcl 9-35 in procedure
+                                                                                  "scas_init" set ref 217
+offline                   0(01)        based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 188 245*
+                                                                                  431
+offline                   2(01) 000064 external static bit(1)                   array level 3 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 9-6 in procedure
+                                                                                  "scas_init" set ref 395
+on_line                  41(01)        based           bit(1)                   array level 4 packed packed unaligned dcl 4-17 ref
+                                                                                  410
+online                    2            based           bit(1)                   level 3 in structure "cdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 284 288*
+                                                                                  312* 317 320* 323 343
+online                    2     000064 external static bit(1)                   array level 3 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 9-6 in procedure
+                                                                                  "scas_init" set ref 395 472
+paged                     4     000131 automatic       bit(1)                   level 3 packed packed unaligned dcl 74 set ref 128*
+pdata                                  based           structure                level 1 dcl 85
+pdp                             000144 automatic       pointer                  dcl 85 set ref 187* 188 233 235 240 245 430* 431 433
+                                                                                  436
+per_device                             based           structure                level 1 dcl 4-59
+per_iom                                based           structure                level 1 dcl 4-40 in procedure "scas_init"
+per_iom                  40            based           structure                array level 2 in structure "iom_data" dcl 4-17
+                                                                                  in procedure "scas_init"
+port                      2            based           fixed bin(3,0)           level 2 dcl 3-6 ref 204
+port_no                   0(16)        based           bit(4)                   level 2 packed packed unaligned dcl 8-19 ref 387
+privileged_mode_ut$swap_sdw     000024 constant        entry                    external dcl 93 ref 134
+rcerr_addscu_bad_mask                  constant        fixed bin(17,0)          initial dcl 6-31 ref 356
+rcerr_addscu_bigconfig                 constant        fixed bin(17,0)          initial dcl 6-31 ref 363
+rcerr_addscu_dup_mask                  constant        fixed bin(17,0)          initial dcl 6-31 ref 350
+rcerr_addscu_manual                    constant        fixed bin(17,0)          initial dcl 6-31 ref 359
+rcerr_addscu_memoverlap                constant        fixed bin(17,0)          initial dcl 6-31 ref 366
+rcerr_addscu_no_mask                   constant        fixed bin(17,0)          initial dcl 6-31 ref 353
+rcerr_addscu_oldexpand                 constant        fixed bin(17,0)          initial dcl 6-31 ref 361
+rcerr_addscu_size                      constant        fixed bin(17,0)          initial dcl 6-31 ref 345
+read                      2     000131 automatic       bit(1)                   level 3 packed packed unaligned dcl 74 set ref 126*
+rel                                                    builtin function         dcl 108 ref 242
+rel_cow_ptr                     000074 external static bit(18)                  array level 2 packed packed unaligned dcl 9-77 set
+                                                                                  ref 242*
+rsw_util$init_rsw_mask          000036 constant        entry                    external dcl 93 ref 323
+rsw_util$port_info              000032 constant        entry                    external dcl 93 ref 298 396
+rsw_util$set_rsw_mask           000034 constant        entry                    external dcl 93 ref 140
+rswp                            000154 automatic       pointer                  dcl 7-11 set ref 199* 200
+scas$                           000020 external static fixed bin(17,0)          dcl 90 set ref 134 134
+scr_cfg1                               based           structure                level 1 dcl 8-19
+scr_util$set_cfg                000044 constant        entry                    external dcl 93 ref 472
+scr_util$set_port_enable        000042 constant        entry                    external dcl 93 ref 420
+scr_util$set_port_enable_bit    000040 constant        entry                    external dcl 93 ref 247 410
+scrp                            000156 automatic       pointer                  dcl 8-17 set ref 385* 387
+scs$bos_processor_tag           000104 external static fixed bin(3,0)           dcl 9-137 ref 192 214 387 420 420 448
+scs$cfg_data                    000112 external static fixed bin(71,0)          array dcl 9-150 set ref 385
+scs$controller_config_size      000124 external static fixed bin(14,0)          array dcl 9-164 set ref 327* 329*
+scs$controller_data             000064 external static structure                array level 1 dcl 9-6 set ref 283 425 471
+scs$cow                         000072 external static structure                array level 1 dcl 9-65
+scs$cow_ptrs                    000074 external static structure                array level 1 dcl 9-77
+scs$cycle_priority_template     000130 external static bit(7)                   dcl 9-172 set ref 502*
+scs$expanded_ports              000114 external static bit(1)                   array packed unaligned dcl 9-154 set ref 220 234*
+                                                                                  237
+scs$interrupt_controller        000106 external static fixed bin(3,0)           dcl 9-141 ref 385 425 439
+scs$mask_ptr                    000102 external static pointer                  array packed unaligned dcl 9-110 set ref 439*
+scs$port_addressing_word        000110 external static bit(3)                   array dcl 9-148 set ref 439
+scs$port_data                   000070 external static structure                array level 1 dcl 9-56
+scs$processor_data              000066 external static structure                array level 1 dcl 9-35 set ref 187 430
+scs$processor_data_switch_value 000122 external static bit(36)                  dcl 9-162 set ref 152* 153 153*
+scs$processor_switch_data       000116 external static bit(36)                  array dcl 9-157 set ref 146 153 153* 199
+scs$processor_switch_template   000120 external static bit(36)                  array dcl 9-158 set ref 146*
+scs$read_mask                   000100 external static bit(36)                  array dcl 9-109 set ref 438*
+scs$scas_page_table             000126 external static bit(36)                  array dcl 9-169 set ref 117* 119 124 124
+scs$set_cycle_switches          000132 external static bit(1)                   dcl 9-173 set ref 470* 476*
+scs$set_mask                    000076 external static bit(36)                  array dcl 9-108 set ref 437*
+sdw_info                               based           structure                level 1 dcl 10-6
+sdw_util_$construct             000046 constant        entry                    external dcl 93 ref 131
+sdwi                            000131 automatic       structure                level 1 dcl 74 set ref 123* 131 131
+severity                        000130 automatic       fixed bin(17,0)          dcl 49 set ref 110* 113* 195* 308* 318* 397*
+size                                   based           fixed bin(17,0)          level 2 in structure "cdata" packed packed unaligned
+                                                                                  dcl 85 in procedure "scas_init" set ref 325*
+size                      2            based           fixed bin(18,0)          level 2 in structure "mem_card" dcl 2-5 in procedure
+                                                                                  "scas_init" ref 329 334
+size                      1     000131 automatic       fixed bin(19,0)          level 2 in structure "sdwi" dcl 74 in procedure
+                                                                                  "scas_init" set ref 129*
+size                            000115 automatic       fixed bin(17,0)          dcl 49 in procedure "scas_init" set ref 298* 325 334
+                                                                                  338 396*
+state                     3            based           char(4)                  level 2 in structure "mem_card" dcl 2-5 in procedure
+                                                                                  "scas_init" set ref 288 291 310* 319*
+state                     3            based           char(4)                  level 2 in structure "cpu_card" dcl 3-6 in procedure
+                                                                                  "scas_init" set ref 194 195* 197* 247
+status_queue                           based           structure                level 1 dcl 4-92
+string                                                 builtin function         dcl 108 set ref 428*
+substr                                                 builtin function         dcl 108 set ref 461* 461 463* 463 502* 502
+sys_info$collection_1_phase     000060 external static fixed bin(17,0)          dcl 1-8 ref 110 110 110 153 153 153 247 327 372 393
+                                                                                  393
+syserr                          000056 constant        entry                    external dcl 93 ref 125 153 183 188 195 211 214 220
+                                                                                  223 237 252 257 272 276 284 294 302 308 318 332
+                                                                                  334 345 350 353 356 359 361 363 366 376 381 387
+                                                                                  397 448 477
+tag                       1            based           fixed bin(3,0)           level 2 in structure "mem_card" dcl 2-5 in procedure
+                                                                                  "scas_init" ref 271
+tag                       0(30) 000074 external static bit(6)                   array level 2 in structure "scs$cow_ptrs" packed
+                                                                                  packed unaligned dcl 9-77 in procedure "scas_init"
+                                                                                  set ref 244*
+tag                       1            based           fixed bin(3,0)           level 2 in structure "cpu_card" dcl 3-6 in procedure
+                                                                                  "scas_init" ref 182
+tag                             000111 automatic       fixed bin(3,0)           dcl 49 in procedure "scas_init" set ref 139* 140*
+                                                                                  182* 183 183 187 188 192 195 211 214 223 230 231
+                                                                                  232 241 242 242 244 271* 272 272 276 276 283 284
+                                                                                  294 298* 318 323* 327 329 332 334 344* 345 350 353
+                                                                                  356 359 361 363 366 393* 395 395 396* 397* 408*
+                                                                                  409 410 410* 413 413 414 414*
+tag_letter                      000010 internal static char(1)                  initial array dcl 77 set ref 188* 195* 211* 223*
+                                                                                  223* 223* 276* 284* 294* 318* 332* 334* 345* 350*
+                                                                                  350* 353* 353* 356* 356* 359* 361* 363* 366* 397*
+toehold$                        000022 external static fixed bin(17,0)          dcl 90 set ref 151 151
+toehold_abs                     000127 automatic       fixed bin(24,0)          dcl 49 set ref 151* 152
+tsdw                            000140 automatic       fixed bin(71,0)          dcl 75 set ref 131 131 134 134
+type                      4            based           char(4)                  level 2 dcl 3-6 ref 202
+unspec                                                 builtin function         dcl 108 set ref 117* 123*
+write                     2(02) 000131 automatic       bit(1)                   level 3 packed packed unaligned dcl 74 set ref 127*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BCE_CRASH_INITIALIZATION               internal static fixed bin(17,0)          initial dcl 1-20
+BEEP                                   internal static fixed bin(17,0)          initial dcl 11-7
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 9-176
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 1-23
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 9-176
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 11-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 11-7
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 1-19
+SC_CFG                                 internal static fixed bin(6,0)           initial dcl 8-9
+SC_ETC                                 internal static fixed bin(6,0)           initial dcl 8-9
+SC_IC                                  internal static fixed bin(6,0)           initial dcl 8-9
+SC_MR                                  internal static fixed bin(6,0)           initial dcl 8-9
+SC_MSK                                 internal static fixed bin(6,0)           initial dcl 8-9
+SC_SU                                  internal static fixed bin(6,0)           initial dcl 8-9
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 1-21
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 11-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 11-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 11-7
+connect_channel                        internal static fixed bin(6,0)           initial dcl 4-105
+dps8_mem_size_table                    internal static fixed bin(24,0)          initial array dcl 7-63
+dps_mem_size_table                     internal static fixed bin(24,0)          initial array dcl 7-54
+dps_rsw_2                              based           structure                level 1 dcl 7-13
+iom_mailbox$                           external static fixed bin(17,0)          dcl 4-12
+iom_mailbox_seg                        based           structure                level 1 dcl 4-83
+iom_mailbox_seg_ptr                    automatic       pointer                  dcl 4-82
+l68_core_ptw                           based           structure                level 1 dcl 5-4
+l68_null_disk_ptw                      based           structure                level 1 dcl 5-15
+l68_real_disk_ptw                      based           structure                level 1 dcl 5-14
+l68_special_ptw                        based           structure                level 1 dcl 5-13
+n_devices                              automatic       fixed bin(17,0)          dcl 4-14
+ptp                                    automatic       pointer                  dcl 515
+rcerr_addcpu_amoff                     internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_bad_switches              internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_enable                    internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_gcos                      internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_lockup                    internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_no_response               internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_startup                   internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addcpu_trouble                   internal static fixed bin(17,0)          initial dcl 6-16
+rcerr_addscu_enable                    internal static fixed bin(17,0)          initial dcl 6-31
+rcerr_addscu_fault                     internal static fixed bin(17,0)          initial dcl 6-31
+rcerr_addscu_switches                  internal static fixed bin(17,0)          initial dcl 6-31
+rcerr_delcpu_last                      internal static fixed bin(17,0)          initial dcl 6-26
+rcerr_delcpu_no_good_blcpu             internal static fixed bin(17,0)          initial dcl 6-26
+rcerr_delcpu_no_stop                   internal static fixed bin(17,0)          initial dcl 6-26
+rcerr_delmain_abs_wired                internal static fixed bin(17,0)          initial dcl 6-44
+rcerr_delmain_nomem                    internal static fixed bin(17,0)          initial dcl 6-44
+rcerr_isolts_bad_switches              internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_bootload_scu              internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_cpu_online                internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_illegal_cpu               internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_illegal_scu               internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_lda_fail                  internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_locked                    internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_no_config                 internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_no_mask                   internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_no_response               internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_no_str_flt                internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_not                       internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_scu_not                   internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_two_scu                   internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_wrong_cell                internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_wrong_scu                 internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_isolts_wrong_scu_cell            internal static fixed bin(17,0)          initial dcl 6-57
+rcerr_locked                           internal static fixed bin(17,0)          initial dcl 6-48
+rcerr_no_config                        internal static fixed bin(17,0)          initial dcl 6-48
+rcerr_not_online                       internal static fixed bin(17,0)          initial dcl 6-48
+rcerr_online                           internal static fixed bin(17,0)          initial dcl 6-48
+rcerr_range                            internal static fixed bin(17,0)          initial dcl 6-48
+rcerr_sprq_failed                      internal static fixed bin(17,0)          initial dcl 6-48
+rsw_1_3                                based           structure                level 1 dcl 7-39
+rsw_4                                  based           structure                level 1 dcl 7-47
+rsw_valid                              internal static fixed bin(17,0)          initial array dcl 7-66
+scr_cfg2                               based           structure                level 1 dcl 8-45
+scr_mr                                 based           structure                level 1 dcl 8-74
+scr_msk                                based           structure                level 1 dcl 8-100
+scr_su                                 based           structure                level 1 dcl 8-111
+scs$bos_restart_flags                  external static bit(8)                   dcl 9-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 9-103
+scs$cam_wait                           external static bit(8)                   dcl 9-104
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 9-152
+scs$connect_lock                       external static bit(36)                  dcl 9-132
+scs$cpu_test_mask                      external static bit(72)                  dcl 9-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 9-99
+scs$fast_cam_pending                   external static bit(36)                  array dcl 9-140
+scs$faults_initialized                 external static bit(1)                   dcl 9-138
+scs$idle_aptep                         external static pointer                  array packed unaligned dcl 9-130
+scs$nprocessors                        external static fixed bin(17,0)          dcl 9-136
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 9-97
+scs$open_level                         external static bit(72)                  dcl 9-94
+scs$processor                          external static bit(8)                   dcl 9-143
+scs$processor_start_int_no             external static fixed bin(5,0)           dcl 9-142
+scs$processor_start_mask               external static bit(72)                  dcl 9-95
+scs$processor_start_pattern            external static bit(36)                  dcl 9-98
+scs$processor_start_wait               external static bit(8)                   dcl 9-144
+scs$processor_switch_compare           external static bit(36)                  array dcl 9-159
+scs$processor_switch_mask              external static bit(36)                  array dcl 9-160
+scs$processor_test_data                external static structure                level 1 dcl 9-114
+scs$reconfig_general_cow               external static structure                level 1 dcl 9-82
+scs$reconfig_lock                      external static bit(36)                  dcl 9-133
+scs$reconfig_locker_id                 external static char(32)                 dcl 9-167
+scs$sys_level                          external static bit(72)                  dcl 9-93
+scs$sys_trouble_pending                external static bit(1)                   dcl 9-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 9-146
+scs$trouble_flags                      external static bit(8)                   dcl 9-134
+sdw_info_ptr                           automatic       pointer                  dcl 10-4
+special_status_channel                 internal static fixed bin(6,0)           initial dcl 4-105
+status_queue_ptr                       automatic       pointer                  dcl 4-91
+switch_w1                              based           structure                level 1 dcl 6-76
+system_fault_channel                   internal static fixed bin(6,0)           initial dcl 4-105
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+cpu_loop                        001242 constant        label                    dcl 177 ref 250
+cpu_loop_end                    002003 constant        label                    dcl 252 ref 179
+mem_loop                        002065 constant        label                    dcl 266 ref 374
+mem_loop_end                    003155 constant        label                    dcl 376 ref 268 372
+scas_init                       000734 constant        entry                    external dcl 46
+set_cycle_group                 003726 constant        entry                    internal dcl 486 ref 468 469 499 500
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4500        4634    4014        4510
+Length      5354    4014       134         504     464          10
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+scas_init                           228 external procedure  is an external procedure.  
+set_cycle_group                      74 internal procedure  calls itself recursively.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 tag_letter                  scas_init
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+scas_init                000100 i                           scas_init
+                         000101 j                           scas_init
+                         000102 found                       scas_init
+                         000103 dps8                        scas_init
+                         000104 n_cpus                      scas_init
+                         000105 n_mems                      scas_init
+                         000106 cport                       scas_init
+                         000107 masks_found                 scas_init
+                         000110 exp_port                    scas_init
+                         000111 tag                         scas_init
+                         000112 errtag                      scas_init
+                         000113 enabled                     scas_init
+                         000114 base                        scas_init
+                         000115 size                        scas_init
+                         000116 interlace                   scas_init
+                         000117 expected_base               scas_init
+                         000120 code                        scas_init
+                         000121 cpu_low_port                scas_init
+                         000122 cpu_high_port               scas_init
+                         000123 cpu_ports                   scas_init
+                         000124 iom_low_port                scas_init
+                         000125 iom_high_port               scas_init
+                         000126 iom_ports                   scas_init
+                         000127 toehold_abs                 scas_init
+                         000130 severity                    scas_init
+                         000131 sdwi                        scas_init
+                         000140 tsdw                        scas_init
+                         000142 cdp                         scas_init
+                         000144 pdp                         scas_init
+                         000146 mem_cardp                   scas_init
+                         000150 cpu_cardp                   scas_init
+                         000152 iom_data_ptr                scas_init
+                         000154 rswp                        scas_init
+                         000156 scrp                        scas_init
+set_cycle_group          000100 middle_port                 set_cycle_group
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        config_$find                  init_scu                      mask_instruction$rmcm
+mask_instruction$smcm         privileged_mode_ut$swap_sdw   rsw_util$init_rsw_mask        rsw_util$port_info
+rsw_util$set_rsw_mask         scr_util$set_cfg              scr_util$set_port_enable      scr_util$set_port_enable_bit
+sdw_util_$construct           syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+iom_data$                     scas$                         scs$bos_processor_tag         scs$cfg_data
+scs$controller_config_size    scs$controller_data           scs$cow                       scs$cow_ptrs
+scs$cycle_priority_template   scs$expanded_ports            scs$interrupt_controller      scs$mask_ptr
+scs$port_addressing_word      scs$port_data                 scs$processor_data
+scs$processor_data_switch_value                             scs$processor_switch_data     scs$processor_switch_template
+scs$read_mask                 scs$scas_page_table           scs$set_cycle_switches        scs$set_mask
+sys_info$collection_1_phase   toehold$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     46 000733       110 000741       113 000753       117 000755       118 000761       119 000765       121 000771
+    123 000773       124 000776       125 001015       126 001037       127 001041       128 001043       129 001045
+    131 001047       134 001064       139 001101       140 001105       141 001120       146 001122       151 001130
+    152 001144       153 001155       162 001214       163 001217       164 001222       168 001224       169 001225
+    170 001226       172 001227       173 001233       174 001236       176 001240       177 001242       179 001253
+    180 001257       182 001260       183 001264       187 001313       188 001317       192 001351       193 001355
+    194 001357       195 001363       197 001415       199 001420       200 001424       201 001432       202 001433
+    204 001441       206 001443       207 001446       209 001451       210 001454       211 001456       214 001505
+    216 001530       217 001535       219 001541       220 001545       223 001576       229 001644       230 001646
+    231 001660       232 001662       233 001664       234 001666       235 001673       236 001700       237 001701
+    240 001732       241 001736       242 001747       244 001754       245 001756       247 001760       250 002002
+    252 002003       257 002032       261 002060       262 002061       263 002062       265 002063       266 002065
+    268 002100       269 002104       271 002105       272 002111       276 002140       283 002175       284 002202
+    288 002235       291 002245       294 002253       298 002304       301 002323       302 002325       306 002350
+    307 002352       308 002356       310 002402       311 002405       312 002410       317 002412       318 002421
+    319 002446       320 002451       321 002454       323 002456       325 002473       326 002477       327 002502
+    329 002512       332 002516       334 002544       338 002575       340 002600       341 002607       343 002615
+    344 002620       345 002633       350 002665       353 002721       356 002755       359 003011       361 003041
+    363 003071       366 003121       372 003150       374 003154       376 003155       381 003204       385 003232
+    387 003237       393 003267       395 003301       396 003307       397 003325       403 003355       407 003357
+    408 003362       409 003367       410 003374       413 003417       414 003423       416 003426       420 003430
+    425 003447       428 003454       429 003456       430 003463       431 003466       432 003471       433 003477
+    435 003526       436 003531       437 003533       438 003543       439 003553       440 003560       441 003561
+    443 003563       448 003565       461 003611       463 003620       466 003627       468 003632       469 003642
+    470 003652       471 003655       472 003661       473 003700       474 003702       476 003703       477 003705
+    481 003724       486 003725       495 003733       496 003737       497 003743       499 003747       500 003760
+    501 003775       502 003776       505 004005
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

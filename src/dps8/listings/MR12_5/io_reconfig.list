@@ -1,0 +1,2589 @@
+	COMPILATION LISTING OF SEGMENT io_reconfig
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /*  Add_channel and delete_channel entries written 5/83 by S. Krupp. */
+       10 /*  add_iom and delete_iom entries written 3/84 by Chris Jones */
+       11 /*  Modifed August 1984 by Chris Jones to fix "change ctep" bug in ensure_rpv_path */
+       12 /*  Modified November 1984 by M. Pandolf to call iom_switches$validate during IOM addition */
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(86-11-17,Farley), approve(86-11-20,MECR0002),
+       17*     audit(86-11-19,Fawcett), install(86-11-20,MR12.0-1222):
+       18*     Added check to delete_channel for active device assignments that require
+       19*     the channel. If one is found the operation is aborted.
+       20*  2) change(86-12-19,Farley), approve(86-12-19,MCR7587),
+       21*     audit(86-12-19,Fawcett), install(87-01-05,MR12.0-1253):
+       22*     Formal installation to close out above MECR0002.
+       23*  3) change(87-06-11,Lippard), approve(87-06-29,MCR7729),
+       24*     audit(87-07-08,Farley), install(87-08-06,MR12.1-1063):
+       25*     Modified cleanup handler to not unassign the channel from IOI if IOI
+       26*     was using it when we were called.
+       27*                                                   END HISTORY COMMENTS */
+       28 
+       29 
+       30 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       31 io_reconfig:
+       32      proc ();
+       33 
+       34 /* Parameter */
+       35 
+       36 dcl	p_chanid		   char (8) aligned;	/* (I) name of the channel in question */
+       37 dcl	p_code		   fixed bin (35);		/* (O) standard system status code */
+       38 dcl	p_tag		   fixed bin (3);		/* (I) IOM tag */
+       39 
+       40 /* Automatic */
+       41 
+       42 dcl	added		   bit (1) aligned;
+       43 dcl	adding_channel	   bit (1) aligned init ("0"b);
+       44 						/* Always init this. */
+       45 dcl	base_chnl		   bit (1) aligned;
+       46 dcl	chanid		   char (8) aligned;
+       47 dcl	chnl_required	   bit (1) aligned;
+       48 dcl	code		   fixed bin (35);
+       49 dcl	cv_status_ptr	   ptr;
+       50 dcl	deleting_channel	   bit (1) aligned init ("0"b);
+       51 						/* Always init this. */
+       52 dcl	device_active	   bit (1) aligned;
+       53 dcl	dtx		   fixed bin;
+       54 dcl	grp_chnl_active	   bit (1) aligned;
+       55 dcl	iom_active	   bit (1) aligned;
+       56 dcl	locked		   bit (1) aligned init ("0"b);
+       57 dcl	rel_chnl_active	   bit (1) aligned;
+       58 dcl	state_changed	   bit (1) aligned init ("0"b);
+       59 dcl	tag		   fixed bin (3);
+       60 dcl	temp_base_chnl_ptr	   ptr;
+       61 dcl	usurped_channel	   bit (1) aligned;
+       62 
+       63 /* Builtin */
+       64 
+       65 dcl	(addr, bin, hbound, lbound, null, ptr, rel, substr, unspec)
+       66 			   builtin;
+       67 
+       68 /* Condition */
+       69 
+       70 dcl	cleanup		   condition;
+       71 
+       72 /* Entries */
+       73 
+       74 dcl	config_$find_2	   entry (char (4) aligned, fixed bin, ptr);
+       75 dcl	config_$update	   entry ();
+       76 dcl	dctl$disk_inter	   entry (fixed bin (35), fixed bin (3), bit (36) aligned);
+       77 dcl	disk_control$add_channel
+       78 			   entry (fixed bin (8), fixed bin (35), bit (1) aligned);
+       79 dcl	ioi_assignment$lock_for_reconfig
+       80 			   entry;
+       81 dcl	ioi_assignment$unlock_for_reconfig
+       82 			   entry;
+       83 dcl	ioi_masked$interrupt   entry (fixed bin (35), fixed bin (3), bit (36) aligned);
+       84 dcl	ioi_usurp_channels$assign
+       85 			   entry (ptr, fixed bin (35));
+       86 dcl	ioi_usurp_channels$required
+       87 			   entry (ptr, fixed bin (35));
+       88 dcl	ioi_usurp_channels$unassign
+       89 			   entry (ptr, fixed bin (35));
+       90 dcl	iom_overhead$init	   entry (fixed bin (3), fixed bin (35));
+       91 dcl	iom_overhead$release   entry (fixed bin (3), fixed bin (35));
+       92 dcl	iom_switches$validate  entry (fixed bin (3), fixed bin (35));
+       93 dcl	pxss$addevent	   entry (bit (36) aligned);
+       94 dcl	pxss$wait		   entry ();
+       95 dcl	scr_util$set_port_enable
+       96 			   entry (fixed bin (3), bit (1) unal);
+       97 dcl	syserr		   entry () options (variable);
+       98 
+       99 /* Static */
+      100 
+      101 dcl	(
+      102 	error_table_$bad_channel,
+      103 	error_table_$chnl_already_added,
+      104 	error_table_$chnl_already_deleted,
+      105 	error_table_$chnl_being_deleted,
+      106 	error_table_$chnl_iom_active,
+      107 	error_table_$chnl_iom_inactive,
+      108 	error_table_$io_not_available,
+      109 	error_table_$io_not_defined,
+      110 	error_table_$iom_already_added,
+      111 	error_table_$iom_already_deleted,
+      112 	error_table_$no_base_chnl_active,
+      113 	error_table_$rel_chnl_active,
+      114 	error_table_$undeleted_device
+      115 	)		   fixed bin (35) ext static;
+      116 
+      117 dcl	DUMMY_INDEX	   fixed bin (35) init (0) int static options (constant);
+      118 
+      119 delete_channel:
+      120      entry (p_chanid, p_code);
+      121 
+      122 	deleting_channel = "1"b;
+      123 	usurped_channel = "0"b;
+      124 	idp = addr (ioi_data$);
+      125 	io_config_data_ptr = addr (io_config_data$);
+      126 	io_config_channel_table_ptr = ptr (io_config_data_ptr, io_config_data.channel_table_offset);
+      127 	io_config_iom_table_ptr = ptr (io_config_data_ptr, io_config_data.iom_table_offset);
+      128 
+      129 /* Look in ioi_data for required info. */
+      130 
+      131 	chanid = io_chnl_util$canonicalize_chanid (p_chanid);
+      132 	call get_ctep (chanid, ctep, code);
+      133 	call quit_if_error;
+      134 
+      135 	call get_gtep (ctep, gtep);
+      136 
+      137 	on cleanup call CLEANUP ();
+      138 
+      139 /* Lock for reconfiguration. */
+      140 
+      141 	call lock_for_reconfig;
+      142 
+      143 /* Make some checks on state of channel and then mark it as being deleted. */
+      144 
+      145 	if cte.deleted then
+      146 	     call ABORT (error_table_$chnl_already_deleted);
+      147 	else if cte.deleting then
+      148 	     call ABORT (error_table_$chnl_being_deleted);
+      149 
+      150 	do dtx = 1 to ioi_data.ndt;			/* check if channel is required for an active device */
+      151 	     dtep = addr (ioi_data.dt (dtx));
+      152 	     if dte.in_use & ^dte.direct & dte.process_id ^= ""b then do;
+      153 						/* if IOI is managing this device and it is assigned... */
+      154 		if dte.channel_required = chanid then
+      155 		     call ABORT (error_table_$io_not_available);
+      156 	     end;
+      157 	end;
+      158 
+      159 
+      160 	state_changed = "1"b;
+      161 	cte.deleting = "1"b;
+      162 
+      163 /* Get information relevant to deleting a channel. */
+      164 
+      165 	call get_chnl_del_info (gtep, ctep, base_chnl, rel_chnl_active, grp_chnl_active);
+      166 	call get_device_info (gtep, ctep, device_active, chnl_required);
+      167 
+      168 /* Make sure it is legal to delete this channel.
+      169*
+      170*   Rules:  The channel must not be in use.  The channel may not be
+      171*   the only logical channel that can reach an as yet undeleted
+      172*   device. If the channel is a base channel, then all logical
+      173*   channels on the same physical channel must have been
+      174*   previously deleted.
+      175*
+      176*   Notes:  rel_chnl_active = true means that there are other active
+      177*   channels that are on the same physical channel as chanid.
+      178*
+      179*   grp_chnl_active = true means that there are other active
+      180*   channels in the same group as chanid, but they are not
+      181*   on the same physical channel as chanid.
+      182*
+      183*   If chanid doesn't specify a base channel, then there is
+      184*   always at least one channel around to handle active devices
+      185*   if chanid is deleted.
+      186**/
+      187 
+      188 	if base_chnl then do;
+      189 	     if rel_chnl_active then
+      190 		call ABORT (error_table_$rel_chnl_active);
+      191 	     if device_active & ^grp_chnl_active then
+      192 		call ABORT (error_table_$undeleted_device);
+      193 	end;
+      194 
+      195 /* If channel doesn't belong to ioi, try to get it. */
+      196 
+      197 	if gte.disk_data_subsystem_idx ^= 0 then do;	/* Have disk chnl.  Try to usurp it. */
+      198 	     if ^cte.ioi_use then do;
+      199 		call ioi_usurp_channels$required (ctep, code);
+      200 		call quit_if_error;
+      201 		usurped_channel = "1"b;
+      202 	     end;
+      203 	end;
+      204 	else if ^cte.ioi_use then do;			/* Have non-ioi, non-disk type of chnl.  Try to grab it. */
+      205 	     call io_manager$assign (cte.chx, chanid, io_manager$ignore_interrupt, DUMMY_INDEX, cv_status_ptr, code);
+      206 	     call quit_if_error;
+      207 	     cte.ioi_use = "1"b;
+      208 	     usurped_channel = "1"b;
+      209 	end;
+      210 
+      211 /* Wait for channel activity to clear. */
+      212 
+      213 	do while (cte.connected);
+      214 	     call pxss$addevent (unspec (IO_CHANNEL_LOCK_TEMPLATE) || rel (ctep));
+      215 	     call pxss$wait ();
+      216 	end;
+      217 
+      218 /* Delete the channel. */
+      219 
+      220 	call io_manager$unassign_delete (cte.chx, code);
+      221 	call quit_if_error;
+      222 	cte.ioi_use = "0"b;
+      223 	cte.deleted = "1"b;
+      224 	cte.deleting = "0"b;
+      225 	call ensure_rpv_path_in_toehold;
+      226 	channel_table.channel_entry (cte.channel_table_idx).configured = "0"b;
+      227 	iom_table.iom_entry (channel_table.channel_entry (cte.channel_table_idx).iom_idx).n_configured_channels =
+      228 	     iom_table.iom_entry (channel_table.channel_entry (cte.channel_table_idx).iom_idx).n_configured_channels
+      229 	     - 1;
+      230 
+      231 	if gte.disk_data_subsystem_idx ^= 0 then do;
+      232 	     call ioi_usurp_channels$assign (gtep, code); /* make sure we still have enough */
+      233 	     call quit_if_error;
+      234 	end;
+      235 
+      236 	call unlock_for_reconfig;
+      237 	call syserr (LOG, "RCF: Deleted channel ^a.", chanid);
+      238 	p_code = 0;
+      239 	return;
+      240 
+      241 add_channel:
+      242      entry (p_chanid, p_code);
+      243 
+      244 	adding_channel = "1"b;
+      245 	idp = addr (ioi_data$);
+      246 	io_config_data_ptr = addr (io_config_data$);
+      247 	io_config_channel_table_ptr = ptr (io_config_data_ptr, io_config_data.channel_table_offset);
+      248 	io_config_iom_table_ptr = ptr (io_config_data_ptr, io_config_data.iom_table_offset);
+      249 
+      250 /* Look in ioi_data for required info. */
+      251 
+      252 	chanid = io_chnl_util$canonicalize_chanid (p_chanid);
+      253 	call get_ctep (chanid, ctep, code);
+      254 	call quit_if_error;
+      255 
+      256 	call get_gtep (ctep, gtep);
+      257 	call get_itep (ctep, itep);
+      258 
+      259 	on cleanup call CLEANUP ();
+      260 
+      261 /* Lock for reconfiguration. */
+      262 
+      263 	call lock_for_reconfig;
+      264 
+      265 /* Make some checks on state of channel. */
+      266 
+      267 	if ^cte.deleted then do;
+      268 	     if (^cte.ioi_use) & (gte.disk_data_subsystem_idx ^= 0) then
+      269 		call disk_control$add_channel ((gte.disk_data_subsystem_idx), (cte.disktab_ctx), added);
+      270 	     if added then
+      271 		goto DONE_ADDING;
+      272 	     call ABORT (error_table_$chnl_already_added);
+      273 	end;
+      274 	else if cte.deleting then
+      275 	     call ABORT (error_table_$chnl_being_deleted);
+      276 
+      277 /* Get information relevant to adding a channel. */
+      278 
+      279 	call get_chnl_add_info (ctep, itep, base_chnl, iom_active);
+      280 
+      281 /* Make sure it is legal to add this channel.
+      282*
+      283*   Rules:  The channel must be connected to an active iom.  If the channel
+      284*   is not a base channel, its associated base channel must already
+      285*   be active.
+      286**/
+      287 
+      288 	if ^iom_active then
+      289 	     call ABORT (error_table_$chnl_iom_inactive);
+      290 
+      291 	if ^base_chnl then do;
+      292 	     temp_base_chnl_ptr = ptr (ctep, cte.base_ctep);
+      293 	     if temp_base_chnl_ptr -> cte.deleted then
+      294 		call ABORT (error_table_$no_base_chnl_active);
+      295 	end;
+      296 
+      297 /* If channel belonged to someone else originally, give it back. */
+      298 
+      299 	state_changed = "1"b;
+      300 	if gte.disk_data_subsystem_idx ^= 0 then do;	/* Have disk chnl. */
+      301 	     call io_manager$assign_add (cte.chx, chanid, dctl$disk_inter,
+      302 		dskdcl_chans_per_subsys * gte.disk_data_subsystem_idx + cte.disktab_ctx - 1, cv_status_ptr, code);
+      303 	     call quit_if_error;
+      304 	     cte.statusp = cv_status_ptr;
+      305 	     cte.deleted = "0"b;
+      306 	     cte.ioi_use = "1"b;			/* so it will be given back */
+      307 	     call ioi_usurp_channels$unassign (gtep, code);
+      308 	     call quit_if_error;
+      309 	end;
+      310 	else if ^gte.mplex then do;			/* Have non-ioi, non-disk type of chnl. */
+      311 	     call io_manager$assign_add (cte.chx, chanid, io_manager$ignore_interrupt, DUMMY_INDEX, cv_status_ptr, code)
+      312 		;
+      313 	     call quit_if_error;
+      314 	     cte.deleted = "0"b;
+      315 	     call io_manager$unassign (cte.chx, code);
+      316 	     call quit_if_error;
+      317 	end;
+      318 	else do;
+      319 	     call io_manager$assign_add (cte.chx, chanid, ioi_masked$interrupt, bin (rel (ctep)), cv_status_ptr, code);
+      320 	     call quit_if_error;
+      321 	     cte.deleted = "0"b;
+      322 	     cte.ioi_use = "1"b;
+      323 	end;
+      324 
+      325 	channel_table.channel_entry (cte.channel_table_idx).configured = "1"b;
+      326 	iom_table.iom_entry (channel_table.channel_entry (cte.channel_table_idx).iom_idx).n_configured_channels =
+      327 	     iom_table.iom_entry (channel_table.channel_entry (cte.channel_table_idx).iom_idx).n_configured_channels
+      328 	     + 1;
+      329 	call syserr (LOG, "RCF: Added channel ^a.", chanid);
+      330 
+      331 DONE_ADDING:
+      332 	call unlock_for_reconfig;
+      333 	p_code = 0;
+      334 
+      335 	return;
+      336 
+      337 ERROR_RETURN:
+      338 	return;
+      339 
+      340 add_iom:
+      341      entry (p_tag, p_code);
+      342 
+      343 	call setup_and_find_iom_entry;
+      344 	call lock_for_reconfig;
+      345 	if iom_table.iom_entry (ite.iom_table_idx).configured then do;
+      346 	     call unlock_for_reconfig;
+      347 	     p_code = error_table_$iom_already_added;
+      348 	     return;
+      349 	end;
+      350 	iom_data.per_iom (tag).on_line = "1"b;
+      351 	call iom_overhead$init (tag, code);
+      352 	if code ^= 0 then do;
+      353 	     iom_data.per_iom (tag).on_line = "0"b;
+      354 	     call unlock_for_reconfig;
+      355 	     p_code = code;
+      356 	     return;
+      357 	end;
+      358 	call scr_util$set_port_enable (iom_card.port, "1"b);
+      359 						/* allow all SCUs at the IOM */
+      360 
+      361 	call iom_switches$validate (tag, code);
+      362 	if code ^= 0 then
+      363 	     call syserr (CRASH, "io_reconfig: Unable to validate switches for IOM ^a.", substr ("abcd", tag, 1));
+      364 
+      365 	ite.deleted = "0"b;
+      366 	iom_table.iom_entry (ite.iom_table_idx).configured = "1"b;
+      367 	iom_card.state = "on";
+      368 	call config_$update;
+      369 	call unlock_for_reconfig;
+      370 	call syserr (ANNOUNCE, "RCF: Added IOM ^a.", substr ("abcd", tag, 1));
+      371 	p_code = 0;
+      372 	return;
+      373 
+      374 delete_iom:
+      375      entry (p_tag, p_code);
+      376 
+      377 	call setup_and_find_iom_entry;
+      378 	call lock_for_reconfig;
+      379 	if iom_table.iom_entry (ite.iom_table_idx).n_configured_channels ^= 0 then do;
+      380 	     call unlock_for_reconfig;
+      381 	     p_code = error_table_$chnl_iom_active;
+      382 	     return;
+      383 	end;
+      384 	if ^iom_table.iom_entry (ite.iom_table_idx).configured then do;
+      385 	     call unlock_for_reconfig;
+      386 	     p_code = error_table_$iom_already_deleted;
+      387 	     return;
+      388 	end;
+      389 
+      390 	call iom_overhead$release (tag, code);
+      391 	if code ^= 0 then do;
+      392 	     call unlock_for_reconfig;
+      393 	     p_code = code;
+      394 	     return;
+      395 	end;
+      396 
+      397 	call scr_util$set_port_enable (iom_card.port, "0"b);
+      398 						/* disable all SCU's access to this IOM */
+      399 	ite.deleted = "1"b;
+      400 	iom_table.iom_entry (ite.iom_table_idx).configured = "0"b;
+      401 	iom_data.per_iom (tag).on_line = "0"b;
+      402 	iom_card.state = "off";
+      403 	call config_$update;
+      404 	call unlock_for_reconfig;
+      405 	call syserr (ANNOUNCE, "RCF: Deleted IOM ^a.", substr ("abcd", tag, 1));
+      406 	p_code = 0;
+      407 	return;
+      408 
+      409 setup_and_find_iom_entry:
+      410      proc;
+      411 
+      412 dcl	itx		   fixed bin;
+      413 
+      414 	tag = p_tag;
+      415 	iom_cardp = null ();
+      416 	call config_$find_2 (IOM_CARD_WORD, (tag), iom_cardp);
+      417 	if iom_cardp = null () then
+      418 	     goto IOM_NOT_CONFIGURED;
+      419 
+      420 	idp = addr (ioi_data$);
+      421 	iom_data_ptr = addr (iom_data$);
+      422 	io_config_data_ptr = addr (io_config_data$);
+      423 	io_config_iom_table_ptr = ptr (io_config_data_ptr, io_config_data.iom_table_offset);
+      424 	do itx = lbound (ioi_data.it, 1) to hbound (ioi_data.it, 1);
+      425 	     itep = addr (ioi_data.it (itx));
+      426 	     if tag = ite.tag then
+      427 		return;
+      428 	end;
+      429 
+      430 IOM_NOT_CONFIGURED:
+      431 	p_code = error_table_$io_not_defined;
+      432 	goto ERROR_RETURN;
+      433 
+      434      end setup_and_find_iom_entry;
+      435 
+      436 /* Procedure to ensure that the toehold has a non-deleted path to RPV when deleting a channel. */
+      437 
+      438 ensure_rpv_path_in_toehold:
+      439      proc;
+      440 
+      441 dcl	iomno		   fixed bin (3);
+      442 dcl	channo		   fixed bin (7);
+      443 dcl	iopx		   fixed bin;
+      444 dcl	saved_ctep	   ptr;
+      445 dcl	saved_iopx	   fixed bin;
+      446 dcl	toehold_channel_left   bit (1) aligned;
+      447 
+      448 dcl	1 path_word	   aligned,
+      449 	  2 port		   fixed bin (3) uns unal,
+      450 	  2 iom		   fixed bin (15) uns unal,
+      451 	  2 channel	   fixed bin unal;
+      452 
+      453 dcl	path_word_as_integer   fixed bin (35) based (addr (path_word));
+      454 
+      455 dcl	1 toehold$	   ext like toe_hold;
+      456 
+      457 	call io_chnl_util$name_to_iom (cte.chanid, iomno, channo, (0));
+      458 
+      459 	do iopx = lbound (toehold$.paths, 1) to hbound (toehold$.paths, 1);
+      460 	     if (toehold$.paths (iopx).iom_number = iomno) & (toehold$.paths (iopx).channel_number = channo) then
+      461 		goto FOUND_TOEHOLD_CHANNEL;
+      462 	end;
+      463 	return;					/* no problem since toehold doesn't use this channel */
+      464 
+      465 FOUND_TOEHOLD_CHANNEL:
+      466 	saved_iopx = iopx;
+      467 	toehold_channel_left = "0"b;
+      468 	do iopx = lbound (toehold$.paths, 1) to hbound (toehold$.paths, 1) while (^toehold_channel_left);
+      469 	     if iopx ^= saved_iopx then
+      470 		if toehold$.paths (iopx).channel_number ^= 0 then
+      471 		     toehold_channel_left = "1"b;
+      472 	end;
+      473 	if toehold_channel_left then do;
+      474 	     call set_toehold_path (saved_iopx, 0);
+      475 	     return;				/* not to worry */
+      476 	end;
+      477 
+      478 /**** We must find another channel and put it in the toehold ****/
+      479 
+      480 	saved_ctep = ctep;
+      481 	do ctep = ptr (ctep, ptr (ctep, cte.gtep) -> gte.ctep) repeat ptr (ctep, cte.next_ctep)
+      482 	     while (cte.deleted | cte.deleting | (cte.base_ctep ^= rel (ctep)));
+      483 	end;
+      484 	call io_chnl_util$name_to_iom (cte.chanid, iomno, channo, (0));
+      485 	call config_$find_2 (IOM_CARD_WORD, (iomno), iom_cardp);
+      486 	path_word.port = iom_card.port;
+      487 	path_word.iom = iomno;
+      488 	path_word.channel = channo;
+      489 	call set_toehold_path (saved_iopx, path_word_as_integer);
+      490 	ctep = saved_ctep;
+      491 	return;
+      492 
+      493 set_toehold_path:
+      494 	proc (path_idx, path_word_value);
+      495 
+      496 dcl	path_idx		   fixed bin;
+      497 dcl	path_word_value	   fixed bin (35);
+      498 dcl	path_word_ptr	   ptr;
+      499 
+      500 dcl	path_word		   fixed bin (35) based (path_word_ptr);
+      501 
+      502 	     path_word_ptr = addr (toehold$.paths (path_idx).port_number);
+      503 	     path_word = path_word_value;
+      504 
+      505 	end set_toehold_path;
+      506 
+      507      end ensure_rpv_path_in_toehold;
+      508 
+      509 quit_if_error:
+      510      proc;
+      511 
+      512 	if code ^= 0 then
+      513 	     call ABORT (code);
+      514 
+      515      end quit_if_error;
+      516 
+      517 ABORT:
+      518      proc (a_code);
+      519 
+      520 dcl	a_code		   fixed bin (35);
+      521 
+      522 	call CLEANUP ();
+      523 	p_code = a_code;
+      524 	goto ERROR_RETURN;
+      525 
+      526      end ABORT;
+      527 
+      528 
+      529 CLEANUP:
+      530      proc ();
+      531 
+      532 	if (gtep ^= null ()) & (ctep ^= null ()) & (state_changed) then do;
+      533 	     if deleting_channel then do;
+      534 		if usurped_channel then do;
+      535 		     if gte.disk_data_subsystem_idx > 0 then
+      536 			call ioi_usurp_channels$unassign (gtep, (0));
+      537 		     else if ^gte.mplex & cte.chx > 0 then do;
+      538 			call io_manager$unassign (cte.chx, (0));
+      539 			cte.ioi_use = "0"b;
+      540 		     end;
+      541 		end;
+      542 		cte.deleted = "0"b;
+      543 		cte.deleting = "0"b;
+      544 	     end;
+      545 	     else if adding_channel then do;
+      546 		if gte.disk_data_subsystem_idx ^= 0 then
+      547 		     call ioi_usurp_channels$assign (gtep, code);
+      548 		else if ^gte.mplex & cte.chx > 0 then do;
+      549 		     call io_manager$assign (cte.chx, chanid, io_manager$ignore_interrupt, DUMMY_INDEX, cv_status_ptr,
+      550 			code);
+      551 		     if code = 0 then
+      552 			cte.statusp = cv_status_ptr;
+      553 		end;
+      554 		cte.deleted = "1"b;
+      555 	     end;
+      556 	end;
+      557 	if locked then
+      558 	     call ioi_assignment$unlock_for_reconfig;
+      559 
+      560      end CLEANUP;
+      561 
+      562 lock_for_reconfig:
+      563      proc;
+      564 
+      565 	call ioi_assignment$lock_for_reconfig;
+      566 	locked = "1"b;
+      567 
+      568      end lock_for_reconfig;
+      569 
+      570 unlock_for_reconfig:
+      571      proc;
+      572 
+      573 	call ioi_assignment$unlock_for_reconfig;
+      574 	locked = "0"b;
+      575 
+      576      end unlock_for_reconfig;
+      577 
+      578 get_chnl_del_info:
+      579      proc (arg_gtep, arg_ctep, arg_base_chnl, arg_rel_chnl_active, arg_grp_chnl_active);
+      580 
+      581 /* Automatic */
+      582 
+      583 dcl	cptr		   ptr;
+      584 dcl	ctx		   fixed bin;
+      585 dcl	gptr		   ptr;
+      586 dcl	my_base_rptr	   bit (18) aligned;
+      587 
+      588 /* Parameter */
+      589 
+      590 dcl	arg_base_chnl	   bit (1) aligned;
+      591 dcl	arg_ctep		   ptr;
+      592 dcl	arg_grp_chnl_active	   bit (1) aligned;
+      593 dcl	arg_gtep		   ptr;
+      594 dcl	arg_rel_chnl_active	   bit (1) aligned;
+      595 
+      596 	arg_rel_chnl_active, arg_grp_chnl_active = "0"b;
+      597 	arg_base_chnl = (arg_ctep -> cte.base_ctep = rel (arg_ctep));
+      598 
+      599 	my_base_rptr = arg_ctep -> cte.base_ctep;
+      600 	gptr = arg_gtep;
+      601 
+      602 	do ctx = 1 to ioi_data.nct;
+      603 	     cptr = addr (ioi_data.ct (ctx));
+      604 	     if ^(cptr -> cte.deleted | cptr = arg_ctep) then do;
+      605 		if cptr -> cte.base_ctep = my_base_rptr then
+      606 		     arg_rel_chnl_active = "1"b;
+      607 		else if cptr -> cte.gtep = rel (gptr) then
+      608 		     arg_grp_chnl_active = "1"b;
+      609 	     end;
+      610 	end;
+      611 
+      612      end get_chnl_del_info;
+      613 
+      614 get_chnl_add_info:
+      615      proc (arg_ctep, arg_itep, arg_base_chnl, arg_iom_active);
+      616 
+      617 /* Parameter */
+      618 
+      619 dcl	arg_base_chnl	   bit (1) aligned;
+      620 dcl	arg_ctep		   ptr;
+      621 dcl	arg_iom_active	   bit (1) aligned;
+      622 dcl	arg_itep		   ptr;
+      623 
+      624 	if ^arg_itep -> ite.deleted then
+      625 	     arg_iom_active = "1"b;
+      626 	else arg_iom_active = "0"b;
+      627 
+      628 	arg_base_chnl = (arg_ctep -> cte.base_ctep = rel (arg_ctep));
+      629 
+      630      end get_chnl_add_info;
+      631 
+      632 get_device_info:
+      633      proc (arg_gtep, arg_ctep, arg_device_active, arg_chnl_required);
+      634 
+      635 /* Automatic */
+      636 
+      637 dcl	chanid		   char (8) aligned;
+      638 dcl	done		   bit (1) aligned;
+      639 dcl	dptr		   ptr;
+      640 dcl	gptr		   ptr;
+      641 dcl	initial_dtep	   bit (18);
+      642 
+      643 /* Parameter */
+      644 
+      645 dcl	arg_chnl_required	   bit (1) aligned;
+      646 dcl	arg_ctep		   ptr;
+      647 dcl	arg_device_active	   bit (1) aligned;
+      648 dcl	arg_gtep		   ptr;
+      649 
+      650 	arg_device_active, arg_chnl_required = "0"b;
+      651 	chanid = arg_ctep -> cte.chanid;
+      652 	gptr = arg_gtep;
+      653 
+      654 	initial_dtep = gptr -> gte.dtep;
+      655 	done = "0"b;
+      656 	do dptr = ptr (arg_ctep, initial_dtep) repeat ptr (dptr, dptr -> dte.next_dtep) while (^done);
+      657 	     if ^(dptr -> dte.deleted) then do;
+      658 		arg_device_active = "1"b;
+      659 		if dptr -> dte.channel_required = chanid then
+      660 		     arg_chnl_required = "1"b;
+      661 	     end;
+      662 	     done = (dptr -> dte.next_dtep = initial_dtep);
+      663 	end;
+      664 
+      665      end get_device_info;
+      666 
+      667 get_ctep:
+      668      proc (arg_chanid, arg_ctep, arg_code);
+      669 
+      670 /* Automatic */
+      671 
+      672 dcl	i		   fixed bin;
+      673 
+      674 /* Parameter */
+      675 
+      676 dcl	arg_chanid	   char (8) aligned;
+      677 dcl	arg_code		   fixed bin (35);
+      678 dcl	arg_ctep		   ptr;
+      679 
+      680 	arg_ctep = null;
+      681 	arg_code = 0;
+      682 
+      683 	do i = 1 to ioi_data.nct;
+      684 	     if ioi_data.ct (i).chanid = arg_chanid then do;
+      685 		arg_ctep = addr (ioi_data.ct (i));
+      686 		return;
+      687 	     end;
+      688 	end;
+      689 
+      690 	arg_code = error_table_$bad_channel;
+      691 
+      692      end get_ctep;
+      693 
+      694 
+      695 get_gtep:
+      696      proc (arg_ctep, arg_gtep);
+      697 
+      698 /* Parameter */
+      699 
+      700 dcl	arg_ctep		   ptr;
+      701 dcl	arg_gtep		   ptr;
+      702 
+      703 	arg_gtep = ptr (arg_ctep, arg_ctep -> cte.gtep);
+      704 
+      705      end get_gtep;
+      706 
+      707 
+      708 get_itep:
+      709      proc (arg_ctep, arg_itep);
+      710 
+      711 /* Parameter */
+      712 
+      713 dcl	arg_ctep		   ptr;
+      714 dcl	arg_itep		   ptr;
+      715 
+      716 	arg_itep = ptr (arg_ctep, arg_ctep -> cte.itep);
+      717 
+      718      end get_itep;
+      719 
+  1     1 /* BEGIN INCLUDE FILE ... config_iom_card.incl.pl1 ... 11/37/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl  iom_cardp pointer;				/* pointer to IOM card */
+  1     4 
+  1     5 dcl 1 iom_card aligned based (iom_cardp),		/* IOM card declaration */
+  1     6     2 word char (4),				/* "iom" */
+  1     7     2 tag fixed bin (3),				/* One more than IOM tag set in maintenance panel switches */
+  1     8     2 port fixed bin (3),				/* Controller port to which IOM is connected */
+  1     9     2 model char (4),				/* IOM model number: "iomb", "nsa", "iioc" */
+  1    10     2 state char (4),				/* State: "on" or "off" */
+  1    11 
+  1    12     2 pad (10) bit (36) aligned,			/* Pad to 15 fields */
+  1    13 
+  1    14     2 type_word aligned,
+  1    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    16       3 pad1 bit (4) unaligned,
+  1    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    18 
+  1    19 dcl  IOM_CARD_WORD char (4) aligned internal static options (constant) init ("iom");
+  1    20 
+  1    21 /* END INCLUDE FILE ... config_iom_card.incl.pl1 */
+      720 
+      721 
+  2     1 /* Begin include file ...... dskdcl.incl.pl1 */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+  2     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  2     6*     Support for FIPS dev 0.
+  2     7*  2) change(88-05-10,Farley), approve(88-06-03,MCR7906),
+  2     8*     audit(88-08-03,Fawcett), install(88-08-08,MR12.2-1080):
+  2     9*     Added reconnect_announce_time to chantab to allow announcement of
+  2    10*     reconnects at a throttled rate.  Otherwise only report them in the syserr
+  2    11*     log.  Also added IO_TYPE constant array for displaying I/O type.
+  2    12*                                                   END HISTORY COMMENTS */
+  2    13 
+  2    14 /* Structures used by the Disk DIM */
+  2    15 
+  2    16 /* Modified 84-03-21 by T. Oke for system wide free queue. */
+  2    17 /* Modified 84-04-24 by T. Oke for dynamic channel table. */
+  2    18 /* Modified 84-05-03 by T. Oke to hold sx for azm analysis. */
+  2    19 /* Modified 84-05-14 by T. Oke for larger quentry and adaptive optimization. */
+  2    20 /* Modifies 84-11-26 by R. A. Fawcett for device 0 (fips) */
+  2    21 
+  2    22 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+  2    23 
+  2    24 dcl  disk_seg$ ext;					/* disk data segment */
+  2    25 
+  2    26 dcl  disksp ptr,					/* pointer to disk subsystem info */
+  2    27      diskp ptr,					/* pointer to disk DIM info structure */
+  2    28      optp ptr,					/* pointer to opt_info */
+  2    29      sysp ptr;					/* pointer to sys_info */
+  2    30 
+  2    31 dcl  1 disk_data based (disksp) aligned,		/* disk subsystem information */
+  2    32        2 subsystems fixed bin,			/* number of subsystems */
+  2    33        2 free_offset bit (18),			/* offset of first unused location in segment */
+  2    34        2 status_mask bit (36),			/* mask for checking for disk error */
+  2    35        2 lock bit (36) unal,				/* disk_data lock */
+  2    36        2 free_q like qht,				/* head/tail offsets */
+  2    37        2 free_q_size fixed bin,			/* length of queue */
+  2    38        2 array (32),				/* per subsystem info */
+  2    39          (
+  2    40          3 offset bit (18),				/* location of data for this subsystem */
+  2    41          3 mbz bit (18),				/* low 18 of old  style indirect word */
+  2    42          3 name char (4)
+  2    43          ) unal,					/* name of subsystem */
+  2    44        2 stagnate_time fixed bin (35),			/* stagnatation period */
+  2    45        2 bail_outs fixed bin (35),			/* times ALM called PL1 */
+  2    46        2 pad bit (36),				/* double word align */
+  2    47        2 max_depth_reset_time fixed bin (71),		/* time max_reset done */
+  2    48 						/* Upper bound is MAX_IO_TYPE, hard coded to avoid dynamic calculation */
+  2    49        2 sys_info (0:6) like sys_info,			/* MUST BE DOUBLE WORD ALIGNED */
+  2    50        2 free_q_entries (2 refer (disk_data.free_q_size)) like quentry;
+  2    51 
+  2    52 
+  2    53 /* The following system table is used to hold the maximum queue loading
+  2    54*   permitted system-wide for each IO type.  From the current loading and
+  2    55*   the maximum loading a multiplier fraction is calculated.  These combine
+  2    56*   to produce the final optimization multiplier to derive a Logcial Seek
+  2    57*   from a Physical Seek. */
+  2    58 
+  2    59 dcl  1 sys_info aligned based (sysp),
+  2    60        3 depth float bin (27),			/* current load */
+  2    61        3 max_depth float bin (27),			/* max permissible */
+  2    62        3 fraction float bin (27),			/* load fraction */
+  2    63        3 depth_map bit (18) unaligned,			/* which depth counter */
+  2    64        3 pad bit (18) unaligned;
+  2    65 
+  2    66 /* Maximum number of channels per sub-system.  Must be a power of two.  It must
+  2    67*   be at or below the size of disk_init's chan_array size.  Shift factor is for
+  2    68*   dctl's use. */
+  2    69 
+  2    70 dcl  dskdcl_chans_per_subsys fixed bin static options (constant) initial (32);
+  2    71 dcl  dskdcl_chans_per_subsys_shift fixed bin static options (constant) initial (5);
+  2    72 
+  2    73 
+  2    74 dcl  1 disktab based (diskp) aligned,			/* control structure for DIM's */
+  2    75        2 lock bit (36) unal,				/* data base lock */
+  2    76        2 nchan fixed bin,				/* number of disk channels */
+  2    77        2 first_dev fixed bin unal,			/* frist device number  0 or 1 */
+  2    78        2 last_dev fixed bin unal,			/* highest disk drive number */
+  2    79        2 channels_online fixed bin,			/* number of disk channels actually in use */
+  2    80        2 dev_busy bit (72),				/* busy bit for each device (only 0-63 used) */
+  2    81        2 dev_queued bit (72),				/* requests queued bit for each device (only 0-63 used) */
+  2    82        2 abs_mem_addr fixed bin (26) unsigned,		/* absolute memory address of this structure */
+  2    83        2 channels bit (18) unal,			/* location of chantab for this subsystem */
+  2    84        2 dev_index fixed bin (17) unal,			/* current device to check */
+  2    85        2 errors fixed bin,				/* error count */
+  2    86        2 ferrors fixed bin,				/* fatal error count */
+  2    87        2 edac_errors fixed bin,			/* count of EDAC correctable errors */
+  2    88        2 call_lock_meters like disk_lock_meters,		/* lock meters for call side of DIM */
+  2    89        2 int_lock_meters like disk_lock_meters,		/* lock meters for interrupt side of DIM */
+  2    90        2 alloc_wait_meters like disk_lock_meters,		/* meters for queue entry allocations */
+  2    91        2 run_lock_meters like disk_lock_meters,		/* lock meters for run calls */
+  2    92        2 devtab (0:0 refer (disktab.last_dev)) like devtab; /* device information table */
+  2    93 
+  2    94 dcl  1 disk_channel_table (1 refer (disktab.nchan)) like chantab based aligned;
+  2    95 
+  2    96 
+  2    97 dcl  qp ptr,					/* pointer to queue entry */
+  2    98      cp ptr;					/* pointer to channel information table */
+  2    99 
+  2   100 
+  2   101 /* Queue entry, 6 words.  Cylinder and sector variables are over-size for
+  2   102*   expansion space.  They will always be positive and upper bits can be
+  2   103*   stolen for other fields.
+  2   104*
+  2   105*   Entries are forward and back linked to permit easy chasing and removal. */
+  2   106 
+  2   107 dcl  1 quentry based (qp) aligned,			/* queue entry */
+  2   108 						/* WORD 1 */
+  2   109        2 next bit (18) unaligned,			/* forward link */
+  2   110        2 prev bit (18) unaligned,			/* back link */
+  2   111 						/* WORD 2 */
+  2   112        2 intrpt bit (1) unaligned,			/* completion interrupt desired */
+  2   113        2 used bit (1) unaligned,			/* entry in use */
+  2   114        2 type fixed bin (4) unsigned unaligned,		/* IO type */
+  2   115        2 pad bit (6) unaligned,			/* future expansion */
+  2   116        2 coreadd bit (24) unaligned,			/* main memory address */
+  2   117 						/* WORD 3 */
+  2   118        2 pvtx fixed bin (8) unsigned unaligned,		/* for AZM/ol_dump */
+  2   119        2 pdi fixed bin (6) unsigned unaligned,		/* physical device */
+  2   120        2 dev fixed bin (6) unsigned unaligned,		/* device in sub-sys */
+  2   121        2 pad2 bit (5) unaligned,
+  2   122        2 cylinder fixed bin (11) unsigned unaligned,	/* cylinder of request */
+  2   123 						/* WORD 4 */
+  2   124        2 n_sectors fixed bin (6) unsigned unaligned,	/* # sectors of IO */
+  2   125        2 pad3 bit (9) unaligned,
+  2   126        2 sector bit (21) unaligned,			/* device sector desired */
+  2   127 						/* WORDS 5&6 */
+  2   128        2 time fixed bin (71);				/* clock at queue */
+  2   129 
+  2   130 
+  2   131 
+  2   132 dcl  1 chantab based (cp) aligned,			/* channel information table */
+  2   133        2 chx fixed bin (35),				/* io_manager channel index */
+  2   134        2 ioi_ctx fixed bin (35),			/* ioi channel table index */
+  2   135        2 statusp ptr,				/* pointer to hardware status word */
+  2   136        2 chanid char (8),				/* channel name */
+  2   137        (
+  2   138        2 pad0 bit (18),
+  2   139        2 in_use bit (1),				/* non-zero if channel being used */
+  2   140        2 active bit (1),				/* non-zero if channel active */
+  2   141        2 rsr bit (1),				/* non-zero if RSR in progress */
+  2   142        2 ioi_use bit (1),				/* non-zero if channel usurped by IOI */
+  2   143        2 inop bit (1),				/* non-zero if channel inoperative */
+  2   144        2 broken bit (1),				/* non-zero if channel broken */
+  2   145        2 action_code bit (2),				/* saved from status */
+  2   146        2 pad1 bit (10)
+  2   147        ) unal,
+  2   148        (
+  2   149        2 qrp bit (18),				/* rel ptr to queue entry */
+  2   150        2 pad2 bit (3),
+  2   151        2 command bit (6),				/* peripheral command */
+  2   152        2 erct fixed bin (8)
+  2   153        ) unal,					/* error retry count */
+  2   154        2 select_data,				/* data passed to IOM on select */
+  2   155          (
+  2   156          3 limit bit (12),				/* limit on number of sectors */
+  2   157          3 mbz bit (3),
+  2   158          3 sector bit (21)
+  2   159          ) unaligned,				/* sector address */
+  2   160        2 reconnect_announce_time fixed bin (52),		/* reconnect announcement throttle */
+  2   161        2 connect_time fixed bin (52),			/* time of last connect */
+  2   162        2 connects fixed bin,				/* count of connects performed */
+  2   163        2 detailed_status (0:17) bit (8) unal,		/* detailed status bytes */
+  2   164        2 rstdcw bit (36),				/* restore command */
+  2   165        2 scdcw bit (36),				/* select command */
+  2   166        2 sddcw bit (36),				/* select data xfer */
+  2   167        2 dcdcw bit (36),				/* command to read or write */
+  2   168        2 dddcw bit (36),				/* data xfer DCW */
+  2   169        2 dscdcw bit (36),				/* RSR command */
+  2   170        2 dsddcw bit (36),				/* RSR data xfer */
+  2   171        2 rssdcw bit (36),				/* RSS command */
+  2   172        2 status bit (36) aligned,			/* saved status */
+  2   173 						/* Lossage counters for interrupt loss. */
+  2   174        2 no_io_terminate fixed bin (35),		/* no t bit from io_manager$get_status */
+  2   175        2 terminate_not_active fixed bin (35),		/* terminate, but not active */
+  2   176        2 no_status_terminate fixed bin (35),		/* interrupt with no terminate */
+  2   177        2 status_from_run fixed bin (35);		/* status missed til run called */
+  2   178 
+  2   179 dcl  1 qht aligned based,				/* queue head/tail structure */
+  2   180        2 sum fixed bin (35),				/* sum of depths */
+  2   181        2 count fixed bin (35),			/* allocs */
+  2   182        2 max_depth fixed bin (17) unaligned,		/* high water mark */
+  2   183        2 depth fixed bin (17) unaligned,		/* current depth */
+  2   184        2 head bit (18) unaligned,			/* queue head */
+  2   185        2 tail bit (18) unaligned;			/* queue tail */
+  2   186 
+  2   187 dcl  dp ptr,					/* pointer to device information table */
+  2   188      pvtdip ptr;					/* pointer to dim_info in PVT entry */
+  2   189 
+  2   190 dcl  1 devtab based (dp) aligned,			/* device information table */
+  2   191        (
+  2   192        2 pvtx fixed bin (8),				/* index of PVT entry for device */
+  2   193        2 inop bit (1),				/* device inoperative */
+  2   194        2 was_broken bit (1),				/* device previously broken */
+  2   195        2 broken bit (1),				/* device down */
+  2   196        2 abandoned bit (1),				/* device lost and gone forever */
+  2   197        2 forward bit (1),				/* moving low->high */
+  2   198        2 pad bit (10),
+  2   199        2 buddy unsigned fixed bin (6),			/* other device on this spindle or 0 */
+  2   200        2 pdi unsigned fixed bin (6)
+  2   201        ) unal,					/* primary device index */
+  2   202        2 cylinder fixed bin (35),			/* current cylinder position */
+  2   203        2 comb fixed bin (35),				/* number of combs */
+  2   204        2 pad1 fixed bin (35),
+  2   205        2 time_inop fixed bin (52),			/* time drive became inoperative */
+  2   206        2 wq like qht,				/* work queue */
+  2   207 						/* Upper bound must be MAX_IO_TYPE, constant to avoid dynamic calculation. */
+  2   208        2 opt_info (0:6) like opt_info;			/* optimizer */
+  2   209 
+  2   210 
+  2   211 /* Optimizing table for device. Must be even multiple words long. */
+  2   212 /* Slope and intercept define a straight line of y = intercept - slope*x
+  2   213*   Multiplier is calculated from this and current system loading.
+  2   214*
+  2   215*   sys_info is the offset to the relevant system queue loading fraction. */
+  2   216 
+  2   217 dcl  1 opt_info aligned based (optp),
+  2   218        3 multiplier float bin (27),			/* depth mult */
+  2   219        3 slope float bin (27),			/* slope of line */
+  2   220        3 intercept float bin (27),			/* Y intercept */
+  2   221        3 sys_info bit (18) unaligned,			/* offset to sys_info */
+  2   222        3 depth fixed bin (17) unaligned,		/* elements in queue */
+  2   223        3 channel_wait fixed bin (52),			/* total channel time waiting */
+  2   224        3 queue_wait fixed bin (52),			/* total queue time waiting */
+  2   225        3 seek_sum fixed bin (35) unaligned,		/* sum of seeks */
+  2   226        3 seek_count fixed bin (35) unaligned;		/* number of seeks */
+  2   227 
+  2   228 
+  2   229 dcl  1 pvtdi based (pvtdip) aligned,			/* disk DIM info in PVT entry */
+  2   230        (
+  2   231        2 sx fixed bin (11),				/* structure index */
+  2   232        2 usable_sect_per_cyl fixed bin (11),		/* # of usable sectors on disk cylinder */
+  2   233        2 unused_sect_per_cyl fixed bin (11)
+  2   234        ) unal;					/* # of unused sectors at end of cylinder */
+  2   235 
+  2   236 dcl  1 disk_lock_meters based aligned,			/* lock meters for disk DIM */
+  2   237        2 count fixed bin,				/* total number of attempts */
+  2   238        2 waits fixed bin,				/* number of attempts which required waiting */
+  2   239        2 wait_time fixed bin (52);			/* total time spent waiting */
+  2   240 
+  2   241 dcl  (
+  2   242      RST_LISTX init (1),				/* listx for restore */
+  2   243      SC_LISTX init (2),				/* listx for select */
+  2   244      DSC_LISTX init (6),				/* listx for RSR */
+  2   245      RSS_LISTX init (8)
+  2   246      ) fixed bin (12) static options (constant);		/* listx for RSS */
+  2   247 
+  2   248 /* IO types defined.  Value is also index of write_map to determine if
+  2   249*   the IO type is a read or a write. */
+  2   250 
+  2   251 dcl  (
+  2   252      PAGE_READ init (0),
+  2   253      PAGE_WRITE init (1),
+  2   254      VTOC_READ init (2),
+  2   255      VTOC_WRITE init (3),
+  2   256      TEST init (4),
+  2   257      BOOTLOAD_READ init (5),
+  2   258      BOOTLOAD_WRITE init (6),
+  2   259      MAX_IO_TYPE init (6)
+  2   260      ) fixed bin (4) static options (constant);
+  2   261 
+  2   262 dcl  IO_TYPE (0:6) char (16)
+  2   263 	initial ("Page Read", "Page Write", "VTOC Read", "VTOC Write", "Test", "Bootload Read", "Bootload Write")
+  2   264 	static options (constant);
+  2   265 
+  2   266 /* Map indexed by IO type to determine if operation is a read or write. */
+  2   267 
+  2   268 dcl  write_mapping bit (7) initial ("0101001"b) static options (constant);
+  2   269 dcl  write_map (0:6) bit (1) defined (write_mapping);
+  2   270 
+  2   271 /* Map indexed by IO type to determine if operation is a sector IO. */
+  2   272 
+  2   273 dcl  sector_mapping bit (7) initial ("0011111"b) static options (constant);
+  2   274 dcl  sector_map (0:6) bit (1) defined (sector_mapping);
+  2   275 
+  2   276 /* Map indexed by IO type to determine if operation is done on behalf of bce */
+  2   277 
+  2   278 dcl  bootload_mapping bit (7) initial ("0000011"b) static options (constant);
+  2   279 dcl  bootload_map (0:6) bit (1) defined (bootload_mapping);
+  2   280 
+  2   281 /* End of include file ...... dskdcl.incl.pl1 */
+      722 
+      723 
+  3     1 /* Begin include file ...... ioi_data.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  3     6*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  3     7*     Support for FIPS and
+  3     8*     IMU.
+  3     9*  2) change(86-05-16,Kissel), approve(86-07-30,MCR7461), audit(86-07-31,Coren),
+  3    10*     install(86-08-19,MR12.0-1120):
+  3    11*     Changed the value of IOI_DEFAULT_MAX_BOUND from 4096 to 1024.  This
+  3    12*     corrects a problem when RCP tries to set the maximum workspace size if it
+  3    13*     is less than 4096.  Since ioi_ (actually grab_aste) touched all the pages
+  3    14*     at assignment time, the current length is 4, and trying to set the max
+  3    15*     length to less than 4 (e.g. because the max unprivileged workspace size in
+  3    16*     RCP for a special device is 1) returns an error.
+  3    17*                                                   END HISTORY COMMENTS */
+  3    18 
+  3    19 /* Rewritten May 1982 by C. Hornig for new ioi_ */
+  3    20 /* Rewrite finished March 1983 by Chris Jones */
+  3    21 /* Extended for reconfiguration April 1983 by Chris Jones. */
+  3    22 /* Modified November 1983 by Chris Jones to separate items in the dte protected by different locks. */
+  3    23 /* Modified January 1984 by Chris Jones to add ite's. */
+  3    24 /* Modified Feb 1984 by Rich Fawcett to add ipc and fips */
+  3    25 /* Modified Sept 1985 by Paul Farley to add controller flag to dte. */
+  3    26 
+  3    27 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3    28 
+  3    29 dcl	idp		   ptr;			/* pointer to IOI data structure */
+  3    30 dcl	gtep		   ptr;			/* pointer to channel/device group entry */
+  3    31 dcl	ctep		   ptr;			/* pointer to channel table entry */
+  3    32 dcl	dtep		   ptr;			/* pointer to wired device table entry */
+  3    33 dcl	itep		   ptr;			/* pointer to I/O multiplexer entry */
+  3    34 
+  3    35 dcl	(ioi_subsystems, ioi_devices, ioi_channels, ioi_multiplexers)
+  3    36 			   fixed bin;
+  3    37 dcl	ioi_data$		   external;		/* IOI data segment */
+  3    38 
+  3    39 
+  3    40 dcl	1 ioi_data	   based (idp) aligned,	/* I/O Interfacer data structure */
+  3    41 	  2 ngt		   fixed bin,		/* number of groups */
+  3    42 	  2 nct		   fixed bin,		/* number of channels */
+  3    43 	  2 ndt		   fixed bin,		/* number of devices */
+  3    44 	  2 nit		   fixed bin,		/* number of IOMs */
+  3    45 	  2 spurious_interrupts
+  3    46 			   fixed bin (35),		/* interrupts with no status */
+  3    47 	  2 reconfig_lock	   like lock,		/* lock for reconfiguring devices, channels, etc. */
+  3    48 	  2 flags,
+  3    49 	    3 setup	   bit (1) unal,		/* "1"b => ioi_init has run */
+  3    50 	    3 pad1	   bit (35) unal,
+  3    51 	  2 rss_idcw	   bit (36),		/* reset status IDCW */
+  3    52 	  2 pad2		   (6) fixed bin (35),	/* pad to 16 words */
+  3    53 	  2 dt		   (ioi_devices refer (ioi_data.ndt)) like dte aligned,
+  3    54 						/* device table */
+  3    55 	  2 gt		   (ioi_subsystems refer (ioi_data.ngt)) like gte aligned,
+  3    56 						/* channel/device group table */
+  3    57 	  2 ct		   (ioi_channels refer (ioi_data.nct)) like cte aligned,
+  3    58 						/* channel table */
+  3    59 	  2 it		   (ioi_multiplexers refer (ioi_data.nit)) like ite aligned;
+  3    60 						/* multiplexer table */
+  4     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  4     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  4     3*   encourages name conflicts.
+  4     4*   USE HC_FAST_LOCK INSTEAD!
+  4     5**/
+  4     6 
+  4     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  4     8 
+  4     9 /* format: style3 */
+  4    10 
+  4    11 declare	lock_ptr		pointer;
+  4    12 declare	1 lock		aligned based (lock_ptr),
+  4    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  4    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  4    15 	  2 flags		aligned,
+  4    16 	    3 notify_sw	bit (1) unaligned,
+  4    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  4    18 
+  4    19 /* End include file hc_lock.incl.pl1 */
+  3    61 
+  3    62 
+  3    63 dcl	1 ite		   based (itep) aligned,	/* I/O multiplexer table entry */
+  3    64 	  2 model		   char (4),		/* which flavor we are */
+  3    65 	  2 flags,
+  3    66 	  ( 3 deleting	   bit (1),
+  3    67 	    3 deleted	   bit (1)
+  3    68 	    )		   unaligned,
+  3    69 	  2 pad1		   bit (16) unaligned,
+  3    70 	  2 iom_table_idx	   fixed bin (17) unaligned,
+  3    71 	  2 tag		   fixed bin (3),
+  3    72 	  2 pad2		   (5) bit (36);
+  3    73 
+  3    74 dcl	1 gte		   based (gtep) aligned,	/* channel/device group table entry */
+  3    75 	  2 lock		   bit (36),		/* (0) loop lock */
+  3    76 	  2 name		   char (4),		/* (1) subsystem name */
+  3    77 	  2 dtep		   bit (18) unaligned,	/* (2) rel ptr to device just serviced */
+  3    78 	  2 ctep		   bit (18) unaligned,	/* (2) rel ptr to thread of channel table entries */
+  3    79 	  2 detailed_status_cmd
+  3    80 			   bit (6) unal,		/* (3) idcw command to read detailed status */
+  3    81 	  2 flags		   unaligned,		/* (3) */
+  3    82 	    3 psia	   bit (1),		/* "1"b if channel is PSIA */
+  3    83 	    3 suspend_devices  bit (1),		/* "1"b if device I/O suspended */
+  3    84 	    3 dual_controller  bit (1),		/* "1"b if dual controller subsystem (disk only) */
+  3    85 	    3 ascii_dtst	   bit (1),		/* "1"b if detailed status sent in ASCII mode */
+  3    86 	    3 mplex	   bit (1),		/* "1"b if channels are multiplexed among devices */
+  3    87 	    3 ipc		   bit (1),		/* "1"b if devices are on an IMU */
+  3    88 	    3 fips	   bit (1),		/* "1"b if devices start at zero */
+  3    89 	    3 pad		   bit (23),
+  3    90 	  2 n_devices	   fixed bin,		/* (4) number of devices in device table thread */
+  3    91 	  2 pending_connects   fixed bin,		/* (5) count of pending connect requests */
+  3    92 	  2 io_log_info_index  fixed bin,		/* (6) index into io_log_status_info table */
+  3    93 	  2 disk_data_subsystem_idx
+  3    94 			   fixed bin;		/* (7) index into disk_data.array for disks */
+  3    95 
+  3    96 dcl	1 cte		   based (ctep) aligned,	/* channel table entry */
+  3    97 	  2 next_ctep	   bit (18) unaligned,	/* (0) rel ptr to next channel table entry */
+  3    98 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  3    99 	  2 flags1	   unaligned,		/* (1) */
+  3   100 	    3 ioi_use	   bit (1),		/* "1"b if channel currently being used */
+  3   101 	    3 connected	   bit (1),		/* "1"b if channel is connected */
+  3   102 	    3 toss_status	   bit (1),		/* "1"b if status is to be ignored */
+  3   103 	    3 quiescing	   bit (1),		/* "1"b if the channel is just finishing what it's doing */
+  3   104 	    3 direct	   bit (1),		/* "1"b if this is a direct channel */
+  3   105 	    3 pad1	   bit (4),
+  3   106 	  2 disktab_ctx	   fixed bin (9) uns unal,	/* (1) index into disktab.chantab for this channel */
+  3   107 	  2 cur_dtep	   bit (18) unaligned,	/* (1) current device table entry */
+  3   108 	  2 chanid	   char (8),		/* (2) io_manager's name for channel */
+  3   109 	  2 statusp	   ptr unal,		/* (4) pointer to first word of status */
+  3   110 	  2 chx		   fixed bin (35),		/* (5) channel index for io_manager */
+  3   111 	  2 time_limit	   fixed bin (71),		/* (6) connect time limit */
+  3   112 	  2 saved_status	   unaligned,		/* (8) status repository while reading detailed status */
+  3   113 	    3 word1	   bit (36),
+  3   114 	    3 word2	   bit (36),
+  3   115 	    3 word4	   bit (36),
+  3   116 	    3 next_lpw_offset  bit (18),
+  3   117 	    3 command	   bit (6),
+  3   118 	  2 pad3		   bit (12) unaligned,	/* (11) */
+  3   119 	  2 base_ctep	   bit (18) unaligned,	/* (12) rel ptr to base logical chan. of physical chan. */
+  3   120 	  2 itep		   bit (18) unaligned,	/* (12) rel ptr to itep */
+  3   121 	  2 flags2	   unaligned,		/* (13) */
+  3   122 	    3 deleting	   bit (1),		/* "1"b if attempting to delete this channel */
+  3   123 	    3 deleted	   bit (1),		/* "1"b if channel deleted */
+  3   124 	  2 pad4		   bit (16) unaligned,	/* (13) */
+  3   125 	  2 channel_table_idx  fixed bin (17) unaligned,
+  3   126 	  2 pad5		   (2) bit (36);		/* (14) pad to 8 word boundary */
+  3   127 
+  3   128 dcl	1 dte		   based (dtep) aligned,	/* wired device table entry */
+  3   129 	  2 next_dtep	   bit (18) unaligned,	/* (0) rel ptr to next entry in thread */
+  3   130 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  3   131 	  2 cur_ctep	   bit (18) unaligned,	/* (1) rel ptr to channel in use */
+  3   132 	  2 flags1	   unaligned,		/* (1) flags protected by gte lock */
+  3   133 	    3 connected	   bit (1),		/* "1"b if device has a channel */
+  3   134 	    3 log_status_cnt   bit (1),		/* "1"b if count in log_status is valid */
+  3   135 	    3 reading_detailed_status
+  3   136 			   bit (1),		/* "1"b if read of detailed device status in progress */
+  3   137 	    3 pad1	   bit (15),
+  3   138 	  2 channel_required   char (8),		/* (2) channel name of required channel */
+  3   139 	  2 ev_chn	   fixed bin (71),		/* (4) event ID for status wakeups */
+  3   140 	  2 workspace_ptr	   ptr,			/* (6) workspace pointer */
+  3   141 	  2 workspace_astep	   ptr,			/* (8) workspace ASTE ptr */
+  3   142 	  2 workspace_sdw	   fixed bin (71),		/* (10) SDW of workspace segment */
+  3   143 	  2 ptp		   ptr,			/* (12) device page table */
+  3   144 	  2 max_bound	   fixed bin (19),		/* (14) largest allowable bound of workspace segment */
+  3   145 	  2 bound		   fixed bin (19),		/* (15) bound of workspace */
+  3   146 	  2 process_id	   bit (36),		/* (16) ID of process owning device */
+  3   147 	  2 ring		   fixed bin (3),		/* (17) highest ring allowed to access device */
+  3   148 	  2 device	   bit (6) unal,		/* (18) device code */
+  3   149 	  2 flags2	   unal,			/* (18) constant or protected by dte lock */
+  3   150 	    3 priv	   bit (1),		/* "1"b if privileged user */
+  3   151 	    3 in_use	   bit (1),		/* "1"b if device is to be used */
+  3   152 	    3 deleting	   bit (1),		/* "1"b if trying to delete this device */
+  3   153 	    3 deleted	   bit (1),		/* "1"b if this device is deleted */
+  3   154 	    3 suspended	   bit (1),		/* "1"b if device isn't to be used temporarily */
+  3   155 	    3 workspace_wired  bit (1),		/* "1"b if workspace is wired */
+  3   156               3 direct           bit (1),                   /* "1"b if device is connected to a direct channel */
+  3   157 	    3 controller	   bit (1),		/* "1"b if dte for the devices controller */
+  3   158 	    3 pad2	   bit (4),
+  3   159 	  2 device_table_idx   fixed bin (17) unaligned,
+  3   160 	  2 listx		   uns fixed bin (18) unal,	/* (19) DCW list index for connect */
+  3   161 	  2 idcw_listx	   uns fixed bin (18) unal,	/* (19) DCW list index of IDCW */
+  3   162 	  2 timeout	   fixed bin (35),		/* (20) time limit for I/O completion (usec) */
+  3   163 	  2 max_timeout	   fixed bin (35),		/* (21) maximum allowable timeout grace time (usec) */
+  3   164 	  2 unwire_time	   fixed bin (71),		/* (22) when to unwire the workspace */
+  3   165 	  2 pcw		   bit (36),		/* (24) peripheral control word (PCW) */
+  3   166 	  2 status_control,				/* (25) */
+  3   167 	    3 status_offset	   fixed bin (18) unsigned unaligned,
+  3   168 						/* offset of status queue in user workspace */
+  3   169 	    3 status_entries   fixed bin (9) unsigned unaligned,
+  3   170 						/* number of entries in status queue */
+  3   171 	    3 status_entry_idx fixed bin (9) unsigned unaligned,
+  3   172 						/* next entry to be used */
+  3   173 	  2 idcw		   bit (36),		/* (26) instruction DCW (KEEP ON EVEN WORD BOUNDARY) */
+  3   174 	  2 tdcw		   bit (36),		/* (27) transfer DCW to remainder of list */
+  3   175 	  2 special_status	   bit (36),		/* (28) special interrupt status */
+  3   176 	  2 lock		   like lock,		/* (29) wait lock */
+  3   177 	  2 log_status,				/* (32) */
+  3   178 	  ( 3 level	   fixed bin (3) unsigned,
+  3   179 	    3 time_out	   bit (1),
+  3   180 	    3 type	   bit (2),
+  3   181 	    3 command	   bit (6),
+  3   182 	    3 count	   fixed bin (6) unsigned,
+  3   183 	    3 channel	   bit (18),
+  3   184 	    3 status	   bit (36)
+  3   185 	    )		   unaligned,
+  3   186 	  2 ptx		   fixed bin,		/* (34) index of page table */
+  3   187 	  2 active	   bit (1),		/* (35) "1"b if device running or to run */
+  3   188 	  2 special_interrupt  bit (1),		/* (36) "1"b if special interrupt received */
+  3   189 	  2 detailed_status_valid
+  3   190 			   bit (1),		/* (37) "1"b if detailed status read sucessfully */
+  3   191 	  2 last_log_time	   fixed bin (71),		/* (38) when status was last logged */
+  3   192 	  2 detailed_status	   (8) bit (36),		/* (40) (buffer for reading most recent detailed status */
+  3   193 	  2 log_detailed_status
+  3   194 			   (8) bit (36);		/* (48) copy of last detailed status logged */
+  3   195 
+  3   196 /**** Defaults for various I/O parameters */
+  3   197 
+  3   198 dcl	IOI_DEFAULT_MAX_BOUND  fixed bin (19) static options (constant) init (1024);
+  3   199 dcl	IOI_DEFAULT_MAX_TIMEOUT
+  3   200 			   fixed bin (35) static options (constant) init (30000000);
+  3   201 dcl	IOI_DEFAULT_TIMEOUT	   fixed bin (35) static options (constant) init (30000000);
+  3   202 
+  3   203 dcl	IO_STATUS_ERROR_MASK   bit (36) static options (constant) init ("370000770000"b3);
+  3   204 
+  3   205 dcl	IO_CHANNEL_LOCK_TEMPLATE
+  3   206 			   char (2) int static options (constant) init ("ch");
+  3   207 dcl	IOI_DEVICE_LOCK_EVENT_TEMPLATE
+  3   208 			   char (2) static options (constant) init ("dv");
+  3   209 
+  3   210 /* End of include file ...... ioi_data.incl.pl1 */
+      724 
+      725 
+  5     1 /*  START OF:	io_config.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  5     2 
+  5     3 /* Structures for overlaying the io_config data segment. */
+  5     4 /* Written February 1984 by Chris Jones as part of IOM reconfiguration project. */
+  5     5 
+  5     6 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  5     7 
+  5     8 dcl	io_config_data$	   external;
+  5     9 
+  5    10 dcl	io_config_data_ptr	   ptr;
+  5    11 dcl	io_config_device_table_ptr
+  5    12 			   ptr;
+  5    13 dcl	io_config_channel_table_ptr
+  5    14 			   ptr;
+  5    15 dcl	io_config_controller_table_ptr
+  5    16 			   ptr;
+  5    17 dcl	io_config_iom_table_ptr
+  5    18 			   ptr;
+  5    19 
+  5    20 dcl	tables_length	   fixed bin (19);
+  5    21 
+  5    22 dcl	1 io_config_data	   aligned based (io_config_data_ptr),
+  5    23 	  2 version	   char (8),
+  5    24 	  2 tables_length	   fixed bin (19) unsigned,
+  5    25 	  2 device_table_offset
+  5    26 			   fixed bin (18) uns unal,
+  5    27 	  2 channel_table_offset
+  5    28 			   fixed bin (18) uns unal,
+  5    29 	  2 controller_table_offset
+  5    30 			   fixed bin (18) uns unal,
+  5    31 	  2 iom_table_offset   fixed bin (18) uns unal,
+  5    32 	  2 p_clock	   fixed bin (35),
+  5    33 	  2 pad		   (2) bit (36),		/* pad to 0 mod 8 boundary */
+  5    34 	  2 tables	   (0 refer (io_config_data.tables_length)) bit (36);
+  5    35 
+  5    36 dcl	1 device_table	   aligned based (io_config_device_table_ptr),
+  5    37 	  2 version	   char (8),
+  5    38 	  2 n_devices	   fixed bin,
+  5    39 	  2 pad		   bit (36),		/* pad to even word boundary */
+  5    40 	  2 device_entry	   (0 refer (device_table.n_devices)) like device_entry_template;
+  5    41 
+  5    42 dcl	1 device_entry_template
+  5    43 			   aligned based,
+  5    44 	  2 name		   char (32) unaligned,
+  5    45 	  2 comment	   char (32) unaligned,
+  5    46 	  2 flags,
+  5    47 	  ( 3 configured,				/* set => not deleted */
+  5    48 	    3 assigned				/* set => in use (by a user or ring 0) */
+  5    49 	    )		   bit (1) unaligned,
+  5    50 	  2 pad		   bit (36),		/* pad to even word boundary */
+  5    51 	  2 pchan_idx	   (8) fixed bin;		/* indexes into channel_table */
+  5    52 
+  5    53 dcl	1 channel_table	   aligned based (io_config_channel_table_ptr),
+  5    54 	  2 version	   char (8),
+  5    55 	  2 n_channels	   fixed bin,
+  5    56 	  2 pad		   bit (36),		/* pad to even word boundary */
+  5    57 	  2 channel_entry	   (0 refer (channel_table.n_channels)) aligned like channel_entry_template;
+  5    58 
+  5    59 dcl	1 channel_entry_template
+  5    60 			   aligned based,
+  5    61 	  2 name		   char (8),		/* e.g. "A31" */
+  5    62 	  2 comment	   char (32) unaligned,
+  5    63 	  2 flags,
+  5    64 	  ( 3 configured,				/* set => available for assignment */
+  5    65 	    3 assigned				/* set => currently assigned */
+  5    66 	    )		   bit (1) unaligned,
+  5    67 	  2 controller_idx	   fixed bin,		/* index into controller table (if on MPC) */
+  5    68 	  2 iom_idx	   fixed bin,		/* index into iom_table */
+  5    69 	  2 base_channel_idx   fixed bin;		/* index into channel table */
+  5    70 
+  5    71 dcl	1 controller_table	   aligned based (io_config_controller_table_ptr),
+  5    72 	  2 version	   char (8) aligned,
+  5    73 	  2 n_controllers	   fixed bin,
+  5    74 	  2 pad		   bit (36),		/* pad to even word boundary */
+  5    75 	  2 controller_entry   (0 refer (controller_table.n_controllers)) like controller_entry_template;
+  5    76 
+  5    77 dcl	1 controller_entry_template
+  5    78 			   aligned based,
+  5    79 	  2 name		   char (8),		/* e.g. "mspa" */
+  5    80 	  2 comment	   char (32) unaligned,
+  5    81 	  2 flags,
+  5    82 	  ( 3 configured,				/* set => not deleted */
+  5    83 	    3 assigned				/* set => one process has whole controller */
+  5    84 	    )		   bit (1) unaligned,
+  5    85 	  2 pad		   bit (36);		/* pad to even word boundary */
+  5    86 
+  5    87 dcl	1 iom_table	   aligned based (io_config_iom_table_ptr),
+  5    88 	  2 version	   char (8),
+  5    89 	  2 n_ioms	   fixed bin,
+  5    90 	  2 pad		   bit (36),		/* pad to even word boundary */
+  5    91 	  2 iom_entry	   (0 refer (iom_table.n_ioms)) like iom_entry_template;
+  5    92 
+  5    93 dcl	1 iom_entry_template   aligned based,
+  5    94 	  2 name		   char (8),
+  5    95 	  2 comment	   char (32) unaligned,
+  5    96 	  2 flags,
+  5    97 	  ( 3 configured				/* set => not deleted */
+  5    98 	    )		   bit (1) unaligned,
+  5    99 	  2 n_configured_channels
+  5   100 			   fixed bin;
+  5   101 
+  5   102 dcl	IO_CONFIG_DATA_VERSION_1
+  5   103 			   char (8) aligned static options (constant) init ("IOCD_01");
+  5   104 dcl	IO_CONFIG_DEVICE_TABLE_VERSION_1
+  5   105 			   char (8) aligned static options (constant) init ("DEVT_01");
+  5   106 dcl	IO_CONFIG_CHANNEL_TABLE_VERSION_1
+  5   107 			   char (8) aligned static options (constant) init ("CHANT_01");
+  5   108 dcl	IO_CONFIG_CONTROLLER_TABLE_VERSION_1
+  5   109 			   char (8) aligned static options (constant) init ("CTLRT_01");
+  5   110 dcl	IO_CONFIG_IOM_TABLE_VERSION_1
+  5   111 			   char (8) aligned static options (constant) init ("IOMT_01");
+  5   112 
+  5   113 /*  END OF:	io_config.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      726 
+      727 
+  6     1 /* Begin include file io_manager_dcls.incl.pl1 */
+  6     2 
+  6     3 /* Written by Charles Hornig, late 1980 and early 1981 */
+  6     4 /* Modified for MR10 interface, February 1982 */
+  6     5 /* Channel reconfiguration entries added by Chris Jones, January 1984 */
+  6     6 
+  6     7 /* These entries are callable on unwired stacks. */
+  6     8 
+  6     9 /* call io_manager$assign (Chx, Channel, Handler, Index, Statusp, Code); */
+  6    10 dcl  io_manager$assign
+  6    11 	entry (fixed bin (35), char (8) aligned, entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  6    12 	fixed bin (35), ptr, fixed bin (35));
+  6    13 
+  6    14 /* call io_manager$assign_add (Chx, Channel, Handler, Index, Statusp, Code); */
+  6    15 dcl  io_manager$assign_add
+  6    16 	entry (fixed bin (35), char (8) aligned, entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  6    17 	fixed bin (35), ptr, fixed bin (35));
+  6    18 
+  6    19 /* call io_manager$unassign (Chx, Code); */
+  6    20 dcl  io_manager$unassign entry (fixed bin (35), fixed bin (35));
+  6    21 
+  6    22 /* call io_manager$unassign_delete (Chx, Code); */
+  6    23 dcl  io_manager$unassign_delete entry (fixed bin (35), fixed bin (35));
+  6    24 
+  6    25 /* call io_manager$connect (Io_manager_arg); */
+  6    26 dcl  io_manager$connect entry (1 aligned like io_manager_arg);
+  6    27 
+  6    28 /* call io_manager$connect_abs (Io_manager_arg); */
+  6    29 dcl  io_manager$connect_abs entry (1 aligned like io_manager_arg);
+  6    30 
+  6    31 /* call io_manager$connect_direct (Io_manager_arg); */
+  6    32 dcl  io_manager$connect_direct entry (1 aligned like io_manager_arg);
+  6    33 
+  6    34 /* call io_manager$get_status (Chx, Io_status_entry_ptr); */
+  6    35 dcl  io_manager$get_status entry (fixed bin (35), ptr);
+  6    36 
+  6    37 /* call io_manager$mask (Chx); */
+  6    38 dcl  io_manager$mask entry (fixed bin (35));
+  6    39 
+  6    40 /* call io_manager$ignore_interrupt (); */
+  6    41 dcl  io_manager$ignore_interrupt entry (fixed bin (35), fixed bin (3), bit (36) aligned);
+  6    42 
+  6    43 /* call io_manager$data_tdcw (Io_manager_arg);
+  6    44*   dcl  io_manager$data_tdcw entry (1 aligned like io_manager_arg);
+  6    45*
+  6    46*   /* call io_manager$workspace_tdcw (Io_manager_arg); */
+  6    47 dcl  io_manager$workspace_tdcw entry (1 aligned like io_manager_arg);
+  6    48 
+  6    49 dcl  io_manager_arg_ptr ptr;
+  6    50 dcl  1 io_manager_arg aligned based (io_manager_arg_ptr),
+  6    51        2 chx fixed bin (35),				/* channel index from io_manager$assign */
+  6    52        2 bound fixed bin (19),			/* workspace size */
+  6    53        2 pcw bit (36) aligned,			/* or IDCW */
+  6    54        2 listx fixed bin (18),			/* DCW list offset */
+  6    55        2 ptp ptr,					/* page table pointer */
+  6    56        2 listp ptr,					/* DCW list pointer */
+  6    57        2 dcw_pair_ptr ptr;				/* DCW pair pointer */
+  6    58 
+  6    59 /* End include file io_manager_dcls.incl.pl1 */
+      728 
+      729 
+  7     1 /*  START OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7     2 
+  7     3 /* Written by Charles Hornig, 1st quarter 1981 */
+  7     4 /* Canonicalization entry added by Chris Jones, January 1984 */
+  7     5 
+  7     6 /* chanid = canonicalize_chanid (chanid); */
+  7     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  7     8 dcl	io_chnl_util$canonicalize_chanid
+  7     9 			   entry (char (8) aligned) returns (char (8) aligned);
+  7    10 
+  7    11 /* call iom_to_name (iomno, channo, name, code); */
+  7    12 dcl	io_chnl_util$iom_to_name
+  7    13 			   entry (fixed bin (3), fixed bin (7), char (8) aligned, fixed bin (35));
+  7    14 
+  7    15 /* call name_to_iom (name, iomno, channo, code); */
+  7    16 dcl	io_chnl_util$name_to_iom
+  7    17 			   entry (char (8) aligned, fixed bin (3), fixed bin (7), fixed bin (35));
+  7    18 
+  7    19 /*  END OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      730 
+      731 
+  8     1 /* Begin include file ...... iom_data.incl.pl1
+  8     2*   First written in August 1971 by R F Mabee.
+  8     3*   Modified for paged IOM November 1980 by C. Hornig.
+  8     4*   More IIOC changes by C. Hornig, June 1982.
+  8     5*   Modified for channel reconfiguration by Chris Jones, January 1984.
+  8     6*   Modified to remove support of non-paged IOMs by Chris Jones, August 1984.
+  8     7*   Modified to add IMW read protocol flags by M. Pandolf, January 1985.
+  8     8**/
+  8     9 
+  8    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  8    11 dcl	iom_data$		   external;
+  8    12 dcl	iom_mailbox$	   external;
+  8    13 
+  8    14 dcl	n_devices		   fixed bin;
+  8    15 dcl	iom_data_ptr	   ptr;
+  8    16 
+  8    17 dcl	1 iom_data	   based (iom_data_ptr) aligned,
+  8    18 	  2 n_devices	   fixed bin,		/* (0) Maximum number of channels. */
+  8    19 	  2 stop_lpw	   bit (36),		/* (1) LPW pointing to stop_dcw. */
+  8    20 	  2 stop_dcw	   bit (36),		/* (2) DCW to stop channel, probably storing bad status. */
+  8    21 	  2 stop_scw	   bit (36),		/* (3) SCW for same */
+  8    22 	  2 imw_lock	   fixed bin (35),		/* (4) Essentially a lock for iom switch checking: */
+  8    23 						/* 1  : OK to poll IMW */
+  8    24 						/* 0  : lock in transition */
+  8    25 						/* -1 : DONT poll IMW */
+  8    26 	  2 n_intr_procs fixed bin (35),		/* (5) Number of processors in interrupt handler */
+  8    27 	  2 pad1		   (2) bit (36),
+  8    28 	  2 stop_status	   bit (72),		/* (10) All unused channels store status here. */
+  8    29 	  2 rfh1		   (6) bit (36),		/* can't use this */
+  8    30 	  2 stop_ext_status	   bit (8 * 36),		/* (20) Unused channels' extended status */
+  8    31 	  2 pad3		   (5) bit (36),
+  8    32 	  2 invalid_interrupts fixed bin (35),		/* (35) interrupts on unused channels */
+  8    33 	  2 null_interrupts	   fixed bin (35),		/* (36) spurious interrupts */
+  8    34 	  2 multiple_interrupts
+  8    35 			   fixed bin (35),		/* (37) several interrupts at a time */
+  8    36 	  2 per_iom	   (4) like per_iom,	/* (40) for each IOM */
+  8    37 	  2 per_device	   (n_devices refer (iom_data.n_devices)) like per_device;
+  8    38 						/* (240) Data for assigned channels. */
+  8    39 
+  8    40 dcl	1 per_iom		   aligned based,
+  8    41 	  2 lock		   bit (36),		/* (40) connect mailbox lock */
+  8    42 	  2 flags,				/* (41) */
+  8    43 	    3 configured	   bit (1) unal,		/* is configured */
+  8    44 	    3 on_line	   bit (1) unal,		/* is ON */
+  8    45 	    3 pad1	   bit (34) unal,
+  8    46 	  2 model		   char (4),		/* (42) what kind of IOM */
+  8    47 	  2 port		   fixed bin (3),		/* (43) SC port */
+  8    48 	  2 connect_time	   fixed bin (71),		/* (44) time of last connect */
+  8    49 	  2 connect_lpw	   bit (36),		/* (46) LPW for connect channel */
+  8    50 	  2 cow		   bit (36),		/* (47) Connect Operand Word */
+  8    51 	  2 special_chx	   fixed bin (35),		/* (50) chx of special status channel */
+  8    52 	  2 fault_chx	   fixed bin (35),		/* (51) chx of system fault channel */
+  8    53 	  2 pad2		   (4) bit (36),
+  8    54 	  2 abandoned_connects fixed bin (35),		/* (56) times we couldn't get IOM to listen at all */
+  8    55 	  2 reconnects	   fixed bin (35),		/* (57) times a connect was lost */
+  8    56 	  2 chantab	   (0:63) uns fixed bin (9) unal;
+  8    57 						/* (60) packed devtab indices */
+  8    58 
+  8    59 dcl	1 per_device	   aligned based,
+  8    60 	  2 status	   bit (72),		/* (0) Status for channel is stored here. */
+  8    61 	  2 rfh1		   (6) bit (36),
+  8    62 	  2 ext_status	   bit (8 * 36),		/* (10) extended status stored by IIOC */
+  8    63 	  2 iom		   uns fixed bin (3),	/* (20) IOM# (1-4) */
+  8    64 	  2 channel	   uns fixed bin (6),	/* (21) channel # */
+  8    65 	  2 handler	   entry (fixed bin (35), fixed bin (3), bit (36) aligned),
+  8    66 						/* (22) Interrupt handler for device. */
+  8    67 	  2 flags,				/* (26) */
+  8    68 	    3 in_use	   bit (1) unal,		/* assigned */
+  8    69 	    3 queue_status	   bit (1) unal,		/* maintain status queue */
+  8    70 	    3 on_line	   bit (1) unal,		/* can be assigned */
+  8    71 	  2 index		   fixed bin (35),		/* (27) Channel identification index. */
+  8    72 	  2 pcw		   bit (72),		/* (30) Peripheral Control Word */
+  8    73 	  2 lpw		   bit (72),		/* (32) List Pointer Word */
+  8    74 	  2 scw		   bit (36),		/* (34) Status Control Word */
+  8    75 	  2 pad1		   fixed bin (35),
+  8    76 	  2 status_queue_ptr   ptr,			/* (36) Status queue */
+  8    77 	  2 connect_time	   fixed bin (71),		/* (40) time of last connect */
+  8    78 	  2 connects	   fixed bin (71),		/* (42) Total connects */
+  8    79 	  2 interrupts	   fixed bin (71),		/* (44) Total number of interrupts for this channel. */
+  8    80 	  2 interrupt_time	   fixed bin (71);		/* (46) Total interrupt time for this channel. */
+  8    81 
+  8    82 dcl	iom_mailbox_seg_ptr	   ptr;
+  8    83 dcl	1 iom_mailbox_seg	   aligned based (iom_mailbox_seg_ptr),
+  8    84 	  2 imw_array	   (0:31) bit (32),		/* Indexed by interrupt cell number. One bit for each channel. */
+  8    85 	  2 system_fault	   (4) aligned like status_queue,
+  8    86 						/* system faults store here (12 words/IOM) */
+  8    87 	  2 special_status	   (4) aligned like status_queue,
+  8    88 						/* special status words here (12 words/IOM) */
+  8    89 	  2 iom_mailbox	   (4) like iom_mailbox;	/* Used to communicate with the IOM. */
+  8    90 
+  8    91 dcl	status_queue_ptr	   ptr;
+  8    92 dcl	1 status_queue	   aligned based (status_queue_ptr),
+  8    93 	  2 status	   (12) bit (36);
+  8    94 
+  8    95 dcl	1 iom_mailbox	   aligned based,
+  8    96 	  2 channel_mailbox	   (0:63) like channel_mailbox;
+  8    97 
+  8    98 dcl	1 channel_mailbox	   aligned based,
+  8    99 	  2 lpw		   bit (72),		/* List pointer word. Points to DCW list. */
+  8   100 	  2 scw		   bit (36),		/* Status control word. Points to channel_table.status. */
+  8   101 	  2 dcw		   bit (36);		/* Data control word. Primarily scratch space for IOM. */
+  8   102 
+  8   103 /* Defined channel numbers. */
+  8   104 
+  8   105 dcl	(
+  8   106 	system_fault_channel   init (1),		/* Stores system fault words using LPW and DCW. */
+  8   107 	connect_channel	   init (2),		/* Starts other channels using LPW pointing to PCW. */
+  8   108 	special_status_channel init (6)		/* Stores special status using LPW and DCW. */
+  8   109 	)		   fixed bin (6) static options (constant);
+  8   110 
+  8   111 /* End of include file ..... iom_data.incl.pl1 */
+      732 
+      733 
+  9     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  9     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  9     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  9     4 
+  9     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  9     6 
+  9     7 dcl (
+  9     8 
+  9     9 /* The following constants define the message action codes.  This indicates
+  9    10*how a message is to be handled.  */
+  9    11 
+  9    12      SYSERR_CRASH_SYSTEM	init (1),			
+  9    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  9    14 
+  9    15      SYSERR_TERMINATE_PROCESS	init (2),
+  9    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  9    17 
+  9    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  9    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  9    20 
+  9    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  9    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  9    23 
+  9    24      SYSERR_LOG_OR_PRINT	init (4),
+  9    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  9    26 
+  9    27      SYSERR_LOG_OR_DISCARD	init (5),
+  9    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  9    29 
+  9    30 
+  9    31 /* The following constants are added to the normal severities to indicate
+  9    32*different sorting classes of messages.  */
+  9    33 
+  9    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  9    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  9    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  9    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  9    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  9    39 	) fixed bin internal static options (constant);
+  9    40 
+  9    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      734 
+      735 
+ 10     1 /* BEGIN include file toehold.incl.pl1 */
+ 10     2 
+ 10     3 /* Various reserved entrypoints into the bce toehold.
+ 10     4*Also, only those things one really needs to know about the toehold.
+ 10     5*Keith Loepere, October 1983. */
+ 10     6 
+ 10     7 /* Exclude prn, prv and pad when converting to alm version. */
+ 10     8 
+ 10     9 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 10    10 
+ 10    11 dcl  1 toe_hold		        aligned based,	/* name so alm likes */
+ 10    12        2 entry_sequences	        (0:15) bit (72) aligned, /* described below */
+ 10    13        2 flagbox		        (64) bit (36) aligned,
+ 10    14        2 pad1		        (48) bit (36) aligned,
+ 10    15        2 paths		        (4) like io_path,
+ 10    16        2 n_paths_used	        fixed bin,
+ 10    17        2 memory_state	        fixed bin,		/* of memory/disk swapping, etc. */
+ 10    18        2 bce_dbr		        bit (72) aligned,	/* of bce */
+ 10    19        2 pad2		        (1355) bit (36) aligned,
+ 10    20        2 multics_state	        aligned like mc_state;
+ 10    21 
+ 10    22 dcl  1 io_path		        aligned based,
+ 10    23        2 pcw		        fixed bin (71) aligned,
+ 10    24 
+ 10    25        2 port_number	        fixed bin (3) uns unal, /* these fields form the word that */
+ 10    26        2 iom_number		        fixed bin (15) uns unal, /* must be changed upon */
+ 10    27        2 channel_number	        fixed bin unal,	/* reconfiguration of channels */
+ 10    28 
+ 10    29        2 pad		        bit (36) aligned;
+ 10    30 
+ 10    31 dcl  TOE_HOLD_CRASH_ENTRY	        fixed bin init (0) static options (constant); /* operator causes crash by xed'ind here */
+ 10    32 dcl  TOE_HOLD_ESD_ENTRY	        fixed bin init (1) static options (constant);
+ 10    33 dcl  TOE_HOLD_DUMP_ENTRY	        fixed bin init (2) static options (constant); /* place that causes an early dump */
+ 10    34 dcl  TOE_HOLD_MULTICS_ENTRY	        fixed bin init (3) static options (constant); /* Multics crashes by drl'ing here */
+ 10    35 dcl  TOE_HOLD_RESTART_ENTRY	        fixed bin init (4) static options (constant); /* bce restarts Multics by drl'ing here */
+ 10    36 dcl  TOE_HOLD_BOOT_ENTRY	        fixed bin init (5) static options (constant); /* bootload_tape_label starts init by tra'ing here */
+ 10    37 dcl  TOE_HOLD_BOS_ENTRY	        fixed bin init (12) static options (constant);
+ 10    38 dcl  TOE_HOLD_BOS_NO_SAVE_ENTRY       fixed bin init (13) static options (constant);
+ 10    39 dcl  TOE_HOLD_BOS_MULTICS_ENTRY       fixed bin init (14) static options (constant);
+ 10    40 
+ 10    41 declare  mc_state_ptr	        ptr;	/* to toehold$.multics_state */
+ 10    42 declare 1 mc_state		        aligned based (mc_state_ptr),
+ 10    43        2 mc_		        aligned like mc,		        
+ 10    44        2 masks		        (16) bit (36) aligned,
+ 10    45        2 interrupt		        bit (72) aligned,
+ 10    46        2 mode_reg		        bit (36) aligned,	/* mode_reg and cache_mode_reg form a double word pair */
+ 10    47        2 cache_mode_reg	        bit (36) aligned,
+ 10    48        2 dbr		        bit (72) aligned,
+ 10    49        2 cfg		        bit (72) aligned,
+ 10    50        2 bar		        bit (36) aligned,
+ 10    51        2 old_memory_state	        fixed bin,
+ 10    52        2 pad16		        (6) bit (36) aligned,
+ 10    53        2 ou_history_registers	        (0: 15) bit (72) aligned,
+ 10    54        2 cu_history_registers	        (0: 15) bit (72) aligned,
+ 10    55        2 du_history_registers	        (0: 15) bit (72) aligned,
+ 10    56        2 apu_history_registers        (0: 15) bit (72) aligned,
+ 10    57        2 ptwam_ptrs		        (0: 63) bit (36) aligned,	/* word alignment (mod 16, 32) of these am's matters */
+ 10    58        2 ptwam_regs		        (0: 63) bit (36) aligned,
+ 10    59        2 sdwam_ptrs		        (0: 63) bit (36) aligned,
+ 10    60        2 sdwam_regs		        (0: 63) bit (72) aligned;
+ 10    61 
+ 10    62 /* values for memory_state */
+ 10    63 
+ 10    64 dcl  Initial_undefined	        fixed bin init (0) static options (constant);  /* initial coming to bce */
+ 10    65 dcl  At_bce__early		        fixed bin init (1) static options (constant);
+ 10    66 dcl  At_bce__boot		        fixed bin init (2) static options (constant);  /* at bce during cool boot phase */
+ 10    67 dcl  Multics		        fixed bin init (3) static options (constant);  /* Multics coming up */
+ 10    68 dcl  Undefined_saving_state	        fixed bin init (4) static options (constant);  /* saving state during coming down */
+ 10    69 dcl  Undefined_reading_bce	        fixed bin init (5) static options (constant);  /* reading in bce */
+ 10    70 dcl  At_bce__crash		        fixed bin init (6) static options (constant);  /* disk holds Multics, at bce */
+ 10    71 dcl  At_bce__shutdown	        fixed bin init (7) static options (constant);  /* disk holds (nothing), coming to bce */
+ 10    72 dcl  Undefined_continue	        fixed bin init (8) static options (constant);  /* swapping memory back */
+ 10    73 dcl  Undefined_saving_mem	        fixed bin init (9) static options (constant);
+ 10    74 
+ 10    75  /*  */
+ 11     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+ 11     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+ 11     4 /* Modified 07/07/76 by Morris for fault register data */
+ 11     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+ 11     6 /* Modified '82 to make values constant */
+ 11     7 
+ 11     8 /* words 0-15 pointer registers */
+ 11     9 
+ 11    10 dcl  mcp ptr;
+ 11    11 
+ 11    12 dcl 1 mc based (mcp) aligned,
+ 11    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+ 11    14    (2 regs,					/* registers */
+ 11    15       3 x (0:7) bit (18),				/* index registers */
+ 11    16       3 a bit (36),					/* accumulator */
+ 11    17       3 q bit (36),					/* q-register */
+ 11    18       3 e bit (8),					/* exponent */
+ 11    19       3 pad1 bit (28),
+ 11    20       3 t bit (27),					/* timer register */
+ 11    21       3 pad2 bit (6),
+ 11    22       3 ralr bit (3),				/* ring alarm register */
+ 11    23 
+ 11    24     2 scu (0:7) bit (36),
+ 11    25 
+ 11    26     2 mask bit (72),				/* mem controller mask at time of fault */
+ 11    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+ 11    28     2 errcode fixed bin (35),				/* fault handler's error code */
+ 11    29     2 fim_temp,
+ 11    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+ 11    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+ 11    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+ 11    33     2 fault_reg bit (36),				/* fault register */
+ 11    34     2 pad2 bit (1),
+ 11    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+ 11    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+ 11    37     2 fault_time bit (54),				/* time of fault */
+ 11    38 
+ 11    39     2 eis_info (0:7) bit (36)) unaligned;
+ 11    40 
+ 11    41 
+ 11    42 dcl (apx fixed bin init (0),
+ 11    43      abx fixed bin init (1),
+ 11    44      bpx fixed bin init (2),
+ 11    45      bbx fixed bin init (3),
+ 11    46      lpx fixed bin init (4),
+ 11    47      lbx fixed bin init (5),
+ 11    48      spx fixed bin init (6),
+ 11    49      sbx fixed bin init (7)) internal static options (constant);
+ 11    50 
+ 11    51 
+ 11    52 
+ 11    53 
+ 11    54 dcl  scup ptr;
+ 11    55 
+ 11    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+ 11    57 
+ 11    58 
+ 11    59 /*	WORD (0)		*/
+ 11    60 
+ 11    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+ 11    62       3 prr bit (3),				/* procedure ring register */
+ 11    63       3 psr bit (15),				/* procedure segment register */
+ 11    64       3 p bit (1),					/* procedure privileged bit */
+ 11    65 
+ 11    66     2 apu,					/* APPENDING UNIT STATUS */
+ 11    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+ 11    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+ 11    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+ 11    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+ 11    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+ 11    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+ 11    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+ 11    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+ 11    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+ 11    76       3 ptw bit (1),				/* Fetch of PTW */
+ 11    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+ 11    78       3 fap bit (1),				/* Fetch of final address paged */
+ 11    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+ 11    80       3 fabs bit (1),				/* Fetch of final address absolute */
+ 11    81 
+ 11    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+ 11    83 
+ 11    84 
+ 11    85 /*	WORD (1)		*/
+ 11    86 
+ 11    87     2 fd,						/* FAULT  DATA */
+ 11    88       3 iro bit (1),				/* illegal ring order */
+ 11    89       3 oeb bit (1),				/* out of execute bracket */
+ 11    90       3 e_off bit (1),				/* no execute */
+ 11    91       3 orb bit (1),				/* out of read bracket */
+ 11    92       3 r_off bit (1),				/* no read */
+ 11    93       3 owb bit (1),				/* out of write bracket */
+ 11    94       3 w_off bit (1),				/* no write */
+ 11    95       3 no_ga bit (1),				/* not a gate */
+ 11    96       3 ocb bit (1),				/* out of call bracket */
+ 11    97       3 ocall bit (1),				/* outward call */
+ 11    98       3 boc bit (1),				/* bad outward call */
+ 11    99       3 inret bit (1),				/* inward return */
+ 11   100       3 crt bit (1),				/* cross ring transfer */
+ 11   101       3 ralr bit (1),				/* ring alarm register */
+ 11   102       3 am_er bit (1),				/* associative memory fault */
+ 11   103       3 oosb bit (1),				/* out of segment bounds */
+ 11   104       3 paru bit (1),				/* processor parity upper */
+ 11   105       3 parl bit (1),				/* processor parity lower */
+ 11   106       3 onc_1 bit (1),				/* op not complete type 1 */
+ 11   107       3 onc_2 bit (1),				/* op not complete type 2 */
+ 11   108 
+ 11   109     2 port_stat,					/* PORT  STATUS */
+ 11   110       3 ial bit (4),				/* illegal action lines */
+ 11   111       3 iac bit (3),				/* illegal action channel */
+ 11   112       3 con_chan bit (3),				/* connect channel */
+ 11   113 
+ 11   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+ 11   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+ 11   116 
+ 11   117 
+ 11   118 /*	WORD (2)		*/
+ 11   119 
+ 11   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+ 11   121       3 trr bit (3),				/* temporary ring register */
+ 11   122       3 tsr bit (15),				/* temporary segment register */
+ 11   123 
+ 11   124     2 pad2 bit (9),
+ 11   125 
+ 11   126     2 cpu_no bit (3),				/* CPU number */
+ 11   127 
+ 11   128     2 delta bit (6),				/* tally modification DELTA */
+ 11   129 
+ 11   130 
+ 11   131 /*	WORD (3)		*/
+ 11   132 
+ 11   133     2 word3 bit (18),
+ 11   134 
+ 11   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+ 11   136       3 tsna,					/* Word 1 status */
+ 11   137         4 prn bit (3),				/* Word 1  PR  number */
+ 11   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+ 11   139       3 tsnb,					/* Word 2  status */
+ 11   140         4 prn bit (3),				/* Word 2  PR  number */
+ 11   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+ 11   142       3 tsnc,					/* Word 3  status */
+ 11   143         4 prn bit (3),				/* Word 3  PR  number */
+ 11   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+ 11   145 
+ 11   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+ 11   147 
+ 11   148 
+ 11   149 /* 	WORD (4)		*/
+ 11   150 
+ 11   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+ 11   152 
+ 11   153     2 ir,						/* INDICATOR  REGISTERS */
+ 11   154       3 zero bit (1),				/* zero indicator */
+ 11   155       3 neg bit (1),				/* negative indicator */
+ 11   156       3 carry bit (1),				/* carryry indicator */
+ 11   157       3 ovfl bit (1),				/* overflow indicator */
+ 11   158       3 eovf bit (1),				/* eponent overflow */
+ 11   159       3 eufl bit (1),				/* exponent underflow */
+ 11   160       3 oflm bit (1),				/* overflow mask */
+ 11   161       3 tro bit (1),				/* tally runout */
+ 11   162       3 par bit (1),				/* parity error */
+ 11   163       3 parm bit (1),				/* parity mask */
+ 11   164       3 bm bit (1),					/* ^bar mode */
+ 11   165       3 tru bit (1),				/* truncation mode */
+ 11   166       3 mif bit (1),				/* multi-word instruction mode */
+ 11   167       3 abs bit (1),				/* absolute mode */
+ 11   168       3 hex bit (1),				/* hexadecimal exponent mode */
+ 11   169       3 pad bit (3),
+ 11   170 
+ 11   171 
+ 11   172 /*	WORD (5)		*/
+ 11   173 
+ 11   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+ 11   175 
+ 11   176     2 cu,						/* CONTROL UNIT STATUS */
+ 11   177       3 rf bit (1),					/* on first cycle of repeat instr */
+ 11   178       3 rpt bit (1),				/* repeat instruction */
+ 11   179       3 rd bit (1),					/* repeat double instruction */
+ 11   180       3 rl bit (1),					/* repeat link instruciton */
+ 11   181       3 pot bit (1),				/* IT  modification */
+ 11   182       3 pon bit (1),				/* return type instruction */
+ 11   183       3 xde bit (1),				/* XDE from Even location */
+ 11   184       3 xdo bit (1),				/* XDE from Odd  location */
+ 11   185       3 poa bit (1),				/* operation preparation */
+ 11   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+ 11   187       3 its bit (1),				/* ITS modification */
+ 11   188       3 if bit (1),					/* fault occured during instruction fetch */
+ 11   189 
+ 11   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+ 11   191 
+ 11   192 
+ 11   193 /*	WORDS (6,7)	*/
+ 11   194 
+ 11   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+ 11   196 
+ 11   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+ 11   198 
+ 11   199 
+ 11   200 
+ 11   201 
+ 11   202 
+ 11   203 
+ 11   204 /*	ALTERNATE   SCU  DECLARATION		*/
+ 11   205 
+ 11   206 
+ 11   207 dcl 1 scux based (scup) aligned,
+ 11   208 
+ 11   209    (2 pad0 bit (36),
+ 11   210 
+ 11   211     2 fd,						/* GROUP II  FAULT DATA */
+ 11   212       3 isn bit (1),				/* illegal segment number */
+ 11   213       3 ioc bit (1),				/* illegal op  code  */
+ 11   214       3 ia_am bit (1),				/* illegal address - modifier */
+ 11   215       3 isp bit (1),				/* illegal slave  procedure */
+ 11   216       3 ipr bit (1),				/* illegal procedure */
+ 11   217       3 nea bit (1),				/* non existent address */
+ 11   218       3 oobb bit (1),				/* out of bounds */
+ 11   219       3 pad bit (29),
+ 11   220 
+ 11   221     2 pad2 bit (36),
+ 11   222 
+ 11   223     2 pad3a bit (18),
+ 11   224 
+ 11   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+ 11   226       3 prn bit (3),				/* PR  number */
+ 11   227       3 prv bit (1),				/* PR  valid bit */
+ 11   228 
+ 11   229     2 pad3b bit (6)) unaligned,
+ 11   230 
+ 11   231     2 pad45 (0:1) bit (36),
+ 11   232 
+ 11   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+ 11   234 
+ 11   235 
+ 11   236 
+ 11   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+ 10    75 
+ 10    76 
+ 10    77 /* END include file toehold.incl.pl1 */
+      736 
+      737 
+      738      end io_reconfig;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  io_reconfig.pl1                   >spec>install>1110>io_reconfig.pl1
+720          1    05/08/81  1853.6  config_iom_card.incl.pl1          >ldd>include>config_iom_card.incl.pl1
+722          2    08/11/88  2011.5  dskdcl.incl.pl1                   >ldd>include>dskdcl.incl.pl1
+724          3    09/02/86  1552.9  ioi_data.incl.pl1                 >ldd>include>ioi_data.incl.pl1
+3-61         4    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+726          5    07/11/84  0937.3  io_config_data.incl.pl1           >ldd>include>io_config_data.incl.pl1
+728          6    07/11/84  0937.3  io_manager_dcls.incl.pl1          >ldd>include>io_manager_dcls.incl.pl1
+730          7    07/11/84  0937.3  io_chnl_util_dcls.incl.pl1        >ldd>include>io_chnl_util_dcls.incl.pl1
+732          8    04/11/85  1452.4  iom_data.incl.pl1                 >ldd>include>iom_data.incl.pl1
+734          9    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+736         10    07/11/84  0937.3  toe_hold.incl.pl1                 >ldd>include>toe_hold.incl.pl1
+10-75       11    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000015 constant        fixed bin(17,0)          initial dcl 9-7 set ref 370* 405*
+CRASH                           000021 constant        fixed bin(17,0)          initial dcl 9-7 set ref 362*
+DUMMY_INDEX                     000015 constant        fixed bin(35,0)          initial dcl 117 set ref 205* 311* 549*
+IOM_CARD_WORD                   000000 constant        char(4)                  initial dcl 1-19 set ref 416* 485*
+IO_CHANNEL_LOCK_TEMPLATE               constant        char(2)                  initial packed unaligned dcl 3-205 ref 214
+LOG                             000016 constant        fixed bin(17,0)          initial dcl 9-7 set ref 237* 329*
+a_code                                 parameter       fixed bin(35,0)          dcl 520 ref 517 523
+added                           000100 automatic       bit(1)                   dcl 42 set ref 268* 270
+adding_channel                  000101 automatic       bit(1)                   initial dcl 43 set ref 43* 244* 545
+addr                                                   builtin function         dcl 65 ref 124 125 151 245 246 420 421 422 425 489
+                                                                                  502 603 685
+arg_base_chnl                          parameter       bit(1)                   dcl 619 in procedure "get_chnl_add_info" set ref 614
+                                                                                  628*
+arg_base_chnl                          parameter       bit(1)                   dcl 590 in procedure "get_chnl_del_info" set ref 578
+                                                                                  597*
+arg_chanid                             parameter       char(8)                  dcl 676 ref 667 684
+arg_chnl_required                      parameter       bit(1)                   dcl 645 set ref 632 650* 659*
+arg_code                               parameter       fixed bin(35,0)          dcl 677 set ref 667 681* 690*
+arg_ctep                               parameter       pointer                  dcl 713 in procedure "get_itep" ref 708 716 716
+arg_ctep                               parameter       pointer                  dcl 591 in procedure "get_chnl_del_info" ref 578 597
+                                                                                  597 599 604
+arg_ctep                               parameter       pointer                  dcl 700 in procedure "get_gtep" ref 695 703 703
+arg_ctep                               parameter       pointer                  dcl 646 in procedure "get_device_info" ref 632 651
+                                                                                  656
+arg_ctep                               parameter       pointer                  dcl 678 in procedure "get_ctep" set ref 667 680*
+                                                                                  685*
+arg_ctep                               parameter       pointer                  dcl 620 in procedure "get_chnl_add_info" ref 614 628
+                                                                                  628
+arg_device_active                      parameter       bit(1)                   dcl 647 set ref 632 650* 658*
+arg_grp_chnl_active                    parameter       bit(1)                   dcl 592 set ref 578 596* 607*
+arg_gtep                               parameter       pointer                  dcl 648 in procedure "get_device_info" ref 632 652
+arg_gtep                               parameter       pointer                  dcl 701 in procedure "get_gtep" set ref 695 703*
+arg_gtep                               parameter       pointer                  dcl 593 in procedure "get_chnl_del_info" ref 578 600
+arg_iom_active                         parameter       bit(1)                   dcl 621 set ref 614 624* 626*
+arg_itep                               parameter       pointer                  dcl 622 in procedure "get_chnl_add_info" ref 614 624
+arg_itep                               parameter       pointer                  dcl 714 in procedure "get_itep" set ref 708 716*
+arg_rel_chnl_active                    parameter       bit(1)                   dcl 594 set ref 578 596* 605*
+base_chnl                       000102 automatic       bit(1)                   dcl 45 set ref 165* 188 279* 291
+base_ctep                14            based           bit(18)                  level 2 packed packed unaligned dcl 3-96 ref 292 481
+                                                                                  597 599 605 628
+bin                                                    builtin function         dcl 65 ref 319 319
+chanid                          000306 automatic       char(8)                  dcl 637 in procedure "get_device_info" set ref 651*
+                                                                                  659
+chanid                                 based           char(8)                  array level 3 in structure "ioi_data" dcl 3-40
+                                                                                  in procedure "io_reconfig" set ref 684
+chanid                    2            based           char(8)                  level 2 in structure "cte" dcl 3-96 in procedure
+                                                                                  "io_reconfig" set ref 457* 484* 651
+chanid                          000104 automatic       char(8)                  dcl 46 in procedure "io_reconfig" set ref 131* 132*
+                                                                                  154 205* 237* 252* 253* 301* 311* 319* 329* 549*
+channel                   0(18) 000212 automatic       fixed bin(17,0)          level 2 packed packed unaligned dcl 448 set ref 488*
+channel_entry             4            based           structure                array level 2 dcl 5-53
+channel_entry_template                 based           structure                level 1 dcl 5-59
+channel_mailbox                        based           structure                level 1 dcl 8-98
+channel_number          222(18) 000130 external static fixed bin(17,0)          array level 3 packed packed unaligned dcl 455 ref
+                                                                                  460 469
+channel_required          2            based           char(8)                  level 2 dcl 3-128 ref 154 659
+channel_table                          based           structure                level 1 dcl 5-53
+channel_table_idx        15(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-96 ref 226 227
+                                                                                  227 325 326 326
+channel_table_offset      3(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 5-22
+                                                                                  ref 126 247
+channo                          000203 automatic       fixed bin(7,0)           dcl 442 set ref 457* 460 484* 488
+chantab                                based           structure                level 1 dcl 2-132
+chnl_required                   000106 automatic       bit(1)                   dcl 47 set ref 166*
+chx                       5            based           fixed bin(35,0)          level 2 dcl 3-96 set ref 205* 220* 301* 311* 315*
+                                                                                  319* 537 538* 548 549*
+cleanup                         000130 stack reference condition                dcl 70 ref 137 259
+code                            000107 automatic       fixed bin(35,0)          dcl 48 set ref 132* 199* 205* 220* 232* 253* 301*
+                                                                                  307* 311* 315* 319* 351* 352 355 361* 362 390* 391
+                                                                                  393 512 512* 546* 549* 551
+config_$find_2                  000010 constant        entry                    external dcl 74 ref 416 485
+config_$update                  000012 constant        entry                    external dcl 75 ref 368 403
+configured               16            based           bit(1)                   array level 4 in structure "iom_table" packed packed
+                                                                                  unaligned dcl 5-87 in procedure "io_reconfig" set
+                                                                                  ref 345 366* 384 400*
+configured               16            based           bit(1)                   array level 4 in structure "channel_table" packed
+                                                                                  packed unaligned dcl 5-53 in procedure
+                                                                                  "io_reconfig" set ref 226* 325*
+connected                 1(01)        based           bit(1)                   level 3 packed packed unaligned dcl 3-96 ref 213
+controller_entry_template              based           structure                level 1 dcl 5-77
+cptr                            000262 automatic       pointer                  dcl 583 set ref 603* 604 604 605 607
+ct                                     based           structure                array level 2 dcl 3-40 set ref 603 685
+cte                                    based           structure                level 1 dcl 3-96
+ctep                      2(18)        based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 3-74 in procedure "io_reconfig" ref 481
+ctep                            000144 automatic       pointer                  dcl 3-31 in procedure "io_reconfig" set ref 132*
+                                                                                  135* 145 147 161 165* 166* 198 199* 204 205 207
+                                                                                  213 214 220 222 223 224 226 227 227 253* 256* 257*
+                                                                                  267 268 268 274 279* 292 292 301 301 304 305 306
+                                                                                  311 314 315 319 319 319 321 322 325 326 326 457
+                                                                                  480 481* 481 481 481 481 481 481 481* 483 483 484
+                                                                                  490* 532 537 538 539 542 543 548 549 551 554
+ctx                             000264 automatic       fixed bin(17,0)          dcl 584 set ref 602* 603*
+cv_status_ptr                   000110 automatic       pointer                  dcl 49 set ref 205* 301* 304 311* 319* 549* 551
+dctl$disk_inter                 000014 constant        entry                    external dcl 76 ref 301 301
+deleted                  22(09)        based           bit(1)                   level 3 in structure "dte" packed packed unaligned
+                                                                                  dcl 3-128 in procedure "io_reconfig" ref 657
+deleted                   1(01)        based           bit(1)                   level 3 in structure "ite" packed packed unaligned
+                                                                                  dcl 3-63 in procedure "io_reconfig" set ref 365*
+                                                                                  399* 624
+deleted                  15(01)        based           bit(1)                   level 3 in structure "cte" packed packed unaligned
+                                                                                  dcl 3-96 in procedure "io_reconfig" set ref 145
+                                                                                  223* 267 293 305* 314* 321* 481 542* 554* 604
+deleting                 15            based           bit(1)                   level 3 packed packed unaligned dcl 3-96 set ref 147
+                                                                                  161* 224* 274 481 543*
+deleting_channel                000112 automatic       bit(1)                   initial dcl 50 set ref 50* 122* 533
+device_active                   000113 automatic       bit(1)                   dcl 52 set ref 166* 191
+device_entry_template                  based           structure                level 1 dcl 5-42
+devtab                                 based           structure                level 1 dcl 2-190
+direct                   22(12)        based           bit(1)                   level 3 packed packed unaligned dcl 3-128 ref 152
+disk_control$add_channel        000016 constant        entry                    external dcl 77 ref 268
+disk_data_subsystem_idx
+                          7            based           fixed bin(17,0)          level 2 dcl 3-74 ref 197 231 268 268 300 301 535 546
+disk_lock_meters                       based           structure                level 1 dcl 2-236
+disktab_ctx               1(09)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 3-96
+                                                                                  ref 268 301
+done                            000310 automatic       bit(1)                   dcl 638 set ref 655* 656 662*
+dptr                            000312 automatic       pointer                  dcl 639 set ref 656* 657 659 662* 663 663*
+dskdcl_chans_per_subsys                constant        fixed bin(17,0)          initial dcl 2-70 ref 301
+dt                       20            based           structure                array level 2 dcl 3-40 set ref 151
+dte                                    based           structure                level 1 dcl 3-128
+dtep                      2            based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 3-74 in procedure "io_reconfig" ref 654
+dtep                            000146 automatic       pointer                  dcl 3-32 in procedure "io_reconfig" set ref 151* 152
+                                                                                  152 152 154
+dtx                             000114 automatic       fixed bin(17,0)          dcl 53 set ref 150* 151*
+error_table_$bad_channel        000052 external static fixed bin(35,0)          dcl 101 ref 690
+error_table_$chnl_already_added 000054 external static fixed bin(35,0)          dcl 101 set ref 272*
+error_table_$chnl_already_deleted
+                                000056 external static fixed bin(35,0)          dcl 101 set ref 145*
+error_table_$chnl_being_deleted 000060 external static fixed bin(35,0)          dcl 101 set ref 147* 274*
+error_table_$chnl_iom_active    000062 external static fixed bin(35,0)          dcl 101 ref 381
+error_table_$chnl_iom_inactive  000064 external static fixed bin(35,0)          dcl 101 set ref 288*
+error_table_$io_not_available   000066 external static fixed bin(35,0)          dcl 101 set ref 154*
+error_table_$io_not_defined     000070 external static fixed bin(35,0)          dcl 101 ref 430
+error_table_$iom_already_added  000072 external static fixed bin(35,0)          dcl 101 ref 347
+error_table_$iom_already_deleted
+                                000074 external static fixed bin(35,0)          dcl 101 ref 386
+error_table_$no_base_chnl_active
+                                000076 external static fixed bin(35,0)          dcl 101 set ref 293*
+error_table_$rel_chnl_active    000100 external static fixed bin(35,0)          dcl 101 set ref 189*
+error_table_$undeleted_device   000102 external static fixed bin(35,0)          dcl 101 set ref 191*
+flags                    16            based           structure                array level 3 in structure "channel_table" dcl 5-53
+                                                                                  in procedure "io_reconfig"
+flags                    16            based           structure                array level 3 in structure "iom_table" dcl 5-87
+                                                                                  in procedure "io_reconfig"
+flags                     1            based           structure                level 2 in structure "ite" dcl 3-63 in procedure
+                                                                                  "io_reconfig"
+flags                    41            based           structure                array level 3 in structure "iom_data" dcl 8-17
+                                                                                  in procedure "io_reconfig"
+flags                     3(06)        based           structure                level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 3-74 in procedure "io_reconfig"
+flags1                    1            based           structure                level 2 packed packed unaligned dcl 3-96
+flags2                   15            based           structure                level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 3-96 in procedure "io_reconfig"
+flags2                   22(06)        based           structure                level 2 in structure "dte" packed packed unaligned
+                                                                                  dcl 3-128 in procedure "io_reconfig"
+gptr                            000314 automatic       pointer                  dcl 640 in procedure "get_device_info" set ref 652*
+                                                                                  654
+gptr                            000266 automatic       pointer                  dcl 585 in procedure "get_chnl_del_info" set ref
+                                                                                  600* 607
+grp_chnl_active                 000115 automatic       bit(1)                   dcl 54 set ref 165* 191
+gte                                    based           structure                level 1 dcl 3-74
+gtep                            000142 automatic       pointer                  dcl 3-30 in procedure "io_reconfig" set ref 135*
+                                                                                  165* 166* 197 231 232* 256* 268 268 300 301 307*
+                                                                                  310 532 535 535* 537 546 546* 548
+gtep                      0(18)        based           bit(18)                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 3-96 in procedure "io_reconfig" ref 481 607
+                                                                                  703
+hbound                                                 builtin function         dcl 65 ref 424 459 468
+i                               000326 automatic       fixed bin(17,0)          dcl 672 set ref 683* 684 685*
+idp                             000140 automatic       pointer                  dcl 3-29 set ref 124* 150 151 245* 420* 424 424 425
+                                                                                  602 603 683 684 685
+in_use                   22(07)        based           bit(1)                   level 3 packed packed unaligned dcl 3-128 ref 152
+initial_dtep                    000316 automatic       bit(18)                  packed unaligned dcl 641 set ref 654* 656 662
+io_chnl_util$canonicalize_chanid
+                                000122 constant        entry                    external dcl 7-8 ref 131 252
+io_chnl_util$name_to_iom        000124 constant        entry                    external dcl 7-16 ref 457 484
+io_config_channel_table_ptr     000154 automatic       pointer                  dcl 5-13 set ref 126* 226 227 227 247* 325 326 326
+io_config_data                         based           structure                level 1 dcl 5-22
+io_config_data$                 000106 external static fixed bin(17,0)          dcl 5-8 set ref 125 246 422
+io_config_data_ptr              000152 automatic       pointer                  dcl 5-10 set ref 125* 126 126 127 127 246* 247 247
+                                                                                  248 248 422* 423 423
+io_config_iom_table_ptr         000156 automatic       pointer                  dcl 5-17 set ref 127* 227 227 248* 326 326 345 366
+                                                                                  379 384 400 423*
+io_manager$assign               000110 constant        entry                    external dcl 6-10 ref 205 549
+io_manager$assign_add           000112 constant        entry                    external dcl 6-15 ref 301 311 319
+io_manager$ignore_interrupt     000120 constant        entry                    external dcl 6-41 ref 205 205 311 311 549 549
+io_manager$unassign             000114 constant        entry                    external dcl 6-20 ref 315 538
+io_manager$unassign_delete      000116 constant        entry                    external dcl 6-23 ref 220
+io_manager_arg                         based           structure                level 1 dcl 6-50
+io_path                                based           structure                level 1 dcl 10-22
+ioi_assignment$lock_for_reconfig
+                                000020 constant        entry                    external dcl 79 ref 565
+ioi_assignment$unlock_for_reconfig
+                                000022 constant        entry                    external dcl 81 ref 557 573
+ioi_data                               based           structure                level 1 dcl 3-40
+ioi_data$                       000104 external static fixed bin(17,0)          dcl 3-37 set ref 124 245 420
+ioi_masked$interrupt            000024 constant        entry                    external dcl 83 ref 319 319
+ioi_use                   1            based           bit(1)                   level 3 packed packed unaligned dcl 3-96 set ref 198
+                                                                                  204 207* 222* 268 306* 322* 539*
+ioi_usurp_channels$assign       000026 constant        entry                    external dcl 84 ref 232 546
+ioi_usurp_channels$required     000030 constant        entry                    external dcl 86 ref 199
+ioi_usurp_channels$unassign     000032 constant        entry                    external dcl 88 ref 307 535
+iom                       0(03) 000212 automatic       fixed bin(15,0)          level 2 packed packed unsigned unaligned dcl 448 set
+                                                                                  ref 487*
+iom_active                      000116 automatic       bit(1)                   dcl 55 set ref 279* 288
+iom_card                               based           structure                level 1 dcl 1-5
+iom_cardp                       000136 automatic       pointer                  dcl 1-3 set ref 358 367 397 402 415* 416* 417 485*
+                                                                                  486
+iom_data                               based           structure                level 1 dcl 8-17
+iom_data$                       000126 external static fixed bin(17,0)          dcl 8-11 set ref 421
+iom_data_ptr                    000160 automatic       pointer                  dcl 8-15 set ref 350 353 401 421*
+iom_entry                 4            based           structure                array level 2 dcl 5-87
+iom_entry_template                     based           structure                level 1 dcl 5-93
+iom_idx                  20            based           fixed bin(17,0)          array level 3 dcl 5-53 ref 227 227 326 326
+iom_mailbox                            based           structure                level 1 dcl 8-95
+iom_number              222(03) 000130 external static fixed bin(15,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 455 ref 460
+iom_overhead$init               000034 constant        entry                    external dcl 90 ref 351
+iom_overhead$release            000036 constant        entry                    external dcl 91 ref 390
+iom_switches$validate           000040 constant        entry                    external dcl 92 ref 361
+iom_table                              based           structure                level 1 dcl 5-87
+iom_table_idx             2(16)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-63 ref 345 366
+                                                                                  379 384 400
+iom_table_offset          4(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 5-22
+                                                                                  ref 127 248 423
+iomno                           000202 automatic       fixed bin(3,0)           dcl 441 set ref 457* 460 484* 485 487
+iopx                            000204 automatic       fixed bin(17,0)          dcl 443 set ref 459* 460 460* 465 468* 469 469*
+it                                     based           structure                array level 2 dcl 3-40 set ref 424 424 425
+ite                                    based           structure                level 1 dcl 3-63
+itep                     14(18)        based           bit(18)                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 3-96 in procedure "io_reconfig" ref 716
+itep                            000150 automatic       pointer                  dcl 3-33 in procedure "io_reconfig" set ref 257*
+                                                                                  279* 345 365 366 379 384 399 400 425* 426
+itx                             000172 automatic       fixed bin(17,0)          dcl 412 set ref 424* 425*
+lbound                                                 builtin function         dcl 65 ref 424 459 468
+lock                                   based           structure                level 1 dcl 4-12
+locked                          000117 automatic       bit(1)                   initial dcl 56 set ref 56* 557 566* 574*
+mc                                     based           structure                level 1 dcl 11-12
+mc_state                               based           structure                level 1 dcl 10-42
+mplex                     3(10)        based           bit(1)                   level 3 packed packed unaligned dcl 3-74 ref 310 537
+                                                                                  548
+my_base_rptr                    000270 automatic       bit(18)                  dcl 586 set ref 599* 605
+n_configured_channels
+                         17            based           fixed bin(17,0)          array level 3 dcl 5-87 set ref 227* 227 326* 326 379
+nct                       1            based           fixed bin(17,0)          level 2 dcl 3-40 ref 424 424 425 602 683
+ndt                       2            based           fixed bin(17,0)          level 2 dcl 3-40 ref 150 424 424 425 603 684 685
+next_ctep                              based           bit(18)                  level 2 packed packed unaligned dcl 3-96 ref 483
+next_dtep                              based           bit(18)                  level 2 packed packed unaligned dcl 3-128 ref 662
+                                                                                  663
+ngt                                    based           fixed bin(17,0)          level 2 dcl 3-40 ref 424 424 425 603 684 685
+nit                       3            based           fixed bin(17,0)          level 2 dcl 3-40 ref 424
+null                                                   builtin function         dcl 65 ref 415 417 532 532 680
+on_line                  41(01)        based           bit(1)                   array level 4 packed packed unaligned dcl 8-17 set
+                                                                                  ref 350* 353* 401*
+opt_info                               based           structure                level 1 dcl 2-217
+p_chanid                               parameter       char(8)                  dcl 36 set ref 119 131* 241 252*
+p_code                                 parameter       fixed bin(35,0)          dcl 37 set ref 119 238* 241 333* 340 347* 355* 371*
+                                                                                  374 381* 386* 393* 406* 430* 523*
+p_tag                                  parameter       fixed bin(3,0)           dcl 38 ref 340 374 414
+path_idx                               parameter       fixed bin(17,0)          dcl 496 ref 493 502
+path_word                       000212 automatic       structure                level 1 dcl 448 in procedure
+                                                                                  "ensure_rpv_path_in_toehold" set ref 489
+path_word                              based           fixed bin(35,0)          dcl 500 in procedure "set_toehold_path" set ref 503*
+path_word_as_integer                   based           fixed bin(35,0)          dcl 453 set ref 489*
+path_word_ptr                   000222 automatic       pointer                  dcl 498 set ref 502* 503
+path_word_value                        parameter       fixed bin(35,0)          dcl 497 ref 493 503
+paths                   220     000130 external static structure                array level 2 unaligned dcl 455 set ref 459 459 468
+                                                                                  468
+per_device                             based           structure                level 1 dcl 8-59
+per_iom                  40            based           structure                array level 2 in structure "iom_data" dcl 8-17
+                                                                                  in procedure "io_reconfig"
+per_iom                                based           structure                level 1 dcl 8-40 in procedure "io_reconfig"
+port                            000212 automatic       fixed bin(3,0)           level 2 in structure "path_word" packed packed
+                                                                                  unsigned unaligned dcl 448 in procedure
+                                                                                  "ensure_rpv_path_in_toehold" set ref 486*
+port                      2            based           fixed bin(3,0)           level 2 in structure "iom_card" dcl 1-5 in procedure
+                                                                                  "io_reconfig" set ref 358* 397* 486
+port_number             222     000130 external static fixed bin(3,0)           array level 3 packed packed unsigned unaligned
+                                                                                  dcl 455 set ref 502
+process_id               20            based           bit(36)                  level 2 dcl 3-128 ref 152
+ptr                                                    builtin function         dcl 65 ref 126 127 247 248 292 423 481 481 483 656
+                                                                                  663 703 716
+pxss$addevent                   000042 constant        entry                    external dcl 93 ref 214
+pxss$wait                       000044 constant        entry                    external dcl 94 ref 215
+qht                                    based           structure                level 1 dcl 2-179
+quentry                                based           structure                level 1 dcl 2-107
+rel                                                    builtin function         dcl 65 ref 214 319 319 481 597 607 628
+rel_chnl_active                 000120 automatic       bit(1)                   dcl 57 set ref 165* 189
+saved_ctep                      000206 automatic       pointer                  dcl 444 set ref 480* 490
+saved_iopx                      000210 automatic       fixed bin(17,0)          dcl 445 set ref 465* 469 474* 489*
+scr_util$set_port_enable        000046 constant        entry                    external dcl 95 ref 358 397
+state                     4            based           char(4)                  level 2 dcl 1-5 set ref 367* 402*
+state_changed                   000121 automatic       bit(1)                   initial dcl 58 set ref 58* 160* 299* 532
+status_queue                           based           structure                level 1 dcl 8-92
+statusp                   4            based           pointer                  level 2 packed packed unaligned dcl 3-96 set ref
+                                                                                  304* 551*
+substr                                                 builtin function         dcl 65 ref 362 362 370 370 405 405
+sys_info                               based           structure                level 1 dcl 2-59
+syserr                          000050 constant        entry                    external dcl 97 ref 237 329 362 370 405
+tag                       3            based           fixed bin(3,0)           level 2 in structure "ite" dcl 3-63 in procedure
+                                                                                  "io_reconfig" ref 426
+tag                             000122 automatic       fixed bin(3,0)           dcl 59 in procedure "io_reconfig" set ref 350 351*
+                                                                                  353 361* 362 362 370 370 390* 401 405 405 414* 416
+                                                                                  426
+temp_base_chnl_ptr              000124 automatic       pointer                  dcl 60 set ref 292* 293
+toe_hold                               based           structure                level 1 dcl 10-11
+toehold$                        000130 external static structure                level 1 unaligned dcl 455
+toehold_channel_left            000211 automatic       bit(1)                   dcl 446 set ref 467* 468 469* 473
+unspec                                                 builtin function         dcl 65 ref 214
+usurped_channel                 000126 automatic       bit(1)                   dcl 61 set ref 123* 201* 208* 534
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+At_bce__boot                           internal static fixed bin(17,0)          initial dcl 10-66
+At_bce__crash                          internal static fixed bin(17,0)          initial dcl 10-70
+At_bce__early                          internal static fixed bin(17,0)          initial dcl 10-65
+At_bce__shutdown                       internal static fixed bin(17,0)          initial dcl 10-71
+BEEP                                   internal static fixed bin(17,0)          initial dcl 9-7
+BOOTLOAD_READ                          internal static fixed bin(4,0)           initial dcl 2-251
+BOOTLOAD_WRITE                         internal static fixed bin(4,0)           initial dcl 2-251
+DSC_LISTX                              internal static fixed bin(12,0)          initial dcl 2-241
+IOI_DEFAULT_MAX_BOUND                  internal static fixed bin(19,0)          initial dcl 3-198
+IOI_DEFAULT_MAX_TIMEOUT                internal static fixed bin(35,0)          initial dcl 3-199
+IOI_DEFAULT_TIMEOUT                    internal static fixed bin(35,0)          initial dcl 3-201
+IOI_DEVICE_LOCK_EVENT_TEMPLATE         internal static char(2)                  initial packed unaligned dcl 3-207
+IO_CONFIG_CHANNEL_TABLE_VERSION_1      internal static char(8)                  initial dcl 5-106
+IO_CONFIG_CONTROLLER_TABLE_VERSION_1   internal static char(8)                  initial dcl 5-108
+IO_CONFIG_DATA_VERSION_1               internal static char(8)                  initial dcl 5-102
+IO_CONFIG_DEVICE_TABLE_VERSION_1       internal static char(8)                  initial dcl 5-104
+IO_CONFIG_IOM_TABLE_VERSION_1          internal static char(8)                  initial dcl 5-110
+IO_STATUS_ERROR_MASK                   internal static bit(36)                  initial packed unaligned dcl 3-203
+IO_TYPE                                internal static char(16)                 initial array packed unaligned dcl 2-262
+Initial_undefined                      internal static fixed bin(17,0)          initial dcl 10-64
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 9-7
+MAX_IO_TYPE                            internal static fixed bin(4,0)           initial dcl 2-251
+Multics                                internal static fixed bin(17,0)          initial dcl 10-67
+PAGE_READ                              internal static fixed bin(4,0)           initial dcl 2-251
+PAGE_WRITE                             internal static fixed bin(4,0)           initial dcl 2-251
+RSS_LISTX                              internal static fixed bin(12,0)          initial dcl 2-241
+RST_LISTX                              internal static fixed bin(12,0)          initial dcl 2-241
+SC_LISTX                               internal static fixed bin(12,0)          initial dcl 2-241
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 9-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 9-7
+TEST                                   internal static fixed bin(4,0)           initial dcl 2-251
+TOE_HOLD_BOOT_ENTRY                    internal static fixed bin(17,0)          initial dcl 10-36
+TOE_HOLD_BOS_ENTRY                     internal static fixed bin(17,0)          initial dcl 10-37
+TOE_HOLD_BOS_MULTICS_ENTRY             internal static fixed bin(17,0)          initial dcl 10-39
+TOE_HOLD_BOS_NO_SAVE_ENTRY             internal static fixed bin(17,0)          initial dcl 10-38
+TOE_HOLD_CRASH_ENTRY                   internal static fixed bin(17,0)          initial dcl 10-31
+TOE_HOLD_DUMP_ENTRY                    internal static fixed bin(17,0)          initial dcl 10-33
+TOE_HOLD_ESD_ENTRY                     internal static fixed bin(17,0)          initial dcl 10-32
+TOE_HOLD_MULTICS_ENTRY                 internal static fixed bin(17,0)          initial dcl 10-34
+TOE_HOLD_RESTART_ENTRY                 internal static fixed bin(17,0)          initial dcl 10-35
+Undefined_continue                     internal static fixed bin(17,0)          initial dcl 10-72
+Undefined_reading_bce                  internal static fixed bin(17,0)          initial dcl 10-69
+Undefined_saving_mem                   internal static fixed bin(17,0)          initial dcl 10-73
+Undefined_saving_state                 internal static fixed bin(17,0)          initial dcl 10-68
+VTOC_READ                              internal static fixed bin(4,0)           initial dcl 2-251
+VTOC_WRITE                             internal static fixed bin(4,0)           initial dcl 2-251
+abx                                    internal static fixed bin(17,0)          initial dcl 11-42
+apx                                    internal static fixed bin(17,0)          initial dcl 11-42
+bbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+bootload_map                           defined         bit(1)                   array packed unaligned dcl 2-279
+bootload_mapping                       internal static bit(7)                   initial packed unaligned dcl 2-278
+bpx                                    internal static fixed bin(17,0)          initial dcl 11-42
+connect_channel                        internal static fixed bin(6,0)           initial dcl 8-105
+controller_table                       based           structure                level 1 dcl 5-71
+cp                                     automatic       pointer                  dcl 2-97
+device_table                           based           structure                level 1 dcl 5-36
+disk_channel_table                     based           structure                array level 1 dcl 2-94
+disk_data                              based           structure                level 1 dcl 2-31
+disk_seg$                              external static fixed bin(17,0)          dcl 2-24
+diskp                                  automatic       pointer                  dcl 2-26
+disksp                                 automatic       pointer                  dcl 2-26
+disktab                                based           structure                level 1 dcl 2-74
+dp                                     automatic       pointer                  dcl 2-187
+dskdcl_chans_per_subsys_shift          internal static fixed bin(17,0)          initial dcl 2-71
+io_chnl_util$iom_to_name        000000 constant        entry                    external dcl 7-12
+io_config_controller_table_ptr         automatic       pointer                  dcl 5-15
+io_config_device_table_ptr             automatic       pointer                  dcl 5-11
+io_manager$connect              000000 constant        entry                    external dcl 6-26
+io_manager$connect_abs          000000 constant        entry                    external dcl 6-29
+io_manager$connect_direct       000000 constant        entry                    external dcl 6-32
+io_manager$get_status           000000 constant        entry                    external dcl 6-35
+io_manager$mask                 000000 constant        entry                    external dcl 6-38
+io_manager$workspace_tdcw       000000 constant        entry                    external dcl 6-47
+io_manager_arg_ptr                     automatic       pointer                  dcl 6-49
+ioi_channels                           automatic       fixed bin(17,0)          dcl 3-35
+ioi_devices                            automatic       fixed bin(17,0)          dcl 3-35
+ioi_multiplexers                       automatic       fixed bin(17,0)          dcl 3-35
+ioi_subsystems                         automatic       fixed bin(17,0)          dcl 3-35
+iom_mailbox$                           external static fixed bin(17,0)          dcl 8-12
+iom_mailbox_seg                        based           structure                level 1 dcl 8-83
+iom_mailbox_seg_ptr                    automatic       pointer                  dcl 8-82
+lbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+lock_ptr                               automatic       pointer                  dcl 4-11
+lpx                                    internal static fixed bin(17,0)          initial dcl 11-42
+mc_state_ptr                           automatic       pointer                  dcl 10-41
+mcp                                    automatic       pointer                  dcl 11-10
+n_devices                              automatic       fixed bin(17,0)          dcl 8-14
+optp                                   automatic       pointer                  dcl 2-26
+pvtdi                                  based           structure                level 1 dcl 2-229
+pvtdip                                 automatic       pointer                  dcl 2-187
+qp                                     automatic       pointer                  dcl 2-97
+sbx                                    internal static fixed bin(17,0)          initial dcl 11-42
+scu                                    based           structure                level 1 dcl 11-56
+scup                                   automatic       pointer                  dcl 11-54
+scux                                   based           structure                level 1 dcl 11-207
+sector_map                             defined         bit(1)                   array packed unaligned dcl 2-274
+sector_mapping                         internal static bit(7)                   initial packed unaligned dcl 2-273
+special_status_channel                 internal static fixed bin(6,0)           initial dcl 8-105
+spx                                    internal static fixed bin(17,0)          initial dcl 11-42
+status_queue_ptr                       automatic       pointer                  dcl 8-91
+sysp                                   automatic       pointer                  dcl 2-26
+system_fault_channel                   internal static fixed bin(6,0)           initial dcl 8-105
+tables_length                          automatic       fixed bin(19,0)          dcl 5-20
+write_map                              defined         bit(1)                   array packed unaligned dcl 2-269
+write_mapping                          internal static bit(7)                   initial packed unaligned dcl 2-268
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ABORT                           002237 constant        entry                    internal dcl 517 ref 145 147 154 189 191 272 274 288
+                                                                                  293 512
+CLEANUP                         002253 constant        entry                    internal dcl 529 ref 137 259 522
+DONE_ADDING                     001243 constant        label                    dcl 331 ref 270
+ERROR_RETURN                    001247 constant        label                    dcl 337 ref 432 524
+FOUND_TOEHOLD_CHANNEL           002043 constant        label                    dcl 465 ref 460
+IOM_NOT_CONFIGURED              001766 constant        label                    dcl 430 ref 417
+add_channel                     000566 constant        entry                    external dcl 241
+add_iom                         001254 constant        entry                    external dcl 340
+delete_channel                  000116 constant        entry                    external dcl 119
+delete_iom                      001477 constant        entry                    external dcl 374
+ensure_rpv_path_in_toehold      001773 constant        entry                    internal dcl 438 ref 225
+get_chnl_add_info               002566 constant        entry                    internal dcl 614 ref 279
+get_chnl_del_info               002461 constant        entry                    internal dcl 578 ref 165
+get_ctep                        002670 constant        entry                    internal dcl 667 ref 132 253
+get_device_info                 002613 constant        entry                    internal dcl 632 ref 166
+get_gtep                        002751 constant        entry                    internal dcl 695 ref 135 256
+get_itep                        002762 constant        entry                    internal dcl 708 ref 257
+io_reconfig                     000103 constant        entry                    external dcl 31
+lock_for_reconfig               002440 constant        entry                    internal dcl 562 ref 141 263 344 378
+quit_if_error                   002231 constant        entry                    internal dcl 509 ref 133 200 206 221 233 254 303 308
+                                                                                  313 316 320
+set_toehold_path                002216 constant        entry                    internal dcl 493 ref 474 489
+setup_and_find_iom_entry        001663 constant        entry                    internal dcl 409 ref 343 377
+unlock_for_reconfig             002451 constant        entry                    internal dcl 570 ref 236 331 346 354 369 380 385 392
+                                                                                  404
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3660        4012    3100        3670
+Length      4520    3100       132         471     557           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+io_reconfig                         295 external procedure  is an external procedure.  
+on unit on line 137                  64 on unit               
+on unit on line 259                  64 on unit               
+setup_and_find_iom_entry                internal procedure  shares stack frame of external procedure io_reconfig.  
+ensure_rpv_path_in_toehold              internal procedure  shares stack frame of external procedure io_reconfig.  
+set_toehold_path                        internal procedure  shares stack frame of external procedure io_reconfig.  
+quit_if_error                           internal procedure  shares stack frame of external procedure io_reconfig.  
+ABORT                                   internal procedure  shares stack frame of external procedure io_reconfig.  
+CLEANUP                              86 internal procedure  is called by several nonquick procedures.  
+lock_for_reconfig                       internal procedure  shares stack frame of external procedure io_reconfig.  
+unlock_for_reconfig                     internal procedure  shares stack frame of external procedure io_reconfig.  
+get_chnl_del_info                       internal procedure  shares stack frame of external procedure io_reconfig.  
+get_chnl_add_info                       internal procedure  shares stack frame of external procedure io_reconfig.  
+get_device_info                         internal procedure  shares stack frame of external procedure io_reconfig.  
+get_ctep                                internal procedure  shares stack frame of external procedure io_reconfig.  
+get_gtep                                internal procedure  shares stack frame of external procedure io_reconfig.  
+get_itep                                internal procedure  shares stack frame of external procedure io_reconfig.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+io_reconfig              000100 added                       io_reconfig
+                         000101 adding_channel              io_reconfig
+                         000102 base_chnl                   io_reconfig
+                         000104 chanid                      io_reconfig
+                         000106 chnl_required               io_reconfig
+                         000107 code                        io_reconfig
+                         000110 cv_status_ptr               io_reconfig
+                         000112 deleting_channel            io_reconfig
+                         000113 device_active               io_reconfig
+                         000114 dtx                         io_reconfig
+                         000115 grp_chnl_active             io_reconfig
+                         000116 iom_active                  io_reconfig
+                         000117 locked                      io_reconfig
+                         000120 rel_chnl_active             io_reconfig
+                         000121 state_changed               io_reconfig
+                         000122 tag                         io_reconfig
+                         000124 temp_base_chnl_ptr          io_reconfig
+                         000126 usurped_channel             io_reconfig
+                         000136 iom_cardp                   io_reconfig
+                         000140 idp                         io_reconfig
+                         000142 gtep                        io_reconfig
+                         000144 ctep                        io_reconfig
+                         000146 dtep                        io_reconfig
+                         000150 itep                        io_reconfig
+                         000152 io_config_data_ptr          io_reconfig
+                         000154 io_config_channel_table_ptr io_reconfig
+                         000156 io_config_iom_table_ptr     io_reconfig
+                         000160 iom_data_ptr                io_reconfig
+                         000172 itx                         setup_and_find_iom_entry
+                         000202 iomno                       ensure_rpv_path_in_toehold
+                         000203 channo                      ensure_rpv_path_in_toehold
+                         000204 iopx                        ensure_rpv_path_in_toehold
+                         000206 saved_ctep                  ensure_rpv_path_in_toehold
+                         000210 saved_iopx                  ensure_rpv_path_in_toehold
+                         000211 toehold_channel_left        ensure_rpv_path_in_toehold
+                         000212 path_word                   ensure_rpv_path_in_toehold
+                         000222 path_word_ptr               set_toehold_path
+                         000262 cptr                        get_chnl_del_info
+                         000264 ctx                         get_chnl_del_info
+                         000266 gptr                        get_chnl_del_info
+                         000270 my_base_rptr                get_chnl_del_info
+                         000306 chanid                      get_device_info
+                         000310 done                        get_device_info
+                         000312 dptr                        get_device_info
+                         000314 gptr                        get_device_info
+                         000316 initial_dtep                get_device_info
+                         000326 i                           get_ctep
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find_2                config_$update                dctl$disk_inter               disk_control$add_channel
+io_chnl_util$canonicalize_chanid                            io_chnl_util$name_to_iom      io_manager$assign
+io_manager$assign_add         io_manager$ignore_interrupt   io_manager$unassign           io_manager$unassign_delete
+ioi_assignment$lock_for_reconfig                            ioi_assignment$unlock_for_reconfig
+ioi_masked$interrupt          ioi_usurp_channels$assign     ioi_usurp_channels$required   ioi_usurp_channels$unassign
+iom_overhead$init             iom_overhead$release          iom_switches$validate         pxss$addevent
+pxss$wait                     scr_util$set_port_enable      syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_channel      error_table_$chnl_already_added
+error_table_$chnl_already_deleted                           error_table_$chnl_being_deleted
+error_table_$chnl_iom_active  error_table_$chnl_iom_inactive                              error_table_$io_not_available
+error_table_$io_not_defined   error_table_$iom_already_added
+error_table_$iom_already_deleted                            error_table_$no_base_chnl_active
+error_table_$rel_chnl_active  error_table_$undeleted_device io_config_data$               ioi_data$
+iom_data$                     toehold$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     43 000074        50 000075        56 000076        58 000077        31 000102       119 000111       122 000124
+    123 000126       124 000127       125 000132       126 000134       127 000141       131 000146       132 000157
+    133 000161       135 000162       137 000164       141 000206       145 000207       147 000223       150 000235
+    151 000245       152 000251       154 000261       157 000274       160 000276       161 000300       165 000303
+    166 000305       188 000307       189 000312       191 000324       197 000341       198 000344       199 000350
+    200 000361       201 000362       203 000364       204 000365       205 000371       206 000416       207 000417
+    208 000422       213 000424       214 000430       215 000446       216 000453       220 000454       221 000465
+    222 000466       223 000471       224 000473       225 000475       226 000476       227 000505       231 000514
+    232 000517       233 000530       236 000531       237 000532       238 000561       239 000563       241 000564
+    244 000574       245 000576       246 000601       247 000603       248 000610       252 000615       253 000626
+    254 000630       256 000631       257 000633       259 000635       263 000657       267 000660       268 000664
+    270 000712       272 000715       273 000724       274 000725       279 000737       288 000741       291 000753
+    292 000756       293 000764       299 000776       300 001000       301 001003       303 001046       304 001047
+    305 001052       306 001054       307 001056       308 001067       309 001070       310 001071       311 001074
+    313 001122       314 001123       315 001126       316 001137       317 001140       319 001141       320 001172
+    321 001173       322 001176       325 001200       326 001207       329 001214       331 001243       333 001244
+    335 001246       337 001247       340 001250       343 001262       344 001263       345 001264       346 001276
+    347 001277       348 001303       350 001304       351 001311       352 001322       353 001324       354 001331
+    355 001332       356 001335       358 001336       361 001352       362 001363       365 001416       366 001421
+    367 001430       368 001433       369 001440       370 001441       371 001472       372 001474       374 001475
+    377 001505       378 001506       379 001507       380 001520       381 001521       382 001525       384 001526
+    385 001532       386 001533       387 001537       390 001540       391 001551       392 001553       393 001554
+    394 001557       397 001560       399 001574       400 001577       401 001606       402 001613       403 001616
+    404 001623       405 001624       406 001660       407 001662       409 001663       414 001664       415 001667
+    416 001671       417 001706       420 001712       421 001715       422 001717       423 001721       424 001726
+    425 001735       426 001760       428 001764       430 001766       432 001772       438 001773       457 001774
+    459 002013       460 002021       462 002040       463 002042       465 002043       467 002045       468 002046
+    469 002055       472 002071       473 002073       474 002075       475 002100       480 002101       481 002103
+    483 002126       484 002133       485 002151       486 002166       487 002174       488 002201       489 002203
+    490 002213       491 002215       493 002216       502 002220       503 002226       505 002230       509 002231
+    512 002232       515 002236       517 002237       522 002241       523 002245       524 002251       529 002252
+    532 002260       533 002273       534 002275       535 002277       537 002314       538 002322       539 002333
+    542 002337       543 002343       544 002345       545 002346       546 002350       548 002364       549 002372
+    551 002416       554 002424       557 002430       560 002437       562 002440       565 002441       566 002446
+    568 002450       570 002451       573 002452       574 002457       576 002460       578 002461       596 002463
+    597 002465       599 002477       600 002501       602 002504       603 002515       604 002534       605 002544
+    607 002553       610 002563       612 002565       614 002566       624 002570       626 002600       628 002601
+    630 002612       632 002613       650 002615       651 002617       652 002624       654 002627       655 002632
+    656 002633       657 002640       658 002644       659 002647       662 002655       663 002663       665 002667
+    667 002670       680 002672       681 002674       683 002675       684 002705       685 002735       686 002741
+    688 002742       690 002744       692 002750       695 002751       703 002753       705 002761       708 002762
+    716 002764       718 002772
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

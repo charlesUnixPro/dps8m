@@ -1,0 +1,1062 @@
+	COMPILATION LISTING OF SEGMENT cv_rcp_attributes_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0954.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /****^  format: off */
+       13 
+       14 cv_rcp_attributes_: proc; return;
+       15 
+       16 /* This subroutine changes RCP attribute specifications into printable RCP
+       17*   attribute descriptions and vice versa.  Multiple entrypoints allow
+       18*   these operations, as well as several perversions on the same theme. */
+       19 /* Written 04/02/78 by C. D. Tavares */
+       20 /* Last modified 02/27/80 by CDT to add make_rel entry. */
+       21 
+       22 
+       23 /****^  HISTORY COMMENTS:
+       24*  1) change(87-07-15,Rauschelbach), approve(87-08-07,MCR7748),
+       25*     audit(87-11-11,Farley), install(87-11-30,MR12.2-1004):
+       26*     Set RTDT_area_len.
+       27*                                                   END HISTORY COMMENTS */
+       28 
+       29 
+  1     1 /* --------------- BEGIN include file rtdt.incl.pl1 --------------- */
+  1     2 
+  1     3 dcl 1 rtdt aligned based (rtdtp),			/* resource type description table */
+  2     1 /* BEGIN INCLUDE FILE author.incl.pl1 */
+  2     2 
+  2     3 /* the "author" items must always be the first ones in the table. The
+  2     4*   module which moves the converted table to the System Control process
+  2     5*   fills in these data items and assumes them to be at the head of the segment
+  2     6*   regardless of the specific table's actual declaration. The variables
+  2     7*   "lock" and "last_install_time" used to be "process_id" and "ev_channel"
+  2     8*    respectively. For tables installed in multiple processes, these
+  2     9*    are to be used to lock out multiple installations. */
+  2    10 
+  2    11 /*  Lock should be used as a modification lock. Since, in general,
+  2    12*    entries may not be moved in system tables, even by installations,
+  2    13*    it is sufficient for only installers and programs that change threads
+  2    14*    to set or respect the lock. Simply updating data in an entry
+  2    15*    requires no such protection.
+  2    16*
+  2    17*    Last_install_time is used by readers of system tables to detect
+  2    18*    installations or other serious modifications. By checking it before
+  2    19*    and after copying a block of data, they can be protected against
+  2    20*    modifications.
+  2    21*
+  2    22*    Modules that set the lock should save proc_group_id, and then
+  2    23*    put their group id there for the time they hold the lock.
+  2    24*    if they do not actually install the, they should restore the group id.
+  2    25**/
+  2    26 
+  2    27     2 author aligned,				/* validation data about table's author */
+  2    28       3 proc_group_id char (32),			/* process-group-id  (personid.projectid.tag) */
+  2    29       3 lock bit (36),				/* installation lock */
+  2    30       3 update_attributes bit (1) unal,			/* update/add/delete attributes */
+  2    31       3 update_authorization bit (1) unal,		/* update only authorizations */
+  2    32       3 deferral_notified bit (1) unal,			/* installer notified of deferral of installation */
+  2    33       3 pad bit (33) unaligned,
+  2    34       3 last_install_time fixed bin (71),
+  2    35       3 table char (4),				/* name of table, e.g., SAT MGT TTT RTDT PDT etc. */
+  2    36       3 w_dir char (64),				/* author's working directory */
+  2    37 
+  2    38 /* END INCLUDE FILE author.incl.pl1 */
+  1     4 
+  1     5     2 version fixed bin,				/* version number */
+  1     6     2 installed_under_resource_mgt bit (1) aligned,	/* resource mgt. was ON when this was installed */
+  1     7     2 charge_type_table_ptr offset,			/* points to charge_type_table */
+  1     8     2 first_resource offset,				/* chain for RTDE's */
+  1     9     2 rtdt_area area (RTDT_area_len);			/* all following items allocated here */
+  1    10 
+  1    11 dcl 1 charge_type_table aligned based (cttp),		/* describes charges for resource types */
+  1    12     2 n_charge_types fixed bin,			/* number of distinct charge types */
+  1    13     2 charge_types (N_CHARGE_TYPES refer (charge_type_table.n_charge_types)) aligned char (32),
+  1    14     2 flagword fixed bin (35) aligned;			/* this word simply help us set bitcount properly */
+  1    15 
+  1    16 dcl 1 rtde aligned based (rtdep),			/* describes one resource type */
+  1    17     2 fixed_info aligned,
+  1    18       3 next_resource offset,				/* chains to next type, or nullo */
+  1    19       3 name char (32),				/* name of resource type, e.g. "tape_drive" */
+  1    20       3 syn_to char (32),				/* if is_synonym this is master syn */
+  1    21       3 precanon_proc char (64),			/* name of routine to standardize resource name */
+  1    22       3 pad_1 (16) fixed bin (35),
+  1    23       3 flags unaligned,
+  1    24         4 (valid,					/* resource type hasn't been deleted */
+  1    25      is_volume,					/* specifies volume or device type */
+  1    26      manual_clear,					/* volumes of this type to be "degaussed" between owners */
+  1    27      addition_pending,				/* bookkeeping bit for upd_rtdt_ */
+  1    28      deletion_pending,
+  1    29      is_synonym) bit (1) unaligned,			/* ditto */
+  1    30         4 pad bit (12) unaligned,
+  1    31       3 (process_limit,				/* how many can you assign at one time */
+  1    32      default_time,					/* implicit reservations are for how many minutes */
+  1    33      max_time,					/* how long can you reserve it for */
+  1    34      advance_notice_time,				/* warn operator to prepare mount ahead of time */
+  1    35      pad2,
+  1    36      n_exclusion_specs,				/* number of distinct "name=" fields in attributes */
+  1    37      n_mates,					/* number of mating devs/vols for this vol/dev */
+  1    38      n_subtypes,					/* number of registration subtypes */
+  1    39      n_defined_attributes) fixed bin (17) unaligned,	/* number of defined attributes */
+  1    40       3 pad_2 (8) fixed bin (35),
+  1    41       3 attributes_valid bit (72) aligned,		/* "1"b if corresp. attribute undeleted */
+  1    42       3 attributes_to_match bit (72) aligned,		/* potential mate must possess these attributes */
+  1    43       3 attribute_names (72) char (12) aligned,		/* all possible attributes for this resource */
+  1    44       3 exclusion_specs (36) bit (72) aligned,		/* each masks all attrributes of the form "key=val" */
+  1    45       3 pad_3 (32) fixed bin (35),
+  1    46       3 registration_defaults aligned,			/* applied at reg. time if none given */
+  1    47         4 default_flags aligned,
+  1    48 	5 (potential_attributes_given,		/* "1"b = there are default potential_attributes */
+  1    49      attributes_given,				/* and similarly, etc. */
+  1    50      aim_range_given,
+  1    51      charge_type_given) bit (1) unaligned,
+  1    52 	5 pad bit (31) unaligned,
+  1    53         4 potential_attributes bit (72) aligned,		/* for registration, if given */
+  1    54         4 attributes bit (72) aligned,			/* for registration and also for runtime "I-don't-care" */
+  1    55         4 aim_range (2) bit (72) aligned,		/* and similarly, etc. */
+  1    56         4 charge_type fixed bin,
+  1    57         4 pad_4 (8) fixed bin (35) aligned,
+  1    58     2 mates (N_MATES refer (rtde.n_mates)) char (32) aligned,
+  1    59 						/* the volume type that mounts on this device, or vice versa */
+  1    60     2 subtypes (N_SUBTYPES refer (rtde.n_subtypes)) aligned, /* named registration default groups */
+  1    61       3 subtype_name char (32),			/* name of the group */
+  1    62       3 subtype_defaults like rtde.registration_defaults aligned;
+  1    63 
+  1    64 dcl  RTDT_version_3 fixed bin static options (constant) initial (3),
+  1    65      RTDT_version_2 fixed bin static options (constant) initial (2),
+  1    66 						/* same format, but without precanon_proc */
+  1    67     (N_MATES, N_SUBTYPES, N_CHARGE_TYPES) fixed bin,
+  1    68      RTDT_area_len fixed bin (18);
+  1    69 
+  1    70 dcl (rtdep, rtdtp, cttp) pointer;
+  1    71 
+  1    72 /* ---------------- END include file rtdt.incl.pl1 ---------------- */
+       30 
+       31 
+       32 /* automatic */
+       33 
+       34 dcl  temp_spec bit (72) aligned,
+       35      temp_relatts (4) bit (72),
+       36      temp_atts (2) bit (72),
+       37      temp_att_string char (256) varying;
+       38 
+       39 /* static */
+       40 
+       41 dcl  sysdir char (168) initial (">system_control_1") static;
+       42 dcl  sys_info$max_seg_size fixed bin (35) ext static;
+       43 
+       44 /* entries */
+       45 
+       46 dcl  hcs_$initiate ext entry (char (*), char (*), char (*), fixed bin, fixed bin, pointer, fixed bin (35)),
+       47      hcs_$terminate_noname ext entry (pointer, fixed bin (35));
+       48 
+       49 dcl  sub_err_ ext entry options (variable);
+       50 
+       51 
+       52 
+       53 /* external variables */
+       54 
+       55 dcl (error_table_$rcp_bad_attributes,
+       56      error_table_$unimplemented_version,
+       57      error_table_$resource_type_inappropriate,
+       58      error_table_$resource_unknown) ext fixed bin (35) static;
+       59 
+       60 /* builtins */
+       61 
+       62 dcl (pointer, substr, index, max, null, copy, length, rtrim, string, size) builtin;
+       63 
+       64 dcl  cleanup condition;
+       65 	
+       66 to_string: entry (resource_type, attributes, attribute_string, code);
+       67 
+       68 dcl (resource_type char (*),
+       69      attributes (2) bit (72),
+       70      attribute_string char (*) varying,
+       71      code fixed bin (35)) parameter;
+       72 
+       73 	rtdtp = null;
+       74 
+       75 	RTDT_area_len = 0;				/* With the area size 0, then rtdt is only as
+       76*						   big as the header info. */
+       77 	RTDT_area_len = sys_info$max_seg_size - size (rtdt);
+       78 
+       79 
+       80 	on cleanup call term_rtdt (0);
+       81 
+       82 	call find_rtde (resource_type, code);
+       83 	if code ^= 0 then return;
+       84 
+       85 	call make_string (attributes, attribute_string, code);
+       86 
+       87 	call term_rtdt (code);
+       88 	return;
+       89 	
+       90 to_string_rel: entry (resource_type, rel_attributes, attribute_string, code);
+       91 
+       92 dcl  rel_attributes (4) bit (72) parameter;
+       93 
+       94 	rtdtp = null;
+       95 
+       96 	on cleanup call term_rtdt (0);
+       97 
+       98 	call find_rtde (resource_type, code);
+       99 	if code ^= 0 then return;
+      100 
+      101 	call make_string_rel (rel_attributes, attribute_string, code);
+      102 
+      103 	if code ^= 0 then call term_rtdt (0);
+      104 	else call term_rtdt (code);
+      105 	return;
+      106 	
+      107 to_string_given_rtde: entry (xrtdep, attributes, attribute_string, code);
+      108 
+      109 /* This entry is for the use of display_rtdt only. */
+      110 
+      111 dcl  xrtdep pointer parameter;
+      112 
+      113 	rtdep = xrtdep;
+      114 
+      115 	call make_string (attributes, attribute_string, code);
+      116 	return;
+      117 	
+      118 from_string: entry (resource_type, attributes, attribute_string, code);
+      119 
+      120 	rtdtp = null;
+      121 
+      122 	on cleanup call term_rtdt (0);
+      123 
+      124 	call find_rtde (resource_type, code);
+      125 	if code ^= 0 then return;
+      126 
+      127 	call interpret_string (attribute_string, temp_relatts, code);
+      128 	if code ^= 0 then do;
+      129 	     call term_rtdt (0);
+      130 	     return;
+      131 	end;
+      132 
+      133 	attributes (1) = temp_relatts (1);
+      134 	attributes (2) = temp_relatts (2);
+      135 
+      136 	call term_rtdt (code);
+      137 	return;
+      138 	
+      139 from_string_rel: entry (resource_type, rel_attributes, attribute_string, code);
+      140 
+      141 	rtdtp = null;
+      142 
+      143 	on cleanup call term_rtdt (0);
+      144 
+      145 	call find_rtde (resource_type, code);
+      146 	if code ^= 0 then return;
+      147 
+      148 	call interpret_string (attribute_string, rel_attributes, code);
+      149 	if code ^= 0 then call term_rtdt (0);
+      150 	else call term_rtdt (code);
+      151 	return;
+      152 	
+      153 modify:	entry (resource_type, attributes, attribute_string, new_attributes, code);
+      154 
+      155 dcl  new_attributes (2) bit (72) parameter;
+      156 
+      157 	rtdtp = null;
+      158 
+      159 	on cleanup call term_rtdt (0);
+      160 
+      161 	call find_rtde (resource_type, code);
+      162 	if code ^= 0 then return;
+      163 
+      164 	call interpret_string (attribute_string, temp_relatts, code);
+      165 	if code ^= 0 then do;
+      166 	     call term_rtdt (0);
+      167 	     return;
+      168 	end;
+      169 
+      170 	new_attributes (1) = (attributes (1) | rel_attributes (1)) & ^rel_attributes (3);
+      171 	new_attributes (2) = (attributes (2) | rel_attributes (2)) & ^rel_attributes (4);
+      172 
+      173 	call term_rtdt (code);
+      174 	return;
+      175 	
+      176 make_rel:	entry (resource_type, attributes, rel_attributes, code);
+      177 
+      178 /* This entry takes a full or relative attribute string in absolute attribute
+      179*   format and makes a full relative attribute string in relative attribute
+      180*   format (filling in the "turn off" bit portions).  It does this via the
+      181*   quick and dirty method of converting back and forth to a char string. */
+      182 
+      183 	rtdtp = null;
+      184 
+      185 	on cleanup call term_rtdt (0);
+      186 
+      187 	call find_rtde (resource_type, code);
+      188 	if code ^= 0 then return;
+      189 
+      190 	call check_validity (attributes, validity_level, code);
+      191 	if code ^= 0 then do;
+      192 term_and_return:
+      193 	     call term_rtdt (0);
+      194 	     return;
+      195 	end;
+      196 
+      197 	call make_string (attributes, temp_att_string, code);
+      198 	if code ^= 0 then goto term_and_return;
+      199 
+      200 	call interpret_string (temp_att_string, rel_attributes, code);
+      201 	if code ^= 0 then goto term_and_return;
+      202 
+      203 	call term_rtdt (code);
+      204 	return;
+      205 	
+      206 modify_rel: entry (attributes, rel_attributes, new_attributes);
+      207 
+      208 	new_attributes (1) = (attributes (1) | rel_attributes (1)) & ^rel_attributes (3);
+      209 	new_attributes (2) = (attributes (2) | rel_attributes (2)) & ^rel_attributes (4);
+      210 	return;
+      211 	
+      212 test_valid: entry (resource_type, attributes, validity_level, code);
+      213 
+      214 dcl  validity_level fixed bin parameter;
+      215 
+      216 dcl (Absolute initial (0),
+      217      Relative initial (1),
+      218      Multiple initial (2),
+      219      Invalid initial (3)) fixed bin static options (constant);
+      220 
+      221 	rtdtp = null;
+      222 
+      223 	on cleanup call term_rtdt (0);
+      224 
+      225 	call find_rtde (resource_type, code);
+      226 	if code ^= 0 then return;
+      227 
+      228 	call check_validity (attributes, validity_level, code);
+      229 	if code ^= 0 then do;
+      230 	     call term_rtdt (0);
+      231 	     return;
+      232 	end;
+      233 
+      234 	call term_rtdt (code);
+      235 	return;
+      236 	
+      237 protected_change: entry (attributes, rel_attributes) returns (bit (1) aligned);
+      238 
+      239 	if (rel_attributes (2) & attributes (2)) ^= rel_attributes (2) then
+      240 	     return ("1"b);				/* making a currently unprotected attribute protected */
+      241 	if (rel_attributes (4) & ^attributes (2)) ^= rel_attributes (4) then
+      242 	     return ("1"b);				/* making a currently protected attribute unprotected */
+      243 	if (rel_attributes (3) & attributes (2)) ^= "0"b then
+      244 	     return ("1"b);				/* turning off a currently protected attribute */
+      245 
+      246 	return ("0"b);				/* this will cause no change to protected attributes */
+      247 	
+      248 reduce_implications: entry (vol_type, vol_attributes, dev_type, dev_attributes, code);
+      249 
+      250 dcl ((vol_type, dev_type) char (*),
+      251     (vol_attributes, dev_attributes) dimension (2) bit (72)) parameter;
+      252 
+      253 	rtdtp = null;
+      254 
+      255 	on cleanup call term_rtdt (0);
+      256 
+      257 	call find_rtde (vol_type, code);
+      258 	if code ^= 0 then return;
+      259 
+      260 	if ^rtde.is_volume then do;
+      261 	     code = error_table_$resource_type_inappropriate;
+      262 	     call term_rtdt (0);
+      263 	     return;
+      264 	end;
+      265 
+      266 	if rtde.n_mates ^= 1 then do;
+      267 	     code = error_table_$resource_unknown;
+      268 	     call term_rtdt (0);
+      269 	     return;
+      270 	end;
+      271 
+      272 	dev_type = rtde.mates (1);
+      273 
+      274 	temp_atts (1) = vol_attributes (1) & string (rtde.attributes_to_match);
+      275 	temp_atts (2) = ""b;
+      276 
+      277 	call make_string (temp_atts, temp_att_string, code);
+      278 
+      279 	call term_rtdt (0);
+      280 	if code ^= 0 /* from make_string */ then return;
+      281 
+      282 	call find_rtde (dev_type, code);
+      283 	if code ^= 0 then return;
+      284 
+      285 	call interpret_string (temp_att_string, temp_relatts, code);
+      286 
+      287 	call term_rtdt (0);
+      288 	if code ^= 0 /* from interpret_string */ then return;
+      289 
+      290 	dev_attributes (1) = temp_relatts (1);
+      291 	dev_attributes (2) = temp_relatts (2);
+      292 
+      293 	return;
+      294 
+      295 
+      296 find_rtde: proc (resource_type_arg, code);
+      297 
+      298 dcl (resource_type_arg char (*),
+      299      code fixed bin (35)) parameter;
+      300 
+      301 dcl  resource_type char (32),
+      302      i fixed bin,
+      303      found bit (1) aligned,
+      304      error_table_$improper_data_format ext fixed bin (35) static;
+      305 
+      306 	     call hcs_$initiate (sysdir, "rtdt", "", 0, 0, rtdtp, code);
+      307 	     if rtdtp = null then do;
+      308 		call sub_err_ (code, "cv_rcp_attributes_", "c", null, 0, "Cannot initiate ^a>rtdt", sysdir);
+      309 		return;
+      310 	     end;
+      311 	     code = 0;
+      312 
+      313 	     if (rtdt.version ^= RTDT_version_2) & (rtdt.version ^= RTDT_version_3) then do;
+      314 		code = error_table_$unimplemented_version;
+      315 		call hcs_$terminate_noname (rtdtp, 0);
+      316 		return;
+      317 	     end;
+      318 
+      319 	     resource_type = resource_type_arg;
+      320 
+      321 	     do i = 1 to 2;				/* give 2 chances to chase down syn */
+      322 		found = ""b;
+      323 
+      324 		do rtdep = pointer (rtdt.first_resource, rtdt.rtdt_area)
+      325 			repeat (pointer (rtde.next_resource, rtdt.rtdt_area))
+      326 			while (rtdep ^= null);
+      327 
+      328 		     if rtde.valid then
+      329 			if rtde.name = resource_type then
+      330 			     if ^rtde.is_synonym then return;
+      331 			     else do;
+      332 				resource_type = rtde.syn_to;
+      333 				found = "1"b;
+      334 			     end;
+      335 		end;
+      336 
+      337 		if ^found then do;
+      338 		     code = error_table_$resource_unknown;
+      339 		     call hcs_$terminate_noname (rtdtp, 0);
+      340 		     return;
+      341 		end;
+      342 	     end;
+      343 
+      344 	     code = error_table_$improper_data_format;
+      345 	     call hcs_$terminate_noname (rtdtp, 0);
+      346 	     return;
+      347 
+      348 	end find_rtde;
+      349 	
+      350 term_rtdt: proc (code);
+      351 
+      352 dcl  code fixed bin (35) parameter;
+      353 	     if rtdtp ^= null then
+      354 		call hcs_$terminate_noname (rtdtp, code);
+      355 	     return;
+      356 
+      357 	end term_rtdt;
+      358 	
+      359 make_string: proc (abs_attributes, attribute_string, code);
+      360 
+      361 dcl (abs_attributes (2) bit (72),
+      362      attribute_string char (*) varying,
+      363      code fixed bin (35)) parameter;
+      364 
+      365 dcl (i, j) fixed bin,
+      366      auto_attributes (4) bit (72);
+      367 
+      368 	     string (auto_attributes) = string (abs_attributes);
+      369 	     goto make_string_common;
+      370 
+      371 make_string_rel: entry (rel_attributes, attribute_string, code);
+      372 
+      373 dcl  rel_attributes (4) bit (72);
+      374 
+      375 	     string (auto_attributes) = string (rel_attributes);
+      376 	     goto make_string_common;
+      377 
+      378 make_string_common:
+      379 	     attribute_string = "";
+      380 
+      381 	     do i = index (auto_attributes (1), "1"b) repeat (i) while (i > 0);
+      382 		if i > rtde.n_defined_attributes then do;
+      383 		     code = error_table_$rcp_bad_attributes;
+      384 		     return;
+      385 		end;
+      386 
+      387 		if substr (rtde.attributes_valid, i, 1) = "1"b then do;
+      388 		     attribute_string = attribute_string || rtrim (rtde.attribute_names (i), " ");
+      389 		     if substr (auto_attributes (2), i, 1) then attribute_string = attribute_string || "*,";
+      390 
+      391 		     else attribute_string = attribute_string || ",";
+      392 		end;
+      393 
+      394 		if substr (auto_attributes (1), i+1) = ""b then i = -1;
+      395 		else i = i + index (substr (auto_attributes (1), i+1), "1"b);
+      396 	     end;
+      397 
+      398 	     do i = index (auto_attributes (3), "1"b) repeat (i) while (i > 0);
+      399 		if i > rtde.n_defined_attributes then do;
+      400 		     code = error_table_$rcp_bad_attributes;
+      401 		     return;
+      402 		end;
+      403 
+      404 		if substr (rtde.attributes_valid, i, 1) = "0"b then do;
+      405 		     code = error_table_$rcp_bad_attributes;
+      406 		     return;
+      407 		end;
+      408 
+      409 /* this may be on because "key=val" is ON in the first string, so all other values of "key=" must
+      410*   be turned OFF.  This is simple to check for, because "key=" values never appear in the third
+      411*   element otherwise (you can't say "^key=val"!) */
+      412 
+      413 		do j = 1 to rtde.n_exclusion_specs while
+      414 			(substr (rtde.exclusion_specs (j), i, 1) = "0"b);
+      415 		end;
+      416 
+      417 		if j > rtde.n_exclusion_specs then do;
+      418 		     attribute_string = attribute_string || "^";
+      419 		     attribute_string = attribute_string || rtrim (rtde.attribute_names (i), " ");
+      420 		     attribute_string = attribute_string || ",";
+      421 		end;
+      422 
+      423 		if substr (auto_attributes (3), i+1) = ""b then i = -1;
+      424 		else i = i + index (substr (auto_attributes (3), i+1), "1"b);
+      425 	     end;
+      426 
+      427 	     do i = index (auto_attributes (4), "1"b) repeat (i) while (i > 0);
+      428 		if i > rtde.n_defined_attributes then do;
+      429 		     code = error_table_$rcp_bad_attributes;
+      430 		     return;
+      431 		end;
+      432 
+      433 		if substr (rtde.attributes_valid, i, 1) = "0"b then do;
+      434 		     code = error_table_$rcp_bad_attributes;
+      435 		     return;
+      436 		end;
+      437 
+      438 		if substr (rel_attributes (3), i, 1) = "0"b then /* already printed if so */
+      439 		     if substr (rel_attributes (1), i, 1) = "0"b then do;
+      440 						/* ditto */
+      441 			attribute_string = attribute_string || rtrim (rtde.attribute_names (i), " ");
+      442 			attribute_string = attribute_string || ",";
+      443 		     end;
+      444 
+      445 		if substr (auto_attributes (4), i+1) = ""b then i = -1;
+      446 		else i = i + index (substr (auto_attributes (4), i+1), "1"b);
+      447 	     end;
+      448 
+      449 	     if length (attribute_string) > 0 then
+      450 		attribute_string = substr (attribute_string, 1, length (attribute_string) - 1);
+      451 
+      452 	     code = 0;
+      453 	     return;
+      454 	end make_string;
+      455 	
+      456 check_validity: proc (attributes, validity_level, code);
+      457 
+      458 dcl (attributes (2) bit (72),
+      459      validity_level fixed bin parameter,
+      460      code fixed bin (35)) parameter;
+      461 
+      462 dcl (i, j) fixed bin;
+      463 
+      464 	     validity_level = Absolute;		/* for now, anyway */
+      465 
+      466 /* All bits should be within limits */
+      467 
+      468 	     if substr (attributes (1), rtde.n_defined_attributes+1) ^= ""b then do;
+      469 badatt:		code = error_table_$rcp_bad_attributes;
+      470 		validity_level = Invalid;
+      471 		return;
+      472 	     end;
+      473 
+      474 /* Protected attributes must be subset of current attributes */
+      475 
+      476 	     if (attributes (1) & attributes (2)) ^= attributes (2) then goto badatt;
+      477 
+      478 /* Enabled attributes must be subset of potential attributes */
+      479 
+      480 	     if (attributes (1) & string (rtde.attributes_valid)) ^= attributes (1) then goto badatt;
+      481 
+      482 /* Now check to see that one and only one of each "key=val" attributes is on. */
+      483 
+      484 	     do i = 1 to rtde.n_exclusion_specs;
+      485 
+      486 		temp_spec = exclusion_specs (i) & attributes (1);
+      487 
+      488 		j = index (temp_spec, "1"b);
+      489 
+      490 		if j = 0 then validity_level = max (validity_level, Relative);
+      491 		else if j < length (temp_spec) then
+      492 		     if substr (temp_spec, j+1) ^= ""b then validity_level = max (validity_level, Multiple);
+      493 	     end;
+      494 
+      495 	     code = 0;				/* congratulations, you passed */
+      496 	     return;
+      497 
+      498 	end check_validity;
+      499 	
+      500 interpret_string: proc (attribute_string, relatts, code);
+      501 
+      502 dcl (attribute_string char (*) varying,
+      503      relatts (4) bit (72),
+      504      code fixed bin (35)) parameter;
+      505 
+      506 dcl  single_attr char (12) varying,
+      507     (i, j, k) fixed bin,
+      508     (protected, not) bit (1) aligned,
+      509      temp_spec bit (72) aligned;
+      510 
+      511 /* A relative attribute string consists of four bit (72) quantities.
+      512*   The first represents the attributes that were specified to be ON.
+      513*   The second represents the attributes that were specified as PROTECTED.
+      514*   The third represents the attributes that must be turned OFF, either as the
+      515*   result of the user specifying "^attr", or having "key=val" specified
+      516*   such that all other possible "key=valN" must be forced off.
+      517*   The fourth represents the attributes that must be NONPROTECTED, either as the
+      518*   result of the user specifying "attr", or having "key=val" or "key=val*" specified
+      519*   such that all other possible "key=valN must be DEPROTECTED. */
+      520 
+      521 /* An absolute attribute string consists of the first two of these quantities
+      522*   which are always a consistent combination of attributes. */
+      523 
+      524 	     i = 1;
+      525 	     relatts (*) = ""b;
+      526 
+      527 	     do while (i <= length (attribute_string));
+      528 
+      529 		j = index (substr (attribute_string, i), ",") - 1;
+      530 		if j = -1 then j = length (substr (attribute_string, i));
+      531 
+      532 		single_attr = substr (attribute_string, i, j);
+      533 		single_attr = rtrim (single_attr, " "); /* PL/I won't do this correctly in one stmt right now. */
+      534 		if substr (single_attr, 1, 1) = "^" then do;
+      535 
+      536 		     if index (single_attr, "=") > 0 then do; /* "^key=val" makes no sense--
+      537*						   you turn one of those off by turning another on. */
+      538 			code = error_table_$rcp_bad_attributes;
+      539 			return;
+      540 		     end;
+      541 
+      542 		     single_attr = copy (substr (single_attr, 2), 1);
+      543 		     not = "1"b;
+      544 		end;
+      545 
+      546 		else not = ""b;
+      547 
+      548 		if substr (single_attr, length (single_attr), 1) = "*" then do;
+      549 		     if not then do;		/* "^mumble*" ?? */
+      550 			code = error_table_$rcp_bad_attributes;
+      551 			return;
+      552 		     end;
+      553 		     single_attr = substr (single_attr, 1, length (single_attr) - 1);
+      554 		     protected = "1"b;
+      555 		end;
+      556 
+      557 		else protected = ""b;
+      558 
+      559 		do k = 1 to rtde.n_defined_attributes while ((rtde.attribute_names (k) ^= single_attr)
+      560 			| (substr (rtde.attributes_valid, k, 1) = "0"b));
+      561 		end;
+      562 
+      563 		if k > rtde.n_defined_attributes then do;
+      564 		     code = error_table_$rcp_bad_attributes;
+      565 		     return;
+      566 		end;
+      567 
+      568 		if not then substr (relatts (3), k, 1) = "1"b;
+      569 		else substr (relatts (1), k, 1) = "1"b;
+      570 
+      571 		if protected then substr (relatts (2), k, 1) = "1"b;
+      572 		else substr (relatts (4), k, 1) = "1"b;
+      573 
+      574 		i = i + j + 1;
+      575 	     end;
+      576 
+      577 /* Perform exclusions to turn off all other values of "key=a" */
+      578 
+      579 	     do i = 1 to rtde.n_exclusion_specs;
+      580 
+      581 		if (rtde.exclusion_specs (i) & relatts (1)) ^= ""b then do;
+      582 						/* One of these exclusive attributes has been mentioned */
+      583 		     temp_spec = rtde.exclusion_specs (i) & ^relatts (1) & rtde.attributes_valid;
+      584 						/* last operand necc. due to bug in early vers. of up_rtdt_ */
+      585 		     relatts (3) = relatts (3) | temp_spec; /* turn OFF matching keys */
+      586 		     relatts (4) = relatts (4) | temp_spec; /* and their protected counterparts */
+      587 		end;
+      588 	     end;
+      589 
+      590 	     return;
+      591 	end interpret_string;
+      592 	
+      593 test:	entry (newsysdir);
+      594 
+      595 dcl  newsysdir char (*);
+      596 
+      597 	if newsysdir = "" then sysdir = ">system_control_1";
+      598 	else sysdir = newsysdir;
+      599 	return;
+      600 
+      601      end cv_rcp_attributes_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.7  cv_rcp_attributes_.pl1            >spec>install>1111>cv_rcp_attributes_.pl1
+30           1    11/20/79  2015.6  rtdt.incl.pl1                     >ldd>include>rtdt.incl.pl1
+1-4          2    04/21/82  1211.8  author.incl.pl1                   >ldd>include>author.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Absolute                               constant        fixed bin(17,0)          initial dcl 216 ref 464
+Invalid                                constant        fixed bin(17,0)          initial dcl 216 ref 470
+Multiple                               constant        fixed bin(17,0)          initial dcl 216 ref 491
+RTDT_area_len                   000100 automatic       fixed bin(18,0)          dcl 1-64 set ref 75* 77* 77
+RTDT_version_2                         constant        fixed bin(17,0)          initial dcl 1-64 ref 313
+RTDT_version_3                         constant        fixed bin(17,0)          initial dcl 1-64 ref 313
+Relative                               constant        fixed bin(17,0)          initial dcl 216 ref 490
+abs_attributes                         parameter       bit(72)                  array packed unaligned dcl 361 ref 359 368
+attribute_names         102            based           char(12)                 array level 3 dcl 1-16 ref 388 419 441 559
+attribute_string                       parameter       varying char             dcl 68 in procedure "cv_rcp_attributes_" set ref 66
+                                                                                  85* 90 101* 107 115* 118 127* 139 148* 153 164*
+attribute_string                       parameter       varying char             dcl 502 in procedure "interpret_string" ref 500 527
+                                                                                  529 530 532
+attribute_string                       parameter       varying char             dcl 361 in procedure "make_string" set ref 359 371
+                                                                                  378* 388* 388 389* 389 391* 391 418* 418 419* 419
+                                                                                  420* 420 441* 441 442* 442 449 449* 449 449
+attributes                             parameter       bit(72)                  array packed unaligned dcl 458 in procedure
+                                                                                  "check_validity" ref 456 468 476 476 476 480 480
+                                                                                  486
+attributes                             parameter       bit(72)                  array packed unaligned dcl 68 in procedure
+                                                                                  "cv_rcp_attributes_" set ref 66 85* 107 115* 118
+                                                                                  133* 134* 153 170 171 176 190* 197* 206 208 209
+                                                                                  212 228* 237 239 241 243
+attributes_to_match     100            based           bit(72)                  level 3 dcl 1-16 ref 274
+attributes_valid         76            based           bit(72)                  level 3 dcl 1-16 ref 387 404 433 480 559 583
+auto_attributes                 000276 automatic       bit(72)                  array packed unaligned dcl 365 set ref 368* 375* 381
+                                                                                  389 394 395 398 423 424 427 445 446
+cleanup                         000226 stack reference condition                dcl 64 ref 80 96 122 143 159 185 223 255
+code                                   parameter       fixed bin(35,0)          dcl 298 in procedure "find_rtde" set ref 296 306*
+                                                                                  308* 311* 314* 338* 344*
+code                                   parameter       fixed bin(35,0)          dcl 502 in procedure "interpret_string" set ref 500
+                                                                                  538* 550* 564*
+code                                   parameter       fixed bin(35,0)          dcl 68 in procedure "cv_rcp_attributes_" set ref 66
+                                                                                  82* 83 85* 87* 90 98* 99 101* 103 104* 107 115*
+                                                                                  118 124* 125 127* 128 136* 139 145* 146 148* 149
+                                                                                  150* 153 161* 162 164* 165 173* 176 187* 188 190*
+                                                                                  191 197* 198 200* 201 203* 212 225* 226 228* 229
+                                                                                  234* 248 257* 258 261* 267* 277* 280 282* 283 285*
+                                                                                  288
+code                                   parameter       fixed bin(35,0)          dcl 458 in procedure "check_validity" set ref 456
+                                                                                  469* 495*
+code                                   parameter       fixed bin(35,0)          dcl 361 in procedure "make_string" set ref 359 371
+                                                                                  383* 400* 405* 429* 434* 452*
+code                                   parameter       fixed bin(35,0)          dcl 352 in procedure "term_rtdt" set ref 350 353*
+copy                                                   builtin function         dcl 62 ref 542
+dev_attributes                         parameter       bit(72)                  array packed unaligned dcl 250 set ref 248 290* 291*
+dev_type                               parameter       char                     packed unaligned dcl 250 set ref 248 272* 282*
+error_table_$improper_data_format
+                                000102 external static fixed bin(35,0)          dcl 301 ref 344
+error_table_$rcp_bad_attributes 000072 external static fixed bin(35,0)          dcl 55 ref 383 400 405 429 434 469 538 550 564
+error_table_$resource_type_inappropriate
+                                000076 external static fixed bin(35,0)          dcl 55 ref 261
+error_table_$resource_unknown   000100 external static fixed bin(35,0)          dcl 55 ref 267 338
+error_table_$unimplemented_version
+                                000074 external static fixed bin(35,0)          dcl 55 ref 314
+exclusion_specs         432            based           bit(72)                  array level 3 dcl 1-16 ref 413 486 581 583
+first_resource           40            based           offset                   level 2 dcl 1-3 ref 324
+fixed_info                             based           structure                level 2 dcl 1-16
+flags                    61            based           structure                level 3 packed packed unaligned dcl 1-16
+found                           000265 automatic       bit(1)                   dcl 301 set ref 322* 333* 337
+hcs_$initiate                   000064 constant        entry                    external dcl 46 ref 306
+hcs_$terminate_noname           000066 constant        entry                    external dcl 46 ref 315 339 345 353
+i                               000274 automatic       fixed bin(17,0)          dcl 365 in procedure "make_string" set ref 381* 381*
+                                                                                  382 387 388 389 394 394* 395* 395 395* 396 398*
+                                                                                  398* 399 404 413 419 423 423* 424* 424 424* 425
+                                                                                  427* 427* 428 433 438 438 441 445 445* 446* 446
+                                                                                  446* 447
+i                               000264 automatic       fixed bin(17,0)          dcl 301 in procedure "find_rtde" set ref 321*
+i                               000336 automatic       fixed bin(17,0)          dcl 462 in procedure "check_validity" set ref 484*
+                                                                                  486*
+i                               000374 automatic       fixed bin(17,0)          dcl 506 in procedure "interpret_string" set ref 524*
+                                                                                  527 529 530 532 574* 574 579* 581 583*
+index                                                  builtin function         dcl 62 ref 381 395 398 424 427 446 488 529 536
+is_synonym               61(05)        based           bit(1)                   level 4 packed packed unaligned dcl 1-16 ref 328
+is_volume                61(01)        based           bit(1)                   level 4 packed packed unaligned dcl 1-16 ref 260
+j                               000275 automatic       fixed bin(17,0)          dcl 365 in procedure "make_string" set ref 413* 413*
+                                                                                  417
+j                               000375 automatic       fixed bin(17,0)          dcl 506 in procedure "interpret_string" set ref 529*
+                                                                                  530 530* 532 574
+j                               000337 automatic       fixed bin(17,0)          dcl 462 in procedure "check_validity" set ref 488*
+                                                                                  490 491 491
+k                               000376 automatic       fixed bin(17,0)          dcl 506 set ref 559* 559 559* 563 568 569 571 572
+length                                                 builtin function         dcl 62 ref 449 449 491 527 530 548 553
+mates                   624            based           char(32)                 array level 2 dcl 1-16 ref 272
+max                                                    builtin function         dcl 62 ref 490 491
+n_defined_attributes     65(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 1-16 ref 382 399
+                                                                                  428 468 559 563
+n_exclusion_specs        64            based           fixed bin(17,0)          level 3 packed packed unaligned dcl 1-16 ref 413 417
+                                                                                  484 579
+n_mates                  64(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 1-16 ref 266
+name                      1            based           char(32)                 level 3 dcl 1-16 ref 328
+new_attributes                         parameter       bit(72)                  array packed unaligned dcl 155 set ref 153 170* 171*
+                                                                                  206 208* 209*
+newsysdir                              parameter       char                     packed unaligned dcl 595 ref 593 597 598
+next_resource                          based           offset                   level 3 dcl 1-16 ref 335
+not                             000400 automatic       bit(1)                   dcl 506 set ref 543* 546* 549 568
+null                                                   builtin function         dcl 62 ref 73 94 120 141 157 183 221 253 307 308 308
+                                                                                  324 353
+pointer                                                builtin function         dcl 62 ref 324 335
+protected                       000377 automatic       bit(1)                   dcl 506 set ref 554* 557* 571
+registration_defaults
+                        602            based           structure                level 3 dcl 1-16
+rel_attributes                         parameter       bit(72)                  array packed unaligned dcl 373 in procedure
+                                                                                  "make_string" ref 371 375 438 438
+rel_attributes                         parameter       bit(72)                  array packed unaligned dcl 92 in procedure
+                                                                                  "cv_rcp_attributes_" set ref 90 101* 139 148* 170
+                                                                                  170 171 171 176 200* 206 208 208 209 209 237 239
+                                                                                  239 241 241 243
+relatts                                parameter       bit(72)                  array packed unaligned dcl 502 set ref 500 525* 568*
+                                                                                  569* 571* 572* 581 583 585* 585 586* 586
+resource_type                          parameter       char                     packed unaligned dcl 68 in procedure
+                                                                                  "cv_rcp_attributes_" set ref 66 82* 90 98* 118
+                                                                                  124* 139 145* 153 161* 176 187* 212 225*
+resource_type                   000254 automatic       char(32)                 packed unaligned dcl 301 in procedure "find_rtde"
+                                                                                  set ref 319* 328 332*
+resource_type_arg                      parameter       char                     packed unaligned dcl 298 ref 296 319
+rtde                                   based           structure                level 1 dcl 1-16
+rtdep                           000102 automatic       pointer                  dcl 1-70 set ref 113* 260 266 272 274 324* 324* 328
+                                                                                  328 328 332* 335 382 387 388 399 404 413 413 417
+                                                                                  419 428 433 441 468 480 484 486 559 559 559 563
+                                                                                  579 581 583 583
+rtdt                                   based           structure                level 1 dcl 1-3 ref 77
+rtdt_area                42            based           area                     level 2 dcl 1-3 ref 324 335
+rtdtp                           000104 automatic       pointer                  dcl 1-70 set ref 73* 77 94* 120* 141* 157* 183* 221*
+                                                                                  253* 306* 307 313 313 315* 324 324 335 339* 345*
+                                                                                  353 353*
+rtrim                                                  builtin function         dcl 62 ref 388 419 441 533
+single_attr                     000370 automatic       varying char(12)         dcl 506 set ref 532* 533* 533 534 536 542* 542 548
+                                                                                  548 553* 553 553 559
+size                                                   builtin function         dcl 62 ref 77
+string                                                 builtin function         dcl 62 set ref 274 368* 368 375* 375 480
+sub_err_                        000070 constant        entry                    external dcl 49 ref 308
+substr                                                 builtin function         dcl 62 set ref 387 389 394 395 404 413 423 424 433
+                                                                                  438 438 445 446 449 468 491 529 530 532 534 542
+                                                                                  548 553 559 568* 569* 571* 572*
+syn_to                   11            based           char(32)                 level 3 dcl 1-16 ref 332
+sys_info$max_seg_size           000062 external static fixed bin(35,0)          dcl 42 ref 77
+sysdir                          000010 internal static char(168)                initial packed unaligned dcl 41 set ref 306* 308*
+                                                                                  597* 598*
+temp_att_string                 000124 automatic       varying char(256)        dcl 34 set ref 197* 200* 277* 285*
+temp_atts                       000120 automatic       bit(72)                  array packed unaligned dcl 34 set ref 274* 275* 277*
+temp_relatts                    000110 automatic       bit(72)                  array packed unaligned dcl 34 set ref 127* 133 134
+                                                                                  164* 285* 290 291
+temp_spec                       000402 automatic       bit(72)                  dcl 506 in procedure "interpret_string" set ref 583*
+                                                                                  585 586
+temp_spec                       000106 automatic       bit(72)                  dcl 34 in procedure "cv_rcp_attributes_" set ref
+                                                                                  486* 488 491 491
+valid                    61            based           bit(1)                   level 4 packed packed unaligned dcl 1-16 ref 328
+validity_level                         parameter       fixed bin(17,0)          dcl 214 in procedure "cv_rcp_attributes_" set ref
+                                                                                  190* 212 228*
+validity_level                         parameter       fixed bin(17,0)          dcl 458 in procedure "check_validity" set ref 456
+                                                                                  464* 470* 490* 490 491* 491
+version                  35            based           fixed bin(17,0)          level 2 dcl 1-3 ref 313 313
+vol_attributes                         parameter       bit(72)                  array packed unaligned dcl 250 ref 248 274
+vol_type                               parameter       char                     packed unaligned dcl 250 set ref 248 257*
+xrtdep                                 parameter       pointer                  dcl 111 ref 107 113
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+N_CHARGE_TYPES                         automatic       fixed bin(17,0)          dcl 1-64
+N_MATES                                automatic       fixed bin(17,0)          dcl 1-64
+N_SUBTYPES                             automatic       fixed bin(17,0)          dcl 1-64
+charge_type_table                      based           structure                level 1 dcl 1-11
+cttp                                   automatic       pointer                  dcl 1-70
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+badatt                          003754 constant        label                    dcl 469 ref 476 480
+check_validity                  003731 constant        entry                    internal dcl 456 ref 190 228
+cv_rcp_attributes_              000065 constant        entry                    external dcl 14
+find_rtde                       002617 constant        entry                    internal dcl 296 ref 82 98 124 145 161 187 225 257
+                                                                                  282
+from_string                     000536 constant        entry                    external dcl 118
+from_string_rel                 000733 constant        entry                    external dcl 139
+interpret_string                004071 constant        entry                    internal dcl 500 ref 127 148 164 200 285
+make_rel                        001362 constant        entry                    external dcl 176
+make_string                     003154 constant        entry                    internal dcl 359 ref 85 115 197 277
+make_string_common              003212 constant        label                    dcl 378 ref 369 376
+make_string_rel                 003173 constant        entry                    internal dcl 371 ref 101
+modify                          001116 constant        entry                    external dcl 153
+modify_rel                      001604 constant        entry                    external dcl 206
+protected_change                002063 constant        entry                    external dcl 237
+reduce_implications             002204 constant        entry                    external dcl 248
+term_and_return                 001501 constant        label                    dcl 192 ref 198 201
+term_rtdt                       003130 constant        entry                    internal dcl 350 ref 80 87 96 103 104 122 129 136
+                                                                                  143 149 150 159 166 173 185 192 203 223 230 234
+                                                                                  255 262 268 279 287
+test                            002553 constant        entry                    external dcl 593
+test_valid                      001707 constant        entry                    external dcl 212
+to_string                       000107 constant        entry                    external dcl 66
+to_string_given_rtde            000456 constant        entry                    external dcl 107
+to_string_rel                   000273 constant        entry                    external dcl 90
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5050        5154    4475        5060
+Length      5444    4475       104         253     353          52
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+cv_rcp_attributes_                  424 external procedure  is an external procedure.  
+on unit on line 80                   72 on unit               
+on unit on line 96                   72 on unit               
+on unit on line 122                  72 on unit               
+on unit on line 143                  72 on unit               
+on unit on line 159                  72 on unit               
+on unit on line 185                  72 on unit               
+on unit on line 223                  72 on unit               
+on unit on line 255                  72 on unit               
+find_rtde                               internal procedure  shares stack frame of external procedure cv_rcp_attributes_.  
+term_rtdt                            70 internal procedure  is called by several nonquick procedures.  
+make_string                             internal procedure  shares stack frame of external procedure cv_rcp_attributes_.  
+check_validity                          internal procedure  shares stack frame of external procedure cv_rcp_attributes_.  
+interpret_string                        internal procedure  shares stack frame of external procedure cv_rcp_attributes_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 sysdir                      cv_rcp_attributes_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+cv_rcp_attributes_       000100 RTDT_area_len               cv_rcp_attributes_
+                         000102 rtdep                       cv_rcp_attributes_
+                         000104 rtdtp                       cv_rcp_attributes_
+                         000106 temp_spec                   cv_rcp_attributes_
+                         000110 temp_relatts                cv_rcp_attributes_
+                         000120 temp_atts                   cv_rcp_attributes_
+                         000124 temp_att_string             cv_rcp_attributes_
+                         000254 resource_type               find_rtde
+                         000264 i                           find_rtde
+                         000265 found                       find_rtde
+                         000274 i                           make_string
+                         000275 j                           make_string
+                         000276 auto_attributes             make_string
+                         000336 i                           check_validity
+                         000337 j                           check_validity
+                         000370 single_attr                 interpret_string
+                         000374 i                           interpret_string
+                         000375 j                           interpret_string
+                         000376 k                           interpret_string
+                         000377 protected                   interpret_string
+                         000400 not                         interpret_string
+                         000402 temp_spec                   interpret_string
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          signal_op
+enable_op           shorten_stack       ext_entry           ext_entry_desc      int_entry           repeat
+pointer_hard        set_chars_eis       index_bs_1_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+hcs_$initiate                 hcs_$terminate_noname         sub_err_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$improper_data_format                           error_table_$rcp_bad_attributes
+error_table_$resource_type_inappropriate                    error_table_$resource_unknown
+error_table_$unimplemented_version                          sys_info$max_seg_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000064        14 000074        66 000102        73 000136        75 000140        77 000141        80 000153
+     82 000200        83 000216        85 000227        87 000251        88 000257        90 000266        94 000322
+     96 000324        98 000351        99 000367       101 000400       103 000422       104 000434       105 000442
+    107 000451       113 000500       115 000504       116 000525       118 000534       120 000565       122 000567
+    124 000614       125 000632       127 000643       128 000665       129 000667       130 000676       133 000705
+    134 000711       136 000714       137 000722       139 000731       141 000762       143 000764       145 001011
+    146 001027       148 001040       149 001062       150 001074       151 001102       153 001111       157 001147
+    159 001151       161 001176       162 001214       164 001225       165 001247       166 001251       167 001260
+    170 001267       171 001315       173 001340       174 001346       176 001355       183 001406       185 001410
+    187 001435       188 001453       190 001464       191 001477       192 001501       194 001510       197 001517
+    198 001537       200 001541       201 001561       203 001563       204 001571       206 001600       208 001622
+    209 001650       210 001673       212 001702       221 001731       223 001733       225 001760       226 001776
+    228 002007       229 002022       230 002024       231 002033       234 002042       235 002050       237 002057
+    239 002076       241 002124       243 002146       246 002166       248 002177       253 002231       255 002233
+    257 002260       258 002276       260 002307       261 002313       262 002316       263 002325       266 002334
+    267 002341       268 002344       269 002353       272 002362       274 002370       275 002400       277 002402
+    279 002422       280 002431       282 002442       283 002460       285 002471       287 002511       288 002520
+    290 002531       291 002536       293 002541       593 002550       597 002570       598 002604       599 002610
+    296 002617       306 002630       307 002675       308 002701       309 002764       311 002765       313 002767
+    314 002775       315 003000       316 003011       319 003012       321 003017       322 003025       324 003026
+    328 003040       332 003054       333 003057       335 003061       337 003067       338 003071       339 003075
+    340 003106       342 003107       344 003111       345 003115       346 003126       350 003127       353 003135
+    355 003153       359 003154       368 003165       369 003172       371 003173       375 003204       376 003211
+    378 003212       381 003214       382 003224       383 003232       384 003236       387 003237       388 003244
+    389 003301       391 003323       394 003332       395 003344       396 003351       398 003354       399 003364
+    400 003372       401 003376       404 003377       405 003404       406 003410       413 003411       415 003435
+    417 003437       418 003444       419 003455       420 003510       423 003517       424 003535       425 003545
+    427 003550       428 003560       429 003566       430 003572       433 003573       434 003600       435 003604
+    438 003605       441 003622       442 003656       445 003665       446 003703       447 003713       449 003716
+    452 003727       453 003730       456 003731       464 003733       468 003735       469 003754       470 003760
+    471 003762       476 003763       480 004000       484 004005       486 004015       488 004031       490 004036
+    491 004045       493 004064       495 004066       496 004070       500 004071       524 004102       525 004104
+    527 004122       529 004127       530 004144       532 004151       533 004160       534 004176       536 004202
+    538 004214       539 004217       542 004220       543 004241       544 004244       546 004245       548 004246
+    549 004253       550 004255       551 004260       553 004261       554 004267       555 004271       557 004272
+    559 004273       561 004324       563 004326       564 004334       565 004340       568 004341       569 004353
+    571 004361       572 004371       574 004376       575 004402       579 004403       581 004415       583 004433
+    585 004442       586 004453       588 004464       590 004466
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

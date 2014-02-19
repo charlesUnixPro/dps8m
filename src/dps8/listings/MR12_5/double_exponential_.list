@@ -1,0 +1,509 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>double_exponential_.alm                                                                                                                              
+ASSEMBLED ON:	11/11/89  0945.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1985 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+    000000                           6  	name	double_exponential_
+                                     7  " Modification history:
+                                     8  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                     9  "	based on GCOS routine '7naq'.
+                                    10  "
+                                    11  " Function:  Calculates the exponential function 'e**x' to double precision
+                                    12  "	accuracy in either BFP or HFP mode.
+                                    13  "
+                                    14  " Entry:	through the appropriately named entry point with:
+                                    15  " 	EAQ = the argument x.
+                                    16  "	PR2 = the address of a 8 word, even-word aligned scratch area.
+                                    17  "	PR3 = the return address.
+                                    18  "
+                                    19  " Exit:	EAQ = the desired exponential
+                                    20  "
+                                    21  " Uses:	X0, X1, X2
+                                    22  "	X0 = saves a return address from part_exp2
+                                    23  "	X1 = index to the table 'two_to_the'
+                                    24  "	X2 = indicates BFP or HFP mode - all the floating point math
+                                    25  "	     routines use this register for the same purpose.
+                                    26  
+    000000                          27  	segref	math_constants_,almost_one,hfp_almost_one,log_2_of_e,max_value
+                                    28  
+                        000000      29  	equ	BFP,0
+                        000002      30  	equ	HFP,2
+                        000000      31  	equ	iy,0
+                        000002      32  	equ 	four_ry,2
+                        000002      33  	equ 	z,2
+                        000004      34  	equ	zz,4
+                        000002      35  	equ 	p,2
+                        000006      36  	equ	q_minus_p,6
+                        000006      37  	equ	result,6
+                        000000      38  	equ	x,0
+                                    39  
+                        002000      40  	bool	bfp_exponent_of_log2_of_e,002000
+                        000000      41  	bool	hfp_exponent_of_log16_of_e,000000
+                        001400      42  	bool	M0.5H,001400	" yields HFP -0.5 under 'du' modification
+                        002040      43  	bool	P1.0H,002040	" yields HFP +1.0 under 'du' modification
+                        002100      44  	bool	P2.0H,002100	" yields HFP +2.0 under 'du' modification
+                                    45  
+                        000032      46  	segdef	double_exponential_,hfp_double_exponential_
+                                    47  
+                                    48  
+    000000                          49  double_exponential_:
+    000000  aa   000000 6220 00     50  	eax2	BFP		" 2 word offset for BFP constants
+    000001  0a   000206 5170 00     51  	dfcmp	lb		" if x <= -89.4159862922329449148:
+    000002  aa   000003 6054 04     52  	tpnz	3,ic
+    000003  aa   400000 4310 03     53  	   fld	   =0.0,du	"    result = 0
+    000004  aa  3 00000 7101 00     54  	   tra	   pr3|0		"    return
+    000005  0a   000204 5170 00     55  	dfcmp	ub		" if x >= 88.0296919311130543 goto overflow_error
+    000006  0a   000131 6050 00     56  	tpl	overflow_error
+    000007  aa  2 00000 4571 00     57  	dfst	pr2|x
+    000010  0a   000144 2370 00     58  	ldaq	bfp_mantissa_of_log2_of_e
+    000011  aa   002000 4110 03     59  	lde	bfp_exponent_of_log2_of_e,du
+    000012  aa  2 00000 4631 00     60  	dfmp	pr2|x
+                                    61  	
+    000013  aa   002400 4750 03     62  	fad	=1.0,du		" EAQ := y + 1
+                                    63  
+    000014  aa   016000 4350 03     64  	ufa	=7b25,du		" AQ := 8/floor(y+1),64/fraction part of y
+    000015  aa  2 00000 7551 00     65  	sta	pr2|iy
+    000016  aa   776000 2750 03     66  	ora	=o776000,du	" AQ := 8/-1,64/fraction part of y
+    000017  aa   016000 4110 03     67  	lde	=7b25,du		" EAQ := ry = unnormalized y - floor(y+1)
+    000020  aa   400000 4750 03     68  	fad	=0.0,du		" EAQ := ry = normalized y - floor(y+1)
+                                    69  
+    000021  0a   000222 5170 00     70  	dfcmp	=-0.5d0
+    000022  aa   000003 6040 04     71  	tmi	3,ic		" if ry >= -0.5
+    000023  0a   000077 7000 00     72  	   tsx0	   part_exp2	"    then result = part_exp2 (ry)
+                                    73  
+    000024  aa   000004 7100 04     74  	tra	4,ic		" else
+    000025  aa   002400 4750 03     75  	   fad	   =1.0,du	"    EAQ := ry + 1
+    000026  0a   000077 7000 00     76  	   tsx0	   part_exp2	"    EAQ := part_exp2 (ry + 1)
+    000027  aa   000400 4610 03     77  	   fmp	   =0.5,du	"    result = 0.5*part_exp2 (ry + 1)
+                                    78  
+    000030  aa  2 00000 4151 00     79  	ade	pr2|iy		" addr (result) -> expon = addr (result) -> expon + iy
+    000031  aa  3 00000 7101 00     80  	tra	pr3|0		" return result in EAQ
+                                    81  
+                                    82  
+    000032                          83  hfp_double_exponential_:
+    000032  aa   000002 6220 00     84  	eax2	HFP		" 2 word offset for HFP constants
+    000033  0a   000210 5170 00     85  	dfcmp	hfp_lb		" if x <= -357.663945168931779659:
+    000034  aa   000003 6054 04     86  	tpnz	3,ic
+    000035  aa   400000 4310 03     87  	   fld	   =0.0,du	"    result = 0
+    000036  aa  3 00000 7101 00     88  	   tra	   pr3|0		"    return
+    000037  0a   000212 5170 00     89  	dfcmp	hfp_ub		" if x >= 352.1187677244522171839 goto overflow_error
+    000040  0a   000131 6050 00     90  	tpl	overflow_error
+    000041  0a   000142 4270 00     91  	dfcmg	hfp_eps		" if abs (x) < 1.08420217248550443e-19:
+    000042  aa   000003 6050 04     92  	tpl	3,ic
+    000043  aa   002040 4310 03     93  	   fld	   P1.0H,du	"   result = 1.0
+    000044  aa  3 00000 7101 00     94  	   tra	   pr3|0		"   return
+    000045  aa  2 00000 4571 00     95  	dfst	pr2|x
+    000046  0a   000146 2370 00     96  	ldaq	hfp_mantissa_of_log16_of_e
+    000047  aa   000000 4110 03     97  	lde	hfp_exponent_of_log16_of_e,du
+    000050  aa  2 00000 4631 00     98  	dfmp	pr2|x
+    000051  aa   002040 4750 03     99  	fad	P1.0H,du		" EAQ := y + 1
+                                   100  
+    000052  aa   002100 4610 03    101  	fmp	P2.0H,du
+    000053  aa   004000 4350 03    102  	ufa	=2b25,du		" AQ := 8/floor(y+1),64/fraction part of y
+    000054  aa  2 00000 7551 00    103  	sta	pr2|iy
+    000055  aa   776000 2750 03    104  	ora	=o776000,du	" AQ := 8/-1,64/fraction part of y
+    000056  aa   004000 4110 03    105  	lde	=2b25,du		" EAQ := unnormalized 2*(y - floor(y+1))
+    000057  aa   400000 4750 03    106  	fad	=0.0,du		" EAQ := 2*(y - floor(y+1))
+    000060  aa   002100 4610 03    107  	fmp	P2.0H,du		" EAQ := 4*(y - floor(y+1))
+                                   108  
+    000061  aa  2 00002 4571 00    109  	dfst	pr2|four_ry
+    000062  aa   000400 4750 03    110  	fad	=0.5,du		" EAQ := 4 * ry + 0.5
+                                   111  
+                                   112  " The next four instructions truncate a floating point number in the EAQ 
+                                   113  " to an integer in the AQ in effect calculating s = floor (4 * ry + 0.5).
+                                   114  
+    000063  4a  4 00010 4371 20    115  	dufa	hfp_almost_one
+    000064  4a  4 00010 5371 20    116   	dufs	hfp_almost_one
+    000065  aa   002100 4210 03    117  	ufm	P2.0H,du
+    000066  aa   044000 4350 03    118  	ufa	=18b25,du		" AQ := s = floor (4*ry + 0.5)
+                                   119  
+    000067  aa   000000 6210 06    120  	eax1	0,ql		" X2 := s = floor (4*ry + 0.5)
+                                   121  
+                                   122  " The next two instructions will convert the current representation of s
+                                   123  " to a floating point representation.
+                                   124  
+    000070  aa   400000 4750 03    125  	fad	=0.0,du
+    000071  aa   001400 4610 03    126  	fmp	M0.5H,du		" EAQ := -(s)
+                                   127  
+    000072  aa  2 00002 4771 00    128  	dfad	pr2|four_ry	" EAQ := 4*ry - s
+                                   129  
+    000073  0a   000077 7000 00    130  	tsx0	part_exp2		" result = part_exp2 (4*ry -s)
+                                   131  	
+    000074  0a   000220 4610 11    132  	fmp	two_to_the,x1	" result = two_to_the (s) * part_exp2 (4*ry - s)
+    000075  aa  2 00000 4151 00    133  	ade	pr2|iy		" addr (result) -> expon = addr (result) -> expon + iy
+    000076  aa  3 00000 7101 00    134  	tra	pr3|0		" return result in EAQ
+                                   135  
+                                   136  
+                                   137  "  The function part_exp2 calculates 2**z, given z in the range [-0.5, 0.5)
+                                   138  "  in the EAQ.
+                                   139  
+    000077                         140  part_exp2:
+    000077  aa   400000 4750 03    141  	fad	=0.0,du		" normalize z
+    000100  0a   000136 4250 12    142  	fcmg	eps,x2
+    000101  aa   000003 6050 04    143  	tpl	3,ic		" if abs (z) < 1.56417309e-19:
+    000102  0a   000150 4310 12    144  	   fld	   one,x2		"    result = 1.0
+    000103  aa   000000 7100 10    145  	   tra	   0,x0		"    return
+                                   146  
+    000104  aa  2 00002 4721 00    147  	dfstr	pr2|z
+    000105  aa  2 00002 4631 00    148  	dfmp	pr2|z		" zz = z*z
+    000106  aa  2 00004 4721 00    149  	dfstr	pr2|zz
+                                   150  
+    000107  0a   000164 4630 12    151  	dfmp	p2,x2		" calculate p = z*(p0 + zz*(p1 + zz*p2))
+    000110  0a   000160 4770 12    152  	dfad	p1,x2
+    000111  aa  2 00004 4631 00    153  	dfmp	pr2|zz
+    000112  0a   000154 4770 12    154  	dfad	p0,x2
+    000113  aa  2 00002 4631 00    155  	dfmp	pr2|z
+    000114  aa  2 00002 4721 00    156  	dfstr	pr2|p
+                                   157  
+    000115  aa  2 00004 4331 00    158  	dfld	pr2|zz		" calculate q = q0 + zz*(q1 + zz*(q2 + zz))
+    000116  0a   000200 4770 12    159  	dfad	q2,x2
+    000117  aa  2 00004 4631 00    160  	dfmp	pr2|zz
+    000120  0a   000174 4770 12    161  	dfad	q1,x2
+    000121  aa  2 00004 4631 00    162  	dfmp	pr2|zz
+    000122  0a   000170 4770 12    163  	dfad	q0,x2
+                                   164  
+    000123  aa  2 00002 5771 00    165  	dfsb	pr2|p		" calculate q - p
+    000124  aa  2 00006 4721 00    166  	dfstr	pr2|q_minus_p
+    000125  aa  2 00002 4771 00    167  	dfad	pr2|p		" restore q
+    000126  aa  2 00002 4771 00    168  	dfad	pr2|p		" calculate q + p
+    000127  aa  2 00006 5671 00    169  	dfdv	pr2|q_minus_p	" calculate result = (q + p) / (q - p)
+                                   170  
+    000130  aa   000000 7100 10    171  	tra	0,x0		" return to caller	
+                                   172  
+                                   173  
+    000131                         174  overflow_error:
+    000131  4a  4 00012 4331 20    175  	dfld	max_value
+    000132  4a  4 00012 4771 20    176  	dfad	max_value		" cause an overflow
+    000133  4a  4 00012 4331 20    177  	dfld	max_value
+    000134  aa  3 00000 7101 00    178  	tra	pr3|0		" return to caller
+                                   179  
+    000135  aa   000000 0110 03    180  	even
+                                   181  
+    000136  aa   604561 250730     182  eps:	dec	1.56417309d-19
+    000137  aa   645767 466564 
+    000140  aa   742134 252166     183  	oct	742134252166,000000000000
+    000141  aa   000000 000000 
+    000142  aa   742100 000427     184  hfp_eps:	oct	742100000427,165257035710	" 1.0842202172485504434d-19
+    000143  aa   165257 035710 
+    000144                         185  bfp_mantissa_of_log2_of_e:
+    000144  aa   270524 354512     186            oct	270524354512,701376056737
+    000145  aa   701376 056737 
+    000146                         187  hfp_mantissa_of_log16_of_e:
+    000146  aa   134252 166245     188  	oct	134252166245,340577027370
+    000147  aa   340577 027370 
+    000150  aa   002400 000000     189  one:	dec	1.0d0
+    000151  aa   000000 000000 
+    000152  aa   002040 000000     190  	oct	002040000000,000000000000
+    000153  aa   000000 000000 
+    000154  aa   052773 720026     191  p0:	dec	2.0803843466946630014d6
+    000155  aa   140373 176450 
+    000156  aa   014077 372002     192  	oct	014077372002,614037317645
+    000157  aa   614037 317645 
+    000160  aa   036731 167614     193  p1:	dec	3.0286971697440362990d4
+    000161  aa   045165 773511 
+    000162  aa   010354 473706     194  	oct	010354473706,022472775644
+    000163  aa   022472 775644 
+    000164  aa   014744 726340     195  p2:	dec	6.0614853300610808416d1
+    000165  aa   650373 011213 
+    000166  aa   004171 165470     196  	oct	004171165470,152076602243
+    000167  aa   152076 602243 
+    000170  aa   056556 301005     197  q0:	dec	6.0027203602388325282d6
+    000171  aa   607047 132165 
+    000172  aa   014267 140402     198  	oct	014267140402,703423455073
+    000173  aa   703423 455073 
+    000174  aa   046500 026446     199  q1:	dec	3.2772515180829144230d5
+    000175  aa   671641 770032 
+    000176  aa   012240 013223     200  	oct	012240013223,334720774015
+    000177  aa   334720 774015 
+    000200  aa   026665 244645     201  q2:	dec	1.7492876890930764038d3
+    000201  aa   774070 556550 
+    000202  aa   006332 522322     202  	oct	006332522322,776034267264
+    000203  aa   776034 267264 
+    000204  aa   016540 074636     203  ub:	dec	8.80296919311130543d01	" 2**127 - 2**64 = e**88.0296919311130543
+    000205  aa   176105 366535 
+    000206  aa   017232 254036     204  lb:	dec	-8.94159862922329449148d01	" 2**(-129) = e**-89.4159862922329449148
+    000207  aa   603721 471660 
+    000210  aa   007723 225403     205  hfp_lb:	oct	007723225403,660372147166	" 16**(-129) = e**-357.663945168931779659
+    000211  aa   660372 147166 
+    000212  aa   006054 007463     206  hfp_ub:	oct	006054007463,617610536654	" 16**127 - 16**64 = e**352.1187677244522171839
+    000213  aa   617610 536654 
+                                   207  
+                                   208  " Table of two_to_the
+    000214  aa   000040 000000     209  	oct	000040000000		" 0.0625
+    000215  aa   000100 000000     210  	oct	000100000000		" 0.125
+    000216  aa   000200 000000     211  	oct	000200000000		" 0.25
+    000217  aa   000400 000000     212  	oct	000400000000		" 0.5
+    000220                         213  two_to_the:
+    000220  aa   002040 000000     214  	oct	002040000000		" 1.0
+                                   215  
+                                   216  	end
+LITERALS
+     
+    000222  aa   777000 000000 
+    000223  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000224  5a   000003 000000 
+    000225  5a   000043 600000 
+    000226  aa   000000 000000 
+    000227  55   000013 000002 
+    000230  5a   000002 400003 
+    000231  55   000006 000013 
+    000232  aa  023 144 157 165
+    000233  aa  142 154 145 137
+    000234  aa  145 170 160 157
+    000235  aa  156 145 156 164
+    000236  aa  151 141 154 137
+    000237  55   000024 000003 
+    000240  0a   000032 400000 
+    000241  55   000016 000003 
+    000242  aa  027 150 146 160         hfp_double_exponential_
+    000243  aa  137 144 157 165
+    000244  aa  142 154 145 137
+    000245  aa  145 170 160 157
+    000246  aa  156 145 156 164
+    000247  aa  151 141 154 137
+    000250  55   000034 000013 
+    000251  0a   000000 400000 
+    000252  55   000027 000003 
+    000253  aa  023 144 157 165         double_exponential_
+    000254  aa  142 154 145 137
+    000255  aa  145 170 160 157
+    000256  aa  156 145 156 164
+    000257  aa  151 141 154 137
+    000260  55   000002 000024 
+    000261  6a   000000 400002 
+    000262  55   000037 000003 
+    000263  aa  014 163 171 155         symbol_table
+    000264  aa  142 157 154 137
+    000265  aa  164 141 142 154
+    000266  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000267  aa   000000 000015 
+    000270  5a   000013 000000 
+    000271  aa   000000 000000 
+    000272  aa   000000 000000 
+    000273  aa   000000 000000 
+    000274  aa   000000 000000 
+    000275  aa   000000 000000 
+    000276  5a   000034 000000 
+    000277  aa   000000 000000 
+    000300  aa   000000 000000 
+    000301  5a   000024 000000 
+    000302  aa   000000 000000 
+    000303  aa   000000 000000 
+    000304  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000305  aa  011 155 141 170         max_value
+    000306  aa  137 166 141 154
+    000307  aa  165 145 000 000
+    000310  aa  012 154 157 147         log_2_of_e
+    000311  aa  137 062 137 157
+    000312  aa  146 137 145 000
+    000313  aa  016 150 146 160         hfp_almost_one
+    000314  aa  137 141 154 155
+    000315  aa  157 163 164 137
+    000316  aa  157 156 145 000
+    000317  aa  012 141 154 155         almost_one
+    000320  aa  157 163 164 137
+    000321  aa  157 156 145 000
+    000322  aa  017 155 141 164         math_constants_
+    000323  aa  150 137 143 157
+    000324  aa  156 163 164 141
+    000325  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000326  aa   000004 000000 
+    000327  55   000076 000061 
+    000330  aa   000004 000000 
+    000331  55   000076 000064 
+    000332  aa   000004 000000 
+    000333  55   000076 000067 
+    000334  aa   000004 000000 
+    000335  55   000076 000073 
+    000336  aa   000001 000000 
+    000337  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000340  5a   000102 000000 
+    000341  5a   000106 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000224 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000014 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         math_constants_|hfp_almost_one
+    000011  5a   000115 0000 00
+    000012  9a   777766 0000 46         math_constants_|max_value
+    000013  5a   000114 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253657 740573 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000150 
+    000020  aa   000000 000105 
+    000021  aa   000127 000123 
+    000022  aa   000142 000105 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000052 
+    000067  aa   175453 017776 
+    000070  aa   000000 117547 
+    000071  aa   176336 200000 
+    000072  aa   076163 160145          >spec>install>1110>double_exponential_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076144 
+    000077  aa   157165 142154 
+    000100  aa   145137 145170 
+    000101  aa   160157 156145 
+    000102  aa   156164 151141 
+    000103  aa   154137 056141 
+    000104  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                almost_one               double_exponential_:       27.
+           0    BFP                      double_exponential_:       29,   50.
+        2000    bfp_exponent_of_log2_of_e      double_exponential_:       40,   59.
+         144    bfp_mantissa_of_log2_of_e      double_exponential_:       58,  185.
+           0    double_exponential_      double_exponential_:       46,   49.
+         136    eps                      double_exponential_:      142,  182.
+           2    four_ry                  double_exponential_:       32,  109,  128.
+           2    HFP                      double_exponential_:       30,   84.
+                hfp_almost_one           double_exponential_:       27,  115,  116.
+          32    hfp_double_exponential_  double_exponential_:       46,   83.
+         142    hfp_eps                  double_exponential_:       91,  184.
+           0    hfp_exponent_of_log16_of_e     double_exponential_:       41,   97.
+         210    hfp_lb                   double_exponential_:       85,  205.
+         146    hfp_mantissa_of_log16_of_e     double_exponential_:       96,  187.
+         212    hfp_ub                   double_exponential_:       89,  206.
+           0    iy                       double_exponential_:       31,   65,   79,  103,  133.
+         206    lb                       double_exponential_:       51,  204.
+                log_2_of_e               double_exponential_:       27.
+        1400    M0.5H                    double_exponential_:       42,  126.
+                math_constants_          double_exponential_:       27.
+                max_value                double_exponential_:       27,  175,  176,  177.
+         150    one                      double_exponential_:      144,  189.
+         131    overflow_error           double_exponential_:       56,   90,  174.
+           2    p                        double_exponential_:       35,  156,  165,  167,  168.
+         154    p0                       double_exponential_:      154,  191.
+         160    p1                       double_exponential_:      152,  193.
+        2040    P1.0H                    double_exponential_:       43,   93,   99.
+         164    p2                       double_exponential_:      151,  195.
+        2100    P2.0H                    double_exponential_:       44,  101,  107,  117.
+          77    part_exp2                double_exponential_:       72,   76,  130,  140.
+         170    q0                       double_exponential_:      163,  197.
+         174    q1                       double_exponential_:      161,  199.
+         200    q2                       double_exponential_:      159,  201.
+           6    q_minus_p                double_exponential_:       36,  166,  169.
+           6    result                   double_exponential_:       37.
+         220    two_to_the               double_exponential_:      132,  213.
+         204    ub                       double_exponential_:       55,  203.
+           0    x                        double_exponential_:       38,   57,   60,   95,   98.
+           2    z                        double_exponential_:       33,  147,  148,  155.
+           4    zz                       double_exponential_:       34,  149,  153,  158,  160,  162.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

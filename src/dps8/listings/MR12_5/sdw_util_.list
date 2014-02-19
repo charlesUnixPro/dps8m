@@ -1,0 +1,882 @@
+	COMPILATION LISTING OF SEGMENT sdw_util_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1026.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 sdw_util_: proc ();
+       14 
+       15 	return;					/* Not an entrypoint */
+       16 
+       17 /* *	SDW_UTIL_
+       18*   *
+       19*   *	This procedure is used to construct and modify SDWs. It uses the structure
+       20*   *	appropriate for the running system, or whichever one was requested, so that
+       21*   *	its callers need not be aware of multiple formats for SDWs. This procedure
+       22*   *	manipulates data only. Its caller is responsible for doing any cam/cache clearing
+       23*   *	which may be required for the modification to take effect.
+       24*   *
+       25*   *	The sdw_info structure is used to describe SDWs in a system independent fashion.
+       26*   *
+       27*   *	Every entrypoint comes in three varieties: XXX, XXX_l68, and XXX_adp. The
+       28*   *	unsuffixed entrypoints treat SDWs as appropriate for the running system.
+       29*   *	This is the only form which should be used in the hardcore. The XXX_l68
+       30*   *	and XXX_adp entrypoints manipulate Level 68 and ADP SDWs, respectively.
+       31*   *
+       32*   *	Entrypoints:
+       33*   *
+       34*   *	construct, construct_adp, construct_l68:
+       35*   *	   construct an SDW from the information in an sdw_info.
+       36*   *
+       37*   *	dissect, dissect_l68, dissect_adp
+       38*   *	   construct an sdw_info from a supplied SDW.
+       39*   *
+       40*   *	set_address, get_address, set_address_l68, get_address_l68, set_address_adp, get_address_adp
+       41*   *	   set/return the main memory address from the SDW.
+       42*   *
+       43*   *	set_access, get_access, set_access_l68, get_access_l68, set_access_adp, get_access_adp
+       44*   *	   set/return the access information in the SDW.
+       45*   *
+       46*   *	set_size, get_size, set_size_l68, get_size_l68, set_size_adp, get_size_adp
+       47*   *	   set/return the access information in the SDW.
+       48*   *
+       49*   *	set_faulted, set_valid, set_faulted_l68, set_valid_l68, set_faulted_adp, set_valid_adp
+       50*   *	   set the SDW either valid or faulted.
+       51*   *
+       52*   *	get_valid, get_valid_l68, get_valid_adp
+       53*   *	   return the state of the valid bit
+       54*   *
+       55*   *	03/10/81, W. Olin Sibert
+       56*   */
+       57 
+       58 /*  */
+       59 
+       60 dcl  P_sdw_ptr pointer parameter;
+       61 dcl  P_sdw_info_ptr pointer parameter;
+       62 dcl  P_address fixed bin (26) parameter;
+       63 dcl  P_size fixed bin (19) parameter;
+       64 dcl  P_access bit (4) unaligned parameter;
+       65 dcl  P_valid_bit bit (1) aligned parameter;
+       66 
+       67 dcl  sdwp pointer;					/* Can't be declared in include file */
+       68 
+       69 dcl  seg_size fixed bin (14);
+       70 dcl  system_type fixed bin;
+       71 
+       72 dcl  sys_info$system_type fixed bin external static;
+       73 
+       74 dcl (binary, bit, divide, max, string, substr, unspec) builtin;
+       75 
+       76 /*  */
+       77 
+       78 sdw_util_$construct: entry (P_sdw_ptr, P_sdw_info_ptr);
+       79 
+       80 	system_type = sys_info$system_type;
+       81 	goto CONSTRUCT_COMMON;
+       82 
+       83 
+       84 sdw_util_$construct_l68: entry (P_sdw_ptr, P_sdw_info_ptr);
+       85 
+       86 	system_type = L68_SYSTEM;
+       87 	goto CONSTRUCT_COMMON;
+       88 
+       89 
+       90 sdw_util_$construct_adp: entry (P_sdw_ptr, P_sdw_info_ptr);
+       91 
+       92 	system_type = ADP_SYSTEM;
+       93 	goto CONSTRUCT_COMMON;
+       94 
+       95 
+       96 CONSTRUCT_COMMON:
+       97 	sdw_info_ptr = P_sdw_info_ptr;
+       98 	sdwp = P_sdw_ptr;				/* Make the sdws addressable */
+       99 
+      100 	if system_type = ADP_SYSTEM then do;
+      101 	     unspec (adp_sdw) = ""b;		/* Start out empty, with all bits off */
+      102 
+      103 	     string (adp_sdw.access) = string (sdw_info.access);
+      104 	     string (adp_sdw.rings) = string (sdw_info.rings);
+      105 
+      106 	     adp_sdw.valid = ^sdw_info.faulted; /* Bits are different in state */
+      107 	     adp_sdw.unpaged = ^sdw_info.paged;
+      108 
+      109 	     if sdw_info.gate_entry_bound > 0 then	/* not_a_gate is already zero */
+      110 		adp_sdw.entry_bound = bit (binary (sdw_info.gate_entry_bound - 1, 14), 14);
+      111 	     else adp_sdw.not_a_gate = "1"b;		/* entry bound is already zero */
+      112 
+      113 	     adp_sdw.add = bit (binary (sdw_info.address, 26, 26));
+      114 	     if adp_sdw.unpaged then substr (adp_sdw.add, 26 - 3, 4) = "0000"b;
+      115 
+      116 	     if ^adp_sdw.unpaged then 		/* Set the paged size */
+      117 		seg_size = 64 * divide (sdw_info.size + 1023, 1024, 17, 0);
+      118 	     else seg_size = divide (sdw_info.size + 15, 16, 17, 0);
+      119 
+      120 	     adp_sdw.bound = bit (binary (max (seg_size - 1, 0), 14), 14);
+      121 	     end;
+      122 
+      123 	else do;					/* Ordinary Level 68 */
+      124 	     unspec (l68_sdw) = ""b;			/* Start out empty, with all bits off */
+      125 
+      126 	     string (l68_sdw.access) = string (sdw_info.access);
+      127 	     string (l68_sdw.rings) = string (sdw_info.rings);
+      128 
+      129 	     l68_sdw.valid = ^sdw_info.faulted; /* Bits are different in state */
+      130 	     l68_sdw.unpaged = ^sdw_info.paged;
+      131 	     l68_sdw.cache = sdw_info.cache;		/* Only on the Level 68 */
+      132 
+      133 	     if sdw_info.gate_entry_bound > 0 then	/* not_a_gate is already zero */
+      134 		l68_sdw.entry_bound = bit (binary (sdw_info.gate_entry_bound - 1, 14), 14);
+      135 	     else l68_sdw.not_a_gate = "1"b;		/* entry bound is already zero */
+      136 
+      137 	     l68_sdw.add = bit (binary (sdw_info.address, 24), 24);
+      138 
+      139 	     seg_size = divide (sdw_info.size + 15, 16, 17, 0);
+      140 	     l68_sdw.bound = bit (binary (max (0, seg_size - 1), 14), 14);
+      141 	     end;
+      142 
+      143 	return;					/* End of sdw_util_$construct */
+      144 
+      145 /*  */
+      146 
+      147 sdw_util_$dissect: entry (P_sdw_ptr, P_sdw_info_ptr);
+      148 
+      149 	system_type = sys_info$system_type;
+      150 	goto DISSECT_COMMON;
+      151 
+      152 
+      153 sdw_util_$dissect_l68: entry (P_sdw_ptr, P_sdw_info_ptr);
+      154 
+      155 	system_type = L68_SYSTEM;
+      156 	goto DISSECT_COMMON;
+      157 
+      158 
+      159 sdw_util_$dissect_adp: entry (P_sdw_ptr, P_sdw_info_ptr);
+      160 
+      161 	system_type = ADP_SYSTEM;
+      162 	goto DISSECT_COMMON;
+      163 
+      164 
+      165 DISSECT_COMMON:
+      166 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      167 	sdw_info_ptr = P_sdw_info_ptr;
+      168 	unspec (sdw_info) = ""b;			/* Clear it out, and fill it in */
+      169 
+      170 	if system_type = ADP_SYSTEM then do;
+      171 	     string (sdw_info.access) = string (adp_sdw.access);
+      172 	     string (sdw_info.rings) = string (adp_sdw.rings);
+      173 
+      174 	     sdw_info.faulted = ^adp_sdw.valid; /* Bits are different in state */
+      175 	     sdw_info.paged = ^adp_sdw.unpaged;
+      176 
+      177 	     if ^adp_sdw.not_a_gate then		/* Copy the entry bound, if interesting */
+      178 		sdw_info.gate_entry_bound = 1 + binary (adp_sdw.entry_bound, 14);
+      179 
+      180 	     sdw_info.size = 16 + 16 * binary (adp_sdw.bound, 14);
+      181 	     sdw_info.address = binary (adp_sdw.add, 26);
+      182 	     end;
+      183 
+      184 	else do;					/* Ordinary Level 68 */
+      185 	     string (sdw_info.access) = string (l68_sdw.access);
+      186 	     string (sdw_info.rings) = string (l68_sdw.rings);
+      187 
+      188 	     sdw_info.faulted = ^l68_sdw.valid; /* Bits are different in state */
+      189 	     sdw_info.paged = ^l68_sdw.unpaged;
+      190 	     sdw_info.cache = l68_sdw.cache;		/* Only on the Level 68 */
+      191 
+      192 	     if ^l68_sdw.not_a_gate then		/* Copy the entry bound, if interesting */
+      193 		sdw_info.gate_entry_bound = 1 + binary (l68_sdw.entry_bound, 14);
+      194 
+      195 	     sdw_info.size = 16 + 16 * binary (l68_sdw.bound, 14);
+      196 	     sdw_info.address = binary (l68_sdw.add, 24);
+      197 	     end;
+      198 
+      199 	return;					/* End of sdw_util_$dissect */
+      200 
+      201 /*  */
+      202 
+      203 sdw_util_$set_access: entry (P_sdw_ptr, P_access);
+      204 
+      205 /* This sets the access in an SDW */
+      206 
+      207 	system_type = sys_info$system_type;
+      208 	goto SET_ACCESS_COMMON;
+      209 
+      210 
+      211 sdw_util_$set_access_l68: entry (P_sdw_ptr, P_access);
+      212 
+      213 /* This sets the access in a Level 68 SDW */
+      214 
+      215 	system_type = L68_SYSTEM;
+      216 	goto SET_ACCESS_COMMON;
+      217 
+      218 
+      219 sdw_util_$set_access_adp: entry (P_sdw_ptr, P_access);
+      220 
+      221 /* This sets the access in an ADP SDW */
+      222 
+      223 	system_type = ADP_SYSTEM;
+      224 	goto SET_ACCESS_COMMON;
+      225 
+      226 
+      227 SET_ACCESS_COMMON:
+      228 	sdwp = P_sdw_ptr;
+      229 
+      230 	if system_type = ADP_SYSTEM then
+      231 	     string (adp_sdw.access) = P_access;
+      232 	else string (l68_sdw.access) = P_access;
+      233 
+      234 	return;					/* End of sdw_util_$set_access */
+      235 
+      236 /*  */
+      237 
+      238 sdw_util_$set_address: entry (P_sdw_ptr, P_address);
+      239 
+      240 /* This sets the address in an SDW */
+      241 
+      242 	system_type = sys_info$system_type;
+      243 	goto SET_ADDRESS_COMMON;
+      244 
+      245 
+      246 sdw_util_$set_address_l68: entry (P_sdw_ptr, P_address);
+      247 
+      248 /* This sets the address in a Level 68 SDW */
+      249 
+      250 	system_type = L68_SYSTEM;
+      251 	goto SET_ADDRESS_COMMON;
+      252 
+      253 
+      254 sdw_util_$set_address_adp: entry (P_sdw_ptr, P_address);
+      255 
+      256 /* This sets the address in an ADP SDW */
+      257 
+      258 	system_type = ADP_SYSTEM;
+      259 	goto SET_ADDRESS_COMMON;
+      260 
+      261 
+      262 SET_ADDRESS_COMMON:
+      263 	sdwp = P_sdw_ptr;
+      264 
+      265 	if system_type = ADP_SYSTEM then do;
+      266 	     adp_sdw.add = bit (binary (P_address, 26, 26));
+      267 	     if adp_sdw.unpaged then substr (adp_sdw.add, 26 - 3, 4) = "0000"b;
+      268 	     end;
+      269 
+      270 	else l68_sdw.add = bit (binary (P_address, 24), 24);
+      271 
+      272 	return;					/* End of sdw_util_$set_address */
+      273 
+      274 /*  */
+      275 
+      276 sdw_util_$set_size: entry (P_sdw_ptr, P_size);
+      277 
+      278 /* This sets the size of an SDW */
+      279 
+      280 	system_type = sys_info$system_type;
+      281 	goto SET_BOUND_COMMON;
+      282 
+      283 
+      284 sdw_util_$set_size_l68: entry (P_sdw_ptr, P_size);
+      285 
+      286 /* This sets the size of a Level 68 SDW */
+      287 
+      288 	system_type = L68_SYSTEM;
+      289 	goto SET_BOUND_COMMON;
+      290 
+      291 
+      292 sdw_util_$set_size_adp: entry (P_sdw_ptr, P_size);
+      293 
+      294 /* This sets the size of an ADP SDW */
+      295 
+      296 	system_type = ADP_SYSTEM;
+      297 	goto SET_BOUND_COMMON;
+      298 
+      299 
+      300 SET_BOUND_COMMON:
+      301 	sdwp = P_sdw_ptr;
+      302 
+      303 	if system_type = ADP_SYSTEM then do;
+      304 	     if ^adp_sdw.unpaged then 		/* Set the paged size */
+      305 		seg_size = 64 * divide (P_size + 1023, 1024, 17, 0);
+      306 	     else seg_size = divide (P_size + 15, 16, 17, 0);
+      307 
+      308 	     adp_sdw.bound = bit (binary (max (seg_size - 1, 0), 14), 14);
+      309 	     if P_size = 0 then adp_sdw.valid = "0"b;	/* Set the size, but fault the SDW if it's zero */
+      310 	     end;
+      311 
+      312 	else do;					/* Level 68 */
+      313 	     seg_size = divide (P_size + 15, 16, 17, 0);	/* Bound has same resolution paged or unpaged */
+      314 	     l68_sdw.bound = bit (binary (max (seg_size - 1, 0), 14), 14);
+      315 	     if P_size = 0 then l68_sdw.valid = "0"b;	/* Set the size, but fault the SDW if it's zero */
+      316 	     end;
+      317 
+      318 	return;					/* End of sdw_util_$set_size */
+      319 
+      320 /*  */
+      321 
+      322 sdw_util_$get_access: entry (P_sdw_ptr, P_access);
+      323 
+      324 	system_type = sys_info$system_type;
+      325 	goto GET_ACCESS_COMMON;
+      326 
+      327 
+      328 sdw_util_$get_access_l68: entry (P_sdw_ptr, P_access);
+      329 
+      330 	system_type = L68_SYSTEM;
+      331 	goto GET_ACCESS_COMMON;
+      332 
+      333 
+      334 sdw_util_$get_access_adp: entry (P_sdw_ptr, P_access);
+      335 
+      336 	system_type = ADP_SYSTEM;
+      337 	goto GET_ACCESS_COMMON;
+      338 
+      339 
+      340 GET_ACCESS_COMMON:
+      341 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      342 
+      343 	if system_type = ADP_SYSTEM then
+      344 	     P_access = string (adp_sdw.access);
+      345 	else P_access = string (l68_sdw.access);
+      346 
+      347 	return;					/* End of sdw_util_$get_access */
+      348 
+      349 /*  */
+      350 
+      351 sdw_util_$get_address: entry (P_sdw_ptr, P_address);
+      352 
+      353 	system_type = sys_info$system_type;
+      354 	goto GET_ADDRESS_COMMON;
+      355 
+      356 
+      357 sdw_util_$get_address_l68: entry (P_sdw_ptr, P_address);
+      358 
+      359 	system_type = L68_SYSTEM;
+      360 	goto GET_ADDRESS_COMMON;
+      361 
+      362 
+      363 sdw_util_$get_address_adp: entry (P_sdw_ptr, P_address);
+      364 
+      365 	system_type = ADP_SYSTEM;
+      366 	goto GET_ADDRESS_COMMON;
+      367 
+      368 
+      369 GET_ADDRESS_COMMON:
+      370 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      371 
+      372 	if system_type = ADP_SYSTEM then
+      373 	     P_address = binary (adp_sdw.add, 26);
+      374 	else P_address = binary (l68_sdw.add, 24);
+      375 
+      376 	return;					/* End of sdw_util_$get_address */
+      377 
+      378 /*  */
+      379 
+      380 sdw_util_$get_size: entry (P_sdw_ptr, P_size);
+      381 
+      382 	system_type = sys_info$system_type;
+      383 	goto GET_BOUND_COMMON;
+      384 
+      385 
+      386 sdw_util_$get_size_l68: entry (P_sdw_ptr, P_size);
+      387 
+      388 	system_type = L68_SYSTEM;
+      389 	goto GET_BOUND_COMMON;
+      390 
+      391 
+      392 sdw_util_$get_size_adp: entry (P_sdw_ptr, P_size);
+      393 
+      394 	system_type = ADP_SYSTEM;
+      395 	goto GET_BOUND_COMMON;
+      396 
+      397 
+      398 GET_BOUND_COMMON:
+      399 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      400 
+      401 	if system_type = ADP_SYSTEM then
+      402 	     P_size = 16 + 16 * binary (adp_sdw.bound, 14);
+      403 	else P_size = 16 + 16 * binary (l68_sdw.bound, 14);
+      404 
+      405 	return;					/* End of sdw_util_$get_size */
+      406 
+      407 /*  */
+      408 
+      409 sdw_util_$set_valid: entry (P_sdw_ptr);
+      410 
+      411 	system_type = sys_info$system_type;
+      412 	goto SET_VALID_COMMON;
+      413 
+      414 
+      415 sdw_util_$set_valid_l68: entry (P_sdw_ptr);
+      416 
+      417 	system_type = L68_SYSTEM;
+      418 	goto SET_VALID_COMMON;
+      419 
+      420 
+      421 sdw_util_$set_valid_adp: entry (P_sdw_ptr);
+      422 
+      423 	system_type = ADP_SYSTEM;
+      424 	goto SET_VALID_COMMON;
+      425 
+      426 
+      427 SET_VALID_COMMON:
+      428 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      429 
+      430 	if system_type = ADP_SYSTEM then
+      431 	     adp_sdw.valid = "1"b;
+      432 	else do;					/* Set valid, and set DF0, too */
+      433 	     l68_sdw.valid = "1"b;
+      434 	     l68_sdw.df_no = "00"b;
+      435 	     end;
+      436 
+      437 	return;					/* End of sdw_util_$set_valid */
+      438 
+      439 /*  */
+      440 
+      441 sdw_util_$set_faulted: entry (P_sdw_ptr);
+      442 
+      443 	system_type = sys_info$system_type;
+      444 	goto SET_FAULTED_COMMON;
+      445 
+      446 
+      447 sdw_util_$set_faulted_l68: entry (P_sdw_ptr);
+      448 
+      449 	system_type = L68_SYSTEM;
+      450 	goto SET_FAULTED_COMMON;
+      451 
+      452 
+      453 sdw_util_$set_faulted_adp: entry (P_sdw_ptr);
+      454 
+      455 	system_type = ADP_SYSTEM;
+      456 	goto SET_FAULTED_COMMON;
+      457 
+      458 
+      459 SET_FAULTED_COMMON:
+      460 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      461 
+      462 	if system_type = ADP_SYSTEM then
+      463 	     adp_sdw.valid = "0"b;
+      464 	else do;
+      465 	     l68_sdw.valid = "0"b;
+      466 	     l68_sdw.df_no = "00"b;			/* Refresh these bits, just in case */
+      467 	     end;
+      468 
+      469 	return;					/* End of sdw_util_$set_faulted */
+      470 
+      471 /*  */
+      472 
+      473 sdw_util_$get_valid: entry (P_sdw_ptr, P_valid_bit);
+      474 
+      475 	system_type = sys_info$system_type;
+      476 	goto GET_VALID_COMMON;
+      477 
+      478 
+      479 sdw_util_$get_valid_l68: entry (P_sdw_ptr, P_valid_bit);
+      480 
+      481 	system_type = L68_SYSTEM;
+      482 	goto GET_VALID_COMMON;
+      483 
+      484 
+      485 sdw_util_$get_valid_adp: entry (P_sdw_ptr, P_valid_bit);
+      486 
+      487 	system_type = ADP_SYSTEM;
+      488 	goto GET_VALID_COMMON;
+      489 
+      490 
+      491 GET_VALID_COMMON:
+      492 	sdwp = P_sdw_ptr;				/* Make it addressable */
+      493 
+      494 	if system_type = ADP_SYSTEM then
+      495 	     P_valid_bit = adp_sdw.valid;
+      496 	else P_valid_bit = l68_sdw.valid;
+      497 
+      498 	return;					/* End of sdw_util_$get_valid */
+      499 
+      500 
+      501 
+      502  /* BEGIN INCLUDE FILE ... sdw.adp.incl.pl1 ... 01/16/81, for ADP conversion */
+  1     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  1     3 
+  1     4 dcl 1 adp_sdw based (sdwp) aligned,			/* ADP Segment Descriptor Word */
+  1     5 
+  1     6    (2 add bit (26), 				/* Page table address */
+  1     7     2 valid bit (1),				/* "1"b => SDW is valid */
+  1     8     2 rings,					/* Ring brackets */
+  1     9       3 r1 bit (3),
+  1    10       3 r2 bit (3),
+  1    11       3 r3 bit (3),
+  1    12 
+  1    13     2 bound bit (14),				/* Bound of segment, in 16 word blocks */
+  1    14     2 pad1 bit (2),
+  1    15     2 entry_bound bit (14),				/* Gate entry bound */
+  1    16     2 access,					/* Access permission bits */
+  1    17       3 read bit (1),
+  1    18       3 execute bit (1),
+  1    19       3 write bit (1),
+  1    20       3 privileged bit (1),
+  1    21     2 unpaged bit (1),				/* "1"b => segment is unpaged */
+  1    22     2 not_a_gate bit (1)) unaligned;			/* "0"b => entry bound is checked by hardware */
+  1    23 
+  1    24 /* END INCLUDE FILE sdw.adp.incl.pl1 */
+      502 
+      503  /* BEGIN INCLUDE FILE ... sdw.l68.incl.pl1 ... Updated for ADP conversion 03/01/81 */
+  2     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  2     3 
+  2     4 dcl 1 l68_sdw based (sdwp) aligned,			/* Level 68 Segment Descriptor Word */
+  2     5 
+  2     6    (2 add bit (24), 				/* main memory address of page table */
+  2     7     2 rings,					/* ring brackets for the segment */
+  2     8       3 r1 bit (3),
+  2     9       3 r2 bit (3),
+  2    10       3 r3 bit (3),
+  2    11     2 valid bit (1),				/* directed fault bit (0 => fault) */
+  2    12     2 df_no bit (2),				/* directed fault number */
+  2    13 
+  2    14     2 pad1 bit (1),
+  2    15     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  2    16     2 access,					/* access bits */
+  2    17       3 read bit (1),				/* read permission bit */
+  2    18       3 execute bit (1),				/* execute permission bit */
+  2    19       3 write bit (1),				/* write permission bit */
+  2    20       3 privileged bit (1),				/* privileged bit */
+  2    21     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  2    22     2 not_a_gate bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  2    23     2 cache bit (1),				/* cache enable bit */
+  2    24     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  2    25 
+  2    26 /* END INCLUDE FILE ... sdw.l68.incl.pl1 */
+      503 
+      504  /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  3     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  3     3 
+  3     4 dcl  sdw_info_ptr pointer;
+  3     5 
+  3     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  3     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  3     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  3     9 
+  3    10     2 access unaligned,				/* REWP */
+  3    11       3 read bit (1) unaligned,
+  3    12       3 execute bit (1) unaligned,
+  3    13       3 write bit (1) unaligned,
+  3    14       3 privileged bit (1) unaligned,
+  3    15 
+  3    16     2 pad1 bit (32) unaligned,
+  3    17 
+  3    18     2 rings unaligned,				/* Ring brackets */
+  3    19       3 r1 bit (3) unaligned,
+  3    20       3 r2 bit (3) unaligned,
+  3    21       3 r3 bit (3) unaligned,
+  3    22 
+  3    23     2 pad2 bit (27) unaligned,
+  3    24 
+  3    25     2 flags aligned,
+  3    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  3    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  3    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  3    29       3 pad3 bit (33) unaligned,
+  3    30 
+  3    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  3    32 
+  3    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      504 
+      505  /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  4     2 
+  4     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  4     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  4     5 
+  4     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  4     7     ("Level68", "ADP");
+  4     8 
+  4     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      505 
+      506 
+      507 	end sdw_util_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0825.5  sdw_util_.pl1                     >special_ldd>install>MR12.3-1114>sdw_util_.pl1
+502          1    03/27/82  0429.8  sdw.adp.incl.pl1                  >ldd>include>sdw.adp.incl.pl1
+503          2    03/27/82  0429.8  sdw.l68.incl.pl1                  >ldd>include>sdw.l68.incl.pl1
+504          3    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+505          4    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 4-4 ref 92 100 161 170 223 230 258 265
+                                                                                  296 303 336 343 365 372 394 401 423 430 455 462
+                                                                                  487 494
+L68_SYSTEM                             constant        fixed bin(17,0)          initial dcl 4-3 ref 86 155 215 250 288 330 359 388
+                                                                                  417 449 481
+P_access                               parameter       bit(4)                   packed unaligned dcl 64 set ref 203 211 219 230 232
+                                                                                  322 328 334 343* 345*
+P_address                              parameter       fixed bin(26,0)          dcl 62 set ref 238 246 254 266 270 351 357 363 372*
+                                                                                  374*
+P_sdw_info_ptr                         parameter       pointer                  dcl 61 ref 78 84 90 96 147 153 159 167
+P_sdw_ptr                              parameter       pointer                  dcl 60 ref 78 84 90 98 147 153 159 165 203 211 219
+                                                                                  227 238 246 254 262 276 284 292 300 322 328 334
+                                                                                  340 351 357 363 369 380 386 392 398 409 415 421
+                                                                                  427 441 447 453 459 473 479 485 491
+P_size                                 parameter       fixed bin(19,0)          dcl 63 set ref 276 284 292 304 306 309 313 315 380
+                                                                                  386 392 401* 403*
+P_valid_bit                            parameter       bit(1)                   dcl 65 set ref 473 479 485 494* 496*
+access                    1(15)        based           structure                level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  126* 185 232* 345
+access                    2            based           structure                level 2 in structure "sdw_info" packed packed
+                                                                                  unaligned dcl 3-6 in procedure "sdw_util_" set ref
+                                                                                  103 126 171* 185*
+access                    1(30)        based           structure                level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  103* 171 230* 343
+add                                    based           bit(26)                  level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  113* 114* 181 266* 267* 372
+add                                    based           bit(24)                  level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  137* 196 270* 374
+address                                based           fixed bin(26,0)          level 2 dcl 3-6 set ref 113 137 181* 196*
+adp_sdw                                based           structure                level 1 dcl 1-4 set ref 101*
+binary                                                 builtin function         dcl 74 ref 109 113 120 133 137 140 177 180 181 192
+                                                                                  195 196 266 270 308 314 372 374 401 403
+bit                                                    builtin function         dcl 74 ref 109 113 120 133 137 140 266 270 308 314
+bound                     1            based           bit(14)                  level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  120* 180 308* 401
+bound                     1(01)        based           bit(14)                  level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  140* 195 314* 403
+cache                     1(21)        based           bit(1)                   level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  131* 190
+cache                     4(02)        based           bit(1)                   level 3 in structure "sdw_info" packed packed
+                                                                                  unaligned dcl 3-6 in procedure "sdw_util_" set ref
+                                                                                  131 190*
+df_no                     0(34)        based           bit(2)                   level 2 packed packed unaligned dcl 2-4 set ref 434*
+                                                                                  466*
+divide                                                 builtin function         dcl 74 ref 116 118 139 304 306 313
+entry_bound               1(16)        based           bit(14)                  level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  109* 177
+entry_bound               1(22)        based           bit(14)                  level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  133* 192
+faulted                   4(01)        based           bit(1)                   level 3 packed packed unaligned dcl 3-6 set ref 106
+                                                                                  129 174* 188*
+flags                     4            based           structure                level 2 dcl 3-6
+gate_entry_bound          5            based           fixed bin(14,0)          level 2 dcl 3-6 set ref 109 109 133 133 177* 192*
+l68_sdw                                based           structure                level 1 dcl 2-4 set ref 124*
+max                                                    builtin function         dcl 74 ref 120 140 308 314
+not_a_gate                1(20)        based           bit(1)                   level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  135* 192
+not_a_gate                1(35)        based           bit(1)                   level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  111* 177
+paged                     4            based           bit(1)                   level 3 packed packed unaligned dcl 3-6 set ref 107
+                                                                                  130 175* 189*
+rings                     0(27)        based           structure                level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  104* 172
+rings                     0(24)        based           structure                level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  127* 186
+rings                     3            based           structure                level 2 in structure "sdw_info" packed packed
+                                                                                  unaligned dcl 3-6 in procedure "sdw_util_" set ref
+                                                                                  104 127 172* 186*
+sdw_info                               based           structure                level 1 dcl 3-6 set ref 168*
+sdw_info_ptr                    000104 automatic       pointer                  dcl 3-4 set ref 96* 103 104 106 107 109 109 113 116
+                                                                                  118 126 127 129 130 131 133 133 137 139 167* 168
+                                                                                  171 172 174 175 177 180 181 185 186 188 189 190
+                                                                                  192 195 196
+sdwp                            000100 automatic       pointer                  dcl 67 set ref 98* 101 103 104 106 107 109 111 113
+                                                                                  114 114 116 120 124 126 127 129 130 131 133 135
+                                                                                  137 140 165* 171 172 174 175 177 177 180 181 185
+                                                                                  186 188 189 190 192 192 195 196 227* 230 232 262*
+                                                                                  266 267 267 270 300* 304 308 309 314 315 340* 343
+                                                                                  345 369* 372 374 398* 401 403 427* 430 433 434
+                                                                                  459* 462 465 466 491* 494 496
+seg_size                        000102 automatic       fixed bin(14,0)          dcl 69 set ref 116* 118* 120 139* 140 304* 306* 308
+                                                                                  313* 314
+size                      1            based           fixed bin(19,0)          level 2 dcl 3-6 set ref 116 118 139 180* 195*
+string                                                 builtin function         dcl 74 set ref 103* 103 104* 104 126* 126 127* 127
+                                                                                  171* 171 172* 172 185* 185 186* 186 230* 232* 343
+                                                                                  345
+substr                                                 builtin function         dcl 74 set ref 114* 267*
+sys_info$system_type            000010 external static fixed bin(17,0)          dcl 72 ref 80 149 207 242 280 324 353 382 411 443
+                                                                                  475
+system_type                     000103 automatic       fixed bin(17,0)          dcl 70 set ref 80* 86* 92* 100 149* 155* 161* 170
+                                                                                  207* 215* 223* 230 242* 250* 258* 265 280* 288*
+                                                                                  296* 303 324* 330* 336* 343 353* 359* 365* 372
+                                                                                  382* 388* 394* 401 411* 417* 423* 430 443* 449*
+                                                                                  455* 462 475* 481* 487* 494
+unpaged                   1(19)        based           bit(1)                   level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  130* 189
+unpaged                   1(34)        based           bit(1)                   level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  107* 114 116 175 267 304
+unspec                                                 builtin function         dcl 74 set ref 101* 124* 168*
+valid                     0(33)        based           bit(1)                   level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 2-4 in procedure "sdw_util_" set ref
+                                                                                  129* 188 315* 433* 465* 496
+valid                     0(26)        based           bit(1)                   level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 1-4 in procedure "sdw_util_" set ref
+                                                                                  106* 174 309* 430* 462* 494
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 4-6
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CONSTRUCT_COMMON                000060 constant        label                    dcl 96 ref 81 87 93
+DISSECT_COMMON                  000357 constant        label                    dcl 165 ref 150 156 162
+GET_ACCESS_COMMON               001070 constant        label                    dcl 340 ref 325 331 337
+GET_ADDRESS_COMMON              001147 constant        label                    dcl 369 ref 354 360 366
+GET_BOUND_COMMON                001224 constant        label                    dcl 398 ref 383 389 395
+GET_VALID_COMMON                001443 constant        label                    dcl 491 ref 476 482 488
+SET_ACCESS_COMMON               000561 constant        label                    dcl 227 ref 208 216 224
+SET_ADDRESS_COMMON              000642 constant        label                    dcl 262 ref 243 251 259
+SET_BOUND_COMMON                000737 constant        label                    dcl 300 ref 281 289 297
+SET_FAULTED_COMMON              001364 constant        label                    dcl 459 ref 444 450 456
+SET_VALID_COMMON                001307 constant        label                    dcl 427 ref 412 418 424
+sdw_util_                       000011 constant        entry                    external dcl 13
+sdw_util_$construct             000023 constant        entry                    external dcl 78
+sdw_util_$construct_adp         000050 constant        entry                    external dcl 90
+sdw_util_$construct_l68         000036 constant        entry                    external dcl 84
+sdw_util_$dissect               000322 constant        entry                    external dcl 147
+sdw_util_$dissect_adp           000347 constant        entry                    external dcl 159
+sdw_util_$dissect_l68           000335 constant        entry                    external dcl 153
+sdw_util_$get_access            001033 constant        entry                    external dcl 322
+sdw_util_$get_access_adp        001060 constant        entry                    external dcl 334
+sdw_util_$get_access_l68        001046 constant        entry                    external dcl 328
+sdw_util_$get_address           001112 constant        entry                    external dcl 351
+sdw_util_$get_address_adp       001137 constant        entry                    external dcl 363
+sdw_util_$get_address_l68       001125 constant        entry                    external dcl 357
+sdw_util_$get_size              001167 constant        entry                    external dcl 380
+sdw_util_$get_size_adp          001214 constant        entry                    external dcl 392
+sdw_util_$get_size_l68          001202 constant        entry                    external dcl 386
+sdw_util_$get_valid             001406 constant        entry                    external dcl 473
+sdw_util_$get_valid_adp         001433 constant        entry                    external dcl 485
+sdw_util_$get_valid_l68         001421 constant        entry                    external dcl 479
+sdw_util_$set_access            000524 constant        entry                    external dcl 203
+sdw_util_$set_access_adp        000551 constant        entry                    external dcl 219
+sdw_util_$set_access_l68        000537 constant        entry                    external dcl 211
+sdw_util_$set_address           000605 constant        entry                    external dcl 238
+sdw_util_$set_address_adp       000632 constant        entry                    external dcl 254
+sdw_util_$set_address_l68       000620 constant        entry                    external dcl 246
+sdw_util_$set_faulted           001327 constant        entry                    external dcl 441
+sdw_util_$set_faulted_adp       001354 constant        entry                    external dcl 453
+sdw_util_$set_faulted_l68       001342 constant        entry                    external dcl 447
+sdw_util_$set_size              000702 constant        entry                    external dcl 276
+sdw_util_$set_size_adp          000727 constant        entry                    external dcl 292
+sdw_util_$set_size_l68          000715 constant        entry                    external dcl 284
+sdw_util_$set_valid             001252 constant        entry                    external dcl 409
+sdw_util_$set_valid_adp         001277 constant        entry                    external dcl 421
+sdw_util_$set_valid_l68         001265 constant        entry                    external dcl 415
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2534        2546    1471        2544
+Length      3130    1471        12         345    1043           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sdw_util_                            70 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sdw_util_                000100 sdwp                        sdw_util_
+                         000102 seg_size                    sdw_util_
+                         000103 system_type                 sdw_util_
+                         000104 sdw_info_ptr                sdw_util_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry           trunc_fx1
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sys_info$system_type
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000010        15 000016        78 000017        80 000030        81 000033        84 000034        86 000043
+     87 000045        90 000046        92 000055        93 000057        96 000060        98 000064       100 000067
+    101 000071       103 000074       104 000101       106 000104       107 000114       109 000123       111 000137
+    113 000141       114 000153       116 000160       118 000171       120 000175       121 000211       124 000212
+    126 000215       127 000222       129 000227       130 000237       131 000246       133 000253       135 000267
+    137 000271       139 000276       140 000302       143 000317       147 000320       149 000327       150 000332
+    153 000333       155 000342       156 000344       159 000345       161 000354       162 000356       165 000357
+    167 000363       168 000366       170 000371       171 000373       172 000400       174 000403       175 000413
+    177 000422       180 000432       181 000437       182 000442       185 000443       186 000450       188 000453
+    189 000463       190 000472       192 000477       195 000506       196 000514       199 000517       203 000520
+    207 000531       208 000534       211 000535       215 000544       216 000546       219 000547       223 000556
+    224 000560       227 000561       230 000565       232 000574       234 000600       238 000601       242 000612
+    243 000615       246 000616       250 000625       251 000627       254 000630       258 000637       259 000641
+    262 000642       265 000646       266 000650       267 000662       268 000667       270 000670       272 000675
+    276 000676       280 000707       281 000712       284 000713       288 000722       289 000724       292 000725
+    296 000734       297 000736       300 000737       303 000743       304 000745       306 000756       308 000762
+    309 000776       310 001002       313 001003       314 001007       315 001024       318 001030       322 001031
+    324 001040       325 001043       328 001044       330 001053       331 001055       334 001056       336 001065
+    337 001067       340 001070       343 001074       345 001103       347 001107       351 001110       353 001117
+    354 001122       357 001123       359 001132       360 001134       363 001135       365 001144       366 001146
+    369 001147       372 001153       374 001161       376 001164       380 001165       382 001174       383 001177
+    386 001200       388 001207       389 001211       392 001212       394 001221       395 001223       398 001224
+    401 001230       403 001240       405 001246       409 001247       411 001257       412 001262       415 001263
+    417 001272       418 001274       421 001275       423 001304       424 001306       427 001307       430 001313
+    433 001320       434 001322       437 001324       441 001325       443 001334       444 001337       447 001340
+    449 001347       450 001351       453 001352       455 001361       456 001363       459 001364       462 001370
+    465 001375       466 001377       469 001401       473 001402       475 001413       476 001416       479 001417
+    481 001426       482 001430       485 001431       487 001440       488 001442       491 001443       494 001447
+    496 001456       498 001462
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

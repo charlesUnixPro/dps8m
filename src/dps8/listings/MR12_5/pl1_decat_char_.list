@@ -1,0 +1,136 @@
+	COMPILATION LISTING OF SEGMENT pl1_decat_char_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1012.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 pl1_decat_char_:	proc(s,c,t) returns(char(*));
+       13 
+       14 dcl	(s,c) char(*),
+       15 	t bit(3),
+       16 	(i,l) fixed bin(15),
+       17 	(bin,index,length,substr) builtin;
+       18 
+       19 	l = length(c);
+       20 	if l=0
+       21 	then	if substr(t,3,1)
+       22 		 then	goto case(7);
+       23 		 else	goto case(0);
+       24 
+       25 	i = index(s,c);
+       26 	if i = 0
+       27 	then	if substr(t,1,1)
+       28 		 then	goto case(7);
+       29 		 else	goto case(0);
+       30 
+       31 	goto case(bin(t));
+       32 
+       33 case(0):	return("");
+       34 case(1):	return(substr(s,i+l));
+       35 case(2):	return(c);
+       36 case(3):	return(substr(s,i));
+       37 case(4):	return(substr(s,1,i-1));
+       38 case(5):	return(substr(s,1,i-1) || substr(s,i+l));
+       39 case(6):	return(substr(s,1,i+l-1));
+       40 case(7):	return(s);
+       41 
+       42 	end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.8  pl1_decat_char_.pl1               >spec>install>1111>pl1_decat_char_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+bin                                                    builtin function         dcl 14 ref 31
+c                                      parameter       char                     packed unaligned dcl 14 ref 12 19 25 35
+i                               000100 automatic       fixed bin(15,0)          dcl 14 set ref 25* 26 34 36 37 38 38 39
+index                                                  builtin function         dcl 14 ref 25
+l                               000101 automatic       fixed bin(15,0)          dcl 14 set ref 19* 20 34 38 39
+length                                                 builtin function         dcl 14 ref 19
+s                                      parameter       char                     packed unaligned dcl 14 ref 12 25 34 36 37 38 38 39
+                                                                                  40
+substr                                                 builtin function         dcl 14 ref 20 26 34 36 37 38 38 39
+t                                      parameter       bit(3)                   packed unaligned dcl 14 ref 12 20 26 31
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+case                            000000 constant        label                    array(0:7) dcl 33 ref 20 23 26 29 31
+pl1_decat_char_                 000020 constant        entry                    external dcl 12
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       272         302     244         302
+Length       444     244        10         126      25           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pl1_decat_char_                      74 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+pl1_decat_char_          000100 i                           pl1_decat_char_
+                         000101 l                           pl1_decat_char_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     ext_entry_desc      set_chars_eis       index_chars_eis     return_chars_eis
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     12 000013        19 000040        20 000041        23 000051        25 000052        26 000062        29 000070
+     31 000071        33 000100        34 000107        35 000131        36 000137        37 000157        38 000170
+     39 000223        40 000235
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

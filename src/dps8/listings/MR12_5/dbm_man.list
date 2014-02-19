@@ -1,0 +1,1527 @@
+	COMPILATION LISTING OF SEGMENT dbm_man
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1031.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 dbm_man: proc;
+       13 
+       14 /* This routine manages the initialization, allocating, freeing, setting and resetting of the
+       15*   bit maps that control the system dumper. For every mounted volume there exist two bit maps,
+       16*   each as many bits long(rounded up to nearest word) as there are vtoces on that volume.
+       17*   The incremental and consolidated dumpers are driven off these bit maps and dump each vtoce and
+       18*   associated data object whose bit is on */
+       19 
+       20 /* Coded by D Vinograd Feb 1976 
+       21*   Modified by E.N. Kittlitz Nov 1980 for new dtm/dtu calculation, clock builtin 
+       22*   Modified 03/21/81, W. Olin Sibert, for ADP SDW formats
+       23*   Modified 03/01/82, J. Bongiovanni, to compute proper size for dbm_seg
+       24*            and for new PVTE include file
+       25**/
+       26 
+       27 
+       28 /****^  HISTORY COMMENTS:
+       29*  1) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+       30*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+       31*     Changed to allow setting of the dumper bit maps values with set_bit.
+       32*                                                   END HISTORY COMMENTS */
+       33 
+       34 
+       35 	idx = divide (1, 0, 17, 0);			/* should never be called here */
+       36 
+       37 update_map_from_ast: entry (a_pvtep, a_pvtx);
+       38 
+       39 	pvtep = a_pvtep;
+       40 	pvtx = a_pvtx;
+       41 	call lock$lock_ast;
+       42 	call lock_dbm;
+       43 	call get_mapp (incr, "1"b);
+       44 
+       45 	do i = 0 to hbound (sst$level, 1);
+       46 	     first = "1"b;
+       47 	     first_fp = sst$level (i).ausedp;
+       48 	     if first_fp ^= "0"b then
+       49 		do fp = first_fp repeat (aste.fp)while (fp ^= first_fp | first);
+       50 		first = "0"b;
+       51 		astep = ptr (addr (sst_seg$), fp);
+       52 		if aste.pvtx = pvtx & ^aste.gtus & ^aste.nid & ^aste.per_process & ^aste.hc_sdw then do;
+       53 		     if ((aste.np ^= "0"b) | (aste.infp ^= "0"b)) then	/* implies 'in use' */
+       54 			aste.dtu = substr (bit (fixed (clock (), 52), 36), 1, 36);
+       55 		     if aste.fms then do;
+       56 			aste.fms = "0"b;
+       57 again1:			dump_it (aste.vtocx) = "1"b;
+       58 			if dump_it (aste.vtocx) ^= "1"b then do;
+       59 			     call syserr (LOG, "dbm_man: csl failure");
+       60 			     goto again1;
+       61 			end;
+       62 		     end;
+       63 		end;
+       64 	     end;
+       65 	end;
+       66 
+       67 	call unlock_dbm;
+       68 	call lock$unlock_ast;
+       69 	return;
+       70 
+       71 set_incr:	entry (a_pvtx, a_vtocx, a_code);
+       72 
+       73 	type = incr;
+       74 	switch = "1"b;
+       75 	a_code = 0;
+       76 	goto set_common;
+       77 
+       78 set:	entry (a_pvtx, a_vtocx, a_type, a_switch);
+       79 
+       80 	type = a_type;
+       81 	switch = a_switch;
+       82 
+       83 set_common:
+       84 	call lock_dbm;
+       85 
+       86 	call get_pvte;
+       87 
+       88 	call set_bit (a_vtocx, type, switch);
+       89 
+       90 	call unlock_dbm;
+       91 
+       92 	return;
+       93 
+       94 get_next_vtocx: entry (a_pvtx, a_vtocx, a_type, a_reset, a_code);
+       95 
+       96 	a_code = 0;
+       97 	reset = a_reset;
+       98 	call lock_dbm;
+       99 
+      100 	call get_pvte;
+      101 
+      102 	call get_mapp (a_type, "1"b);
+      103 	do idx = a_vtocx + 1 to pvte.n_vtoce - 1 while (dump_it (idx) = "0"b); end;
+      104 
+      105 	if idx > pvte.n_vtoce - 1 then do;
+      106 	     a_code = error_table_$end_of_info;
+      107 	     call unlock_dbm;
+      108 	     return;
+      109 	end;
+      110 
+      111 	pvte.curn_dmpr_vtocx (a_type) = idx;
+      112 
+      113 	if reset then;
+      114 	else call set_bit (idx, a_type, "0"b);
+      115 	if a_type = incr then			/* set consolidated bit */
+      116 	     call set_bit (idx, cons, "1"b);
+      117 
+      118 	call unlock_dbm;
+      119 
+      120 	return;
+      121 
+      122 init_map:	entry (a_pvtx, a_bmp, a_code);
+      123 
+      124 	a_code = 0;
+      125 	call lock_dbm;
+      126 
+      127 	call get_pvte;
+      128 
+      129 	if pvte.dbmrp (incr) ^= "0"b then
+      130 	     call syserr (CRASH, "dbm_man: attempt to initialize already initialized map for PV on ^a_^a^[^a^;^1s^]",
+      131 		pvte.devname, convert (p99, pvte.logical_area_number), pvte.is_sv, pvte.sv_name);
+      132 
+      133 	bit_map_len = divide (pvte.n_vtoce + 35, 36, 17, 0) * num_of_maps;
+      134 
+      135 	on area call syserr (CRASH, "dbm_man: unable to allocate dumper bit map for PV on ^a_^a^[^a^;^1s^]",
+      136 	     pvte.devname, convert (p99, pvte.logical_area_number), pvte.is_sv, pvte.sv_name);
+      137 	allocate bit_map in (dbm.area) set (mapp);
+      138 
+      139 	pvte.dbmrp (incr) = rel (mapp);
+      140 	pvte.dbmrp (cons) = bit (fixed (fixed (rel (mapp), 18) + divide (bit_map_len, 2, 18, 0), 18), 18);
+      141 	mapp -> bit_map = a_bmp -> bit_map;
+      142 
+      143 	call unlock_dbm;
+      144 	return;
+      145 
+      146 update_map: entry (a_pvtx, a_bmp, a_pageno, a_code);
+      147 
+      148 	free = "0"b;
+      149 	goto free_common;
+      150 
+      151 free_map:	entry (a_pvtx, a_bmp, a_pageno, a_code);
+      152 
+      153 	free = "1"b;
+      154 
+      155 free_common:
+      156 	a_code = 0;
+      157 	call lock_dbm;
+      158 
+      159 	call get_pvte;
+      160 
+      161 	call get_mapp (incr, (^free));
+      162 	if mapp = null () then goto UNLOCK_RETURN;
+      163 
+      164 	bit_map_len = divide (pvte.n_vtoce + 35, 36, 17, 0) * num_of_maps;
+      165 	if (free & a_pageno = 0) then do;
+      166 	     call reset_curn_vtocx (incr);
+      167 	     call reset_curn_vtocx (cons);
+      168 	end;
+      169 	cnt1 = min (1024 - bit_map_offset, bit_map_len);
+      170 	if a_pageno = 0 then do;
+      171 	     cnt = cnt1;
+      172 	     from_ptr = mapp;
+      173 	     to_ptr = addrel (a_bmp, bit_map_offset);
+      174 	end;
+      175 	else do;
+      176 	     cnt = max (bit_map_len - cnt1, 0);
+      177 	     from_ptr = addrel (mapp, cnt1);
+      178 	     to_ptr = a_bmp;
+      179 	end;
+      180 	to_ptr -> copy = from_ptr -> copy;
+      181 
+      182 	if (free & a_pageno = 1) then do;
+      183 	     free mapp -> bit_map in (dbm.area);
+      184 	     pvte.dbmrp (*) = "0"b;
+      185 	end;
+      186 
+      187 UNLOCK_RETURN:
+      188 	call unlock_dbm;
+      189 	return;
+      190 
+      191 init:	entry;					/* Set up the dbm seg */
+      192 
+      193 /* Compute the size of dbm_seg from the number of disk devices configured */
+      194 
+      195 	dbmp = addr (dbm_seg$);
+      196 	dbm_segno = binary (baseno (addr (dbm_seg$)));
+      197 	sltp = addr (slt$);
+      198 	sltep = addr (slt.seg (dbm_segno));
+      199 
+      200 	dbm_seg_size = size (area_header) + binary (rel (addr (dbm.area)))
+      201 	     + pvt$n_entries * (alloc_blkhdrsz + divide (MAX_VTOCE_PER_PACK + 35, 36, 17) * num_of_maps);
+      202 	
+      203 /* Set up SLTE for dbm_seg so that we get an ASTE and address withdrawal when
+      204*   we call make_sdw. make_sdw was already called for dbm_seg. It did neither,
+      205*   since dbm_seg has the abs_seg attribute in the SLTE */
+      206 
+      207 	slte.abs_seg = "0"b;
+      208 	slte.cur_length, slte.max_length = bit (divide (dbm_seg_size +1023, 1024, 9, 0), 9);
+      209 	
+      210 	call make_sdw$unthreaded (dbm_segno, tsdw, astep, ptp);
+      211 	if astep = null () 
+      212 	     then call syserr (CRASH, "dbm_man: Cannot get ASTE for dbm_seg");
+      213 	call pmut$swap_sdw (addr (dbm_seg$), addr (tsdw));
+      214 
+      215 	unspec (local_area_info) = "0"b;
+      216 	area_infop = addr (local_area_info);
+      217 	area_info.version = area_info_version_1;
+      218 	area_info.zero_on_free = "1"b;
+      219 	area_info.size = dbm_seg_size - binary (rel (addr (dbm.area)), 18);
+      220 	area_info.areap = addr (dbm.area);
+      221 	call define_area_ (area_infop, code);
+      222 	if code ^= 0 then
+      223 	     call syserr$error_code (CRASH, code, "dbm_man: unable to initialize area");
+      224 	dbm.lock_data.event = unspec (DBM_LOCK_EVENT);
+      225 	dbm.init = "1"b;
+      226 	return;
+      227 
+      228 
+      229 lock_dbm:	proc;
+      230 	     dbmp = addr (dbm_seg$);
+      231 	     call lock$lock_fast (addr (dbm.lock));
+      232 	     return;
+      233 	end lock_dbm;
+      234 
+      235 unlock_dbm: proc;
+      236 	     call lock$unlock_fast (addr (dbm.lock));
+      237 	     return;
+      238 	end unlock_dbm;
+      239 
+      240 get_pvte:	proc;
+      241 	     code = 0;
+      242 	     pvtx = a_pvtx;
+      243 	     pvt_arrayp = addr (pvt$array);
+      244 	     pvtep = addr (pvt_array (pvtx));
+      245 	     return;
+      246 	end get_pvte;
+      247 
+      248 set_bit:	proc (idx, type, value);
+      249 dcl  value bit (1) aligned;
+      250 dcl  type fixed bin;
+      251 dcl  idx fixed bin;
+      252 
+      253 	     call get_mapp (type, "1"b);
+      254 again2:	     dump_it (idx) = value;
+      255 	     if dump_it (idx) ^= value then do;
+      256 		call syserr (LOG, "dbm_man: csl failure");
+      257 		goto again2;
+      258 	     end;
+      259 	     return;
+      260 	end set_bit;
+      261 
+      262 reset_curn_vtocx: proc (type);
+      263 dcl  type fixed bin;
+      264 	     if pvte.curn_dmpr_vtocx (type) ^= -1 then do;
+      265 		call set_bit (fixed (pvte.curn_dmpr_vtocx (type)), type, "1"b);
+      266 		pvte.curn_dmpr_vtocx = -1;
+      267 	     end;
+      268 	     return;
+      269 	end reset_curn_vtocx;
+      270 
+      271 get_mapp:	proc (type, crash_on_error);
+      272 dcl  type fixed bin;
+      273 dcl  crash_on_error bit (1) aligned;
+      274 
+      275 	     mapp = ptr (dbmp, pvte.dbmrp (type));
+      276 	     if mapp = dbmp then
+      277 		if crash_on_error then
+      278 		     call syserr (CRASH, "dbm_man: bit map relp not set in pvte for PV on ^a_^a^[^a^;^1s^]",
+      279 			pvte.devname, convert (p99, pvte.logical_area_number), pvte.is_sv, pvte.sv_name);
+      280 	          else mapp = null ();
+      281 	end get_mapp;
+      282 
+      283 dcl  a_pvtx fixed bin;
+      284 dcl  a_pvtep ptr;
+      285 dcl  a_vtocx fixed bin;
+      286 dcl  a_pageno fixed bin;
+      287 dcl  a_reset bit (1) aligned;
+      288 dcl  a_switch bit (1) aligned;
+      289 dcl  a_type fixed bin;
+      290 dcl  a_bmp ptr;
+      291 dcl  a_code fixed bin (35);
+      292 
+      293 dcl  code fixed bin (35);
+      294 dcl  reset bit (1) aligned;
+      295 dcl  first bit (1) aligned;
+      296 dcl  fp bit (18);
+      297 dcl  first_fp bit (18);
+      298 dcl  pvtx fixed bin;
+      299 dcl  type fixed bin;
+      300 dcl  i fixed bin;
+      301 dcl  idx fixed bin;
+      302 dcl  free bit (1) aligned;
+      303 dcl  switch bit (1) aligned;
+      304 dcl  bit_map_len fixed bin;
+      305 dcl  cnt1 fixed bin;
+      306 dcl  cnt fixed bin;
+      307 dcl  from_ptr ptr;
+      308 dcl  to_ptr ptr;
+      309 dcl  dbm_seg_size fixed bin (19);
+      310 dcl  dbm_segno fixed bin (18);
+      311 dcl  tsdw fixed bin (71);
+      312 dcl  ptp ptr;
+      313 dcl  p99 picture "99";
+      314 
+      315 dcl 1 local_area_info like area_info aligned;
+      316 
+      317 dcl  copy (cnt) bit (36) based;
+      318 dcl  bit_map (bit_map_len) bit (36) aligned based;
+      319 dcl  mapp ptr init (null ());
+      320 dcl  dump_it (0:1) bit (1) unaligned based (mapp);
+      321 
+      322 dcl  area condition;
+      323 
+      324 dcl  bit_map_offset fixed bin static init (8) options (constant);
+      325 dcl  num_of_maps fixed bin static init (2) options (constant);
+      326 dcl  DBM_LOCK_EVENT char (4) static options (constant) aligned init ("dbm_");
+      327 
+      328 dcl  sst_seg$ fixed bin external static;
+      329 dcl  pvt$n_entries fixed bin external static;
+      330 dcl  slt$ external static;
+      331 
+      332 dcl 1 sst$level (0 : 3) aligned external static,
+      333     2 ausedp bit (18) unaligned,
+      334     2 no_aste bit (18) unaligned;
+      335 
+      336 dcl  error_table_$end_of_info ext fixed bin (35);
+      337 
+      338 dcl  define_area_ entry (ptr, fixed bin (35));
+      339 dcl  lock$lock_ast entry;
+      340 dcl  lock$unlock_ast entry;
+      341 dcl  lock$lock_fast entry (ptr);
+      342 dcl  lock$unlock_fast entry (ptr);
+      343 dcl  make_sdw$unthreaded entry (fixed bin (18), fixed bin (71), ptr, ptr);
+      344 dcl  pmut$swap_sdw entry (ptr, ptr);
+      345 dcl  syserr entry options (variable);
+      346 dcl  syserr$error_code entry options (variable);
+      347 
+      348 dcl (addrel, addr, baseno, binary, bit, clock, convert, divide, fixed, hbound, min, max, null, ptr, rel, substr, size, unspec) builtin;
+      349  /* BEGIN INCLUDE FILE area_info.incl.pl1  12/75 */
+  1     2 
+  1     3 dcl  area_info_version_1 fixed bin static init (1) options (constant);
+  1     4 
+  1     5 dcl  area_infop ptr;
+  1     6 
+  1     7 dcl 1 area_info aligned based (area_infop),
+  1     8     2 version fixed bin,				/* version number for this structure is 1 */
+  1     9     2 control aligned like area_control,		/* control bits for the area */
+  1    10     2 owner char (32) unal,				/* creator of the area */
+  1    11     2 n_components fixed bin,				/* number of components in the area (returned only) */
+  1    12     2 size fixed bin (18),				/* size of the area in words */
+  1    13     2 version_of_area fixed bin,			/* version of area (returned only) */
+  1    14     2 areap ptr,					/* pointer to the area (first component on multisegment area) */
+  1    15     2 allocated_blocks fixed bin,			/* number of blocks allocated */
+  1    16     2 free_blocks fixed bin,				/* number of free blocks not in virgin */
+  1    17     2 allocated_words fixed bin (30),			/* number of words allocated in the area */
+  1    18     2 free_words fixed bin (30);			/* number of words free in area not in virgin */
+  1    19 
+  1    20 dcl 1 area_control aligned based,
+  1    21     2 extend bit (1) unal,				/* says area is extensible */
+  1    22     2 zero_on_alloc bit (1) unal,			/* says block gets zerod at allocation time */
+  1    23     2 zero_on_free bit (1) unal,			/* says block gets zerod at free time */
+  1    24     2 dont_free bit (1) unal,			/* debugging aid, turns off free requests */
+  1    25     2 no_freeing bit (1) unal,			/* for allocation method without freeing */
+  1    26     2 system bit (1) unal,				/* says area is managed by system */
+  1    27     2 pad bit (30) unal;
+  1    28 
+  1    29 /* END INCLUDE FILE area_info.incl.pl1 */
+      349 
+      350  /* BEGIN INCLUDE FILE area_structures.incl.pl1  10/75 */
+  2     2 /* Modified September 1981 by J. Bongiovanni for allocation_p_clock */
+  2     3 
+  2     4 dcl  area_version_1 fixed bin static init (1);		/* version number for this area format */
+  2     5 
+  2     6 dcl  areap ptr;
+  2     7 
+  2     8 dcl 1 area_header aligned based (areap),
+  2     9     2 version fixed bin (35),				/* 0 for buddy system, 1 for current areas */
+  2    10     2 last_usable bit (18),				/* rel pointer to end of area */
+  2    11     2 next_virgin bit (18),				/* rel pointer to next slot in virgin territory */
+  2    12     2 flags,
+  2    13       3 extend bit (1) unal,				/* says area is extensible */
+  2    14       3 zero_on_alloc bit (1) unal,			/* says to zero after allocation */
+  2    15       3 zero_on_free bit (1) unal,			/* says to zero after freeing */
+  2    16       3 dont_free bit (1) unal,			/* dont honor free request -- debugging tool */
+  2    17       3 defined_by_call bit (1) unal,			/* says area seg got via define_area_ call */
+  2    18       3 system bit (1) unal,				/* ayss area is managed by the system */
+  2    19       3 mbz bit (30) unal,
+  2    20     2 allocation_method fixed bin,			/* 0 is standard, 1 is no_freeing method */
+  2    21     2 last_size bit (18),				/* size of last allocated block before virgin territory */
+  2    22     2 last_block bit (18),				/* rel pointer to last allocated block before virgin territory */
+  2    23     2 freep (3:16),					/* free list info */
+  2    24       3 relp bit (18) unal,				/* pointer to first block on list */
+  2    25       3 max_block_size bit (18) unal,			/* size of largest block on list, if known. else zero */
+  2    26     2 allocation_p_clock bit (36) aligned,		/* counter to prevent IPS race */
+  2    27     2 extend_info bit (18) unal,			/* offset to extend info block */
+  2    28     2 recovery_info bit (18) unal,			/* eventually will hold recovery info relp */
+  2    29     2 n_allocated fixed bin (17) unal,			/* number of allocated blocks */
+  2    30     2 n_free fixed bin (17) unal;			/* number of free blocks */
+  2    31 
+  2    32 dcl (STANDARD_ALLOCATION_METHOD init (0),
+  2    33      NO_FREEING_ALLOCATION_METHOD init (1)
+  2    34      ) fixed bin internal static;
+  2    35 
+  2    36 dcl  extend_blockp ptr;
+  2    37 
+  2    38 dcl 1 extend_block aligned based (extend_blockp),		/* contents of extend block for extensible areas */
+  2    39     2 first_area ptr unal,				/* pointer to first area */
+  2    40     2 next_area ptr unal,				/* pointer to next area in chain */
+  2    41     2 sequence_no fixed bin,				/* sequence number for this component */
+  2    42     2 name char (32),				/* owner of the area */
+  2    43     2 pad fixed;					/* brings it to an even, 12 word allocation */
+  2    44 
+  2    45 dcl alloc_blkhdrsz static internal init(2);
+  2    46 dcl 1 no_free_area_header aligned based(areap),		/* overlay for no_free areas */
+  2    47     2 pad(4) ptr,
+  2    48     2 current_component ptr;				/* points to component from which we are allocating */
+  2    49 
+  2    50 dcl  blockp ptr;
+  2    51 
+  2    52 dcl 1 block aligned based (blockp),			/* declaration for block header */
+  2    53     2 prev_size bit (18) unal,			/* size of preceding block */
+  2    54     2 cur_size bit (18) unal,				/* size of current block */
+  2    55     2 buddy_pad bit (8) unal,				/* non_zero for buddy system area */
+  2    56     2 prev_busy bit (1) unal,				/* previous-block-is-used flag */
+  2    57     2 marked bit (1) unal,
+  2    58     2 q_no bit (8) unal,				/* stratum number when in free list */
+  2    59     2 header bit (18) unal,				/* pointer to head of area */
+  2    60     2 fp bit (18) unal,				/* forward free list thread */
+  2    61     2 bp bit (18) unal;				/* backward free list thread */
+  2    62 
+  2    63 dcl  min_block_size fixed bin static init (8);		/* minimum allowed block size */
+  2    64 
+  2    65 /* END INCLUDE FILE area_structures.incl.pl1 */
+      350 
+      351  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  3     2 
+  3     3 /* Template for an AST entry. Length = 12 words. */
+  3     4 
+  3     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  3     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  3     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  3     8 
+  3     9 dcl  astep ptr;
+  3    10 
+  3    11 dcl 1 aste based (astep) aligned,
+  3    12 
+  3    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  3    14     2 bp bit (18),					/* backward used list rel pointer */
+  3    15 
+  3    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  3    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  3    18 
+  3    19     2 strp bit (18),				/* rel pointer to process trailer */
+  3    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  3    21 
+  3    22     2 uid bit (36),					/* segment unique id */
+  3    23 
+  3    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  3    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  3    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    27 
+  3    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  3    29     2 init bit (1),					/* used bit - insure 1 lap */
+  3    30     2 gtus bit (1),					/* global transparent usage switch */
+  3    31     2 gtms bit (1),					/* global transparent modified switch */
+  3    32     2 hc bit (1),					/* hard core segment */
+  3    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  3    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  3    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  3    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  3    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  3    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  3    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  3    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  3    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  3    42     2 pad1 bit (2),					/* OO */
+  3    43     2 dius bit (1),					/* dumper in use switch */
+  3    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  3    45     2 dmpr_pad bit (1),
+  3    46     2 ehs bit (1),					/* entry hold switch */
+  3    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  3    48     2 dirsw bit (1),				/* directory switch */
+  3    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  3    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  3    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  3    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  3    53 
+  3    54     2 dtu bit (36),					/* date and time segment last used */
+  3    55 
+  3    56     2 dtm bit (36),					/* date and time segment last modified */
+  3    57 
+  3    58 
+  3    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  3    60 
+  3    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  3    62 
+  3    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  3    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  3    65     2 fms bit (1),					/* file modified switch */
+  3    66     2 npfs bit (1),					/* no page fault switch */
+  3    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  3    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  3    69     2 per_process bit (1),				/* use master quota for this entry */
+  3    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  3    71     2 pad2 bit (2),
+  3    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  3    73     2 np bit (9),					/* number of pages in core */
+  3    74 
+  3    75 
+  3    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  3    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  3    78     2 damaged bit (1),				/* PC declared segment unusable */
+  3    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  3    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  3    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  3    82     2 ptsi bit (2),					/* page table size index */
+  3    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  3    84 
+  3    85 
+  3    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  3    87 
+  3    88 
+  3    89 dcl 1 aste_part aligned based (astep),
+  3    90 
+  3    91     2 one bit (36) unaligned,				/* fp and bp */
+  3    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  3    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  3    94 
+  3    95 
+  3    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  3    97     2 pad1 bit (8*36),
+  3    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  3    99     2 pad2 bit (3*36);
+  3   100 
+  3   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      351 
+      352  /* BEGIN INCLUDE FILE ... backup_static_variables.incl.pl1 ... March 1976 */
+  4     2 
+  4     3 
+  4     4 dcl  incr fixed bin init (1) internal static options (constant); /* incremental dump mode */
+  4     5 dcl  cons fixed bin init (2) internal static options (constant); /* consolidated dump mode */
+  4     6 dcl  comp fixed bin init (3) internal static options (constant); /* complete dump mode */
+  4     7 dcl  backup_version_1 fixed bin init (1) static internal options (constant); /* backup_version_1 of input/output structures */
+  4     8 
+  4     9 
+  4    10 
+  4    11 /* END INCLUDE FILE ... backup_static_variables.incl.pl1 */
+      352 
+      353  /* BEGIN INCLUDE FILE ... dbm.incl.pl1  ... Feb 1976 */
+  5     2 
+  5     3 dcl  dbm_seg$ ext;
+  5     4 dcl  dbmp ptr;
+  5     5 
+  5     6 dcl 1 dbm based (dbmp) aligned,
+  5     7     2 lock_data,
+  5     8       3 lock bit (36),
+  5     9       3 event bit (36),
+  5    10       3 notify bit (1),
+  5    11     2 control,
+  5    12       3 init bit (1) unal,
+  5    13       3 pad1 bit (35) unal,
+  5    14     2 stats,
+  5    15       3 sets fixed bin unal,
+  5    16       3 resets fixed bin unal,
+  5    17       3 allocs fixed bin unal,
+  5    18       3 frees fixed bin unal,
+  5    19     2 pad2 (2) bit (36),
+  5    20     2 area area (255*1024 -8);
+  5    21 
+  5    22 /* END INCLUDE FILE ... dbm.incl.pl1 */
+      353 
+      354  /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  6     2 
+  6     3 
+  6     4 
+  6     5 
+  6     6 /****^  HISTORY COMMENTS:
+  6     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  6     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  6     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  6    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  6    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  6    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  6    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  6    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  6    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  6    16*                                                   END HISTORY COMMENTS */
+  6    17 
+  6    18 
+  6    19 /*
+  6    20*   All disk packs have the standard layout described below:
+  6    21*
+  6    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  6    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  6    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  6    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  6    26*   Record  7		: formerly contained bad track list; no longer used.
+  6    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  6    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  6    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  6    30*
+  6    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  6    32*   of the particular partition.
+  6    33*
+  6    34*
+  6    35*
+  6    36*   A conceptual declaration for a disk pack could be:
+  6    37*
+  6    38*   dcl 1 disk_pack,
+  6    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  6    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  6    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  6    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  6    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  6    44*   2 vtoc_array_records	(8 : n-1),
+  6    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  6    46*   3 unused				bit(36 * 64),
+  6    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  6    48*
+  6    49*
+  6    50*
+  6    51*
+  6    52**/
+  6    53 
+  6    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  6    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  6    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  6    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  6    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  6    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  6    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  6    61 		         fixed bin (17) int static options (constant);
+  6    62 
+  6    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  6    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  6    65 /* or the physical volume table entry (pvte) device type.		      */
+  6    66 
+  6    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  6    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  6    69 
+  6    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  6    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  6    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  6    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  6    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  6    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  6    76 
+  6    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      354 
+      355  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  7     2 
+  7     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  7     4 
+  7     5 /****^  HISTORY COMMENTS:
+  7     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  7     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  7     8*     Add the support for subvolumes
+  7     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  7    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  7    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  7    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  7    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  7    14*     Added inconsistent_dbm bit for determining the status of volume
+  7    15*     dumper bit maps.
+  7    16*                                                   END HISTORY COMMENTS */
+  7    17 
+  7    18      dcl	   pvt$array	      aligned external;
+  7    19      dcl	   pvt$max_n_entries      fixed bin external;
+  7    20 
+  7    21      dcl	   pvt_arrayp	      ptr;
+  7    22      dcl	   pvtep		      ptr;
+  7    23 
+  7    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  7    25 
+  7    26      dcl	   1 pvte		      based (pvtep) aligned,
+  7    27 
+  7    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  7    29 
+  7    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  7    31 
+  7    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  7    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  7    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  7    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  7    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  7    37 	     2 pad3	      bit (2) unaligned,
+  7    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  7    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  7    40 
+  7    41 
+  7    42 
+  7    43 	     2 devname	      char (4),		/* device name */
+  7    44 
+  7    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  7    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  7    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  7    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  7    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  7    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  7    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  7    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  7    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  7    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  7    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  7    56 	     2 scav_check_address
+  7    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  7    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  7    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  7    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  7    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  7    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  7    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  7    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  7    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  7    66 
+  7    67 
+  7    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  7    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  7    70 
+  7    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  7    72 
+  7    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  7    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  7    75 
+  7    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  7    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  7    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  7    79 	     2 records_per_cyl    fixed bin,
+  7    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  7    81 	     2 sv_name            char (2) aligned,
+  7    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  7    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  7    84 
+  7    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  7    86 	     2 pad2	      bit (18) unaligned,
+  7    87 
+  7    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  7    89 
+  7    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  7    91 
+  7    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  7    93 
+  7    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  7    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  7    96 
+  7    97 
+  7    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  7    99 
+  7   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  7   101 
+  7   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  7   103 
+  7   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  7   105 
+  7   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  7   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  7   108 
+  7   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  7   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  7   111 
+  7   112 
+  7   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  7   114 	   VOLMAP_ASYNC_READ      init (1),
+  7   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  7   116 
+  7   117 
+  7   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      355 
+      356  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  8     2 
+  8     3 /* Declarations for Segment Loading Table header and array.
+  8     4*
+  8     5*   Used by Initialization and MST Checker subroutines */
+  8     6 
+  8     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  8     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  8     9     namep ptr,					/* pointer to segment name list block */
+  8    10     pathp ptr,					/* pointer to segment's directory path name */
+  8    11     aclp ptr;					/* pointer to acl structure */
+  8    12 
+  8    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  8    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  8    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  8    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  8    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  8    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  8    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  8    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  8    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  8    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  8    23 
+  8    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  8    25 
+  8    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  8    27 	2 pad bit (18) unal,
+  8    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  8    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  8    30 
+  8    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  8    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  8    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  8    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  8    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  8    36 	  3 pad bit (5) unal,
+  8    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  8    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  8    39 
+  8    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  8    41 	2 size fixed bin (17),			/* length of pathname */
+  8    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  8    43 	2 acls fixed bin;				/* ACL list starts here */
+  8    44 
+  8    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  8    46 	2 count fixed bin,				/* number of entries in acl list */
+  8    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  8    48 	  3 userid char (32),			/* user specification */
+  8    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  8    50 	  3 pad bit (36) aligned,
+  8    51 	  3 code fixed bin;
+  8    52 
+  8    53 
+  8    54 /* END INCLUDE FILE slt.incl.pl1 */
+      356 
+      357  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  9     2 /* Declaration for Segment Loading Table Entry structure.
+  9     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  9     4 /* modified 5/4/76 by Noel I. Morris	*/
+  9     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  9     6 /* format: style3 */
+  9     7 
+  9     8 dcl	sltep		ptr;
+  9     9 
+  9    10 dcl	1 slte_uns	based (sltep) aligned,
+  9    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  9    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  9    13 /**** End of word 1 */
+  9    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  9    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  9    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  9    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  9    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  9    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  9    20 	  2 pad1		bit (3),			/* unused */
+  9    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  9    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  9    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  9    24 	  2 pad3		bit (2),
+  9    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  9    26 /**** End of 1st half of word 2 */
+  9    27 	  2 pad4		bit (3),
+  9    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  9    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  9    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  9    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  9    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  9    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  9    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  9    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  9    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  9    37 /***** End of word 2 */
+  9    38 	  2 pad5		bit (6),
+  9    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  9    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  9    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  9    42 /***** End of word 3 */
+  9    43 	  2 pad7		bit (3),
+  9    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  9    45 	  2 bit_count	fixed bin (24) uns
+  9    46 	  )		unaligned;		/* bitcount of segment */
+  9    47 
+  9    48 dcl	1 slte		based (sltep) aligned,
+  9    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  9    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  9    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  9    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  9    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  9    54 	  2 firmware_seg    bit (1),
+  9    55 	  2 layout_seg      bit (1),
+  9    56 	  2 breakpointable  bit (1),
+  9    57 	  2 pad2		bit (3),
+  9    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  9    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  9    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  9    61 	  2 pad3		bit (2),
+  9    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  9    63 	  2 pad4		bit (3),
+  9    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  9    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  9    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  9    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  9    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  9    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  9    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  9    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  9    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  9    73 	  2 pad5		bit (6),
+  9    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  9    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  9    76 	  2 segno		bit (18),			/* text/link segment number */
+  9    77 	  2 pad6		bit (3),
+  9    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  9    79 	  2 bit_count	bit (24)
+  9    80 	  )		unaligned;		/* bitcount of segment */
+  9    81 
+  9    82 /* END INCLUDE FILE slte.incl.pl1 */
+      357 
+      358  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 10     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 10     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 10     4 
+ 10     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 10     6 
+ 10     7 dcl (
+ 10     8 
+ 10     9 /* The following constants define the message action codes.  This indicates
+ 10    10*how a message is to be handled.  */
+ 10    11 
+ 10    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 10    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 10    14 
+ 10    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 10    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 10    17 
+ 10    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 10    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 10    20 
+ 10    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 10    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 10    23 
+ 10    24      SYSERR_LOG_OR_PRINT	init (4),
+ 10    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 10    26 
+ 10    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 10    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 10    29 
+ 10    30 
+ 10    31 /* The following constants are added to the normal severities to indicate
+ 10    32*different sorting classes of messages.  */
+ 10    33 
+ 10    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 10    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 10    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 10    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 10    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 10    39 	) fixed bin internal static options (constant);
+ 10    40 
+ 10    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      358 
+      359  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+ 11     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+ 11     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+ 11     4 
+ 11     5 dcl  vtocep ptr;
+ 11     6 
+ 11     7 dcl 1 vtoce based (vtocep) aligned,
+ 11     8 
+ 11     9 
+ 11    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+ 11    11 
+ 11    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+ 11    13 
+ 11    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+ 11    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+ 11    16     2 records bit (9),				/* number of records used by the seg in second storage */
+ 11    17     2 pad2 bit (9),
+ 11    18 
+ 11    19     2 dtu bit (36),					/* date and time segment was last used */
+ 11    20 
+ 11    21     2 dtm bit (36),					/* date and time segment was last modified */
+ 11    22 
+ 11    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+ 11    24     2 deciduous bit (1),				/* true if hc_sdw */
+ 11    25     2 nid bit (1),					/* no incremental dump switch */
+ 11    26     2 dnzp bit (1),					/* Dont null zero pages */
+ 11    27     2 gtpd bit (1),					/* Global transparent paging device */
+ 11    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+ 11    29     2 damaged bit (1),				/* TRUE if contents damaged */
+ 11    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+ 11    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+ 11    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+ 11    33     2 pad3 bit (8),
+ 11    34     2 dirsw bit (1),				/* directory switch */
+ 11    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+ 11    36     2 pad4 bit (16)) unaligned,			/* not used */
+ 11    37 
+ 11    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+ 11    39 
+ 11    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+ 11    41 
+ 11    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+ 11    43 
+ 11    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+ 11    45 
+ 11    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+ 11    47 
+ 11    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+ 11    49 
+ 11    50 
+ 11    51 
+ 11    52 
+ 11    53 
+ 11    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+ 11    55 
+ 11    56     2 pad6 (10) bit (36),				/* not used */
+ 11    57 
+ 11    58     2 ncd bit (1),					/* no complete dump switch */
+ 11    59     2 pad7 bit (17),
+ 11    60     2 pad8 bit (18),
+ 11    61 
+ 11    62     2 dtd bit (36),					/* date-time-dumped */
+ 11    63 
+ 11    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+ 11    65 
+ 11    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+ 11    67 
+ 11    68 
+ 11    69 
+ 11    70 
+ 11    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+ 11    72 
+ 11    73     2 primary_name char (32),				/* primary name of the segment */
+ 11    74 
+ 11    75     2 time_created bit (36),				/* time the segment was created */
+ 11    76 
+ 11    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+ 11    78 
+ 11    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+ 11    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+ 11    81 
+ 11    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+ 11    83 
+ 11    84     2 access_class bit (72),				/* access class in branch */
+ 11    85     2 perm_flags aligned,
+ 11    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+ 11    87       3 pad9 bit (35) unal,
+ 11    88     2 owner bit (36);				/* pvid of this volume */
+ 11    89 
+ 11    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+ 11    91 
+ 11    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+ 11    93     2 pad1 bit (7*36),
+ 11    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+ 11    95     2 pad2 bit (184*36);
+ 11    96 
+ 11    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      359 
+      360 
+      361 /* BEGIN MESSAGE DOCUMENTATION
+      362*
+      363*   Message:
+      364*   dbm_man: csl failure
+      365*
+      366*   S:	$log
+      367*
+      368*   T:	$run
+      369*
+      370*   M:	The CSL instruction appears to have failed on one of the processors.
+      371*
+      372*   A:	$ignore
+      373*
+      374*   Message:
+      375*   dbm_man: attempt to initialize already initialized map for PV on dskX_NNS
+      376*
+      377*   S:	$crash
+      378*
+      379*   T:	$run
+      380*
+      381*   M:	$err
+      382*
+      383*   A:	$recover
+      384*
+      385*   Message:
+      386*   dbm_man: unable to allocate dumper bit map for PV on dskX_NNS
+      387*
+      388*   S:	$crash
+      389*
+      390*   T:	$run
+      391*
+      392*   M:	The system was unable to allocate a dumper bit map in dbm_seg for
+      393*   the volume on dskX_NNS.  Too many volumes are online, or there is something
+      394*   wrong with the volume header.
+      395*
+      396*   A:	$recover
+      397*
+      398*   Message:
+      399*   dbm_man: Cannot get ASTE for dbm_seg
+      400*
+      401*   S:     $crash
+      402*
+      403*   T:	$init
+      404*
+      405*   M:	The system was unable to create the dbm_seg and obtain an ASTE
+      406*   for this segment.
+      407*
+      408*   A:     $contact_sa
+      409*
+      410*   Message:
+      411*   dbm_man: unable to initialize area: ERROR_MESS
+      412*
+      413*   S:	$crash
+      414*
+      415*   T:	$run
+      416*
+      417*   M:	$err
+      418*
+      419*   A:	$recover
+      420*
+      421*   Message:
+      422*   dbm_man: bit map relp not set in pvte for PV on dskX_NNS
+      423*
+      424*   S:	$crash
+      425*
+      426*   T:	$run
+      427*
+      428*   M:	$err
+      429*
+      430*   A:	$recover
+      431*
+      432*   END MESSAGE DOCUMENTATION */
+      433 
+      434      end dbm_man;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.7  dbm_man.pl1                       >spec>install>1110>dbm_man.pl1
+349          1    06/11/76  1043.4  area_info.incl.pl1                >ldd>include>area_info.incl.pl1
+350          2    09/14/81  1347.6  area_structures.incl.pl1          >ldd>include>area_structures.incl.pl1
+351          3    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+352          4    09/05/80  1136.5  backup_static_variables.incl.pl1  >ldd>include>backup_static_variables.incl.pl1
+353          5    05/27/82  1525.6  dbm.incl.pl1                      >ldd>include>dbm.incl.pl1
+354          6    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+355          7    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+356          8    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+357          9    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+358         10    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+359         11    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000016 constant        fixed bin(17,0)          initial dcl 10-7 set ref 129* 135* 211* 222* 276*
+DBM_LOCK_EVENT                  000024 constant        char(4)                  initial dcl 326 ref 224
+LOG                             000013 constant        fixed bin(17,0)          initial dcl 10-7 set ref 59* 256*
+MAX_VTOCE_PER_PACK                     constant        fixed bin(17,0)          initial dcl 6-54 ref 200
+a_bmp                                  parameter       pointer                  dcl 290 ref 122 141 146 151 173 178
+a_code                                 parameter       fixed bin(35,0)          dcl 291 set ref 71 75* 94 96* 106* 122 124* 146 151
+                                                                                  155*
+a_pageno                               parameter       fixed bin(17,0)          dcl 286 ref 146 151 165 170 182
+a_pvtep                                parameter       pointer                  dcl 284 ref 37 39
+a_pvtx                                 parameter       fixed bin(17,0)          dcl 283 ref 37 40 71 78 94 122 146 151 242
+a_reset                                parameter       bit(1)                   dcl 287 ref 94 97
+a_switch                               parameter       bit(1)                   dcl 288 ref 78 81
+a_type                                 parameter       fixed bin(17,0)          dcl 289 set ref 78 80 94 102* 111 114* 115
+a_vtocx                                parameter       fixed bin(17,0)          dcl 285 set ref 71 78 88* 94 103
+abs_seg                   1(05)        based           bit(1)                   level 2 packed packed unaligned dcl 9-48 set ref
+                                                                                  207*
+addr                                                   builtin function         dcl 348 ref 51 195 196 197 198 200 213 213 213 213
+                                                                                  216 219 220 230 231 231 236 236 243 244
+addrel                                                 builtin function         dcl 348 ref 173 177
+alloc_blkhdrsz                         constant        fixed bin(17,0)          initial dcl 2-45 ref 200
+area                            000156 stack reference condition                dcl 322 in procedure "dbm_man" ref 135
+area                     10            based           area(261112)             level 2 in structure "dbm" dcl 5-6 in procedure
+                                                                                  "dbm_man" set ref 137 183 200 219 220
+area_control                           based           structure                level 1 dcl 1-20
+area_header                            based           structure                level 1 dcl 2-8 ref 200
+area_info                              based           structure                level 1 dcl 1-7
+area_info_version_1                    constant        fixed bin(17,0)          initial dcl 1-3 ref 217
+area_infop                      000164 automatic       pointer                  dcl 1-5 set ref 216* 217 218 219 220 221*
+areap                    16            based           pointer                  level 2 in structure "area_info" dcl 1-7
+                                                                                  in procedure "dbm_man" set ref 220*
+areap                                  automatic       pointer                  dcl 2-6 in procedure "dbm_man" ref 200
+aste                                   based           structure                level 1 dcl 3-11
+astep                           000166 automatic       pointer                  dcl 3-9 set ref 51* 52 52 52 52 52 53 53 53 55 56 57
+                                                                                  58 64 210* 211
+ausedp                          000016 external static bit(18)                  array level 2 packed packed unaligned dcl 332 ref 47
+baseno                                                 builtin function         dcl 348 ref 196
+binary                                                 builtin function         dcl 348 ref 196 200 219
+bit                                                    builtin function         dcl 348 ref 53 140 208
+bit_map                                based           bit(36)                  array dcl 318 set ref 137 141* 141 183
+bit_map_len                     000113 automatic       fixed bin(17,0)          dcl 304 set ref 133* 137 140 141 164* 169 176 183
+bit_map_offset                         constant        fixed bin(17,0)          initial dcl 324 ref 169 173
+clock                                                  builtin function         dcl 348 ref 53
+cnt                             000115 automatic       fixed bin(17,0)          dcl 306 set ref 171* 176* 180 180 180
+cnt1                            000114 automatic       fixed bin(17,0)          dcl 305 set ref 169* 171 176 177
+code                            000100 automatic       fixed bin(35,0)          dcl 293 set ref 221* 222 222* 241*
+cons                                   constant        fixed bin(17,0)          initial dcl 4-5 set ref 115* 140 167*
+control                   1            based           structure                level 2 in structure "area_info" dcl 1-7
+                                                                                  in procedure "dbm_man"
+control                   3            based           structure                level 2 in structure "dbm" dcl 5-6 in procedure
+                                                                                  "dbm_man"
+convert                                                builtin function         dcl 348 ref 129 129 135 135 276 276
+copy                                   based           bit(36)                  array packed unaligned dcl 317 set ref 180* 180
+crash_on_error                         parameter       bit(1)                   dcl 273 ref 271 276
+cur_length                2            based           bit(9)                   level 2 packed packed unaligned dcl 9-48 set ref
+                                                                                  208*
+curn_dmpr_vtocx          16            based           fixed bin(17,0)          array level 2 packed packed unaligned dcl 7-26 set
+                                                                                  ref 111* 264 265 265 266*
+dbm                                    based           structure                level 1 dcl 5-6
+dbm_seg$                        000044 external static fixed bin(17,0)          dcl 5-3 set ref 195 196 213 213 230
+dbm_seg_size                    000122 automatic       fixed bin(19,0)          dcl 309 set ref 200* 208 219
+dbm_segno                       000123 automatic       fixed bin(18,0)          dcl 310 set ref 196* 198 210*
+dbmp                            000170 automatic       pointer                  dcl 5-4 set ref 137 183 195* 200 219 220 224 225
+                                                                                  230* 231 231 236 236 275 276
+dbmrp                     6            based           bit(18)                  array level 2 packed packed unaligned dcl 7-26 set
+                                                                                  ref 129 139* 140* 184* 275
+define_area_                    000022 constant        entry                    external dcl 338 ref 221
+devname                   3            based           char(4)                  level 2 dcl 7-26 set ref 129* 135* 276*
+divide                                                 builtin function         dcl 348 ref 35 133 140 164 200 208
+dtu                       6            based           bit(36)                  level 2 packed packed unaligned dcl 3-11 set ref 53*
+dump_it                                based           bit(1)                   array packed unaligned dcl 320 set ref 57* 58 103
+                                                                                  254* 255
+error_table_$end_of_info        000020 external static fixed bin(35,0)          dcl 336 ref 106
+event                     1            based           bit(36)                  level 3 dcl 5-6 set ref 224*
+first                           000102 automatic       bit(1)                   dcl 295 set ref 46* 48 50*
+first_fp                        000104 automatic       bit(18)                  packed unaligned dcl 297 set ref 47* 48 48 48
+fixed                                                  builtin function         dcl 348 ref 53 140 140 265 265
+fms                      12(10)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 set ref 55
+                                                                                  56*
+fp                                     based           bit(18)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 3-11 in procedure "dbm_man" ref 64
+fp                              000103 automatic       bit(18)                  packed unaligned dcl 296 in procedure "dbm_man" set
+                                                                                  ref 48* 48* 51*
+free                            000111 automatic       bit(1)                   dcl 302 set ref 148* 153* 161 165 182
+from_ptr                        000116 automatic       pointer                  dcl 307 set ref 172* 177* 180
+gtus                      5(02)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 ref 52
+hbound                                                 builtin function         dcl 348 ref 45
+hc_sdw                    5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 ref 52
+i                               000107 automatic       fixed bin(17,0)          dcl 300 set ref 45* 47*
+idx                             000110 automatic       fixed bin(17,0)          dcl 301 in procedure "dbm_man" set ref 35* 103* 103*
+                                                                                  105 111 114* 115*
+idx                                    parameter       fixed bin(17,0)          dcl 251 in procedure "set_bit" ref 248 254 255
+incr                                   constant        fixed bin(17,0)          initial dcl 4-4 set ref 43* 73 115 129 139 161* 166*
+infp                      1(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-11 ref 53
+init                      3            based           bit(1)                   level 3 packed packed unaligned dcl 5-6 set ref 225*
+is_sv                     2(03)        based           bit(1)                   level 2 packed packed unaligned dcl 7-26 set ref
+                                                                                  129* 135* 276*
+local_area_info                 000130 automatic       structure                level 1 dcl 315 set ref 215* 216
+lock                                   based           bit(36)                  level 3 dcl 5-6 set ref 231 231 236 236
+lock$lock_ast                   000024 constant        entry                    external dcl 339 ref 41
+lock$lock_fast                  000030 constant        entry                    external dcl 341 ref 231
+lock$unlock_ast                 000026 constant        entry                    external dcl 340 ref 68
+lock$unlock_fast                000032 constant        entry                    external dcl 342 ref 236
+lock_data                              based           structure                level 2 dcl 5-6
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 7-26 ref 129 129
+                                                                                  135 135 276 276
+make_sdw$unthreaded             000034 constant        entry                    external dcl 343 ref 210
+mapp                            000154 automatic       pointer                  initial dcl 319 set ref 57 58 103 137* 139 140 141
+                                                                                  162 172 177 183 254 255 275* 276 280* 319*
+max                                                    builtin function         dcl 348 ref 176
+max_length                3(03)        based           bit(9)                   level 2 packed packed unaligned dcl 9-48 set ref
+                                                                                  208*
+min                                                    builtin function         dcl 348 ref 169
+n_vtoce                  17(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 7-26 ref 103 105
+                                                                                  133 164
+nid                       5(17)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 ref 52
+np                       12(27)        based           bit(9)                   level 2 packed packed unaligned dcl 3-11 ref 53
+null                                                   builtin function         dcl 348 ref 162 211 280 319
+num_of_maps                            constant        fixed bin(17,0)          initial dcl 325 ref 133 164 200
+p99                                    automatic       picture(2)               packed unaligned dcl 313 ref 129 129 135 135 276 276
+per_process              12(14)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 ref 52
+pmut$swap_sdw                   000036 constant        entry                    external dcl 344 ref 213
+ptp                             000126 automatic       pointer                  dcl 312 set ref 210*
+ptr                                                    builtin function         dcl 348 ref 51 275
+pvt$array                       000046 external static fixed bin(17,0)          dcl 7-18 set ref 243
+pvt$n_entries                   000012 external static fixed bin(17,0)          dcl 329 ref 200
+pvt_array                              based           structure                array level 1 dcl 7-24 set ref 244
+pvt_arrayp                      000172 automatic       pointer                  dcl 7-21 set ref 243* 244
+pvte                                   based           structure                level 1 dcl 7-26
+pvtep                           000174 automatic       pointer                  dcl 7-22 set ref 39* 103 105 111 129 129 129 129 129
+                                                                                  129 133 135 135 135 135 135 139 140 164 184 244*
+                                                                                  264 265 265 266 275 276 276 276 276 276
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 3-11 in procedure "dbm_man" ref 52
+pvtx                            000105 automatic       fixed bin(17,0)          dcl 298 in procedure "dbm_man" set ref 40* 52 242*
+                                                                                  244
+rel                                                    builtin function         dcl 348 ref 139 140 200 219
+reset                           000101 automatic       bit(1)                   dcl 294 set ref 97* 113
+seg                      10            based           structure                array level 2 dcl 8-13 set ref 198
+size                     13            based           fixed bin(18,0)          level 2 in structure "area_info" dcl 1-7
+                                                                                  in procedure "dbm_man" set ref 219*
+size                                                   builtin function         dcl 348 in procedure "dbm_man" ref 200
+slt                                    based           structure                level 1 dcl 8-13
+slt$                            000014 external static fixed bin(17,0)          dcl 330 set ref 197
+slte                                   based           structure                level 1 dcl 9-48
+sltep                           000200 automatic       pointer                  dcl 9-8 set ref 198* 207 208 208
+sltp                            000176 automatic       pointer                  dcl 8-7 set ref 197* 198
+sst$level                       000016 external static structure                array level 1 dcl 332 ref 45
+sst_seg$                        000010 external static fixed bin(17,0)          dcl 328 set ref 51
+substr                                                 builtin function         dcl 348 ref 53
+sv_name                  15            based           char(2)                  level 2 dcl 7-26 set ref 129* 135* 276*
+switch                          000112 automatic       bit(1)                   dcl 303 set ref 74* 81* 88*
+syserr                          000040 constant        entry                    external dcl 345 ref 59 129 135 211 256 276
+syserr$error_code               000042 constant        entry                    external dcl 346 ref 222
+to_ptr                          000120 automatic       pointer                  dcl 308 set ref 173* 178* 180
+tsdw                            000124 automatic       fixed bin(71,0)          dcl 311 set ref 210* 213 213
+type                                   parameter       fixed bin(17,0)          dcl 272 in procedure "get_mapp" ref 271 275
+type                            000106 automatic       fixed bin(17,0)          dcl 299 in procedure "dbm_man" set ref 73* 80* 88*
+type                                   parameter       fixed bin(17,0)          dcl 263 in procedure "reset_curn_vtocx" set ref 262
+                                                                                  264 265 265 265*
+type                                   parameter       fixed bin(17,0)          dcl 250 in procedure "set_bit" set ref 248 253*
+unspec                                                 builtin function         dcl 348 set ref 215* 224
+value                                  parameter       bit(1)                   dcl 249 ref 248 254 255
+version                                based           fixed bin(17,0)          level 2 dcl 1-7 set ref 217*
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-11 ref 57 58
+zero_on_free              1(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-7 set ref 218*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 10-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 10-7
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 6-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 6-54
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 10-7
+LABEL_ADDR                             internal static fixed bin(17,0)          initial dcl 6-54
+NO_FREEING_ALLOCATION_METHOD           internal static fixed bin(17,0)          initial dcl 2-32
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 6-67
+SECTORS_PER_RECORD                     internal static fixed bin(17,0)          initial array dcl 6-74
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 6-70
+STANDARD_ALLOCATION_METHOD             internal static fixed bin(17,0)          initial dcl 2-32
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 10-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 10-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 10-7
+VOLMAP_ADDR                            internal static fixed bin(17,0)          initial dcl 6-54
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 7-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 7-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 7-113
+VTOCES_PER_RECORD                      internal static fixed bin(17,0)          initial array dcl 6-72
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 6-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 6-54
+VTOC_ORIGIN                            internal static fixed bin(17,0)          initial dcl 6-54
+aclp                                   automatic       pointer                  dcl 8-7
+acls                                   based           structure                level 1 dcl 8-45
+area_version_1                         internal static fixed bin(17,0)          initial dcl 2-4
+asta                                   based           bit(432)                 array dcl 3-86
+aste_part                              based           structure                level 1 dcl 3-89
+backup_version_1                       internal static fixed bin(17,0)          initial dcl 4-7
+block                                  based           structure                level 1 dcl 2-52
+blockp                                 automatic       pointer                  dcl 2-50
+comp                                   internal static fixed bin(17,0)          initial dcl 4-6
+extend_block                           based           structure                level 1 dcl 2-38
+extend_blockp                          automatic       pointer                  dcl 2-36
+min_block_size                         internal static fixed bin(17,0)          initial dcl 2-63
+name_seg                               based           structure                level 1 dcl 8-26
+namep                                  automatic       pointer                  dcl 8-7
+names_ptr                              automatic       pointer                  dcl 8-7
+no_free_area_header                    based           structure                level 1 dcl 2-46
+path                                   based           structure                level 1 dcl 8-40
+pathp                                  automatic       pointer                  dcl 8-7
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 7-19
+seg_aste                               based           structure                level 1 dcl 3-96
+seg_vtoce                              based           structure                level 1 dcl 11-92
+segnam                                 based           structure                level 1 dcl 8-31
+slte_uns                               based           structure                level 1 dcl 9-10
+vtoce                                  based           structure                level 1 dcl 11-7
+vtoce_parts                            based           bit(2304)                array dcl 11-90
+vtocep                                 automatic       pointer                  dcl 11-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+UNLOCK_RETURN                   001304 constant        label                    dcl 187 ref 162
+again1                          000314 constant        label                    dcl 57 ref 60
+again2                          001621 constant        label                    dcl 254 ref 257
+dbm_man                         000150 constant        entry                    external dcl 12
+free_common                     001145 constant        label                    dcl 155 ref 149
+free_map                        001130 constant        entry                    external dcl 151
+get_mapp                        001731 constant        entry                    internal dcl 271 ref 43 102 161 253
+get_next_vtocx                  000465 constant        entry                    external dcl 94
+get_pvte                        001572 constant        entry                    internal dcl 240 ref 86 100 127 159
+init                            001307 constant        entry                    external dcl 191
+init_map                        000631 constant        entry                    external dcl 122
+lock_dbm                        001542 constant        entry                    internal dcl 229 ref 42 83 98 125 157
+reset_curn_vtocx                001661 constant        entry                    internal dcl 262 ref 166 167
+set                             000422 constant        entry                    external dcl 78
+set_bit                         001605 constant        entry                    internal dcl 248 ref 88 114 115 265
+set_common                      000441 constant        label                    dcl 83 set ref 76
+set_incr                        000374 constant        entry                    external dcl 71
+unlock_dbm                      001557 constant        entry                    internal dcl 235 ref 67 90 107 118 143 187
+update_map                      001111 constant        entry                    external dcl 146
+update_map_from_ast             000172 constant        entry                    external dcl 37
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2362        2432    2103        2372
+Length      3054    2103        50         406     257           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+dbm_man                             340 external procedure  is an external procedure.  
+on unit on line 135                 112 on unit               
+lock_dbm                                internal procedure  shares stack frame of external procedure dbm_man.  
+unlock_dbm                              internal procedure  shares stack frame of external procedure dbm_man.  
+get_pvte                                internal procedure  shares stack frame of external procedure dbm_man.  
+set_bit                                 internal procedure  shares stack frame of external procedure dbm_man.  
+reset_curn_vtocx                        internal procedure  shares stack frame of external procedure dbm_man.  
+get_mapp                                internal procedure  shares stack frame of external procedure dbm_man.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+dbm_man                  000100 code                        dbm_man
+                         000101 reset                       dbm_man
+                         000102 first                       dbm_man
+                         000103 fp                          dbm_man
+                         000104 first_fp                    dbm_man
+                         000105 pvtx                        dbm_man
+                         000106 type                        dbm_man
+                         000107 i                           dbm_man
+                         000110 idx                         dbm_man
+                         000111 free                        dbm_man
+                         000112 switch                      dbm_man
+                         000113 bit_map_len                 dbm_man
+                         000114 cnt1                        dbm_man
+                         000115 cnt                         dbm_man
+                         000116 from_ptr                    dbm_man
+                         000120 to_ptr                      dbm_man
+                         000122 dbm_seg_size                dbm_man
+                         000123 dbm_segno                   dbm_man
+                         000124 tsdw                        dbm_man
+                         000126 ptp                         dbm_man
+                         000130 local_area_info             dbm_man
+                         000154 mapp                        dbm_man
+                         000164 area_infop                  dbm_man
+                         000166 astep                       dbm_man
+                         000170 dbmp                        dbm_man
+                         000172 pvt_arrayp                  dbm_man
+                         000174 pvtep                       dbm_man
+                         000176 sltp                        dbm_man
+                         000200 sltep                       dbm_man
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_temp          call_ext_out_desc   call_ext_out        return_mac          mpfx2               enable_op
+shorten_stack       ext_entry           int_entry           op_alloc_           op_freen_           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+define_area_                  lock$lock_ast                 lock$lock_fast                lock$unlock_ast
+lock$unlock_fast              make_sdw$unthreaded           pmut$swap_sdw                 syserr
+syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dbm_seg$                      error_table_$end_of_info      pvt$array                     pvt$n_entries
+slt$                          sst$level                     sst_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+    319 000143        12 000147        35 000156        37 000165        39 000203        40 000207        41 000211
+     42 000216        43 000217        45 000223        46 000227        47 000231        48 000235        50 000245
+     51 000246        52 000254        53 000272        55 000307        56 000312        57 000314        58 000322
+     59 000327        60 000352        64 000353        65 000357        67 000361        68 000362        69 000367
+     71 000370        73 000407        74 000411        75 000413        76 000414        78 000415        80 000433
+     81 000436        83 000441        86 000442        88 000443        90 000456        92 000457        94 000460
+     96 000500        97 000501        98 000505       100 000506       102 000507       103 000522       103 000544
+    105 000546       106 000555       107 000560       108 000561       111 000562       113 000574       114 000577
+    115 000613       118 000623       120 000624       122 000625       124 000644       125 000645       127 000646
+    129 000647       133 000732       135 000742       137 001035       139 001043       140 001052       141 001072
+    143 001102       144 001103       146 001104       148 001124       149 001125       151 001126       153 001143
+    155 001145       157 001146       159 001147       161 001150       162 001155       164 001161       165 001171
+    166 001176       167 001200       169 001202       170 001207       171 001212       172 001214       173 001216
+    174 001222       176 001223       177 001231       178 001235       180 001240       182 001256       183 001265
+    184 001267       187 001304       189 001305       191 001306       195 001315       196 001320       197 001325
+    198 001327       200 001332       207 001353       208 001355       210 001371       211 001407       213 001433
+    215 001450       216 001453       217 001455       218 001457       219 001461       220 001471       221 001474
+    222 001506       224 001534       225 001537       226 001541       229 001542       230 001543       231 001546
+    232 001556       235 001557       236 001560       237 001571       240 001572       241 001573       242 001574
+    243 001576       244 001601       245 001604       248 001605       253 001607       254 001621       255 001630
+    256 001634       257 001657       259 001660       262 001661       264 001663       265 001676       266 001714
+    268 001730       271 001731       275 001733       276 001745       280 002032       281 002034
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

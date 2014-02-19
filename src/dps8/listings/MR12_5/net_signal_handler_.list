@@ -1,0 +1,1651 @@
+	COMPILATION LISTING OF SEGMENT net_signal_handler_
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 06/05/84  1326.6 mst Tue
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        4*   *                                                         *
+        5*   *********************************************************** */
+        6 net_signal_handler_:
+        7           procedure () options (support);
+        8 
+        9 /*             "net_signal_handler_" -- manager for the special IPS processing  */
+       10 /*        that the Network typewriter interface must do in order to support the */
+       11 /*        Network Virtual Terminal.                                             */
+       12 
+       13 
+       14 /*        Created by D. M. Wells on 17 December, 1973.                          */
+       15 /*        Last modified by D. M. Wells on 2 April, 1974 to allow interrupts to  */
+       16 /*                  be identified on a per NCP pin basis (thus allowing IOSIMS  */
+       17 /*                  to identify QUITs on a per stream basis).                   */
+       18 /*        Last modified by D. M. Wells, August, 1975, to prepare for change     */
+       19 /*                  to the "neti" signal (instead of "quit")                    */
+       20 /*        Last modified by D. M. Wells, March, 1976, to use the SCT mechanism   */
+       21 /*        Last modified by D. M. Wells, October, 1976, to remove pre-MR4.0      */
+       22 /*             compatability code -- notably patching of stack signal ptr.      */
+       23 
+       24           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+       25 
+       26      declare
+       27          (P_ncp_indx bit (36),
+       28           P_error_code fixed binary (35),
+       29           P_continue_switch bit (1) aligned,
+       30           P_condition_name character (*),
+       31           P_data_ptr pointer,
+       32           (P_crawlout_ptr, P_info_ptr, P_mc_ptr) pointer,
+       33           P_signal_handler entry (char (*), ptr, ptr, ptr, bit (1) aligned))
+       34                parameter;
+       35 
+       36           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+       37 
+       38      declare
+       39          (indx fixed binary (12),
+       40           arg_ncp_indx bit (36) aligned,
+       41           previous_ips_mask bit (36) aligned,
+       42           arg_data_ptr pointer,
+       43           arg_signal_handler variable entry (ptr, char (*), ptr, ptr, bit (1) aligned))
+       44                automatic;
+       45 
+       46           /* * * * * INTERNAL STATIC DECLARATIONS  * * * * */
+       47 
+       48      declare
+       49          (count_of_handler_data_slots_used fixed binary (12) initial (0),
+       50           signal_notify_channel fixed binary (71) initial (0))
+       51                internal static;
+       52 
+       53      declare
+       54           1 handler_data (1 : 40) aligned internal static,
+       55              2 data_ptr pointer,
+       56              2 ncp_indx bit (36) aligned initial ((40)(36)"0"b),
+       57              2 signal_count fixed binary (30),
+       58              2 signal_procedure entry (char (*), ptr, ptr, ptr, bit (1) aligned);
+       59 
+       60           /* * * * * TEXT SECTION REFERENCES * * * * * * * */
+       61 
+       62      declare
+       63          (EMPTY_ENTRY         initial ((36)"0"b),
+       64           CHANGING_ENTRY      initial ((36)"1"b))
+       65                bit (36) aligned internal static options (constant);
+       66 
+       67      declare
+       68           MASK_EVERYTHING initial ((36)"0"b)
+       69                bit (36) aligned internal static options (constant);
+       70 
+       71 
+       72           /* * * * * EXTERNAL STATIC DECLARATIONS  * * * * */
+       73 
+       74      declare
+       75          (error_table_$bad_index,
+       76           error_table_$noalloc,
+       77           error_table_$noentry)
+       78                fixed binary (35) external static;
+       79 
+       80           /* * * * * ENTRY & PROCEDURE DECLARATIONS  * * * */
+       81 
+       82      declare
+       83           hcs_$set_ips_mask constant entry (bit (36) aligned, bit (36) aligned),
+       84           ipc_$create_ev_chn constant entry (fixed bin (71), fixed bin (35)),
+       85           ipc_$delete_ev_chn constant entry (fixed bin (71), fixed bin (35)),
+       86           ipc_$read_ev_chn constant entry (fixed bin (71), fixed bin (1), ptr, fixed bin (35)),
+       87           ncp_$disable_interrupts constant entry (bit (36), fixed bin (35)),
+       88           ncp_$enable_interrupts constant entry (bit (36), fixed bin (71), fixed bin (35)),
+       89           sct_manager_$set constant entry (fixed bin (17), entry (ptr, char (*), ptr, ptr, bit (1) aligned), fixed bin (35)),
+       90           stacq constant entry (ptr, bit (36) aligned, bit (36) aligned) returns (bit (1) aligned);
+       91 
+       92      declare
+       93          (addr, hbound, lbound, stac, substr)
+       94                builtin;
+       95 
+       96           /* * * * * STACK REFERENCES  * * * * * * * * * * */
+       97 
+       98      declare
+       99           net_stacq_error_
+      100                condition;
+      101 
+      102           /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+      103 
+      104           
+  1     2 /*             "net_event_template.incl.pl1" -- include file to declare the     */
+  1     3 /*        structure of an IPC event message as used in the Network I/O          */
+  1     4 /*        System Interface Modules (IOSIMSs).                                   */
+  1     5 
+  1     6 /*        Originally created by D. M. Wells in April, 1974                      */
+  1     7 
+  1     8      declare
+  1     9           1 event_message_template aligned based,
+  1    10              2 common,
+  1    11                 3 channel_name fixed binary (71),
+  1    12                 3 message bit (72) aligned,
+  1    13                 3 sender bit (36) aligned,
+  1    14                 3 origin unaligned,
+  1    15                    4 devsignal fixed binary (17) unaligned,
+  1    16                    4 ring fixed binary (17) unaligned,
+  1    17              2 channel_index fixed binary (17);
+  1    18 
+  1    19 /*        end of include file "net_event_template.incl.pl1"                     */
+  1    20 
+      104 
+      105 
+      106 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      107 
+      108 setup_signal_handler:
+      109           entry (P_ncp_indx, P_signal_handler, P_data_ptr, P_error_code);
+      110 
+      111           P_error_code = 0;
+      112 
+      113           arg_ncp_indx = P_ncp_indx;
+      114           arg_signal_handler = P_signal_handler;
+      115           arg_data_ptr = P_data_ptr;
+      116 
+      117           if (arg_ncp_indx = EMPTY_ENTRY) | (arg_ncp_indx = CHANGING_ENTRY)
+      118           then do;
+      119                P_error_code = error_table_$bad_index;
+      120                return;
+      121                end;
+      122 
+      123           call hcs_$set_ips_mask (MASK_EVERYTHING, previous_ips_mask);
+      124 
+      125           do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1);
+      126                if stacq (addr (handler_data (indx).ncp_indx), arg_ncp_indx, CHANGING_ENTRY)
+      127                then do;
+      128                     handler_data (indx).signal_procedure = arg_signal_handler;
+      129                     handler_data (indx).data_ptr = arg_data_ptr;
+      130 
+      131 		call allow_network_signals (arg_ncp_indx, (0));
+      132 
+      133                     if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, arg_ncp_indx)
+      134                     then signal net_stacq_error_;
+      135 
+      136                     call hcs_$set_ips_mask (previous_ips_mask, (""b));
+      137                     return;
+      138                     end;
+      139                end;
+      140 
+      141           do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+      142                     while (^ stac (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY));
+      143                end;
+      144 
+      145           if indx > hbound (handler_data, 1)
+      146           then do;
+      147                call hcs_$set_ips_mask (previous_ips_mask, (""b));
+      148 
+      149                P_error_code = error_table_$noalloc;
+      150                return;
+      151                end;
+      152 
+      153           handler_data (indx).data_ptr = arg_data_ptr;
+      154           handler_data (indx).signal_procedure = arg_signal_handler;
+      155           handler_data (indx).signal_count = 0;             /* reset the signal count for this socket to zero */
+      156 
+      157 
+      158           if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, arg_ncp_indx)
+      159           then signal net_stacq_error_;
+      160 
+      161           count_of_handler_data_slots_used = count_of_handler_data_slots_used + 1;
+      162 
+      163           call allow_network_signals (arg_ncp_indx, (0));
+      164 
+      165           call hcs_$set_ips_mask (previous_ips_mask, (""b));
+      166 
+      167           return;
+      168 
+      169           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      170 
+      171 remove_signal_handler:
+      172           entry (P_ncp_indx, P_error_code);
+      173 
+      174           P_error_code = 0;
+      175 
+      176           arg_ncp_indx = P_ncp_indx;
+      177 
+      178           if (arg_ncp_indx = EMPTY_ENTRY) | (arg_ncp_indx = CHANGING_ENTRY)
+      179           then do;
+      180                P_error_code = error_table_$bad_index;
+      181                return;
+      182                end;
+      183 
+      184           call hcs_$set_ips_mask (MASK_EVERYTHING, previous_ips_mask);
+      185 
+      186           do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+      187                     while (^ stacq (addr (handler_data (indx).ncp_indx), arg_ncp_indx, CHANGING_ENTRY));
+      188                end;
+      189 
+      190           if indx > hbound (handler_data, 1)
+      191           then do;
+      192                call hcs_$set_ips_mask (previous_ips_mask, (""b));
+      193 
+      194                P_error_code = error_table_$noentry;
+      195                return;
+      196                end;
+      197 
+      198           if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, EMPTY_ENTRY)
+      199           then signal net_stacq_error_;
+      200 
+      201           count_of_handler_data_slots_used = count_of_handler_data_slots_used - 1;
+      202 
+      203           call disallow_network_signals (arg_ncp_indx, (0));
+      204 
+      205           call hcs_$set_ips_mask (previous_ips_mask, (""b));
+      206 
+      207           return;
+      208 
+      209           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      210 
+      211 neti_signal_handler:
+      212           entry (P_mc_ptr, P_condition_name, P_info_ptr, P_crawlout_ptr, P_continue_switch);
+      213 
+      214           do while (network_signal_received (arg_ncp_indx, (0)));
+      215                do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+      216                          while (handler_data (indx).ncp_indx ^= arg_ncp_indx);
+      217                     end;
+      218 
+      219                if indx <= hbound (handler_data, 1)
+      220                then do;
+      221                     arg_signal_handler = handler_data (indx).signal_procedure;
+      222                     call arg_signal_handler (P_mc_ptr, P_condition_name, (handler_data (indx).data_ptr), P_crawlout_ptr, ("0"b));
+      223                     end;
+      224                end;
+      225 
+      226           return;
+      227 
+      228 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      229 
+      230 allow_network_signals:
+      231           procedure (p_ncp_indx_of_pin, p_err_code);
+      232 
+      233           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+      234 
+      235      declare
+      236          (p_err_code fixed binary (35),
+      237           p_ncp_indx_of_pin bit (36) aligned)
+      238                parameter;
+      239 
+      240           /* * * * * AUTOMATIC STORAGE DECLARATIONS * * * * */
+      241 
+      242      declare
+      243           valid_event fixed binary (1)
+      244                automatic;
+      245 
+      246      declare
+      247           1 event_message aligned automatic like event_message_template;
+      248 
+      249           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      250 
+      251           if signal_notify_channel = 0
+      252           then do;
+      253                call setup_environment (p_err_code);
+      254                if p_err_code ^= 0
+      255                then return;
+      256                end;
+      257 
+      258           call ncp_$enable_interrupts ((p_ncp_indx_of_pin), signal_notify_channel, p_err_code);
+      259 
+      260           return;
+      261 
+      262           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      263 
+      264 disallow_network_signals:
+      265           entry (p_ncp_indx_of_pin, p_err_code);
+      266 
+      267           call ncp_$disable_interrupts ((p_ncp_indx_of_pin), (0));
+      268 
+      269           if count_of_handler_data_slots_used = 0
+      270           then call remove_environment ((0));
+      271 
+      272           p_err_code = 0;
+      273 
+      274           return;
+      275 
+      276           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      277 
+      278 network_signal_received:
+      279           entry (p_ncp_indx_of_pin, p_err_code) returns (bit (1) aligned);
+      280 
+      281           call ipc_$read_ev_chn (signal_notify_channel, valid_event, addr (event_message), p_err_code);
+      282           if p_err_code ^= 0
+      283           then do;
+      284                signal_notify_channel = 0;
+      285                return ("0"b);
+      286                end;
+      287 
+      288           if valid_event = 0
+      289           then return ("0"b);
+      290 
+      291           p_ncp_indx_of_pin = substr (event_message.message, 37, 36);
+      292 
+      293           return ("1"b);
+      294 
+      295 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      296 
+      297 setup_environment:
+      298           procedure (p_err_code);
+      299 
+      300           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+      301 
+      302      declare
+      303           p_err_code fixed binary (35)
+      304                parameter;
+      305 
+      306           /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+      307 
+      308           /* BEGIN INCLUDE FILE  static_handlers.incl.pl1  6/20/75 SHW */
+  2     2 /* Added undefined_pointer_sct_index and pgt_sct_index, Benson Margulies, 83-12 */
+  2     3 
+  2     4 dcl  shutdown_sct_index fixed bin (17) static options (constant) init (0);
+  2     5 dcl  store_sct_index fixed bin (17) static options (constant) init (1);
+  2     6 dcl  mme1_sct_index fixed bin (17) static options (constant) init (2);
+  2     7 dcl  fault_tag_1_sct_index fixed bin (17) static options (constant) init (3);
+  2     8 dcl  timer_runout_sct_index fixed bin (17) static options (constant) init (4);
+  2     9 dcl  command_sct_index fixed bin (17) static options (constant) init (5);
+  2    10 dcl  derail_sct_index fixed bin (17) static options (constant) init (6);
+  2    11 dcl  lockup_sct_index fixed bin (17) static options (constant) init (7);
+  2    12 dcl  connect_sct_index fixed bin (17) static options (constant) init (8);
+  2    13 dcl  parity_sct_index fixed bin (17) static options (constant) init (9);
+  2    14 dcl  illegal_procedure_sct_index fixed bin (17) static options (constant) init (10);
+  2    15 dcl  op_not_complete_sct_index fixed bin (17) static options (constant) init (11);
+  2    16 dcl  startup_sct_index fixed bin (17) static options (constant) init (12);
+  2    17 dcl  ovrflo_sct_index fixed bin (17) static options (constant) init (13);
+  2    18 dcl  zerodivide_sct_index fixed bin (17) static options (constant) init (14);
+  2    19 dcl  execute_sct_index fixed bin (17) static options (constant) init (15);
+  2    20 dcl  seg_fault_error_sct_index fixed bin (17) static options (constant) init (16);
+  2    21 dcl  page_fault_error_sct_index fixed bin (17) static options (constant) init (17);
+  2    22 dcl  directed_fault_2_sct_index fixed bin (17) static options (constant) init (18);
+  2    23 dcl  directed_fault_3_sct_index fixed bin (17) static options (constant) init (19);
+  2    24 dcl  accessviolation_sct_index fixed bin (17) static options (constant) init (20);
+  2    25 dcl  mme2_sct_index fixed bin (17) static options (constant) init (21);
+  2    26 dcl  mme3_sct_index fixed bin (17) static options (constant) init (22);
+  2    27 dcl  mme4_sct_index fixed bin (17) static options (constant) init (23);
+  2    28 dcl  linkage_error_sct_index fixed bin (17) static options (constant) init (24);
+  2    29 dcl  fault_tag_3_sct_index fixed bin (17) static options (constant) init (25);
+  2    30 dcl  undefined_fault_sct_index fixed bin (17) static options (constant) init (26);
+  2    31 dcl  trouble_sct_index fixed bin (17) static options (constant) init (31);
+  2    32 dcl  illegal_opcode_sct_index fixed bin (17) static options (constant) init (32);
+  2    33 dcl  simfault_000000_sct_index fixed bin (17) static options (constant) init (33);
+  2    34 dcl  illegal_modifier_sct_index fixed bin (17) static options (constant) init (34);
+  2    35 dcl  illegal_ring_order_sct_index fixed bin (17) static options (constant) init (35);
+  2    36 dcl  not_in_execute_bracket_sct_index fixed bin (17) static options (constant) init (36);
+  2    37 dcl  no_execute_permission_sct_index fixed bin (17) static options (constant) init (37);
+  2    38 dcl  not_in_read_bracket_sct_index fixed bin (17) static options (constant) init (38);
+  2    39 dcl  no_read_permission_sct_index fixed bin (17) static options (constant) init (39);
+  2    40 dcl  not_in_write_bracket_sct_index fixed bin (17) static options (constant) init (40);
+  2    41 dcl  no_write_permission_sct_index fixed bin (17) static options (constant) init (41);
+  2    42 dcl  not_a_gate_sct_index fixed bin (17) static options (constant) init (42);
+  2    43 dcl  not_in_call_bracket_sct_index fixed bin (17) static options (constant) init (43);
+  2    44 dcl  outward_call_sct_index fixed bin (17) static options (constant) init (44);
+  2    45 dcl  bad_outward_call_sct_index fixed bin (17) static options (constant) init (45);
+  2    46 dcl  inward_return_sct_index fixed bin (17) static options (constant) init (46);
+  2    47 dcl  cross_ring_transfer_sct_index fixed bin (17) static options (constant) init (47);
+  2    48 dcl  ring_alarm_fault_sct_index fixed bin (17) static options (constant) init (48);
+  2    49 dcl  am_fault_sct_index fixed bin (17) static options (constant) init (49);
+  2    50 dcl  out_of_bounds_sct_index fixed bin (17) static options (constant) init (50);
+  2    51 dcl  fixedoverflow_sct_index fixed bin (17) static options (constant) init (51);
+  2    52 dcl  overflow_sct_index fixed bin (17) static options (constant) init (52);
+  2    53 dcl  underflow_sct_index fixed bin (17) static options (constant) init (53);
+  2    54 dcl  stringsize_sct_index fixed bin (17) static options (constant) init (54);
+  2    55 dcl  other_illegal_proc_sct_index fixed bin (17) static options (constant) init (55);
+  2    56 dcl  storage_sct_index fixed bin (17) static options (constant) init (56);
+  2    57 dcl  packed_pointer_fault_sct_index fixed bin (17) static options (constant) init (57);
+  2    58 dcl  lot_fault_sct_index fixed bin (17) static options (constant) init (58);
+  2    59 dcl  isot_fault_sct_index fixed bin (17) static options (constant) init (59);
+  2    60 dcl  system_packed_pointer_sct_index fixed bin (17) static options (constant) init (60);
+  2    61 dcl  quit_sct_index fixed bin (17) static options (constant) init (61);
+  2    62 dcl  alrm_sct_index fixed bin (17) static options (constant) init (62);
+  2    63 dcl  cput_sct_index fixed bin (17) static options (constant) init (63);
+  2    64 dcl  record_quota_overflow_sct_index fixed bin (17) static options (constant) init (64);
+  2    65 dcl  size_sct_index fixed bin (17) static options (constant) init (65);
+  2    66 dcl  neti_sct_index fixed bin (17) static options (constant) init (66);
+  2    67 dcl  other_command_sct_index fixed bin (17) static options (constant) init (67);
+  2    68 dcl  susp_sct_index fixed bin (17) static options (constant) init (68);
+  2    69 dcl  term_sct_index fixed bin (17) static options (constant) init (69);
+  2    70 dcl  wkp_sct_index fixed bin (17) static options (constant) init (70);
+  2    71 dcl  undefined_pointer_sct_index fixed bin (17) static options (constant) init (71);
+  2    72 dcl  pgt_sct_index fixed bin (17) internal static options (constant) init (72);
+  2    73 
+  2    74 /* END INCLUDE FILE  static_handlers.incl.pl1 */
+      308 
+      309 
+      310           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      311 
+      312           call ipc_$create_ev_chn (signal_notify_channel, p_err_code);
+      313           if p_err_code ^= 0
+      314           then return;
+      315 
+      316           call sct_manager_$set (neti_sct_index, neti_signal_handler, p_err_code);
+      317 
+      318           return;
+      319 
+      320           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      321 
+      322 remove_environment:
+      323           entry (p_err_code);
+      324 
+      325           p_err_code = 0;
+      326 
+      327           call ipc_$delete_ev_chn (signal_notify_channel, (0));
+      328 
+      329           signal_notify_channel = 0;
+      330 
+      331           return;
+      332 
+      333 end;      /* end setup_environment                         */
+      334 
+      335 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      336 
+      337 end;      /* end allow_network_signals                     */
+      338 
+      339 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      340 
+      341           /* end net_signal_handler_                       */
+      342 end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/05/84  1326.6  net_signal_handler_.pl1           >spec>temp>bce>40-00>net_signal_handler_.pl1
+104          1    09/23/77  1607.6  net_event_template.incl.pl1       >ldd>include>net_event_template.incl.pl1
+308          2    06/01/84  1101.9  static_handlers.incl.pl1          >spec>temp>bce>40-00>static_handlers.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CHANGING_ENTRY                  000001 constant        bit(36)                  initial dcl 62 set ref 117 126* 133* 141 158* 178
+                                                                                  186* 198*
+EMPTY_ENTRY                     000003 constant        bit(36)                  initial dcl 62 set ref 117 178 198*
+MASK_EVERYTHING                 000003 constant        bit(36)                  initial dcl 67 set ref 123* 184*
+P_condition_name                       parameter       char                     unaligned dcl 26 set ref 211 222*
+P_continue_switch                      parameter       bit(1)                   dcl 26 ref 211
+P_crawlout_ptr                         parameter       pointer                  dcl 26 set ref 211 222*
+P_data_ptr                             parameter       pointer                  dcl 26 ref 108 115
+P_error_code                           parameter       fixed bin(35,0)          dcl 26 set ref 108 111* 119* 149* 171 174* 180* 194*
+P_info_ptr                             parameter       pointer                  dcl 26 ref 211
+P_mc_ptr                               parameter       pointer                  dcl 26 set ref 211 222*
+P_ncp_indx                             parameter       bit(36)                  unaligned dcl 26 ref 108 113 171 176
+P_signal_handler                       parameter       entry variable           dcl 26 ref 108 114
+addr                                                   builtin function         dcl 92 ref 126 126 133 133 141 158 158 186 186 198
+                                                                                  198 281 281
+arg_data_ptr                    000104 automatic       pointer                  dcl 38 set ref 115* 129 153
+arg_ncp_indx                    000101 automatic       bit(36)                  dcl 38 set ref 113* 117 117 126* 131* 133* 158* 163*
+                                                                                  176* 178 178 186* 203* 214* 215
+arg_signal_handler              000106 automatic       entry variable           dcl 38 set ref 114* 128 154 221* 222
+common                          000132 automatic       structure                level 2 dcl 246
+count_of_handler_data_slots_used
+                                000010 internal static fixed bin(12,0)          initial dcl 48 set ref 161* 161 201* 201 269
+data_ptr                        000014 internal static pointer                  array level 2 dcl 53 set ref 129* 153* 222
+error_table_$bad_index          000514 external static fixed bin(35,0)          dcl 74 ref 119 180
+error_table_$noalloc            000516 external static fixed bin(35,0)          dcl 74 ref 149
+error_table_$noentry            000520 external static fixed bin(35,0)          dcl 74 ref 194
+event_message                   000132 automatic       structure                level 1 dcl 246 set ref 281 281
+event_message_template                 based           structure                level 1 dcl 1-8
+handler_data                    000014 internal static structure                array level 1 dcl 53 set ref 125 125 141 141 145 186
+                                                                                  186 190 215 215 219
+hbound                                                 builtin function         dcl 92 ref 125 141 145 186 190 215 219
+hcs_$set_ips_mask               000522 constant        entry                    external dcl 82 ref 123 136 147 165 184 192 205
+indx                            000100 automatic       fixed bin(12,0)          dcl 38 set ref 125* 126 126 128 129 133 133* 141*
+                                                                                  141* 145 153 154 155 158 158 186* 186 186* 190 198
+                                                                                  198 215* 215* 219 221 222
+ipc_$create_ev_chn              000524 constant        entry                    external dcl 82 ref 312
+ipc_$delete_ev_chn              000526 constant        entry                    external dcl 82 ref 327
+ipc_$read_ev_chn                000530 constant        entry                    external dcl 82 ref 281
+lbound                                                 builtin function         dcl 92 ref 125 141 186 215
+message                   2     000132 automatic       bit(72)                  level 3 dcl 246 set ref 291
+ncp_$disable_interrupts         000532 constant        entry                    external dcl 82 ref 267
+ncp_$enable_interrupts          000534 constant        entry                    external dcl 82 ref 258
+ncp_indx                  2     000014 internal static bit(36)                  initial array level 2 dcl 53 set ref 126 126 133 133
+                                                                                  141 158 158 186 186 198 198 215
+net_stacq_error_                000112 stack reference condition                dcl 98 ref 133 158 198
+neti_sct_index                  000000 constant        fixed bin(17,0)          initial dcl 2-66 set ref 316*
+p_err_code                             parameter       fixed bin(35,0)          dcl 302 in procedure "setup_environment" set ref 297
+                                                                                  312* 313 316* 322 325*
+p_err_code                             parameter       fixed bin(35,0)          dcl 235 in procedure "allow_network_signals" set ref
+                                                                                  230 253* 254 258* 264 272* 278 281* 282
+p_ncp_indx_of_pin                      parameter       bit(36)                  dcl 235 set ref 230 258 264 267 278 291*
+previous_ips_mask               000102 automatic       bit(36)                  dcl 38 set ref 123* 136* 147* 165* 184* 192* 205*
+sct_manager_$set                000536 constant        entry                    external dcl 82 ref 316
+signal_count              3     000014 internal static fixed bin(30,0)          array level 2 dcl 53 set ref 155*
+signal_notify_channel           000012 internal static fixed bin(71,0)          initial dcl 48 set ref 251 258* 281* 284* 312* 327*
+                                                                                  329*
+signal_procedure          4     000014 internal static entry variable           array level 2 dcl 53 set ref 128* 154* 221
+stac                                                   builtin function         dcl 92 ref 141
+stacq                           000540 constant        entry                    external dcl 82 ref 126 133 158 186 198
+substr                                                 builtin function         dcl 92 ref 291
+valid_event                     000130 automatic       fixed bin(1,0)           dcl 242 set ref 281* 288
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+accessviolation_sct_index              internal static fixed bin(17,0)          initial dcl 2-24
+alrm_sct_index                         internal static fixed bin(17,0)          initial dcl 2-62
+am_fault_sct_index                     internal static fixed bin(17,0)          initial dcl 2-49
+bad_outward_call_sct_index             internal static fixed bin(17,0)          initial dcl 2-45
+command_sct_index                      internal static fixed bin(17,0)          initial dcl 2-9
+connect_sct_index                      internal static fixed bin(17,0)          initial dcl 2-12
+cput_sct_index                         internal static fixed bin(17,0)          initial dcl 2-63
+cross_ring_transfer_sct_index          internal static fixed bin(17,0)          initial dcl 2-47
+derail_sct_index                       internal static fixed bin(17,0)          initial dcl 2-10
+directed_fault_2_sct_index             internal static fixed bin(17,0)          initial dcl 2-22
+directed_fault_3_sct_index             internal static fixed bin(17,0)          initial dcl 2-23
+execute_sct_index                      internal static fixed bin(17,0)          initial dcl 2-19
+fault_tag_1_sct_index                  internal static fixed bin(17,0)          initial dcl 2-7
+fault_tag_3_sct_index                  internal static fixed bin(17,0)          initial dcl 2-29
+fixedoverflow_sct_index                internal static fixed bin(17,0)          initial dcl 2-51
+illegal_modifier_sct_index             internal static fixed bin(17,0)          initial dcl 2-34
+illegal_opcode_sct_index               internal static fixed bin(17,0)          initial dcl 2-32
+illegal_procedure_sct_index            internal static fixed bin(17,0)          initial dcl 2-14
+illegal_ring_order_sct_index           internal static fixed bin(17,0)          initial dcl 2-35
+inward_return_sct_index                internal static fixed bin(17,0)          initial dcl 2-46
+isot_fault_sct_index                   internal static fixed bin(17,0)          initial dcl 2-59
+linkage_error_sct_index                internal static fixed bin(17,0)          initial dcl 2-28
+lockup_sct_index                       internal static fixed bin(17,0)          initial dcl 2-11
+lot_fault_sct_index                    internal static fixed bin(17,0)          initial dcl 2-58
+mme1_sct_index                         internal static fixed bin(17,0)          initial dcl 2-6
+mme2_sct_index                         internal static fixed bin(17,0)          initial dcl 2-25
+mme3_sct_index                         internal static fixed bin(17,0)          initial dcl 2-26
+mme4_sct_index                         internal static fixed bin(17,0)          initial dcl 2-27
+no_execute_permission_sct_index        internal static fixed bin(17,0)          initial dcl 2-37
+no_read_permission_sct_index           internal static fixed bin(17,0)          initial dcl 2-39
+no_write_permission_sct_index          internal static fixed bin(17,0)          initial dcl 2-41
+not_a_gate_sct_index                   internal static fixed bin(17,0)          initial dcl 2-42
+not_in_call_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 2-43
+not_in_execute_bracket_sct_index       internal static fixed bin(17,0)          initial dcl 2-36
+not_in_read_bracket_sct_index          internal static fixed bin(17,0)          initial dcl 2-38
+not_in_write_bracket_sct_index         internal static fixed bin(17,0)          initial dcl 2-40
+op_not_complete_sct_index              internal static fixed bin(17,0)          initial dcl 2-15
+other_command_sct_index                internal static fixed bin(17,0)          initial dcl 2-67
+other_illegal_proc_sct_index           internal static fixed bin(17,0)          initial dcl 2-55
+out_of_bounds_sct_index                internal static fixed bin(17,0)          initial dcl 2-50
+outward_call_sct_index                 internal static fixed bin(17,0)          initial dcl 2-44
+overflow_sct_index                     internal static fixed bin(17,0)          initial dcl 2-52
+ovrflo_sct_index                       internal static fixed bin(17,0)          initial dcl 2-17
+packed_pointer_fault_sct_index         internal static fixed bin(17,0)          initial dcl 2-57
+page_fault_error_sct_index             internal static fixed bin(17,0)          initial dcl 2-21
+parity_sct_index                       internal static fixed bin(17,0)          initial dcl 2-13
+pgt_sct_index                          internal static fixed bin(17,0)          initial dcl 2-72
+quit_sct_index                         internal static fixed bin(17,0)          initial dcl 2-61
+record_quota_overflow_sct_index        internal static fixed bin(17,0)          initial dcl 2-64
+ring_alarm_fault_sct_index             internal static fixed bin(17,0)          initial dcl 2-48
+seg_fault_error_sct_index              internal static fixed bin(17,0)          initial dcl 2-20
+shutdown_sct_index                     internal static fixed bin(17,0)          initial dcl 2-4
+simfault_000000_sct_index              internal static fixed bin(17,0)          initial dcl 2-33
+size_sct_index                         internal static fixed bin(17,0)          initial dcl 2-65
+startup_sct_index                      internal static fixed bin(17,0)          initial dcl 2-16
+storage_sct_index                      internal static fixed bin(17,0)          initial dcl 2-56
+store_sct_index                        internal static fixed bin(17,0)          initial dcl 2-5
+stringsize_sct_index                   internal static fixed bin(17,0)          initial dcl 2-54
+susp_sct_index                         internal static fixed bin(17,0)          initial dcl 2-68
+system_packed_pointer_sct_index        internal static fixed bin(17,0)          initial dcl 2-60
+term_sct_index                         internal static fixed bin(17,0)          initial dcl 2-69
+timer_runout_sct_index                 internal static fixed bin(17,0)          initial dcl 2-8
+trouble_sct_index                      internal static fixed bin(17,0)          initial dcl 2-31
+undefined_fault_sct_index              internal static fixed bin(17,0)          initial dcl 2-30
+undefined_pointer_sct_index            internal static fixed bin(17,0)          initial dcl 2-71
+underflow_sct_index                    internal static fixed bin(17,0)          initial dcl 2-53
+wkp_sct_index                          internal static fixed bin(17,0)          initial dcl 2-70
+zerodivide_sct_index                   internal static fixed bin(17,0)          initial dcl 2-18
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+allow_network_signals           000647 constant        entry                    internal dcl 230 ref 131 163
+disallow_network_signals        000723 constant        entry                    internal dcl 264 ref 203
+net_signal_handler_             000027 constant        entry                    external dcl 6
+neti_signal_handler             000541 constant        entry                    external dcl 211 ref 316 316
+network_signal_received         000763 constant        entry                    internal dcl 278 ref 214
+remove_environment              001111 constant        entry                    internal dcl 322 ref 269
+remove_signal_handler           000347 constant        entry                    external dcl 171
+setup_environment               001051 constant        entry                    internal dcl 297 ref 253
+setup_signal_handler            000043 constant        entry                    external dcl 108
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1362        2124    1160        1372
+Length      2400    1160       542         240     202         504
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+net_signal_handler_                 195 external procedure  is an external procedure.  
+allow_network_signals                   internal procedure  shares stack frame of external procedure net_signal_handler_.  
+setup_environment                       internal procedure  shares stack frame of external procedure net_signal_handler_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 count_of_handler_data_slots_used
+                                   net_signal_handler_
+000012 signal_notify_channel       net_signal_handler_
+000014 handler_data                net_signal_handler_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+net_signal_handler_      000100 indx                        net_signal_handler_
+                         000101 arg_ncp_indx                net_signal_handler_
+                         000102 previous_ips_mask           net_signal_handler_
+                         000104 arg_data_ptr                net_signal_handler_
+                         000106 arg_signal_handler          net_signal_handler_
+                         000130 valid_event                 allow_network_signals
+                         000132 event_message               allow_network_signals
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_var_desc       call_ext_out        return              stac                signal              ext_entry
+ext_entry_desc      set_support
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+hcs_$set_ips_mask             ipc_$create_ev_chn            ipc_$delete_ev_chn            ipc_$read_ev_chn
+ncp_$disable_interrupts       ncp_$enable_interrupts        sct_manager_$set              stacq
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_index        error_table_$noalloc          error_table_$noentry
+
+
+CONSTANTS
+001134  aa     077777000043
+001135  aa     000001000000
+
+001136  aa     000002000000
+001137  aa     000000000000
+001140  aa     600000000041
+001141  aa     000237000000
+
+001142  aa     000006000000
+001143  aa     000000000000
+001144  aa     600000000041
+001145  aa     000101000000
+001146  aa     600000000041
+001147  aa     000161000000
+001150  aa     600000000041
+001151  aa     000160000000
+
+001152  aa     000004000000
+001153  aa     000000000000
+001154  aa     600000000041
+001155  aa     000101000000
+001156  aa     600000000041
+001157  aa     000161000000
+
+000000  aa     000000000102
+
+000001  aa     777777777777
+
+000002  aa     514000000044
+
+000003  aa     000000000000
+
+000004  aa     500000000000
+
+000005  aa     464000000000
+
+000006  aa     526077777777
+
+000007  aa     514000000001
+
+000010  aa     404000000043
+
+000011  aa     516000000044
+
+000012  aa     000000000000
+000013  aa     000000000000
+
+000014  aa  156 145 164 137	net_
+000015  aa  163 164 141 143	stac
+000016  aa  161 137 145 162	q_er
+000017  aa  162 157 162 137	ror_
+
+000020  aa  162 145 164 165	retu
+000021  aa  162 156 137 143	rn_c
+000022  aa  157 156 166 145	onve
+000023  aa  162 163 151 157	rsio
+000024  aa  156 137 145 162	n_er
+000025  aa  162 157 162 000	ror
+
+BEGIN PROCEDURE net_signal_handler_
+ENTRY TO net_signal_handler_                                STATEMENT 1 ON LINE 6
+net_signal_handler_:
+          procedure () options (support);
+
+000026  da     000144200000
+000027  aa   000320 6270 00	eax7 	208
+000030  aa  7 00034 3521 20	epp2 	pr7|28,*
+000031  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000032  aa     000000000000
+000033  aa     000000000000
+000034  aa  0 01372 7001 00	tsx0 	pr0|762		set_support
+						STATEMENT 1 ON LINE 108
+setup_signal_handler:
+          entry (P_ncp_indx, P_signal_handler, P_data_ptr, P_error_code);
+
+000035  aa   000017 7100 04	tra  	15,ic		000054
+ENTRY TO setup_signal_handler                               STATEMENT 1 ON LINE 108
+setup_signal_handler:
+          entry (P_ncp_indx, P_signal_handler, P_data_ptr, P_error_code);
+
+000036  at     000004000011
+000037  tt     000004000005
+000040  ta     000010000000
+000041  ta     000036000000
+000042  da     000155300000
+000043  aa   000320 6270 00	eax7 	208
+000044  aa  7 00034 3521 20	epp2 	pr7|28,*
+000045  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000046  aa     000010000000
+000047  aa     000000000000
+000050  aa  0 01372 7001 00	tsx0 	pr0|762		set_support
+000051  aa  6 00032 3735 20	epp7 	pr6|26,*
+000052  aa  7 00010 3715 20	epp5 	pr7|8,*
+000053  aa  6 00120 6515 00	spri5	pr6|80
+						STATEMENT 1 ON LINE 111
+          P_error_code = 0;
+
+000054  aa  6 00120 4501 20	stz  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 113
+          arg_ncp_indx = P_ncp_indx;
+
+000055  aa  6 00032 3735 20	epp7 	pr6|26,*
+000056  aa  7 00002 3715 20	epp5 	pr7|2,*
+000057  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000060  aa  5 00000 00 0044	descb	pr5|0,36		P_ncp_indx
+000061  aa  6 00101 00 0044	descb	pr6|65,36		arg_ncp_indx
+						STATEMENT 1 ON LINE 114
+          arg_signal_handler = P_signal_handler;
+
+000062  aa  7 00004 3535 20	epp3 	pr7|4,*
+000063  aa  3 00000 3521 20	epp2 	pr3|0,*		P_signal_handler
+000064  aa  6 00106 2521 00	spri2	pr6|70		arg_signal_handler
+000065  aa  3 00002 3521 20	epp2 	pr3|2,*		P_signal_handler
+000066  aa  6 00110 2521 00	spri2	pr6|72		arg_signal_handler
+						STATEMENT 1 ON LINE 115
+          arg_data_ptr = P_data_ptr;
+
+000067  aa  7 00006 3515 20	epp1 	pr7|6,*		P_data_ptr
+000070  aa  1 00000 3515 20	epp1 	pr1|0,*		P_data_ptr
+000071  aa  6 00104 2515 00	spri1	pr6|68		arg_data_ptr
+						STATEMENT 1 ON LINE 117
+          if (arg_ncp_indx = EMPTY_ENTRY) | (arg_ncp_indx = CHANGING_ENTRY)
+          then do;
+
+000072  aa  6 00101 2351 00	lda  	pr6|65		arg_ncp_indx
+000073  aa   000003 6000 04	tze  	3,ic		000076
+000074  aa   777705 1150 04	cmpa 	-59,ic		000001 = 777777777777
+000075  aa   000004 6010 04	tnz  	4,ic		000101
+						STATEMENT 1 ON LINE 119
+               P_error_code = error_table_$bad_index;
+
+000076  la  4 00514 2361 20	ldq  	pr4|332,*		error_table_$bad_index
+000077  aa  6 00120 7561 20	stq  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 120
+               return;
+
+000100  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 121
+               end;
+
+						STATEMENT 1 ON LINE 123
+          call hcs_$set_ips_mask (MASK_EVERYTHING, previous_ips_mask);
+
+000101  aa   777702 3520 04	epp2 	-62,ic		000003 = 000000000000
+000102  aa  6 00152 2521 00	spri2	pr6|106
+000103  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000104  aa  6 00154 2521 00	spri2	pr6|108
+000105  aa  6 00150 6211 00	eax1 	pr6|104
+000106  aa   010000 4310 07	fld  	4096,dl
+000107  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000110  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 125
+          do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1);
+
+000111  aa   000001 2360 07	ldq  	1,dl
+000112  aa  6 00100 7561 00	stq  	pr6|64		indx
+000113  aa   000000 0110 03	nop  	0,du
+000114  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000115  aa   000050 1160 07	cmpq 	40,dl
+000116  aa   000105 6054 04	tpnz 	69,ic		000223
+						STATEMENT 1 ON LINE 126
+               if stacq (addr (handler_data (indx).ncp_indx), arg_ncp_indx, CHANGING_ENTRY)
+               then do;
+
+000117  aa   000003 7360 00	qls  	3
+000120  aa  6 00044 3701 20	epp4 	pr6|36,*
+000121  ia  4 00006 3735 06	epp7 	pr4|6,ql		handler_data.ncp_indx
+000122  aa  6 00156 6535 00	spri7	pr6|110
+000123  aa  6 00156 3521 00	epp2 	pr6|110
+000124  aa  6 00164 2521 00	spri2	pr6|116
+000125  aa  6 00101 3521 00	epp2 	pr6|65		arg_ncp_indx
+000126  aa  6 00166 2521 00	spri2	pr6|118
+000127  aa   777652 3520 04	epp2 	-86,ic		000001 = 777777777777
+000130  aa  6 00170 2521 00	spri2	pr6|120
+000131  aa  6 00160 3521 00	epp2 	pr6|112
+000132  aa  6 00172 2521 00	spri2	pr6|122
+000133  aa  6 00161 7561 00	stq  	pr6|113
+000134  aa  6 00162 6211 00	eax1 	pr6|114
+000135  aa   020000 4310 07	fld  	8192,dl
+000136  la  4 00540 3521 20	epp2 	pr4|352,*		stacq
+000137  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000140  aa  6 00160 2351 00	lda  	pr6|112
+000141  aa   400000 3150 03	cana 	131072,du
+000142  aa   000057 6000 04	tze  	47,ic		000221
+						STATEMENT 1 ON LINE 128
+                    handler_data (indx).signal_procedure = arg_signal_handler;
+
+000143  aa  6 00161 7271 00	lxl7 	pr6|113
+000144  aa  6 00044 3701 20	epp4 	pr6|36,*
+000145  aa  6 00106 3521 20	epp2 	pr6|70,*		arg_signal_handler
+000146  ia  4 00010 2521 17	spri2	pr4|8,7		handler_data.signal_procedure
+000147  aa  6 00110 3521 20	epp2 	pr6|72,*		arg_signal_handler
+000150  ia  4 00012 2521 17	spri2	pr4|10,7		handler_data.signal_procedure
+						STATEMENT 1 ON LINE 129
+                    handler_data (indx).data_ptr = arg_data_ptr;
+
+000151  aa  6 00104 3735 20	epp7 	pr6|68,*		arg_data_ptr
+000152  ia  4 00004 6535 17	spri7	pr4|4,7		handler_data.data_ptr
+						STATEMENT 1 ON LINE 131
+		call allow_network_signals (arg_ncp_indx, (0));
+
+000153  aa  6 00161 4501 00	stz  	pr6|113
+000154  aa   000776 3520 04	epp2 	510,ic		001152 = 000004000000
+000155  aa   000472 6700 04	tsp4 	314,ic		000647
+						STATEMENT 1 ON LINE 133
+                    if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, arg_ncp_indx)
+                    then signal net_stacq_error_;
+
+000156  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000157  aa   000003 7360 00	qls  	3
+000160  aa  6 00044 3701 20	epp4 	pr6|36,*
+000161  ia  4 00006 3735 06	epp7 	pr4|6,ql		handler_data.ncp_indx
+000162  aa  6 00156 6535 00	spri7	pr6|110
+000163  aa  6 00156 3521 00	epp2 	pr6|110
+000164  aa  6 00164 2521 00	spri2	pr6|116
+000165  aa   777614 3520 04	epp2 	-116,ic		000001 = 777777777777
+000166  aa  6 00166 2521 00	spri2	pr6|118
+000167  aa  6 00101 3521 00	epp2 	pr6|65		arg_ncp_indx
+000170  aa  6 00170 2521 00	spri2	pr6|120
+000171  aa  6 00161 3521 00	epp2 	pr6|113
+000172  aa  6 00172 2521 00	spri2	pr6|122
+000173  aa  6 00162 6211 00	eax1 	pr6|114
+000174  aa   020000 4310 07	fld  	8192,dl
+000175  la  4 00540 3521 20	epp2 	pr4|352,*		stacq
+000176  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000177  aa  6 00161 2351 00	lda  	pr6|113
+000200  aa   400000 3150 03	cana 	131072,du
+000201  aa   000004 6010 04	tnz  	4,ic		000205
+000202  aa   000020 7260 07	lxl6 	16,dl
+000203  aa   777611 3520 04	epp2 	-119,ic		000014 = 156145164137
+000204  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+						STATEMENT 1 ON LINE 136
+                    call hcs_$set_ips_mask (previous_ips_mask, (""b));
+
+000205  aa   000000 2350 07	lda  	0,dl
+000206  aa  6 00161 7551 00	sta  	pr6|113
+000207  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000210  aa  6 00152 2521 00	spri2	pr6|106
+000211  aa  6 00161 3521 00	epp2 	pr6|113
+000212  aa  6 00154 2521 00	spri2	pr6|108
+000213  aa  6 00150 6211 00	eax1 	pr6|104
+000214  aa   010000 4310 07	fld  	4096,dl
+000215  aa  6 00044 3701 20	epp4 	pr6|36,*
+000216  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000217  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 137
+                    return;
+
+000220  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 138
+                    end;
+
+						STATEMENT 1 ON LINE 139
+               end;
+
+000221  aa  6 00100 0541 00	aos  	pr6|64		indx
+000222  aa   777672 7100 04	tra  	-70,ic		000114
+						STATEMENT 1 ON LINE 141
+          do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+                    while (^ stac (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY));
+
+000223  aa   000001 2360 07	ldq  	1,dl
+000224  aa  6 00100 7561 00	stq  	pr6|64		indx
+000225  aa   000000 0110 03	nop  	0,du
+000226  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000227  aa   000050 1160 07	cmpq 	40,dl
+000230  aa   000013 6054 04	tpnz 	11,ic		000243
+000231  aa   000003 7360 00	qls  	3
+000232  aa  6 00044 3701 20	epp4 	pr6|36,*
+000233  ia  4 00006 3735 06	epp7 	pr4|6,ql		handler_data.ncp_indx
+000234  aa  6 00156 6535 00	spri7	pr6|110
+000235  aa   777544 2350 04	lda  	-156,ic		000001 = 777777777777
+000236  aa  7 00000 3521 00	epp2 	pr7|0
+000237  aa  0 00663 7001 00	tsx0 	pr0|435		stac
+000240  aa   000003 6010 04	tnz  	3,ic		000243
+						STATEMENT 1 ON LINE 143
+               end;
+
+000241  aa  6 00100 0541 00	aos  	pr6|64		indx
+000242  aa   777764 7100 04	tra  	-12,ic		000226
+						STATEMENT 1 ON LINE 145
+          if indx > hbound (handler_data, 1)
+          then do;
+
+000243  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000244  aa   000050 1160 07	cmpq 	40,dl
+000245  aa   000020 6044 04	tmoz 	16,ic		000265
+						STATEMENT 1 ON LINE 147
+               call hcs_$set_ips_mask (previous_ips_mask, (""b));
+
+000246  aa   000000 2350 07	lda  	0,dl
+000247  aa  6 00161 7551 00	sta  	pr6|113
+000250  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000251  aa  6 00152 2521 00	spri2	pr6|106
+000252  aa  6 00161 3521 00	epp2 	pr6|113
+000253  aa  6 00154 2521 00	spri2	pr6|108
+000254  aa  6 00150 6211 00	eax1 	pr6|104
+000255  aa   010000 4310 07	fld  	4096,dl
+000256  aa  6 00044 3701 20	epp4 	pr6|36,*
+000257  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000260  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 149
+               P_error_code = error_table_$noalloc;
+
+000261  aa  6 00044 3701 20	epp4 	pr6|36,*
+000262  la  4 00516 2361 20	ldq  	pr4|334,*		error_table_$noalloc
+000263  aa  6 00120 7561 20	stq  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 150
+               return;
+
+000264  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 151
+               end;
+
+						STATEMENT 1 ON LINE 153
+          handler_data (indx).data_ptr = arg_data_ptr;
+
+000265  aa   000003 7360 00	qls  	3
+000266  aa  6 00104 3735 20	epp7 	pr6|68,*		arg_data_ptr
+000267  aa  6 00044 3701 20	epp4 	pr6|36,*
+000270  ia  4 00004 6535 06	spri7	pr4|4,ql		handler_data.data_ptr
+						STATEMENT 1 ON LINE 154
+          handler_data (indx).signal_procedure = arg_signal_handler;
+
+000271  aa  6 00106 3521 20	epp2 	pr6|70,*		arg_signal_handler
+000272  ia  4 00010 2521 06	spri2	pr4|8,ql		handler_data.signal_procedure
+000273  aa  6 00110 3521 20	epp2 	pr6|72,*		arg_signal_handler
+000274  ia  4 00012 2521 06	spri2	pr4|10,ql		handler_data.signal_procedure
+						STATEMENT 1 ON LINE 155
+          handler_data (indx).signal_count = 0;
+
+000275  ia  4 00007 4501 06	stz  	pr4|7,ql		handler_data.signal_count
+						STATEMENT 1 ON LINE 158
+          if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, arg_ncp_indx)
+          then signal net_stacq_error_;
+
+000276  ia  4 00006 3715 06	epp5 	pr4|6,ql		handler_data.ncp_indx
+000277  aa  6 00174 6515 00	spri5	pr6|124
+000300  aa  6 00174 3521 00	epp2 	pr6|124
+000301  aa  6 00164 2521 00	spri2	pr6|116
+000302  aa   777477 3520 04	epp2 	-193,ic		000001 = 777777777777
+000303  aa  6 00166 2521 00	spri2	pr6|118
+000304  aa  6 00101 3521 00	epp2 	pr6|65		arg_ncp_indx
+000305  aa  6 00170 2521 00	spri2	pr6|120
+000306  aa  6 00161 3521 00	epp2 	pr6|113
+000307  aa  6 00172 2521 00	spri2	pr6|122
+000310  aa  6 00162 6211 00	eax1 	pr6|114
+000311  aa   020000 4310 07	fld  	8192,dl
+000312  la  4 00540 3521 20	epp2 	pr4|352,*		stacq
+000313  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000314  aa  6 00161 2351 00	lda  	pr6|113
+000315  aa   400000 3150 03	cana 	131072,du
+000316  aa   000004 6010 04	tnz  	4,ic		000322
+000317  aa   000020 7260 07	lxl6 	16,dl
+000320  aa   777474 3520 04	epp2 	-196,ic		000014 = 156145164137
+000321  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+						STATEMENT 1 ON LINE 161
+          count_of_handler_data_slots_used = count_of_handler_data_slots_used + 1;
+
+000322  aa  6 00044 3701 20	epp4 	pr6|36,*
+000323  ia  4 00010 0541 00	aos  	pr4|8		count_of_handler_data_slots_used
+						STATEMENT 1 ON LINE 163
+          call allow_network_signals (arg_ncp_indx, (0));
+
+000324  aa  6 00161 4501 00	stz  	pr6|113
+000325  aa   000625 3520 04	epp2 	405,ic		001152 = 000004000000
+000326  aa   000321 6700 04	tsp4 	209,ic		000647
+						STATEMENT 1 ON LINE 165
+          call hcs_$set_ips_mask (previous_ips_mask, (""b));
+
+000327  aa   000000 2350 07	lda  	0,dl
+000330  aa  6 00161 7551 00	sta  	pr6|113
+000331  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000332  aa  6 00152 2521 00	spri2	pr6|106
+000333  aa  6 00161 3521 00	epp2 	pr6|113
+000334  aa  6 00154 2521 00	spri2	pr6|108
+000335  aa  6 00150 6211 00	eax1 	pr6|104
+000336  aa   010000 4310 07	fld  	4096,dl
+000337  aa  6 00044 3701 20	epp4 	pr6|36,*
+000340  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000341  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 167
+          return;
+
+000342  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO remove_signal_handler                              STATEMENT 1 ON LINE 171
+remove_signal_handler:
+          entry (P_ncp_indx, P_error_code);
+
+000343  at     000002000011
+000344  ta     000010000000
+000345  ta     000343000000
+000346  da     000166300000
+000347  aa   000320 6270 00	eax7 	208
+000350  aa  7 00034 3521 20	epp2 	pr7|28,*
+000351  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000352  aa     000004000000
+000353  aa     000000000000
+000354  aa  0 01372 7001 00	tsx0 	pr0|762		set_support
+000355  aa  6 00032 3735 20	epp7 	pr6|26,*
+000356  aa  7 00004 3715 20	epp5 	pr7|4,*
+000357  aa  6 00120 6515 00	spri5	pr6|80
+						STATEMENT 1 ON LINE 174
+          P_error_code = 0;
+
+000360  aa  6 00120 4501 20	stz  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 176
+          arg_ncp_indx = P_ncp_indx;
+
+000361  aa  6 00032 3735 20	epp7 	pr6|26,*
+000362  aa  7 00002 3715 20	epp5 	pr7|2,*
+000363  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000364  aa  5 00000 00 0044	descb	pr5|0,36		P_ncp_indx
+000365  aa  6 00101 00 0044	descb	pr6|65,36		arg_ncp_indx
+						STATEMENT 1 ON LINE 178
+          if (arg_ncp_indx = EMPTY_ENTRY) | (arg_ncp_indx = CHANGING_ENTRY)
+          then do;
+
+000366  aa  6 00101 2351 00	lda  	pr6|65		arg_ncp_indx
+000367  aa   000003 6000 04	tze  	3,ic		000372
+000370  aa   777411 1150 04	cmpa 	-247,ic		000001 = 777777777777
+000371  aa   000005 6010 04	tnz  	5,ic		000376
+						STATEMENT 1 ON LINE 180
+               P_error_code = error_table_$bad_index;
+
+000372  aa  6 00044 3701 20	epp4 	pr6|36,*
+000373  la  4 00514 2361 20	ldq  	pr4|332,*		error_table_$bad_index
+000374  aa  6 00120 7561 20	stq  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 181
+               return;
+
+000375  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 182
+               end;
+
+						STATEMENT 1 ON LINE 184
+          call hcs_$set_ips_mask (MASK_EVERYTHING, previous_ips_mask);
+
+000376  aa   777405 3520 04	epp2 	-251,ic		000003 = 000000000000
+000377  aa  6 00152 2521 00	spri2	pr6|106
+000400  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000401  aa  6 00154 2521 00	spri2	pr6|108
+000402  aa  6 00150 6211 00	eax1 	pr6|104
+000403  aa   010000 4310 07	fld  	4096,dl
+000404  aa  6 00044 3701 20	epp4 	pr6|36,*
+000405  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000406  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 186
+          do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+                    while (^ stacq (addr (handler_data (indx).ncp_indx), arg_ncp_indx, CHANGING_ENTRY));
+
+000407  aa   000001 2360 07	ldq  	1,dl
+000410  aa  6 00100 7561 00	stq  	pr6|64		indx
+000411  aa   000000 0110 03	nop  	0,du
+000412  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000413  aa   000050 1160 07	cmpq 	40,dl
+000414  aa   000026 6054 04	tpnz 	22,ic		000442
+000415  aa   000003 7360 00	qls  	3
+000416  aa  6 00044 3701 20	epp4 	pr6|36,*
+000417  ia  4 00006 3735 06	epp7 	pr4|6,ql		handler_data.ncp_indx
+000420  aa  6 00174 6535 00	spri7	pr6|124
+000421  aa  6 00174 3521 00	epp2 	pr6|124
+000422  aa  6 00164 2521 00	spri2	pr6|116
+000423  aa  6 00101 3521 00	epp2 	pr6|65		arg_ncp_indx
+000424  aa  6 00166 2521 00	spri2	pr6|118
+000425  aa   777354 3520 04	epp2 	-276,ic		000001 = 777777777777
+000426  aa  6 00170 2521 00	spri2	pr6|120
+000427  aa  6 00161 3521 00	epp2 	pr6|113
+000430  aa  6 00172 2521 00	spri2	pr6|122
+000431  aa  6 00162 6211 00	eax1 	pr6|114
+000432  aa   020000 4310 07	fld  	8192,dl
+000433  la  4 00540 3521 20	epp2 	pr4|352,*		stacq
+000434  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000435  aa  6 00161 2351 00	lda  	pr6|113
+000436  aa   400000 3150 03	cana 	131072,du
+000437  aa   000003 6010 04	tnz  	3,ic		000442
+						STATEMENT 1 ON LINE 188
+               end;
+
+000440  aa  6 00100 0541 00	aos  	pr6|64		indx
+000441  aa   777751 7100 04	tra  	-23,ic		000412
+						STATEMENT 1 ON LINE 190
+          if indx > hbound (handler_data, 1)
+          then do;
+
+000442  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000443  aa   000050 1160 07	cmpq 	40,dl
+000444  aa   000020 6044 04	tmoz 	16,ic		000464
+						STATEMENT 1 ON LINE 192
+               call hcs_$set_ips_mask (previous_ips_mask, (""b));
+
+000445  aa   000000 2350 07	lda  	0,dl
+000446  aa  6 00161 7551 00	sta  	pr6|113
+000447  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000450  aa  6 00152 2521 00	spri2	pr6|106
+000451  aa  6 00161 3521 00	epp2 	pr6|113
+000452  aa  6 00154 2521 00	spri2	pr6|108
+000453  aa  6 00150 6211 00	eax1 	pr6|104
+000454  aa   010000 4310 07	fld  	4096,dl
+000455  aa  6 00044 3701 20	epp4 	pr6|36,*
+000456  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000457  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 194
+               P_error_code = error_table_$noentry;
+
+000460  aa  6 00044 3701 20	epp4 	pr6|36,*
+000461  la  4 00520 2361 20	ldq  	pr4|336,*		error_table_$noentry
+000462  aa  6 00120 7561 20	stq  	pr6|80,*		P_error_code
+						STATEMENT 1 ON LINE 195
+               return;
+
+000463  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 196
+               end;
+
+						STATEMENT 1 ON LINE 198
+          if ^ stacq (addr (handler_data (indx).ncp_indx), CHANGING_ENTRY, EMPTY_ENTRY)
+          then signal net_stacq_error_;
+
+000464  aa   000003 7360 00	qls  	3
+000465  aa  6 00044 3701 20	epp4 	pr6|36,*
+000466  ia  4 00006 3735 06	epp7 	pr4|6,ql		handler_data.ncp_indx
+000467  aa  6 00174 6535 00	spri7	pr6|124
+000470  aa  6 00174 3521 00	epp2 	pr6|124
+000471  aa  6 00164 2521 00	spri2	pr6|116
+000472  aa   777307 3520 04	epp2 	-313,ic		000001 = 777777777777
+000473  aa  6 00166 2521 00	spri2	pr6|118
+000474  aa   777307 3520 04	epp2 	-313,ic		000003 = 000000000000
+000475  aa  6 00170 2521 00	spri2	pr6|120
+000476  aa  6 00161 3521 00	epp2 	pr6|113
+000477  aa  6 00172 2521 00	spri2	pr6|122
+000500  aa  6 00162 6211 00	eax1 	pr6|114
+000501  aa   020000 4310 07	fld  	8192,dl
+000502  la  4 00540 3521 20	epp2 	pr4|352,*		stacq
+000503  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000504  aa  6 00161 2351 00	lda  	pr6|113
+000505  aa   400000 3150 03	cana 	131072,du
+000506  aa   000004 6010 04	tnz  	4,ic		000512
+000507  aa   000020 7260 07	lxl6 	16,dl
+000510  aa   777304 3520 04	epp2 	-316,ic		000014 = 156145164137
+000511  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+						STATEMENT 1 ON LINE 201
+          count_of_handler_data_slots_used = count_of_handler_data_slots_used - 1;
+
+000512  aa   000001 3360 07	lcq  	1,dl
+000513  aa  6 00044 3701 20	epp4 	pr6|36,*
+000514  ia  4 00010 0561 00	asq  	pr4|8		count_of_handler_data_slots_used
+						STATEMENT 1 ON LINE 203
+          call disallow_network_signals (arg_ncp_indx, (0));
+
+000515  aa  6 00161 4501 00	stz  	pr6|113
+000516  aa   000434 3520 04	epp2 	284,ic		001152 = 000004000000
+000517  aa   000204 6700 04	tsp4 	132,ic		000723
+						STATEMENT 1 ON LINE 205
+          call hcs_$set_ips_mask (previous_ips_mask, (""b));
+
+000520  aa   000000 2350 07	lda  	0,dl
+000521  aa  6 00161 7551 00	sta  	pr6|113
+000522  aa  6 00102 3521 00	epp2 	pr6|66		previous_ips_mask
+000523  aa  6 00152 2521 00	spri2	pr6|106
+000524  aa  6 00161 3521 00	epp2 	pr6|113
+000525  aa  6 00154 2521 00	spri2	pr6|108
+000526  aa  6 00150 6211 00	eax1 	pr6|104
+000527  aa   010000 4310 07	fld  	4096,dl
+000530  aa  6 00044 3701 20	epp4 	pr6|36,*
+000531  la  4 00522 3521 20	epp2 	pr4|338,*		hcs_$set_ips_mask
+000532  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 207
+          return;
+
+000533  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO neti_signal_handler                                STATEMENT 1 ON LINE 211
+neti_signal_handler:
+          entry (P_mc_ptr, P_condition_name, P_info_ptr, P_crawlout_ptr, P_continue_switch);
+
+000534  at     000005000005
+000535  tt     000006000005
+000536  tt     000005000007
+000537  ta     000534000000
+000540  da     000176300000
+000541  aa   000320 6270 00	eax7 	208
+000542  aa  7 00034 3521 20	epp2 	pr7|28,*
+000543  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000544  aa     000012000000
+000545  aa     000000000000
+000546  aa  0 01372 7001 00	tsx0 	pr0|762		set_support
+000547  aa  6 00042 3735 20	epp7 	pr6|34,*
+000550  aa  7 00002 2361 20	ldq  	pr7|2,*
+000551  aa   000002 6040 04	tmi  	2,ic		000553
+000552  aa   777777 3760 07	anq  	262143,dl
+000553  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000554  aa  6 00176 7561 00	stq  	pr6|126
+						STATEMENT 1 ON LINE 214
+          do while (network_signal_received (arg_ncp_indx, (0)));
+
+000555  aa   000000 0110 03	nop  	0,du
+000556  aa  6 00161 4501 00	stz  	pr6|113
+000557  aa   000363 3520 04	epp2 	243,ic		001142 = 000006000000
+000560  aa   000203 6700 04	tsp4 	131,ic		000763
+000561  aa  6 00160 2351 00	lda  	pr6|112
+000562  aa   400000 3150 03	cana 	131072,du
+000563  aa   000063 6000 04	tze  	51,ic		000646
+						STATEMENT 1 ON LINE 215
+               do indx = lbound (handler_data, 1) by 1 to hbound (handler_data, 1)
+                         while (handler_data (indx).ncp_indx ^= arg_ncp_indx);
+
+000564  aa   000001 2360 07	ldq  	1,dl
+000565  aa  6 00100 7561 00	stq  	pr6|64		indx
+000566  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000567  aa   000050 1160 07	cmpq 	40,dl
+000570  aa   000010 6054 04	tpnz 	8,ic		000600
+000571  aa   000003 7360 00	qls  	3
+000572  aa  6 00044 3701 20	epp4 	pr6|36,*
+000573  ia  4 00006 2351 06	lda  	pr4|6,ql		handler_data.ncp_indx
+000574  aa  6 00101 1151 00	cmpa 	pr6|65		arg_ncp_indx
+000575  aa   000003 6000 04	tze  	3,ic		000600
+						STATEMENT 1 ON LINE 217
+                    end;
+
+000576  aa  6 00100 0541 00	aos  	pr6|64		indx
+000577  aa   777767 7100 04	tra  	-9,ic		000566
+						STATEMENT 1 ON LINE 219
+               if indx <= hbound (handler_data, 1)
+               then do;
+
+000600  aa  6 00100 2361 00	ldq  	pr6|64		indx
+000601  aa   000050 1160 07	cmpq 	40,dl
+000602  aa   777754 6054 04	tpnz 	-20,ic		000556
+						STATEMENT 1 ON LINE 221
+                    arg_signal_handler = handler_data (indx).signal_procedure;
+
+000603  aa   000003 7360 00	qls  	3
+000604  aa  6 00044 3701 20	epp4 	pr6|36,*
+000605  ia  4 00010 3521 26	epp2 	pr4|8,ql*		handler_data.signal_procedure
+000606  aa  6 00106 2521 00	spri2	pr6|70		arg_signal_handler
+000607  ia  4 00012 3521 26	epp2 	pr4|10,ql*	handler_data.signal_procedure
+000610  aa  6 00110 2521 00	spri2	pr6|72		arg_signal_handler
+						STATEMENT 1 ON LINE 222
+                    call arg_signal_handler (P_mc_ptr, P_condition_name, (handler_data (indx).data_ptr), P_crawlout_ptr, ("0"b));
+
+000611  ia  4 00004 3735 26	epp7 	pr4|4,ql*		handler_data.data_ptr
+000612  aa  6 00174 6535 00	spri7	pr6|124
+000613  aa   000000 2350 07	lda  	0,dl
+000614  aa  6 00160 7551 00	sta  	pr6|112
+000615  aa  6 00032 3715 20	epp5 	pr6|26,*
+000616  aa  5 00002 3521 20	epp2 	pr5|2,*		P_mc_ptr
+000617  aa  6 00202 2521 00	spri2	pr6|130
+000620  aa  5 00004 3521 20	epp2 	pr5|4,*		P_condition_name
+000621  aa  6 00204 2521 00	spri2	pr6|132
+000622  aa  6 00174 3521 00	epp2 	pr6|124
+000623  aa  6 00206 2521 00	spri2	pr6|134
+000624  aa  5 00010 3521 20	epp2 	pr5|8,*		P_crawlout_ptr
+000625  aa  6 00210 2521 00	spri2	pr6|136
+000626  aa  6 00160 3521 00	epp2 	pr6|112
+000627  aa  6 00212 2521 00	spri2	pr6|138
+000630  aa   777155 3520 04	epp2 	-403,ic		000005 = 464000000000
+000631  aa  6 00216 2521 00	spri2	pr6|142
+000632  aa  6 00222 2521 00	spri2	pr6|146
+000633  aa  6 00224 2521 00	spri2	pr6|148
+000634  aa  6 00042 3535 20	epp3 	pr6|34,*
+000635  aa  3 00002 3521 20	epp2 	pr3|2,*
+000636  aa  6 00220 2521 00	spri2	pr6|144
+000637  aa   777150 3520 04	epp2 	-408,ic		000007 = 514000000001
+000640  aa  6 00226 2521 00	spri2	pr6|150
+000641  aa  6 00200 6211 00	eax1 	pr6|128
+000642  aa   024000 4310 07	fld  	10240,dl
+000643  aa  6 00106 3521 00	epp2 	pr6|70		arg_signal_handler
+000644  aa  0 00616 7001 00	tsx0 	pr0|398		call_var_desc
+						STATEMENT 1 ON LINE 223
+                    end;
+
+						STATEMENT 1 ON LINE 224
+               end;
+
+000645  aa   777711 7100 04	tra  	-55,ic		000556
+						STATEMENT 1 ON LINE 226
+          return;
+
+000646  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 342
+end;
+
+BEGIN PROCEDURE allow_network_signals
+ENTRY TO allow_network_signals                              STATEMENT 1 ON LINE 230
+allow_network_signals:
+          procedure (p_ncp_indx_of_pin, p_err_code);
+
+000647  aa  6 00122 6501 00	spri4	pr6|82
+000650  aa  6 00124 2521 00	spri2	pr6|84
+000651  aa   000001 2360 07	ldq  	1,dl
+000652  aa  6 00141 7561 00	stq  	pr6|97
+						STATEMENT 1 ON LINE 251
+          if signal_notify_channel = 0
+          then do;
+
+000653  aa  6 00044 3701 20	epp4 	pr6|36,*
+000654  ia  4 00012 2371 00	ldaq 	pr4|10		signal_notify_channel
+000655  aa   000021 6010 04	tnz  	17,ic		000676
+						STATEMENT 1 ON LINE 253
+               call setup_environment (p_err_code);
+
+000656  aa  2 00004 3521 20	epp2 	pr2|4,*		p_err_code
+000657  aa  6 00232 2521 00	spri2	pr6|154
+000660  aa  6 00230 3521 00	epp2 	pr6|152
+000661  aa   004000 4310 07	fld  	2048,dl
+000662  aa  2 00000 7571 00	staq 	pr2|0
+000663  aa   000166 6700 04	tsp4 	118,ic		001051
+						STATEMENT 1 ON LINE 254
+               if p_err_code ^= 0
+               then return;
+
+000664  aa  6 00124 3735 20	epp7 	pr6|84,*
+000665  aa  7 00004 2361 20	ldq  	pr7|4,*		p_err_code
+000666  aa   000010 6000 04	tze  	8,ic		000676
+000667  aa  6 00141 2361 00	ldq  	pr6|97
+000670  aa   000005 6010 04	tnz  	5,ic		000675
+000671  aa   000027 7260 07	lxl6 	23,dl
+000672  aa   777126 3520 04	epp2 	-426,ic		000020 = 162145164165
+000673  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+000674  aa  6 00122 6101 00	rtcd 	pr6|82
+000675  aa  6 00122 6101 00	rtcd 	pr6|82
+						STATEMENT 1 ON LINE 256
+               end;
+
+						STATEMENT 1 ON LINE 258
+          call ncp_$enable_interrupts ((p_ncp_indx_of_pin), signal_notify_channel, p_err_code);
+
+000676  aa  6 00124 3735 20	epp7 	pr6|84,*
+000677  aa  7 00002 2351 20	lda  	pr7|2,*		p_ncp_indx_of_pin
+000700  aa  6 00236 7551 00	sta  	pr6|158
+000701  aa  6 00236 3521 00	epp2 	pr6|158
+000702  aa  6 00242 2521 00	spri2	pr6|162
+000703  aa  6 00044 3701 20	epp4 	pr6|36,*
+000704  ia  4 00012 3521 00	epp2 	pr4|10		signal_notify_channel
+000705  aa  6 00244 2521 00	spri2	pr6|164
+000706  aa  7 00004 3521 20	epp2 	pr7|4,*		p_err_code
+000707  aa  6 00246 2521 00	spri2	pr6|166
+000710  aa  6 00240 6211 00	eax1 	pr6|160
+000711  aa   014000 4310 07	fld  	6144,dl
+000712  la  4 00534 3521 20	epp2 	pr4|348,*		ncp_$enable_interrupts
+000713  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 260
+          return;
+
+000714  aa  6 00141 2361 00	ldq  	pr6|97
+000715  aa   000005 6010 04	tnz  	5,ic		000722
+000716  aa   000027 7260 07	lxl6 	23,dl
+000717  aa   777101 3520 04	epp2 	-447,ic		000020 = 162145164165
+000720  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+000721  aa  6 00122 6101 00	rtcd 	pr6|82
+000722  aa  6 00122 6101 00	rtcd 	pr6|82
+ENTRY TO disallow_network_signals                           STATEMENT 1 ON LINE 264
+disallow_network_signals:
+          entry (p_ncp_indx_of_pin, p_err_code);
+
+000723  aa  6 00122 6501 00	spri4	pr6|82
+000724  aa  6 00124 2521 00	spri2	pr6|84
+000725  aa   000001 2360 07	ldq  	1,dl
+000726  aa  6 00141 7561 00	stq  	pr6|97
+						STATEMENT 1 ON LINE 267
+          call ncp_$disable_interrupts ((p_ncp_indx_of_pin), (0));
+
+000727  aa  6 00124 3735 20	epp7 	pr6|84,*
+000730  aa  7 00002 2351 20	lda  	pr7|2,*		p_ncp_indx_of_pin
+000731  aa  6 00236 7551 00	sta  	pr6|158
+000732  aa  6 00237 4501 00	stz  	pr6|159
+000733  aa  6 00236 3521 00	epp2 	pr6|158
+000734  aa  6 00232 2521 00	spri2	pr6|154
+000735  aa  6 00237 3521 00	epp2 	pr6|159
+000736  aa  6 00234 2521 00	spri2	pr6|156
+000737  aa  6 00230 6211 00	eax1 	pr6|152
+000740  aa   010000 4310 07	fld  	4096,dl
+000741  aa  6 00044 3701 20	epp4 	pr6|36,*
+000742  la  4 00532 3521 20	epp2 	pr4|346,*		ncp_$disable_interrupts
+000743  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 269
+          if count_of_handler_data_slots_used = 0
+          then call remove_environment ((0));
+
+000744  aa  6 00044 3701 20	epp4 	pr6|36,*
+000745  ia  4 00010 2361 00	ldq  	pr4|8		count_of_handler_data_slots_used
+000746  aa   000004 6010 04	tnz  	4,ic		000752
+000747  aa  6 00237 4501 00	stz  	pr6|159
+000750  aa   000166 3520 04	epp2 	118,ic		001136 = 000002000000
+000751  aa   000140 6700 04	tsp4 	96,ic		001111
+						STATEMENT 1 ON LINE 272
+          p_err_code = 0;
+
+000752  aa  6 00124 3735 20	epp7 	pr6|84,*
+000753  aa  7 00004 4501 20	stz  	pr7|4,*		p_err_code
+						STATEMENT 1 ON LINE 274
+          return;
+
+000754  aa  6 00141 2361 00	ldq  	pr6|97
+000755  aa   000005 6010 04	tnz  	5,ic		000762
+000756  aa   000027 7260 07	lxl6 	23,dl
+000757  aa   777041 3520 04	epp2 	-479,ic		000020 = 162145164165
+000760  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+000761  aa  6 00122 6101 00	rtcd 	pr6|82
+000762  aa  6 00122 6101 00	rtcd 	pr6|82
+ENTRY TO network_signal_received                            STATEMENT 1 ON LINE 278
+network_signal_received:
+          entry (p_ncp_indx_of_pin, p_err_code) returns (bit (1) aligned);
+
+000763  aa  6 00122 6501 00	spri4	pr6|82
+000764  aa  6 00124 2521 00	spri2	pr6|84
+000765  aa  6 00141 4501 00	stz  	pr6|97
+						STATEMENT 1 ON LINE 281
+          call ipc_$read_ev_chn (signal_notify_channel, valid_event, addr (event_message), p_err_code);
+
+000766  aa  6 00132 3735 00	epp7 	pr6|90		event_message
+000767  aa  6 00250 6535 00	spri7	pr6|168
+000770  aa  6 00044 3701 20	epp4 	pr6|36,*
+000771  ia  4 00012 3521 00	epp2 	pr4|10		signal_notify_channel
+000772  aa  6 00254 2521 00	spri2	pr6|172
+000773  aa  6 00130 3521 00	epp2 	pr6|88		valid_event
+000774  aa  6 00256 2521 00	spri2	pr6|174
+000775  aa  6 00250 3521 00	epp2 	pr6|168
+000776  aa  6 00260 2521 00	spri2	pr6|176
+000777  aa  6 00124 3715 20	epp5 	pr6|84,*
+001000  aa  5 00004 3521 20	epp2 	pr5|4,*		p_err_code
+001001  aa  6 00262 2521 00	spri2	pr6|178
+001002  aa  6 00252 6211 00	eax1 	pr6|170
+001003  aa   020000 4310 07	fld  	8192,dl
+001004  la  4 00530 3521 20	epp2 	pr4|344,*		ipc_$read_ev_chn
+001005  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 282
+          if p_err_code ^= 0
+          then do;
+
+001006  aa  6 00124 3735 20	epp7 	pr6|84,*
+001007  aa  7 00004 2361 20	ldq  	pr7|4,*		p_err_code
+001010  aa   000014 6000 04	tze  	12,ic		001024
+						STATEMENT 1 ON LINE 284
+               signal_notify_channel = 0;
+
+001011  aa   777001 2370 04	ldaq 	-511,ic		000012 = 000000000000 000000000000
+001012  aa  6 00044 3701 20	epp4 	pr6|36,*
+001013  ia  4 00012 7571 00	staq 	pr4|10		signal_notify_channel
+						STATEMENT 1 ON LINE 285
+               return ("0"b);
+
+001014  aa  6 00141 2361 00	ldq  	pr6|97
+001015  aa   000003 6010 04	tnz  	3,ic		001020
+001016  aa  7 00006 4501 20	stz  	pr7|6,*
+001017  aa  6 00122 6101 00	rtcd 	pr6|82
+001020  aa   000027 7260 07	lxl6 	23,dl
+001021  aa   776777 3520 04	epp2 	-513,ic		000020 = 162145164165
+001022  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+001023  aa  6 00122 6101 00	rtcd 	pr6|82
+						STATEMENT 1 ON LINE 286
+               end;
+
+						STATEMENT 1 ON LINE 288
+          if valid_event = 0
+          then return ("0"b);
+
+001024  aa  6 00130 2361 00	ldq  	pr6|88		valid_event
+001025  aa   000011 6010 04	tnz  	9,ic		001036
+001026  aa  6 00141 2361 00	ldq  	pr6|97
+001027  aa   000003 6010 04	tnz  	3,ic		001032
+001030  aa  7 00006 4501 20	stz  	pr7|6,*
+001031  aa  6 00122 6101 00	rtcd 	pr6|82
+001032  aa   000027 7260 07	lxl6 	23,dl
+001033  aa   776765 3520 04	epp2 	-523,ic		000020 = 162145164165
+001034  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+001035  aa  6 00122 6101 00	rtcd 	pr6|82
+						STATEMENT 1 ON LINE 291
+          p_ncp_indx_of_pin = substr (event_message.message, 37, 36);
+
+001036  aa  6 00135 2351 00	lda  	pr6|93		event_message.message
+001037  aa  7 00002 7551 20	sta  	pr7|2,*		p_ncp_indx_of_pin
+						STATEMENT 1 ON LINE 293
+          return ("1"b);
+
+001040  aa  6 00141 2361 00	ldq  	pr6|97
+001041  aa   000004 6010 04	tnz  	4,ic		001045
+001042  aa   400000 2350 03	lda  	131072,du
+001043  aa  7 00006 7551 20	sta  	pr7|6,*
+001044  aa  6 00122 6101 00	rtcd 	pr6|82
+001045  aa   000027 7260 07	lxl6 	23,dl
+001046  aa   776752 3520 04	epp2 	-534,ic		000020 = 162145164165
+001047  aa  0 00716 7001 00	tsx0 	pr0|462		signal
+001050  aa  6 00122 6101 00	rtcd 	pr6|82
+						STATEMENT 1 ON LINE 337
+end;
+
+BEGIN PROCEDURE setup_environment
+ENTRY TO setup_environment                                  STATEMENT 1 ON LINE 297
+setup_environment:
+          procedure (p_err_code);
+
+001051  aa  6 00142 6501 00	spri4	pr6|98
+001052  aa  6 00144 2521 00	spri2	pr6|100
+						STATEMENT 1 ON LINE 312
+          call ipc_$create_ev_chn (signal_notify_channel, p_err_code);
+
+001053  aa  6 00044 3701 20	epp4 	pr6|36,*
+001054  ia  4 00012 3521 00	epp2 	pr4|10		signal_notify_channel
+001055  aa  6 00266 2521 00	spri2	pr6|182
+001056  aa  6 00144 3735 20	epp7 	pr6|100,*
+001057  aa  7 00002 3521 20	epp2 	pr7|2,*		p_err_code
+001060  aa  6 00270 2521 00	spri2	pr6|184
+001061  aa  6 00264 6211 00	eax1 	pr6|180
+001062  aa   010000 4310 07	fld  	4096,dl
+001063  la  4 00524 3521 20	epp2 	pr4|340,*		ipc_$create_ev_chn
+001064  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 313
+          if p_err_code ^= 0
+          then return;
+
+001065  aa  6 00144 3735 20	epp7 	pr6|100,*
+001066  aa  7 00002 2361 20	ldq  	pr7|2,*		p_err_code
+001067  aa   000002 6000 04	tze  	2,ic		001071
+001070  aa  6 00142 6101 00	rtcd 	pr6|98
+						STATEMENT 1 ON LINE 316
+          call sct_manager_$set (neti_sct_index, neti_signal_handler, p_err_code);
+
+001071  aa   777450 3520 04	epp2 	-216,ic		000541 = 000320627000
+001072  aa  6 00264 2521 00	spri2	pr6|180		cp.141
+001073  aa   000041 2370 04	ldaq 	33,ic		001134 = 077777000043 000001000000
+001074  aa  6 00266 7571 00	staq 	pr6|182		cp.141
+001075  aa   776703 3520 04	epp2 	-573,ic		000000 = 000000000102
+001076  aa  6 00274 2521 00	spri2	pr6|188
+001077  aa  6 00264 3521 00	epp2 	pr6|180		cp.141
+001100  aa  6 00276 2521 00	spri2	pr6|190
+001101  aa  7 00002 3521 20	epp2 	pr7|2,*		p_err_code
+001102  aa  6 00300 2521 00	spri2	pr6|192
+001103  aa  6 00272 6211 00	eax1 	pr6|186
+001104  aa   014000 4310 07	fld  	6144,dl
+001105  aa  6 00044 3701 20	epp4 	pr6|36,*
+001106  la  4 00536 3521 20	epp2 	pr4|350,*		sct_manager_$set
+001107  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 318
+          return;
+
+001110  aa  6 00142 6101 00	rtcd 	pr6|98
+ENTRY TO remove_environment                                 STATEMENT 1 ON LINE 322
+remove_environment:
+          entry (p_err_code);
+
+001111  aa  6 00142 6501 00	spri4	pr6|98
+001112  aa  6 00144 2521 00	spri2	pr6|100
+						STATEMENT 1 ON LINE 325
+          p_err_code = 0;
+
+001113  aa  6 00144 3735 20	epp7 	pr6|100,*
+001114  aa  7 00002 4501 20	stz  	pr7|2,*		p_err_code
+						STATEMENT 1 ON LINE 327
+          call ipc_$delete_ev_chn (signal_notify_channel, (0));
+
+001115  aa  6 00302 4501 00	stz  	pr6|194
+001116  aa  6 00044 3701 20	epp4 	pr6|36,*
+001117  ia  4 00012 3521 00	epp2 	pr4|10		signal_notify_channel
+001120  aa  6 00266 2521 00	spri2	pr6|182
+001121  aa  6 00302 3521 00	epp2 	pr6|194
+001122  aa  6 00270 2521 00	spri2	pr6|184
+001123  aa  6 00264 6211 00	eax1 	pr6|180
+001124  aa   010000 4310 07	fld  	4096,dl
+001125  la  4 00526 3521 20	epp2 	pr4|342,*		ipc_$delete_ev_chn
+001126  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 329
+          signal_notify_channel = 0;
+
+001127  aa   776663 2370 04	ldaq 	-589,ic		000012 = 000000000000 000000000000
+001130  aa  6 00044 3701 20	epp4 	pr6|36,*
+001131  ia  4 00012 7571 00	staq 	pr4|10		signal_notify_channel
+						STATEMENT 1 ON LINE 331
+          return;
+
+001132  aa  6 00142 6101 00	rtcd 	pr6|98
+						STATEMENT 1 ON LINE 333
+end;
+
+  END PROCEDURE setup_environment
+  END PROCEDURE allow_network_signals
+  END PROCEDURE net_signal_handler_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,834 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>ips_.alm                                                                                                                                             
+ASSEMBLED ON:	11/11/89  0953.7 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " HISTORY COMMENTS:
+                                    13  "  1) change(87-09-03,GDixon), approve(87-09-10,MECR0006),
+                                    14  "     audit(87-09-30,Farley), install(87-09-10,MR12.1-1104):
+                                    15  "      A) Change $reset_ips_mask to only reset the mask if the control bit
+                                    16  "         is on in the incoming mask.  Otherwise, it will only return the
+                                    17  "         current mask value.
+                                    18  "  2) change(87-10-07,GDixon), approve(87-10-07,MCR7770),
+                                    19  "     audit(87-11-02,Farley), install(87-11-30,MR12.2-1004):
+                                    20  "      A) Formally install changes covered by MECR0006 (change 1 above).
+                                    21  "                                                      END HISTORY COMMENTS
+                                    22  
+                                    23  " Name:  ips_
+                                    24  " 
+                                    25  "      The procedure "ips_" controls the enabling and disabling of
+                                    26  " interprocess signal (IPS) interrupts.  Each ring of each process
+                                    27  " has an IPS mask and an automatic IPS mask stored in the "pds".
+                                    28  " Individual bits of the mask words correspond to specific IPS
+                                    29  " interrupts.  The correspondence is defined by the procedure
+                                    30  " "create_ips_mask_".  The following "ips_" entries inspect or
+                                    31  " modify the IPS mask or the automatic IPS mask of the calling
+                                    32  " process's current validation level.  Entries that change a mask
+                                    33  " return the former value of the mask.  The entries are all
+                                    34  " accessible via the hardcore gate "hcs_".
+                                    35  " 
+                                    36  "      The last (thirty-sixth) bit of an IPS mask does not
+                                    37  " correspond to an interrupt, but is instead a control bit.  The
+                                    38  " control bit of each IPS mask and each automatic IPS mask stored
+                                    39  " in the "pds" is always zero.  On mask values input to procedure
+                                    40  " "ips_", the control bit is ignored.  On masks returned from
+                                    41  " "ips_", the control bit is set to either "0"b or "1"b, as
+                                    42  " specified in the individual entry descriptions below, to notify
+                                    43  " the user that the requested action has been performed.  No
+                                    44  " process interrupts can occur in the time interval between the
+                                    45  " requested mask modification and the return of the old mask and
+                                    46  " control bit.  Hence, each call on an "ips_" entry behaves as an
+                                    47  " atomic operation.
+                                    48  " 
+                                    49  " 
+                                    50  " 
+                                    51  " Entry:  ips_$get_ips_mask
+                                    52  " 
+                                    53  "      This entry returns the value of the current IPS mask without
+                                    54  " modifying it.  The control bit is returned as "0"b.
+                                    55  " 
+                                    56  " Usage:
+                                    57  " 
+                                    58  " dcl ips_$get_ips_mask entry(bit(36)aligned);
+                                    59  " 
+                                    60  " call ips_$get_ips_mask(oldmask);
+                                    61  " 
+                                    62  " 1) oldmask          is the current value of the IPS mask, with a
+                                    63  "                     control bit of "0"b (output).
+                                    64  " 
+                                    65  " 
+                                    66  " 
+                                    67  " Entry:  ips_$set_ips_mask
+                                    68  " 
+                                    69  "      This entry replaces the entire IPS mask with a supplied
+                                    70  " value and returns the previous value of the mask with a control
+                                    71  " bit of "1"b.
+                                    72  " 
+                                    73  " Usage:
+                                    74  " 
+                                    75  " dcl ips_$set_ips_mask entry(bit(36)aligned,bit(36)aligned);
+                                    76  " 
+                                    77  " call ips_$set_ips_mask(mask,oldmask);
+                                    78  " 
+                                    79  " 1) mask             is the new value to replace the IPS mask
+                                    80  "                     (input).
+                                    81  " 
+                                    82  " 2) oldmask          is the former value of the IPS mask, with a
+                                    83  "                     control bit of "1"b (output).
+                                    84  " 
+                                    85  " 
+                                    86  " 
+                                    87  " Entry:  ips_$reset_ips_mask
+                                    88  " 
+                                    89  "      This entry is exactly the same as "ips_$set_ips_mask" except
+                                    90  " that the control bit in the returned former mask is "0"b.  These
+                                    91  " two entries can be used to bracket sections of critical code
+                                    92  " during which interrupts must be masked.  The control bit then
+                                    93  " serves as rigorous identification of whether control is in a
+                                    94  " critical section.
+                                    95  " 
+                                    96  " Usage:
+                                    97  " 
+                                    98  " dcl ips_$reset_ips_mask entry(bit(36)aligned,bit(36)aligned);
+                                    99  " 
+                                   100  " call ips_$reset_ips_mask(mask,oldmask);
+                                   101  " 
+                                   102  " 1) mask             is the new value to replace the IPS mask
+                                   103  "                     (input).
+                                   104  " 
+                                   105  " 2) oldmask          is the former value of the IPS mask, with a
+                                   106  "                     control bit of "0"b (output).
+                                   107  " 
+                                   108  " 
+                                   109  " 
+                                   110  " Entry:  ips_$unmask_ips
+                                   111  " 
+                                   112  "      This entry disables specified IPS interrupts.  Bits in the
+                                   113  " supplied mask value cause corresponding bits of the IPS mask to
+                                   114  " be reset.  The former value of the IPS mask is returned with a
+                                   115  " control bit of "1"b.  Warning: for historical reasons, this entry
+                                   116  " is misnamed (it masks rather than unmasks).
+                                   117  " 
+                                   118  " Usage:
+                                   119  " 
+                                   120  " dcl ips_$unmask_ips entry(bit(36)aligned,bit(36)aligned);
+                                   121  " 
+                                   122  " call ips_$unmask_ips(mask,oldmask);
+                                   123  " 
+                                   124  " 1) mask             for each bit on in this word, the
+                                   125  "                     corresponding bit in the IPS mask is turned
+                                   126  "                     off--i.e., the corresponding IPS interrupt is
+                                   127  "                     disabled (input).
+                                   128  " 
+                                   129  " 2) oldmask          is the former value of the IPS mask, with a
+                                   130  "                     control bit of "1"b (output).
+                                   131  " 
+                                   132  " 
+                                   133  " 
+                                   134  " Entry:  ips_$mask_ips
+                                   135  " 
+                                   136  "      This entry enables specified IPS interrupts.  Bits in the
+                                   137  " supplied mask value cause corresponding bits of the IPS mask to
+                                   138  " be set.  The former value of the IPS mask is returned with a
+                                   139  " control bit of "0"b.  Entry "ips_$unmask_ips" and this entry can
+                                   140  " be used to bracket sections of critical code during with certain
+                                   141  " interrupts must be masked.  The control bit then serves as
+                                   142  " rigorous identification of whether control is in a critical
+                                   143  " section.  Warning: for historical reasons, this entry is misnamed
+                                   144  " (it unmasks rather than masks).
+                                   145  " 
+                                   146  " Usage:
+                                   147  " 
+                                   148  " dcl ips_$mask_ips entry(bit(36)aligned,bit(36)aligned);
+                                   149  " 
+                                   150  " call ips_$mask_ips(mask,oldmask);
+                                   151  " 
+                                   152  " 1) mask             for each bit on in this word, the
+                                   153  "                     corresponding bit in the IPS mask is turned
+                                   154  "                     on--i.e., the corresponding IPS interrupt is
+                                   155  "                     enabled (input).
+                                   156  " 
+                                   157  " 2) oldmask          is the former value of the IPS mask, with a
+                                   158  "                     control bit of "0"b (output).
+                                   159  " 
+                                   160  " 
+                                   161  " 
+                                   162  " Entry:  ips_$set_automatic_ips_mask
+                                   163  " 
+                                   164  "      This entry replaces the entire automatic IPS mask with a
+                                   165  " supplied value and returns the previous value of the mask with a
+                                   166  " control bit of "1"b.
+                                   167  " 
+                                   168  " Usage:
+                                   169  " 
+                                   170  " dcl ips_$set_automatic_ips_mask
+                                   171  " entry(bit(36)aligned,bit(36)aligned);
+                                   172  " 
+                                   173  " call ips_$set_automatic_ips_mask(mask,oldmask);
+                                   174  " 
+                                   175  " 1) mask             is the new value to replace the automatic IPS
+                                   176  "                     mask (input).
+                                   177  " 
+                                   178  " 2) oldmask          is the former value of the automatic IPS
+                                   179  "                     mask, with a control bit of "1"b (output).
+                                   180  "
+                                   181  "
+                                   182  "
+                                   183  "
+                                   184  "	Modified August 1981 by J. Bongiovanni for IPS signals to take
+                                   185  "		immediately when unmasked (or shortly thereafter)
+                                   186  "
+                                   187  
+                        000000     188  	entry	get_ips_mask		Inspect IPS mask without changing it.
+                        000005     189  	entry	set_ips_mask		Replace entire IPS mask.
+                        000015     190  	entry	reset_ips_mask		Replace entire IPS mask.
+                        000027     191  	entry	unmask_ips		Disable specific IPS interrupts.
+                        000035     192  	entry	mask_ips			Enable specific IPS interrupts.
+                        000043     193  	entry	set_automatic_ips_mask	Replace entire auto IPS mask.
+                                   194  "
+                                   195  "
+                                   196  "
+                                   197  " Entry:  ips_$get_ips_mask(oldmask)
+                                   198  "
+    000000                         199  get_ips_mask:
+    000000  4a  4 00012 7271 20    200  	lxl7	pds$validation_level	Validation level to X7.
+    000001  4a  4 00014 2361 20    201  	ldq	pds$ips_mask,7		Save old IPS mask in the Q.
+    000002  0a   000112 3760 00    202  	anq	=o777777777776		Make sure control bit is 0.
+    000003  aa  0 00002 7561 20    203  	stq	ap|2,*			Pass it back to caller.
+    000004  aa  7 00044 7101 20    204  	short_return			Return to caller.
+                                   205  "
+                                   206  "
+                                   207  "
+                                   208  " Entry:  ips_$set_ips_mask(mask,oldmask)
+                                   209  "
+    000005                         210  set_ips_mask:
+    000005  4a  4 00012 7271 20    211  	lxl7	pds$validation_level	Validation level to X7.
+    000006  4a  4 00014 2361 20    212  	ldq	pds$ips_mask,7		Save old IPS mask in the Q.
+    000007  aa  0 00002 2351 20    213  	lda	ap|2,*			Caller's desired new mask.
+    000010  0a   000112 3750 00    214  	ana	=o777777777776		Control bit must be off.
+    000011  4a  4 00014 7551 20    215  	sta	pds$ips_mask,7		Set new IPS mask.
+    000012  aa   000001 2760 07    216  ret1:	orq	=o1,dl			Set control bit 1 in old mask.
+    000013  aa  0 00004 7561 20    217  	stq	ap|4,*			Pass it back to caller.
+    000014  0a   000051 7100 00    218  	tra	check_ips_pending		Make pending, unmasked IPS take
+                                   219  "					And return to caller.
+                                   220  "
+                                   221  "
+                                   222  "
+                                   223  " Entry:  ips_$reset_ips_mask(mask,oldmask)
+                                   224  "
+    000015                         225  reset_ips_mask:
+    000015  4a  4 00012 7271 20    226  	lxl7	pds$validation_level	Validation level to X7.
+    000016  4a  4 00014 2361 20    227  	ldq	pds$ips_mask,7		Save old IPS mask in the Q.
+    000017  aa  0 00002 2351 20    228  	lda	ap|2,*			Caller's desired new mask.
+    000020  aa   000001 3150 07    229  	cana	1,dl			Check if control bit is on.
+    000021  0a   000024 6000 00    230  	tze	ret0			No, don't reset mask.
+    000022  0a   000112 3750 00    231  	ana	=o777777777776		Control bit must be off.
+    000023  4a  4 00014 7551 20    232  	sta	pds$ips_mask,7		Set new IPS mask.
+    000024  0a   000112 3760 00    233  ret0:	anq	=o777777777776		Set control bit 0 in old mask.
+    000025  aa  0 00004 7561 20    234  	stq	ap|4,*			Pass it back to caller.
+    000026  0a   000051 7100 00    235  	tra	check_ips_pending		Make pending, unmasked IPS take
+                                   236  "					And return to caller.
+                                   237  "
+                                   238  "
+                                   239  "
+                                   240  " Entry:  ips_$unmask_ips(mask,oldmask)
+                                   241  "
+    000027                         242  unmask_ips:
+    000027  4a  4 00012 7271 20    243  	lxl7	pds$validation_level	Validation level to X7.
+    000030  4a  4 00014 2361 20    244  	ldq	pds$ips_mask,7		Save old IPS mask in the Q.
+    000031  aa  0 00002 2351 20    245  	lda	ap|2,*			Get bits to be cleared.
+    000032  0a   000112 6750 00    246  	era	=o777777777776		Change bits to zeros for logical AND.
+    000033  4a  4 00014 3551 20    247  	ansa	pds$ips_mask,7		Clear selected bits of IPS mask.
+    000034  0a   000012 7100 00    248  	tra	ret1			Return old mask with control bit 1.
+                                   249  "
+                                   250  "
+                                   251  "
+                                   252  " Entry:  ips_$mask_ips(mask,oldmask)
+                                   253  "
+    000035                         254  mask_ips:
+    000035  4a  4 00012 7271 20    255  	lxl7	pds$validation_level	Validation level to X7.
+    000036  4a  4 00014 2361 20    256  	ldq	pds$ips_mask,7		Save old IPS mask in the Q.
+    000037  aa  0 00002 2351 20    257  	lda	ap|2,*			Get bits to be set.
+    000040  0a   000112 3750 00    258  	ana	=o777777777776		Control bit must remain off.
+    000041  4a  4 00014 2551 20    259  	orsa	pds$ips_mask,7		Set selected bits of IPS mask.
+    000042  0a   000024 7100 00    260  	tra	ret0			Return old mask with control bit 0.
+                                   261  "
+                                   262  "
+                                   263  "
+                                   264  " Entry:  ips_$set_automatic_ips_mask(mask,oldmask)
+                                   265  "
+    000043                         266  set_automatic_ips_mask:
+    000043  4a  4 00012 7271 20    267  	lxl7	pds$validation_level	Validation level to X7.
+    000044  4a  4 00016 2361 20    268  	ldq	pds$auto_mask,7		Save old auto IPS mask in the Q.
+    000045  aa  0 00002 2351 20    269  	lda	ap|2,*			Caller's desired new mask.
+    000046  0a   000112 3750 00    270  	ana	=o777777777776		Control bit must be off.
+    000047  4a  4 00016 7551 20    271  	sta	pds$auto_mask,7		Set new auto IPS mask.
+    000050  0a   000012 7100 00    272  	tra	ret1			Return old auto mask with control bit 1.
+                                   273  "
+                                   274  "
+                                   275  "
+                                   276  "
+                                   277  "	Internal procedure to check for pending IPS signals which are unmasked
+                                   278  "	as a result of this call.  If any are found, ring_alarm is called
+                                   279  "	to determine and set an appropriate value of the ring_alarm register
+                                   280  "	so that the recently unmasked IPS signal will take within a short
+                                   281  "	amount of time.
+                                   282  "
+                                   283  "	On entry, x7 = current validation level
+                                   284  "
+                                   285  "	This routine will exit to the caller of ips_
+                                   286  "
+                                   287  
+    000051                         288  check_ips_pending:
+    000051  4a  4 00020 3521 20    289  	eppbp	pds$apt_ptr,*		bp -> APTE for this process
+    000052  aa  2 00011 2351 00    290  	lda	bp|apte.ips_message		Get pending IPS signals
+    000053  4a  4 00014 3751 20    291  	ana	pds$ips_mask,7		Check for unmasked in ring of validation
+    000054  0a   000056 6010 00    292  	tnz	set_ring_alarm		Pending IPS found
+    000055  aa  7 00044 7101 20    293  	short_return			None found -- return to caller
+    000056                         294  set_ring_alarm:
+    000056  aa   000060 6270 00    295  	push			        "	For call out
+    000057  aa  7 00040 2721 20
+    000060  aa  6 00000 2541 00    296  	call	ring_alarm$reset
+    000061  0a   000114 3500 00
+    000062  4a  4 00010 3521 20
+    000063  aa  6 00040 7531 00
+    000064  aa  7 00036 6701 20
+    000065  aa  6 00000 1731 00
+    000066  aa  6 00040 0731 00
+    000067  aa  7 00042 7101 20    297  	return				Return to caller
+                                   298  "
+                                   299  	include	apte
+                                   1-1  "	BEGIN INCLUDE FILE apte.incl.alm
+                                   1-2  "
+                                   1-3  "
+                                   1-4  " HISTORY COMMENTS:
+                                   1-5  "  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+                                   1-6  "     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+                                   1-7  "     Added the ipc_r_offset, ipc_r_factor, and apad fields from the pl1
+                                   1-8  "     include file to support async event channel wakeups.
+                                   1-9  "                                                      END HISTORY COMMENTS
+                                  1-10  
+                        000000    1-11  	equ	apte.thread,0
+                        000000    1-12  	equ	apte.fp,0			"UPPER
+                        000000    1-13  	equ	apte.bp,0			"LOWER
+                                  1-14  
+                        000001    1-15  	equ	apte.flags,1
+                        000001    1-16  	equ	apte.sentinel,1
+                        400000    1-17  	bool	apte.mbz,400000		"DU
+                        200000    1-18  	bool	apte.wakeup_waiting,200000	"DU
+                        100000    1-19  	bool	apte.stop_pending,100000	"DU
+                        040000    1-20  	bool	apte.pre_empted,040000	"DU
+                        020000    1-21  	bool	apte.hproc,020000		"DU
+                        010000    1-22  	bool	apte.loaded,010000		"DU
+                        004000    1-23  	bool	apte.eligible,004000	"DU
+                        002000    1-24  	bool	apte.idle,002000		"DU
+                        001000    1-25  	bool	apte.interaction,001000	"DU
+                        000400    1-26  	bool	apte.pre_empt_pending,000400	"DU
+                        000200    1-27  	bool	apte.default_procs_required,000200 "DU
+                        000100    1-28  	bool	apte.realtime_burst,000100	"DU
+                        000040    1-29  	bool	apte.always_loaded,000040	"DU
+                        000020    1-30  	bool	apte.dbr_loaded,000020	"DU
+                        000010    1-31  	bool	apte.being_loaded,000010	"DU
+                        000004    1-32  	bool	apte.shared_stack_0,000004	"DU
+                        000002    1-33  	bool	apte.page_wait_flag,000002	"DU
+                        000001    1-34  	bool	apte.firstsw,000001		"DU
+                        000001    1-35  	equ	apte.state,1		"LOWER
+                                  1-36  
+                        000002    1-37  	equ	apte.page_faults,2
+                                  1-38  
+                        000003    1-39  	equ	apte.processid,3
+                                  1-40  
+                        000004    1-41  	equ	apte.te,4
+                                  1-42  
+                        000005    1-43  	equ	apte.ts,5
+                                  1-44  
+                        000006    1-45  	equ	apte.ti,6
+                                  1-46  
+                        000007    1-47  	equ	apte.timax,7
+                                  1-48  
+                        000010    1-49  	equ	apte.ipc_pointers,8
+                        000010    1-50  	equ	apte.event_thread,8		"UPPER
+                                  1-51  
+                        000011    1-52  	equ	apte.ips_message,9
+                                  1-53  
+                        000012    1-54  	equ	apte.asteps,10
+                        000012    1-55  	equ	apte.pds,10		"UPPER
+                        000012    1-56  	equ	apte.dseg,10		"LOWER
+                                  1-57  
+                        000013    1-58  	equ	apte.prds,11		"UPPER
+                        000013    1-59  	equ	apte.savex7,11		"LOWER
+                                  1-60  
+                        000014    1-61  	equ	apte.term_processid,12
+                                  1-62  
+                        000015    1-63  	equ	apte.lock_id,13
+                        000016    1-64  	equ	apte.time_used_clock,14
+                                  1-65  
+                        000020    1-66  	equ	apte.wait_event,16
+                                  1-67  
+                        000021    1-68  	equ	apte.wct_index,17		"UPPER
+                        000021    1-69  	equ	apte.flags2,17		"LOWER
+                        400000    1-70  	bool	apte.prior_sched,400000	"DL
+                        000023    1-71  	equ	apte.chans_offset,19
+                        374000    1-72  	bool	apte.special_chans,374000	"DL
+                        000021    1-73  	equ	apte.batch_word,17
+                        000010    1-74  	bool	apte.batch,000010		"DL
+                        000007    1-75  	bool	apte.pr_tag_mask,000007
+                                  1-76  
+                        000022    1-77  	equ	apte.state_change_time,18
+                                  1-78  
+                        000024    1-79  	equ	apte.alarm_event,20
+                                  1-80  
+                        000026    1-81  	equ	apte.alarm_time_thread,22	"UPPER
+                        000026    1-82  	equ	apte.alarm_time,22
+                                  1-83  
+                        000030    1-84  	equ	apte.term_channel,24
+                                  1-85  
+                        000032    1-86  	equ	apte.ws_size,26
+                                  1-87  
+                        000033    1-88  	equ	apte.temax,27
+                                  1-89  
+                        000034    1-90  	equ	apte.deadline,28
+                                  1-91  
+                        000036    1-92  	equ	apte.lock,30
+                                  1-93  
+                        000037    1-94  	equ	apte.cpu_monitor,31		units = 1/1024 sec
+                                  1-95  
+                        000040    1-96  	equ	apte.paging_measure,32
+                                  1-97  
+                        000042    1-98  	equ	apte.access_authorization,34 	"DOUBLE WORD
+                        400000    1-99  	bool	apte.no_ipc_check,400000	"DL
+                                 1-100  
+                        000044   1-101  	equ	apte.dbr,36
+                                 1-102  
+                        000046   1-103  	equ	apte.virtual_cpu_time,38
+                                 1-104  
+                        000050   1-105  	equ	apte.ittes_sent,40
+                        000051   1-106  	equ	apte.ittes_got,41
+                                 1-107  
+                        000052   1-108  	equ	apte.current_response_state,42	" DU
+                        000053   1-109  	equ	apte.number_processing,43
+                        000054   1-110  	equ	apte.last_response_state_time,44
+                        000056   1-111  	equ	apte.total_processing_time,46
+                        000060   1-112  	equ	apte.begin_interaction_vcpu,48
+                                 1-113  
+                        000062   1-114  	equ	apte.saved_temax,50
+                        000063   1-115  	equ	apte.procs_required,51
+                        776000   1-116  	bool	apte.procs_required_mask,776000	" DU
+                                 1-117  
+                        000064   1-118  	equ	apte.ipc_r_offset,52
+                        000065   1-119  	equ	apte.ipc_r_factor,53
+                        000066   1-120  	equ	apte.apad,54
+                                 1-121  
+                        000100   1-122  	equ	size_of_apt_entry,64
+                                 1-123  
+                                 1-124  "	MISC OLD DCLS.
+                                 1-125  
+                        000013   1-126  	equ	apte.le_shift,11
+                        000175   1-127  	bool	apte.timer_factor,175
+                                 1-128  
+                                 1-129  
+                                 1-130  "
+                                 1-131  "	END INCLUDE FILE apte.incl.alm
+                                 1-132  "
+                                   300  
+                                   301  	end
+ENTRY SEQUENCES
+     
+    000070  5a   000053 0000 00
+    000071  aa  7 00046 2721 20
+    000072  0a   000000 7100 00
+    000073  5a   000044 0000 00
+    000074  aa  7 00046 2721 20
+    000075  0a   000005 7100 00
+    000076  5a   000035 0000 00
+    000077  aa  7 00046 2721 20
+    000100  0a   000015 7100 00
+    000101  5a   000027 0000 00
+    000102  aa  7 00046 2721 20
+    000103  0a   000027 7100 00
+    000104  5a   000021 0000 00
+    000105  aa  7 00046 2721 20
+    000106  0a   000035 7100 00
+    000107  5a   000010 0000 00
+    000110  aa  7 00046 2721 20
+    000111  0a   000043 7100 00
+LITERALS
+     
+    000112  aa   777777 777776 
+    000114  aa   000000 000000 
+    000115  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000116  5a   000003 000000 
+    000117  5a   000071 600000 
+    000120  aa   000000 000000 
+    000121  55   000010 000002 
+    000122  5a   000002 400003 
+    000123  55   000006 000010 
+    000124  aa  004 151 160 163
+    000125  aa  137 000 000 000
+    000126  55   000021 000003 
+    000127  0a   000110 500000 
+    000130  55   000013 000003 
+    000131  aa  026 163 145 164         set_automatic_ips_mask
+    000132  aa  137 141 165 164
+    000133  aa  157 155 141 164
+    000134  aa  151 143 137 151
+    000135  aa  160 163 137 155
+    000136  aa  141 163 153 000
+    000137  55   000027 000010 
+    000140  0a   000105 500000 
+    000141  55   000024 000003 
+    000142  aa  010 155 141 163         mask_ips
+    000143  aa  153 137 151 160
+    000144  aa  163 000 000 000
+    000145  55   000035 000021 
+    000146  0a   000102 500000 
+    000147  55   000032 000003 
+    000150  aa  012 165 156 155         unmask_ips
+    000151  aa  141 163 153 137
+    000152  aa  151 160 163 000
+    000153  55   000044 000027 
+    000154  0a   000077 500000 
+    000155  55   000040 000003 
+    000156  aa  016 162 145 163         reset_ips_mask
+    000157  aa  145 164 137 151
+    000160  aa  160 163 137 155
+    000161  aa  141 163 153 000
+    000162  55   000053 000035 
+    000163  0a   000074 500000 
+    000164  55   000047 000003 
+    000165  aa  014 163 145 164         set_ips_mask
+    000166  aa  137 151 160 163
+    000167  aa  137 155 141 163
+    000170  aa  153 000 000 000
+    000171  55   000062 000044 
+    000172  0a   000071 500000 
+    000173  55   000056 000003 
+    000174  aa  014 147 145 164         get_ips_mask
+    000175  aa  137 151 160 163
+    000176  aa  137 155 141 163
+    000177  aa  153 000 000 000
+    000200  55   000002 000053 
+    000201  6a   000000 400002 
+    000202  55   000065 000003 
+    000203  aa  014 163 171 155         symbol_table
+    000204  aa  142 157 154 137
+    000205  aa  164 141 142 154
+    000206  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000207  aa   000000 000015 
+    000210  aa   000000 000000 
+    000211  aa   000000 000000 
+    000212  aa   000000 000000 
+    000213  5a   000053 000000 
+    000214  5a   000044 000000 
+    000215  aa   000000 000000 
+    000216  5a   000010 000000 
+    000217  5a   000035 000000 
+    000220  5a   000062 000000 
+    000221  5a   000021 000000 
+    000222  aa   000000 000000 
+    000223  5a   000027 000000 
+    000224  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000225  aa  007 141 160 164         apt_ptr
+    000226  aa  137 160 164 162
+    000227  aa  011 141 165 164         auto_mask
+    000230  aa  157 137 155 141
+    000231  aa  163 153 000 000
+    000232  aa  010 151 160 163         ips_mask
+    000233  aa  137 155 141 163
+    000234  aa  153 000 000 000
+    000235  aa  020 166 141 154         validation_level
+    000236  aa  151 144 141 164
+    000237  aa  151 157 156 137
+    000240  aa  154 145 166 145
+    000241  aa  154 000 000 000
+    000242  aa  003 160 144 163         pds
+    000243  aa  005 162 145 163         reset
+    000244  aa  145 164 000 000
+    000245  aa  012 162 151 156         ring_alarm
+    000246  aa  147 137 141 154
+    000247  aa  141 162 155 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000250  aa   000004 000000 
+    000251  55   000124 000107 
+    000252  aa   000004 000000 
+    000253  55   000124 000111 
+    000254  aa   000004 000000 
+    000255  55   000124 000114 
+    000256  aa   000004 000000 
+    000257  55   000124 000117 
+    000260  aa   000004 000000 
+    000261  55   000127 000125 
+    000262  aa   000001 000000 
+    000263  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000264  5a   000132 000000 
+    000265  5a   000134 000000 
+    000266  5a   000136 000000 
+    000267  5a   000140 000000 
+    000270  5a   000142 000000 
+    000271  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000116 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000022 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         ring_alarm|reset
+    000011  5a   000152 0000 00
+    000012  9a   777766 0000 46         pds|validation_level
+    000013  5a   000151 0000 00
+    000014  9a   777764 0000 46         pds|ips_mask
+    000015  5a   000150 0000 17
+    000016  9a   777762 0000 46         pds|auto_mask
+    000017  5a   000147 0000 17
+    000020  9a   777760 0000 46         pds|apt_ptr
+    000021  5a   000146 0000 20
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   257303 141653 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000164 
+    000020  aa   000000 000114 
+    000021  aa   000135 000130 
+    000022  aa   000155 000114 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000033 
+    000067  aa   175453 017132 
+    000070  aa   000000 117547 
+    000071  aa   174617 400000 
+    000072  aa   000105 000032 
+    000073  aa   147777 464062 
+    000074  aa   000000 115000 
+    000075  aa   507456 000000 
+    000076  aa   076163 160145          >spec>install>1110>ips_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061060 076151 
+    000103  aa   160163 137056 
+    000104  aa   141154 155040 
+    000105  aa   076154 144144          >ldd>include>apte.incl.alm
+    000106  aa   076151 156143 
+    000107  aa   154165 144145 
+    000110  aa   076141 160164 
+    000111  aa   145056 151156 
+    000112  aa   143154 056141 
+    000113  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          42    apte.access_authorization      apte:          98.
+          24    apte.alarm_event         apte:          79.
+          26    apte.alarm_time          apte:          82.
+          26    apte.alarm_time_thread   apte:          81.
+          40    apte.always_loaded       apte:          29.
+          66    apte.apad                apte:         120.
+          12    apte.asteps              apte:          54.
+          10    apte.batch               apte:          74.
+          21    apte.batch_word          apte:          73.
+          60    apte.begin_interaction_vcpu    apte:         112.
+          10    apte.being_loaded        apte:          31.
+           0    apte.bp                  apte:          13.
+          23    apte.chans_offset        apte:          71.
+          37    apte.cpu_monitor         apte:          94.
+          52    apte.current_response_state    apte:         108.
+          44    apte.dbr                 apte:         101.
+          20    apte.dbr_loaded          apte:          30.
+          34    apte.deadline            apte:          90.
+         200    apte.default_procs_required    apte:          27.
+          12    apte.dseg                apte:          56.
+        4000    apte.eligible            apte:          23.
+          10    apte.event_thread        apte:          50.
+           1    apte.firstsw             apte:          34.
+           1    apte.flags               apte:          15.
+          21    apte.flags2              apte:          69.
+           0    apte.fp                  apte:          12.
+       20000    apte.hproc               apte:          21.
+        2000    apte.idle                apte:          24.
+        1000    apte.interaction         apte:          25.
+          10    apte.ipc_pointers        apte:          49.
+          65    apte.ipc_r_factor        apte:         119.
+          64    apte.ipc_r_offset        apte:         118.
+          11    apte.ips_message         ips_:         290,
+                                         apte:          52.
+          51    apte.ittes_got           apte:         106.
+          50    apte.ittes_sent          apte:         105.
+          54    apte.last_response_state_time  apte:         110.
+          13    apte.le_shift            apte:         126.
+       10000    apte.loaded              apte:          22.
+          36    apte.lock                apte:          92.
+          15    apte.lock_id             apte:          63.
+      400000    apte.mbz                 apte:          17.
+      400000    apte.no_ipc_check        apte:          99.
+          53    apte.number_processing   apte:         109.
+           2    apte.page_faults         apte:          37.
+           2    apte.page_wait_flag      apte:          33.
+          40    apte.paging_measure      apte:          96.
+          12    apte.pds                 apte:          55.
+          13    apte.prds                apte:          58.
+       40000    apte.pre_empted          apte:          20.
+         400    apte.pre_empt_pending    apte:          26.
+      400000    apte.prior_sched         apte:          70.
+           3    apte.processid           apte:          39.
+          63    apte.procs_required      apte:         115.
+      776000    apte.procs_required_mask       apte:         116.
+           7    apte.pr_tag_mask         apte:          75.
+         100    apte.realtime_burst      apte:          28.
+          62    apte.saved_temax         apte:         114.
+          13    apte.savex7              apte:          59.
+           1    apte.sentinel            apte:          16.
+           4    apte.shared_stack_0      apte:          32.
+      374000    apte.special_chans       apte:          72.
+           1    apte.state               apte:          35.
+          22    apte.state_change_time   apte:          77.
+      100000    apte.stop_pending        apte:          19.
+           4    apte.te                  apte:          41.
+          33    apte.temax               apte:          88.
+          30    apte.term_channel        apte:          84.
+          14    apte.term_processid      apte:          61.
+           0    apte.thread              apte:          11.
+           6    apte.ti                  apte:          45.
+           7    apte.timax               apte:          47.
+         175    apte.timer_factor        apte:         127.
+          16    apte.time_used_clock     apte:          64.
+          56    apte.total_processing_time     apte:         111.
+           5    apte.ts                  apte:          43.
+          46    apte.virtual_cpu_time    apte:         103.
+          20    apte.wait_event          apte:          66.
+      200000    apte.wakeup_waiting      apte:          18.
+          21    apte.wct_index           apte:          68.
+          32    apte.ws_size             apte:          86.
+                apt_ptr                  ips_:         289.
+                auto_mask                ips_:         268,  271.
+          51    check_ips_pending        ips_:         218,  235,  288.
+           0    get_ips_mask             ips_:         188,  199.
+                ips_mask                 ips_:         201,  212,  215,  227,  232,  244,  247,  256,  259,  291.
+          35    mask_ips                 ips_:         192,  254.
+                pds                      ips_:         200,  201,  211,  212,  215,  226,  227,  232,  243,  244,  247,  255,
+                                                       256,  259,  267,  268,  271,  289,  291.
+                reset                    ips_:         296.
+          15    reset_ips_mask           ips_:         190,  225.
+          24    ret0                     ips_:         230,  233,  260.
+          12    ret1                     ips_:         216,  248,  272.
+                ring_alarm               ips_:         296.
+          43    set_automatic_ips_mask   ips_:         193,  266.
+           5    set_ips_mask             ips_:         189,  210.
+          56    set_ring_alarm           ips_:         292,  294.
+         100    size_of_apt_entry        apte:         122.
+          27    unmask_ips               ips_:         191,  242.
+                validation_level         ips_:         200,  211,  226,  243,  255,  267.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

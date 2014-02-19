@@ -1,0 +1,917 @@
+	COMPILATION LISTING OF SEGMENT vtoc_interrupt
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0943.7 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 	/*
+       14*
+       15*
+       16*			vtoc_interrupt (core, code)	
+       17*
+       18*
+       19*
+       20*
+       21*              The  "vtoc_interrupt"  procedure  is called upon completion of any
+       22*          64-word I/O operation. Its input arguments are the absolute address of
+       23*          the 64-word buffer involved in the operation  and  a  code  indicating
+       24*          whether or not the operation was successful.
+       25*
+       26*          If  the  operation was successful, the input argument code is zero. In
+       27*          this case the procedure aknowledges the successful I/O termination  by
+       28*          turning  the  out  of  service  switch  OFF  in  the  buffer descripor
+       29*          associated with the operation. In  addition,  it  notifies  the  event
+       30*          associated  with  this  particular buffer.  
+       31*          This  notification  takes place only if at least one process is waiting
+       32*          for the event.
+       33*
+       34*          All these actions are performed without any  lock  and  are  therefore
+       35*          completely asynchronous with the execution of the vtoc_man procedures.
+       36*
+       37*          If  the  operation was not successful, the input argument is non zero.
+       38*	The operation is posted with an error flag in the buffer control word.
+       39*	This causes read calls to return with an error,  freeing   the buffer,
+       40*	and write  calls to keep the  buffer 'hot', awaiting  later successful
+       41*	write calls or shutdown to requeue the I/O.
+       42*
+       43*
+       44*	Modified by :
+       45*
+       46*	06/20/75	Andre Bensoussan.
+       47*	06/02/76  Bernard Greenberg for 'hot' buffers (non-fatal write errors)
+       48*	07/08/82 by J. Bongiovanni for new vtoc buffer strategy
+       49*
+       50*	*/
+       51 
+       52 vtoc_interrupt : procedure (core, code);
+       53 
+       54 
+       55 	dcl core		fixed bin(24);
+       56 	dcl code		fixed bin(35);
+       57 
+       58 	dcl bufx		fixed bin;
+       59 	dcl p99		pic "99";
+       60 	dcl wait_event	bit (36) aligned;
+       61 
+       62 	dcl pxss$notify	entry (bit (36) aligned);
+       63 	dcl disk_emergency  entry (fixed bin, bit (36) aligned);
+       64 	dcl syserr	entry options (variable);
+       65 
+       66 	/*	% include	vtoc_buffer	see at the end	*/
+       67 
+       68 
+       69 
+       70           vtoc_buffer_segp = addr (vtoc_buffer_seg$);
+       71 	vtoc_buf_desc_arrayp = ptr (vtoc_buffer_segp, vtoc_buffer.buf_desc_offset);
+       72 	vtoc_buf_arrayp = ptr (vtoc_buffer_segp, vtoc_buffer.buf_offset);
+       73 
+       74 	bufx = divide (core - vtoc_buffer.abs_addr - bin (rel (vtoc_buf_arrayp)), size (vtoce_buffer), 17)
+       75 	     + 1;
+       76 	if bufx < 1 | bufx > vtoc_buffer.n_bufs
+       77 	     then call syserr (CRASH, "vtoc_interrupt: Bad core address");
+       78 
+       79 	vtoc_buf_descp = addr (vtoc_buf_desc_array (bufx));
+       80 	vtoc_bufp = addr (vtoce_buffer_array (bufx));
+       81 	
+       82 	if ^vtoc_buf_desc.os
+       83 	     then call syserr (CRASH, "vtoc_interrupt: Buffer not os at interrupt");
+       84 
+       85 	if code ^= 0 then do;		/* An error */
+       86 	   if vtoc_buf_desc.write_sw then do;
+       87 	        pvt_arrayp = addr (pvt$array);
+       88 	        pvtep = addr (pvt_array (vtoc_buf_desc.pvtx));
+       89 	        call syserr (JUST_LOG, "vtoc_interrupt: Write error on ^a_^a vtocx ^o",
+       90 		   pvte.devname, convert (p99, pvte.logical_area_number), vtoc_buf_desc.vtocx);
+       91 	   end;
+       92 	   vtoc_buf_desc.err = "1"b;
+       93 	   call disk_emergency ((vtoc_buf_desc.pvtx), unspec (code));
+       94 	end;
+       95 
+       96 	vtoc_buf_desc.os = "0"b;
+       97 
+       98 	if vtoc_buf_desc.notify_sw then do;
+       99 	     wait_event = bit (bin (vtoc_buffer.wait_event_constant + vtoc_buf_desc.wait_index, 36), 36);
+      100 	     call pxss$notify (wait_event);
+      101 	end;
+      102 
+      103 	return;
+      104 
+      105 
+  1     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  1     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1     8*     Add the support for subvolumes
+  1     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  1    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  1    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  1    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  1    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  1    14*     Added inconsistent_dbm bit for determining the status of volume
+  1    15*     dumper bit maps.
+  1    16*                                                   END HISTORY COMMENTS */
+  1    17 
+  1    18      dcl	   pvt$array	      aligned external;
+  1    19      dcl	   pvt$max_n_entries      fixed bin external;
+  1    20 
+  1    21      dcl	   pvt_arrayp	      ptr;
+  1    22      dcl	   pvtep		      ptr;
+  1    23 
+  1    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  1    25 
+  1    26      dcl	   1 pvte		      based (pvtep) aligned,
+  1    27 
+  1    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  1    29 
+  1    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  1    31 
+  1    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  1    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  1    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  1    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  1    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  1    37 	     2 pad3	      bit (2) unaligned,
+  1    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  1    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  1    40 
+  1    41 
+  1    42 
+  1    43 	     2 devname	      char (4),		/* device name */
+  1    44 
+  1    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  1    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  1    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  1    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  1    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  1    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  1    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  1    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  1    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  1    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  1    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  1    56 	     2 scav_check_address
+  1    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  1    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  1    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  1    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  1    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  1    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  1    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  1    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  1    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  1    66 
+  1    67 
+  1    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  1    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  1    70 
+  1    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  1    72 
+  1    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  1    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  1    75 
+  1    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  1    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  1    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  1    79 	     2 records_per_cyl    fixed bin,
+  1    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  1    81 	     2 sv_name            char (2) aligned,
+  1    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  1    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  1    84 
+  1    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  1    86 	     2 pad2	      bit (18) unaligned,
+  1    87 
+  1    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  1    89 
+  1    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  1    91 
+  1    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  1    93 
+  1    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  1    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  1    96 
+  1    97 
+  1    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  1    99 
+  1   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  1   101 
+  1   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  1   103 
+  1   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  1   105 
+  1   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  1   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  1   108 
+  1   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  1   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  1   111 
+  1   112 
+  1   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  1   114 	   VOLMAP_ASYNC_READ      init (1),
+  1   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  1   116 
+  1   117 
+  1   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      106 
+      107 
+  2     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      108 
+      109 
+  3     1 /*  START OF:	vtoc_buffer.incl.pl1   November 1982      *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3      
+  3     4 
+  3     5 /****^  HISTORY COMMENTS:
+  3     6*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  3     7*     audit(86-05-27,GDixon), install(86-07-18,MR12.0-1098):
+  3     8*     Add the software read-alter-rewrite when needed for devices that do only
+  3     9*     512 word IO.
+  3    10*                                                   END HISTORY COMMENTS */
+  3    11 
+  3    12 
+  3    13 dcl	   vtoc_buffer_seg$	      ext;
+  3    14 
+  3    15      dcl	   vtoc_buffer_segp	      ptr;
+  3    16      dcl	   vtoc_buf_descp	      ptr;
+  3    17      dcl	   vtoc_bufp	      ptr;
+  3    18      dcl	   vtoc_buf_desc_arrayp   ptr;
+  3    19      dcl	   vtoc_buf_arrayp	      ptr;
+  3    20 
+  3    21      dcl	   vtoc_buf_n_buffers     fixed bin;
+  3    22      dcl	   vtoc_buf_n_buckets     fixed bin;
+  3    23 
+  3    24 
+  3    25      dcl	   1 vtoc_buffer	      aligned based (vtoc_buffer_segp),
+  3    26 
+  3    27 	     2 lock,				/* Global lock for VTOC buffers */
+  3    28 	       3 processid	      bit (36) aligned,	/* Owner */
+  3    29 	       3 wait_event	      bit (36) aligned,	/* For lock */
+  3    30 	       3 notify_sw	      bit (1) aligned,	/* ON => notify on unlock */
+  3    31 
+  3    32 	     2 n_bufs	      fixed bin,		/* Number of full VTOCE buffers */
+  3    33 	     2 n_hash_buckets     fixed bin,		/* Number of hash table buckets */
+  3    34 	     2 hash_mask	      bit (36) aligned,	/* Mask for hash algorithm */
+  3    35 	     2 abs_addr	      fixed bin (24),	/* Absolute address of vtoc_buffer_seg */
+  3    36 	     2 wait_event_constant fixed bin (36) uns unal,    /* Constant to add to part index to form wait event */
+  3    37 	     2 buf_desc_offset    bit (18),		/* Offset of buf_desc */
+  3    38 	     2 buf_offset	      bit (18),		/* Offset of buf */
+  3    39 	     2 hash_table_offset  bit (18),		/* Offset of hash_table */
+  3    40 	     2 search_index	      fixed bin,		/* Roving pointer for buffer selection */
+  3    41 	     2 unsafe_pvtx	      fixed bin,		/* PVTE index with update in progress */
+  3    42 	     2 scavenger_free_p_clock
+  3    43                                     fixed bin (35),	/* Pseudo-Clock for scavenger-free-other-allocate race */
+  3    44 	     2 meters,
+  3    45 	       3 call_get	      fixed bin (35),	/* Calls to get_vtoce */
+  3    46 	       3 call_put	      fixed bin (35),	/* Calls to put_vtoce */
+  3    47 	       3 call_alloc	      fixed bin (35),	/* Calls to alloc_and_put_vtoce */
+  3    48 	       3 call_free	      fixed bin (35),	/* Calls to free_vtoce */
+  3    49 	       3 call_await	      fixed bin (35),	/* Calls to await_vtoce */
+  3    50 	       3 steps	      fixed bin (35),	/* Steps through buffer allocation */
+  3    51 	       3 skip_os	      fixed bin (35),	/* Skipped because out-of-service */
+  3    52 	       3 skip_hot	      fixed bin (35),	/* Skipped because buffer hot */
+  3    53 	       3 skip_wait	      fixed bin (35),	/* Skipped because notify_sw set */
+  3    54 	       3 disk_reads	      fixed bin (35),	/* Number of same */
+  3    55 	       3 disk_writes      fixed bin (35),	/* Number of same */
+  3    56 	       3 get_buffer_calls fixed bin (35),	/* Number of calls to GET_BUFFER */
+  3    57 	       3 get_buffer_hits  fixed bin (35),	/* Number times VTOCE in buffer */
+  3    58 	       3 wait_calls	      fixed bin (35),	/* Number of calls to WAIT */
+  3    59 	       3 wait_os	      fixed bin (35),	/* Number of times had to wait */
+  3    60 	       3 scavenger_free_checks
+  3    61                                     fixed bin (35),	/* Number of times had to check pseudo-clock */
+  3    62 	       3 scavenger_free_losses
+  3    63                                     fixed bin (35),	/* Number of times race lost between scavenger freeing and other allocate */
+  3    64 	       3 soft_rar	      fixed bin (35),         /* Nunber of times a software read_alter_rewrite performed */
+  3    65 
+  3    66 	       3 pad (14)	      fixed bin (35),
+  3    67 
+  3    68 	     2 hash_table	      (vtoc_buf_n_buckets refer (vtoc_buffer.n_hash_buckets)) bit (18) aligned,
+  3    69 
+  3    70 
+  3    71 	     2 buf_desc	      (vtoc_buf_n_buffers refer (vtoc_buffer.n_bufs)) aligned like vtoc_buf_desc,
+  3    72 
+  3    73 	     2 buffer	      (vtoc_buf_n_buffers refer (vtoc_buffer.n_bufs)) aligned like vtoce_buffer;
+  3    74 
+  3    75 
+  3    76 
+  3    77      dcl	   1 vtoc_buf_desc_array  (vtoc_buffer.n_bufs) aligned based (vtoc_buf_desc_arrayp) like vtoc_buf_desc;
+  3    78 
+  3    79 
+  3    80      dcl	   1 vtoc_buf_desc	      aligned based (vtoc_buf_descp),
+  3    81 	     2 pvtx	      fixed bin (17) unal,	/* PVTE index */
+  3    82 	     2 vtocx	      fixed bin (17) unal,	/* VTOCE Index */
+  3    83 	     2 parts_used	      bit (3) unal,		/* Mask of parts used or os */
+  3    84 	     2 err	      bit (1) unal,		/* ON => I/O error on buffer */
+  3    85 	     2 notify_sw	      bit (1) unal,		/* ON => notify requied on I/O completion */
+  3    86 	     2 write_sw	      bit (1) unal,		/* ON => write I/O */
+  3    87 	     2 os		      bit (1) unal,		/* ON => I/O in progress */
+  3    88 	     2 ioq	      bit (1) unal,		/* ON => I/O has been requested */
+  3    89 	     2 used	      bit (1) unal,		/* ON => this descriptor is in use */
+  3    90 	     2 pad	      bit (9) unal,
+  3    91 	     2 wait_index	      fixed bin (17) unal,	/* Buffer index for forming wait event */
+  3    92 	     2 ht_thread	      bit (18) unal,	/* Offset of next entry in hash table */
+  3    93 	     2 buf_rel	      bit (18) unal;	/* Offset of buffer in segment */
+  3    94 
+  3    95      dcl	   1 vtoce_buffer_array   (vtoc_buffer.n_bufs) aligned based (vtoc_buf_arrayp) like vtoce_buffer;
+  3    96 
+  3    97      dcl	   1 vtoce_buffer	      aligned based (vtoc_bufp),
+  3    98 	     2 parts	      (3) aligned,
+  3    99 	       3 words	      (64) bit (36) aligned;
+  3   100 
+  3   101 
+  3   102      dcl	   N_PARTS_PER_VTOCE      fixed bin int static options (constant) init (3);
+  3   103      dcl	   VTOCE_PART_SIZE	      fixed bin int static options (constant) init (64);
+  3   104      dcl	   VTOCE_BUFFER_SIZE      fixed bin int static options (constant) init (3 * 64);
+  3   105      dcl	   N_VTOCE_PER_RECORD     fixed bin int static options (constant) init (5);
+  3   106      dcl	   N_SECTOR_PER_VTOCE     fixed bin int static options (constant) init (3);
+  3   107 
+  3   108 
+  3   109 /*  END OF:	vtoc_buffer.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      110 
+      111 
+      112 /* BEGIN MESSAGE DOCUMENTATION
+      113*
+      114*   Message:
+      115*   vtoc_interrupt: bad core address
+      116*
+      117*   S: $crash
+      118*
+      119*   T: $run
+      120*
+      121*   M: The disk dim reported a main memory address to the
+      122*   VTOC manager which was not in the VTOC buffer segment,
+      123*   or was not designating a legal buffer boundary.
+      124*   $err
+      125*
+      126*   A: $recover
+      127*
+      128*   Message:
+      129*   vtoc_interrupt: Buffer not os at interrupt
+      130*
+      131*   S: $crash
+      132*
+      133*   T: $run
+      134*
+      135*   M: An I/O completion was received for a VTOC buffer which was
+      136*   apparently not undergoing I/O.
+      137*   $err
+      138*
+      139*   A: $recover
+      140*
+      141*   Message:
+      142*   vtoc_interrupt: Write error on dskX_NN vtocx XXXXXX
+      143*
+      144*   S: $log
+      145*
+      146*   T: $run
+      147*
+      148*   M: A bad I/O status was received by the VTOC manager for a write operation.
+      149*   The unwritten vtoce-part will remain in main memory until the next attempt is
+      150*   made to write it out, or demount or shutdown time.  Too many of these can
+      151*   cause the system to crash.
+      152*
+      153*   A: $ignore
+      154*
+      155*   END MESSAGE DOCUMENTATION */
+      156 
+      157 end vtoc_interrupt;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0853.8  vtoc_interrupt.pl1                >spec>install>1115>vtoc_interrupt.pl1
+106          1    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+108          2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+110          3    07/24/86  2051.8  vtoc_buffer.incl.pl1              >ldd>include>vtoc_buffer.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000011 constant        fixed bin(17,0)          initial dcl 2-7 set ref 76* 82*
+JUST_LOG                        000000 constant        fixed bin(17,0)          initial dcl 2-7 set ref 89*
+abs_addr                  6            based           fixed bin(24,0)          level 2 dcl 3-25 ref 74
+buf_desc_offset          10            based           bit(18)                  level 2 dcl 3-25 ref 71
+buf_offset               11            based           bit(18)                  level 2 dcl 3-25 ref 72
+bufx                            000100 automatic       fixed bin(17,0)          dcl 58 set ref 74* 76 76 79 80
+code                                   parameter       fixed bin(35,0)          dcl 56 ref 52 85 93 93
+core                                   parameter       fixed bin(24,0)          dcl 55 ref 52 74
+devname                   3            based           char(4)                  level 2 dcl 1-26 set ref 89*
+disk_emergency                  000012 constant        entry                    external dcl 63 ref 93
+err                       1(03)        based           bit(1)                   level 2 packed packed unaligned dcl 3-80 set ref 92*
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-26 ref 89 89
+n_bufs                    3            based           fixed bin(17,0)          level 2 dcl 3-25 ref 76
+notify_sw                 1(04)        based           bit(1)                   level 2 packed packed unaligned dcl 3-80 ref 98
+os                        1(06)        based           bit(1)                   level 2 packed packed unaligned dcl 3-80 set ref 82
+                                                                                  96*
+p99                                    automatic       picture(2)               packed unaligned dcl 59 ref 89 89
+pvt$array                       000016 external static fixed bin(17,0)          dcl 1-18 set ref 87
+pvt_array                              based           structure                array level 1 dcl 1-24 set ref 88
+pvt_arrayp                      000102 automatic       pointer                  dcl 1-21 set ref 87* 88
+pvte                                   based           structure                level 1 dcl 1-26
+pvtep                           000104 automatic       pointer                  dcl 1-22 set ref 88* 89 89 89
+pvtx                                   based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-80 ref 88 93
+pxss$notify                     000010 constant        entry                    external dcl 62 ref 100
+syserr                          000014 constant        entry                    external dcl 64 ref 76 82 89
+vtoc_buf_arrayp                 000116 automatic       pointer                  dcl 3-19 set ref 72* 74 80
+vtoc_buf_desc                          based           structure                level 1 dcl 3-80
+vtoc_buf_desc_array                    based           structure                array level 1 dcl 3-77 set ref 79
+vtoc_buf_desc_arrayp            000114 automatic       pointer                  dcl 3-18 set ref 71* 79
+vtoc_buf_descp                  000110 automatic       pointer                  dcl 3-16 set ref 79* 82 86 88 89 92 93 96 98 99
+vtoc_buffer                            based           structure                level 1 dcl 3-25
+vtoc_buffer_seg$                000020 external static fixed bin(17,0)          dcl 3-13 set ref 70
+vtoc_buffer_segp                000106 automatic       pointer                  dcl 3-15 set ref 70* 71 71 72 72 74 76 99
+vtoc_bufp                       000112 automatic       pointer                  dcl 3-17 set ref 74 80*
+vtoce_buffer                           based           structure                level 1 dcl 3-97 ref 74
+vtoce_buffer_array                     based           structure                array level 1 dcl 3-95 set ref 80
+vtocx                     0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-80 set ref 89*
+wait_event                      000101 automatic       bit(36)                  dcl 60 set ref 99* 100*
+wait_event_constant       7            based           fixed bin(36,0)          level 2 packed packed unsigned unaligned dcl 3-25
+                                                                                  ref 99
+wait_index                1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-80 ref 99
+write_sw                  1(05)        based           bit(1)                   level 2 packed packed unaligned dcl 3-80 ref 86
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 2-7
+N_PARTS_PER_VTOCE                      internal static fixed bin(17,0)          initial dcl 3-102
+N_SECTOR_PER_VTOCE                     internal static fixed bin(17,0)          initial dcl 3-106
+N_VTOCE_PER_RECORD                     internal static fixed bin(17,0)          initial dcl 3-105
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 2-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 1-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 1-113
+VTOCE_BUFFER_SIZE                      internal static fixed bin(17,0)          initial dcl 3-104
+VTOCE_PART_SIZE                        internal static fixed bin(17,0)          initial dcl 3-103
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 1-19
+vtoc_buf_n_buckets                     automatic       fixed bin(17,0)          dcl 3-22
+vtoc_buf_n_buffers                     automatic       fixed bin(17,0)          dcl 3-21
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+vtoc_interrupt                  000056 constant        entry                    external dcl 52
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 70 79 80 87 88
+bin                                                    builtin function         ref 74 99
+bit                                                    builtin function         ref 99
+convert                                                builtin function         ref 89 89
+divide                                                 builtin function         ref 74
+ptr                                                    builtin function         ref 71 72
+rel                                                    builtin function         ref 74
+size                                                   builtin function         ref 74
+unspec                                                 builtin function         ref 93 93
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       426         450     341         436
+Length       674     341        22         207      65           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+vtoc_interrupt                      146 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+vtoc_interrupt           000100 bufx                        vtoc_interrupt
+                         000101 wait_event                  vtoc_interrupt
+                         000102 pvt_arrayp                  vtoc_interrupt
+                         000104 pvtep                       vtoc_interrupt
+                         000106 vtoc_buffer_segp            vtoc_interrupt
+                         000110 vtoc_buf_descp              vtoc_interrupt
+                         000112 vtoc_bufp                   vtoc_interrupt
+                         000114 vtoc_buf_desc_arrayp        vtoc_interrupt
+                         000116 vtoc_buf_arrayp             vtoc_interrupt
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           divide_fx3
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+disk_emergency                pxss$notify                   syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$array                     vtoc_buffer_seg$
+
+
+CONSTANTS
+000336  aa     773777777777
+
+000337  aa  070 322 000 000	8Ò
+
+000000  aa     000000000005
+
+000001  aa     406000000021
+
+000002  aa     524000000002
+
+000003  aa     524000000004
+
+000004  aa     524000000055
+
+000005  aa     524000000052
+
+000006  aa     524000000040
+
+000007  aa     404000000021
+
+000340  aa     000000000300
+
+000010  aa     404000000043
+
+000011  aa     000000000001
+
+000012  aa     404000000030
+
+000013  aa  166 164 157 143	vtoc
+000014  aa  137 151 156 164	_int
+000015  aa  145 162 162 165	erru
+000016  aa  160 164 072 040	pt: 
+000017  aa  102 141 144 040	Bad 
+000020  aa  143 157 162 145	core
+000021  aa  040 141 144 144	 add
+000022  aa  162 145 163 163	ress
+
+000023  aa  166 164 157 143	vtoc
+000024  aa  137 151 156 164	_int
+000025  aa  145 162 162 165	erru
+000026  aa  160 164 072 040	pt: 
+000027  aa  102 165 146 146	Buff
+000030  aa  145 162 040 156	er n
+000031  aa  157 164 040 157	ot o
+000032  aa  163 040 141 164	s at
+000033  aa  040 151 156 164	 int
+000034  aa  145 162 162 165	erru
+000035  aa  160 164 000 000	pt
+
+000036  aa  166 164 157 143	vtoc
+000037  aa  137 151 156 164	_int
+000040  aa  145 162 162 165	erru
+000041  aa  160 164 072 040	pt: 
+000042  aa  127 162 151 164	Writ
+000043  aa  145 040 145 162	e er
+000044  aa  162 157 162 040	ror 
+000045  aa  157 156 040 136	on ^
+000046  aa  141 137 136 141	a_^a
+000047  aa  040 166 164 157	 vto
+000050  aa  143 170 040 136	cx ^
+000051  aa  157 000 000 000	o
+
+BEGIN PROCEDURE vtoc_interrupt
+ENTRY TO vtoc_interrupt                                     STATEMENT 1 ON LINE 52
+vtoc_interrupt : procedure (core, code);
+
+000052  at     000002000012
+000053  ta     000010000000
+000054  ta     000052000000
+000055  da     000061300000
+000056  aa   000240 6270 00	eax7 	160
+000057  aa  7 00034 3521 20	epp2 	pr7|28,*
+000060  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000061  aa     000004000000
+000062  aa     000000000000
+						STATEMENT 1 ON LINE 70
+          vtoc_buffer_segp = addr (vtoc_buffer_seg$);
+
+000063  la  4 00020 3735 20	epp7 	pr4|16,*		vtoc_buffer_seg$
+000064  aa  6 00106 6535 00	spri7	pr6|70		vtoc_buffer_segp
+						STATEMENT 1 ON LINE 71
+	vtoc_buf_desc_arrayp = ptr (vtoc_buffer_segp, vtoc_buffer.buf_desc_offset);
+
+000065  aa  7 00010 2351 00	lda  	pr7|8		vtoc_buffer.buf_desc_offset
+000066  aa  7 00000 3521 00	epp2 	pr7|0
+000067  aa   000000 3120 01	eawp2	0,au
+000070  aa  6 00114 2521 00	spri2	pr6|76		vtoc_buf_desc_arrayp
+						STATEMENT 1 ON LINE 72
+	vtoc_buf_arrayp = ptr (vtoc_buffer_segp, vtoc_buffer.buf_offset);
+
+000071  aa  7 00011 2351 00	lda  	pr7|9		vtoc_buffer.buf_offset
+000072  aa  7 00000 3515 00	epp1 	pr7|0
+000073  aa   000000 3114 01	eawp1	0,au
+000074  aa  6 00116 2515 00	spri1	pr6|78		vtoc_buf_arrayp
+						STATEMENT 1 ON LINE 74
+	bufx = divide (core - vtoc_buffer.abs_addr - bin (rel (vtoc_buf_arrayp)), size (vtoce_buffer), 17)
+	     + 1;
+
+000075  aa  6 00032 3715 20	epp5 	pr6|26,*
+000076  aa  5 00002 2361 20	ldq  	pr5|2,*		core
+000077  aa  7 00006 1761 00	sbq  	pr7|6		vtoc_buffer.abs_addr
+000100  aa  6 00120 7561 00	stq  	pr6|80
+000101  aa  1 00000 6351 00	eaa  	pr1|0		vtoc_buf_arrayp
+000102  aa   000066 7730 00	lrl  	54
+000103  aa   000000 5330 00	negl 	0
+000104  aa  6 00120 0331 00	adl  	pr6|80
+000105  aa   000233 3520 04	epp2 	155,ic		000340 = 000000000300
+000106  aa  0 01264 7001 00	tsx0 	pr0|692		divide_fx3
+000107  aa     000000000000
+000110  aa   000001 0760 07	adq  	1,dl
+000111  aa  6 00100 7561 00	stq  	pr6|64		bufx
+						STATEMENT 1 ON LINE 76
+	if bufx < 1 | bufx > vtoc_buffer.n_bufs
+	     then call syserr (CRASH, "vtoc_interrupt: Bad core address");
+
+000112  aa   000001 1160 07	cmpq 	1,dl
+000113  aa   000003 6040 04	tmi  	3,ic		000116
+000114  aa  7 00003 1161 00	cmpq 	pr7|3		vtoc_buffer.n_bufs
+000115  aa   000020 6044 04	tmoz 	16,ic		000135
+000116  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000117  aa   777675 00 0040	desc9a	-67,32		000013 = 166164157143
+000120  aa  6 00122 00 0040	desc9a	pr6|82,32
+000121  aa   777670 3520 04	epp2 	-72,ic		000011 = 000000000001
+000122  aa  6 00134 2521 00	spri2	pr6|92
+000123  aa  6 00122 3521 00	epp2 	pr6|82
+000124  aa  6 00136 2521 00	spri2	pr6|94
+000125  aa   777662 3520 04	epp2 	-78,ic		000007 = 404000000021
+000126  aa  6 00140 2521 00	spri2	pr6|96
+000127  aa   777657 3520 04	epp2 	-81,ic		000006 = 524000000040
+000130  aa  6 00142 2521 00	spri2	pr6|98
+000131  aa  6 00132 6211 00	eax1 	pr6|90
+000132  aa   010000 4310 07	fld  	4096,dl
+000133  la  4 00014 3521 20	epp2 	pr4|12,*		syserr
+000134  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 79
+	vtoc_buf_descp = addr (vtoc_buf_desc_array (bufx));
+
+000135  aa  6 00100 2361 00	ldq  	pr6|64		bufx
+000136  aa   000003 4020 07	mpy  	3,dl
+000137  aa  6 00114 3735 20	epp7 	pr6|76,*		vtoc_buf_desc_arrayp
+000140  aa  7 77775 3735 06	epp7 	pr7|-3,ql		vtoc_buf_desc_array
+000141  aa  6 00110 6535 00	spri7	pr6|72		vtoc_buf_descp
+						STATEMENT 1 ON LINE 80
+	vtoc_bufp = addr (vtoce_buffer_array (bufx));
+
+000142  aa  6 00100 2361 00	ldq  	pr6|64		bufx
+000143  aa   000300 4020 07	mpy  	192,dl
+000144  aa  6 00116 3715 20	epp5 	pr6|78,*		vtoc_buf_arrayp
+000145  aa  5 77500 3715 06	epp5 	pr5|-192,ql	vtoce_buffer_array
+000146  aa  6 00112 6515 00	spri5	pr6|74		vtoc_bufp
+						STATEMENT 1 ON LINE 82
+	if ^vtoc_buf_desc.os
+	     then call syserr (CRASH, "vtoc_interrupt: Buffer not os at interrupt");
+
+000147  aa  7 00001 2351 00	lda  	pr7|1		vtoc_buf_desc.os
+000150  aa   004000 3150 03	cana 	2048,du
+000151  aa   000021 6010 04	tnz  	17,ic		000172
+000152  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000153  aa   777651 00 0054	desc9a	-87,44		000023 = 166164157143
+000154  aa  6 00144 00 0054	desc9a	pr6|100,44
+000155  aa   777634 3520 04	epp2 	-100,ic		000011 = 000000000001
+000156  aa  6 00134 2521 00	spri2	pr6|92
+000157  aa  6 00144 3521 00	epp2 	pr6|100
+000160  aa  6 00136 2521 00	spri2	pr6|94
+000161  aa   777626 3520 04	epp2 	-106,ic		000007 = 404000000021
+000162  aa  6 00140 2521 00	spri2	pr6|96
+000163  aa   777622 3520 04	epp2 	-110,ic		000005 = 524000000052
+000164  aa  6 00142 2521 00	spri2	pr6|98
+000165  aa  6 00132 6211 00	eax1 	pr6|90
+000166  aa   010000 4310 07	fld  	4096,dl
+000167  aa  6 00044 3701 20	epp4 	pr6|36,*
+000170  la  4 00014 3521 20	epp2 	pr4|12,*		syserr
+000171  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 85
+	if code ^= 0 then do;
+
+000172  aa  6 00032 3735 20	epp7 	pr6|26,*
+000173  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+000174  aa   000110 6000 04	tze  	72,ic		000304
+						STATEMENT 1 ON LINE 86
+	   if vtoc_buf_desc.write_sw then do;
+
+000175  aa  6 00110 3715 20	epp5 	pr6|72,*		vtoc_buf_descp
+000176  aa  5 00001 2351 00	lda  	pr5|1		vtoc_buf_desc.write_sw
+000177  aa   010000 3150 03	cana 	4096,du
+000200  aa   000062 6000 04	tze  	50,ic		000262
+						STATEMENT 1 ON LINE 87
+	        pvt_arrayp = addr (pvt$array);
+
+000201  aa  6 00044 3701 20	epp4 	pr6|36,*
+000202  la  4 00016 3535 20	epp3 	pr4|14,*		pvt$array
+000203  aa  6 00102 2535 00	spri3	pr6|66		pvt_arrayp
+						STATEMENT 1 ON LINE 88
+	        pvtep = addr (pvt_array (vtoc_buf_desc.pvtx));
+
+000204  aa  5 00000 2351 00	lda  	pr5|0		vtoc_buf_desc.pvtx
+000205  aa   000066 7330 00	lrs  	54
+000206  aa   000034 4020 07	mpy  	28,dl
+000207  aa  3 77744 3515 06	epp1 	pr3|-28,ql	pvt_array
+000210  aa  6 00104 2515 00	spri1	pr6|68		pvtep
+						STATEMENT 1 ON LINE 89
+	        call syserr (JUST_LOG, "vtoc_interrupt: Write error on ^a_^a vtocx ^o",
+		   pvte.devname, convert (p99, pvte.logical_area_number), vtoc_buf_desc.vtocx);
+
+000211  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000212  aa   777625 00 0060	desc9a	-107,48		000036 = 166164157143
+000213  aa  6 00160 00 0060	desc9a	pr6|112,48
+000214  aa  1 00004 2351 00	lda  	pr1|4		pvte.logical_area_number
+000215  aa   000011 7350 00	als  	9
+000216  aa   000077 7330 00	lrs  	63
+000217  aa  6 00120 7561 00	stq  	pr6|80		pvte.logical_area_number
+000220  aa  000 100 301 500	btd  	(pr),(pr)
+000221  aa  6 00120 00 0004	desc9a	pr6|80,4		pvte.logical_area_number
+000222  aa  6 00121 01 0003	desc9ls	pr6|81,3,0
+000223  aa  6 00157 4501 00	stz  	pr6|111
+000224  aa  100 004 024 500	mvne 	(pr),(ic),(pr)
+000225  aa  6 00121 01 0003	desc9ls	pr6|81,3,0
+000226  aa   000113 00 0002	desc9a	75,2		000337 = 070322000000
+000227  aa  6 00157 00 0002	desc9a	pr6|111,2
+000230  aa   777550 3520 04	epp2 	-152,ic		000000 = 000000000005
+000231  aa  6 00176 2521 00	spri2	pr6|126
+000232  aa  6 00160 3521 00	epp2 	pr6|112
+000233  aa  6 00200 2521 00	spri2	pr6|128
+000234  aa  1 00003 3521 00	epp2 	pr1|3		pvte.devname
+000235  aa  6 00202 2521 00	spri2	pr6|130
+000236  aa  6 00157 3521 00	epp2 	pr6|111
+000237  aa  6 00204 2521 00	spri2	pr6|132
+000240  aa   000022 7270 07	lxl7 	18,dl
+000241  aa  5 00000 3521 00	epp2 	pr5|0		vtoc_buf_desc.vtocx
+000242  aa  2 00000 5035 17	abd  	pr2|0,7
+000243  aa  6 00206 2521 00	spri2	pr6|134
+000244  aa   777543 3520 04	epp2 	-157,ic		000007 = 404000000021
+000245  aa  6 00210 2521 00	spri2	pr6|136
+000246  aa   777536 3520 04	epp2 	-162,ic		000004 = 524000000055
+000247  aa  6 00212 2521 00	spri2	pr6|138
+000250  aa   777533 3520 04	epp2 	-165,ic		000003 = 524000000004
+000251  aa  6 00214 2521 00	spri2	pr6|140
+000252  aa   777530 3520 04	epp2 	-168,ic		000002 = 524000000002
+000253  aa  6 00216 2521 00	spri2	pr6|142
+000254  aa   777525 3520 04	epp2 	-171,ic		000001 = 406000000021
+000255  aa  6 00220 2521 00	spri2	pr6|144
+000256  aa  6 00174 6211 00	eax1 	pr6|124
+000257  aa   024000 4310 07	fld  	10240,dl
+000260  la  4 00014 3521 20	epp2 	pr4|12,*		syserr
+000261  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 91
+	   end;
+
+						STATEMENT 1 ON LINE 92
+	   vtoc_buf_desc.err = "1"b;
+
+000262  aa   040000 2350 03	lda  	16384,du
+000263  aa  6 00110 3735 20	epp7 	pr6|72,*		vtoc_buf_descp
+000264  aa  7 00001 2551 00	orsa 	pr7|1		vtoc_buf_desc.err
+						STATEMENT 1 ON LINE 93
+	   call disk_emergency ((vtoc_buf_desc.pvtx), unspec (code));
+
+000265  aa  7 00000 2351 00	lda  	pr7|0		vtoc_buf_desc.pvtx
+000266  aa   000066 7330 00	lrs  	54
+000267  aa  6 00157 7561 00	stq  	pr6|111
+000270  aa  6 00032 3715 20	epp5 	pr6|26,*
+000271  aa  5 00004 2351 20	lda  	pr5|4,*
+000272  aa  6 00121 7551 00	sta  	pr6|81
+000273  aa  6 00157 3521 00	epp2 	pr6|111
+000274  aa  6 00124 2521 00	spri2	pr6|84
+000275  aa  6 00121 3521 00	epp2 	pr6|81
+000276  aa  6 00126 2521 00	spri2	pr6|86
+000277  aa  6 00122 6211 00	eax1 	pr6|82
+000300  aa   010000 4310 07	fld  	4096,dl
+000301  aa  6 00044 3701 20	epp4 	pr6|36,*
+000302  la  4 00012 3521 20	epp2 	pr4|10,*		disk_emergency
+000303  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 94
+	end;
+
+						STATEMENT 1 ON LINE 96
+	vtoc_buf_desc.os = "0"b;
+
+000304  aa   000032 2350 04	lda  	26,ic		000336 = 773777777777
+000305  aa  6 00110 3735 20	epp7 	pr6|72,*		vtoc_buf_descp
+000306  aa  7 00001 3551 00	ansa 	pr7|1		vtoc_buf_desc.os
+						STATEMENT 1 ON LINE 98
+	if vtoc_buf_desc.notify_sw then do;
+
+000307  aa  7 00001 2351 00	lda  	pr7|1		vtoc_buf_desc.notify_sw
+000310  aa   020000 3150 03	cana 	8192,du
+000311  aa   000024 6000 04	tze  	20,ic		000335
+						STATEMENT 1 ON LINE 99
+	     wait_event = bit (bin (vtoc_buffer.wait_event_constant + vtoc_buf_desc.wait_index, 36), 36);
+
+000312  aa  7 00001 2351 00	lda  	pr7|1		vtoc_buf_desc.wait_index
+000313  aa   000022 7350 00	als  	18
+000314  aa   000066 7330 00	lrs  	54
+000315  aa  6 00121 7561 00	stq  	pr6|81		vtoc_buf_desc.wait_index
+000316  aa  6 00106 3715 20	epp5 	pr6|70,*		vtoc_buffer_segp
+000317  aa  5 00007 2351 00	lda  	pr5|7		vtoc_buffer.wait_event_constant
+000320  aa   000044 7730 00	lrl  	36
+000321  aa  6 00121 0331 00	adl  	pr6|81		vtoc_buf_desc.wait_index
+000322  aa   000002 6050 04	tpl  	2,ic		000324
+000323  aa   000000 5330 00	negl 	0
+000324  aa   000044 7370 00	lls  	36
+000325  aa  6 00101 7551 00	sta  	pr6|65		wait_event
+						STATEMENT 1 ON LINE 100
+	     call pxss$notify (wait_event);
+
+000326  aa  6 00101 3521 00	epp2 	pr6|65		wait_event
+000327  aa  6 00124 2521 00	spri2	pr6|84
+000330  aa  6 00122 6211 00	eax1 	pr6|82
+000331  aa   004000 4310 07	fld  	2048,dl
+000332  aa  6 00044 3701 20	epp4 	pr6|36,*
+000333  la  4 00010 3521 20	epp2 	pr4|8,*		pxss$notify
+000334  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 101
+	end;
+
+						STATEMENT 1 ON LINE 103
+	return;
+
+000335  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 157
+end vtoc_interrupt;
+
+  END PROCEDURE vtoc_interrupt
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

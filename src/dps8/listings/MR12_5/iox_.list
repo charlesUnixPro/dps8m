@@ -1,0 +1,1439 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>iox_.alm                                                                                                                                             
+ASSEMBLED ON:	11/11/89  0921.5 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************************
+                                     2  " *                                                    *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987           *
+                                     4  " *                                                    *
+                                     5  " * Copyright (c) 1987 by Massachusetts Institute of   *
+                                     6  " * Technology and Honeywell Information Systems, Inc. *
+                                     7  " *                                                    *
+                                     8  " * Copyright (c) 1972 by Massachusetts Institute of   *
+                                     9  " * Technology and Honeywell Information Systems, Inc. *
+                                    10  " *                                                    *
+                                    11  " ******************************************************
+                                    12  
+                                    13  " Transfer vector and data segment for IOX.
+                                    14  " This Program was found on a doorstep, its parenthood and birthdate unrecorded.
+                                    15  " Largely recoded for hashing and new initialization April 1981 by Benson I. Margulies.
+                                    16  " Sentinel checking June 1981 Benson I. Margulies
+                                    17  " Hash table removed January 1982 by C. Hornig.
+                                    18  " Modified 11/82 by S. Krupp to add new transfer vectors for open_file,
+                                    19  "   close_file, detach, and attach_loud entries.  Changed version number
+                                    20  "   to 2.
+                                    21  
+    000000                          22  	name	iox_
+    000000                          23  	perprocess_static
+    000000                          24  	maclist	off
+                                    25  
+                                    26  	" Table of contents
+                                    27  
+                                    28  	" iox_ i/o operation transfer vectors entries
+                                    29  
+                                    30  	" IOCB version/sentinel constant
+                                    31  
+                                    32  	" iox_ utility operation transfer vectors
+                                    33  
+                                    34  	" iox_ error entrypoints
+                                    35  
+                                    36  	" IOCB hash table and hit meter
+                                    37  
+                                    38  	" iox_ standard attachment pointers
+                                    39  	"      and switch names
+                                    40  
+                                    41  	" IOS writeround entries that map calls from IOX to IOS.
+                                    42  
+                                    43  
+                                    44  
+                                    45  " The I/O entrypoints are defined below with the following macros
+                                    46  
+                                    47  	macro	iocb_tv
+                              1     48  	maclist	on,save
+                              2     49  	" Entry point "iox_$&1"
+                              3     50  	maclist	off
+                              4     51  	segdef	&1
+                              5     52  &1:	getlp
+                              6     53  	maclist	restore
+                              7     54  	ldx1	iocb.&1,du
+                              8     55  	tra	iocb_tv_join
+                              9     56  	&end
+                                    57  
+                                    58  " The error entrypoints are defined with this macro
+                                    59  
+                                    60  	macro	error	Error segdef.
+                              1     61  	maclist 	on,save
+                              2     62  	" Entry point "iox_$err_&1"
+                              3     63  	maclist	restore
+                              4     64  	segdef	err_&1
+                              5     65  err_&1:   getlp
+                              6     66  	maclist	on
+                              7     67  	ldq	error_table_$&1
+                              8     68  	tra	error_join
+                              9     69  	maclist	restore
+                             10     70  	&end
+                                    71  
+                                    72  " This macro defines a utility procedure known to be bound in
+                                    73  " with this segment, and "callable" with tra.
+                                    74  
+                                    75  	macro	tv	
+                              1     76  	maclist	on,save
+                              2     77  	" Utility entrypoint "iox_$&2"
+                              3     78  	maclist	off
+                              4     79  	segdef	&2
+                              5     80  &2:	getlp
+                              6     81  	maclist	restore
+                              7     82  	tra	&1$&2
+                              8     83  	&end
+                                    84  
+                                    85  	iocb_tv	detach_iocb
+                                        	" Entry point "iox_$detach_iocb"
+                                    86  	iocb_tv	open
+                                        	" Entry point "iox_$open"
+                                    87  	iocb_tv	close
+                                        	" Entry point "iox_$close"
+                                    88  	iocb_tv	get_line
+                                        	" Entry point "iox_$get_line"
+                                    89  	iocb_tv	get_chars
+                                        	" Entry point "iox_$get_chars"
+                                    90  	iocb_tv	put_chars
+                                        	" Entry point "iox_$put_chars"
+                                    91  	iocb_tv	modes
+                                        	" Entry point "iox_$modes"
+                                    92  	iocb_tv	position
+                                        	" Entry point "iox_$position"
+                                    93  	iocb_tv	control
+                                        	" Entry point "iox_$control"
+                                    94  	iocb_tv	read_record
+                                        	" Entry point "iox_$read_record"
+                                    95  	iocb_tv	write_record
+                                        	" Entry point "iox_$write_record"
+                                    96  	iocb_tv	rewrite_record
+                                        	" Entry point "iox_$rewrite_record"
+                                    97  	iocb_tv	delete_record
+                                        	" Entry point "iox_$delete_record"
+                                    98  	iocb_tv	seek_key
+                                        	" Entry point "iox_$seek_key"
+                                    99  	iocb_tv	read_key
+                                        	" Entry point "iox_$read_key"
+                                   100  	iocb_tv	read_length
+                                        	" Entry point "iox_$read_length"
+                                   101  
+                                   102  	error	no_iocb
+                                        	" Entry point "iox_$err_no_iocb"
+    000061  4a  4 00010 2361 20         	ldq	error_table_$no_iocb
+    000062  0a   000140 7100 00         	tra	error_join
+                                   103  	error	no_operation
+                                        	" Entry point "iox_$err_no_operation"
+                        000063          	segdef	err_no_operation
+    000063  aa  7 00046 2721 20         err_no_operation:   getlp
+    000064  4a  4 00012 2361 20         	ldq	error_table_$no_operation
+    000065  0a   000140 7100 00         	tra	error_join
+                                   104  	error	not_attached
+                                        	" Entry point "iox_$err_not_attached"
+                        000066          	segdef	err_not_attached
+    000066  aa  7 00046 2721 20         err_not_attached:   getlp
+    000067  4a  4 00014 2361 20         	ldq	error_table_$not_attached
+    000070  0a   000140 7100 00         	tra	error_join
+                                   105  	error	not_closed
+                                        	" Entry point "iox_$err_not_closed"
+                        000071          	segdef	err_not_closed
+    000071  aa  7 00046 2721 20         err_not_closed:   getlp
+    000072  4a  4 00016 2361 20         	ldq	error_table_$not_closed
+    000073  0a   000140 7100 00         	tra	error_join
+                                   106  	error	not_open
+                                        	" Entry point "iox_$err_not_open"
+                        000074          	segdef	err_not_open
+    000074  aa  7 00046 2721 20         err_not_open:   getlp
+    000075  4a  4 00020 2361 20         	ldq	error_table_$not_open
+    000076  0a   000140 7100 00         	tra	error_join
+                                   107  	error	old_dim
+                                        	" Entry point "iox_$err_old_dim"
+                        000077          	segdef	err_old_dim
+    000077  aa  7 00046 2721 20         err_old_dim:   getlp
+    000100  4a  4 00022 2361 20         	ldq	error_table_$old_dim
+    000101  0a   000140 7100 00         	tra	error_join
+                                   108  
+                                   109  	tv	iox_attach_name,attach_name
+                                        	" Utility entrypoint "iox_$attach_name"
+    000103  4a  4 00024 7101 20         	tra	iox_attach_name$attach_name
+                                   110  	tv	iox_attach_name,attach_ioname
+                                        	" Utility entrypoint "iox_$attach_ioname"
+    000105  4a  4 00026 7101 20         	tra	iox_attach_name$attach_ioname
+                                   111  	tv	iox_attach_name,attach_ptr
+                                        	" Utility entrypoint "iox_$attach_ptr"
+    000107  4a  4 00030 7101 20         	tra	iox_attach_name$attach_ptr
+                                   112  	tv	iox_attach_name,attach_iocb
+                                        	" Utility entrypoint "iox_$attach_iocb"
+    000111  4a  4 00032 7101 20         	tra	iox_attach_name$attach_iocb
+                                   113  	tv	iox_attach_name,attach_loud
+                                        	" Utility entrypoint "iox_$attach_loud"
+    000113  4a  4 00034 7101 20         	tra	iox_attach_name$attach_loud
+                                   114  	tv	iox_open_file,open_file
+                                        	" Utility entrypoint "iox_$open_file"
+    000115  4a  4 00036 7101 20         	tra	iox_open_file$open_file
+                                   115  	tv	iox_close_file,close_file
+                                        	" Utility entrypoint "iox_$close_file"
+    000117  4a  4 00040 7101 20         	tra	iox_close_file$close_file
+                                   116  	tv	iox_detach,detach
+                                        	" Utility entrypoint "iox_$detach"
+    000121  4a  4 00042 7101 20         	tra	iox_detach$detach
+                                   117  	tv	iox_find_iocb,find_iocb
+                                        	" Utility entrypoint "iox_$find_iocb"
+    000123  4a  4 00044 7101 20         	tra	iox_find_iocb$find_iocb
+                                   118  	tv	iox_find_iocb,look_iocb
+                                        	" Utility entrypoint "iox_$look_iocb"
+    000125  4a  4 00046 7101 20         	tra	iox_find_iocb$look_iocb
+                                   119  	tv 	iox_find_iocb,move_attach
+                                        	" Utility entrypoint "iox_$move_attach"
+    000127  4a  4 00050 7101 20         	tra	iox_find_iocb$move_attach
+                                   120  	tv	iox_find_iocb,destroy_iocb
+                                        	" Utility entrypoint "iox_$destroy_iocb"
+    000131  4a  4 00052 7101 20         	tra	iox_find_iocb$destroy_iocb
+                                   121  	tv	iox_find_iocb,find_iocb_n
+                                        	" Utility entrypoint "iox_$find_iocb_n"
+    000133  4a  4 00054 7101 20         	tra	iox_find_iocb$find_iocb_n
+                                   122  	tv	iox_propagate,propagate
+                                        	" Utility entrypoint "iox_$propagate"
+    000135  4a  4 00056 7101 20         	tra	iox_propagate$propagate
+                                   123  	tv	iox_init_,init_standard_iocbs
+                                        	" Utility entrypoint "iox_$init_standard_iocbs"
+    000137  4a  4 00060 7101 20         	tra	iox_init_$init_standard_iocbs
+                                   124  
+                                   125  	" Common code for the error entrypoints
+                                   126  
+    000140                         127  error_join: 
+    000140  aa  0 00000 2271 00    128  	ldx7	ap|0		Get number of arguments called with.
+    000141  0a   000143 6044 00    129  	tmoz	no_arguments
+    000142  aa  0 00000 7561 37    130  	stq	ap|0,7*		Store error code as last argument.
+    000143                         131  no_arguments:
+    000143  aa  7 00044 7101 20    132  	short_return
+                                   133  
+                                   134  	" Common code for the io transfer vectors
+    000144                         135  iocb_tv_join:
+    000144  aa  0 00002 3521 20    136  	epp2	ap|2,*		Get pointer to pointer to IOCB
+    000145  aa  2 00000 3521 20    137  	epp2	pr2|0,*		Get pointer to IOCB
+    000146  aa  2 00000 2131 00    138  	epaq	pr2|0
+    000147  aa   777777 3750 03    139  	ana	-1,du		The bottom half is and'd with 0
+    000150  aa   077777 1150 03    140            cmpa	=o077777,du
+    000151  0a   000160 6000 00    141  	tze	null_iocb_ptr
+    000152  aa  2 00000 2351 00    142  	lda	pr2|iocb.version
+    000153  0a   000162 1150 00    143  	cmpa	iocb_version_sentinel
+    000154  0a   000156 6010 00    144  	tnz	not_a_valid_iocb	Sentinel missing
+    000155  aa  2 00000 7131 31    145  	call6	pr2|0,x1*		Call the appropriate frob.
+                                   146  
+    000156                         147  not_a_valid_iocb:
+    000156  4a  4 00062 2361 20    148  	ldq	error_table_$not_a_valid_iocb
+    000157  0a   000140 7100 00    149  	tra	error_join
+                                   150  
+    000160                         151  null_iocb_ptr:
+    000160  4a  4 00010 2361 20    152  	ldq	error_table_$no_iocb  " null pointer certainly isn't an iocb
+    000161  0a   000140 7100 00    153  	tra	error_join	  " join the return-last-arg code	
+                                   154  
+                        000162     155  	segdef	iocb_version_sentinel
+    000162                         156  iocb_version_sentinel:
+    000162  aa  111 117 130 062    157  	aci	~IOX2~		" externally available
+                                   158  
+                                   159  
+                                   160  	" Hash Table
+                        000004     161  	segdef	hash_table
+                        000002     162  	segdef	hash_table_ptr
+                        000001     163  	segdef	hash_hit_count
+                        000000     164  	segdef	hash_table_size
+                                   165  
+                                   166  " hash_index_ produces numbers from 0 through the
+                                   167  " table size, though it divides by the specified
+                                   168  " size. So we divide by 127, a prime, but the table
+                                   169  " is 128 long. 
+                                   170  
+                                   171  	use	hash
+    000000                         172  hash_table_size:
+    000000  aa   000000 000001     173  	dec	1		" will be grown later if necessary
+    000001                         174  hash_hit_count:
+    000001  aa   000000 000000     175  	dec	0
+    000002                         176  hash_table_ptr:
+    000002  aa   077777 000043     177  	its	-1,1		" set by iox_init_, updated by find_iocb.
+    000003  aa   000001 000000 
+    000004                         178  hash_table:
+    000004  aa   077777 000043     179  	its	-1,1		" initial hash table
+    000005  aa   000001 000000 
+                                   180  
+                                   181  	join	/static/hash
+                                   182  
+                                   183  
+                                   184  
+                                   185  " standard attachment iocbs
+                                   186  
+                        000163     187  	segdef	n_standard_iocbs
+                        000205     188  	segdef	standard_iocb_info
+                        000006     189  	segdef	standard_iocb_ptrs	
+                                   190  
+                                   191  	macro	iocb		Define standard switch "&1"
+                              1    192  	use	text
+                              2    193  	set	n_iocbs,n_iocbs+1
+                              3    194  	use	iocb_names
+                              4    195  	segdef	&1	" name of the entrypoint
+                              5    196  	maclist	on,save
+                              6    197  	aci	~&2~,32	" name of the switch
+                              7    198  	aci	~&3~,72     " attach description if constant
+                              8    199  	use	iocb_ptrs
+                              9    200  	even
+                             10    201  &1:	its	-1,1
+                             11    202  "		IOCB &2 attached as &3
+                             12    203  	maclist   restore
+                             13    204  	&end
+                                   205  
+                        000000     206  	set	n_iocbs,0
+                                   207  
+                                   208  " Standard IOCB definitions
+                                   209  	
+                                   210  	use	iocb_names
+    000205                         211  standard_iocb_info:
+                                   212  	use	iocb_ptrs
+    000006                         213  standard_iocb_ptrs:
+                                   214  
+                                   215  	iocb	user_io,(user_i/o),()
+                                        	use	text
+                        000001          	set	n_iocbs,n_iocbs+1
+                                        	use	iocb_names
+                        000006          	segdef	user_io	" name of the entrypoint
+    000205  aa  165 163 145 162         	aci	~user_i/o~,32	" name of the switch
+    000206  aa  137 151 057 157
+    000207  aa  040 040 040 040
+    000210  aa  040 040 040 040
+    000211  aa  040 040 040 040
+    000212  aa  040 040 040 040
+    000213  aa  040 040 040 040
+    000214  aa  040 040 040 040
+    000215  aa  040 040 040 040         	aci	~~,72     " attach description if constant
+    000216  aa  040 040 040 040
+    000217  aa  040 040 040 040
+    000220  aa  040 040 040 040
+    000221  aa  040 040 040 040
+    000222  aa  040 040 040 040
+    000223  aa  040 040 040 040
+    000224  aa  040 040 040 040
+    000225  aa  040 040 040 040
+    000226  aa  040 040 040 040
+    000227  aa  040 040 040 040
+    000230  aa  040 040 040 040
+    000231  aa  040 040 040 040
+    000232  aa  040 040 040 040
+    000233  aa  040 040 040 040
+    000234  aa  040 040 040 040
+    000235  aa  040 040 040 040
+    000236  aa  040 040 040 040
+                                        	use	iocb_ptrs
+                                        	even
+    000006  aa   077777 000043          user_io:	its	-1,1
+    000007  aa   000001 000000 
+                                        "		IOCB user_i/o attached as 
+                                   216  	iocb	user_input,user_input,(syn_ user_i/o -inhibit close put_chars)
+                                        	use	text
+                        000002          	set	n_iocbs,n_iocbs+1
+                                        	use	iocb_names
+                        000010          	segdef	user_input	" name of the entrypoint
+    000237  aa  165 163 145 162         	aci	~user_input~,32	" name of the switch
+    000240  aa  137 151 156 160
+    000241  aa  165 164 040 040
+    000242  aa  040 040 040 040
+    000243  aa  040 040 040 040
+    000244  aa  040 040 040 040
+    000245  aa  040 040 040 040
+    000246  aa  040 040 040 040
+    000247  aa  163 171 156 137         	aci	~syn_ user_i/o -inhibit close put_chars~,72     " attach description if constant
+    000250  aa  040 165 163 145
+    000251  aa  162 137 151 057
+    000252  aa  157 040 055 151
+    000253  aa  156 150 151 142
+    000254  aa  151 164 040 143
+    000255  aa  154 157 163 145
+    000256  aa  040 160 165 164
+    000257  aa  137 143 150 141
+    000260  aa  162 163 040 040
+    000261  aa  040 040 040 040
+    000262  aa  040 040 040 040
+    000263  aa  040 040 040 040
+    000264  aa  040 040 040 040
+    000265  aa  040 040 040 040
+    000266  aa  040 040 040 040
+    000267  aa  040 040 040 040
+    000270  aa  040 040 040 040
+                                        	use	iocb_ptrs
+                                        	even
+    000010  aa   077777 000043          user_input:	its	-1,1
+    000011  aa   000001 000000 
+                                        "		IOCB user_input attached as syn_ user_i/o -inhibit close put_chars
+                                   217  	iocb	user_output,user_output,(syn_ user_i/o -inhibit get_chars get_line close)
+                                        	use	text
+                        000003          	set	n_iocbs,n_iocbs+1
+                                        	use	iocb_names
+                        000012          	segdef	user_output	" name of the entrypoint
+    000271  aa  165 163 145 162         	aci	~user_output~,32	" name of the switch
+    000272  aa  137 157 165 164
+    000273  aa  160 165 164 040
+    000274  aa  040 040 040 040
+    000275  aa  040 040 040 040
+    000276  aa  040 040 040 040
+    000277  aa  040 040 040 040
+    000300  aa  040 040 040 040
+    000301  aa  163 171 156 137         	aci	~syn_ user_i/o -inhibit get_chars get_line close~,72     " attach description if constant
+    000302  aa  040 165 163 145
+    000303  aa  162 137 151 057
+    000304  aa  157 040 055 151
+    000305  aa  156 150 151 142
+    000306  aa  151 164 040 147
+    000307  aa  145 164 137 143
+    000310  aa  150 141 162 163
+    000311  aa  040 147 145 164
+    000312  aa  137 154 151 156
+    000313  aa  145 040 143 154
+    000314  aa  157 163 145 040
+    000315  aa  040 040 040 040
+    000316  aa  040 040 040 040
+    000317  aa  040 040 040 040
+    000320  aa  040 040 040 040
+    000321  aa  040 040 040 040
+    000322  aa  040 040 040 040
+                                        	use	iocb_ptrs
+                                        	even
+    000012  aa   077777 000043          user_output:	its	-1,1
+    000013  aa   000001 000000 
+                                        "		IOCB user_output attached as syn_ user_i/o -inhibit get_chars get_line close
+                                   218  	iocb	error_output,error_output,(syn_ user_i/o -inhibit get_line get_chars close)
+                                        	use	text
+                        000004          	set	n_iocbs,n_iocbs+1
+                                        	use	iocb_names
+                        000014          	segdef	error_output	" name of the entrypoint
+    000323  aa  145 162 162 157         	aci	~error_output~,32	" name of the switch
+    000324  aa  162 137 157 165
+    000325  aa  164 160 165 164
+    000326  aa  040 040 040 040
+    000327  aa  040 040 040 040
+    000330  aa  040 040 040 040
+    000331  aa  040 040 040 040
+    000332  aa  040 040 040 040
+    000333  aa  163 171 156 137         	aci	~syn_ user_i/o -inhibit get_line get_chars close~,72     " attach description if constant
+    000334  aa  040 165 163 145
+    000335  aa  162 137 151 057
+    000336  aa  157 040 055 151
+    000337  aa  156 150 151 142
+    000340  aa  151 164 040 147
+    000341  aa  145 164 137 154
+    000342  aa  151 156 145 040
+    000343  aa  147 145 164 137
+    000344  aa  143 150 141 162
+    000345  aa  163 040 143 154
+    000346  aa  157 163 145 040
+    000347  aa  040 040 040 040
+    000350  aa  040 040 040 040
+    000351  aa  040 040 040 040
+    000352  aa  040 040 040 040
+    000353  aa  040 040 040 040
+    000354  aa  040 040 040 040
+                                        	use	iocb_ptrs
+                                        	even
+    000014  aa   077777 000043          error_output:	its	-1,1
+    000015  aa   000001 000000 
+                                        "		IOCB error_output attached as syn_ user_i/o -inhibit get_line get_chars close
+                                   219  
+                                   220  	use	text
+    000163                         221  n_standard_iocbs:
+    000163  aa   000000 000004     222  	vfd	36/n_iocbs
+                                   223  
+                                   224  	use	text
+                                   225  	join	/text/iocb_names
+                                   226  	join	/static/iocb_ptrs
+                                   227  
+                                   228  
+                                   229  	" IOS writearound
+                        000164     230  	segdef	ios_call
+                        000175     231  	segdef	ios_call_attach
+                                   232  
+                                   233  " iox_$ios_call: proc(p,...other args...,status);
+                                   234  "
+                                   235  " dcl 1 ics aligned based(p),		IOS-call communication structure.
+                                   236  "	2 sdbptr ptr,		Address of SDB for attachment.
+                                   237  "	2 dimptr ptr,		Address of DIM's transfer vector.
+                                   238  "	2 segdef_offset fixed.:	1=detach, 2=read, ..., 20=writesync.
+                                   239  "
+                                   240  " After clearing 'status' for the DIM, this routine re-maps its call into
+                                   241  "
+                                   242  "	lxl6 segdef_offset
+                                   243  "	call dimptr(sdbptr,...other args...,status);
+                                   244  "
+                                   245  " by altering the first argument pointer of the caller's argument list and passing the
+                                   246  " call on.  Note that all descriptors are correct and need not be changed or moved.
+                                   247  " This routine is used by the new "iox_" write-arounds to call the segdef points of
+                                   248  " old "ios_"-style DIMs.
+                                   249  
+    000164  aa  0 00000 2261 00    250  ios_call:	ldx6	ap|0		Get offset of 'status' argument pointer.
+    000165  aa  0 00000 3521 36    251  	epp2	ap|0,6*		Get address of 'status' itself.
+    000166  aa  2 00000 4501 00    252  	stz	pr2|0		Clear 'status' because some DIMs do not do it
+    000167  aa  2 00001 4501 00    253  	stz	pr2|1		for themselves.
+    000170  aa  0 00002 3521 20    254  	epp2	ap|2,*		Get address of pointer to 'ics'='ics.sdbptr'.
+    000171  aa  2 00000 3521 20    255  	epp2	pr2|0,*		Get address of 'ics'='ics.sdbptr' itself.
+    000172  aa  0 00002 2521 00    256  	spri2	ap|2		First argument is now 'sdbptr'.
+    000173  aa  2 00004 7261 00    257  	lxl6	pr2|4		Get offset of desired DIM segdef.
+    000174  aa  2 00002 7101 20    258  	tra	pr2|2,*		Go to transfer vector of DIM.
+                                   259  "
+                                   260  " End of segdef point ..... iox_$ios_call(p,...other args...,status) .....
+                                   261  
+                                   262  
+                                   263  
+                                   264  " iox_$ios_call_attach: proc(...four other args...,status,p);
+                                   265  "
+                                   266  " This routine re-maps its call into
+                                   267  "
+                                   268  "	lxl6 0,dl
+                                   269  "	call dimptr(...other args...,status,sdbptr);
+                                   270  "
+                                   271  " by altering the last argument pointer of the caller's argument list and passing the
+                                   272  " call on.  This routine is used to call the "attach" segdef point of an old-style DIM,
+                                   273  " which has a different convention regarding the SDB pointer than the other entries.
+                                   274  "
+    000175                         275  ios_call_attach:
+    000175  aa  0 00012 3521 20    276  	epp2	ap|10,*		Get address of 'status'.
+    000176  aa  2 00000 4501 00    277  	stz	pr2|0		Clear 'status'.
+    000177  aa  2 00001 4501 00    278  	stz	pr2|1		..
+    000200  aa  0 00014 3521 20    279  	epp2	ap|12,*		Get address of pointer to 'ics'='ics.sdbptr'.
+    000201  aa  2 00000 3521 20    280  	epp2	pr2|0,*		Get address of 'ics'='ics.sdbptr' itself.
+    000202  aa  0 00014 2521 00    281  	spri2	ap|12		Last argument is now 'sdbptr'.
+    000203  aa   000000 7260 07    282  	lxl6	0,dl		Get offset of 'attach' segdef to DIM.
+                                   283  
+    000204  aa  2 00002 7101 20    284  	tra	pr2|2,*		Go to transfer vector of DIM.
+                                   285  "
+                                   286  " End of segdef point ..... iox_$ios_call_attach(...other args...,status,p) .....
+                                   287  
+                                   288  
+                                   289  
+                                   290  
+                                   291  	include	iocbx
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE iocbx.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 01/28/83  1429.8 est Fri by convert_include_file,
+                                   1-7  	"   Version of 11/07/82  1445.1 est Sun.
+                                   1-8  
+                                   1-9  	"Made from >user_dir_dir>Multics>SKrupp>work>s>iocbx.incl.pl1,
+                                  1-10  	"   modified 01/28/83  1427.0 est Fri
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure iocb
+                                  1-14  "
+                        000156    1-15  	equ	iocb_size,110
+                                  1-16  
+                                  1-17  
+                        000000    1-18  	equ	iocb.version,0
+                        000001    1-19  	equ	iocb.name,1
+                        000012    1-20  	equ	iocb.actual_iocb_ptr,10
+                        000014    1-21  	equ	iocb.attach_descrip_ptr,12
+                        000016    1-22  	equ	iocb.attach_data_ptr,14
+                        000020    1-23  	equ	iocb.open_descrip_ptr,16
+                        000022    1-24  	equ	iocb.open_data_ptr,18
+                        000024    1-25  	equ	iocb.event_channel,20	" DOUBLE
+                        000026    1-26  	equ	iocb.detach_iocb,22
+                        000032    1-27  	equ	iocb.open,26
+                        000036    1-28  	equ	iocb.close,30
+                        000042    1-29  	equ	iocb.get_line,34
+                        000046    1-30  	equ	iocb.get_chars,38
+                        000052    1-31  	equ	iocb.put_chars,42
+                        000056    1-32  	equ	iocb.modes,46
+                        000062    1-33  	equ	iocb.position,50
+                        000066    1-34  	equ	iocb.control,54
+                        000072    1-35  	equ	iocb.read_record,58
+                        000076    1-36  	equ	iocb.write_record,62
+                        000102    1-37  	equ	iocb.rewrite_record,66
+                        000106    1-38  	equ	iocb.delete_record,70
+                        000112    1-39  	equ	iocb.seek_key,74
+                        000116    1-40  	equ	iocb.read_key,78
+                        000122    1-41  	equ	iocb.read_length,82
+                        000126    1-42  	equ	iocb.open_file,86
+                        000132    1-43  	equ	iocb.close_file,90
+                        000136    1-44  	equ	iocb.detach,94
+                        000142    1-45  	equ	iocb.ios_compatibility,98
+                        000144    1-46  	equ	iocb.syn_inhibits,100
+                        000146    1-47  	equ	iocb.syn_father,102
+                        000150    1-48  	equ	iocb.syn_brother,104
+                        000152    1-49  	equ	iocb.syn_son,106
+                        000154    1-50  	equ	iocb.hash_chain_ptr,108
+                                  1-51  
+                                  1-52       "END INCLUDE FILE iocbx.incl.alm
+                                   292  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000356  5a   000003 000000 
+    000357  5a   000526 600000 
+    000360  aa   000000 000000 
+    000361  55   000010 000002 
+    000362  5a   000002 400003 
+    000363  55   000006 000010 
+    000364  aa  004 151 157 170
+    000365  aa  137 000 000 000
+    000366  55   000017 000003 
+    000367  0a   000175 400000 
+    000370  55   000013 000003 
+    000371  aa  017 151 157 163         ios_call_attach
+    000372  aa  137 143 141 154
+    000373  aa  154 137 141 164
+    000374  aa  164 141 143 150
+    000375  55   000025 000010 
+    000376  0a   000164 400000 
+    000377  55   000022 000003 
+    000400  aa  010 151 157 163         ios_call
+    000401  aa  137 143 141 154
+    000402  aa  154 000 000 000
+    000403  55   000034 000017 
+    000404  4a   000014 400004 
+    000405  55   000030 000003 
+    000406  aa  014 145 162 162         error_output
+    000407  aa  157 162 137 157
+    000410  aa  165 164 160 165
+    000411  aa  164 000 000 000
+    000412  55   000042 000025 
+    000413  4a   000012 400004 
+    000414  55   000037 000003 
+    000415  aa  013 165 163 145         user_output
+    000416  aa  162 137 157 165
+    000417  aa  164 160 165 164
+    000420  55   000050 000034 
+    000421  4a   000010 400004 
+    000422  55   000045 000003 
+    000423  aa  012 165 163 145         user_input
+    000424  aa  162 137 151 156
+    000425  aa  160 165 164 000
+    000426  55   000055 000042 
+    000427  4a   000006 400004 
+    000430  55   000053 000003 
+    000431  aa  007 165 163 145         user_io
+    000432  aa  162 137 151 157
+    000433  55   000065 000050 
+    000434  4a   000006 400004 
+    000435  55   000060 000003 
+    000436  aa  022 163 164 141         standard_iocb_ptrs
+    000437  aa  156 144 141 162
+    000440  aa  144 137 151 157
+    000441  aa  143 142 137 160
+    000442  aa  164 162 163 000
+    000443  55   000075 000055 
+    000444  0a   000205 400000 
+    000445  55   000070 000003 
+    000446  aa  022 163 164 141         standard_iocb_info
+    000447  aa  156 144 141 162
+    000450  aa  144 137 151 157
+    000451  aa  143 142 137 151
+    000452  aa  156 146 157 000
+    000453  55   000105 000065 
+    000454  0a   000163 400000 
+    000455  55   000100 000003 
+    000456  aa  020 156 137 163         n_standard_iocbs
+    000457  aa  164 141 156 144
+    000460  aa  141 162 144 137
+    000461  aa  151 157 143 142
+    000462  aa  163 000 000 000
+    000463  55   000114 000075 
+    000464  4a   000000 400004 
+    000465  55   000110 000003 
+    000466  aa  017 150 141 163         hash_table_size
+    000467  aa  150 137 164 141
+    000470  aa  142 154 145 137
+    000471  aa  163 151 172 145
+    000472  55   000123 000105 
+    000473  4a   000001 400004 
+    000474  55   000117 000003 
+    000475  aa  016 150 141 163         hash_hit_count
+    000476  aa  150 137 150 151
+    000477  aa  164 137 143 157
+    000500  aa  165 156 164 000
+    000501  55   000132 000114 
+    000502  4a   000002 400004 
+    000503  55   000126 000003 
+    000504  aa  016 150 141 163         hash_table_ptr
+    000505  aa  150 137 164 141
+    000506  aa  142 154 145 137
+    000507  aa  160 164 162 000
+    000510  55   000140 000123 
+    000511  4a   000004 400004 
+    000512  55   000135 000003 
+    000513  aa  012 150 141 163         hash_table
+    000514  aa  150 137 164 141
+    000515  aa  142 154 145 000
+    000516  55   000151 000132 
+    000517  0a   000162 400000 
+    000520  55   000143 000003 
+    000521  aa  025 151 157 143         iocb_version_sentinel
+    000522  aa  142 137 166 145
+    000523  aa  162 163 151 157
+    000524  aa  156 137 163 145
+    000525  aa  156 164 151 156
+    000526  aa  145 154 000 000
+    000527  55   000161 000140 
+    000530  0a   000136 400000 
+    000531  55   000154 000003 
+    000532  aa  023 151 156 151         init_standard_iocbs
+    000533  aa  164 137 163 164
+    000534  aa  141 156 144 141
+    000535  aa  162 144 137 151
+    000536  aa  157 143 142 163
+    000537  55   000167 000151 
+    000540  0a   000134 400000 
+    000541  55   000164 000003 
+    000542  aa  011 160 162 157         propagate
+    000543  aa  160 141 147 141
+    000544  aa  164 145 000 000
+    000545  55   000175 000161 
+    000546  0a   000132 400000 
+    000547  55   000172 000003 
+    000550  aa  013 146 151 156         find_iocb_n
+    000551  aa  144 137 151 157
+    000552  aa  143 142 137 156
+    000553  55   000204 000167 
+    000554  0a   000130 400000 
+    000555  55   000200 000003 
+    000556  aa  014 144 145 163         destroy_iocb
+    000557  aa  164 162 157 171
+    000560  aa  137 151 157 143
+    000561  aa  142 000 000 000
+    000562  55   000212 000175 
+    000563  0a   000126 400000 
+    000564  55   000207 000003 
+    000565  aa  013 155 157 166         move_attach
+    000566  aa  145 137 141 164
+    000567  aa  164 141 143 150
+    000570  55   000220 000204 
+    000571  0a   000124 400000 
+    000572  55   000215 000003 
+    000573  aa  011 154 157 157         look_iocb
+    000574  aa  153 137 151 157
+    000575  aa  143 142 000 000
+    000576  55   000226 000212 
+    000577  0a   000122 400000 
+    000600  55   000223 000003 
+    000601  aa  011 146 151 156         find_iocb
+    000602  aa  144 137 151 157
+    000603  aa  143 142 000 000
+    000604  55   000233 000220 
+    000605  0a   000120 400000 
+    000606  55   000231 000003 
+    000607  aa  006 144 145 164         detach
+    000610  aa  141 143 150 000
+    000611  55   000241 000226 
+    000612  0a   000116 400000 
+    000613  55   000236 000003 
+    000614  aa  012 143 154 157         close_file
+    000615  aa  163 145 137 146
+    000616  aa  151 154 145 000
+    000617  55   000247 000233 
+    000620  0a   000114 400000 
+    000621  55   000244 000003 
+    000622  aa  011 157 160 145         open_file
+    000623  aa  156 137 146 151
+    000624  aa  154 145 000 000
+    000625  55   000255 000241 
+    000626  0a   000112 400000 
+    000627  55   000252 000003 
+    000630  aa  013 141 164 164         attach_loud
+    000631  aa  141 143 150 137
+    000632  aa  154 157 165 144
+    000633  55   000263 000247 
+    000634  0a   000110 400000 
+    000635  55   000260 000003 
+    000636  aa  013 141 164 164         attach_iocb
+    000637  aa  141 143 150 137
+    000640  aa  151 157 143 142
+    000641  55   000271 000255 
+    000642  0a   000106 400000 
+    000643  55   000266 000003 
+    000644  aa  012 141 164 164         attach_ptr
+    000645  aa  141 143 150 137
+    000646  aa  160 164 162 000
+    000647  55   000300 000263 
+    000650  0a   000104 400000 
+    000651  55   000274 000003 
+    000652  aa  015 141 164 164         attach_ioname
+    000653  aa  141 143 150 137
+    000654  aa  151 157 156 141
+    000655  aa  155 145 000 000
+    000656  55   000306 000271 
+    000657  0a   000102 400000 
+    000660  55   000303 000003 
+    000661  aa  013 141 164 164         attach_name
+    000662  aa  141 143 150 137
+    000663  aa  156 141 155 145
+    000664  55   000314 000300 
+    000665  0a   000077 400000 
+    000666  55   000311 000003 
+    000667  aa  013 145 162 162         err_old_dim
+    000670  aa  137 157 154 144
+    000671  aa  137 144 151 155
+    000672  55   000323 000306 
+    000673  0a   000074 400000 
+    000674  55   000317 000003 
+    000675  aa  014 145 162 162         err_not_open
+    000676  aa  137 156 157 164
+    000677  aa  137 157 160 145
+    000700  aa  156 000 000 000
+    000701  55   000332 000314 
+    000702  0a   000071 400000 
+    000703  55   000326 000003 
+    000704  aa  016 145 162 162         err_not_closed
+    000705  aa  137 156 157 164
+    000706  aa  137 143 154 157
+    000707  aa  163 145 144 000
+    000710  55   000342 000323 
+    000711  0a   000066 400000 
+    000712  55   000335 000003 
+    000713  aa  020 145 162 162         err_not_attached
+    000714  aa  137 156 157 164
+    000715  aa  137 141 164 164
+    000716  aa  141 143 150 145
+    000717  aa  144 000 000 000
+    000720  55   000352 000332 
+    000721  0a   000063 400000 
+    000722  55   000345 000003 
+    000723  aa  020 145 162 162         err_no_operation
+    000724  aa  137 156 157 137
+    000725  aa  157 160 145 162
+    000726  aa  141 164 151 157
+    000727  aa  156 000 000 000
+    000730  55   000360 000342 
+    000731  0a   000060 400000 
+    000732  55   000355 000003 
+    000733  aa  013 145 162 162         err_no_iocb
+    000734  aa  137 156 157 137
+    000735  aa  151 157 143 142
+    000736  55   000366 000352 
+    000737  0a   000055 400000 
+    000740  55   000363 000003 
+    000741  aa  013 162 145 141         read_length
+    000742  aa  144 137 154 145
+    000743  aa  156 147 164 150
+    000744  55   000374 000360 
+    000745  0a   000052 400000 
+    000746  55   000371 000003 
+    000747  aa  010 162 145 141         read_key
+    000750  aa  144 137 153 145
+    000751  aa  171 000 000 000
+    000752  55   000402 000366 
+    000753  0a   000047 400000 
+    000754  55   000377 000003 
+    000755  aa  010 163 145 145         seek_key
+    000756  aa  153 137 153 145
+    000757  aa  171 000 000 000
+    000760  55   000411 000374 
+    000761  0a   000044 400000 
+    000762  55   000405 000003 
+    000763  aa  015 144 145 154         delete_record
+    000764  aa  145 164 145 137
+    000765  aa  162 145 143 157
+    000766  aa  162 144 000 000
+    000767  55   000420 000402 
+    000770  0a   000041 400000 
+    000771  55   000414 000003 
+    000772  aa  016 162 145 167         rewrite_record
+    000773  aa  162 151 164 145
+    000774  aa  137 162 145 143
+    000775  aa  157 162 144 000
+    000776  55   000427 000411 
+    000777  0a   000036 400000 
+    001000  55   000423 000003 
+    001001  aa  014 167 162 151         write_record
+    001002  aa  164 145 137 162
+    001003  aa  145 143 157 162
+    001004  aa  144 000 000 000
+    001005  55   000435 000420 
+    001006  0a   000033 400000 
+    001007  55   000432 000003 
+    001010  aa  013 162 145 141         read_record
+    001011  aa  144 137 162 145
+    001012  aa  143 157 162 144
+    001013  55   000442 000427 
+    001014  0a   000030 400000 
+    001015  55   000440 000003 
+    001016  aa  007 143 157 156         control
+    001017  aa  164 162 157 154
+    001020  55   000450 000435 
+    001021  0a   000025 400000 
+    001022  55   000445 000003 
+    001023  aa  010 160 157 163         position
+    001024  aa  151 164 151 157
+    001025  aa  156 000 000 000
+    001026  55   000455 000442 
+    001027  0a   000022 400000 
+    001030  55   000453 000003 
+    001031  aa  005 155 157 144         modes
+    001032  aa  145 163 000 000
+    001033  55   000463 000450 
+    001034  0a   000017 400000 
+    001035  55   000460 000003 
+    001036  aa  011 160 165 164         put_chars
+    001037  aa  137 143 150 141
+    001040  aa  162 163 000 000
+    001041  55   000471 000455 
+    001042  0a   000014 400000 
+    001043  55   000466 000003 
+    001044  aa  011 147 145 164         get_chars
+    001045  aa  137 143 150 141
+    001046  aa  162 163 000 000
+    001047  55   000477 000463 
+    001050  0a   000011 400000 
+    001051  55   000474 000003 
+    001052  aa  010 147 145 164         get_line
+    001053  aa  137 154 151 156
+    001054  aa  145 000 000 000
+    001055  55   000504 000471 
+    001056  0a   000006 400000 
+    001057  55   000502 000003 
+    001060  aa  005 143 154 157         close
+    001061  aa  163 145 000 000
+    001062  55   000511 000477 
+    001063  0a   000003 400000 
+    001064  55   000507 000003 
+    001065  aa  004 157 160 145         open
+    001066  aa  156 000 000 000
+    001067  55   000517 000504 
+    001070  0a   000000 400000 
+    001071  55   000514 000003 
+    001072  aa  013 144 145 164         detach_iocb
+    001073  aa  141 143 150 137
+    001074  aa  151 157 143 142
+    001075  55   000002 000511 
+    001076  6a   000000 400002 
+    001077  55   000522 000003 
+    001100  aa  014 163 171 155         symbol_table
+    001101  aa  142 157 154 137
+    001102  aa  164 141 142 154
+    001103  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    001104  aa   000000 000131 
+    001105  aa   000000 000000 
+    001106  aa   000000 000000 
+    001107  5a   000517 000000 
+    001110  5a   000360 000000 
+    001111  5a   000427 000000 
+    001112  aa   000000 000000 
+    001113  aa   000000 000000 
+    001114  aa   000000 000000 
+    001115  5a   000247 000000 
+    001116  5a   000255 000000 
+    001117  5a   000300 000000 
+    001120  5a   000332 000000 
+    001121  5a   000342 000000 
+    001122  5a   000511 000000 
+    001123  aa   000000 000000 
+    001124  aa   000000 000000 
+    001125  aa   000000 000000 
+    001126  aa   000000 000000 
+    001127  aa   000000 000000 
+    001130  5a   000220 000000 
+    001131  aa   000000 000000 
+    001132  5a   000140 000000 
+    001133  5a   000450 000000 
+    001134  5a   000010 000000 
+    001135  aa   000000 000000 
+    001136  5a   000055 000000 
+    001137  5a   000065 000000 
+    001140  5a   000105 000000 
+    001141  5a   000226 000000 
+    001142  5a   000241 000000 
+    001143  5a   000306 000000 
+    001144  5a   000352 000000 
+    001145  5a   000411 000000 
+    001146  5a   000212 000000 
+    001147  5a   000161 000000 
+    001150  5a   000323 000000 
+    001151  5a   000471 000000 
+    001152  aa   000000 000000 
+    001153  aa   000000 000000 
+    001154  5a   000374 000000 
+    001155  aa   000000 000000 
+    001156  5a   000175 000000 
+    001157  5a   000420 000000 
+    001160  5a   000132 000000 
+    001161  5a   000050 000000 
+    001162  aa   000000 000000 
+    001163  aa   000000 000000 
+    001164  5a   000233 000000 
+    001165  5a   000504 000000 
+    001166  aa   000000 000000 
+    001167  aa   000000 000000 
+    001170  5a   000042 000000 
+    001171  aa   000000 000000 
+    001172  aa   000000 000000 
+    001173  5a   000204 000000 
+    001174  aa   000000 000000 
+    001175  aa   000000 000000 
+    001176  aa   000000 000000 
+    001177  aa   000000 000000 
+    001200  aa   000000 000000 
+    001201  5a   000025 000000 
+    001202  5a   000314 000000 
+    001203  5a   000435 000000 
+    001204  5a   000455 000000 
+    001205  5a   000463 000000 
+    001206  5a   000263 000000 
+    001207  5a   000017 000000 
+    001210  5a   000402 000000 
+    001211  5a   000075 000000 
+    001212  5a   000477 000000 
+    001213  aa   000000 000000 
+    001214  aa   000000 000000 
+    001215  5a   000271 000000 
+    001216  5a   000442 000000 
+    001217  5a   000151 000000 
+    001220  aa   000000 000000 
+    001221  aa   000000 000000 
+    001222  aa   000000 000000 
+    001223  aa   000000 000000 
+    001224  aa   000000 000000 
+    001225  aa   000000 000000 
+    001226  aa   000000 000000 
+    001227  5a   000114 000000 
+    001230  5a   000034 000000 
+    001231  5a   000123 000000 
+    001232  5a   000167 000000 
+    001233  5a   000366 000000 
+    001234  aa   000000 000000 
+    001235  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    001236  aa  020 156 157 164         not_a_valid_iocb
+    001237  aa  137 141 137 166
+    001240  aa  141 154 151 144
+    001241  aa  137 151 157 143
+    001242  aa  142 000 000 000
+    001243  aa  011 151 157 170         iox_init_
+    001244  aa  137 151 156 151
+    001245  aa  164 137 000 000
+    001246  aa  015 151 157 170         iox_propagate
+    001247  aa  137 160 162 157
+    001250  aa  160 141 147 141
+    001251  aa  164 145 000 000
+    001252  aa  015 151 157 170         iox_find_iocb
+    001253  aa  137 146 151 156
+    001254  aa  144 137 151 157
+    001255  aa  143 142 000 000
+    001256  aa  012 151 157 170         iox_detach
+    001257  aa  137 144 145 164
+    001260  aa  141 143 150 000
+    001261  aa  016 151 157 170         iox_close_file
+    001262  aa  137 143 154 157
+    001263  aa  163 145 137 146
+    001264  aa  151 154 145 000
+    001265  aa  015 151 157 170         iox_open_file
+    001266  aa  137 157 160 145
+    001267  aa  156 137 146 151
+    001270  aa  154 145 000 000
+    001271  aa  017 151 157 170         iox_attach_name
+    001272  aa  137 141 164 164
+    001273  aa  141 143 150 137
+    001274  aa  156 141 155 145
+    001275  aa  007 157 154 144         old_dim
+    001276  aa  137 144 151 155
+    001277  aa  010 156 157 164         not_open
+    001300  aa  137 157 160 145
+    001301  aa  156 000 000 000
+    001302  aa  012 156 157 164         not_closed
+    001303  aa  137 143 154 157
+    001304  aa  163 145 144 000
+    001305  aa  014 156 157 164         not_attached
+    001306  aa  137 141 164 164
+    001307  aa  141 143 150 145
+    001310  aa  144 000 000 000
+    001311  aa  014 156 157 137         no_operation
+    001312  aa  157 160 145 162
+    001313  aa  141 164 151 157
+    001314  aa  156 000 000 000
+    001315  aa  007 156 157 137         no_iocb
+    001316  aa  151 157 143 142
+    001317  aa  014 145 162 162         error_table_
+    001320  aa  157 162 137 164
+    001321  aa  141 142 154 145
+    001322  aa  137 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001323  aa   000004 000000 
+    001324  55   000741 000660 
+    001325  aa   000004 000000 
+    001326  55   000665 000154 
+    001327  aa   000004 000000 
+    001330  55   000670 000164 
+    001331  aa   000004 000000 
+    001332  55   000674 000172 
+    001333  aa   000004 000000 
+    001334  55   000674 000200 
+    001335  aa   000004 000000 
+    001336  55   000674 000207 
+    001337  aa   000004 000000 
+    001340  55   000674 000215 
+    001341  aa   000004 000000 
+    001342  55   000674 000223 
+    001343  aa   000004 000000 
+    001344  55   000700 000231 
+    001345  aa   000004 000000 
+    001346  55   000703 000236 
+    001347  aa   000004 000000 
+    001350  55   000707 000244 
+    001351  aa   000004 000000 
+    001352  55   000713 000252 
+    001353  aa   000004 000000 
+    001354  55   000713 000260 
+    001355  aa   000004 000000 
+    001356  55   000713 000266 
+    001357  aa   000004 000000 
+    001360  55   000713 000274 
+    001361  aa   000004 000000 
+    001362  55   000713 000303 
+    001363  aa   000004 000000 
+    001364  55   000741 000717 
+    001365  aa   000004 000000 
+    001366  55   000741 000721 
+    001367  aa   000004 000000 
+    001370  55   000741 000724 
+    001371  aa   000004 000000 
+    001372  55   000741 000727 
+    001373  aa   000004 000000 
+    001374  55   000741 000733 
+    001375  aa   000004 000000 
+    001376  55   000741 000737 
+    001377  aa   000001 000000 
+    001400  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001401  5a   000745 000000 
+    001402  5a   000747 000000 
+    001403  5a   000751 000000 
+    001404  5a   000753 000000 
+    001405  5a   000755 000000 
+    001406  5a   000757 000000 
+    001407  5a   000761 000000 
+    001410  5a   000763 000000 
+    001411  5a   000765 000000 
+    001412  5a   000767 000000 
+    001413  5a   000771 000000 
+    001414  5a   000773 000000 
+    001415  5a   000775 000000 
+    001416  5a   000777 000000 
+    001417  5a   001001 000000 
+    001420  5a   001003 000000 
+    001421  5a   001005 000000 
+    001422  5a   001007 000000 
+    001423  5a   001011 000000 
+    001424  5a   001013 000000 
+    001425  5a   001015 000000 
+    001426  5a   001017 000000 
+    001427  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000016  aa   000000 000000 
+    000017  0a   000356 000000 
+    000020  aa   000000 000000 
+    000021  aa   000000 000000 
+    000022  aa   000000 000000 
+    000023  aa   000000 000000 
+    000024  22   000010 000064 
+    000025  a2   000000 000016 
+    000026  9a   777770 0000 46         error_table_|no_iocb
+    000027  5a   001050 0000 00
+    000030  9a   777766 0000 46         error_table_|no_operation
+    000031  5a   001047 0000 00
+    000032  9a   777764 0000 46         error_table_|not_attached
+    000033  5a   001046 0000 00
+    000034  9a   777762 0000 46         error_table_|not_closed
+    000035  5a   001045 0000 00
+    000036  9a   777760 0000 46         error_table_|not_open
+    000037  5a   001044 0000 00
+    000040  9a   777756 0000 46         error_table_|old_dim
+    000041  5a   001043 0000 00
+    000042  9a   777754 0000 46         iox_attach_name|attach_name
+    000043  5a   001042 0000 00
+    000044  9a   777752 0000 46         iox_attach_name|attach_ioname
+    000045  5a   001041 0000 00
+    000046  9a   777750 0000 46         iox_attach_name|attach_ptr
+    000047  5a   001040 0000 00
+    000050  9a   777746 0000 46         iox_attach_name|attach_iocb
+    000051  5a   001037 0000 00
+    000052  9a   777744 0000 46         iox_attach_name|attach_loud
+    000053  5a   001036 0000 00
+    000054  9a   777742 0000 46         iox_open_file|open_file
+    000055  5a   001035 0000 00
+    000056  9a   777740 0000 46         iox_close_file|close_file
+    000057  5a   001034 0000 00
+    000060  9a   777736 0000 46         iox_detach|detach
+    000061  5a   001033 0000 00
+    000062  9a   777734 0000 46         iox_find_iocb|find_iocb
+    000063  5a   001032 0000 00
+    000064  9a   777732 0000 46         iox_find_iocb|look_iocb
+    000065  5a   001031 0000 00
+    000066  9a   777730 0000 46         iox_find_iocb|move_attach
+    000067  5a   001030 0000 00
+    000070  9a   777726 0000 46         iox_find_iocb|destroy_iocb
+    000071  5a   001027 0000 00
+    000072  9a   777724 0000 46         iox_find_iocb|find_iocb_n
+    000073  5a   001026 0000 00
+    000074  9a   777722 0000 46         iox_propagate|propagate
+    000075  5a   001025 0000 00
+    000076  9a   777720 0000 46         iox_init_|init_standard_iocbs
+    000077  5a   001024 0000 00
+    000100  9a   777716 0000 46         error_table_|not_a_valid_iocb
+    000101  5a   001023 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   240767 560232 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000277 
+    000020  aa   000000 000114 
+    000021  aa   000154 000141 
+    000022  aa   000270 000114 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000033 
+    000067  aa   175453 020053 
+    000070  aa   000000 117547 
+    000071  aa   177135 200000 
+    000072  aa   000105 000033 
+    000073  aa   117041 401314 
+    000074  aa   000000 111707 
+    000075  aa   640170 400000 
+    000076  aa   076163 160145          >spec>install>1111>iox_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061061 076151 
+    000103  aa   157170 137056 
+    000104  aa   141154 155040 
+    000105  aa   076154 144144          >ldd>include>iocbx.incl.alm
+    000106  aa   076151 156143 
+    000107  aa   154165 144145 
+    000110  aa   076151 157143 
+    000111  aa   142170 056151 
+    000112  aa   156143 154056 
+    000113  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         110    attach_iocb              iox_:         112.
+         104    attach_ioname            iox_:         110.
+         112    attach_loud              iox_:         113.
+         102    attach_name              iox_:         109.
+         106    attach_ptr               iox_:         111.
+           6    close                    iox_:          87.
+         116    close_file               iox_:         115.
+          30    control                  iox_:          93.
+          44    delete_record            iox_:          97.
+         130    destroy_iocb             iox_:         120.
+         120    detach                   iox_:         116.
+           0    detach_iocb              iox_:          85.
+         140    error_join               iox_:         102,  103,  104,  105,  106,  107,  127,  149,  153.
+          14    error_output             iox_:         218.
+                error_table_             iox_:         102,  103,  104,  105,  106,  107,  148,  152.
+          66    err_not_attached         iox_:         104.
+          71    err_not_closed           iox_:         105.
+          74    err_not_open             iox_:         106.
+          60    err_no_iocb              iox_:         102.
+          63    err_no_operation         iox_:         103.
+          77    err_old_dim              iox_:         107.
+         122    find_iocb                iox_:         117.
+         132    find_iocb_n              iox_:         121.
+          14    get_chars                iox_:          89.
+          11    get_line                 iox_:          88.
+           0    hash                     iox_:         171,  181.
+           1    hash_hit_count           iox_:         163,  174.
+           4    hash_table               iox_:         161,  178.
+           2    hash_table_ptr           iox_:         162,  176.
+           0    hash_table_size          iox_:         164,  172.
+         136    init_standard_iocbs      iox_:         123.
+          12    iocb.actual_iocb_ptr     iocbx:         20.
+          16    iocb.attach_data_ptr     iocbx:         22.
+          14    iocb.attach_descrip_ptr  iocbx:         21.
+          36    iocb.close               iox_:          87,
+                                         iocbx:         28.
+         132    iocb.close_file          iocbx:         43.
+          66    iocb.control             iox_:          93,
+                                         iocbx:         34.
+         106    iocb.delete_record       iox_:          97,
+                                         iocbx:         38.
+         136    iocb.detach              iocbx:         44.
+          26    iocb.detach_iocb         iox_:          85,
+                                         iocbx:         26.
+          24    iocb.event_channel       iocbx:         25.
+          46    iocb.get_chars           iox_:          89,
+                                         iocbx:         30.
+          42    iocb.get_line            iox_:          88,
+                                         iocbx:         29.
+         154    iocb.hash_chain_ptr      iocbx:         50.
+         142    iocb.ios_compatibility   iocbx:         45.
+          56    iocb.modes               iox_:          91,
+                                         iocbx:         32.
+           1    iocb.name                iocbx:         19.
+          32    iocb.open                iox_:          86,
+                                         iocbx:         27.
+          22    iocb.open_data_ptr       iocbx:         24.
+          20    iocb.open_descrip_ptr    iocbx:         23.
+         126    iocb.open_file           iocbx:         42.
+          62    iocb.position            iox_:          92,
+                                         iocbx:         33.
+          52    iocb.put_chars           iox_:          90,
+                                         iocbx:         31.
+         116    iocb.read_key            iox_:          99,
+                                         iocbx:         40.
+         122    iocb.read_length         iox_:         100,
+                                         iocbx:         41.
+          72    iocb.read_record         iox_:          94,
+                                         iocbx:         35.
+         102    iocb.rewrite_record      iox_:          96,
+                                         iocbx:         37.
+         112    iocb.seek_key            iox_:          98,
+                                         iocbx:         39.
+         150    iocb.syn_brother         iocbx:         48.
+         146    iocb.syn_father          iocbx:         47.
+         144    iocb.syn_inhibits        iocbx:         46.
+         152    iocb.syn_son             iocbx:         49.
+           0    iocb.version             iox_:         142,
+                                         iocbx:         18.
+          76    iocb.write_record        iox_:          95,
+                                         iocbx:         36.
+         205    iocb_names               iox_:         210,  215,  216,  217,  218,  225.
+           6    iocb_ptrs                iox_:         212,  215,  216,  217,  218,  226.
+         156    iocb_size                iocbx:         15.
+         144    iocb_tv_join             iox_:          85,   86,   87,   88,   89,   90,   91,   92,   93,   94,   95,   96,
+                                                        97,   98,   99,  100,  135.
+         162    iocb_version_sentinel    iox_:         143,  155,  156.
+         164    ios_call                 iox_:         230,  250.
+         175    ios_call_attach          iox_:         231,  275.
+                iox_attach_name          iox_:         109,  110,  111,  112,  113.
+                iox_close_file           iox_:         115.
+                iox_detach               iox_:         116.
+                iox_find_iocb            iox_:         117,  118,  119,  120,  121.
+                iox_init_                iox_:         123.
+                iox_open_file            iox_:         114.
+                iox_propagate            iox_:         122.
+         124    look_iocb                iox_:         118.
+          22    modes                    iox_:          91.
+         126    move_attach              iox_:         119.
+                not_attached             iox_:         104.
+         156    not_a_valid_iocb         iox_:         144,  147,  148.
+                not_closed               iox_:         105.
+                not_open                 iox_:         106.
+         143    no_arguments             iox_:         129,  131.
+                no_iocb                  iox_:         102,  152.
+                no_operation             iox_:         103.
+         160    null_iocb_ptr            iox_:         141,  151.
+           4    n_iocbs                  iox_:         206,  215,  216,  217,  218,  222.
+         163    n_standard_iocbs         iox_:         187,  221.
+                old_dim                  iox_:         107.
+           3    open                     iox_:          86.
+         114    open_file                iox_:         114.
+          25    position                 iox_:          92.
+         134    propagate                iox_:         122.
+          17    put_chars                iox_:          90.
+          52    read_key                 iox_:          99.
+          55    read_length              iox_:         100.
+          33    read_record              iox_:          94.
+          41    rewrite_record           iox_:          96.
+          47    seek_key                 iox_:          98.
+         205    standard_iocb_info       iox_:         188,  211.
+           6    standard_iocb_ptrs       iox_:         189,  213.
+         163    text                     iox_:         215,  216,  217,  218,  220,  224.
+          10    user_input               iox_:         216.
+           6    user_io                  iox_:         215.
+          12    user_output              iox_:         217.
+          36    write_record             iox_:          95.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,162 @@
+	COMPILATION LISTING OF SEGMENT bce_inst_length_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1018.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_inst_length_: procedure (ip, special) returns (fixed bin);
+        9 
+       10 /* given a ptr to an instruction (ip) - return the number of words that must be
+       11*   moved to relocate the instruction.  Stolen from inst_length_.
+       12**/
+       13 
+       14 dcl (ip pointer,					/* to instruction */
+       15      special fixed bin) parameter;			/* if non-EIS, nonzero means special modifiers;
+       16*						   if EIS, then number of EIS-type descriptors */
+       17 dcl  op_index fixed bin;				/* op code, used as index into op_mnemonic */
+       18 
+       19 dcl 1 instruction_overlay based aligned,		/* for picking out op code */
+       20     2 tag bit (3) unaligned,
+       21     2 offset fixed bin (14) unaligned,
+       22     2 opcode bit (10) unaligned;
+       23 
+       24 
+       25 dcl (addr, addrel, fixed) builtin;
+       26 						/* find out length of the instruction */
+       27 
+       28 	op_index = fixed (ip -> instruction_overlay.opcode, 10, 0); /* get instruction_overlay.opcode */
+       29 
+       30 	if op_mnemonic_$op_mnemonic (op_index).opcode = "xec " then return (0);
+       31 	special = op_mnemonic_$op_mnemonic (op_index).num_desc;
+       32 	return (op_mnemonic_$op_mnemonic (op_index).num_words);
+       33 
+  1     1 /* BEGIN INCLUDE FILE ... op_mnemonic_format.incl.pl1
+  1     2*
+  1     3*   James R. Davis 20 May 79 */
+  1     4 
+  1     5 dcl 1 op_mnemonic_$op_mnemonic (0:1023) external static aligned,
+  1     6       2 opcode char (6) unal,
+  1     7       2 dtype  fixed bin (2) unal,	/* 0 = alpha, 1 = bit, 2 = numeric */
+  1     8       2 num_desc fixed bin (5) unal,
+  1     9       2 num_words fixed bin (8) unal;
+  1    10 
+  1    11 dcl  modifier (0:63) char (3) aligned int static options (constant) init (
+  1    12      " ", "au", "qu", "du", "ic", "al", "ql", "dl",
+  1    13      "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+  1    14      "*", "au*", "qu*", "...", "ic*", "al*", "ql*", "...",
+  1    15      "x0*", "x1*", "x2*", "x3*", "x4*", "x5*", "x6*", "x7*",
+  1    16      "f", "itp", "...", "its", "sd", "scr", "f2", "f3",
+  1    17      "ci", "i", "sc", "ad", "di", "dic", "id", "idc",
+  1    18      "*n", "*au", "*qu", "*du", "*ic", "*al", "*ql", "*dl",
+  1    19      "*x0", "*x1", "*x2", "*x3", "*x4", "*x5", "*x6", "*x7");
+  1    20 
+  1    21 /* Note: if num_words = 1, then num_desc is a flag
+  1    22*   if non0, the tag field of the instruction is to be interpreted specially
+  1    23*   for example, stba or stca
+  1    24**/
+  1    25 /* END INCLUDE FILE op_mnemonic_format.incl.pl1 */
+       34 
+       35 
+       36      end bce_inst_length_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.6  bce_inst_length_.pl1              >special_ldd>install>MR12.3-1114>bce_inst_length_.pl1
+34           1    11/26/79  1320.6  op_mnemonic_format.incl.pl1       >ldd>include>op_mnemonic_format.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+fixed                                                  builtin function         dcl 25 ref 28
+instruction_overlay                    based           structure                level 1 dcl 19
+ip                                     parameter       pointer                  dcl 14 ref 8 28
+num_desc                  1(21) 000010 external static fixed bin(5,0)           array level 2 packed packed unaligned dcl 1-5 ref 31
+num_words                 1(27) 000010 external static fixed bin(8,0)           array level 2 packed packed unaligned dcl 1-5 ref 32
+op_index                        000100 automatic       fixed bin(17,0)          dcl 17 set ref 28* 30 31 32
+op_mnemonic_$op_mnemonic        000010 external static structure                array level 1 dcl 1-5
+opcode                    0(18)        based           bit(10)                  level 2 in structure "instruction_overlay" packed
+                                                                                  packed unaligned dcl 19 in procedure
+                                                                                  "bce_inst_length_" ref 28
+opcode                          000010 external static char(6)                  array level 2 in structure
+                                                                                  "op_mnemonic_$op_mnemonic" packed packed unaligned
+                                                                                  dcl 1-5 in procedure "bce_inst_length_" ref 30
+special                                parameter       fixed bin(17,0)          dcl 14 set ref 8 31*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+addr                                                   builtin function         dcl 25
+addrel                                                 builtin function         dcl 25
+modifier                               internal static char(3)                  initial array dcl 1-11
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bce_inst_length_                000007 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       114         126      54         124
+Length       314      54        12         151      40           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_inst_length_                     68 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_inst_length_         000100 op_index                    bce_inst_length_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+op_mnemonic_$op_mnemonic
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000003        28 000014        30 000022        31 000041        32 000047
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

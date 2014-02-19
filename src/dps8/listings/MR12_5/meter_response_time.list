@@ -1,0 +1,1629 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1112>meter_response_time.alm                                                                                                                              
+ASSEMBLED ON:	11/11/89  0926.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+    000000                          11  	name	meter_response_time
+                                    12  
+                                    13  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    14  "
+                                    15  "	subroutine to monitor response times of interactive processes
+                                    16  "
+                                    17  "	The state of a process is defined by a finite-state automaton
+                                    18  "	representing that process.  This finite-state automaton is
+                                    19  "	viewed as follows:
+                                    20  "
+                                    21  "
+                                    22  "                                +------------------+    
+                                    23  "                                |                  |
+                                    24  "        		             |  Processing      |
+                                    25  "     		             |	            |
+                                    26  "     		             +------------------+
+                                    27  "                  call ring-0 tty   |          ^
+                                    28  "          for next interaction      |          |  return from ring-0 tty with 
+                                    29  "                                    V          |     interaction
+                                    30  "         award eligibility      +------------------+
+                                    31  "              +-------------->  |                  |
+                                    32  "              |                 |     Other        |
+                                    33  "     +------------------+       |                  |   
+                                    34  "     |                  |       +------------------+
+                                    35  "     |     Queued       |         |        ^   
+                                    36  "     |                  |         |block   |
+                                    37  "     +------------------+         |        | non-tty wakeup
+                                    38  "              ^                   V        |
+                                    39  "              |          +------------------+
+                                    40  "              |          |                  |
+                                    41  "              +----------|     Blocked      |
+                                    42  "          tty wakeup     |                  |
+                                    43  "     		      +------------------+
+                                    44  "     
+                                    45  "	This subroutine implements the finite-state automaton described
+                                    46  "	for each process.  Transitions between states are defined by calls
+                                    47  "	to the subroutine.  There are two calling sequences, as follows:
+                                    48  "
+                                    49  "	External to bound_traffic_control_priv:
+                                    50  "
+                                    51  "	     call meter_response_time (processid, transition)
+                                    52  "
+                                    53  "
+                                    54  "	Internal to bound_traffic_control_priv:
+                                    55  "
+                                    56  "		tsx7	meter_response_time$tc
+                                    57  "
+                                    58  "		     pr2 -> apte for process
+                                    59  "		     pr3 -> base of tc_data$
+                                    60  "		     qreg = transition number
+                                    61  "
+                                    62  "	Written April 1981 by John J. Bongiovanni
+                                    63  "
+                                    64  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    65  "
+                                    66  
+                                    67  
+                                    68  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    69  "
+                                    70  "	Table to drive finite-state automaton
+                                    71  "
+                                    72  "	transition_table implements the following finite-state
+                                    73  "	automaton (ref. MTB-489):
+                                    74  "
+                                    75  "          
+                                    76  "                                   Transitions
+                                    77  "          
+                                    78  "          State                1   2   3   4   5   6   
+                                    79  "                             +---+---+---+---+---+---+
+                                    80  "          Initial (I)        | I | I | P | I | I | Q |
+                                    81  "                             +---+---+---+---+---+---+
+                                    82  "          Blocked (B)        | I | I | I | I | O | Q |
+                                    83  "                             +---+---+---+---+---+---+
+                                    84  "          Queued (Q)         | O | I | I | I | Q | I |
+                                    85  "                             +---+---+---+---+---+---+
+                                    86  "          Other (O)          | O | O | P | B | O | O |
+                                    87  "                             +---+---+---+---+---+---+
+                                    88  "          Processing (P)     | P | O | I | B | P | I |
+                                    89  "                             +---+---+---+---+---+---+
+                                    90  "          
+                                    91  "          
+                                    92  "          
+                                    93  "                    Transitions:
+                                    94  "          
+                                    95  "          	   1 - Award eligibility
+                                    96  "          
+                                    97  "          	   2 - Call ring-0 tty for next interaction
+                                    98  "          
+                                    99  "          	   3 - Return from ring-0 tty with next interaction
+                                   100  "          
+                                   101  "          	   4 - Block
+                                   102  "          
+                                   103  "          	   5 - Non-tty wakeup
+                                   104  "          
+                                   105  "          	   6 - Tty wakeup (input)
+                                   106  "          
+                                   107  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   108  
+                                   109  "
+                                   110  
+                                   111  "	Definition of States
+                                   112  
+                        000000     113  	equ	initial,0
+                        000001     114  	equ	blocked,1
+                        000002     115  	equ	queued,2
+                        000003     116  	equ	other,3
+                        000004     117  	equ	processing,4
+                        000004     118  	equ	max_response_state,4
+                                   119  	
+                                   120  "
+                                   121  
+                                   122  "	Table definition macros
+                                   123  
+                        000002     124  	equ	state_element_words,2
+                        000004     125  	equ	state_elements_per_word,4
+                        000010     126  	equ	state_elements_per_entry,state_element_words*state_elements_per_word
+                        000001     127  	equ	state_entry_shift,1
+                        000002     128  	equ	state_element_shift,2
+                                   129  	
+                        000000     130  	set	current_state_element,0
+                                   131  
+                                   132  	macro	state_element
+                              1    133  	maclist	off save
+                              2    134  	use	trans
+                              3    135  	org	current_state_element
+                              4    136  	dup	state_element_words
+                              5    137  	dec	0
+                              6    138  	dupend
+                              7    139  	maclist	object
+                              8    140  	org	current_state_element
+                              9    141  &R&(&=&x,1&[          vfd       &;,&]o9/&i&)
+                             10    142  	set	current_state_element,current_state_element+state_element_words
+                             11    143  	maclist	restore
+                             12    144  	use	.text.	
+                             13    145  	&end
+                                   146  	
+                                   147  "
+                                   148  	use	trans
+                                   149  	even
+    000162                         150  transition_table:
+                                   151  	use	.text.
+                                   152  
+                                   153  "	Initial (State 0)
+                                   154  	state_element	initial,initial,initial,processing,initial,initial,queued
+                        000000 
+    000162  aa   000000 000004 
+    000163  aa   000000 002000 
+                        000002 
+                                        	use	.text.	
+                                   155  "	Blocked (State 1)
+                                   156  	state_element	initial,initial,initial,initial,initial,other,queued
+                        000002 
+    000164  aa   000000 000000 
+    000165  aa   000003 002000 
+                        000004 
+                                        	use	.text.	
+                                   157  "	Queued (State 2)
+                                   158  	state_element	initial,other,initial,initial,initial,queued,initial
+                        000004 
+    000166  aa   000003 000000 
+    000167  aa   000002 000000 
+                        000006 
+                                        	use	.text.	
+                                   159  "	Other (State 3)
+                                   160  	state_element	initial,other,other,processing,blocked,other,other
+                        000006 
+    000170  aa   000003 003004 
+    000171  aa   001003 003000 
+                        000010 
+                                        	use	.text.	
+                                   161  "	Processing (State 4)
+                                   162  	state_element	initial,processing,other,initial,blocked,processing,initial
+                        000010 
+    000172  aa   000004 003000 
+    000173  aa   001004 000000 
+                        000012 
+                                        	use	.text.	
+                                   163  
+                                   164  "
+                                   165  	join	/text/trans
+                                   166  
+                                   167  	
+    000000                         168  trans_shift_table:
+    000000  aa   000000 000033     169  	dec	27,18,9,0
+    000001  aa   000000 000022 
+    000002  aa   000000 000011 
+    000003  aa   000000 000000 
+    000004                         170  trans_mask_table:
+    000004  aa   777000 000000     171  	oct	777000000000
+    000005  aa   000777 000000     172  	oct	000777000000
+    000006  aa   000000 777000     173  	oct	000000777000
+    000007  aa   000000 000777     174  	oct	000000000777
+                                   175  
+                                   176  "	macro to prepare for the day ...
+                                   177  	macro	read_clock
+                              1    178  	rccl	sys_info$clock_,*
+                              2    179  	&end
+                                   180  	
+                                   181  
+                                   182  "
+                                   183  
+                        000010     184  	entry	meter_response_time
+                        000022     185  	segdef	tc
+                                   186  
+                                   187  "
+                                   188  	
+                                   189  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   190  "
+                                   191  "	Entry from outside of bound_traffic_control_priv
+                                   192  "
+                                   193  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   194  
+    000010                         195  meter_response_time:
+                                   196  
+    000010  aa   000300 6270 00    197  	push
+    000011  aa  7 00040 2721 20
+    000012  4a  4 00010 3531 20    198  	epbp3	tc_data$
+    000013  aa  0 00002 2351 20    199  	lda	pr0|2,*			processid
+    000014  aa  3 00000 3521 01    200  	epp2	pr3|0,au			pr2 -> apte
+    000015  aa  2 00003 1151 00    201  	cmpa	pr2|apte.processid		can this possibly be right?
+    000016  0a   000021 6010 00    202  	tnz	return			no way
+    000017  aa  0 00004 2361 20    203  	ldq	pr0|4,*			transition number
+    000020  0a   000022 7070 00    204  	tsx7	tc
+    000021  aa  7 00042 7101 20    205  return:	return
+                                   206  
+                                   207  "
+                                   208  
+                                   209  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   210  "
+                                   211  "	Entry from inside of bound_traffic_control_priv
+                                   212  "
+                                   213  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   214  
+    000022                         215  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+><+><+><+><+>
+                                   216  
+    000022  aa  6 00100 7563 00    217  tc:	stq	pre_temp			transition number
+                                   218  	read_clock
+    000023  4a  4 00012 6333 20         	rccl	sys_info$clock_,*
+    000024  aa  6 00076 7573 00    219  	staq	pre_time
+                                   220  
+                                   221  "	Validate current state and transition number.  Punt if either is
+                                   222  "	invalid by setting state to 0 (initial) and metering.
+                                   223  "	Find array element in transition table corresponding to
+                                   224  "	(current state, transition number)
+                                   225  	
+    000025  aa  2 00052 2353 00    226  	lda	pr2|apte.current_response_state
+    000026  0a   000156 6042 00    227  	tmi	invalid
+    000027  aa   000004 1152 07    228  	cmpa	max_response_state,dl
+    000030  0a   000156 6056 00    229  	tpnz	invalid
+    000031  aa   000000 6212 05    230  	eax1	0,al			x1=current state number
+    000032  aa   000001 7352 00    231  	als	state_entry_shift		al=offset into trans table this state
+    000033  aa  6 00101 7553 00    232  	sta	pre_temp+1
+    000034  aa  6 00100 2353 00    233  	lda	pre_temp			transition number
+    000035  0a   000156 6046 00    234  	tmoz	invalid
+    000036  aa   000006 1152 07    235  	cmpa	MAX_TRANSITION,dl		
+    000037  0a   000156 6056 00    236  	tpnz	invalid
+    000040  aa   000000 6262 05    237  	eax6	0,al			x6=transition number
+    000041  aa   000000 2362 07    238  	ldq	0,dl
+    000042  aa   000002 7732 00    239  	lrl	state_element_shift		al=word offset into array from state
+    000043  aa   000020 7722 00    240  	qrl	18-state_element_shift	qu=char offset into word
+    000044  aa  6 00101 0753 00    241  	ada	pre_temp+1		al=word offset into array
+    000045  0a   000162 2352 05    242  	lda	transition_table,al		array word
+    000046  0a   000004 3752 02    243  	ana	trans_mask_table,qu		mask out proper character
+    000047  0a   000000 7202 02    244  	lxl0	trans_shift_table,qu	x0=shift count
+    000050  aa   000000 7712 10    245  	arl	0,x0			areg=new state
+    000051  aa  2 00052 1153 00    246  	cmpa	pr2|apte.current_response_state has state changed
+    000052  0a   000150 6002 00    247  	tze	meter_and_exit		no
+    000053  aa   000000 7352 00    248  	als	0			check for invalid transition
+    000054  0a   000156 6002 00    249  	tze	invalid			invalid
+    000055  aa  2 00021 2203 00    250  	ldx0	pr2|apte.wct_index
+    000056  aa  3 00000 3503 10    251  	epp0	pr3|0,x0			pr0 -> wcte this process
+    000057  aa   000000 6202 05    252  	eax0	0,al			x0=new state
+                                   253  "
+                                   254  "	Do special things based on previous state
+                                   255  
+    000060  aa  6 00076 2373 00    256  	ldaq	pre_time
+    000061  aa  2 00054 1773 00    257  	sbaq	pr2|apte.last_response_state_time  aq=delta time in state
+    000062  0a   000063 7102 31    258  	tra	prev_state_actions,x1*
+    000063                         259  prev_state_actions:
+    000063  0a   000133 0002 00    260  	arg	check_next		initial
+    000064  0a   000070 0002 00    261  	arg	update_think_time		blocked
+    000065  0a   000076 0002 00    262  	arg	update_queue_time		queued
+    000066  0a   000133 0002 00    263  	arg	check_next		other
+    000067  0a   000102 0002 00    264  	arg	update_response_time	processing
+                                   265  
+    000070                         266  update_think_time:
+    000070  aa   000006 1062 03    267  	cmpx6	TTY_WAKEUP,du		was the blocked time think time
+    000071  0a   000133 6012 00    268  	tnz	check_next		no
+    000072  aa  0 00030 0543 00    269  	aos	pr0|wcte.number_thinks	count number times thinking
+    000073  aa  0 00032 0773 00    270  	adaq	pr0|wcte.total_think_time	and update total time
+    000074  aa  0 00032 7573 00    271  	staq	pr0|wcte.total_think_time
+    000075  0a   000133 7102 00    272  	tra	check_next
+                                   273  
+    000076                         274  update_queue_time:
+    000076  aa  0 00031 0543 00    275  	aos	pr0|wcte.number_queues	update count of queues
+    000077  aa  0 00034 0773 00    276  	adaq	pr0|wcte.total_queue_time	and total time queued
+    000100  aa  0 00034 7573 00    277  	staq	pr0|wcte.total_queue_time
+    000101  0a   000133 7102 00    278  	tra	check_next
+                                   279  
+                                   280  
+    000102                         281  update_response_time:
+    000102  aa   000002 1062 03    282  	cmpx6	CALL_RING_0_TTY,du		was this the end of an interaction
+    000103  0a   000133 6012 00    283  	tnz	check_next		no
+    000104  aa  6 00102 7573 00    284  	staq	pre_temp+2		save response time
+    000105  aa  6 00076 2373 00    285  	ldaq	pre_time			clock value on entry
+    000106  4a  4 00014 1773 20    286  	sbaq	pds$cpu_time		total cpu time
+    000107  4a  4 00016 1773 20    287  	sbaq	pds$virtual_delta		virtual cpu time
+    000110  aa  2 00060 1773 00    288  	sbaq	pr2|apte.begin_interaction_vcpu	qreg=vcpu this interaction
+                                   289  
+                                   290  "	Find proper bucket for this interaction.  Bucket boundaries (in terms
+                                   291  "	of vcpu time) are in the array tc_data$vcpu_response_bounds
+                                   292  
+    000111  aa  3 00433 2353 00    293  	lda	pr3|vcpu_response_bounds_size	al=highest array offset
+    000112                         294  find_vcpu_bucket:
+    000112  aa  3 00427 1163 05    295  	cmpq	pr3|vcpu_response_bounds-1,al	in this bucket
+    000113  0a   000116 6052 00    296  	tpl	found_vcpu_bucket		yes
+    000114  aa   000001 1752 07    297  	sba	1,dl
+    000115  0a   000112 6056 00    298  	tpnz	find_vcpu_bucket		fall through if lowest bucket
+                                   299  
+                                   300  "	Update statistics in APTE and WCTE
+                                   301  
+    000116                         302  found_vcpu_bucket: 
+    000116  aa  0 00036 0543 05    303  	aos	pr0|wcte.number_processing,al	count interactions
+    000117  aa  2 00053 0543 00    304  	aos	pr2|apte.number_processing
+    000120  aa   000001 7352 00    305  	als	1			x2 (offset for double-word array)
+    000121  aa   000000 6212 05    306  	eax1	0,al			x0 = offset into double-word array
+    000122  aa   000000 2352 07    307  	lda	0,dl			aq = vcpu this interaction
+    000123  aa  0 00052 0773 11    308  	adaq	pr0|wcte.total_vcpu_time,x1
+    000124  aa  0 00052 7573 11    309  	staq	pr0|wcte.total_vcpu_time,x1
+    000125  aa  6 00102 2373 00    310  	ldaq	pre_temp+2		aq = response time this interaction
+    000126  aa  0 00042 0773 11    311  	adaq	pr0|wcte.total_processing_time,x1
+    000127  aa  0 00042 7573 11    312  	staq	pr0|wcte.total_processing_time,x1
+    000130  aa  6 00102 2373 00    313  	ldaq	pre_temp+2		aq = response time this interaction
+    000131  aa  2 00056 0773 00    314  	adaq	pr2|apte.total_processing_time
+    000132  aa  2 00056 7573 00    315  	staq	pr2|apte.total_processing_time
+                                   316  	
+                                   317  
+                                   318  "
+                                   319  "	Do special things based on new state
+                                   320  
+    000133                         321  check_next:
+    000133  0a   000134 7102 30    322  	tra	next_state_actions,x0*
+    000134                         323  next_state_actions:
+    000134  0a   000145 0002 00    324  	arg	state_update		initial
+    000135  0a   000145 0002 00    325  	arg	state_update		blocked
+    000136  0a   000145 0002 00    326  	arg	state_update		queued
+    000137  0a   000145 0002 00    327  	arg	state_update		other
+    000140  0a   000141 0002 00    328  	arg	mark_processing		processing
+                                   329  
+                                   330  "	Note virtual cpu time at begin of interaction
+                                   331  "	We depend on running in the address space of the process
+                                   332  "	specified, which will be true since the transition is
+                                   333  "	a return from within that process
+                                   334  	
+    000141                         335  mark_processing:
+    000141  aa  6 00076 2373 00    336  	ldaq	pre_time
+    000142  4a  4 00014 1773 20    337  	sbaq	pds$cpu_time		real cpu time
+    000143  4a  4 00016 1773 20    338  	sbaq	pds$virtual_delta		virtual cpu time
+    000144  aa  2 00060 7573 00    339  	staq	pr2|apte.begin_interaction_vcpu
+                                   340  
+                                   341  "
+                                   342  "	Update state, meter, and return
+                                   343  
+    000145                         344  state_update:
+    000145  aa  2 00052 4403 00    345  	sxl0	pr2|apte.current_response_state
+    000146  aa  6 00076 2373 00    346  	ldaq	pre_time			clock at entry
+    000147  aa  2 00054 7573 00    347  	staq	pr2|apte.last_response_state_time
+    000150                         348  meter_and_exit: 
+                                   349  	read_clock
+    000150  4a  4 00012 6333 20         	rccl	sys_info$clock_,*
+    000151  aa  6 00076 1773 00    350  	sbaq	pre_time			metering overhead
+    000152  aa  3 00436 0773 00    351  	adaq	pr3|meter_response_time_overhead
+    000153  aa  3 00436 7573 00    352  	staq	pr3|meter_response_time_overhead
+    000154  aa  3 00434 0543 00    353  	aos	pr3|meter_response_time_calls
+    000155  aa   000000 7102 17    354  	tra	0,x7
+                                   355  
+    000156                         356  invalid:	
+    000156  aa   000000 2202 03    357  	ldx0	initial,du		reset state
+    000157  aa  3 00435 0543 00    358  	aos	pr3|meter_response_time_invalid	count these
+    000160  0a   000145 7102 00    359  	tra	state_update
+                                   360  	
+    000161                         361  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+                                   362  "	
+                                   363  	include	apte
+                                   1-1  "	BEGIN INCLUDE FILE apte.incl.alm
+                                   1-2  "
+                                   1-3  "
+                                   1-4  " HISTORY COMMENTS:
+                                   1-5  "  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+                                   1-6  "     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+                                   1-7  "     Added the ipc_r_offset, ipc_r_factor, and apad fields from the pl1
+                                   1-8  "     include file to support async event channel wakeups.
+                                   1-9  "                                                      END HISTORY COMMENTS
+                                  1-10  
+                        000000    1-11  	equ	apte.thread,0
+                        000000    1-12  	equ	apte.fp,0			"UPPER
+                        000000    1-13  	equ	apte.bp,0			"LOWER
+                                  1-14  
+                        000001    1-15  	equ	apte.flags,1
+                        000001    1-16  	equ	apte.sentinel,1
+                        400000    1-17  	bool	apte.mbz,400000		"DU
+                        200000    1-18  	bool	apte.wakeup_waiting,200000	"DU
+                        100000    1-19  	bool	apte.stop_pending,100000	"DU
+                        040000    1-20  	bool	apte.pre_empted,040000	"DU
+                        020000    1-21  	bool	apte.hproc,020000		"DU
+                        010000    1-22  	bool	apte.loaded,010000		"DU
+                        004000    1-23  	bool	apte.eligible,004000	"DU
+                        002000    1-24  	bool	apte.idle,002000		"DU
+                        001000    1-25  	bool	apte.interaction,001000	"DU
+                        000400    1-26  	bool	apte.pre_empt_pending,000400	"DU
+                        000200    1-27  	bool	apte.default_procs_required,000200 "DU
+                        000100    1-28  	bool	apte.realtime_burst,000100	"DU
+                        000040    1-29  	bool	apte.always_loaded,000040	"DU
+                        000020    1-30  	bool	apte.dbr_loaded,000020	"DU
+                        000010    1-31  	bool	apte.being_loaded,000010	"DU
+                        000004    1-32  	bool	apte.shared_stack_0,000004	"DU
+                        000002    1-33  	bool	apte.page_wait_flag,000002	"DU
+                        000001    1-34  	bool	apte.firstsw,000001		"DU
+                        000001    1-35  	equ	apte.state,1		"LOWER
+                                  1-36  
+                        000002    1-37  	equ	apte.page_faults,2
+                                  1-38  
+                        000003    1-39  	equ	apte.processid,3
+                                  1-40  
+                        000004    1-41  	equ	apte.te,4
+                                  1-42  
+                        000005    1-43  	equ	apte.ts,5
+                                  1-44  
+                        000006    1-45  	equ	apte.ti,6
+                                  1-46  
+                        000007    1-47  	equ	apte.timax,7
+                                  1-48  
+                        000010    1-49  	equ	apte.ipc_pointers,8
+                        000010    1-50  	equ	apte.event_thread,8		"UPPER
+                                  1-51  
+                        000011    1-52  	equ	apte.ips_message,9
+                                  1-53  
+                        000012    1-54  	equ	apte.asteps,10
+                        000012    1-55  	equ	apte.pds,10		"UPPER
+                        000012    1-56  	equ	apte.dseg,10		"LOWER
+                                  1-57  
+                        000013    1-58  	equ	apte.prds,11		"UPPER
+                        000013    1-59  	equ	apte.savex7,11		"LOWER
+                                  1-60  
+                        000014    1-61  	equ	apte.term_processid,12
+                                  1-62  
+                        000015    1-63  	equ	apte.lock_id,13
+                        000016    1-64  	equ	apte.time_used_clock,14
+                                  1-65  
+                        000020    1-66  	equ	apte.wait_event,16
+                                  1-67  
+                        000021    1-68  	equ	apte.wct_index,17		"UPPER
+                        000021    1-69  	equ	apte.flags2,17		"LOWER
+                        400000    1-70  	bool	apte.prior_sched,400000	"DL
+                        000023    1-71  	equ	apte.chans_offset,19
+                        374000    1-72  	bool	apte.special_chans,374000	"DL
+                        000021    1-73  	equ	apte.batch_word,17
+                        000010    1-74  	bool	apte.batch,000010		"DL
+                        000007    1-75  	bool	apte.pr_tag_mask,000007
+                                  1-76  
+                        000022    1-77  	equ	apte.state_change_time,18
+                                  1-78  
+                        000024    1-79  	equ	apte.alarm_event,20
+                                  1-80  
+                        000026    1-81  	equ	apte.alarm_time_thread,22	"UPPER
+                        000026    1-82  	equ	apte.alarm_time,22
+                                  1-83  
+                        000030    1-84  	equ	apte.term_channel,24
+                                  1-85  
+                        000032    1-86  	equ	apte.ws_size,26
+                                  1-87  
+                        000033    1-88  	equ	apte.temax,27
+                                  1-89  
+                        000034    1-90  	equ	apte.deadline,28
+                                  1-91  
+                        000036    1-92  	equ	apte.lock,30
+                                  1-93  
+                        000037    1-94  	equ	apte.cpu_monitor,31		units = 1/1024 sec
+                                  1-95  
+                        000040    1-96  	equ	apte.paging_measure,32
+                                  1-97  
+                        000042    1-98  	equ	apte.access_authorization,34 	"DOUBLE WORD
+                        400000    1-99  	bool	apte.no_ipc_check,400000	"DL
+                                 1-100  
+                        000044   1-101  	equ	apte.dbr,36
+                                 1-102  
+                        000046   1-103  	equ	apte.virtual_cpu_time,38
+                                 1-104  
+                        000050   1-105  	equ	apte.ittes_sent,40
+                        000051   1-106  	equ	apte.ittes_got,41
+                                 1-107  
+                        000052   1-108  	equ	apte.current_response_state,42	" DU
+                        000053   1-109  	equ	apte.number_processing,43
+                        000054   1-110  	equ	apte.last_response_state_time,44
+                        000056   1-111  	equ	apte.total_processing_time,46
+                        000060   1-112  	equ	apte.begin_interaction_vcpu,48
+                                 1-113  
+                        000062   1-114  	equ	apte.saved_temax,50
+                        000063   1-115  	equ	apte.procs_required,51
+                        776000   1-116  	bool	apte.procs_required_mask,776000	" DU
+                                 1-117  
+                        000064   1-118  	equ	apte.ipc_r_offset,52
+                        000065   1-119  	equ	apte.ipc_r_factor,53
+                        000066   1-120  	equ	apte.apad,54
+                                 1-121  
+                        000100   1-122  	equ	size_of_apt_entry,64
+                                 1-123  
+                                 1-124  "	MISC OLD DCLS.
+                                 1-125  
+                        000013   1-126  	equ	apte.le_shift,11
+                        000175   1-127  	bool	apte.timer_factor,175
+                                 1-128  
+                                 1-129  
+                                 1-130  "
+                                 1-131  "	END INCLUDE FILE apte.incl.alm
+                                 1-132  "
+                                   364  
+                                   365            include   pxss_page_stack
+                                   2-1  "
+                                   2-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   2-3  "
+                                   2-4  
+                        000006     2-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     2-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   2-7  
+                                   2-8  	temp8	notify_regs
+                                   2-9  	temp	save_stack(stack_size),stackp
+                                  2-10  	tempd	pre_time,pre_temp(3)
+                                  2-11  	tempd	arg(11),temp
+                                  2-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  2-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  2-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  2-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  2-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  2-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  2-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  2-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  2-20  	temp	lock_volmap_temp
+                                  2-21  	temp	volmap_page_temp
+                                  2-22  	tempd	free_store_start_time,post_io_start_time
+                                  2-23  
+                                  2-24  	temp	done_astep,volmap_page_temp_1
+                                  2-25  	temp	vtocx,pageno
+                                  2-26  
+                                  2-27  	tempd	page_synch_temp,page_synch_time
+                                  2-28  	temp	page_synch_index
+                                  2-29  
+                                  2-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  2-31  	tempd	pf_sdw
+                                  2-32  
+                                  2-33  	temp	pad(22)		" to grow compatibly
+                                  2-34  "
+                                  2-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  2-36  "
+                                   366  
+                                   367  	include	response_transitions
+                                   3-1  "	BEGIN INCLUDE FILE		response_transitions.incl.alm
+                                   3-2  "
+                                   3-3  "	Written April 1981 by J. Bongiovanni
+                                   3-4  "
+                        000001     3-5  	equ	AWARD_ELIGIBILITY,1
+                        000002     3-6  	equ	CALL_RING_0_TTY,2
+                        000003     3-7  	equ	RETURN_RING_0_TTY,3
+                        000004     3-8  	equ	BLOCK_PROCESS,4
+                        000005     3-9  	equ	NON_TTY_WAKEUP,5
+                        000006    3-10  	equ	TTY_WAKEUP,6
+                                  3-11  
+                        000006    3-12  	equ	MAX_TRANSITION,6
+                                  3-13  
+                                  3-14  
+                                  3-15  "	END INCLUDE FILE		response_transitions.incl.alm
+                                   368  
+                                   369  	include	tc_meters
+                                   4-1  "
+                                   4-2  "	BEGIN INCLUDE FILE tc_meters.incl.alm
+                                   4-3  "
+                                   4-4  "	BOS knows the offsets of some of these cells within tc_data
+                                   4-5  "	These cells should not be moved without changing BOS:
+                                   4-6  "		apt_offset - o253 - offset of first apte in upper
+                                   4-7  "		apt_size - o313 - number of apte's in lower
+                                   4-8  "		apt_entry_size - o327 - size of an apte in lower
+                                   4-9  "
+                                  4-10  "	Modified 84.12.06 by Keith Loepere for page create delaying.
+                                  4-11  "	Modified 84.11.26 by Keith Loepere for uid_array.
+                                  4-12  "	Modified 84.05.21 by M. Pandolf to add tc_suspend_lock
+                                  4-13  "	Modified 830913 to replace tty_polling_time with opc_polling_time... -E. A. Ranzenbach
+                                  4-14  	
+                        000000    4-15  	equ	tc_suspend_lock,0
+                        000003    4-16  	equ	cid2,3
+                        000004    4-17  	equ	cid3,4
+                        000005    4-18  	equ	cid4,5
+                        000006    4-19  	equ	depth_count,6
+                        000007    4-20  	equ	loadings,7
+                        000010    4-21  	equ	blocks,8
+                        000011    4-22  	equ	wakeups,9
+                        000012    4-23  	equ	waits,10
+                        000013    4-24  	equ	notifies,11
+                        000014    4-25  	equ	schedulings,12
+                        000015    4-26  	equ	interactions,13
+                        000016    4-27  	equ	avequeue,14
+                        000017    4-28  	equ	te_wait,15
+                        000020    4-29  	equ	te_block,16
+                        000021    4-30  	equ	te_i_stop,17
+                        000022    4-31  	equ	te_pre_empt,18
+                        000023    4-32  	equ	p_interactions,19
+                        000024    4-33  	equ	idle_time,20		DOUBLE
+                        000026    4-34  	equ	mp_idle,22		DOUBLE
+                        000030    4-35  	equ	nmp_idle,24		DOUBLE
+                        000032    4-36  	equ	zero_idle,26		DOUBLE
+                        000034    4-37  	equ	last_time,28		DOUBLE
+                        000036    4-38  	equ	loop_locks,30
+                        000037    4-39  	equ	loop_lock_time,31
+                        000040    4-40  	equ	ave_eligible,32
+                        000041    4-41  	equ	sort_to_elhead,33
+                        000042    4-42  	equ	processor_time,34		DOUBLE
+                        000044    4-43  	equ	response_time,36		DOUBLE
+                        000046    4-44  	equ	eligible_time,38		DOUBLE
+                        000050    4-45  	equ	response_count,40
+                        000051    4-46  	equ	eligible_count,41
+                        000052    4-47  	equ	quit_counts,42	" array of buckets indexed by process state
+                        000060    4-48  	equ	loading_idle,48		DOUBLE
+                        000062    4-49  	equ	delta_vcpu,50		DOUBLE
+                        000064    4-50  	equ	post_purge_switch,52
+                        000065    4-51  	equ	time_out_severity,53
+                        000066    4-52  	equ	notify_check,54
+                        000067    4-53  	equ	quit_priority,55
+                        000070    4-54  	equ	iobm_polling_time_loc,56	DOUBLE
+                        000072    4-55  	equ	end_of_time_loc,58		DOUBLE
+                        000074    4-56  	equ	gp_at_notify,60
+                        000075    4-57  	equ	gp_at_ptlnotify,61
+                        000076    4-58  	equ	int_q_enabled,62
+                        000077    4-59  	equ	fnp_buffer_threshold,63
+                                  4-60  
+                        000010    4-61  	equ	max_depth,8
+                        000100    4-62  	equ	depths,64
+                        000110    4-63  	equ	tdepth,depths+max_depth	ARRAY OF DOUBLE
+                        000130    4-64  	equ	pfdepth,tdepth+2*max_depth
+                                  4-65  
+                        000140    4-66  	equ	ptl_not_waits,96
+                        000141    4-67  	equ	gw_gp_window_count,97
+                        000142    4-68  	equ	metering_lock,98
+                        000143    4-69  	equ	ptl_waits,99
+                        000144    4-70  	equ	gp_start_count,100
+                        000145    4-71  	equ	gp_done_count,101
+                        000146    4-72  	equ	nto_check_time,102	"DOUBLE
+                        000150    4-73  	equ	nto_delta,104
+                        000151    4-74  	equ	nto_count,105
+                        000152    4-75  	equ	tcpu_scheduling,106
+                        000153    4-76  	equ	nto_event,107
+                        000154    4-77  	equ	page_notifies,108
+                        000155    4-78  	equ	notify_nobody_count,109
+                        000156    4-79  	equ	notify_nobody_event,110
+                        000157    4-80  	equ	system_type,111
+                        000160    4-81  	equ	statistics,112	sixteen words RESERVED for states
+                                  4-82  
+                        000200    4-83  	equ	waittime,128
+                        000220    4-84  	equ	readytime,waittime+2*max_depth
+                        000240    4-85  	equ	total_pf_time,readytime+2*max_depth	DOUBLE
+                        000242    4-86  	equ	total_pf_count,total_pf_time+2
+                        000243    4-87  	equ	auto_tune_ws,total_pf_time+3
+                        000244    4-88  	equ	ocore_delta,total_pf_time+4
+                        000245    4-89  	equ	ws_sum,total_pf_time+5
+                        000246    4-90  	equ	nonidle_force_count,total_pf_time+6
+                        000247    4-91  	equ	itt_list_lock,total_pf_time+7
+                        000250    4-92  	equ	cpu_pf_time,total_pf_time+8
+                        000252    4-93  	equ	cpu_pf_count,cpu_pf_time+2
+                        000253    4-94  	equ	apt_offset,cpu_pf_time+3	UPPER, BOS looks at tc_data|o253 (d171) for APT offset
+                        000254    4-95  	equ	getwork_time,cpu_pf_time+4	DOUBLE
+                        000256    4-96  	equ	getwork_count,cpu_pf_time+6
+                        000257    4-97  	equ	short_pf_count,cpu_pf_time+7
+                        000260    4-98  	equ	interrupt_time,cpu_pf_time+8	DOUBLE
+                        000262    4-99  	equ	interrupt_count,interrupt_time+2	DOUBLE
+                        000264   4-100  	equ	ocore,180
+                        000265   4-101  	equ	pre_empt_flag,181
+                        000266   4-102  	equ	cumulative_memory_usage,182	DOUBLE
+                        000270   4-103  	equ	processor_time_at_define_wc,184	DOUBLE
+                                 4-104  
+                        000272   4-105  	equ	boost_priority,186
+                        000273   4-106  	equ	lost_priority_eligibility,187
+                        000274   4-107  	equ	total_clock_lag,188		DOUBLE
+                        000276   4-108  	equ	clock_simulations,190
+                        000277   4-109  	equ	max_clock_lag,191
+                                 4-110  
+                                 4-111  
+                                 4-112  "300 octal
+                        000300   4-113  	equ	pdscopyl,192
+                        000301   4-114  	equ	max_hproc_segno,193
+                        000302   4-115  	equ	prds_length,194
+                        000303   4-116  	equ	pds_length,195
+                        000304   4-117  	equ	lock,196
+                        000305   4-118  	equ	id,197
+                        000306   4-119  	equ	system_shutdown,198
+                        000307   4-120  	equ	working_set_factor,199
+                                 4-121  
+                        000310   4-122  	equ	ncpu,200
+                        000311   4-123  	equ	last_eligible,201
+                        000312   4-124  	equ	apt_lock,202
+                        000313   4-125  	equ	apt_size,203		BOS looks at tc_data|o313 for number of aptes
+                        000314   4-126  	equ	realtime_q,204		DBL
+                        000316   4-127  	equ	aht_size,206
+                        000317   4-128  	equ	itt_size,207
+                                 4-129  
+                        000320   4-130  	equ	dst_size,208
+                        000321   4-131  	equ	itt_free_list,209
+                        000322   4-132  	equ	used_itt,210
+                        000323   4-133  	equ	initializer_id,211
+                        000324   4-134  	equ	n_eligible,212
+                        000325   4-135  	equ	max_eligible,213
+                        000326   4-136  	equ	wait_enable,214
+                        000327   4-137  	equ	apt_entry_size,215		BOS looks at tc_data|o327 for size of APTE
+                                 4-138  
+                        000330   4-139  	equ	interactive_q,216		DBL
+                        000332   4-140  	equ	dst_ptr,218		DBL
+                        000334   4-141  	equ	old_user,220		DBL
+                        000336   4-142  	equ	initialize_time,222		DBL
+                                 4-143  
+                        000340   4-144  	equ	init_event,224
+                        000341   4-145  	equ	oldt,225
+                        000342   4-146  	equ	newt,226
+                        000343   4-147  	equ	tefirst,227
+                        000344   4-148  	equ	telast,228
+                        000345   4-149  	equ	timax,229
+                        000346   4-150  	equ	empty_q,230
+                        000347   4-151  	equ	working_set_addend,231
+                                 4-152  
+                        000350   4-153  	equ	eligible_q_head,232		DBL
+                        000350   4-154  	equ	ready_q_head,eligible_q_head	OBS
+                        000352   4-155  	equ	eligible_q_tail,234		DBL
+                        000352   4-156  	equ	ready_q_tail,eligible_q_tail 	OBS
+                        000354   4-157  	equ	idle_tail,236		DBL
+                        000356   4-158  	equ	min_eligible,238
+                        000357   4-159  	equ	alarm_timer_list,239
+                                 4-160  
+                        000360   4-161  	equ	guaranteed_elig_inc,240
+                        000361   4-162  	equ	priority_sched_inc,241
+                        000362   4-163  	equ	next_alarm_time,242		DBL
+                        000364   4-164  	equ	priority_sched_time,244	DBL
+                        000366   4-165  	equ	opc_polling_time_loc,246	DBL
+                                 4-166  
+                        000370   4-167  	equ	disk_polling_time_loc,248	DBL
+                        000372   4-168  	equ	tape_polling_time_loc,250	DBL
+                        000374   4-169  	equ	imp_polling_time_loc,252	DBL
+                        000376   4-170  	equ	imp_polling_lock,254
+                        000377   4-171  	equ	max_channels,255
+                                 4-172  
+                                 4-173  "400 octal
+                        000400   4-174  	equ	system_virtual_time,256	DOUBLE
+                        000402   4-175  	equ	credit_bank,256+2		DOUBLE
+                        000404   4-176  	equ	min_wct_index,256+4		UPPER
+                        000405   4-177  	equ	max_wct_index,256+5		UPPER
+                        000406   4-178  	equ	delta_vt,256+6		DBL for pxss(compute_vc)
+                        000410   4-179  	equ	gross_idle_time,256+8		DOUBLE
+                        000412   4-180  	equ	credits_per_scatter,256+10
+                        000413   4-181  	equ	best_credit_value,256+11
+                        000414   4-182  	equ	define_wc_time,256+12	DOUBLE
+                        000416   4-183  	equ	max_batch_elig,256+14
+                        000417   4-184  	equ	num_batch_elig,256+15
+                        000420   4-185  	equ	deadline_mode,256+16
+                        000421   4-186  	equ	credits_scattered,256+17
+                        000422   4-187  	equ	max_max_eligible,256+18
+                        000423   4-188  	equ	max_stopped_stack_0,256+19
+                        000424   4-189  	equ	stopped_stack_0,256+20
+                        000425   4-190  	equ	mos_polling_interval,256+21
+                        000426   4-191  	equ	mos_polling_time_loc,256+22	DOUBLE
+                        000430   4-192  	equ	vcpu_response_bounds,256+24	ARRAY
+                        000433   4-193  	equ	vcpu_response_bounds_size,256+27
+                        000434   4-194  	equ	meter_response_time_calls,256+28
+                        000435   4-195  	equ	meter_response_time_invalid,256+29
+                        000436   4-196  	equ	meter_response_time_overhead,256+30	DOUBLE
+                        000440   4-197  	equ	init_wait_time,256+32		DOUBLE
+                        000442   4-198  	equ	init_wait_timeout,256+34		DOUBLE
+                        000444   4-199  	equ	init_timeout_severity,256+36
+                        000445   4-200  	equ	init_timeout_recurse,256+37
+                        000446   4-201  	equ	max_timer_register,256+38		DOUBLE
+                        000450   4-202  	equ	pre_empt_sample_time,256+40
+                        000451   4-203  	equ	governing_credit_bank,256+41
+                        000452   4-204  	equ	process_initial_quantum,256+42
+                        000453   4-205  	equ	default_procs_required,256+43
+                        776000   4-206  	bool	all_procs_required,776000		" DU
+                        000454   4-207  	equ	work_class_idle,256+44		DOUBLE
+                        000456   4-208  	equ	stk_truncate,256+46
+                        000457   4-209  	equ 	stk_truncate_always,256+47
+                        000460   4-210            equ       stk_trunc_avg_f1,256+48
+                        000461   4-211  	equ	stk_trunc_avg_f2,256+49
+                                 4-212  
+                        000462   4-213  	equ	lock_error_severity,256+50
+                                 4-214  	
+                        000463   4-215  	equ	gv_integration,256+51
+                        000464   4-216  	equ	gv_integration_set,256+52
+                        000465   4-217  	equ	pauses,256+53
+                                 4-218  
+                        000466   4-219  	equ	volmap_polling_time,256+54	" DOUBLE
+                        000470   4-220  	equ	next_ring0_timer,256+56	" DOUBLE
+                        000472   4-221  	equ	realtime_io_priority_switch,256+58
+                        000473   4-222  	equ	realtime_io_deadline,256+59
+                        000474   4-223  	equ	realtime_io_quantum,256+60
+                        000475   4-224  	equ	realtime_priorities,256+61
+                        000476   4-225  	equ	relinquishes,256+62
+                        000477   4-226  	equ	abort_ips_mask,256+63
+                                 4-227  
+                                 4-228  "500 octal
+                        000500   4-229  	equ	uid_array,320
+                                 4-230  "
+                                 4-231  "	words thru 584 are available for general use
+                                 4-232  "
+                                 4-233  "	Under present format, the wcte's begin at 1110 (octal),
+                                 4-234  "	and the apte's begin at 3000 (octal).  These tables should
+                                 4-235  "	not be accessed by fixed offsets, but rather through offset
+                                 4-236  "	cells - apt_offset (first apte), min_wct_index (first wcte)
+                                 4-237  
+                                 4-238  "
+                                 4-239  "	END INCLUDE FILE tc_meters.incl.alm
+                                 4-240  "
+                                   370  
+                                   371  	include	wcte
+                                   5-1  "
+                                   5-2  "	BEGIN INCLUDE FILE wcte.incl.alm
+                                   5-3  "
+                                   5-4  "
+                        000000     5-5  	equ	wcte.thread,0
+                        000000     5-6  	equ	wcte.fp,0		UPPER
+                        000000     5-7  	equ	wcte.bp,0		LOWER
+                                   5-8  
+                        000001     5-9  	equ	wcte.flags,1
+                        400000    5-10  	bool	wcte.mnbz,400000	    UPPER
+                        200000    5-11  	bool	wcte.defined,200000     UPPER
+                        100000    5-12  	bool      wcte.io_priority,100000 UPPER
+                        040000    5-13  	bool	wcte.governed,040000    UPPER
+                        020000    5-14  	bool	wcte.interactive_q,020000 UPPER
+                        000001    5-15  	equ	wcte.mnbz_word,wcte.flags
+                        000001    5-16  	equ	wcte.defined_word,wcte.flags
+                        000001    5-17  	equ       wcte.io_priority_word,wcte.flags
+                        000001    5-18  	equ	wcte.governed_word,wcte.flags
+                        000001    5-19  	equ	wcte.interactive_q_word,wcte.flags
+                                  5-20  
+                        000002    5-21  	equ	wcte.credits,2
+                        000003    5-22  	equ	wcte.minf,3
+                        000004    5-23  	equ	wcte.pin_weight,4
+                        000005    5-24  	equ	wcte.eligibilities,5
+                        000006    5-25  	equ	wcte.cpu_sum,6	DOUBLE
+                        000010    5-26  	equ	wcte.resp1,8	DBL
+                        000012    5-27  	equ	wcte.resp2,10	DBL
+                        000014    5-28  	equ	wcte.quantum1,12
+                        000015    5-29  	equ	wcte.quantum2,13
+                        000016    5-30  	equ	wcte.rmeter1,14	DBL
+                        000020    5-31  	equ	wcte.rmeter2,16	DBL
+                        000022    5-32  	equ	wcte.rcount1,18
+                        000023    5-33  	equ	wcte.rcount2,19
+                        000024    5-34  	equ	wcte.realtime,20
+                        000025    5-35  	equ	wcte.purging,21
+                        000026    5-36  	equ	wcte.maxel,22
+                        000027    5-37  	equ	wcte.nel,23
+                                  5-38  
+                        000030    5-39  	equ	wcte.number_thinks,24
+                        000031    5-40  	equ	wcte.number_queues,25
+                        000032    5-41  	equ	wcte.total_think_time,26	DOUBLE
+                        000034    5-42  	equ	wcte.total_queue_time,28	DOUBLE
+                                  5-43  
+                                  5-44  "	The following entries are arrays which parallel tc_data$vcpu_bounds
+                        000036    5-45  	equ	wcte.number_processing,30
+                        000042    5-46  	equ	wcte.total_processing_time,34	DOUBLE
+                        000052    5-47  	equ	wcte.total_vcpu_time,42		DOUBLE
+                                  5-48  
+                        000062    5-49  	equ	wcte.maxf,50
+                        000063    5-50  	equ	wcte.governing_credits,51
+                                  5-51  	
+                                  5-52  "	Words 52 - 55 are available
+                                  5-53  	
+                        000070    5-54  	equ	size_of_wct_entry,56
+                                  5-55  
+                                  5-56  "
+                                  5-57  "	END INCLUDE FILE wcte.incl.alm
+                                  5-58  "
+                                   372  		
+                                   373  	end
+ENTRY SEQUENCES
+     
+    000174  5a   000017 0000 00
+    000175  aa  7 00046 2721 20
+    000176  0a   000010 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000200  5a   000003 000000 
+    000201  5a   000036 600000 
+    000202  aa   000000 000000 
+    000203  55   000013 000002 
+    000204  5a   000002 400003 
+    000205  55   000006 000013 
+    000206  aa  023 155 145 164
+    000207  aa  145 162 137 162
+    000210  aa  145 163 160 157
+    000211  aa  156 163 145 137
+    000212  aa  164 151 155 145
+    000213  55   000017 000003 
+    000214  0a   000022 400000 
+    000215  55   000016 000003 
+    000216  aa  002 164 143 000         tc
+    000217  55   000027 000013 
+    000220  0a   000175 500000 
+    000221  55   000022 000003 
+    000222  aa  023 155 145 164         meter_response_time
+    000223  aa  145 162 137 162
+    000224  aa  145 163 160 157
+    000225  aa  156 163 145 137
+    000226  aa  164 151 155 145
+    000227  55   000002 000017 
+    000230  6a   000000 400002 
+    000231  55   000032 000003 
+    000232  aa  014 163 171 155         symbol_table
+    000233  aa  142 157 154 137
+    000234  aa  164 141 142 154
+    000235  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000236  aa   000000 000015 
+    000237  aa   000000 000000 
+    000240  5a   000017 000000 
+    000241  aa   000000 000000 
+    000242  aa   000000 000000 
+    000243  aa   000000 000000 
+    000244  5a   000013 000000 
+    000245  5a   000027 000000 
+    000246  aa   000000 000000 
+    000247  aa   000000 000000 
+    000250  aa   000000 000000 
+    000251  aa   000000 000000 
+    000252  aa   000000 000000 
+    000253  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000254  aa  015 166 151 162         virtual_delta
+    000255  aa  164 165 141 154
+    000256  aa  137 144 145 154
+    000257  aa  164 141 000 000
+    000260  aa  010 143 160 165         cpu_time
+    000261  aa  137 164 151 155
+    000262  aa  145 000 000 000
+    000263  aa  003 160 144 163         pds
+    000264  aa  006 143 154 157         clock_
+    000265  aa  143 153 137 000
+    000266  aa  010 163 171 163         sys_info
+    000267  aa  137 151 156 146
+    000270  aa  157 000 000 000
+    000271  aa  007 164 143 137         tc_data
+    000272  aa  144 141 164 141
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000273  aa   000004 000000 
+    000274  55   000063 000054 
+    000275  aa   000004 000000 
+    000276  55   000063 000060 
+    000277  aa   000004 000000 
+    000300  55   000066 000064 
+    000301  aa   000003 000000 
+    000302  5a   000071 000000 
+    000303  aa   000001 000000 
+    000304  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000305  5a   000073 000000 
+    000306  5a   000075 000000 
+    000307  5a   000077 000000 
+    000310  5a   000101 000000 
+    000311  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000200 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000020 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         tc_data|       
+    000011  5a   000110 0000 00
+    000012  9a   777766 0000 46         sys_info|clock_
+    000013  5a   000107 0000 20
+    000014  9a   777764 0000 46         pds|cpu_time
+    000015  5a   000106 0000 00
+    000016  9a   777762 0000 46         pds|virtual_delta
+    000017  5a   000105 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   243270 610442 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000254 
+    000020  aa   000000 000204 
+    000021  aa   000227 000222 
+    000022  aa   000242 000204 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000006 
+    000066  aa   000116 000052 
+    000067  aa   175453 020421 
+    000070  aa   000000 117547 
+    000071  aa   177664 400000 
+    000072  aa   000131 000032 
+    000073  aa   147777 464062 
+    000074  aa   000000 115000 
+    000075  aa   507456 000000 
+    000076  aa   000140 000045 
+    000077  aa   133234 136230 
+    000100  aa   000000 113324 
+    000101  aa   322064 400000 
+    000102  aa   000152 000052 
+    000103  aa   101443 226611 
+    000104  aa   000000 110144 
+    000105  aa   403046 400000 
+    000106  aa   000165 000037 
+    000107  aa   133234 136201 
+    000110  aa   000000 113324 
+    000111  aa   322062 600000 
+    000112  aa   000175 000032 
+    000113  aa   110440 510400 
+    000114  aa   000000 111044 
+    000115  aa   621362 000000 
+    000116  aa   076163 160145          >spec>install>1112>meter_response_time.alm
+    000117  aa   143076 151156 
+    000120  aa   163164 141154 
+    000121  aa   154076 061061 
+    000122  aa   061062 076155 
+    000123  aa   145164 145162 
+    000124  aa   137162 145163 
+    000125  aa   160157 156163 
+    000126  aa   145137 164151 
+    000127  aa   155145 056141 
+    000130  aa   154155 040040 
+    000131  aa   076154 144144          >ldd>include>apte.incl.alm
+    000132  aa   076151 156143 
+    000133  aa   154165 144145 
+    000134  aa   076141 160164 
+    000135  aa   145056 151156 
+    000136  aa   143154 056141 
+    000137  aa   154155 040040 
+    000140  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000141  aa   076151 156143 
+    000142  aa   154165 144145 
+    000143  aa   076160 170163 
+    000144  aa   163137 160141 
+    000145  aa   147145 137163 
+    000146  aa   164141 143153 
+    000147  aa   056151 156143 
+    000150  aa   154056 141154 
+    000151  aa   155040 040040 
+    000152  aa   076154 144144          >ldd>include>response_transitions.incl.alm
+    000153  aa   076151 156143 
+    000154  aa   154165 144145 
+    000155  aa   076162 145163 
+    000156  aa   160157 156163 
+    000157  aa   145137 164162 
+    000160  aa   141156 163151 
+    000161  aa   164151 157156 
+    000162  aa   163056 151156 
+    000163  aa   143154 056141 
+    000164  aa   154155 040040 
+    000165  aa   076154 144144          >ldd>include>tc_meters.incl.alm
+    000166  aa   076151 156143 
+    000167  aa   154165 144145 
+    000170  aa   076164 143137 
+    000171  aa   155145 164145 
+    000172  aa   162163 056151 
+    000173  aa   156143 154056 
+    000174  aa   141154 155040 
+    000175  aa   076154 144144          >ldd>include>wcte.incl.alm
+    000176  aa   076151 156143 
+    000177  aa   154165 144145 
+    000200  aa   076167 143164 
+    000201  aa   145056 151156 
+    000202  aa   143154 056141 
+    000203  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    .text.                   meter_response_time:      151,  154,  156,  158,  160,  162.
+         477    abort_ips_mask           tc_meters:    226.
+         316    aht_size                 tc_meters:    127.
+         357    alarm_timer_list         tc_meters:    159.
+      776000    all_procs_required       tc_meters:    206.
+          42    apte.access_authorization      apte:          98.
+          24    apte.alarm_event         apte:          79.
+          26    apte.alarm_time          apte:          82.
+          26    apte.alarm_time_thread   apte:          81.
+          40    apte.always_loaded       apte:          29.
+          66    apte.apad                apte:         120.
+          12    apte.asteps              apte:          54.
+          10    apte.batch               apte:          74.
+          21    apte.batch_word          apte:          73.
+          60    apte.begin_interaction_vcpu    meter_response_time:      288,  339,
+                                               apte:         112.
+          10    apte.being_loaded        apte:          31.
+           0    apte.bp                  apte:          13.
+          23    apte.chans_offset        apte:          71.
+          37    apte.cpu_monitor         apte:          94.
+          52    apte.current_response_state    meter_response_time:      226,  246,  345,
+                                               apte:         108.
+          44    apte.dbr                 apte:         101.
+          20    apte.dbr_loaded          apte:          30.
+          34    apte.deadline            apte:          90.
+         200    apte.default_procs_required    apte:          27.
+          12    apte.dseg                apte:          56.
+        4000    apte.eligible            apte:          23.
+          10    apte.event_thread        apte:          50.
+           1    apte.firstsw             apte:          34.
+           1    apte.flags               apte:          15.
+          21    apte.flags2              apte:          69.
+           0    apte.fp                  apte:          12.
+       20000    apte.hproc               apte:          21.
+        2000    apte.idle                apte:          24.
+        1000    apte.interaction         apte:          25.
+          10    apte.ipc_pointers        apte:          49.
+          65    apte.ipc_r_factor        apte:         119.
+          64    apte.ipc_r_offset        apte:         118.
+          11    apte.ips_message         apte:          52.
+          51    apte.ittes_got           apte:         106.
+          50    apte.ittes_sent          apte:         105.
+          54    apte.last_response_state_time  meter_response_time:      257,  347,
+                                               apte:         110.
+          13    apte.le_shift            apte:         126.
+       10000    apte.loaded              apte:          22.
+          36    apte.lock                apte:          92.
+          15    apte.lock_id             apte:          63.
+      400000    apte.mbz                 apte:          17.
+      400000    apte.no_ipc_check        apte:          99.
+          53    apte.number_processing   meter_response_time:      304,
+                                         apte:         109.
+           2    apte.page_faults         apte:          37.
+           2    apte.page_wait_flag      apte:          33.
+          40    apte.paging_measure      apte:          96.
+          12    apte.pds                 apte:          55.
+          13    apte.prds                apte:          58.
+       40000    apte.pre_empted          apte:          20.
+         400    apte.pre_empt_pending    apte:          26.
+      400000    apte.prior_sched         apte:          70.
+           3    apte.processid           meter_response_time:      201,
+                                         apte:          39.
+          63    apte.procs_required      apte:         115.
+      776000    apte.procs_required_mask       apte:         116.
+           7    apte.pr_tag_mask         apte:          75.
+         100    apte.realtime_burst      apte:          28.
+          62    apte.saved_temax         apte:         114.
+          13    apte.savex7              apte:          59.
+           1    apte.sentinel            apte:          16.
+           4    apte.shared_stack_0      apte:          32.
+      374000    apte.special_chans       apte:          72.
+           1    apte.state               apte:          35.
+          22    apte.state_change_time   apte:          77.
+      100000    apte.stop_pending        apte:          19.
+           4    apte.te                  apte:          41.
+          33    apte.temax               apte:          88.
+          30    apte.term_channel        apte:          84.
+          14    apte.term_processid      apte:          61.
+           0    apte.thread              apte:          11.
+           6    apte.ti                  apte:          45.
+           7    apte.timax               apte:          47.
+         175    apte.timer_factor        apte:         127.
+          16    apte.time_used_clock     apte:          64.
+          56    apte.total_processing_time     meter_response_time:      314,  315,
+                                               apte:         111.
+           5    apte.ts                  apte:          43.
+          46    apte.virtual_cpu_time    apte:         103.
+          20    apte.wait_event          apte:          66.
+      200000    apte.wakeup_waiting      apte:          18.
+          21    apte.wct_index           meter_response_time:      250,
+                                         apte:          68.
+          32    apte.ws_size             apte:          86.
+         327    apt_entry_size           tc_meters:    137.
+         312    apt_lock                 tc_meters:    124.
+         253    apt_offset               tc_meters:     94.
+         150    apt_ptr                  pxss_page_stack:     13.
+         313    apt_size                 tc_meters:    125.
+         106    arg                      pxss_page_stack:     11.
+         243    auto_tune_ws             tc_meters:     87.
+          16    avequeue                 tc_meters:     27.
+          40    ave_eligible             tc_meters:     40.
+           1    AWARD_ELIGIBILITY        response_transitions:       5.
+         204    before                   pxss_page_stack:     17.
+         413    best_credit_value        tc_meters:    181.
+           1    blocked                  meter_response_time:      114,  160,  162.
+          10    blocks                   tc_meters:     21.
+           4    BLOCK_PROCESS            response_transitions:       8.
+         272    boost_priority           tc_meters:    105.
+           2    CALL_RING_0_TTY          meter_response_time:      282,
+                                         response_transitions:       6.
+         133    check_next               meter_response_time:      260,  263,  268,  272,  278,  283,  321.
+           3    cid2                     tc_meters:     16.
+           4    cid3                     tc_meters:     17.
+           5    cid4                     tc_meters:     18.
+                clock_                   meter_response_time:      218,  349.
+         276    clock_simulations        tc_meters:    108.
+         164    cmep                     pxss_page_stack:     15.
+         173    core_add                 pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+         252    cpu_pf_count             tc_meters:     93.
+         250    cpu_pf_time              tc_meters:     92,   93,   94,   95,   96,   97,   98.
+                cpu_time                 meter_response_time:      286,  337.
+         412    credits_per_scatter      tc_meters:    180.
+         421    credits_scattered        tc_meters:    186.
+         402    credit_bank              tc_meters:    175.
+         266    cumulative_memory_usage  tc_meters:    102.
+          12    current_state_element    meter_response_time:      130,  154,  156,  158,  160,  162.
+         420    deadline_mode            tc_meters:    185.
+         453    default_procs_required   tc_meters:    205.
+         414    define_wc_time           tc_meters:    182.
+         154    delta_t                  pxss_page_stack:     13.
+          62    delta_vcpu               tc_meters:     49.
+         406    delta_vt                 tc_meters:    178.
+         205    depth                    pxss_page_stack:     17.
+         100    depths                   tc_meters:     62,   63.
+           6    depth_count              tc_meters:     19.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+         370    disk_polling_time_loc    tc_meters:    167.
+         232    done_astep               pxss_page_stack:     24.
+         332    dst_ptr                  tc_meters:    140.
+         320    dst_size                 tc_meters:    130.
+          51    eligible_count           tc_meters:     46.
+         350    eligible_q_head          tc_meters:    153,  154.
+         352    eligible_q_tail          tc_meters:    155,  156.
+          46    eligible_time            tc_meters:     44.
+         346    empty_q                  tc_meters:    150.
+          72    end_of_time_loc          tc_meters:     55.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+         112    find_vcpu_bucket         meter_response_time:      294,  298.
+          77    fnp_buffer_threshold     tc_meters:     59.
+         116    found_vcpu_bucket        meter_response_time:      296,  302.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         256    getwork_count            tc_meters:     96.
+         152    getwork_temp             pxss_page_stack:     13.
+         254    getwork_time             tc_meters:     95.
+         451    governing_credit_bank    tc_meters:    203.
+          74    gp_at_notify             tc_meters:     56.
+          75    gp_at_ptlnotify          tc_meters:     57.
+         145    gp_done_count            tc_meters:     71.
+         144    gp_start_count           tc_meters:     70.
+         410    gross_idle_time          tc_meters:    179.
+         360    guaranteed_elig_inc      tc_meters:    161.
+         463    gv_integration           tc_meters:    215.
+         464    gv_integration_set       tc_meters:    216.
+         141    gw_gp_window_count       tc_meters:     67.
+         305    id                       tc_meters:    118.
+         354    idle_tail                tc_meters:    157.
+          24    idle_time                tc_meters:     33.
+         376    imp_polling_lock         tc_meters:    170.
+         374    imp_polling_time_loc     tc_meters:    169.
+           0    initial                  meter_response_time:      113,  154,  156,  158,  160,  162,  357.
+         323    initializer_id           tc_meters:    133.
+         336    initialize_time          tc_meters:    142.
+         340    init_event               tc_meters:    144.
+         445    init_timeout_recurse     tc_meters:    200.
+         444    init_timeout_severity    tc_meters:    199.
+         440    init_wait_time           tc_meters:    197.
+         442    init_wait_timeout        tc_meters:    198.
+         177    inter                    pxss_page_stack:     16.
+          15    interactions             tc_meters:     26.
+         330    interactive_q            tc_meters:    139.
+         262    interrupt_count          tc_meters:     99.
+         260    interrupt_time           tc_meters:     98,   99.
+          76    int_q_enabled            tc_meters:     58.
+         156    invalid                  meter_response_time:      227,  229,  234,  236,  249,  356.
+          70    iobm_polling_time_loc    tc_meters:     54.
+         321    itt_free_list            tc_meters:    131.
+         247    itt_list_lock            tc_meters:     91.
+         317    itt_size                 tc_meters:    128.
+         311    last_eligible            tc_meters:    123.
+          34    last_time                tc_meters:     37.
+           7    loadings                 tc_meters:     20.
+          60    loading_idle             tc_meters:     48.
+         304    lock                     tc_meters:    117.
+         462    lock_error_severity      tc_meters:    213.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+          36    loop_locks               tc_meters:     38.
+          37    loop_lock_time           tc_meters:     39.
+         273    lost_priority_eligibility      tc_meters:    106.
+         141    mark_processing          meter_response_time:      328,  335.
+         416    max_batch_elig           tc_meters:    183.
+         377    max_channels             tc_meters:    171.
+         277    max_clock_lag            tc_meters:    109.
+          10    max_depth                tc_meters:     61,   63,   64,   84,   85.
+         325    max_eligible             tc_meters:    135.
+         301    max_hproc_segno          tc_meters:    114.
+         422    max_max_eligible         tc_meters:    187.
+           4    max_response_state       meter_response_time:      118,  228.
+         423    max_stopped_stack_0      tc_meters:    188.
+         446    max_timer_register       tc_meters:    201.
+           6    MAX_TRANSITION           meter_response_time:      235,
+                                         response_transitions:      12.
+         405    max_wct_index            tc_meters:    177.
+         142    metering_lock            tc_meters:     68.
+         150    meter_and_exit           meter_response_time:      247,  348.
+          10    meter_response_time      meter_response_time:      184,  195.
+         434    meter_response_time_calls      meter_response_time:      353,
+                                               tc_meters:    194.
+         435    meter_response_time_invalid    meter_response_time:      358,
+                                               tc_meters:    195.
+         436    meter_response_time_overhead   meter_response_time:      351,  352,
+                                               tc_meters:    196.
+         356    min_eligible             tc_meters:    158.
+         404    min_wct_index            tc_meters:    176.
+         425    mos_polling_interval     tc_meters:    190.
+         426    mos_polling_time_loc     tc_meters:    191.
+          26    mp_idle                  tc_meters:     34.
+         310    ncpu                     tc_meters:    122.
+         342    newt                     tc_meters:    146.
+         362    next_alarm_time          tc_meters:    163.
+         470    next_ring0_timer         tc_meters:    220.
+         134    next_state_actions       meter_response_time:      322,  323.
+          30    nmp_idle                 tc_meters:     35.
+         246    nonidle_force_count      tc_meters:     90.
+           5    NON_TTY_WAKEUP           response_transitions:       9.
+          13    notifies                 tc_meters:     24.
+          66    notify_check             tc_meters:     52.
+         155    notify_nobody_count      tc_meters:     78.
+         156    notify_nobody_event      tc_meters:     79.
+          50    notify_regs              pxss_page_stack:      8.
+         146    nto_check_time           tc_meters:     72.
+         151    nto_count                tc_meters:     74.
+         150    nto_delta                tc_meters:     73.
+         153    nto_event                tc_meters:     76.
+         417    num_batch_elig           tc_meters:    184.
+         324    n_eligible               tc_meters:    134.
+         264    ocore                    tc_meters:    100.
+         244    ocore_delta              tc_meters:     88.
+         341    oldt                     tc_meters:    145.
+         334    old_user                 tc_meters:    141.
+         366    opc_polling_time_loc     tc_meters:    165.
+           3    other                    meter_response_time:      116,  156,  158,  160,  162.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+         154    page_notifies            tc_meters:     77.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         465    pauses                   tc_meters:    217.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+                pds                      meter_response_time:      286,  287,  337,  338.
+         300    pdscopyl                 tc_meters:    113.
+         303    pds_length               tc_meters:    116.
+         130    pfdepth                  tc_meters:     64.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+          64    post_purge_switch        tc_meters:     50.
+         302    prds_length              tc_meters:    115.
+          63    prev_state_actions       meter_response_time:      258,  259.
+         265    pre_empt_flag            tc_meters:    101.
+         450    pre_empt_sample_time     tc_meters:    202.
+         100    pre_temp                 meter_response_time:      217,  232,  233,  241,  284,  310,  313,
+                                         pxss_page_stack:     10.
+          76    pre_time                 meter_response_time:      219,  256,  285,  336,  346,  350,
+                                         pxss_page_stack:     10.
+         361    priority_sched_inc       tc_meters:    162.
+         364    priority_sched_time      tc_meters:    164.
+           4    processing               meter_response_time:      117,  154,  160,  162.
+          42    processor_time           tc_meters:     42.
+         270    processor_time_at_define_wc    tc_meters:    103.
+         452    process_initial_quantum  tc_meters:    204.
+         140    ptl_not_waits            tc_meters:     66.
+         143    ptl_waits                tc_meters:     69.
+         176    ptp_astep                pxss_page_stack:     16.
+         172    pvtx                     pxss_page_stack:     16.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+          23    p_interactions           tc_meters:     32.
+           2    queued                   meter_response_time:      115,  154,  156,  158.
+          52    quit_counts              tc_meters:     47.
+          67    quit_priority            tc_meters:     53.
+         220    readytime                tc_meters:     84,   85.
+         350    ready_q_head             tc_meters:    154.
+         352    ready_q_tail             tc_meters:    156.
+         473    realtime_io_deadline     tc_meters:    222.
+         472    realtime_io_priority_switch    tc_meters:    221.
+         474    realtime_io_quantum      tc_meters:    223.
+         475    realtime_priorities      tc_meters:    224.
+         314    realtime_q               tc_meters:    126.
+         476    relinquishes             tc_meters:    225.
+          50    response_count           tc_meters:     45.
+          44    response_time            tc_meters:     43.
+          21    return                   meter_response_time:      202,  205.
+           3    RETURN_RING_0_TTY        response_transitions:       7.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+          14    schedulings              tc_meters:     25.
+         257    short_pf_count           tc_meters:     97.
+         100    size_of_apt_entry        apte:         122.
+          70    size_of_wct_entry        wcte:          54.
+          41    sort_to_elhead           tc_meters:     41.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+          10    state_elements_per_entry       meter_response_time:      126.
+           4    state_elements_per_word  meter_response_time:      125,  126.
+           2    state_element_shift      meter_response_time:      128,  239,  240.
+           2    state_element_words      meter_response_time:      124,  126,  154,  156,  158,  160,  162.
+           1    state_entry_shift        meter_response_time:      127,  231.
+         145    state_update             meter_response_time:      324,  325,  326,  327,  344,  359.
+         160    statistics               tc_meters:     81.
+         456    stk_truncate             tc_meters:    208.
+         457    stk_truncate_always      tc_meters:    209.
+         460    stk_trunc_avg_f1         tc_meters:    210.
+         461    stk_trunc_avg_f2         tc_meters:    211.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+         424    stopped_stack_0          tc_meters:    189.
+         306    system_shutdown          tc_meters:    119.
+         157    system_type              tc_meters:     80.
+         400    system_virtual_time      tc_meters:    174.
+                sys_info                 meter_response_time:      218,  349.
+         372    tape_polling_time_loc    tc_meters:    168.
+          22    tc                       meter_response_time:      185,  204,  217.
+         152    tcpu_scheduling          tc_meters:     75.
+                tc_data                  meter_response_time:      198.
+           0    tc_suspend_lock          tc_meters:     15.
+         110    tdepth                   tc_meters:     63,   64.
+         343    tefirst                  tc_meters:    147.
+         344    telast                   tc_meters:    148.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+          20    te_block                 tc_meters:     29.
+          21    te_i_stop                tc_meters:     30.
+          22    te_pre_empt              tc_meters:     31.
+          17    te_wait                  tc_meters:     28.
+         345    timax                    tc_meters:    149.
+          65    time_out_severity        tc_meters:     51.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         274    total_clock_lag          tc_meters:    107.
+         242    total_pf_count           tc_meters:     86.
+         240    total_pf_time            tc_meters:     85,   86,   87,   88,   89,   90,   91,   92.
+         165    total_steps              pxss_page_stack:     15.
+         162    trans                    meter_response_time:      148,  154,  156,  158,  160,  162,  165.
+         162    transition_table         meter_response_time:      150,  242.
+           4    trans_mask_table         meter_response_time:      170,  243.
+           0    trans_shift_table        meter_response_time:      168,  244.
+           6    TTY_WAKEUP               meter_response_time:      267,
+                                         response_transitions:      10.
+         500    uid_array                tc_meters:    229.
+          76    update_queue_time        meter_response_time:      262,  274.
+         102    update_response_time     meter_response_time:      264,  281.
+          70    update_think_time        meter_response_time:      261,  266.
+         322    used_itt                 tc_meters:    132.
+         430    vcpu_response_bounds     meter_response_time:      295,
+                                         tc_meters:    192.
+         433    vcpu_response_bounds_size      meter_response_time:      293,
+                                               tc_meters:    193.
+                virtual_delta            meter_response_time:      287,  338.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         466    volmap_polling_time      tc_meters:    219.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+          12    waits                    tc_meters:     23.
+         200    waittime                 tc_meters:     83,   84.
+         326    wait_enable              tc_meters:    136.
+          11    wakeups                  tc_meters:     22.
+           0    wcte.bp                  wcte:           7.
+           6    wcte.cpu_sum             wcte:          25.
+           2    wcte.credits             wcte:          21.
+      200000    wcte.defined             wcte:          11.
+           1    wcte.defined_word        wcte:          16.
+           5    wcte.eligibilities       wcte:          24.
+           1    wcte.flags               wcte:           9,   15,   16,   17,   18,   19.
+           0    wcte.fp                  wcte:           6.
+       40000    wcte.governed            wcte:          13.
+           1    wcte.governed_word       wcte:          18.
+          63    wcte.governing_credits   wcte:          50.
+       20000    wcte.interactive_q       wcte:          14.
+           1    wcte.interactive_q_word  wcte:          19.
+      100000    wcte.io_priority         wcte:          12.
+           1    wcte.io_priority_word    wcte:          17.
+          26    wcte.maxel               wcte:          36.
+          62    wcte.maxf                wcte:          49.
+           3    wcte.minf                wcte:          22.
+      400000    wcte.mnbz                wcte:          10.
+           1    wcte.mnbz_word           wcte:          15.
+          27    wcte.nel                 wcte:          37.
+          36    wcte.number_processing   meter_response_time:      303,
+                                         wcte:          45.
+          31    wcte.number_queues       meter_response_time:      275,
+                                         wcte:          40.
+          30    wcte.number_thinks       meter_response_time:      269,
+                                         wcte:          39.
+           4    wcte.pin_weight          wcte:          23.
+          25    wcte.purging             wcte:          35.
+          14    wcte.quantum1            wcte:          28.
+          15    wcte.quantum2            wcte:          29.
+          22    wcte.rcount1             wcte:          32.
+          23    wcte.rcount2             wcte:          33.
+          24    wcte.realtime            wcte:          34.
+          10    wcte.resp1               wcte:          26.
+          12    wcte.resp2               wcte:          27.
+          16    wcte.rmeter1             wcte:          30.
+          20    wcte.rmeter2             wcte:          31.
+           0    wcte.thread              wcte:           5.
+          42    wcte.total_processing_time     meter_response_time:      311,  312,
+                                               wcte:          46.
+          34    wcte.total_queue_time    meter_response_time:      276,  277,
+                                         wcte:          42.
+          32    wcte.total_think_time    meter_response_time:      270,  271,
+                                         wcte:          41.
+          52    wcte.total_vcpu_time     meter_response_time:      308,  309,
+                                         wcte:          47.
+         347    working_set_addend       tc_meters:    151.
+         307    working_set_factor       tc_meters:    120.
+         454    work_class_idle          tc_meters:    207.
+         245    ws_sum                   tc_meters:     89.
+         206    x5                       pxss_page_stack:     17.
+          32    zero_idle                tc_meters:     36.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

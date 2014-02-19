@@ -1,0 +1,540 @@
+	COMPILATION LISTING OF SEGMENT cv_config_card_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1007.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+       12*     audit(86-05-13,LJAdams), install(86-07-17,MR12.0-1097):
+       13*     special case the root and part card for subvolume implementation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 /* CV_CONFIG_CARD_.PL1 -- translates a putative config card to */
+       18 /* a binary image. This is a syntactic translation only; no checks */
+       19 /* are made that the specified fields make any sense for the particular */
+       20 /* card. */
+       21 /* format: style2 */
+       22 /* BIM 8/82 */
+       23 /* Modified by RAF May 1985 special case the root card for subvolume implementation */
+       24 /* Modified by RAF Jul 1985 special case the part card for subvolume implementation */
+       25 cv_config_card_:
+       26      procedure (text, card_ptr, code);
+       27 
+       28 	declare (
+       29 	        text		 char (*),
+       30 	        card_ptr		 pointer,
+       31 	        code		 fixed bin (35)
+       32 	        )			 parameter;
+       33 
+       34 
+       35 /* format: off */
+       36 /*  *  *	*  *  *  *  *  *  *  *  *  *	*  *  *  *  *  *  *  *  *  *	*  *  *  *  *  *  * */
+       37 /*									*/
+       38 /* declare cv_config_card_ entry (char (*), pointer, fixed bin (35)); 		*/
+       39 /* call cv_config_card_ (text_config, bin_card_ptr, code);				*/
+       40 /*	code = 1 for null card						*/
+       41 /*	code = 2 for invalid format card					*/
+       42 /*									*/
+       43 /*  *  *	*  *  *  *  *  *  *  *  *  *	*  *  *  *  *  *  *  *  *  *	*  *  *  *  *  *  * */
+       44 /* format: on */
+       45 
+       46 
+       47 	declare 1 single_card	 like config_card aligned automatic;
+       48 
+       49 	declare i			 fixed bin;
+       50 	declare is_special		 bit (1);
+       51 	declare (line_left, pos, new_pos, token_end, comment)
+       52 				 fixed bin (21);
+       53 	declare token		 char (32) varying;
+       54 	declare four_char		 char (4);
+       55 
+       56 	declare Useful		 char (60)
+       57 				 init ("abcdefghijklmnnopqrstuvwxyz1234567890.*!@#$%^&()_-+=~`\|?,:;") int
+       58 				 static options (constant);
+       59 	declare Upper		 char (26) init ("ABCDEFGHIJKLMNOPQRSTUVWXYZ") int static options (constant);
+       60 	declare Lower		 char (26) init ("abcdefghijklmnopqrstuvwxyz") int static options (constant);
+       61 	declare Whitespace		 char (4) init (" 	") /* SP TAB FF VT */ int static options (constant);
+       62 
+       63 	declare (bit, length, min, rank, rtrim, substr, translate, index, verify, search, unspec)
+       64 				 builtin;
+       65 
+       66 
+       67 	if verify (text, Useful || Whitespace) > 0
+       68 	then
+       69 INVALID_CARD:
+       70 	     do;
+       71 		code = 2;
+       72 		return;
+       73 	     end;
+       74 
+       75 	pos = search (text, Useful);
+       76 	if pos = 0
+       77 	then
+       78 NULL_CARD:
+       79 	     do;
+       80 		code = 1;
+       81 		return;
+       82 	     end;
+       83 
+       84 	line_left = length (text) - pos + 1;
+       85 	single_card.data_field (*) = "777777777777"b3;	/* Initialize it */
+       86 	unspec (single_card.type_word) = ""b;
+       87 
+       88 	begin;
+       89 	     declare left		      char (line_left) defined (text) position (pos);
+       90 
+       91 	     line_left = length (rtrim (left));
+       92 	     if line_left = 0
+       93 	     then goto NULL_CARD;
+       94 	end;					/* begin block */
+       95 
+       96 	begin;
+       97 	     declare left		      char (line_left) defined (text) position (pos);
+       98 
+       99 	     comment = index (text, "*");
+      100 	     if comment = 0
+      101 	     then comment = length (left);
+      102 	     else comment = comment - 1;		/* toss the * */
+      103 	     line_left = min ((line_left), comment);	/* trim off comment */
+      104 	     if line_left = 0
+      105 	     then goto NULL_CARD;
+      106 	end;					/* begin block */
+      107 
+      108 	begin;
+      109 	     declare left		      char (line_left) defined (text) position (pos);
+      110 
+      111 	     if verify (left, Whitespace) = 0
+      112 	     then goto NULL_CARD;
+      113 	     line_left = line_left - verify (reverse (left), Whitespace) + 1;
+      114 						/* and any training whiteness */
+      115 	end;					/* now we have a good starting pos and line_left */
+      116 
+      117 /*  */
+      118 
+      119 	single_card.n_fields = 0;
+      120 PARSE:
+      121 	do i = 0 to 14 while (line_left > 0);
+      122 LEFT_BLOCK:
+      123 	     begin;
+      124 		declare left		 char (line_left) defined (text) position (pos);
+      125 
+      126 		token_end = search (left, Whitespace) - 1;
+      127 						/* do not include the space */
+      128 		if token_end < 0
+      129 		then token_end = line_left;
+      130 TOKEN_BLOCK:
+      131 		begin;
+      132 		     declare a_token	      char (token_end) defined (text) position (pos);
+      133 						/* just what we want */
+      134 
+      135 		     token = "";
+      136 		     token = translate (a_token, Lower, Upper);
+      137 						/* Lower Case */
+      138 
+      139 		     if i = 0
+      140 		     then do;			/* word card */
+      141 			     if length (token) > 4
+      142 			     then /* some simple checks */
+      143 				goto INVALID_CARD;
+      144 			     if verify (token, VALID_CARD_WORD_CHARACTERS) > 0
+      145 			     then goto INVALID_CARD;
+      146 
+      147 			     single_card.word = substr (token, 1, min (length (token), 4));
+      148 			     if single_card.word = "root" | single_card.word = "part"
+      149 			     then /* special case the root */
+      150 				is_special = "1"b;
+      151 			     else is_special = "0"b;
+      152 			end;
+      153 
+      154 		     else do;
+      155 			     single_card.n_fields = single_card.n_fields + 1;
+      156 			     if is_special
+      157 			     then /* all fileds on the root are STRING type but may look like oct or dec */
+      158 				goto special_case;
+      159 			     else if /* case */ octal_field (token, single_card.data_field (i))
+      160 			     then single_card.field_type (i) = CONFIG_OCTAL_TYPE;
+      161 			     else if decimal_field (token, single_card.data_field (i))
+      162 			     then single_card.field_type (i) = CONFIG_DECIMAL_TYPE;
+      163 			     else if single_char_field (token, single_card.data_field (i))
+      164 			     then single_card.field_type (i) = CONFIG_SINGLE_CHAR_TYPE;
+      165 			     else do;
+      166 special_case:
+      167 				     if length (token) > 4
+      168 				     then goto INVALID_CARD;
+      169 
+      170 				     four_char = token;
+      171 						/* this will pad with SPACE */
+      172 				     unspec (single_card.data_field (i)) = unspec (four_char);
+      173 				     single_card.field_type (i) = CONFIG_STRING_TYPE;
+      174 				end;
+      175 			end;
+      176 		end TOKEN_BLOCK;			/* begin block */
+      177 
+      178 		new_pos = search (left, Whitespace) - 1;/* find some whitespace */
+      179 		if new_pos < 0
+      180 		then new_pos = line_left;
+      181 		pos = pos + new_pos;
+      182 		line_left = line_left - new_pos;
+      183 	     end LEFT_BLOCK;			/* begin block */
+      184 
+      185 	     begin;
+      186 		declare left		 char (line_left) defined (text) position (pos);
+      187 						/* now find beginning of next token */
+      188 		new_pos = verify (left, Whitespace) - 1;/* anybody home ? */
+      189 		if new_pos < 0
+      190 		then new_pos = line_left;
+      191 		pos = pos + new_pos;
+      192 		line_left = line_left - new_pos;
+      193 	     end;					/* begin block */
+      194 
+      195 	end PARSE;
+      196 
+      197 	card_ptr -> config_card = single_card;		/* copy out our result */
+      198 	code = 0;
+      199 	return;					/* All done converting */
+      200 
+      201 /*  */
+      202 
+      203 octal_field:
+      204      procedure (token, value) returns (bit (1));
+      205 
+      206 	dcl     token		 char (*) varying;
+      207 	dcl     value		 bit (36) aligned;
+      208 	dcl     odigits		 char (8) init ("01234567") int static options (constant);
+      209 
+      210 	if verify (token, odigits) ^= 0
+      211 	then return (""b);
+      212 
+      213 	else begin;
+      214 		declare f_value		 fixed bin (35);
+      215 		declare power_of_8		 fixed bin (35);
+      216 		declare one_char		 char (1);
+      217 		declare charx		 fixed bin;
+      218 		f_value = 0;
+      219 		power_of_8 = 1;
+      220 		do charx = length (rtrim (token)) to 1 by -1;
+      221 		     one_char = substr (token, charx, 1);
+      222 		     f_value = f_value + (power_of_8 * (rank (one_char) - rank ("0")));
+      223 		     power_of_8 = power_of_8 * 8;
+      224 		end;
+      225 		value = "0"b || bit (f_value, 35);
+      226 		return ("1"b);
+      227 	     end;
+      228 
+      229 
+      230 decimal_field:
+      231      entry (token, value) returns (bit (1));
+      232 
+      233 	dcl     ddigits		 char (10) init ("0123456789") int static options (constant);
+      234 	dcl     point		 char (1) init (".") int static options (constant);
+      235 
+      236 	if verify (token, ddigits) = 0
+      237 	     | (substr (reverse (token), 1, 1) = point & verify (substr (token, 1, length (token) - 1), ddigits) = 0)
+      238 	then begin;
+      239 		declare f_value		 fixed bin (35);
+      240 		declare power_of_10		 fixed bin (35);
+      241 		declare charx		 fixed bin;
+      242 		declare one_char		 char (1);
+      243 		charx = length (rtrim (token));
+      244 		if substr (token, charx, 1) = point
+      245 		then charx = charx - 1;
+      246 		f_value = 0;
+      247 		power_of_10 = 1;
+      248 		do charx = charx to 1 by -1;
+      249 		     one_char = substr (token, charx, 1);
+      250 		     f_value = f_value + (power_of_10 * (rank (one_char) - rank ("0")));
+      251 		     power_of_10 = power_of_10 * 10;
+      252 		end;
+      253 
+      254 		value = "0"b || bit (f_value, 35);
+      255 		return ("1"b);
+      256 	     end;
+      257 
+      258 	return (""b);				/* no dice */
+      259 
+      260 
+      261 single_char_field:
+      262      entry (token, value) returns (bit (1));
+      263 
+      264 	dcl     a_to_h		 char (8) init ("abcdefgh") int static options (constant);
+      265 	dcl     tag		 fixed bin (4);
+      266 
+      267 	if length (token) > 1
+      268 	then return (""b);				/* easy case */
+      269 	tag = index (a_to_h, token);			/* find our victim */
+      270 	if tag = 0
+      271 	then return (""b);
+      272 	value = (32)"0"b || bit (tag, 4);
+      273 	return ("1"b);
+      274 
+      275      end octal_field;
+      276 
+      277 
+  1     1 /* BEGIN INCLUDE FILE ... config_deck.incl.pl1 ... 11/13/80, W. Olin Sibert */
+  1     2 
+  1     3 dcl (configp, cardp) pointer;
+  1     4 dcl  config_n_cards fixed bin;			/* Number of cards used in config */
+  1     5 dcl  config_max_cards fixed bin;			/* Max number of cards in config */
+  1     6 
+  1     7 dcl  config_deck$ fixed bin external static;
+  1     8 
+  1     9 dcl 1 config_deck aligned based (configp),
+  1    10     2 cards (config_n_cards) aligned like config_card,
+  1    11     2 pad_cards (config_max_cards - config_n_cards) aligned like config_card;
+  1    12 
+  1    13 dcl 1 config_card aligned based (cardp),
+  1    14     2 word char (4) aligned,
+  1    15     2 data_field (14) bit (36) aligned,
+  1    16     2 type_word aligned like config_card_type_word;
+  1    17 
+  1    18 dcl 1 config_card_type_word aligned based,
+  1    19     2 field_type (14) bit (2) unaligned,
+  1    20     2 pad1 bit (4) unaligned,
+  1    21     2 n_fields fixed bin (4) unsigned unaligned;
+  1    22 
+  1    23 dcl (CONFIG_DECIMAL_TYPE	init ("11"b),
+  1    24      CONFIG_OCTAL_TYPE	init ("00"b),
+  1    25      CONFIG_SINGLE_CHAR_TYPE	init ("01"b),
+  1    26      CONFIG_STRING_TYPE	init ("10"b)) bit (2) aligned static options (constant);
+  1    27 
+  1    28 dcl  ZERO_CARD_WORD char (4) aligned internal static options (constant) init ("    ");
+  1    29 dcl  FREE_CARD_WORD char (4) aligned internal static options (constant) init ("ÿÿÿÿ");
+  1    30 
+  1    31 dcl  VALID_CARD_WORD_CHARACTERS char (38) internal static options (constant) init
+  1    32     ("abcdefghijklmnopqrstuvwxyz0123456789_.");		/* lowercase letters, digits, period and underscore */
+  1    33 
+  1    34 dcl  EMPTY_FIELD bit (36) aligned internal static options (constant) init ("777777777777"b3);
+  1    35 
+  1    36 /* END INCLUDE FILE config_deck.incl.pl1 */
+      278 
+      279 
+      280      end cv_config_card_;				/* Main procedure */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  cv_config_card_.pl1               >spec>install>1110>cv_config_card_.pl1
+278          1    05/08/81  1853.6  config_deck.incl.pl1              >ldd>include>config_deck.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CONFIG_DECIMAL_TYPE                    constant        bit(2)                   initial dcl 1-23 ref 161
+CONFIG_OCTAL_TYPE                      constant        bit(2)                   initial dcl 1-23 ref 159
+CONFIG_SINGLE_CHAR_TYPE         003017 constant        bit(2)                   initial dcl 1-23 ref 163
+CONFIG_STRING_TYPE              003016 constant        bit(2)                   initial dcl 1-23 ref 173
+Lower                           000023 constant        char(26)                 initial packed unaligned dcl 60 ref 136
+Upper                           000032 constant        char(26)                 initial packed unaligned dcl 59 ref 136
+Useful                          000041 constant        char(60)                 initial packed unaligned dcl 56 ref 67 75
+VALID_CARD_WORD_CHARACTERS      000010 constant        char(38)                 initial packed unaligned dcl 1-31 ref 144
+Whitespace                      000022 constant        char(4)                  initial packed unaligned dcl 61 ref 67 111 113 126
+                                                                                  178 188
+a_to_h                          000000 constant        char(8)                  initial packed unaligned dcl 264 ref 269
+a_token                                defined         char                     packed unaligned dcl 132 ref 136
+bit                                                    builtin function         dcl 63 ref 225 254 272
+card_ptr                               parameter       pointer                  dcl 28 ref 25 197
+charx                           000162 automatic       fixed bin(17,0)          dcl 217 in begin block on line 213 set ref 220* 221*
+charx                           000165 automatic       fixed bin(17,0)          dcl 241 in begin block on line 236 set ref 243* 244
+                                                                                  244* 244 248* 248* 249*
+code                                   parameter       fixed bin(35,0)          dcl 28 set ref 25 71* 80* 198*
+comment                         000126 automatic       fixed bin(21,0)          dcl 51 set ref 99* 100 100* 102* 102 103
+config_card                            based           structure                level 1 dcl 1-13 set ref 197*
+config_card_type_word                  based           structure                level 1 dcl 1-18
+data_field                1     000100 automatic       bit(36)                  array level 2 dcl 47 set ref 85* 159* 161* 163* 172*
+ddigits                         000002 constant        char(10)                 initial packed unaligned dcl 233 ref 236 236
+f_value                         000157 automatic       fixed bin(35,0)          dcl 214 in begin block on line 213 set ref 218* 222*
+                                                                                  222 225
+f_value                         000163 automatic       fixed bin(35,0)          dcl 239 in begin block on line 236 set ref 246* 250*
+                                                                                  250 254
+field_type               17     000100 automatic       bit(2)                   array level 3 packed packed unaligned dcl 47 set ref
+                                                                                  159* 161* 163* 173*
+four_char                       000140 automatic       char(4)                  packed unaligned dcl 54 set ref 170* 172
+i                               000120 automatic       fixed bin(17,0)          dcl 49 set ref 120* 139 159 159 161 161 163 163 172
+                                                                                  173
+index                                                  builtin function         dcl 63 ref 99 269
+is_special                      000121 automatic       bit(1)                   packed unaligned dcl 50 set ref 148* 151* 156
+left                                   defined         char                     packed unaligned dcl 109 in begin block on line 108
+                                                                                  ref 111 113
+left                                   defined         char                     packed unaligned dcl 97 in begin block on line 96
+                                                                                  ref 100
+left                                   defined         char                     packed unaligned dcl 124 in begin block on line 122
+                                                                                  ref 126 178
+left                                   defined         char                     packed unaligned dcl 186 in begin block on line 185
+                                                                                  ref 188
+left                                   defined         char                     packed unaligned dcl 89 in begin block on line 88
+                                                                                  ref 91
+length                                                 builtin function         dcl 63 ref 84 91 100 141 147 166 220 236 243 267
+line_left                       000122 automatic       fixed bin(21,0)          dcl 51 set ref 84* 89 91* 92 97 103* 103 104 109
+                                                                                  113* 113 120 124 128 179 182* 182 186 189 192* 192
+min                                                    builtin function         dcl 63 ref 103 147
+n_fields                 17(32) 000100 automatic       fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 47 set
+                                                                                  ref 119* 155* 155
+new_pos                         000124 automatic       fixed bin(21,0)          dcl 51 set ref 178* 179 179* 181 182 188* 189 189*
+                                                                                  191 192
+odigits                         000006 constant        char(8)                  initial packed unaligned dcl 208 ref 210
+one_char                        000166 automatic       char(1)                  packed unaligned dcl 242 in begin block on line 236
+                                                                                  set ref 249* 250
+one_char                        000161 automatic       char(1)                  packed unaligned dcl 216 in begin block on line 213
+                                                                                  set ref 221* 222
+point                           003015 constant        char(1)                  initial packed unaligned dcl 234 ref 236 244
+pos                             000123 automatic       fixed bin(21,0)          dcl 51 set ref 75* 76 84 91 100 111 113 126 136 178
+                                                                                  181* 181 188 191* 191
+power_of_10                     000164 automatic       fixed bin(35,0)          dcl 240 set ref 247* 250 251* 251
+power_of_8                      000160 automatic       fixed bin(35,0)          dcl 215 set ref 219* 222 223* 223
+rank                                                   builtin function         dcl 63 ref 222 222 250 250
+rtrim                                                  builtin function         dcl 63 ref 91 220 243
+search                                                 builtin function         dcl 63 ref 75 126 178
+single_card                     000100 automatic       structure                level 1 dcl 47 set ref 197
+substr                                                 builtin function         dcl 63 ref 147 221 236 236 244 249
+tag                             000156 automatic       fixed bin(4,0)           dcl 265 set ref 269* 270 272
+text                                   parameter       char                     packed unaligned dcl 28 ref 25 67 75 84 91 91 99 100
+                                                                                  100 111 111 113 113 126 126 136 136 178 178 188
+                                                                                  188
+token                                  parameter       varying char             dcl 206 in procedure "octal_field" ref 203 210 220
+                                                                                  221 230 236 236 236 236 243 244 249 261 267 269
+token                           000127 automatic       varying char(32)         dcl 53 in procedure "cv_config_card_" set ref 135*
+                                                                                  136* 141 144 147 147 159* 161* 163* 166 170
+token_end                       000125 automatic       fixed bin(21,0)          dcl 51 set ref 126* 128 128* 132
+translate                                              builtin function         dcl 63 ref 136
+type_word                17     000100 automatic       structure                level 2 dcl 47 set ref 86*
+unspec                                                 builtin function         dcl 63 set ref 86* 172* 172
+value                                  parameter       bit(36)                  dcl 207 set ref 203 225* 230 254* 261 272*
+verify                                                 builtin function         dcl 63 ref 67 111 113 144 188 210 236 236
+word                            000100 automatic       char(4)                  level 2 dcl 47 set ref 147* 148 148
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+EMPTY_FIELD                            internal static bit(36)                  initial dcl 1-34
+FREE_CARD_WORD                         internal static char(4)                  initial dcl 1-29
+ZERO_CARD_WORD                         internal static char(4)                  initial dcl 1-28
+cardp                                  automatic       pointer                  dcl 1-3
+config_deck                            based           structure                level 1 dcl 1-9
+config_deck$                           external static fixed bin(17,0)          dcl 1-7
+config_max_cards                       automatic       fixed bin(17,0)          dcl 1-5
+config_n_cards                         automatic       fixed bin(17,0)          dcl 1-4
+configp                                automatic       pointer                  dcl 1-3
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+INVALID_CARD                    000124 constant        label                    dcl 67 ref 141 144 166
+LEFT_BLOCK                      000311 constant        label                    dcl 122
+NULL_CARD                       000144 constant        label                    dcl 76 ref 92 104 111
+PARSE                           000303 constant        label                    dcl 120
+TOKEN_BLOCK                     000332 constant        label                    dcl 130
+cv_config_card_                 000075 constant        entry                    external dcl 25
+decimal_field                   000764 constant        entry                    internal dcl 230 ref 161
+octal_field                     000644 constant        entry                    internal dcl 203 ref 159
+single_char_field               001143 constant        entry                    internal dcl 261 ref 163
+special_case                    000544 constant        label                    dcl 166 ref 156
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+reverse                                                builtin function         ref 113 236
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3046        3056    3021        3056
+Length      3236    3021        10         143      25           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+cv_config_card_                     161 external procedure  is an external procedure.  
+begin block on line 88                  begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 96                  begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 108                 begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 122                 begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 130                 begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 185                 begin block         shares stack frame of external procedure cv_config_card_.  
+octal_field                             internal procedure  shares stack frame of external procedure cv_config_card_.  
+begin block on line 213                 begin block         shares stack frame of external procedure cv_config_card_.  
+begin block on line 236                 begin block         shares stack frame of external procedure cv_config_card_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+cv_config_card_          000100 single_card                 cv_config_card_
+                         000120 i                           cv_config_card_
+                         000121 is_special                  cv_config_card_
+                         000122 line_left                   cv_config_card_
+                         000123 pos                         cv_config_card_
+                         000124 new_pos                     cv_config_card_
+                         000125 token_end                   cv_config_card_
+                         000126 comment                     cv_config_card_
+                         000127 token                       cv_config_card_
+                         000140 four_char                   cv_config_card_
+                         000156 tag                         octal_field
+                         000157 f_value                     begin block on line 213
+                         000160 power_of_8                  begin block on line 213
+                         000161 one_char                    begin block on line 213
+                         000162 charx                       begin block on line 213
+                         000163 f_value                     begin block on line 236
+                         000164 power_of_10                 begin block on line 236
+                         000165 charx                       begin block on line 236
+                         000166 one_char                    begin block on line 236
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     return_mac          shorten_stack       ext_entry_desc      reverse_cs          set_chars_eis
+index_chars_eis     verify_eis
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000071        67 000110        71 000124        72 000127        75 000130        76 000143        80 000144
+     81 000147        84 000150        85 000154        86 000165        89 000166        91 000170        92 000205
+     97 000206        99 000210       100 000224       102 000230       103 000232       104 000237       109 000241
+    111 000243       113 000260       119 000277       120 000303       124 000311       126 000313       128 000327
+    132 000332       135 000334       136 000335       139 000354       141 000357       144 000362       147 000375
+    148 000404       151 000414       152 000415       155 000416       156 000424       159 000426       161 000460
+    163 000512       166 000544       170 000547       172 000553       173 000556       178 000563       179 000600
+    181 000603       182 000604       186 000606       188 000610       189 000624       191 000627       192 000630
+    195 000632       197 000634       198 000642       199 000643       203 000644       210 000655       218 000677
+    219 000700       220 000702       221 000723       222 000731       223 000742       224 000745       225 000750
+    226 000756       230 000763       236 000775       243 001041       244 001056       246 001064       247 001065
+    248 001067       249 001075       250 001103       251 001114       252 001117       254 001122       255 001130
+    258 001135       261 001143       267 001154       269 001166       270 001175       272 001203       273 001210
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

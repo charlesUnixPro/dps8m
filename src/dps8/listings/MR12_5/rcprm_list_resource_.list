@@ -1,0 +1,1564 @@
+	COMPILATION LISTING OF SEGMENT rcprm_list_resource_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0937.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(87-06-08,Rauschelbach), approve(87-06-26,MCR7713),
+       17*     audit(87-07-08,Farley), install(87-07-15,MR12.1-1041):
+       18*     Changed to obey rcp privilege by using get_process_authorization_ instead
+       19*     of get_authorization_.
+       20*                                                   END HISTORY COMMENTS */
+       21 
+       22 
+       23 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       24 
+       25 rcprm_list_resource_:
+       26      proc (p_resource_type, p_registry_dir, p_userid, p_user_area_ptr, p_n_resources, p_return_ptr, p_code);
+       27 
+       28 /* This procedure is charged with returning a list of resources owned by
+       29*   various groups.  The selection is made by the userid argument.  It can
+       30*   select from among:
+       31*   1) a certain user.project (userid = user.project)
+       32*   2) any user.project (privileged) (userid = user.project)
+       33*   3) a certain project (project administrators only) (userid = *.project)
+       34*   4) the system (userid = "system")
+       35*   5) the free pool (userid = "free")
+       36*   6) everything but the free pool (i.e. all acquisitions) (userid = "*.*")
+       37*   7) all users (i.e. all registered resources of a given type) (userid = "**")
+       38**/
+       39 
+       40 /* Written 06/23/78 by C. D. Tavares */
+       41 /* Modified 11/27/79 by CDT to fix bug where lists via *.Project were
+       42*   bombing out on encountering interspersed name records for different users on
+       43*   that project. */
+       44 /* Modified 12/10/79 by CDT to take advantage of new facility to sleep in ring
+       45*   1 */
+       46 /* Modified 02/27/80 by CDT to remove non-quick blocks */
+       47 /* Modified 06/18/81 by CDT to look for and reject * in the Project field,
+       48*   not just treat it like a project name */
+       49 /* Modified 09/81 by M.R. Jordan to fix a bug in listing resources awaiting manual clear. */
+       50 /* Modified 04/83 by B. Braun to correct a typo error so 'free' and 'system' are once again accepted as arguments to
+       51*   the list_resources -user control argument.  (TRs phx12946, phx13300). */
+       52 /* Modified 04/83 by B. Braun to cleanup iocbs left laying about. (TR phx11736) */
+       53 /* Modified 01/85 by Chris Jones to clean up the code, rationalize registry operations. */
+       54 /* Modified 03/85 by Chris Jones to add auditing. */
+       55 
+       56 /* parameters */
+       57 
+       58 dcl	p_resource_type	   char (*) parameter;	/* (I) e.g. "tape_vol" */
+       59 dcl	p_registry_dir	   char (*) parameter;	/* (I) directory registries are in */
+       60 dcl	p_userid		   char (*) parameter;	/* (I) Personid.Project, or "system" or "free" or ** or *.* */
+       61 dcl	p_user_area_ptr	   pointer parameter;	/* (I) area to allocate resource_list structure in */
+       62 dcl	p_n_resources	   fixed bin (35) parameter;	/* (O) number of resources in resource_list */
+       63 dcl	p_return_ptr	   pointer parameter;	/* (O) pointer to allocated structure */
+       64 dcl	p_code		   fixed bin (35) parameter;	/* (O) standard status code */
+       65 
+       66 /* automatic */
+       67 
+       68 dcl	access_mode	   fixed bin (5);
+       69 dcl	awaiting_clear	   bit (1) aligned initial ("0"b);
+       70 dcl	code		   fixed bin (35);
+       71 dcl	cur_level		   fixed bin;
+       72 dcl	do_seek_head	   bit (1) initial ("0"b) aligned;
+       73 dcl	done		   bit (1) aligned;
+       74 dcl	find_by_resource_name  bit (1) aligned initial ("0"b);
+       75 dcl	found		   bit (1) aligned;
+       76 dcl	germane_descriptor	   fixed bin (35);
+       77 dcl	i		   fixed bin (35);
+       78 dcl	next_resource_list_ptr ptr;
+       79 dcl	original_key	   char (256);
+       80 dcl	pdt_name		   char (32);
+       81 dcl	project		   char (32);
+       82 dcl	prev_level	   fixed bin;
+       83 dcl	last_known_key	   char (64) varying;
+       84 dcl	last_ptr		   pointer;
+       85 dcl	priv_sw		   bit (1) aligned;
+       86 dcl	real_resource_record   bit (1) aligned;
+       87 dcl	registry_dir	   char (64);
+       88 dcl	resource_type	   char (32);
+       89 dcl	return_ptr	   ptr;
+       90 dcl	rew		   bit (3);
+       91 dcl	rno		   fixed bin;
+       92 dcl	sw_ptr		   pointer initial (null ());
+       93 dcl	tcf_sw_ptr	   pointer initial (null ());
+       94 dcl	user_area_ptr	   ptr init (null ());
+       95 dcl	userid		   char (32);
+       96 
+       97 dcl	1 authorization	   aligned automatic like aim_template;
+       98 dcl	1 record_status	   aligned automatic like rs_info;
+       99 dcl	1 req_info	   aligned automatic like requestor_info;
+      100 dcl	1 res_info	   aligned automatic like resource_info;
+      101 dcl	1 get_key_info	   automatic,
+      102 	  2 header	   like gk_header,
+      103 	  2 key		   char (256) unaligned;
+      104 
+      105 dcl	1 circular_list	   aligned automatic,
+      106 	  2 high_water_mark	   fixed bin,
+      107 	  2 latest_entry	   fixed bin,
+      108 	  2 entry		   (20) aligned,		/* 20 should be pretty efficient */
+      109 	    3 descriptor	   fixed bin (35),
+      110 	    3 rew		   bit (3) aligned;
+      111 
+      112 /* static */
+      113 
+      114 dcl	pdt_dirname	   char (168) initial (">system_control_1>pdt") static;
+      115 
+      116 dcl	Move_rel		   initial (0) fixed bin static options (constant);
+      117 
+      118 /* entries */
+      119 
+      120 dcl	access_audit_r1_$log_obj_path
+      121 			   entry options (variable);
+      122 dcl	cu_$level_get	   ext entry (fixed bin);
+      123 dcl	cu_$level_set	   ext entry (fixed bin);
+      124 dcl	get_authorization_	   entry () returns (bit (72) aligned);
+      125 dcl	get_process_authorization_
+      126 			   entry () returns (bit (72) aligned);
+      127 dcl	get_group_id_	   entry () returns (char (32));
+      128 dcl	get_group_id_$tag_star ext entry returns (char (32));
+      129 dcl	get_ring_		   ext entry returns (fixed bin);
+      130 dcl	hcs_$get_user_effmode  entry (char (*), char (*), char (*), fixed bin, fixed bin (5), fixed bin (35));
+      131 dcl	pathname_		   entry (char (*), char (*)) returns (char (168));
+      132 dcl	rcp_compute_aim_mode   entry (ptr, ptr, bit (3), fixed bin (35));
+      133 dcl	rcprm_registry_util_$free_key
+      134 			   entry (ptr, char (*));
+      135 dcl	rcprm_registry_util_$owner_key
+      136 			   entry (char (*), ptr, char (*));
+      137 dcl	rcprm_registry_util_$project_key
+      138 			   entry (char (*), ptr, char (*));
+      139 dcl	rcprm_registry_util_$skeleton_key
+      140 			   entry (ptr, char (*));
+      141 dcl	rcprm_registry_util_$skeleton_acquisition_key
+      142 			   entry (ptr, char (*));
+      143 dcl	rcprm_registry_util_$system_key
+      144 			   entry (ptr, char (*));
+      145 dcl	rcprm_registry_util_$grab_transaction_control_file
+      146 			   entry (ptr, char (*), fixed bin (35));
+      147 dcl	rcprm_registry_util_$release_transaction_control_file
+      148 			   entry (ptr, fixed bin (35));
+      149 dcl	rcprm_registry_util_$grab_registry
+      150 			   entry (ptr, char (*), char (*), fixed bin (35));
+      151 dcl	rcprm_registry_util_$release_registry
+      152 			   entry (ptr, fixed bin (35));
+      153 dcl	suffixed_name_$make	   entry (char (*), char (*), char (32), fixed bin (35));
+      154 
+      155 /* external variables */
+      156 
+      157 dcl	(
+      158 	error_table_$insufficient_access,
+      159 	error_table_$no_record,
+      160 	error_table_$bad_name,
+      161 	error_table_$end_of_info,
+      162 	error_table_$smallarg
+      163 	)		   ext fixed bin (35) static;
+      164 dcl	access_operations_$rcp_list
+      165 			   bit (36) aligned ext static;
+      166 
+      167 /* based variables */
+      168 
+      169 dcl	user_area		   area based (user_area_ptr);
+      170 
+      171 /* builtins and conditions */
+      172 
+      173 dcl	(area, cleanup)	   condition;
+      174 
+      175 dcl	(addr, after, before, hbound, null, rtrim, reverse, substr, unspec)
+      176 			   builtin;
+      177 
+      178 	priv_sw = "0"b;
+      179 	goto common;
+      180 
+      181 priv:
+      182      entry (p_resource_type, p_registry_dir, p_userid, p_user_area_ptr, p_n_resources, p_return_ptr, p_code);
+      183 
+      184 	priv_sw = "1"b;
+      185 	goto common;
+      186 
+      187 awaiting_clear:
+      188      entry (p_resource_type, p_registry_dir, p_userid, p_user_area_ptr, p_n_resources, p_return_ptr, p_code);
+      189 
+      190 	priv_sw = "1"b;
+      191 	awaiting_clear = "1"b;
+      192 	goto common;
+      193 
+      194 common:
+      195 /**** Copy relevant arguments ****/
+      196 	resource_type = p_resource_type;
+      197 	registry_dir = p_registry_dir;
+      198 	userid = p_userid;
+      199 	user_area_ptr = p_user_area_ptr;
+      200 	return_ptr = null ();
+      201 	call cu_$level_get (prev_level);
+      202 	unspec (authorization) = get_process_authorization_ ();
+      203 
+      204 	if awaiting_clear then do;
+      205 	     find_by_resource_name = "1"b;		/* no owner hijinks necessary */
+      206 	     call rcprm_registry_util_$skeleton_key (addr (get_key_info.header), get_key_info.key);
+      207 	end;
+      208 
+      209 	else if userid = "free" then
+      210 	     call rcprm_registry_util_$free_key (addr (get_key_info.header), get_key_info.key);
+      211 	else if userid = "system" then
+      212 	     call rcprm_registry_util_$system_key (addr (get_key_info.header), get_key_info.key);
+      213 	else if userid = "" | userid = get_group_id_$tag_star ()
+      214 						/* asking for ourself */
+      215 	     | userid = reverse (after (reverse (get_group_id_$tag_star ()), ".")) then do;
+      216 	     call rcprm_registry_util_$owner_key (get_group_id_$tag_star (), addr (get_key_info.header),
+      217 		get_key_info.key);
+      218 	end;
+      219 
+      220 	else if userid = "*.*" then do;		/* requesting info on all acquired resources */
+      221 	     if ^priv_sw then do;
+      222 		code = error_table_$insufficient_access;
+      223 		call error_return;
+      224 	     end;
+      225 	     call rcprm_registry_util_$skeleton_acquisition_key (addr (get_key_info.header), get_key_info.key);
+      226 	end;
+      227 
+      228 	else if userid = "**" then do;		/* requesting info on all registered resources */
+      229 	     if ^priv_sw then do;
+      230 		code = error_table_$insufficient_access;
+      231 		call error_return;
+      232 	     end;
+      233 
+      234 	     find_by_resource_name = "1"b;
+      235 	     call rcprm_registry_util_$skeleton_key (addr (get_key_info.header), get_key_info.key);
+      236 	end;
+      237 	else if substr (userid, 1, 2) = "*." then do;	/* requesting info on one project */
+      238 	     call breakapart (userid, (""), project);
+      239 
+      240 	     pdt_name = rtrim (project) || ".pdt";	/* use PDT as an ACS */
+      241 	     call hcs_$get_user_effmode (pdt_dirname, pdt_name, "", -1, access_mode, code);
+      242 
+      243 	     if code ^= 0 then
+      244 		call error_return;
+      245 	     if access_mode < R_ACCESS_BIN then do;	/* no read permission */
+      246 		code = error_table_$insufficient_access;
+      247 		call error_return;
+      248 	     end;
+      249 
+      250 	     call rcprm_registry_util_$project_key (project, addr (get_key_info.header), get_key_info.key);
+      251 	end;
+      252 
+      253 	else do;					/* request for particular user ^= caller */
+      254 	     if ^priv_sw then do;
+      255 		code = error_table_$insufficient_access;
+      256 		call error_return;
+      257 	     end;
+      258 
+      259 
+      260 /* Make sure caller is not asking for "Person.*" */
+      261 
+      262 	     call breakapart (userid, (""), project);
+      263 	     if project = "*" then do;
+      264 		code = error_table_$bad_name;
+      265 		call error_return;
+      266 	     end;
+      267 
+      268 	     call rcprm_registry_util_$owner_key (userid, addr (get_key_info.header), get_key_info.key);
+      269 	end;
+      270 	original_key = substr (get_key_info.key, 1, get_key_info.head_size);
+      271 
+      272 /* Now we've figured out exactly what it is that the caller wants us to do
+      273*   (and whether the caller can do it.)  So now we do it. */
+      274 
+      275 	on cleanup call clean_up ((0), "0"b);
+      276 
+      277 	cur_level = get_ring_ ();
+      278 	call cu_$level_set (cur_level);
+      279 
+      280 	call rcprm_registry_util_$grab_transaction_control_file (tcf_sw_ptr, registry_dir, code);
+      281 	if code ^= 0 then
+      282 	     call error_return;
+      283 
+      284 	call rcprm_registry_util_$grab_registry (sw_ptr, registry_dir, resource_type, code);
+      285 	if code ^= 0 then
+      286 	     call error_return;
+      287 
+      288 	rno = 0;
+      289 	last_known_key = "";
+      290 
+      291 	call iox_$control (sw_ptr, "get_key", addr (get_key_info), code);
+      292 	if code ^= 0 then do;
+      293 	     call clean_up (code, "1"b);
+      294 	     if code ^= 0 then
+      295 		call error_return;
+      296 	     goto return_to_caller;
+      297 	end;
+      298 
+      299 	done = "0"b;
+      300 	get_key_info.input_key = "0"b;		/* just get the current key */
+      301 	get_key_info.current = "1"b;			/* from now on */
+      302 
+      303 	unspec (record_status) = ""b;
+      304 	record_status.version = rs_info_version_2;
+      305 
+      306 	on area
+      307 	     begin;
+      308 	     code = error_table_$smallarg;
+      309 	     call error_return;
+      310 	end;
+      311 
+      312 	circular_list.high_water_mark = -1;
+      313 	circular_list.latest_entry = 0;
+      314 	Max_entries = 100;				/* seems like a nice enough number */
+      315 
+      316 	allocate resource_list in (user_area) set (resource_list_ptr);
+      317 	return_ptr = resource_list_ptr;		/* save it now for error_return */
+      318 
+      319 /* Now loop, finding all relevant resources. */
+      320 
+      321 	do while (^done);
+      322 
+      323 	     real_resource_record = "0"b;
+      324 
+      325 	     if substr (get_key_info.key, 1, get_key_info.head_size) ^= original_key then
+      326 		done = "1"b;
+      327 	     else if find_by_resource_name then
+      328 		real_resource_record = "1"b;		/* no owner record hijinks necessary */
+      329 	     else if get_key_info.key = last_known_key then
+      330 		real_resource_record = "1"b;		/* first record of a given user key is username record, not a real resource record */
+      331 	     else last_known_key = rtrim (get_key_info.key);
+      332 
+      333 	     if ^done & real_resource_record then do;
+      334 		call iox_$control (sw_ptr, "record_status", addr (record_status), code);
+      335 		if code = 0 then
+      336 		     ;
+      337 		else if code = error_table_$no_record then
+      338 		     real_resource_record = "0"b;	/* is not, but has just been garbage-collected */
+      339 						/* and should never bother us again! */
+      340 		else call error_return;
+      341 
+      342 		if real_resource_record then do;
+      343 		     record_ptr = record_status.record_ptr;
+      344 
+      345 /* see if we have enough access to report the existence of this resource.  This
+      346*   computation takes into account ONLY the AIM range of the resource (since r
+      347*   raw mode is not necessary to list the existence of a resource, but
+      348*   read_allowed_ IS.) Once we know our access to any resource, theoretically we
+      349*   know our access to any other resource possessing the same AIM descriptor.
+      350*   So we make use of this fact (for efficiency) and look up the known
+      351*   descriptors in a small internal table before passing the question off to the
+      352*   external subroutine that acts as RCP's AIM security kernel.  (Note that all
+      353*   descriptors found in this manner have gone through the kernel at least once
+      354*   anyway.) */
+      355 
+      356 		     if authorization.privileges.rcp then
+      357 			rew = "111"b;
+      358 		     else do;
+      359 
+      360 			if registry_record.free then
+      361 			     germane_descriptor = registry_record.potential_aim_range_desc;
+      362 			else germane_descriptor = registry_record.aim_range_desc;
+      363 
+      364 			found = "0"b;
+      365 
+      366 			do i = circular_list.latest_entry to circular_list.high_water_mark while (^found),
+      367 			     1 to circular_list.latest_entry - 1 while (^found);
+      368 			     if circular_list.descriptor (i) = germane_descriptor then do;
+      369 				rew = circular_list.rew (i);
+      370 				found = "1"b;
+      371 			     end;
+      372 			end;
+      373 
+      374 /**** It wasn't found, so we ask rcp_compute_aim_mode to tell us what access this AIM
+      375*      range confers on us. ****/
+      376 			if ^found then do;
+      377 			     res_info.registry_dir = registry_dir;
+      378 			     res_info.registry_switch_ptr = sw_ptr;
+      379 			     res_info.registry_record_ptr = record_ptr;
+      380 			     res_info.resource_type = resource_type;
+      381 			     res_info.resource_name = "";
+      382 			     req_info.user_id = get_group_id_ ();
+      383 			     req_info.current_authorization = get_authorization_ ();
+      384 			     req_info.validation_level = prev_level;
+      385 			     call rcp_compute_aim_mode (addr (req_info), addr (res_info), rew, code);
+      386 			     if code ^= 0 then
+      387 				call error_return;
+      388 
+      389 /* enter the information into the circular list */
+      390 
+      391 			     if circular_list.latest_entry = hbound (circular_list.descriptor, 1) then
+      392 				i, circular_list.latest_entry = 1;
+      393 			     else i, circular_list.latest_entry = circular_list.latest_entry + 1;
+      394 
+      395 			     if circular_list.latest_entry > circular_list.high_water_mark then
+      396 				circular_list.high_water_mark = circular_list.latest_entry;
+      397 
+      398 			     circular_list.descriptor (i) = germane_descriptor;
+      399 			     circular_list.rew (i) = rew;
+      400 			end;
+      401 		     end;
+      402 
+      403 		     if ^priv_sw & registry_record.awaiting_clear then
+      404 			rew = "000"b;		/* don't report spectral resources */
+      405 
+      406 		     if awaiting_clear then		/* do we want only those awaiting clear? */
+      407 			if registry_record.awaiting_clear = "0"b then
+      408 						/* yes, and this one isn't */
+      409 			     rew = "000"b;		/* ignore it-- make believe we can't read it */
+      410 
+      411 		     if substr (rew, 1, 1) = "1"b then do;
+      412 						/* we can know this resource exists */
+      413 			rno = rno + 1;		/* gound another one */
+      414 
+      415 			if resource_list.n_resources = resource_list.max_entries then do;
+      416 			     last_ptr = resource_list_ptr;
+      417 			     allocate resource_list in (user_area) set (resource_list_ptr);
+      418 			     last_ptr -> resource_list.forward_ptr = resource_list_ptr;
+      419 			end;
+      420 
+      421 			i, resource_list.n_resources = resource_list.n_resources + 1;
+      422 			resource_list.resource_name (i) = registry_record.name.string;
+      423 		     end;
+      424 
+      425 		end;
+      426 
+      427 	     end;
+      428 	     if ^done then do;
+      429 		call iox_$position (sw_ptr, Move_rel, 1, code);
+      430 		if code = 0 then
+      431 		     ;
+      432 		else if code = error_table_$end_of_info then
+      433 		     done = "1"b;
+      434 		else call error_return;
+      435 		if ^done then do;
+      436 		     call iox_$control (sw_ptr, "get_key", addr (get_key_info), code);
+      437 		     if code ^= 0 then
+      438 			call error_return;
+      439 		end;
+      440 	     end;
+      441 	end;
+      442 	call audit (0);
+      443 
+      444 	call clean_up (code, "1"b);
+      445 	if code ^= 0 then
+      446 	     call error_return;
+      447 
+      448 return_to_caller:
+      449 	p_n_resources = rno;			/* tell caller how many we found */
+      450 	p_return_ptr = return_ptr;
+      451 	p_code = code;
+      452 	return;
+      453 
+      454 breakapart:
+      455      proc (userid, user_name, project);
+      456 
+      457 dcl	userid		   char (*) parameter;
+      458 dcl	user_name		   char (*) parameter;
+      459 dcl	project		   char (*) parameter;
+      460 
+      461 	user_name = before (userid, ".");
+      462 	project = before (after (userid, "."), ".");
+      463 
+      464      end breakapart;
+      465 
+      466 
+      467 clean_up:
+      468      proc (code, error_matters);
+      469 
+      470 dcl	code		   fixed bin (35) parameter;
+      471 dcl	error_matters	   bit (1) aligned parameter;
+      472 
+      473 	if sw_ptr ^= null () then do;
+      474 	     call rcprm_registry_util_$release_registry (sw_ptr, code);
+      475 	     call return_if_real_error;
+      476 	end;
+      477 
+      478 	if tcf_sw_ptr ^= null () then do;
+      479 	     call rcprm_registry_util_$release_transaction_control_file (tcf_sw_ptr, code);
+      480 	     call return_if_real_error;
+      481 	end;
+      482 
+      483 	call cu_$level_set (prev_level);
+      484 
+      485 cleanup_return:
+      486 	return;
+      487 
+      488 return_if_real_error:
+      489 	proc;
+      490 
+      491 	     if error_matters & code ^= 0 then
+      492 		goto cleanup_return;
+      493 
+      494 	end return_if_real_error;
+      495 
+      496      end clean_up;
+      497 
+      498 error_return:
+      499      proc;
+      500 
+      501 	call audit (code);
+      502 	call clean_up ((0), "0"b);
+      503 	do resource_list_ptr = return_ptr repeat next_resource_list_ptr while (resource_list_ptr ^= null ());
+      504 	     next_resource_list_ptr = resource_list.forward_ptr;
+      505 	     free resource_list;
+      506 	end;
+      507 	rno = 0;
+      508 	return_ptr = null ();
+      509 	goto return_to_caller;
+      510 
+      511      end error_return;
+      512 
+      513 audit:
+      514      proc (code);
+      515 
+      516 dcl	code		   fixed bin (35) parameter;
+      517 
+      518 dcl	1 auto_event_flags	   like audit_event_flags aligned;
+      519 dcl	registry_name	   char (32);
+      520 
+      521 	unspec (auto_event_flags) = ""b;
+      522 	auto_event_flags.grant = (code = 0);
+      523 	auto_event_flags.priv_op = priv_sw;
+      524 	call suffixed_name_$make (resource_type, "rcpr", registry_name, (0));
+      525 	call access_audit_r1_$log_obj_path ("rcprm_list_resource_", prev_level, unspec (auto_event_flags),
+      526 	     access_operations_$rcp_list, pathname_ (registry_dir, registry_name), code, null (), 0);
+      527 
+      528      end audit;
+      529 
+      530 test:
+      531      entry (newdirname);
+      532 
+      533 dcl	newdirname	   char (*) parameter;
+      534 
+      535 	if newdirname = "" then
+      536 	     pdt_dirname = ">system_control_1>pdt";
+      537 	else pdt_dirname = newdirname;
+      538 	return;
+      539 
+  1     1 /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      540 
+      541 
+  2     1 /* --------------- BEGIN include file resource_list.incl.pl1 --------------- */
+  2     2 
+  2     3 dcl 1 resource_list aligned based (resource_list_ptr),
+  2     4     2 forward_ptr pointer initial (null),		/* points to next block, null if no next block */
+  2     5     2 max_entries fixed bin,				/* number of elements in resource name array */
+  2     6     2 n_resources fixed bin initial (0),		/* number of valid resource names in this block */
+  2     7     2 resource_name (Max_entries refer (resource_list.max_entries)) char (32);
+  2     8 						/* resource names */
+  2     9 dcl  Max_entries fixed bin,
+  2    10      resource_list_ptr pointer;
+  2    11 
+  2    12 /* ---------------- END include file resource_list.incl.pl1 ---------------- */
+      542 
+      543 
+  3     1 /* --------------- BEGIN include file rcp_registry.incl.pl1 --------------- */
+  3     2 
+  3     3 /* Written 05/04/78 by C. D. Tavares */
+  3     4 
+  3     5 dcl 1 registry_record aligned based (record_ptr),
+  3     6     2 dynamic_info aligned,
+  3     7       3 attributes (2) bit (72) aligned,
+  3     8       3 (location_desc,
+  3     9          comment_desc,
+  3    10          pad (2)) fixed bin (35) aligned,
+  3    11     2 acquisition_info aligned,
+  3    12       3 (owner_desc,
+  3    13          acs_path_desc,
+  3    14          aim_range_desc) fixed bin (35) aligned,
+  3    15       3 flags unaligned,
+  3    16         4 (usage_lock,
+  3    17 	 release_lock,
+  3    18 	 awaiting_clear,
+  3    19 	 user_alloc,
+  3    20 	 system,
+  3    21 	 free) bit (1) unaligned,
+  3    22         4 pad bit (12) unaligned,
+  3    23       3 reserver_chain bit (18) unaligned,
+  3    24       3 pad (2) fixed bin (35) aligned,
+  3    25     2 registration_info aligned,
+  3    26       3 uid bit (36) aligned,
+  3    27       3 (potential_attributes_desc,
+  3    28          potential_aim_range_desc,
+  3    29          charge_type_desc,
+  3    30          pad (2)) fixed bin (35) aligned,
+  3    31       3 name unaligned,
+  3    32         4 n fixed bin (8) unaligned,
+  3    33         4 string char (rr_strl refer (registry_record.name.n)) unaligned;
+  3    34 
+  3    35 dcl 1 registry_header aligned based (header_ptr),
+  3    36     2 rtde_size fixed bin (18),
+  3    37     2 rtde_copy (RTDE_SIZE refer (registry_header.rtde_size)) bit (36) aligned,
+  3    38     2 other aligned,
+  3    39       3 last_transaction_time fixed bin (71),
+  3    40       3 pad (18) bit (36) aligned;
+  3    41 
+  3    42 dcl RTDE_SIZE fixed bin (18);
+  3    43 
+  4     1 /* --------------- BEGIN include file rtdt.incl.pl1 --------------- */
+  4     2 
+  4     3 dcl 1 rtdt aligned based (rtdtp),			/* resource type description table */
+  5     1 /* BEGIN INCLUDE FILE author.incl.pl1 */
+  5     2 
+  5     3 /* the "author" items must always be the first ones in the table. The
+  5     4*   module which moves the converted table to the System Control process
+  5     5*   fills in these data items and assumes them to be at the head of the segment
+  5     6*   regardless of the specific table's actual declaration. The variables
+  5     7*   "lock" and "last_install_time" used to be "process_id" and "ev_channel"
+  5     8*    respectively. For tables installed in multiple processes, these
+  5     9*    are to be used to lock out multiple installations. */
+  5    10 
+  5    11 /*  Lock should be used as a modification lock. Since, in general,
+  5    12*    entries may not be moved in system tables, even by installations,
+  5    13*    it is sufficient for only installers and programs that change threads
+  5    14*    to set or respect the lock. Simply updating data in an entry
+  5    15*    requires no such protection.
+  5    16*
+  5    17*    Last_install_time is used by readers of system tables to detect
+  5    18*    installations or other serious modifications. By checking it before
+  5    19*    and after copying a block of data, they can be protected against
+  5    20*    modifications.
+  5    21*
+  5    22*    Modules that set the lock should save proc_group_id, and then
+  5    23*    put their group id there for the time they hold the lock.
+  5    24*    if they do not actually install the, they should restore the group id.
+  5    25**/
+  5    26 
+  5    27     2 author aligned,				/* validation data about table's author */
+  5    28       3 proc_group_id char (32),			/* process-group-id  (personid.projectid.tag) */
+  5    29       3 lock bit (36),				/* installation lock */
+  5    30       3 update_attributes bit (1) unal,			/* update/add/delete attributes */
+  5    31       3 update_authorization bit (1) unal,		/* update only authorizations */
+  5    32       3 deferral_notified bit (1) unal,			/* installer notified of deferral of installation */
+  5    33       3 pad bit (33) unaligned,
+  5    34       3 last_install_time fixed bin (71),
+  5    35       3 table char (4),				/* name of table, e.g., SAT MGT TTT RTDT PDT etc. */
+  5    36       3 w_dir char (64),				/* author's working directory */
+  5    37 
+  5    38 /* END INCLUDE FILE author.incl.pl1 */
+  4     4 
+  4     5     2 version fixed bin,				/* version number */
+  4     6     2 installed_under_resource_mgt bit (1) aligned,	/* resource mgt. was ON when this was installed */
+  4     7     2 charge_type_table_ptr offset,			/* points to charge_type_table */
+  4     8     2 first_resource offset,				/* chain for RTDE's */
+  4     9     2 rtdt_area area (RTDT_area_len);			/* all following items allocated here */
+  4    10 
+  4    11 dcl 1 charge_type_table aligned based (cttp),		/* describes charges for resource types */
+  4    12     2 n_charge_types fixed bin,			/* number of distinct charge types */
+  4    13     2 charge_types (N_CHARGE_TYPES refer (charge_type_table.n_charge_types)) aligned char (32),
+  4    14     2 flagword fixed bin (35) aligned;			/* this word simply help us set bitcount properly */
+  4    15 
+  4    16 dcl 1 rtde aligned based (rtdep),			/* describes one resource type */
+  4    17     2 fixed_info aligned,
+  4    18       3 next_resource offset,				/* chains to next type, or nullo */
+  4    19       3 name char (32),				/* name of resource type, e.g. "tape_drive" */
+  4    20       3 syn_to char (32),				/* if is_synonym this is master syn */
+  4    21       3 precanon_proc char (64),			/* name of routine to standardize resource name */
+  4    22       3 pad_1 (16) fixed bin (35),
+  4    23       3 flags unaligned,
+  4    24         4 (valid,					/* resource type hasn't been deleted */
+  4    25      is_volume,					/* specifies volume or device type */
+  4    26      manual_clear,					/* volumes of this type to be "degaussed" between owners */
+  4    27      addition_pending,				/* bookkeeping bit for upd_rtdt_ */
+  4    28      deletion_pending,
+  4    29      is_synonym) bit (1) unaligned,			/* ditto */
+  4    30         4 pad bit (12) unaligned,
+  4    31       3 (process_limit,				/* how many can you assign at one time */
+  4    32      default_time,					/* implicit reservations are for how many minutes */
+  4    33      max_time,					/* how long can you reserve it for */
+  4    34      advance_notice_time,				/* warn operator to prepare mount ahead of time */
+  4    35      pad2,
+  4    36      n_exclusion_specs,				/* number of distinct "name=" fields in attributes */
+  4    37      n_mates,					/* number of mating devs/vols for this vol/dev */
+  4    38      n_subtypes,					/* number of registration subtypes */
+  4    39      n_defined_attributes) fixed bin (17) unaligned,	/* number of defined attributes */
+  4    40       3 pad_2 (8) fixed bin (35),
+  4    41       3 attributes_valid bit (72) aligned,		/* "1"b if corresp. attribute undeleted */
+  4    42       3 attributes_to_match bit (72) aligned,		/* potential mate must possess these attributes */
+  4    43       3 attribute_names (72) char (12) aligned,		/* all possible attributes for this resource */
+  4    44       3 exclusion_specs (36) bit (72) aligned,		/* each masks all attrributes of the form "key=val" */
+  4    45       3 pad_3 (32) fixed bin (35),
+  4    46       3 registration_defaults aligned,			/* applied at reg. time if none given */
+  4    47         4 default_flags aligned,
+  4    48 	5 (potential_attributes_given,		/* "1"b = there are default potential_attributes */
+  4    49      attributes_given,				/* and similarly, etc. */
+  4    50      aim_range_given,
+  4    51      charge_type_given) bit (1) unaligned,
+  4    52 	5 pad bit (31) unaligned,
+  4    53         4 potential_attributes bit (72) aligned,		/* for registration, if given */
+  4    54         4 attributes bit (72) aligned,			/* for registration and also for runtime "I-don't-care" */
+  4    55         4 aim_range (2) bit (72) aligned,		/* and similarly, etc. */
+  4    56         4 charge_type fixed bin,
+  4    57         4 pad_4 (8) fixed bin (35) aligned,
+  4    58     2 mates (N_MATES refer (rtde.n_mates)) char (32) aligned,
+  4    59 						/* the volume type that mounts on this device, or vice versa */
+  4    60     2 subtypes (N_SUBTYPES refer (rtde.n_subtypes)) aligned, /* named registration default groups */
+  4    61       3 subtype_name char (32),			/* name of the group */
+  4    62       3 subtype_defaults like rtde.registration_defaults aligned;
+  4    63 
+  4    64 dcl  RTDT_version_3 fixed bin static options (constant) initial (3),
+  4    65      RTDT_version_2 fixed bin static options (constant) initial (2),
+  4    66 						/* same format, but without precanon_proc */
+  4    67     (N_MATES, N_SUBTYPES, N_CHARGE_TYPES) fixed bin,
+  4    68      RTDT_area_len fixed bin (18);
+  4    69 
+  4    70 dcl (rtdep, rtdtp, cttp) pointer;
+  4    71 
+  4    72 /* ---------------- END include file rtdt.incl.pl1 ---------------- */
+  3    44 
+  3    45 
+  3    46 dcl (record_ptr, header_ptr) pointer,
+  3    47      rr_strl fixed bin;
+  3    48 
+  3    49 /* ---------------- END include file rcp_registry.incl.pl1 ---------------- */
+      544 
+      545 
+  6     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  6     2 /*       Begin include file rcp_requestor_info.incl.pl1
+  6     3* *       
+  6     4* *       This include file gives information about the subject,
+  6     5* *       or requestor of the RCP operation.  In one case, absentee
+  6     6* *       requests, the user is the Initializer, so this piece of
+  6     7* *       information tells us about the real requestor of the RCP
+  6     8* *       operation.
+  6     9**/
+  6    10 
+  6    11 dcl requestor_info_ptr ptr;
+  6    12 
+  6    13 dcl 1 requestor_info aligned based (requestor_info_ptr),
+  6    14     2 user_id char (32),
+  6    15     2 current_authorization bit (72) aligned,
+  6    16     2 validation_level fixed bin (3);
+  6    17 
+  6    18 /*  end include file .. rcp_requestor_info.incl.pl1 */
+      546 
+      547 
+  7     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  7     2 /*       Begin include file rcp_resource_info.incl.pl1
+  7     3*   *
+  7     4*   *       This include file gives information about the object,
+  7     5*   *       or resource for the RCP operation.  If RM is enabled this
+  7     6*   *       information will provide the registry name and switch pointer
+  7     7*   *       for the registry so additional resource information can be
+  7     8*   *       determined.  If RM is disabled, this information will include
+  7     9*   *       the resource name and/or type.
+  7    10**/
+  7    11 
+  7    12 dcl	resource_info_ptr	   ptr;
+  7    13 
+  7    14 dcl	1 resource_info	   based (resource_info_ptr),
+  7    15 	  2 registry_dir	   aligned char (64),	/*  Could be a different if it is reconstruct operation */
+  7    16 	  2 registry_switch_ptr
+  7    17 			   ptr,			/*  Switch to the registry */
+  7    18 	  2 registry_record_ptr
+  7    19 			   ptr,			/*  Pointer to the registry record */
+  7    20 	  2 resource_type	   char (32),		/*  Resource type */
+  7    21 	  2 resource_name	   char (32);		/*  Resource name */
+  7    22 
+  7    23 /*  end include file .. rcp_resource_info.incl.pl1 */
+      548 
+      549 
+  8     1 /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+  8     2 
+  8     3 /* Created 740723 by PG */
+  8     4 /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+  8     5 /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+  8     6 
+  8     7 /* This structure defines the components of both an access
+  8     8*   class and an access authorization as interpreted by the
+  8     9*   Access Isolation Mechanism. */
+  8    10 
+  8    11 
+  8    12 dcl  1 aim_template aligned based,			/* authorization/access class template */
+  8    13        2 categories bit (36),				/* access categories */
+  8    14        2 level fixed bin (17) unaligned,		/* sensitivity level */
+  8    15        2 privileges unaligned,			/* special access privileges (in authorization only) */
+  8    16         (3 ipc,					/* interprocess communication privilege */
+  8    17          3 dir,					/* directory privilege */
+  8    18          3 seg,					/* segment privilege */
+  8    19          3 soos,					/* security out-of-service privilege */
+  8    20          3 ring1,					/* ring 1 access privilege */
+  8    21          3 rcp,					/* RCP resource access privilege */
+  8    22          3 comm) bit (1),				/* communications cross-AIM privilege */
+  8    23          3 pad bit (11);
+  8    24 
+  8    25 
+  8    26 /* END INCLUDE FILE aim_template.incl.pl1 */
+      550 
+      551 
+  9     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  9     2 
+  9     3 /* Written 05/04/78 by C. D. Tavares */
+  9     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  9     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  9     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  9     7 
+  9     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  9     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  9    10      iox_$close entry (pointer, fixed bin (35)),
+  9    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  9    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  9    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  9    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  9    15      iox_$err_not_attached entry options (variable),
+  9    16      iox_$err_not_closed entry options (variable),
+  9    17      iox_$err_no_operation entry options (variable),
+  9    18      iox_$err_not_open entry options (variable),
+  9    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  9    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  9    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  9    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  9    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  9    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  9    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  9    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  9    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  9    28      iox_$propagate entry (pointer),
+  9    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  9    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  9    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  9    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  9    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  9    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  9    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  9    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  9    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  9    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  9    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  9    40 
+  9    41 dcl (iox_$user_output,
+  9    42      iox_$user_input,
+  9    43      iox_$user_io,
+  9    44      iox_$error_output) external static pointer;
+  9    45 
+  9    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      552 
+      553 
+ 10     1 /* Begin include file ..... iox_modes.incl.pl1 */
+ 10     2 
+ 10     3 /* Written by C. D. Tavares, 03/17/75 */
+ 10     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+ 10     5 
+ 10     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+ 10     7     ("stream_input", "stream_output", "stream_input_output",
+ 10     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+ 10     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+ 10    10      "direct_input", "direct_output", "direct_update");
+ 10    11 
+ 10    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+ 10    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+ 10    14 
+ 10    15 dcl (Stream_input initial (1),
+ 10    16      Stream_output initial (2),
+ 10    17      Stream_input_output initial (3),
+ 10    18      Sequential_input initial (4),
+ 10    19      Sequential_output initial (5),
+ 10    20      Sequential_input_output initial (6),
+ 10    21      Sequential_update initial (7),
+ 10    22      Keyed_sequential_input initial (8),
+ 10    23      Keyed_sequential_output initial (9),
+ 10    24      Keyed_sequential_update initial (10),
+ 10    25      Direct_input initial (11),
+ 10    26      Direct_output initial (12),
+ 10    27      Direct_update initial (13)) fixed bin int static options (constant);
+ 10    28 
+ 10    29 /* End include file ..... iox_modes.incl.pl1 */
+      554 
+      555 
+ 11     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+ 11     2*
+ 11     3*   Values for the "access mode" argument so often used in hardcore
+ 11     4*   James R. Davis 26 Jan 81  MCR 4844
+ 11     5*   Added constants for SM access 4/28/82 Jay Pattin
+ 11     6*   Added text strings 03/19/85 Chris Jones
+ 11     7**/
+ 11     8 
+ 11     9 
+ 11    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+ 11    11 dcl	(
+ 11    12 	N_ACCESS		   init ("000"b),
+ 11    13 	R_ACCESS		   init ("100"b),
+ 11    14 	E_ACCESS		   init ("010"b),
+ 11    15 	W_ACCESS		   init ("001"b),
+ 11    16 	RE_ACCESS		   init ("110"b),
+ 11    17 	REW_ACCESS	   init ("111"b),
+ 11    18 	RW_ACCESS		   init ("101"b),
+ 11    19 	S_ACCESS		   init ("100"b),
+ 11    20 	M_ACCESS		   init ("010"b),
+ 11    21 	A_ACCESS		   init ("001"b),
+ 11    22 	SA_ACCESS		   init ("101"b),
+ 11    23 	SM_ACCESS		   init ("110"b),
+ 11    24 	SMA_ACCESS	   init ("111"b)
+ 11    25 	)		   bit (3) internal static options (constant);
+ 11    26 
+ 11    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+ 11    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+ 11    29 
+ 11    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+ 11    31 			   static options (constant);
+ 11    32 
+ 11    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+ 11    34 			   static options (constant);
+ 11    35 
+ 11    36 dcl	(
+ 11    37 	N_ACCESS_BIN	   init (00000b),
+ 11    38 	R_ACCESS_BIN	   init (01000b),
+ 11    39 	E_ACCESS_BIN	   init (00100b),
+ 11    40 	W_ACCESS_BIN	   init (00010b),
+ 11    41 	RW_ACCESS_BIN	   init (01010b),
+ 11    42 	RE_ACCESS_BIN	   init (01100b),
+ 11    43 	REW_ACCESS_BIN	   init (01110b),
+ 11    44 	S_ACCESS_BIN	   init (01000b),
+ 11    45 	M_ACCESS_BIN	   init (00010b),
+ 11    46 	A_ACCESS_BIN	   init (00001b),
+ 11    47 	SA_ACCESS_BIN	   init (01001b),
+ 11    48 	SM_ACCESS_BIN	   init (01010b),
+ 11    49 	SMA_ACCESS_BIN	   init (01011b)
+ 11    50 	)		   fixed bin (5) internal static options (constant);
+ 11    51 
+ 11    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      556 
+      557 
+ 12     1 /* include file for info structure used with record_status control order
+ 12     2*   created by M. Asherman 1/6/76 */
+ 12     3 /* modified 6/15/77 to support stationary type records */
+ 12     4 
+ 12     5      dcl	   rs_info_ptr	      ptr;
+ 12     6      dcl	   1 rs_info	      based (rs_info_ptr) aligned,
+ 12     7 	     2 version	      fixed,		/* must be set to 1 or 2 (Input) */
+ 12     8 	     2 flags	      aligned,
+ 12     9 	       3 lock_sw	      bit (1) unal,		/* Input -- if ="1"b  try to lock record */
+ 12    10 	       3 unlock_sw	      bit (1) unal,		/* Input -- if ="1"b try to unlock record */
+ 12    11 	       3 create_sw	      bit (1) unal,		/* Input--if set creat new record */
+ 12    12 	       3 locate_sw	      bit (1) unal,		/* Input--if set causes current rec to be
+ 12    13*						   located outside the index by descrip, or created without key */
+ 12    14 	       3 inc_ref_count    bit (1) unal,		/* Input--bump reference count of record, if stationary */
+ 12    15 	       3 dec_ref_count    bit (1) unal,		/* Input--decrement ref count if this flag set and record stationary */
+ 12    16 	       3 locate_pos_sw    bit (1) unal,		/* Input--if set the record_length is taken
+ 12    17*						   as an input argument specifying the absolute logical record positioni	  to which both the current and next positions will be set */
+ 12    18 	       3 mbz1	      bit (29) unal,	/* must be set to "0"b, reserved for future use */
+ 12    19 	     2 record_length      fixed (21),		/* length in bytes, Input if create_sw set */
+ 12    20 	     2 max_rec_len	      fixed (21),		/* max length of contained record
+ 12    21*						   Input if create_sw is set--overrides min_block_size in effect */
+ 12    22 	     2 record_ptr	      ptr,		/* points to first byte of record--will be word aligned */
+ 12    23 	     2 descriptor	      fixed (35),		/* Input if locate_sw set and create_sw="0"b */
+ 12    24 	     2 ref_count	      fixed (34),		/* Output--should match number of keys on this record-- = -1 if non-stationary record */
+ 12    25 	     2 time_last_modified fixed (71),		/* Output */
+ 12    26 	     2 modifier	      fixed (35),		/* Output--also Input when locking */
+ 12    27 	     2 block_ptr	      ptr unal,		/* Output */
+ 12    28 	     2 last_image_modifier
+ 12    29 			      fixed (35),
+ 12    30 	     2 mbz2	      fixed;
+ 12    31 
+ 12    32      dcl	   1 rs_desc	      based (addr (rs_info.descriptor)),
+ 12    33 						/* record block descriptor structure */
+ 12    34 	     2 comp_num	      fixed (17) unal,	/* msf component number */
+ 12    35 	     2 offset	      bit (18) unal;	/* word offset of record block */
+ 12    36 
+ 12    37      dcl	   1 seq_desc	      based (addr (rs_info.descriptor)),
+ 12    38 						/* for sequential files */
+ 12    39 	     2 bitno	      bit (6) unal,
+ 12    40 	     2 comp_num	      fixed (11) unal,	/* msf component number */
+ 12    41 	     2 wordno	      bit (18) unal;	/* word offset */
+ 12    42 
+ 12    43      dcl	   rs_info_version_1      static internal fixed init (1);
+ 12    44      dcl	   rs_info_version_2      static internal fixed init (2);
+ 12    45 
+      558 
+      559 
+ 13     1 /* ak_info -- include file for info structures used by the following vfile_
+ 13     2*   control orders: "add_key", "delete_key", "get_key", and "reassign_key".
+ 13     3*   Created by M. Asherman 3/23/76
+ 13     4*   Modified 5/13/77 to add separate gk_info structure */
+ 13     5 
+ 13     6      dcl	   1 ak_info	      based (ak_info_ptr),
+ 13     7 	     2 header	      like ak_header,
+ 13     8 	     2 key	      char (ak_key_len refer (ak_info.header.key_len));
+ 13     9 
+ 13    10      dcl	   1 ak_header	      based (ak_info_ptr),
+ 13    11 	     2 flags	      aligned,
+ 13    12 	       3 input_key	      bit (1) unal,		/* set if key is input arg */
+ 13    13 	       3 input_desc	      bit (1) unal,		/* set if descriptor is an input arg */
+ 13    14 	       3 mbz	      bit (34) unal,	/* not used for the present */
+ 13    15 	     2 descrip	      fixed (35),		/* record designator */
+ 13    16 	     2 key_len	      fixed;
+ 13    17 
+ 13    18      dcl	   ak_info_ptr	      ptr;
+ 13    19      dcl	   ak_key_len	      fixed;
+ 13    20 
+ 13    21 
+ 13    22      dcl	   1 rk_info	      based (rk_info_ptr),
+ 13    23 	     2 header	      like rk_header,
+ 13    24 	     2 key	      char (rk_key_len refer (rk_info.header.key_len));
+ 13    25 
+ 13    26      dcl	   1 rk_header	      based (rk_info_ptr),
+ 13    27 	     2 flags	      aligned,
+ 13    28 	       3 input_key	      bit (1) unal,		/* same as above */
+ 13    29 	       3 input_old_desc   bit (1) unal,		/* set if specified entry has initial descrip
+ 13    30*						   given by old_descrip */
+ 13    31 	       3 input_new_desc   bit (1) unal,		/* set if new val for descrip is input in this struc */
+ 13    32 	       3 mbz	      bit (33) unal,
+ 13    33 	     2 old_descrip	      fixed (35),		/* used if first flag is set */
+ 13    34 	     2 new_descrip	      fixed (35),		/* used only if second flag is set */
+ 13    35 	     2 key_len	      fixed;
+ 13    36 
+ 13    37      dcl	   rk_info_ptr	      ptr;
+ 13    38      dcl	   rk_key_len	      fixed;
+ 13    39 
+ 13    40 
+ 13    41      dcl	   1 gk_info	      based (gk_info_ptr),	/* structure for get_key order */
+ 13    42 	     2 header	      like gk_header,
+ 13    43 	     2 key	      char (gk_key_len refer (gk_info.header.key_len));
+ 13    44 						/* may be Input as well as Output */
+ 13    45 
+ 13    46      dcl	   1 gk_header	      based (gk_info_ptr),
+ 13    47 	     2 flags	      aligned,
+ 13    48 	       3 input_key	      bit (1) unal,		/* if set, use key in this structure */
+ 13    49 	       3 input_desc	      bit (1) unal,		/* if set, descriptor given in this structure */
+ 13    50 	       3 desc_code	      fixed (2) unal,	/* 0=any, 1=current -- applies when input_desc="0"b */
+ 13    51 	       3 position_specification
+ 13    52 			      unal,
+ 13    53 	         4 current	      bit (1) unal,		/* otherwise next */
+ 13    54 	         4 rel_type	      fixed (2) unal,	/* as in seek_head, if input_key = "1"b */
+ 13    55 	         4 head_size      fixed bin (9) unsigned unaligned,
+ 13    56 						/* size of head for initial seek */
+ 13    57 	       3 reset_pos	      bit (1) unal,		/* if set, final position unchanged by this operation */
+ 13    58 	       3 pad	      bit (8) unal,
+ 13    59 	       3 version	      fixed (8) unal,
+ 13    60 	     2 descrip	      fixed (35),		/* Output, except when input_desc="1"b */
+ 13    61 	     2 key_len	      fixed;		/* Input when input_key="1"b, also Output in all cases */
+ 13    62 
+ 13    63      dcl	   gk_info_ptr	      ptr;
+ 13    64      dcl	   gk_key_len	      fixed;
+ 13    65 
+ 13    66      dcl	   gk_info_version_0      internal static fixed options (constant) init (0);
+ 13    67 
+ 13    68 /* end ak_info.incl.pl1 */
+      560 
+      561 
+      562      end rcprm_list_resource_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.7  rcprm_list_resource_.pl1          >spec>install>1111>rcprm_list_resource_.pl1
+540          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+542          2    02/13/79  1715.0  resource_list.incl.pl1            >ldd>include>resource_list.incl.pl1
+544          3    11/20/79  2015.5  rcp_registry.incl.pl1             >ldd>include>rcp_registry.incl.pl1
+3-44         4    11/20/79  2015.6  rtdt.incl.pl1                     >ldd>include>rtdt.incl.pl1
+4-4          5    04/21/82  1211.8  author.incl.pl1                   >ldd>include>author.incl.pl1
+546          6    03/15/85  0953.1  rcp_requestor_info.incl.pl1       >ldd>include>rcp_requestor_info.incl.pl1
+548          7    03/15/85  0953.1  rcp_resource_info.incl.pl1        >ldd>include>rcp_resource_info.incl.pl1
+550          8    09/07/83  1610.6  aim_template.incl.pl1             >ldd>include>aim_template.incl.pl1
+552          9    05/23/83  0916.6  iox_dcls.incl.pl1                 >ldd>include>iox_dcls.incl.pl1
+554         10    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+556         11    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+558         12    07/19/79  1547.0  rs_info.incl.pl1                  >ldd>include>rs_info.incl.pl1
+560         13    07/19/79  1547.0  ak_info.incl.pl1                  >ldd>include>ak_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Max_entries                     000626 automatic       fixed bin(17,0)          dcl 2-9 set ref 314* 316 316 417 417
+Move_rel                        000020 constant        fixed bin(17,0)          initial dcl 116 set ref 429*
+R_ACCESS_BIN                           constant        fixed bin(5,0)           initial dcl 11-36 ref 245
+access_audit_r1_$log_obj_path   000062 constant        entry                    external dcl 120 ref 525
+access_mode                     000100 automatic       fixed bin(5,0)           dcl 68 set ref 241* 245
+access_operations_$rcp_list     000150 external static bit(36)                  dcl 164 set ref 525*
+acquisition_info         10            based           structure                level 2 dcl 3-5
+addr                                                   builtin function         dcl 175 ref 206 206 209 209 211 211 216 216 225 225
+                                                                                  235 235 250 250 268 268 291 291 334 334 385 385
+                                                                                  385 385 436 436
+after                                                  builtin function         dcl 175 ref 213 462
+aim_range_desc           12            based           fixed bin(35,0)          level 3 dcl 3-5 ref 362
+aim_template                           based           structure                level 1 dcl 8-12
+ak_header                              based           structure                level 1 unaligned dcl 13-10
+area                            000612 stack reference condition                dcl 173 ref 306
+audit_event_flags                      based           structure                level 1 dcl 1-5
+authorization                   000334 automatic       structure                level 1 dcl 97 set ref 202*
+auto_event_flags                000100 automatic       structure                level 1 dcl 518 set ref 521* 525 525
+awaiting_clear                  000101 automatic       bit(1)                   initial dcl 69 in procedure "rcprm_list_resource_"
+                                                                                  set ref 69* 191* 204 406
+awaiting_clear           13(02)        based           bit(1)                   level 4 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 3-5 in procedure
+                                                                                  "rcprm_list_resource_" ref 403 406
+before                                                 builtin function         dcl 175 ref 461 462
+circular_list                   000537 automatic       structure                level 1 dcl 105
+cleanup                         000620 stack reference condition                dcl 173 ref 275
+code                                   parameter       fixed bin(35,0)          dcl 516 in procedure "audit" set ref 513 522 525*
+code                                   parameter       fixed bin(35,0)          dcl 470 in procedure "clean_up" set ref 467 474*
+                                                                                  479* 491
+code                            000102 automatic       fixed bin(35,0)          dcl 70 in procedure "rcprm_list_resource_" set ref
+                                                                                  222* 230* 241* 243 246* 255* 264* 280* 281 284*
+                                                                                  285 291* 292 293* 294 308* 334* 335 337 385* 386
+                                                                                  429* 430 432 436* 437 444* 445 451 501*
+cu_$level_get                   000064 constant        entry                    external dcl 122 ref 201
+cu_$level_set                   000066 constant        entry                    external dcl 123 ref 278 483
+cur_level                       000103 automatic       fixed bin(17,0)          dcl 71 set ref 277* 278*
+current                   0(05) 000434 automatic       bit(1)                   level 5 packed packed unaligned dcl 101 set ref 301*
+current_authorization
+                         10     000354 automatic       bit(72)                  level 2 dcl 99 set ref 383*
+descriptor                2     000537 automatic       fixed bin(35,0)          array level 3 dcl 105 set ref 368 391 398*
+do_seek_head                    000104 automatic       bit(1)                   initial dcl 72 set ref 72*
+done                            000105 automatic       bit(1)                   dcl 73 set ref 299* 321 325* 333 428 432* 435
+entry                     2     000537 automatic       structure                array level 2 dcl 105
+error_matters                          parameter       bit(1)                   dcl 471 ref 467 491
+error_table_$bad_name           000142 external static fixed bin(35,0)          dcl 157 ref 264
+error_table_$end_of_info        000144 external static fixed bin(35,0)          dcl 157 ref 432
+error_table_$insufficient_access
+                                000136 external static fixed bin(35,0)          dcl 157 ref 222 230 246 255
+error_table_$no_record          000140 external static fixed bin(35,0)          dcl 157 ref 337
+error_table_$smallarg           000146 external static fixed bin(35,0)          dcl 157 ref 308
+find_by_resource_name           000106 automatic       bit(1)                   initial dcl 74 set ref 74* 205* 234* 327
+fixed_info                             based           structure                level 2 dcl 4-16
+flags                    13            based           structure                level 3 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 3-5 in procedure
+                                                                                  "rcprm_list_resource_"
+flags                           000434 automatic       structure                level 3 in structure "get_key_info" dcl 101
+                                                                                  in procedure "rcprm_list_resource_"
+forward_ptr                            based           pointer                  initial level 2 dcl 2-3 set ref 316* 417* 418* 504
+found                           000107 automatic       bit(1)                   dcl 75 set ref 364* 366 370* 372 376
+free                     13(05)        based           bit(1)                   level 4 packed packed unaligned dcl 3-5 ref 360
+germane_descriptor              000110 automatic       fixed bin(35,0)          dcl 76 set ref 360* 362* 368 398
+get_authorization_              000070 constant        entry                    external dcl 124 ref 383
+get_group_id_                   000074 constant        entry                    external dcl 127 ref 382
+get_group_id_$tag_star          000076 constant        entry                    external dcl 128 ref 213 213 216 216
+get_key_info                    000434 automatic       structure                level 1 unaligned dcl 101 set ref 291 291 436 436
+get_process_authorization_      000072 constant        entry                    external dcl 125 ref 202
+get_ring_                       000100 constant        entry                    external dcl 129 ref 277
+gk_header                              based           structure                level 1 unaligned dcl 13-46
+grant                     0(01) 000100 automatic       bit(1)                   level 2 packed packed unaligned dcl 518 set ref 522*
+hbound                                                 builtin function         dcl 175 ref 391
+hcs_$get_user_effmode           000102 constant        entry                    external dcl 130 ref 241
+head_size                 0(09) 000434 automatic       fixed bin(9,0)           level 5 packed packed unsigned unaligned dcl 101 set
+                                                                                  ref 270 325
+header                          000434 automatic       structure                level 2 unaligned dcl 101 set ref 206 206 209 209
+                                                                                  211 211 216 216 225 225 235 235 250 250 268 268
+high_water_mark                 000537 automatic       fixed bin(17,0)          level 2 dcl 105 set ref 312* 366 395 395*
+i                               000111 automatic       fixed bin(35,0)          dcl 77 set ref 366* 368 369* 391* 393* 398 399 421*
+                                                                                  422
+input_key                       000434 automatic       bit(1)                   level 4 packed packed unaligned dcl 101 set ref 300*
+iox_$control                    000152 constant        entry                    external dcl 9-8 ref 291 334 436
+iox_$position                   000154 constant        entry                    external dcl 9-8 ref 429
+key                       3     000434 automatic       char(256)                level 2 packed packed unaligned dcl 101 set ref 206*
+                                                                                  209* 211* 216* 225* 235* 250* 268* 270 325 329 331
+last_known_key                  000235 automatic       varying char(64)         dcl 83 set ref 289* 329 331*
+last_ptr                        000256 automatic       pointer                  dcl 84 set ref 416* 418
+latest_entry              1     000537 automatic       fixed bin(17,0)          level 2 dcl 105 set ref 313* 366 366 391 391* 393
+                                                                                  393* 395 395
+max_entries               2            based           fixed bin(17,0)          level 2 dcl 2-3 set ref 316* 415 417* 505
+n                        24            based           fixed bin(8,0)           level 4 packed packed unaligned dcl 3-5 ref 422
+n_resources               3            based           fixed bin(17,0)          initial level 2 dcl 2-3 set ref 316* 415 417* 421
+                                                                                  421*
+name                     24            based           structure                level 3 packed packed unaligned dcl 3-5
+newdirname                             parameter       char                     packed unaligned dcl 533 ref 530 535 537
+next_resource_list_ptr          000112 automatic       pointer                  dcl 78 set ref 504* 506
+null                                                   builtin function         dcl 175 ref 92 93 94 200 316 417 473 478 503 508 525
+                                                                                  525
+original_key                    000114 automatic       char(256)                packed unaligned dcl 79 set ref 270* 325
+p_code                                 parameter       fixed bin(35,0)          dcl 64 set ref 25 181 187 451*
+p_n_resources                          parameter       fixed bin(35,0)          dcl 62 set ref 25 181 187 448*
+p_registry_dir                         parameter       char                     packed unaligned dcl 59 ref 25 181 187 197
+p_resource_type                        parameter       char                     packed unaligned dcl 58 ref 25 181 187 194
+p_return_ptr                           parameter       pointer                  dcl 63 set ref 25 181 187 450*
+p_user_area_ptr                        parameter       pointer                  dcl 61 ref 25 181 187 199
+p_userid                               parameter       char                     packed unaligned dcl 60 ref 25 181 187 198
+pathname_                       000104 constant        entry                    external dcl 131 ref 525 525
+pdt_dirname                     000010 internal static char(168)                initial packed unaligned dcl 114 set ref 241* 535*
+                                                                                  537*
+pdt_name                        000214 automatic       char(32)                 packed unaligned dcl 80 set ref 240* 241*
+position_specification
+                          0(05) 000434 automatic       structure                level 4 packed packed unaligned dcl 101
+potential_aim_range_desc
+                         20            based           fixed bin(35,0)          level 3 dcl 3-5 ref 360
+prev_level                      000234 automatic       fixed bin(17,0)          dcl 82 set ref 201* 384 483* 525*
+priv_op                   0(03) 000100 automatic       bit(1)                   level 2 packed packed unaligned dcl 518 set ref 523*
+priv_sw                         000260 automatic       bit(1)                   dcl 85 set ref 178* 184* 190* 221 229 254 403 523
+privileges                1(18) 000334 automatic       structure                level 2 packed packed unaligned dcl 97
+project                                parameter       char                     packed unaligned dcl 459 in procedure "breakapart"
+                                                                                  set ref 454 462*
+project                         000224 automatic       char(32)                 packed unaligned dcl 81 in procedure
+                                                                                  "rcprm_list_resource_" set ref 238* 240 250* 262*
+                                                                                  263
+rcp                       1(23) 000334 automatic       bit(1)                   level 3 packed packed unaligned dcl 97 set ref 356
+rcp_compute_aim_mode            000106 constant        entry                    external dcl 132 ref 385
+rcprm_registry_util_$free_key   000110 constant        entry                    external dcl 133 ref 209
+rcprm_registry_util_$grab_registry
+                                000130 constant        entry                    external dcl 149 ref 284
+rcprm_registry_util_$grab_transaction_control_file
+                                000124 constant        entry                    external dcl 145 ref 280
+rcprm_registry_util_$owner_key  000112 constant        entry                    external dcl 135 ref 216 268
+rcprm_registry_util_$project_key
+                                000114 constant        entry                    external dcl 137 ref 250
+rcprm_registry_util_$release_registry
+                                000132 constant        entry                    external dcl 151 ref 474
+rcprm_registry_util_$release_transaction_control_file
+                                000126 constant        entry                    external dcl 147 ref 479
+rcprm_registry_util_$skeleton_acquisition_key
+                                000120 constant        entry                    external dcl 141 ref 225
+rcprm_registry_util_$skeleton_key
+                                000116 constant        entry                    external dcl 139 ref 206 235
+rcprm_registry_util_$system_key 000122 constant        entry                    external dcl 143 ref 211
+real_resource_record            000261 automatic       bit(1)                   dcl 86 set ref 323* 327* 329* 333 337* 342
+record_ptr                      000632 automatic       pointer                  dcl 3-46 in procedure "rcprm_list_resource_" set ref
+                                                                                  343* 360 360 362 379 403 406 422
+record_ptr                4     000336 automatic       pointer                  level 2 in structure "record_status" dcl 98
+                                                                                  in procedure "rcprm_list_resource_" set ref 343
+record_status                   000336 automatic       structure                level 1 dcl 98 set ref 303* 334 334
+registration_defaults
+                        602            based           structure                level 3 dcl 4-16
+registration_info        16            based           structure                level 2 dcl 3-5
+registry_dir                    000262 automatic       char(64)                 packed unaligned dcl 87 in procedure
+                                                                                  "rcprm_list_resource_" set ref 197* 280* 284* 377
+                                                                                  525* 525*
+registry_dir                    000370 automatic       char(64)                 level 2 in structure "res_info" dcl 100 in procedure
+                                                                                  "rcprm_list_resource_" set ref 377*
+registry_name                   000101 automatic       char(32)                 packed unaligned dcl 519 set ref 524* 525* 525*
+registry_record                        based           structure                level 1 dcl 3-5
+registry_record_ptr      22     000370 automatic       pointer                  level 2 dcl 100 set ref 379*
+registry_switch_ptr      20     000370 automatic       pointer                  level 2 dcl 100 set ref 378*
+req_info                        000354 automatic       structure                level 1 dcl 99 set ref 385 385
+requestor_info                         based           structure                level 1 dcl 6-13
+res_info                        000370 automatic       structure                level 1 dcl 100 set ref 385 385
+resource_info                          based           structure                level 1 unaligned dcl 7-14
+resource_list                          based           structure                level 1 dcl 2-3 set ref 316 417 505
+resource_list_ptr               000630 automatic       pointer                  dcl 2-9 set ref 316* 317 415 415 416 417* 418 421
+                                                                                  421 422 503* 503* 504 505*
+resource_name            34     000370 automatic       char(32)                 level 2 in structure "res_info" dcl 100 in procedure
+                                                                                  "rcprm_list_resource_" set ref 381*
+resource_name             4            based           char(32)                 array level 2 in structure "resource_list" dcl 2-3
+                                                                                  in procedure "rcprm_list_resource_" set ref 422*
+resource_type                   000302 automatic       char(32)                 packed unaligned dcl 88 in procedure
+                                                                                  "rcprm_list_resource_" set ref 194* 284* 380 524*
+resource_type            24     000370 automatic       char(32)                 level 2 in structure "res_info" dcl 100 in procedure
+                                                                                  "rcprm_list_resource_" set ref 380*
+return_ptr                      000312 automatic       pointer                  dcl 89 set ref 200* 317* 450 503 508*
+reverse                                                builtin function         dcl 175 ref 213 213
+rew                             000314 automatic       bit(3)                   packed unaligned dcl 90 in procedure
+                                                                                  "rcprm_list_resource_" set ref 356* 369* 385* 399
+                                                                                  403* 406* 411
+rew                       3     000537 automatic       bit(3)                   array level 3 in structure "circular_list" dcl 105
+                                                                                  in procedure "rcprm_list_resource_" set ref 369
+                                                                                  399*
+rk_header                              based           structure                level 1 unaligned dcl 13-26
+rno                             000315 automatic       fixed bin(17,0)          dcl 91 set ref 288* 413* 413 448 507*
+rs_info                                based           structure                level 1 dcl 12-6
+rs_info_version_2                      constant        fixed bin(17,0)          initial dcl 12-44 ref 304
+rtde                                   based           structure                level 1 dcl 4-16
+rtrim                                                  builtin function         dcl 175 ref 240 331
+string                   24(09)        based           char                     level 4 packed packed unaligned dcl 3-5 ref 422
+substr                                                 builtin function         dcl 175 ref 237 270 325 411
+suffixed_name_$make             000134 constant        entry                    external dcl 153 ref 524
+sw_ptr                          000316 automatic       pointer                  initial dcl 92 set ref 92* 284* 291* 334* 378 429*
+                                                                                  436* 473 474*
+tcf_sw_ptr                      000320 automatic       pointer                  initial dcl 93 set ref 93* 280* 478 479*
+unspec                                                 builtin function         dcl 175 set ref 202* 303* 521* 525 525
+user_area                              based           area(1024)               dcl 169 ref 316 417
+user_area_ptr                   000322 automatic       pointer                  initial dcl 94 set ref 94* 199* 316 417
+user_id                         000354 automatic       char(32)                 level 2 dcl 99 set ref 382*
+user_name                              parameter       char                     packed unaligned dcl 458 set ref 454 461*
+userid                                 parameter       char                     packed unaligned dcl 457 in procedure "breakapart"
+                                                                                  ref 454 461 462
+userid                          000324 automatic       char(32)                 packed unaligned dcl 95 in procedure
+                                                                                  "rcprm_list_resource_" set ref 198* 209 211 213
+                                                                                  213 213 220 228 237 238* 262* 268*
+validation_level         12     000354 automatic       fixed bin(3,0)           level 2 dcl 99 set ref 384*
+version                         000336 automatic       fixed bin(17,0)          level 2 dcl 98 set ref 304*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 11-33
+Direct_input                           internal static fixed bin(17,0)          initial dcl 10-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 10-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 10-15
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 10-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 10-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 10-15
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+N_CHARGE_TYPES                         automatic       fixed bin(17,0)          dcl 4-64
+N_MATES                                automatic       fixed bin(17,0)          dcl 4-64
+N_SUBTYPES                             automatic       fixed bin(17,0)          dcl 4-64
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 11-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 11-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 11-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 11-36
+RTDE_SIZE                              automatic       fixed bin(18,0)          dcl 3-42
+RTDT_area_len                          automatic       fixed bin(18,0)          dcl 4-64
+RTDT_version_2                         internal static fixed bin(17,0)          initial dcl 4-64
+RTDT_version_3                         internal static fixed bin(17,0)          initial dcl 4-64
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 11-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 11-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 11-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 11-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 11-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 11-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 11-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 11-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 11-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 10-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 10-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 10-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 10-15
+Stream_input                           internal static fixed bin(17,0)          initial dcl 10-15
+Stream_input_output                    internal static fixed bin(17,0)          initial dcl 10-15
+Stream_output                          internal static fixed bin(17,0)          initial dcl 10-15
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 11-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 11-36
+ak_info                                based           structure                level 1 unaligned dcl 13-6
+ak_info_ptr                            automatic       pointer                  dcl 13-18
+ak_key_len                             automatic       fixed bin(17,0)          dcl 13-19
+charge_type_table                      based           structure                level 1 dcl 4-11
+cttp                                   automatic       pointer                  dcl 4-70
+gk_info                                based           structure                level 1 unaligned dcl 13-41
+gk_info_ptr                            automatic       pointer                  dcl 13-63
+gk_info_version_0                      internal static fixed bin(17,0)          initial dcl 13-66
+gk_key_len                             automatic       fixed bin(17,0)          dcl 13-64
+header_ptr                             automatic       pointer                  dcl 3-46
+iox_$attach_loud                000000 constant        entry                    external dcl 9-8
+iox_$attach_name                000000 constant        entry                    external dcl 9-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 9-8
+iox_$close                      000000 constant        entry                    external dcl 9-8
+iox_$close_file                 000000 constant        entry                    external dcl 9-8
+iox_$delete_record              000000 constant        entry                    external dcl 9-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 9-8
+iox_$detach                     000000 constant        entry                    external dcl 9-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 9-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 9-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 9-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 9-8
+iox_$err_not_open               000000 constant        entry                    external dcl 9-8
+iox_$error_output                      external static pointer                  dcl 9-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 9-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 9-8
+iox_$get_chars                  000000 constant        entry                    external dcl 9-8
+iox_$get_line                   000000 constant        entry                    external dcl 9-8
+iox_$look_iocb                  000000 constant        entry                    external dcl 9-8
+iox_$modes                      000000 constant        entry                    external dcl 9-8
+iox_$move_attach                000000 constant        entry                    external dcl 9-8
+iox_$open                       000000 constant        entry                    external dcl 9-8
+iox_$open_file                  000000 constant        entry                    external dcl 9-8
+iox_$propagate                  000000 constant        entry                    external dcl 9-8
+iox_$put_chars                  000000 constant        entry                    external dcl 9-8
+iox_$read_key                   000000 constant        entry                    external dcl 9-8
+iox_$read_length                000000 constant        entry                    external dcl 9-8
+iox_$read_record                000000 constant        entry                    external dcl 9-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 9-8
+iox_$seek_key                   000000 constant        entry                    external dcl 9-8
+iox_$user_input                        external static pointer                  dcl 9-41
+iox_$user_io                           external static pointer                  dcl 9-41
+iox_$user_output                       external static pointer                  dcl 9-41
+iox_$write_record               000000 constant        entry                    external dcl 9-8
+iox_modes                              internal static char(24)                 initial array dcl 10-6
+registry_header                        based           structure                level 1 dcl 3-35
+requestor_info_ptr                     automatic       pointer                  dcl 6-11
+resource_info_ptr                      automatic       pointer                  dcl 7-12
+rk_info                                based           structure                level 1 unaligned dcl 13-22
+rk_info_ptr                            automatic       pointer                  dcl 13-37
+rk_key_len                             automatic       fixed bin(17,0)          dcl 13-38
+rr_strl                                automatic       fixed bin(17,0)          dcl 3-46
+rs_desc                                based           structure                level 1 packed packed unaligned dcl 12-32
+rs_info_ptr                            automatic       pointer                  dcl 12-5
+rs_info_version_1                      internal static fixed bin(17,0)          initial dcl 12-43
+rtdep                                  automatic       pointer                  dcl 4-70
+rtdt                                   based           structure                level 1 dcl 4-3
+rtdtp                                  automatic       pointer                  dcl 4-70
+seq_desc                               based           structure                level 1 packed packed unaligned dcl 12-37
+short_iox_modes                        internal static char(4)                  initial array dcl 10-12
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+audit                           002420 constant        entry                    internal dcl 513 ref 442 501
+awaiting_clear                  000166 constant        entry                    external dcl 187
+breakapart                      002147 constant        entry                    internal dcl 454 ref 238 262
+clean_up                        002243 constant        entry                    internal dcl 467 ref 275 293 444 502
+cleanup_return                  002317 constant        label                    dcl 485 ref 491
+common                          000220 constant        label                    dcl 194 ref 179 185 192
+error_return                    002331 constant        entry                    internal dcl 498 ref 223 231 243 247 256 265 281 285
+                                                                                  294 309 340 386 434 437 445
+priv                            000133 constant        entry                    external dcl 181
+rcprm_list_resource_            000101 constant        entry                    external dcl 25
+return_if_real_error            002320 constant        entry                    internal dcl 488 ref 475 480
+return_to_caller                002077 constant        label                    dcl 448 ref 296 509
+test                            002112 constant        entry                    external dcl 530
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3324        3502    2636        3334
+Length      4224    2636       156         505     466          52
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcprm_list_resource_                491 external procedure  is an external procedure.  
+on unit on line 275                  74 on unit               
+on unit on line 306                  64 on unit               
+breakapart                              internal procedure  shares stack frame of external procedure rcprm_list_resource_.  
+clean_up                             76 internal procedure  is called by several nonquick procedures.  
+return_if_real_error                    internal procedure  shares stack frame of internal procedure clean_up.  
+error_return                         80 internal procedure  is called by several nonquick procedures.  
+audit                               186 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 pdt_dirname                 rcprm_list_resource_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+audit                    000100 auto_event_flags            audit
+                         000101 registry_name               audit
+rcprm_list_resource_     000100 access_mode                 rcprm_list_resource_
+                         000101 awaiting_clear              rcprm_list_resource_
+                         000102 code                        rcprm_list_resource_
+                         000103 cur_level                   rcprm_list_resource_
+                         000104 do_seek_head                rcprm_list_resource_
+                         000105 done                        rcprm_list_resource_
+                         000106 find_by_resource_name       rcprm_list_resource_
+                         000107 found                       rcprm_list_resource_
+                         000110 germane_descriptor          rcprm_list_resource_
+                         000111 i                           rcprm_list_resource_
+                         000112 next_resource_list_ptr      rcprm_list_resource_
+                         000114 original_key                rcprm_list_resource_
+                         000214 pdt_name                    rcprm_list_resource_
+                         000224 project                     rcprm_list_resource_
+                         000234 prev_level                  rcprm_list_resource_
+                         000235 last_known_key              rcprm_list_resource_
+                         000256 last_ptr                    rcprm_list_resource_
+                         000260 priv_sw                     rcprm_list_resource_
+                         000261 real_resource_record        rcprm_list_resource_
+                         000262 registry_dir                rcprm_list_resource_
+                         000302 resource_type               rcprm_list_resource_
+                         000312 return_ptr                  rcprm_list_resource_
+                         000314 rew                         rcprm_list_resource_
+                         000315 rno                         rcprm_list_resource_
+                         000316 sw_ptr                      rcprm_list_resource_
+                         000320 tcf_sw_ptr                  rcprm_list_resource_
+                         000322 user_area_ptr               rcprm_list_resource_
+                         000324 userid                      rcprm_list_resource_
+                         000334 authorization               rcprm_list_resource_
+                         000336 record_status               rcprm_list_resource_
+                         000354 req_info                    rcprm_list_resource_
+                         000370 res_info                    rcprm_list_resource_
+                         000434 get_key_info                rcprm_list_resource_
+                         000537 circular_list               rcprm_list_resource_
+                         000626 Max_entries                 rcprm_list_resource_
+                         000630 resource_list_ptr           rcprm_list_resource_
+                         000632 record_ptr                  rcprm_list_resource_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          tra_ext_1           enable_op           shorten_stack       ext_entry_desc      int_entry
+reverse_cs          set_chars_eis       op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_r1_$log_obj_path cu_$level_get                 cu_$level_set                 get_authorization_
+get_group_id_                 get_group_id_$tag_star        get_process_authorization_    get_ring_
+hcs_$get_user_effmode         iox_$control                  iox_$position                 pathname_
+rcp_compute_aim_mode          rcprm_registry_util_$free_key rcprm_registry_util_$grab_registry
+rcprm_registry_util_$grab_transaction_control_file          rcprm_registry_util_$owner_key
+rcprm_registry_util_$project_key                            rcprm_registry_util_$release_registry
+rcprm_registry_util_$release_transaction_control_file       rcprm_registry_util_$skeleton_acquisition_key
+rcprm_registry_util_$skeleton_key                           rcprm_registry_util_$system_key
+suffixed_name_$make
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_list   error_table_$bad_name         error_table_$end_of_info
+error_table_$insufficient_access                            error_table_$no_record        error_table_$smallarg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     69 000062        72 000063        74 000064        92 000065        93 000067        94 000070        25 000073
+    178 000127       179 000130       181 000131       184 000161       185 000163       187 000164       190 000214
+    191 000216       192 000217       194 000220       197 000226       198 000233       199 000240       200 000243
+    201 000245       202 000254       204 000265       205 000267       206 000271       207 000310       209 000311
+    211 000335       213 000361       216 000451       218 000504       220 000505       221 000511       222 000513
+    223 000516       225 000522       226 000541       228 000542       229 000546       230 000550       231 000553
+    234 000557       235 000561       236 000600       237 000601       238 000605       240 000610       241 000636
+    243 000676       245 000704       246 000707       247 000712       250 000716       251 000741       254 000742
+    255 000744       256 000747       262 000753       263 000756       264 000762       265 000765       268 000771
+    270 001014       275 001022       277 001053       278 001062       280 001071       281 001112       284 001120
+    285 001145       288 001153       289 001154       291 001155       292 001205       293 001207       294 001221
+    296 001227       299 001230       300 001231       301 001233       303 001235       304 001240       306 001242
+    308 001256       309 001261       310 001266       312 001267       313 001271       314 001272       316 001274
+    317 001310       321 001311       323 001314       325 001315       327 001330       329 001335       331 001345
+    333 001365       334 001371       335 001423       337 001426       340 001433       342 001437       343 001441
+    356 001443       360 001451       362 001460       364 001462       366 001463       368 001477       369 001505
+    370 001512       372 001514       376 001545       377 001547       378 001552       379 001554       380 001556
+    381 001561       382 001564       383 001576       384 001605       385 001607       386 001630       391 001636
+    393 001646       395 001651       398 001654       399 001661       403 001664       406 001676       411 001704
+    413 001710       415 001711       416 001715       417 001716       418 001732       421 001733       422 001740
+    428 001751       429 001753       430 001772       432 001775       434 002003       435 002007       436 002011
+    437 002041       441 002047       442 002050       444 002057       445 002071       448 002077       450 002102
+    451 002104       452 002106       530 002107       535 002126       537 002142       538 002146       454 002147
+    461 002172       462 002207       464 002241       467 002242       473 002250       474 002255       475 002266
+    478 002267       479 002274       480 002306       483 002307       485 002317       488 002320       491 002321
+    494 002327       498 002330       501 002336       502 002346       503 002362       504 002373       505 002376
+    506 002404       507 002411       508 002412       509 002414       513 002417       521 002425       522 002426
+    523 002435       524 002443       525 002471       528 002574
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

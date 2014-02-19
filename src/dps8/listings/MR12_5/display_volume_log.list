@@ -1,0 +1,2762 @@
+	COMPILATION LISTING OF SEGMENT display_volume_log
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.6 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(88-03-01,GWMay), approve(89-10-03,MCR8135),
+       16*     audit(89-10-04,Beattie), install(89-10-18,MR12.3-1094:
+       17*     Changed to display reload group numbers correctly.
+       18*     Added displays for the number of incr and cons cycles are
+       19*     being retained in the volume log.
+       20*     Changed to display at 79 columns.
+       21*     Changed to add the -label, -no_label, -all and -header options.
+       22*                                                   END HISTORY COMMENTS */
+       23 
+       24 /* format: off */
+       25 display_volume_log: proc;
+       26 
+       27 /* This command displays the data in the specified volume log. This data consists
+       28*   of the names, start and stop times, and statistics about what was dumped onto each dump volume that contains
+       29*   objects from the physical volume that this volume log pertains to.
+       30*
+       31**/
+       32 /* Modified 4/27/82 by GA Texada to not REQUIRE w acces to display the volog.	  */
+       33 
+       34        myname = "display_volume_log";
+       35        go to COMMON;
+       36 
+       37 display_volog: entry;
+       38 
+       39        myname = "display_volog";
+       40        go to COMMON;
+       41 
+       42 dvl: entry;
+       43 
+       44        myname = "dvl";
+       45 
+       46 COMMON:
+       47 /* init control variables */
+       48 	header_sw = "1"b;
+       49 	type = 0;
+       50 	volname = "";
+       51 	bvlp = null;
+       52 	entries = 0;
+       53 	seg_num, seg_rec, dir_num, dir_rec = 0;
+       54 	locked, stats, label_sw, all_sw = "0"b;
+       55 
+       56 	on finish call finish_;
+       57 	on cleanup call finish_;
+       58 	volog_dir = ">daemon_dir_dir>volume_backup";
+       59 	call cu_$arg_ptr (1, argp, argl, code);
+       60 	if code ^= 0 then do;
+       61 
+       62 argerr:	     call com_err_ (error_table_$noarg, myname);
+       63 	     call ioa_ (
+       64 "Usage:^10t^a volog {-control_args}
+       65 ^10tcontrol_args:^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a",
+       66 	        myname,
+       67 	        "-incremental, -incr     ", "-header, -he            ",
+       68 	        "-consolidated, -cons    ", "-no_header, -nhe        ",
+       69 	        "-complete, -comp        ", "-label, -lbl            ",
+       70 	        "-volname name, -vol name", "-no_label, -nlbl        ",
+       71 	        "-working_dir, -wd       ", "-status, -st            ",
+       72 	        "-all, -a                ");
+       73 	     return;
+       74 	end;
+       75 	if substr (arg, 1, 1) = "-" then goto argerr;
+       76 
+       77 	call expand_pathname_$add_suffix(arg, "volog", ignore_dir, volog_name, ignore); 
+       78 	
+       79 	call cu_$arg_count (narg);
+       80 	ac = 2;
+       81 	do while (ac <= narg);
+       82 	     call cu_$arg_ptr (ac, argp, argl, code);
+       83 	     if code ^= 0 then do;
+       84 		call com_err_ (code, myname, "Unable to access arg after ^a", arg);
+       85 		goto finale;
+       86 	     end;
+       87 	     if arg = "-incremental" | arg = "-incr" then type = incr;
+       88 	     else if arg = "-working_dir" | arg = "-wd" then volog_dir = wdir_ ();
+       89 	     else if arg = "-consolidated" | arg = "-cons" then type = cons;
+       90 	     else if arg = "-complete" | arg = "-comp" then type = comp;
+       91 	     else if arg = "-all" | arg = "-a" then all_sw = "1"b;
+       92 	     else if arg = "-header" | arg = "-he" then header_sw = "1"b;
+       93 	     else if arg = "-nhe" | arg = "-no_header" then header_sw = "0"b;
+       94 	     else if arg = "-label" | arg = "-lbl" then label_sw = "1"b;
+       95 	     else if arg = "-no_label" | arg = "-nlbl" then label_sw = "0"b;
+       96 	     else if arg = "-status" | arg = "-st" | arg = "-stats" then do;
+       97 		type = -1;
+       98 		stats = "1"b;
+       99 	     end;
+      100 	     else if arg = "-vol" | arg = "-volname" then do;
+      101 		ac = ac + 1;
+      102 		call cu_$arg_ptr (ac, argp, argl, code);
+      103 		if code ^= 0 then do;
+      104 		     call com_err_ (code, myname, "Error getting volname");
+      105 		     goto finale;
+      106 		end;
+      107 		volname = arg;
+      108 		type = -1;
+      109 	     end;
+      110 	     else do;
+      111 		call com_err_ (error_table_$badopt, myname, "^a", arg);
+      112 		goto finale;
+      113 	     end;
+      114 	     ac = ac + 1;
+      115 	end;
+      116 
+      117 						/* pick up name of volume log */
+      118 						/* get pointer to volume log */
+      119 	call hcs_$initiate (volog_dir, volog_name, "", 0, 0, bvlp, code);
+      120 	if bvlp = null then do;
+      121 	     call com_err_ (code, myname, "^a>^a", volog_dir, volog_name);
+      122 	     goto finale;
+      123 	end;
+      124 
+      125 /* If possible, lock log before printing */
+      126 
+      127           call set_lock_$lock (backup_volume_log.lock, lock_wait_time, code);
+      128 	if code ^= 0 then do;
+      129 	     if code = error_table_$invalid_lock_reset then code = 0;
+      130 	     else do;
+      131 		if code = error_table_$no_w_permission then do;
+      132 		call ioa_("Unable to lock ^a, data may be in the process of being changed.", volog_name);
+      133 		goto cant_lock;
+      134 		end;
+      135 	     call com_err_ (code, myname, "Unable to lock volog ^a", volog_name);
+      136 	     goto finale;
+      137 	     end;
+      138 	end;
+      139           locked = "1"b;
+      140 cant_lock:
+      141           if label_sw | all_sw then do;
+      142 	   call ioa_ ("
+      143 Backup Volume Log Label for Multics Storage System Volume ^a^/",
+      144 	      volog_name);
+      145 	   call display_disk_label_ (addr (addr (backup_volume_log.info) -> backup_pvol_info.label));
+      146 	   if ^all_sw & type=0 then go to finale;
+      147 	   end;
+      148 
+      149 	if header_sw then do;
+      150 	     call ioa_ ("
+      151 ^2-Backup Volume Log for Physical Volume ^a
+      152 ^2-       Consolidated Sets Saved: ^[all^s^;^d^]
+      153 ^2-       Incremental Sets Saved : ^[all^s^;^d^]
+      154 ^2-       Reload Groups          : ^d",
+      155 	        reverse(after(reverse(volog_name), ".")),
+      156 	        backup_volume_log.Nsaved_cons_sets < 1,
+      157 	        backup_volume_log.Nsaved_cons_sets,
+      158 	        backup_volume_log.Nsaved_incr_sets < 1,
+      159 	        backup_volume_log.Nsaved_incr_sets,
+      160 	        backup_volume_log.reload_groups);
+      161 
+      162 	     if ^stats then
+      163 		call ioa_ ("
+      164 rld dump  volume^57tdir   dir   seg    seg
+      165 grp type  name^22tstart time^39tstop time^57tnum   rec   num    rec");
+      166 	     else call ioa_ ("entries^-dir num^-dir rec^-seg num^-seg rec");
+      167 	     end;
+      168           else
+      169 	   call ioa_ ("");
+      170 
+      171 						/* Examine each entry in the log and print as requested */
+      172 	comp_cycle_uid = "0"b;
+      173 	group = 1;
+      174 	comp_open_time = 0;
+      175 
+      176 	do i = backup_volume_log.next to 1 by -1;
+      177 	     bvlep = addr (backup_volume_log.array (i));
+      178 	     if (volname ^= "" & volname = bvle.volname) | (volname = "")
+      179 	     | stats then do;
+      180 	        if bvle.dump_type = comp then do;
+      181 		   if bvle.cycle_uid ^= comp_cycle_uid then do;
+      182 		      if comp_cycle_uid ^= "0"b then
+      183 		         group = group + 1;
+      184 		      comp_cycle_uid = bvle.cycle_uid;
+      185 
+      186 		      do lowest_start_idx = i to 1 by -1;
+      187 		         if backup_volume_log.array (lowest_start_idx).cycle_uid = bvle.cycle_uid then
+      188 			  comp_open_time = backup_volume_log.array (lowest_start_idx).open_time;
+      189 		         end;
+      190 		      end;
+      191 		   end;
+      192 
+      193                     if ^stats then
+      194                        if type = 0 | type = bvle.dump_type then
+      195 		      call ioa_ ("^[^2d^s^;^s^2d^]  ^4a  ^10a^22t^15a^39t^15a^55t^5d ^5d ^5d ^6d",
+      196    		         (comp_open_time < bvle.close_time & bvle.close_time > 0), group, group + 1,
+      197  		         ascii_type (bvle.dump_type), bvle.volname, time_string_ (bvle.open_time),
+      198 		         time_string_ (bvle.close_time), bvle.dir_num, bvle.dir_rec, bvle.seg_num, bvle.seg_rec);
+      199                        else;
+      200 		else do;
+      201 		     entries = entries + 1;
+      202 		     dir_num = dir_num + bvle.dir_num;
+      203 		     dir_rec = dir_rec + bvle.dir_rec;
+      204 		     seg_num = seg_num + bvle.seg_num;
+      205 		     seg_rec = seg_rec + bvle.seg_rec;
+      206 		end;
+      207 	     end;
+      208 	end;
+      209 
+      210 	if stats then call ioa_ ("^d^-^d^-^d^-^d^-^d",
+      211 	     entries, dir_num, dir_rec, seg_num, seg_rec);
+      212 finale:						/* cleanup - unlock and terminate */
+      213 	call finish_;
+      214 	return;
+      215 
+      216 time_string_: proc (time) returns (char (15));
+      217 
+      218 /* This proc returns a time string suitable for printing */
+      219 
+      220 dcl  time fixed bin (71);
+      221 	    return (date_time_$format (
+      222 	        "^my/^dm/^yc ^Hd^99v.9MH", time, "", ""));
+      223 	end time_string_;
+      224 
+      225 finish_:	proc;
+      226 	     if (bvlp ^= null) & (locked) then call set_lock_$unlock (backup_volume_log.lock, ignore);
+      227 	     if bvlp ^= null then call hcs_$terminate_noname (bvlp, ignore);
+      228 	     call ioa_ ("");
+      229 	end finish_;
+      230 wdir_:	proc returns (char (168) aligned);
+      231 
+      232 /* This proc returns the working directory */
+      233 
+      234 dcl  wdir char (168) aligned;
+      235 	     call hcs_$fs_search_get_wdir (addr (wdir), ignore);
+      236 	     return (wdir);
+      237 	end wdir_;
+      238 
+      239 dcl  volog_name char (32);
+      240 dcl  lowest_start_idx fixed bin;
+      241 dcl  group fixed bin;
+      242 dcl  comp_cycle_uid bit (36);
+      243 dcl  comp_open_time fixed bin (71);
+      244 dcl  narg fixed bin;
+      245 dcl  volog_dir char (168);
+      246 dcl  arg char (argl) based (argp);
+      247 dcl  argl fixed bin;
+      248 dcl  argp ptr;
+      249 dcl  i fixed bin;
+      250 dcl  ac fixed bin;
+      251 dcl  ignore_dir char(168);
+      252 dcl  volname char (32);
+      253 dcl  seg_num fixed bin;
+      254 dcl  seg_rec fixed bin;
+      255 dcl  entries fixed bin;
+      256 dcl  dir_rec fixed bin;
+      257 dcl  dir_num fixed bin;
+      258 dcl  stats bit (1);
+      259 dcl  code fixed bin (35);
+      260 dcl  ignore fixed bin (35);
+      261 dcl  type fixed bin;
+      262 dcl  header_sw bit (1);
+      263 dcl  label_sw bit (1);
+      264 dcl  all_sw bit (1);
+      265 dcl  locked bit(1);
+      266 dcl  myname char (32) var;		
+      267 dcl  ascii_type (3) char (4) int static init ("incr", "cons", "comp") options(constant);
+      268 dcl  lock_wait_time fixed bin static init(30) options(constant);
+      269 
+      270 dcl  hcs_$fs_search_get_wdir entry (ptr, fixed bin (35));
+      271 dcl  cu_$arg_ptr entry (fixed bin, ptr, fixed bin, fixed bin (35));
+      272 dcl  com_err_ entry options (variable);
+      273 dcl  display_disk_label_ entry (ptr);
+      274 dcl  expand_pathname_$add_suffix entry (char(*), char(*), char(*), char(*), fixed bin(35));
+      275 dcl  hcs_$initiate entry (char (*), char (*), char (*), fixed bin, fixed bin, ptr, fixed bin (35));
+      276 dcl  hcs_$terminate_noname entry (ptr, fixed bin (35));
+      277 dcl  ioa_ entry options (variable);
+      278 dcl  date_time_$format entry (char(*), fixed bin(71), char(*), char(*)) returns(char(250) var);
+      279 dcl  set_lock_$lock entry (bit (36) aligned, fixed bin, fixed bin (35));
+      280 dcl  set_lock_$unlock entry (bit (36) aligned, fixed bin (35));
+      281 dcl  cu_$arg_count entry (fixed bin);
+      282 
+      283 dcl  error_table_$badopt ext fixed bin (35);
+      284 dcl  error_table_$invalid_lock_reset ext fixed bin (35);
+      285 dcl  error_table_$noarg fixed bin(35) ext static;
+      286 dcl  error_table_$no_w_permission ext static fixed bin(35);
+      287 dcl (finish, cleanup) condition;
+      288 
+      289 dcl (null, addr, after, reverse, substr) builtin;
+      290 
+  1     1 /* BEGIN INCLUDE FILE ... backup_volume_log.incl.pl1 ... Feb 1976 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(88-03-03,GWMay), approve(89-10-03,MCR8135),
+  1     6*     audit(89-10-04,Beattie), install(89-10-10,MR12.3-1089):
+  1     7*     Added values for storing the number of incremental and consolidated dump
+  1     8*     sets to retain in the volume log.  Incremented version number to 3.
+  1     9*                                                   END HISTORY COMMENTS */
+  1    10 
+  1    11 
+  1    12 /*     Modified: 3/7/84 by GA Texada to change to version 2						*/
+  1    13 dcl  bvlp ptr;
+  1    14 dcl  bvlep ptr;
+  1    15 
+  1    16 dcl  backup_volume_log_version_1 fixed bin static init (1) options (constant);
+  1    17 dcl  backup_volume_log_version_2 fixed bin init(2) int static options(constant);
+  1    18 dcl  backup_volume_log_version_3 fixed bin init(3) int static options(constant);
+  1    19 
+  1    20 dcl 1 backup_volume_log based (bvlp) aligned,
+  1    21     2 header like backup_volume_header aligned,
+  1    22     2 info like backup_pvol_info aligned,
+  1    23     2 version fixed bin,				/* version number */
+  1    24     2 lock bit (36),				/* shared data base */
+  1    25     2 pvname char (32),				/* physical volume name */
+  1    26     2 pvid bit (36),				/* physical volume id */
+  1    27     2 next fixed bin,				/* next available dump record */
+  1    28     2 reload_groups fixed bin,			/* number of reload groups in log */
+  1    29     2 purge_control (3),				/* control selective purging by dump type */
+  1    30       3 group (36) bit (1) unaligned,			/* up to 36 reload groups */
+  1    31     2 disk_type fixed bin unal,			/* type of disk drive			*/	
+  1    32     2 half_word_pad bit(18) unal,			/* MBZ					*/
+  1    33     2 rpv_pvid bit(36),				/* pvid of this volumes RPV			*/
+  1    34     2 Nsaved_incr_sets fixed bin,			/* number of incr cycles to retain */
+  1    35     2 Nsaved_cons_sets fixed bin,			/* number of incr cycles to retain */
+  1    36     2 pad (31) bit (36),				/* for future expansion (MBZ)			*/
+  1    37     2 array (1:1 refer (backup_volume_log.next)) like bvle aligned;
+  1    38 
+  1    39 dcl 1 bvle based (bvlep) aligned,
+  1    40     2 cycle_uid bit (36),				/* uid of this dump cycle */
+  1    41     2 dump_type fixed bin,				/* type of dump */
+  1    42     2 volname char (32),				/* name of output volume */
+  1    43     2 open_time fixed bin (71),			/* opening time of dump pass on this physical volume */
+  1    44     2 close_time fixed bin (71),			/* ending time of dump pass */
+  1    45     2 volid bit (36),				/* uid of output volume */
+  1    46     2 io_module char (32),				/* outer module name that wrote this volume */
+  1    47     2 flags,					/* flags */
+  1    48       3 purge_scan_logged bit (1) unaligned,		/* if on object looged during purge scan */
+  1    49       3 pad1 bit (35) unaligned,
+  1    50     2 pad (7) bit (36),				/* for future expansion */
+  1    51    (2 dir_num fixed bin,				/* number of dirs dumped on this pass */
+  1    52     2 dir_rec fixed bin,				/* number of records of dirs */
+  1    53     2 seg_num fixed bin,				/* number of segs dumped on this pass */
+  1    54     2 seg_rec fixed bin) unaligned;			/* number of records of segs */
+  1    55 
+  1    56 /* END INCLUDE FILE ... backup_volume_log */
+      291 
+  2     1 /* BEGIN INCLUDE FILE ... backup_pvol_info.incl.pl1 */
+  2     2 
+  2     3 dcl  bpvip ptr;
+  2     4 
+  2     5 dcl 1 backup_pvol_info based (bpvip) aligned,
+  2     6     2 label like label aligned,
+  2     7     2 n_vtoce fixed bin,
+  2     8     2 n_free_vtoce fixed bin,
+  2     9     2 n_rec fixed bin,
+  2    10     2 baseadd fixed bin,
+  2    11     2 n_free_rec fixed bin;
+  2    12 
+  2    13 /* END INCLUDE FILE ... backup_pvol_info.incl.pl1 */
+      292 
+  3     1 /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  3     2 
+  3     3 /****^  HISTORY COMMENTS:
+  3     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  3     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  3     6*     Add the subvolume info.
+  3     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  3     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  3     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  3    10*     dumper bit maps.
+  3    11*                                                   END HISTORY COMMENTS */
+  3    12 
+  3    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  3    14 /* Note: fsout_vol clears pad fields before writing the label */
+  3    15 
+  3    16 dcl  labelp ptr;
+  3    17 
+  3    18 dcl 1 label based (labelp) aligned,
+  3    19 
+  3    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  3    21 
+  3    22     2 gcos (5*64) fixed bin,
+  3    23 
+  3    24 /* Now we have the Multics label */
+  3    25 
+  3    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  3    27     2 version fixed bin,				/* Version 1 */
+  3    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  3    29     2 pv_name char (32),				/* Physical volume name. */
+  3    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  3    31     2 pvid bit (36),				/* Unique ID of this pack */
+  3    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  3    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  3    34     2 time_registered fixed bin (71),			/* time imported to system */
+  3    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  3    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  3    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  3    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  3    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  3    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  3    41     2 flagpad bit (33) unal,
+  3    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  3    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  3    44     2 password bit (72),				/* not yet used */
+  3    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  3    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  3    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  3    48     2 pad1 (13) fixed bin,
+  3    49     2 time_mounted fixed bin (71),			/* time mounted */
+  3    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  3    51 
+  3    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  3    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  3    54* */
+  3    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  3    56     2 pad6 fixed bin,				
+  3    57 
+  3    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  3    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  3    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  3    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  3    62     2 pad1a (2) fixed bin,
+  3    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  3    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  3    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  3    66     2 pad2 (40) fixed bin,
+  3    67     2 root,
+  3    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  3    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  3    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  3    71       3 pad7 bit (1) aligned,				
+  3    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  3    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  3    74       3 esd_state fixed bin,				/* State of esd */
+  3    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  3    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  3    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  3    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  3    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  3    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  3    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  3    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  3    83     2 pad3 (52) fixed bin,
+  3    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  3    85     2 parts (47),
+  3    86       3 part char (4),				/* Name of partition */
+  3    87       3 frec fixed bin,				/* First record */
+  3    88       3 nrec fixed bin,				/* Number of records */
+  3    89       3 pad5 fixed bin,
+  3    90     2 pad4 (5*64) fixed bin;
+  3    91 
+  3    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  3    93 
+  3    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      293 
+  4     1 /* BEGIN INCLUDE FILE ... backup_volume_header ... Feb 1976 */
+  4     2 
+  4     3 dcl  hdp ptr;					/* ptr to header */
+  4     4 
+  4     5 dcl 1 backup_volume_header based (hdp) aligned,
+  4     6     2 pattern1 bit (36),				/* unique  word 1 */
+  4     7     2 rec1_type fixed bin,				/* record 1 type */
+  4     8     2 rec1_len fixed bin,				/* length in chars */
+  4     9     2 pattern2 bit (36),				/* unique word 2 */
+  4    10     2 rec2_type fixed bin,				/* record 2 type */
+  4    11     2 rec2_len fixed bin,				/* length in chars */
+  4    12     2 pattern3 bit (36),				/* unique word 3 */
+  4    13     2 time_dumped bit (36);				/* dump time of this record */
+  4    14 
+  4    15 dcl  vtoce_type fixed bin static init (1) options (constant); /* type code for vtoce */
+  4    16 dcl  dir_type fixed bin static init (2) options (constant); /* type code for directory */
+  4    17 dcl  seg_type fixed bin static init (3) options (constant); /* type code for segment */
+  4    18 dcl  null_type fixed bin static init (4) options (constant); /* type code for null record */
+  4    19 dcl  volume_log_type fixed bin static init (5) options (constant); /* type code for volume log */
+  4    20 dcl  prev_output_log_type fixed bin static init (6) options (constant); /* type code for prev output log */
+  4    21 dcl  contents_type fixed bin static init (7) options (constant); /* type code for contents segment of previous volume */
+  4    22 dcl  info_type fixed bin static init (8) options (constant); /* type code for info structure */
+  4    23 
+  4    24 dcl  pattern1 bit (36) int static init ("110111000011001100011101101010100101"b) options (constant);
+  4    25 dcl  pattern2 bit (36) int static init ("101001010101101110001100110000111011"b) options (constant);
+  4    26 dcl  pattern3 bit (36) int static init ("001000111100110011100010010101011010"b) options (constant);
+  4    27 
+  4    28 /* END INCLUDE FILE ... backup_volume_header */
+      294 
+  5     1 /* BEGIN INCLUDE FILE ... backup_static_variables.incl.pl1 ... March 1976 */
+  5     2 
+  5     3 
+  5     4 dcl  incr fixed bin init (1) internal static options (constant); /* incremental dump mode */
+  5     5 dcl  cons fixed bin init (2) internal static options (constant); /* consolidated dump mode */
+  5     6 dcl  comp fixed bin init (3) internal static options (constant); /* complete dump mode */
+  5     7 dcl  backup_version_1 fixed bin init (1) static internal options (constant); /* backup_version_1 of input/output structures */
+  5     8 
+  5     9 
+  5    10 
+  5    11 /* END INCLUDE FILE ... backup_static_variables.incl.pl1 */
+      295 
+      296 
+      297      end display_volume_log;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.4  display_volume_log.pl1            >spec>install>1115>display_volume_log.pl1
+291          1    10/12/89  2013.4  backup_volume_log.incl.pl1        >ldd>include>backup_volume_log.incl.pl1
+292          2    06/07/77  1233.6  backup_pvol_info.incl.pl1         >ldd>include>backup_pvol_info.incl.pl1
+293          3    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+294          4    09/05/80  1136.5  backup_volume_header.incl.pl1     >ldd>include>backup_volume_header.incl.pl1
+295          5    09/05/80  1136.5  backup_static_variables.incl.pl1  >ldd>include>backup_static_variables.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Nsaved_cons_sets       2040            based           fixed bin(17,0)          level 2 dcl 1-20 set ref 150 150*
+Nsaved_incr_sets       2037            based           fixed bin(17,0)          level 2 dcl 1-20 set ref 150 150*
+ac                              000175 automatic       fixed bin(17,0)          dcl 250 set ref 80* 81 82* 101* 101 102* 114* 114
+addr                                                   builtin function         dcl 289 ref 145 145 145 145 177 235 235
+after                                                  builtin function         dcl 289 ref 150 150
+all_sw                          000273 automatic       bit(1)                   packed unaligned dcl 264 set ref 54* 91* 140 146
+arg                                    based           char                     packed unaligned dcl 246 set ref 75 77* 84* 87 87 88
+                                                                                  88 89 89 90 90 91 91 92 92 93 93 94 94 95 95 96 96
+                                                                                  96 100 100 107 111*
+argl                            000171 automatic       fixed bin(17,0)          dcl 247 set ref 59* 75 77 77 82* 84 84 87 87 88 88
+                                                                                  89 89 90 90 91 91 92 92 93 93 94 94 95 95 96 96 96
+                                                                                  100 100 102* 107 111 111
+argp                            000172 automatic       pointer                  dcl 248 set ref 59* 75 77 82* 84 87 87 88 88 89 89
+                                                                                  90 90 91 91 92 92 93 93 94 94 95 95 96 96 96 100
+                                                                                  100 102* 107 111
+array                  2100            based           structure                array level 2 dcl 1-20 set ref 177
+ascii_type                      000001 constant        char(4)                  initial array packed unaligned dcl 267 set ref 193*
+backup_pvol_info                       based           structure                level 1 dcl 2-5
+backup_volume_header                   based           structure                level 1 dcl 4-5
+backup_volume_log                      based           structure                level 1 dcl 1-20
+bvle                                   based           structure                level 1 dcl 1-39
+bvlep                           000324 automatic       pointer                  dcl 1-14 set ref 177* 178 180 181 184 187 193 193
+                                                                                  193 193 193 193 193 193 193 193 193 193 193 202
+                                                                                  203 204 205
+bvlp                            000322 automatic       pointer                  dcl 1-13 set ref 51* 119* 120 127 145 145 150 150
+                                                                                  150 150 150 176 177 187 187 226 226 227 227*
+cleanup                         000314 stack reference condition                dcl 287 ref 57
+close_time               14            based           fixed bin(71,0)          level 2 dcl 1-39 set ref 193 193 193* 193*
+code                            000266 automatic       fixed bin(35,0)          dcl 259 set ref 59* 60 82* 83 84* 102* 103 104* 119*
+                                                                                  121* 127* 128 129 129* 131 135*
+com_err_                        000014 constant        entry                    external dcl 272 ref 62 84 104 111 121 135
+comp                                   constant        fixed bin(17,0)          initial dcl 5-6 ref 90 180
+comp_cycle_uid                  000112 automatic       bit(36)                  packed unaligned dcl 242 set ref 172* 181 182 184*
+comp_open_time                  000114 automatic       fixed bin(71,0)          dcl 243 set ref 174* 187* 193
+cons                                   constant        fixed bin(17,0)          initial dcl 5-5 ref 89
+cu_$arg_count                   000036 constant        entry                    external dcl 281 ref 79
+cu_$arg_ptr                     000012 constant        entry                    external dcl 271 ref 59 82 102
+cycle_uid                              based           bit(36)                  level 2 in structure "bvle" dcl 1-39 in procedure
+                                                                                  "display_volume_log" ref 181 184 187
+cycle_uid              2100            based           bit(36)                  array level 3 in structure "backup_volume_log"
+                                                                                  dcl 1-20 in procedure "display_volume_log" set ref
+                                                                                  187
+date_time_$format               000030 constant        entry                    external dcl 278 ref 221
+dir_num                         000264 automatic       fixed bin(17,0)          dcl 257 in procedure "display_volume_log" set ref
+                                                                                  53* 202* 202 210*
+dir_num                  37            based           fixed bin(17,0)          level 2 in structure "bvle" packed packed unaligned
+                                                                                  dcl 1-39 in procedure "display_volume_log" set ref
+                                                                                  193* 202
+dir_rec                         000263 automatic       fixed bin(17,0)          dcl 256 in procedure "display_volume_log" set ref
+                                                                                  53* 203* 203 210*
+dir_rec                  37(18)        based           fixed bin(17,0)          level 2 in structure "bvle" packed packed unaligned
+                                                                                  dcl 1-39 in procedure "display_volume_log" set ref
+                                                                                  193* 203
+display_disk_label_             000016 constant        entry                    external dcl 273 ref 145
+dump_type                 1            based           fixed bin(17,0)          level 2 dcl 1-39 ref 180 193 193
+entries                         000262 automatic       fixed bin(17,0)          dcl 255 set ref 52* 201* 201 210*
+error_table_$badopt             000040 external static fixed bin(35,0)          dcl 283 set ref 111*
+error_table_$invalid_lock_reset 000042 external static fixed bin(35,0)          dcl 284 ref 129
+error_table_$no_w_permission    000046 external static fixed bin(35,0)          dcl 286 ref 131
+error_table_$noarg              000044 external static fixed bin(35,0)          dcl 285 set ref 62*
+expand_pathname_$add_suffix     000020 constant        entry                    external dcl 274 ref 77
+finish                          000306 stack reference condition                dcl 287 ref 56
+group                           000111 automatic       fixed bin(17,0)          dcl 241 set ref 173* 182* 182 193* 193
+hcs_$fs_search_get_wdir         000010 constant        entry                    external dcl 270 ref 235
+hcs_$initiate                   000022 constant        entry                    external dcl 275 ref 119
+hcs_$terminate_noname           000024 constant        entry                    external dcl 276 ref 227
+header_sw                       000271 automatic       bit(1)                   packed unaligned dcl 262 set ref 46* 92* 93* 149
+i                               000174 automatic       fixed bin(17,0)          dcl 249 set ref 176* 177 186*
+ignore                          000267 automatic       fixed bin(35,0)          dcl 260 set ref 77* 226* 227* 235*
+ignore_dir                      000176 automatic       char(168)                packed unaligned dcl 251 set ref 77*
+incr                                   constant        fixed bin(17,0)          initial dcl 5-4 ref 87
+info                     10            based           structure                level 2 dcl 1-20 set ref 145 145
+ioa_                            000026 constant        entry                    external dcl 277 ref 63 132 142 150 162 166 168 193
+                                                                                  210 228
+label                                  based           structure                level 2 in structure "backup_pvol_info" dcl 2-5
+                                                                                  in procedure "display_volume_log" set ref 145 145
+label                                  based           structure                level 1 dcl 3-18 in procedure "display_volume_log"
+label_sw                        000272 automatic       bit(1)                   packed unaligned dcl 263 set ref 54* 94* 95* 140
+lock                   2016            based           bit(36)                  level 2 dcl 1-20 set ref 127* 226*
+lock_wait_time                  000000 constant        fixed bin(17,0)          initial dcl 268 set ref 127*
+locked                          000274 automatic       bit(1)                   packed unaligned dcl 265 set ref 54* 139* 226
+lowest_start_idx                000110 automatic       fixed bin(17,0)          dcl 240 set ref 186* 187 187*
+myname                          000275 automatic       varying char(32)         dcl 266 set ref 34* 39* 44* 62* 63* 84* 104* 111*
+                                                                                  121* 135*
+narg                            000116 automatic       fixed bin(17,0)          dcl 244 set ref 79* 81
+next                   2030            based           fixed bin(17,0)          level 2 dcl 1-20 ref 176
+null                                                   builtin function         dcl 289 ref 51 120 226 227
+open_time                12            based           fixed bin(71,0)          level 2 in structure "bvle" dcl 1-39 in procedure
+                                                                                  "display_volume_log" set ref 193* 193*
+open_time              2112            based           fixed bin(71,0)          array level 3 in structure "backup_volume_log"
+                                                                                  dcl 1-20 in procedure "display_volume_log" set ref
+                                                                                  187
+reload_groups          2031            based           fixed bin(17,0)          level 2 dcl 1-20 set ref 150*
+reverse                                                builtin function         dcl 289 ref 150 150 150 150
+seg_num                  40            based           fixed bin(17,0)          level 2 in structure "bvle" packed packed unaligned
+                                                                                  dcl 1-39 in procedure "display_volume_log" set ref
+                                                                                  193* 204
+seg_num                         000260 automatic       fixed bin(17,0)          dcl 253 in procedure "display_volume_log" set ref
+                                                                                  53* 204* 204 210*
+seg_rec                         000261 automatic       fixed bin(17,0)          dcl 254 in procedure "display_volume_log" set ref
+                                                                                  53* 205* 205 210*
+seg_rec                  40(18)        based           fixed bin(17,0)          level 2 in structure "bvle" packed packed unaligned
+                                                                                  dcl 1-39 in procedure "display_volume_log" set ref
+                                                                                  193* 205
+set_lock_$lock                  000032 constant        entry                    external dcl 279 ref 127
+set_lock_$unlock                000034 constant        entry                    external dcl 280 ref 226
+stats                           000265 automatic       bit(1)                   packed unaligned dcl 258 set ref 54* 98* 162 178 193
+                                                                                  210
+substr                                                 builtin function         dcl 289 ref 75
+time                                   parameter       fixed bin(71,0)          dcl 220 set ref 216 221*
+type                            000270 automatic       fixed bin(17,0)          dcl 261 set ref 49* 87* 89* 90* 97* 108* 146 193 193
+volname                   2            based           char(32)                 level 2 in structure "bvle" dcl 1-39 in procedure
+                                                                                  "display_volume_log" set ref 178 193*
+volname                         000250 automatic       char(32)                 packed unaligned dcl 252 in procedure
+                                                                                  "display_volume_log" set ref 50* 107* 178 178 178
+volog_dir                       000117 automatic       char(168)                packed unaligned dcl 245 set ref 58* 88* 119* 121*
+volog_name                      000100 automatic       char(32)                 packed unaligned dcl 239 set ref 77* 119* 121* 132*
+                                                                                  135* 142* 150 150
+wdir                            000342 automatic       char(168)                dcl 234 set ref 235 235 236
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 3-92
+backup_version_1                       internal static fixed bin(17,0)          initial dcl 5-7
+backup_volume_log_version_1            internal static fixed bin(17,0)          initial dcl 1-16
+backup_volume_log_version_2            internal static fixed bin(17,0)          initial dcl 1-17
+backup_volume_log_version_3            internal static fixed bin(17,0)          initial dcl 1-18
+bpvip                                  automatic       pointer                  dcl 2-3
+contents_type                          internal static fixed bin(17,0)          initial dcl 4-21
+dir_type                               internal static fixed bin(17,0)          initial dcl 4-16
+hdp                                    automatic       pointer                  dcl 4-3
+info_type                              internal static fixed bin(17,0)          initial dcl 4-22
+labelp                                 automatic       pointer                  dcl 3-16
+null_type                              internal static fixed bin(17,0)          initial dcl 4-18
+pattern1                               internal static bit(36)                  initial packed unaligned dcl 4-24
+pattern2                               internal static bit(36)                  initial packed unaligned dcl 4-25
+pattern3                               internal static bit(36)                  initial packed unaligned dcl 4-26
+prev_output_log_type                   internal static fixed bin(17,0)          initial dcl 4-20
+seg_type                               internal static fixed bin(17,0)          initial dcl 4-17
+volume_log_type                        internal static fixed bin(17,0)          initial dcl 4-19
+vtoce_type                             internal static fixed bin(17,0)          initial dcl 4-15
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+COMMON                          000611 constant        label                    dcl 46 set ref 35 40
+argerr                          000722 constant        label                    dcl 62 ref 75
+cant_lock                       001730 constant        label                    dcl 140 ref 133
+display_volog                   000564 constant        entry                    external dcl 37
+display_volume_log              000550 constant        entry                    external dcl 25
+dvl                             000600 constant        entry                    external dcl 42
+finale                          002455 constant        label                    dcl 212 ref 85 105 112 122 136 146
+finish_                         002530 constant        entry                    internal dcl 225 ref 56 57 212
+time_string_                    002462 constant        entry                    internal dcl 216 ref 193 193 193 193
+wdir_                           002605 constant        entry                    internal dcl 230 ref 88
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3104        3154    2636        3114
+Length      3502    2636        50         312     246           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+display_volume_log                  530 external procedure  is an external procedure.  
+on unit on line 56                   64 on unit               
+on unit on line 57                   64 on unit               
+time_string_                            internal procedure  shares stack frame of external procedure display_volume_log.  
+finish_                              71 internal procedure  is called by several nonquick procedures.  
+wdir_                                   internal procedure  shares stack frame of external procedure display_volume_log.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+display_volume_log       000100 volog_name                  display_volume_log
+                         000110 lowest_start_idx            display_volume_log
+                         000111 group                       display_volume_log
+                         000112 comp_cycle_uid              display_volume_log
+                         000114 comp_open_time              display_volume_log
+                         000116 narg                        display_volume_log
+                         000117 volog_dir                   display_volume_log
+                         000171 argl                        display_volume_log
+                         000172 argp                        display_volume_log
+                         000174 i                           display_volume_log
+                         000175 ac                          display_volume_log
+                         000176 ignore_dir                  display_volume_log
+                         000250 volname                     display_volume_log
+                         000260 seg_num                     display_volume_log
+                         000261 seg_rec                     display_volume_log
+                         000262 entries                     display_volume_log
+                         000263 dir_rec                     display_volume_log
+                         000264 dir_num                     display_volume_log
+                         000265 stats                       display_volume_log
+                         000266 code                        display_volume_log
+                         000267 ignore                      display_volume_log
+                         000270 type                        display_volume_log
+                         000271 header_sw                   display_volume_log
+                         000272 label_sw                    display_volume_log
+                         000273 all_sw                      display_volume_log
+                         000274 locked                      display_volume_log
+                         000275 myname                      display_volume_log
+                         000322 bvlp                        display_volume_log
+                         000324 bvlep                       display_volume_log
+                         000342 wdir                        wdir_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               r_g_a               call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          enable_op           shorten_stack       ext_entry           int_entry           reverse_cs
+set_chars_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      cu_$arg_count                 cu_$arg_ptr                   date_time_$format
+display_disk_label_           expand_pathname_$add_suffix   hcs_$fs_search_get_wdir       hcs_$initiate
+hcs_$terminate_noname         ioa_                          set_lock_$lock                set_lock_$unlock
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$badopt           error_table_$invalid_lock_reset                             error_table_$no_w_permission
+error_table_$noarg
+
+
+CONSTANTS
+002630  aa     000002000000
+002631  aa     000000000000
+002632  aa     600000000041
+002633  aa     000562000000
+
+000000  aa     000000000036
+
+000001  aa  151 156 143 162	incr
+000002  aa  143 157 156 163	cons
+000003  aa  143 157 155 160	comp
+
+
+000004  aa     410000000107
+
+000005  aa     524000000022
+
+000006  aa     406000000021
+
+000007  aa     524000000017
+
+000010  aa     524000000040
+
+000011  aa     526000000004
+
+000012  aa     404000000022
+
+000013  aa     524000000076
+
+000014  aa     524000000053
+
+000015  aa     524000000157
+
+000016  aa     514000000001
+
+000017  aa     524000000264
+
+000020  aa     524000000027
+
+000021  aa     524000000077
+
+000022  aa     464000000000
+
+000023  aa     404000000021
+
+000024  aa     524000000000
+
+000025  aa     524000000002
+
+000026  aa     524000000025
+
+000027  aa  055 163 164 000	-st
+
+000030  aa  055 154 142 154	-lbl
+
+000031  aa  055 156 150 145	-nhe
+
+000032  aa  055 150 145 000	-he
+
+002634  aa  055 141 000 000	-a
+
+000033  aa  055 167 144 000	-wd
+
+000034  aa     524000000035
+
+000035  aa     526000000040
+
+000036  aa     526000000250
+
+000037  aa     524000000005
+
+000040  aa     526000000000
+
+002635  aa  055 000 000 000	-
+
+000041  aa     524000000030
+
+000042  aa     524000000166
+
+000043  aa     530000000040
+
+000044  aa     404000000043
+
+000045  aa  144 166 154 000	dvl
+
+000046  aa     530000000372
+
+000047  aa     524000000250
+
+000050  aa     526000000017
+
+000052  aa     000000000000
+000053  aa     000000000000
+
+000054  aa  136 141 076 136	^a>^
+000055  aa  141 000 000 000	a
+
+000056  aa  055 163 164 141	-sta
+000057  aa  164 163 000 000	ts
+
+000060  aa  055 163 164 141	-sta
+000061  aa  164 165 163 000	tus
+
+000062  aa  055 156 154 142	-nlb
+000063  aa  154 000 000 000	l
+
+000064  aa  055 154 141 142	-lab
+000065  aa  145 154 000 000	el
+
+000066  aa  055 150 145 141	-hea
+000067  aa  144 145 162 000	der
+
+000070  aa  055 143 157 155	-com
+000071  aa  160 000 000 000	p
+
+000072  aa  055 143 157 156	-con
+000073  aa  163 000 000 000	s
+
+000074  aa  055 151 156 143	-inc
+000075  aa  162 000 000 000	r
+
+000076  aa  166 157 154 157	volo
+000077  aa  147 000 000 000	g
+
+000100  aa     077777000043
+000101  aa     000001000000
+
+000102  aa  143 154 145 141	clea
+000103  aa  156 165 160 000	nup
+
+000104  aa  146 151 156 151	fini
+000105  aa  163 150 000 000	sh
+
+000106  aa  055 156 157 137	-no_
+000107  aa  154 141 142 145	labe
+000110  aa  154 000 000 000	l
+
+000111  aa  055 156 157 137	-no_
+000112  aa  150 145 141 144	head
+000113  aa  145 162 000 000	er
+
+000114  aa  055 143 157 155	-com
+000115  aa  160 154 145 164	plet
+000116  aa  145 000 000 000	e
+
+000117  aa  055 143 157 156	-con
+000120  aa  163 157 154 151	soli
+000121  aa  144 141 164 145	date
+000122  aa  144 000 000 000	d
+
+000123  aa  144 151 163 160	disp
+000124  aa  154 141 171 137	lay_
+000125  aa  166 157 154 157	volo
+000126  aa  147 000 000 000	g
+
+000127  aa  136 144 136 055	^d^-
+000130  aa  136 144 136 055	^d^-
+000131  aa  136 144 136 055	^d^-
+000132  aa  136 144 136 055	^d^-
+000133  aa  136 144 000 000	^d
+
+000134  aa  144 151 163 160	disp
+000135  aa  154 141 171 137	lay_
+000136  aa  166 157 154 165	volu
+000137  aa  155 145 137 154	me_l
+000140  aa  157 147 000 000	og
+
+000141  aa  136 155 171 057	^my/
+000142  aa  136 144 155 057	^dm/
+000143  aa  136 171 143 040	^yc 
+000144  aa  136 110 144 136	^Hd^
+000145  aa  071 071 166 056	99v.
+000146  aa  071 115 110 000	9MH
+
+000147  aa  125 156 141 142	Unab
+000150  aa  154 145 040 164	le t
+000151  aa  157 040 154 157	o lo
+000152  aa  143 153 040 166	ck v
+000153  aa  157 154 157 147	olog
+000154  aa  040 136 141 000	 ^a
+
+000155  aa  105 162 162 157	Erro
+000156  aa  162 040 147 145	r ge
+000157  aa  164 164 151 156	ttin
+000160  aa  147 040 166 157	g vo
+000161  aa  154 156 141 155	lnam
+000162  aa  145 000 000 000	e
+
+000163  aa  055 141 154 154	-all
+000164  aa  054 040 055 141	, -a
+000165  aa  040 040 040 040	    
+000166  aa  040 040 040 040	    
+000167  aa  040 040 040 040	    
+000170  aa  040 040 040 040	    
+
+000171  aa  055 163 164 141	-sta
+000172  aa  164 165 163 054	tus,
+000173  aa  040 055 163 164	 -st
+000174  aa  040 040 040 040	    
+000175  aa  040 040 040 040	    
+000176  aa  040 040 040 040	    
+
+000177  aa  055 167 157 162	-wor
+000200  aa  153 151 156 147	king
+000201  aa  137 144 151 162	_dir
+000202  aa  054 040 055 167	, -w
+000203  aa  144 040 040 040	d   
+000204  aa  040 040 040 040	    
+
+000205  aa  055 156 157 137	-no_
+000206  aa  154 141 142 145	labe
+000207  aa  154 054 040 055	l, -
+000210  aa  156 154 142 154	nlbl
+000211  aa  040 040 040 040	    
+000212  aa  040 040 040 040	    
+
+000213  aa  055 166 157 154	-vol
+000214  aa  156 141 155 145	name
+000215  aa  040 156 141 155	 nam
+000216  aa  145 054 040 055	e, -
+000217  aa  166 157 154 040	vol 
+000220  aa  156 141 155 145	name
+
+000221  aa  055 154 141 142	-lab
+000222  aa  145 154 054 040	el, 
+000223  aa  055 154 142 154	-lbl
+000224  aa  040 040 040 040	    
+000225  aa  040 040 040 040	    
+000226  aa  040 040 040 040	    
+
+000227  aa  055 143 157 155	-com
+000230  aa  160 154 145 164	plet
+000231  aa  145 054 040 055	e, -
+000232  aa  143 157 155 160	comp
+000233  aa  040 040 040 040	    
+000234  aa  040 040 040 040	    
+
+000235  aa  055 156 157 137	-no_
+000236  aa  150 145 141 144	head
+000237  aa  145 162 054 040	er, 
+000240  aa  055 156 150 145	-nhe
+000241  aa  040 040 040 040	    
+000242  aa  040 040 040 040	    
+
+000243  aa  055 143 157 156	-con
+000244  aa  163 157 154 151	soli
+000245  aa  144 141 164 145	date
+000246  aa  144 054 040 055	d, -
+000247  aa  143 157 156 163	cons
+000250  aa  040 040 040 040	    
+
+000251  aa  055 150 145 141	-hea
+000252  aa  144 145 162 054	der,
+000253  aa  040 055 150 145	 -he
+000254  aa  040 040 040 040	    
+000255  aa  040 040 040 040	    
+000256  aa  040 040 040 040	    
+
+000257  aa  055 151 156 143	-inc
+000260  aa  162 145 155 145	reme
+000261  aa  156 164 141 154	ntal
+000262  aa  054 040 055 151	, -i
+000263  aa  156 143 162 040	ncr 
+000264  aa  040 040 040 040	    
+
+000265  aa  125 156 141 142	Unab
+000266  aa  154 145 040 164	le t
+000267  aa  157 040 141 143	o ac
+000270  aa  143 145 163 163	cess
+000271  aa  040 141 162 147	 arg
+000272  aa  040 141 146 164	 aft
+000273  aa  145 162 040 136	er ^
+000274  aa  141 000 000 000	a
+
+000275  aa  076 144 141 145	>dae
+000276  aa  155 157 156 137	mon_
+000277  aa  144 151 162 137	dir_
+000300  aa  144 151 162 076	dir>
+000301  aa  166 157 154 165	volu
+000302  aa  155 145 137 142	me_b
+000303  aa  141 143 153 165	acku
+000304  aa  160 000 000 000	p
+
+000305  aa  145 156 164 162	entr
+000306  aa  151 145 163 136	ies^
+000307  aa  055 144 151 162	-dir
+000310  aa  040 156 165 155	 num
+000311  aa  136 055 144 151	^-di
+000312  aa  162 040 162 145	r re
+000313  aa  143 136 055 163	c^-s
+000314  aa  145 147 040 156	eg n
+000315  aa  165 155 136 055	um^-
+000316  aa  163 145 147 040	seg 
+000317  aa  162 145 143 000	rec
+
+000320  aa  136 133 136 062	^[^2
+000321  aa  144 136 163 136	d^s^
+000322  aa  073 136 163 136	;^s^
+000323  aa  062 144 136 135	2d^]
+000324  aa  040 040 136 064	  ^4
+000325  aa  141 040 040 136	a  ^
+000326  aa  061 060 141 136	10a^
+000327  aa  062 062 164 136	22t^
+000330  aa  061 065 141 136	15a^
+000331  aa  063 071 164 136	39t^
+000332  aa  061 065 141 136	15a^
+000333  aa  065 065 164 136	55t^
+000334  aa  065 144 040 136	5d ^
+000335  aa  065 144 040 136	5d ^
+000336  aa  065 144 040 136	5d ^
+000337  aa  066 144 000 000	6d
+
+000340  aa  012 102 141 143	
+Bac
+000341  aa  153 165 160 040	kup 
+000342  aa  126 157 154 165	Volu
+000343  aa  155 145 040 114	me L
+000344  aa  157 147 040 114	og L
+000345  aa  141 142 145 154	abel
+000346  aa  040 146 157 162	 for
+000347  aa  040 115 165 154	 Mul
+000350  aa  164 151 143 163	tics
+000351  aa  040 123 164 157	 Sto
+000352  aa  162 141 147 145	rage
+000353  aa  040 123 171 163	 Sys
+000354  aa  164 145 155 040	tem 
+000355  aa  126 157 154 165	Volu
+000356  aa  155 145 040 136	me ^
+000357  aa  141 136 057 000	a^/
+
+000360  aa  125 156 141 142	Unab
+000361  aa  154 145 040 164	le t
+000362  aa  157 040 154 157	o lo
+000363  aa  143 153 040 136	ck ^
+000364  aa  141 054 040 144	a, d
+000365  aa  141 164 141 040	ata 
+000366  aa  155 141 171 040	may 
+000367  aa  142 145 040 151	be i
+000370  aa  156 040 164 150	n th
+000371  aa  145 040 160 162	e pr
+000372  aa  157 143 145 163	oces
+000373  aa  163 040 157 146	s of
+000374  aa  040 142 145 151	 bei
+000375  aa  156 147 040 143	ng c
+000376  aa  150 141 156 147	hang
+000377  aa  145 144 056 000	ed.
+
+000400  aa  012 162 154 144	
+rld
+000401  aa  040 144 165 155	 dum
+000402  aa  160 040 040 166	p  v
+000403  aa  157 154 165 155	olum
+000404  aa  145 136 065 067	e^57
+000405  aa  164 144 151 162	tdir
+000406  aa  040 040 040 144	   d
+000407  aa  151 162 040 040	ir  
+000410  aa  040 163 145 147	 seg
+000411  aa  040 040 040 040	    
+000412  aa  163 145 147 012	seg
+
+000413  aa  147 162 160 040	grp 
+000414  aa  164 171 160 145	type
+000415  aa  040 040 156 141	  na
+000416  aa  155 145 136 062	me^2
+000417  aa  062 164 163 164	2tst
+000420  aa  141 162 164 040	art 
+000421  aa  164 151 155 145	time
+000422  aa  136 063 071 164	^39t
+000423  aa  163 164 157 160	stop
+000424  aa  040 164 151 155	 tim
+000425  aa  145 136 065 067	e^57
+000426  aa  164 156 165 155	tnum
+000427  aa  040 040 040 162	   r
+000430  aa  145 143 040 040	ec  
+000431  aa  040 156 165 155	 num
+000432  aa  040 040 040 040	    
+000433  aa  162 145 143 000	rec
+
+000434  aa  125 163 141 147	Usag
+000435  aa  145 072 136 061	e:^1
+000436  aa  060 164 136 141	0t^a
+000437  aa  040 166 157 154	 vol
+000440  aa  157 147 040 173	og {
+000441  aa  055 143 157 156	-con
+000442  aa  164 162 157 154	trol
+000443  aa  137 141 162 147	_arg
+000444  aa  163 175 012 136	s}
+^
+000445  aa  061 060 164 143	10tc
+000446  aa  157 156 164 162	ontr
+000447  aa  157 154 137 141	ol_a
+000450  aa  162 147 163 072	rgs:
+000451  aa  136 062 065 164	^25t
+000452  aa  136 141 136 055	^a^-
+000453  aa  136 141 136 057	^a^/
+000454  aa  136 062 065 164	^25t
+000455  aa  136 141 136 055	^a^-
+000456  aa  136 141 136 057	^a^/
+000457  aa  136 062 065 164	^25t
+000460  aa  136 141 136 055	^a^-
+000461  aa  136 141 136 057	^a^/
+000462  aa  136 062 065 164	^25t
+000463  aa  136 141 136 055	^a^-
+000464  aa  136 141 136 057	^a^/
+000465  aa  136 062 065 164	^25t
+000466  aa  136 141 136 055	^a^-
+000467  aa  136 141 136 057	^a^/
+000470  aa  136 062 065 164	^25t
+000471  aa  136 141 000 000	^a
+
+000472  aa  012 136 062 055	
+^2-
+000473  aa  102 141 143 153	Back
+000474  aa  165 160 040 126	up V
+000475  aa  157 154 165 155	olum
+000476  aa  145 040 114 157	e Lo
+000477  aa  147 040 146 157	g fo
+000500  aa  162 040 120 150	r Ph
+000501  aa  171 163 151 143	ysic
+000502  aa  141 154 040 126	al V
+000503  aa  157 154 165 155	olum
+000504  aa  145 040 136 141	e ^a
+000505  aa  012 136 062 055	
+^2-
+000506  aa  040 040 040 040	    
+000507  aa  040 040 040 103	   C
+000510  aa  157 156 163 157	onso
+000511  aa  154 151 144 141	lida
+000512  aa  164 145 144 040	ted 
+000513  aa  123 145 164 163	Sets
+000514  aa  040 123 141 166	 Sav
+000515  aa  145 144 072 040	ed: 
+000516  aa  136 133 141 154	^[al
+000517  aa  154 136 163 136	l^s^
+000520  aa  073 136 144 136	;^d^
+000521  aa  135 012 136 062	]
+^2
+000522  aa  055 040 040 040	-   
+000523  aa  040 040 040 040	    
+000524  aa  111 156 143 162	Incr
+000525  aa  145 155 145 156	emen
+000526  aa  164 141 154 040	tal 
+000527  aa  123 145 164 163	Sets
+000530  aa  040 123 141 166	 Sav
+000531  aa  145 144 040 072	ed :
+000532  aa  040 136 133 141	 ^[a
+000533  aa  154 154 136 163	ll^s
+000534  aa  136 073 136 144	^;^d
+000535  aa  136 135 012 136	^]
+^
+000536  aa  062 055 040 040	2-  
+000537  aa  040 040 040 040	    
+000540  aa  040 122 145 154	 Rel
+000541  aa  157 141 144 040	oad 
+000542  aa  107 162 157 165	Grou
+000543  aa  160 163 040 040	ps  
+000544  aa  040 040 040 040	    
+000545  aa  040 040 040 040	    
+000546  aa  072 040 136 144	: ^d
+
+BEGIN PROCEDURE display_volume_log
+ENTRY TO display_volume_log                                 STATEMENT 1 ON LINE 25
+display_volume_log: proc;
+
+000547  da     000206200000
+000550  aa   001040 6270 00	eax7 	544
+000551  aa  7 00034 3521 20	epp2 	pr7|28,*
+000552  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000553  aa     000000000000
+000554  aa     000000000000
+						STATEMENT 1 ON LINE 34
+       myname = "display_volume_log";
+
+000555  aa   000022 2360 07	ldq  	18,dl
+000556  aa  6 00275 7561 00	stq  	pr6|189		myname
+000557  aa  040 140 100 444	mlr  	(rl,ic),(pr,rl),fill(040)
+000560  aa   777355 00 0006	desc9a	-275,ql		000134 = 144151163160
+000561  aa  6 00276 00 0006	desc9a	pr6|190,ql	myname
+						STATEMENT 1 ON LINE 35
+       go to COMMON;
+
+000562  aa   000027 7100 04	tra  	23,ic		000611
+ENTRY TO display_volog                                      STATEMENT 1 ON LINE 37
+display_volog: entry;
+
+000563  da     000215200000
+000564  aa   001040 6270 00	eax7 	544
+000565  aa  7 00034 3521 20	epp2 	pr7|28,*
+000566  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000567  aa     000000000000
+000570  aa     000000000000
+						STATEMENT 1 ON LINE 39
+       myname = "display_volog";
+
+000571  aa   000015 2360 07	ldq  	13,dl
+000572  aa  6 00275 7561 00	stq  	pr6|189		myname
+000573  aa  040 140 100 444	mlr  	(rl,ic),(pr,rl),fill(040)
+000574  aa   777330 00 0006	desc9a	-296,ql		000123 = 144151163160
+000575  aa  6 00276 00 0006	desc9a	pr6|190,ql	myname
+						STATEMENT 1 ON LINE 40
+       go to COMMON;
+
+000576  aa   000013 7100 04	tra  	11,ic		000611
+ENTRY TO dvl                                                STATEMENT 1 ON LINE 42
+dvl: entry;
+
+000577  da     000221200000
+000600  aa   001040 6270 00	eax7 	544
+000601  aa  7 00034 3521 20	epp2 	pr7|28,*
+000602  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000603  aa     000000000000
+000604  aa     000000000000
+						STATEMENT 1 ON LINE 44
+       myname = "dvl";
+
+000605  aa   777240 2350 04	lda  	-352,ic		000045 = 144166154000
+000606  aa  6 00276 7551 00	sta  	pr6|190		myname
+000607  aa   000003 2360 07	ldq  	3,dl
+000610  aa  6 00275 7561 00	stq  	pr6|189		myname
+						STATEMENT 1 ON LINE 46
+COMMON:
+/* init control variables */
+	header_sw = "1"b;
+
+000611  aa   400000 2350 03	lda  	131072,du
+000612  aa  6 00271 7551 00	sta  	pr6|185		header_sw
+						STATEMENT 1 ON LINE 49
+	type = 0;
+
+000613  aa  6 00270 4501 00	stz  	pr6|184		type
+						STATEMENT 1 ON LINE 50
+	volname = "";
+
+000614  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000615  aa   000000 00 0000	desc9a	0,0
+000616  aa  6 00250 00 0040	desc9a	pr6|168,32	volname
+						STATEMENT 1 ON LINE 51
+	bvlp = null;
+
+000617  aa   777261 2370 04	ldaq 	-335,ic		000100 = 077777000043 000001000000
+000620  aa  6 00322 7571 00	staq 	pr6|210		bvlp
+						STATEMENT 1 ON LINE 52
+	entries = 0;
+
+000621  aa  6 00262 4501 00	stz  	pr6|178		entries
+						STATEMENT 1 ON LINE 53
+	seg_num, seg_rec, dir_num, dir_rec = 0;
+
+000622  aa  6 00260 4501 00	stz  	pr6|176		seg_num
+000623  aa  6 00261 4501 00	stz  	pr6|177		seg_rec
+000624  aa  6 00264 4501 00	stz  	pr6|180		dir_num
+000625  aa  6 00263 4501 00	stz  	pr6|179		dir_rec
+						STATEMENT 1 ON LINE 54
+	locked, stats, label_sw, all_sw = "0"b;
+
+000626  aa  6 00274 4501 00	stz  	pr6|188		locked
+000627  aa  6 00265 4501 00	stz  	pr6|181		stats
+000630  aa  6 00272 4501 00	stz  	pr6|186		label_sw
+000631  aa  6 00273 4501 00	stz  	pr6|187		all_sw
+						STATEMENT 1 ON LINE 56
+	on finish call finish_;
+
+000632  aa   000006 7260 07	lxl6 	6,dl
+000633  aa   777251 3520 04	epp2 	-343,ic		000104 = 146151156151
+000634  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000635  aa   000004 7100 04	tra  	4,ic		000641
+000636  aa     000306000000
+000637  aa   000015 7100 04	tra  	13,ic		000654
+BEGIN CONDITION finish.1
+ENTRY TO finish.1                                           STATEMENT 1 ON LINE 56
+	on finish call finish_;
+
+000640  da     000227200000
+000641  aa   000100 6270 00	eax7 	64
+000642  aa  7 00034 3521 20	epp2 	pr7|28,*
+000643  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000644  aa     000000000000
+000645  aa     000000000000
+000646  aa   000001 7270 07	lxl7 	1,dl
+000647  aa  6 00056 6211 00	eax1 	pr6|46
+000650  aa   000000 4310 07	fld  	0,dl
+000651  aa   001657 3520 04	epp2 	943,ic		002530 = 000120627000
+000652  aa  0 00627 7001 00	tsx0 	pr0|407		call_int_other
+000653  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END CONDITION finish.1
+						STATEMENT 1 ON LINE 57
+	on cleanup call finish_;
+
+000654  aa   000007 7260 07	lxl6 	7,dl
+000655  aa   777225 3520 04	epp2 	-363,ic		000102 = 143154145141
+000656  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000657  aa   000004 7100 04	tra  	4,ic		000663
+000660  aa     000314000000
+000661  aa   000015 7100 04	tra  	13,ic		000676
+BEGIN CONDITION cleanup.2
+ENTRY TO cleanup.2                                          STATEMENT 1 ON LINE 57
+	on cleanup call finish_;
+
+000662  da     000235200000
+000663  aa   000100 6270 00	eax7 	64
+000664  aa  7 00034 3521 20	epp2 	pr7|28,*
+000665  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000666  aa     000000000000
+000667  aa     000000000000
+000670  aa   000001 7270 07	lxl7 	1,dl
+000671  aa  6 00056 6211 00	eax1 	pr6|46
+000672  aa   000000 4310 07	fld  	0,dl
+000673  aa   001635 3520 04	epp2 	925,ic		002530 = 000120627000
+000674  aa  0 00627 7001 00	tsx0 	pr0|407		call_int_other
+000675  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END CONDITION cleanup.2
+						STATEMENT 1 ON LINE 58
+	volog_dir = ">daemon_dir_dir>volume_backup";
+
+000676  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000677  aa   777377 00 0035	desc9a	-257,29		000275 = 076144141145
+000700  aa  6 00117 00 0250	desc9a	pr6|79,168	volog_dir
+						STATEMENT 1 ON LINE 59
+	call cu_$arg_ptr (1, argp, argl, code);
+
+000701  aa   000001 2360 07	ldq  	1,dl
+000702  aa  6 00414 7561 00	stq  	pr6|268
+000703  aa  6 00414 3521 00	epp2 	pr6|268
+000704  aa  6 00420 2521 00	spri2	pr6|272
+000705  aa  6 00172 3521 00	epp2 	pr6|122		argp
+000706  aa  6 00422 2521 00	spri2	pr6|274
+000707  aa  6 00171 3521 00	epp2 	pr6|121		argl
+000710  aa  6 00424 2521 00	spri2	pr6|276
+000711  aa  6 00266 3521 00	epp2 	pr6|182		code
+000712  aa  6 00426 2521 00	spri2	pr6|278
+000713  aa  6 00416 6211 00	eax1 	pr6|270
+000714  aa   020000 4310 07	fld  	8192,dl
+000715  aa  6 00044 3701 20	epp4 	pr6|36,*
+000716  la  4 00012 3521 20	epp2 	pr4|10,*		cu_$arg_ptr
+000717  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 60
+	if code ^= 0 then do;
+
+000720  aa  6 00266 2361 00	ldq  	pr6|182		code
+000721  aa   000142 6000 04	tze  	98,ic		001063
+						STATEMENT 1 ON LINE 62
+argerr:	     call com_err_ (error_table_$noarg, myname);
+
+000722  aa  6 00044 3701 20	epp4 	pr6|36,*
+000723  la  4 00044 3521 20	epp2 	pr4|36,*		error_table_$noarg
+000724  aa  6 00420 2521 00	spri2	pr6|272
+000725  aa  6 00276 3521 00	epp2 	pr6|190		myname
+000726  aa  6 00422 2521 00	spri2	pr6|274
+000727  aa   777115 3520 04	epp2 	-435,ic		000044 = 404000000043
+000730  aa  6 00424 2521 00	spri2	pr6|276
+000731  aa   777112 3520 04	epp2 	-438,ic		000043 = 530000000040
+000732  aa  6 00426 2521 00	spri2	pr6|278
+000733  aa  6 00416 6211 00	eax1 	pr6|270
+000734  aa   010000 4310 07	fld  	4096,dl
+000735  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+000736  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 63
+	     call ioa_ (
+"Usage:^10t^a volog {-control_args}
+^10tcontrol_args:^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a^-^a^/^25t^a",
+	        myname,
+	        "-incremental, -incr     ", "-header, -he            ",
+	        "-consolidated, -cons    ", "-no_header, -nhe        ",
+	        "-complete, -comp        ", "-label, -lbl            ",
+	        "-volname name, -vol name", "-no_label, -nlbl        ",
+	        "-working_dir, -wd       ", "-status, -st            ",
+	        "-all, -a                ");
+
+000737  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000740  aa   777475 00 0170	desc9a	-195,120		000434 = 125163141147
+000741  aa  6 00430 00 0170	desc9a	pr6|280,120
+000742  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000743  aa   777315 00 0030	desc9a	-307,24		000257 = 055151156143
+000744  aa  6 00416 00 0030	desc9a	pr6|270,24
+000745  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000746  aa   777304 00 0030	desc9a	-316,24		000251 = 055150145141
+000747  aa  6 00466 00 0030	desc9a	pr6|310,24
+000750  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000751  aa   777273 00 0030	desc9a	-325,24		000243 = 055143157156
+000752  aa  6 00474 00 0030	desc9a	pr6|316,24
+000753  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000754  aa   777262 00 0030	desc9a	-334,24		000235 = 055156157137
+000755  aa  6 00502 00 0030	desc9a	pr6|322,24
+000756  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000757  aa   777251 00 0030	desc9a	-343,24		000227 = 055143157155
+000760  aa  6 00510 00 0030	desc9a	pr6|328,24
+000761  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000762  aa   777240 00 0030	desc9a	-352,24		000221 = 055154141142
+000763  aa  6 00516 00 0030	desc9a	pr6|334,24
+000764  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000765  aa   777227 00 0030	desc9a	-361,24		000213 = 055166157154
+000766  aa  6 00524 00 0030	desc9a	pr6|340,24
+000767  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000770  aa   777216 00 0030	desc9a	-370,24		000205 = 055156157137
+000771  aa  6 00532 00 0030	desc9a	pr6|346,24
+000772  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000773  aa   777205 00 0030	desc9a	-379,24		000177 = 055167157162
+000774  aa  6 00540 00 0030	desc9a	pr6|352,24
+000775  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000776  aa   777174 00 0030	desc9a	-388,24		000171 = 055163164141
+000777  aa  6 00546 00 0030	desc9a	pr6|358,24
+001000  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001001  aa   777163 00 0030	desc9a	-397,24		000163 = 055141154154
+001002  aa  6 00554 00 0030	desc9a	pr6|364,24
+001003  aa  6 00430 3521 00	epp2 	pr6|280
+001004  aa  6 00564 2521 00	spri2	pr6|372
+001005  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001006  aa  6 00566 2521 00	spri2	pr6|374
+001007  aa  6 00416 3521 00	epp2 	pr6|270
+001010  aa  6 00570 2521 00	spri2	pr6|376
+001011  aa  6 00466 3521 00	epp2 	pr6|310
+001012  aa  6 00572 2521 00	spri2	pr6|378
+001013  aa  6 00474 3521 00	epp2 	pr6|316
+001014  aa  6 00574 2521 00	spri2	pr6|380
+001015  aa  6 00502 3521 00	epp2 	pr6|322
+001016  aa  6 00576 2521 00	spri2	pr6|382
+001017  aa  6 00510 3521 00	epp2 	pr6|328
+001020  aa  6 00600 2521 00	spri2	pr6|384
+001021  aa  6 00516 3521 00	epp2 	pr6|334
+001022  aa  6 00602 2521 00	spri2	pr6|386
+001023  aa  6 00524 3521 00	epp2 	pr6|340
+001024  aa  6 00604 2521 00	spri2	pr6|388
+001025  aa  6 00532 3521 00	epp2 	pr6|346
+001026  aa  6 00606 2521 00	spri2	pr6|390
+001027  aa  6 00540 3521 00	epp2 	pr6|352
+001030  aa  6 00610 2521 00	spri2	pr6|392
+001031  aa  6 00546 3521 00	epp2 	pr6|358
+001032  aa  6 00612 2521 00	spri2	pr6|394
+001033  aa  6 00554 3521 00	epp2 	pr6|364
+001034  aa  6 00614 2521 00	spri2	pr6|396
+001035  aa   777005 3520 04	epp2 	-507,ic		000042 = 524000000166
+001036  aa  6 00616 2521 00	spri2	pr6|398
+001037  aa   777004 3520 04	epp2 	-508,ic		000043 = 530000000040
+001040  aa  6 00620 2521 00	spri2	pr6|400
+001041  aa   777000 3520 04	epp2 	-512,ic		000041 = 524000000030
+001042  aa  6 00622 2521 00	spri2	pr6|402
+001043  aa  6 00624 2521 00	spri2	pr6|404
+001044  aa  6 00626 2521 00	spri2	pr6|406
+001045  aa  6 00630 2521 00	spri2	pr6|408
+001046  aa  6 00632 2521 00	spri2	pr6|410
+001047  aa  6 00634 2521 00	spri2	pr6|412
+001050  aa  6 00636 2521 00	spri2	pr6|414
+001051  aa  6 00640 2521 00	spri2	pr6|416
+001052  aa  6 00642 2521 00	spri2	pr6|418
+001053  aa  6 00644 2521 00	spri2	pr6|420
+001054  aa  6 00646 2521 00	spri2	pr6|422
+001055  aa  6 00562 6211 00	eax1 	pr6|370
+001056  aa   064000 4310 07	fld  	26624,dl
+001057  aa  6 00044 3701 20	epp4 	pr6|36,*
+001060  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+001061  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 73
+	     return;
+
+001062  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 74
+	end;
+
+						STATEMENT 1 ON LINE 75
+	if substr (arg, 1, 1) = "-" then goto argerr;
+
+001063  aa  6 00172 3735 20	epp7 	pr6|122,*		argp
+001064  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001065  aa  7 00000 00 0001	desc9a	pr7|0,1		arg
+001066  aa   001551 00 0001	desc9a	873,1		002635 = 055000000000
+001067  aa   777633 6000 04	tze  	-101,ic		000722
+						STATEMENT 1 ON LINE 77
+	call expand_pathname_$add_suffix(arg, "volog", ignore_dir, volog_name, ignore);
+
+001070  aa  6 00171 2361 00	ldq  	pr6|121		argl
+001071  aa   526000 2760 03	orq  	175104,du
+001072  aa  6 00414 7561 00	stq  	pr6|268
+001073  aa   777003 2370 04	ldaq 	-509,ic		000076 = 166157154157 147000000000
+001074  aa  6 00650 7571 00	staq 	pr6|424
+001075  aa  7 00000 3521 00	epp2 	pr7|0		arg
+001076  aa  6 00432 2521 00	spri2	pr6|282
+001077  aa  6 00650 3521 00	epp2 	pr6|424
+001100  aa  6 00434 2521 00	spri2	pr6|284
+001101  aa  6 00176 3521 00	epp2 	pr6|126		ignore_dir
+001102  aa  6 00436 2521 00	spri2	pr6|286
+001103  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001104  aa  6 00440 2521 00	spri2	pr6|288
+001105  aa  6 00267 3521 00	epp2 	pr6|183		ignore
+001106  aa  6 00442 2521 00	spri2	pr6|290
+001107  aa  6 00414 3521 00	epp2 	pr6|268
+001110  aa  6 00444 2521 00	spri2	pr6|292
+001111  aa   776726 3520 04	epp2 	-554,ic		000037 = 524000000005
+001112  aa  6 00446 2521 00	spri2	pr6|294
+001113  aa   776723 3520 04	epp2 	-557,ic		000036 = 526000000250
+001114  aa  6 00450 2521 00	spri2	pr6|296
+001115  aa   776720 3520 04	epp2 	-560,ic		000035 = 526000000040
+001116  aa  6 00452 2521 00	spri2	pr6|298
+001117  aa   776725 3520 04	epp2 	-555,ic		000044 = 404000000043
+001120  aa  6 00454 2521 00	spri2	pr6|300
+001121  aa  6 00430 6211 00	eax1 	pr6|280
+001122  aa   024000 4310 07	fld  	10240,dl
+001123  aa  6 00044 3701 20	epp4 	pr6|36,*
+001124  la  4 00020 3521 20	epp2 	pr4|16,*		expand_pathname_$add_suffix
+001125  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 79
+	call cu_$arg_count (narg);
+
+001126  aa  6 00116 3521 00	epp2 	pr6|78		narg
+001127  aa  6 00470 2521 00	spri2	pr6|312
+001130  aa  6 00466 6211 00	eax1 	pr6|310
+001131  aa   004000 4310 07	fld  	2048,dl
+001132  aa  6 00044 3701 20	epp4 	pr6|36,*
+001133  la  4 00036 3521 20	epp2 	pr4|30,*		cu_$arg_count
+001134  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 80
+	ac = 2;
+
+001135  aa   000002 2360 07	ldq  	2,dl
+001136  aa  6 00175 7561 00	stq  	pr6|125		ac
+						STATEMENT 1 ON LINE 81
+	do while (ac <= narg);
+
+001137  aa   000000 0110 03	nop  	0,du
+001140  aa  6 00175 2361 00	ldq  	pr6|125		ac
+001141  aa  6 00116 1161 00	cmpq 	pr6|78		narg
+001142  aa   000365 6054 04	tpnz 	245,ic		001527
+						STATEMENT 1 ON LINE 82
+	     call cu_$arg_ptr (ac, argp, argl, code);
+
+001143  aa  6 00175 3521 00	epp2 	pr6|125		ac
+001144  aa  6 00420 2521 00	spri2	pr6|272
+001145  aa  6 00172 3521 00	epp2 	pr6|122		argp
+001146  aa  6 00422 2521 00	spri2	pr6|274
+001147  aa  6 00171 3521 00	epp2 	pr6|121		argl
+001150  aa  6 00424 2521 00	spri2	pr6|276
+001151  aa  6 00266 3521 00	epp2 	pr6|182		code
+001152  aa  6 00426 2521 00	spri2	pr6|278
+001153  aa  6 00416 6211 00	eax1 	pr6|270
+001154  aa   020000 4310 07	fld  	8192,dl
+001155  aa  6 00044 3701 20	epp4 	pr6|36,*
+001156  la  4 00012 3521 20	epp2 	pr4|10,*		cu_$arg_ptr
+001157  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 83
+	     if code ^= 0 then do;
+
+001160  aa  6 00266 2361 00	ldq  	pr6|182		code
+001161  aa   000035 6000 04	tze  	29,ic		001216
+						STATEMENT 1 ON LINE 84
+		call com_err_ (code, myname, "Unable to access arg after ^a", arg);
+
+001162  aa  6 00171 2361 00	ldq  	pr6|121		argl
+001163  aa   526000 2760 03	orq  	175104,du
+001164  aa  6 00414 7561 00	stq  	pr6|268
+001165  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001166  aa   777100 00 0040	desc9a	-448,32		000265 = 125156141142
+001167  aa  6 00416 00 0040	desc9a	pr6|270,32
+001170  aa  6 00266 3521 00	epp2 	pr6|182		code
+001171  aa  6 00432 2521 00	spri2	pr6|282
+001172  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001173  aa  6 00434 2521 00	spri2	pr6|284
+001174  aa  6 00416 3521 00	epp2 	pr6|270
+001175  aa  6 00436 2521 00	spri2	pr6|286
+001176  aa  6 00172 3521 20	epp2 	pr6|122,*		arg
+001177  aa  6 00440 2521 00	spri2	pr6|288
+001200  aa   776644 3520 04	epp2 	-604,ic		000044 = 404000000043
+001201  aa  6 00442 2521 00	spri2	pr6|290
+001202  aa   776641 3520 04	epp2 	-607,ic		000043 = 530000000040
+001203  aa  6 00444 2521 00	spri2	pr6|292
+001204  aa   776630 3520 04	epp2 	-616,ic		000034 = 524000000035
+001205  aa  6 00446 2521 00	spri2	pr6|294
+001206  aa  6 00414 3521 00	epp2 	pr6|268
+001207  aa  6 00450 2521 00	spri2	pr6|296
+001210  aa  6 00430 6211 00	eax1 	pr6|280
+001211  aa   020000 4310 07	fld  	8192,dl
+001212  aa  6 00044 3701 20	epp4 	pr6|36,*
+001213  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+001214  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 85
+		goto finale;
+
+001215  aa   001240 7100 04	tra  	672,ic		002455
+						STATEMENT 1 ON LINE 86
+	     end;
+
+						STATEMENT 1 ON LINE 87
+	     if arg = "-incremental" | arg = "-incr" then type = incr;
+
+001216  aa  6 00172 3735 20	epp7 	pr6|122,*		argp
+001217  aa  6 00171 7271 00	lxl7 	pr6|121		argl
+001220  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001221  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001222  aa   777037 00 0014	desc9a	-481,12		000257 = 055151156143
+001223  aa   000005 6000 04	tze  	5,ic		001230
+001224  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001225  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001226  aa   776650 00 0005	desc9a	-600,5		000074 = 055151156143
+001227  aa   000004 6010 04	tnz  	4,ic		001233
+001230  aa   000001 2360 07	ldq  	1,dl
+001231  aa  6 00270 7561 00	stq  	pr6|184		type
+001232  aa   000273 7100 04	tra  	187,ic		001525
+						STATEMENT 1 ON LINE 88
+	     else if arg = "-working_dir" | arg = "-wd" then volog_dir = wdir_ ();
+
+001233  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001234  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001235  aa   776744 00 0014	desc9a	-540,12		000177 = 055167157162
+001236  aa   000005 6000 04	tze  	5,ic		001243
+001237  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001240  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001241  aa   776574 00 0003	desc9a	-644,3		000033 = 055167144000
+001242  aa   000007 6010 04	tnz  	7,ic		001251
+001243  aa   001365 3520 04	epp2 	757,ic		002630 = 000002000000
+001244  aa   001341 6700 04	tsp4 	737,ic		002605
+001245  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001246  aa  6 00562 00 0250	desc9a	pr6|370,168
+001247  aa  6 00117 00 0250	desc9a	pr6|79,168	volog_dir
+001250  aa   000255 7100 04	tra  	173,ic		001525
+						STATEMENT 1 ON LINE 89
+	     else if arg = "-consolidated" | arg = "-cons" then type = cons;
+
+001251  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001252  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001253  aa   776646 00 0015	desc9a	-602,13		000117 = 055143157156
+001254  aa   000005 6000 04	tze  	5,ic		001261
+001255  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001256  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001257  aa   776615 00 0005	desc9a	-627,5		000072 = 055143157156
+001260  aa   000004 6010 04	tnz  	4,ic		001264
+001261  aa   000002 2360 07	ldq  	2,dl
+001262  aa  6 00270 7561 00	stq  	pr6|184		type
+001263  aa   000242 7100 04	tra  	162,ic		001525
+						STATEMENT 1 ON LINE 90
+	     else if arg = "-complete" | arg = "-comp" then type = comp;
+
+001264  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001265  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001266  aa   776630 00 0011	desc9a	-616,9		000114 = 055143157155
+001267  aa   000005 6000 04	tze  	5,ic		001274
+001270  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001271  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001272  aa   776600 00 0005	desc9a	-640,5		000070 = 055143157155
+001273  aa   000004 6010 04	tnz  	4,ic		001277
+001274  aa   000003 2360 07	ldq  	3,dl
+001275  aa  6 00270 7561 00	stq  	pr6|184		type
+001276  aa   000227 7100 04	tra  	151,ic		001525
+						STATEMENT 1 ON LINE 91
+	     else if arg = "-all" | arg = "-a" then all_sw = "1"b;
+
+001277  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001300  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001301  aa   776664 00 0004	desc9a	-588,4		000163 = 055141154154
+001302  aa   000005 6000 04	tze  	5,ic		001307
+001303  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001304  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001305  aa   001331 00 0002	desc9a	729,2		002634 = 055141000000
+001306  aa   000004 6010 04	tnz  	4,ic		001312
+001307  aa   400000 2350 03	lda  	131072,du
+001310  aa  6 00273 7551 00	sta  	pr6|187		all_sw
+001311  aa   000214 7100 04	tra  	140,ic		001525
+						STATEMENT 1 ON LINE 92
+	     else if arg = "-header" | arg = "-he" then header_sw = "1"b;
+
+001312  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001313  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001314  aa   776554 00 0007	desc9a	-660,7		000066 = 055150145141
+001315  aa   000005 6000 04	tze  	5,ic		001322
+001316  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001317  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001320  aa   776514 00 0003	desc9a	-692,3		000032 = 055150145000
+001321  aa   000004 6010 04	tnz  	4,ic		001325
+001322  aa   400000 2350 03	lda  	131072,du
+001323  aa  6 00271 7551 00	sta  	pr6|185		header_sw
+001324  aa   000201 7100 04	tra  	129,ic		001525
+						STATEMENT 1 ON LINE 93
+	     else if arg = "-nhe" | arg = "-no_header" then header_sw = "0"b;
+
+001325  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001326  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001327  aa   776504 00 0004	desc9a	-700,4		000031 = 055156150145
+001330  aa   000005 6000 04	tze  	5,ic		001335
+001331  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001332  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001333  aa   776560 00 0012	desc9a	-656,10		000111 = 055156157137
+001334  aa   000003 6010 04	tnz  	3,ic		001337
+001335  aa  6 00271 4501 00	stz  	pr6|185		header_sw
+001336  aa   000167 7100 04	tra  	119,ic		001525
+						STATEMENT 1 ON LINE 94
+	     else if arg = "-label" | arg = "-lbl" then label_sw = "1"b;
+
+001337  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001340  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001341  aa   776525 00 0006	desc9a	-683,6		000064 = 055154141142
+001342  aa   000005 6000 04	tze  	5,ic		001347
+001343  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001344  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001345  aa   776465 00 0004	desc9a	-715,4		000030 = 055154142154
+001346  aa   000004 6010 04	tnz  	4,ic		001352
+001347  aa   400000 2350 03	lda  	131072,du
+001350  aa  6 00272 7551 00	sta  	pr6|186		label_sw
+001351  aa   000154 7100 04	tra  	108,ic		001525
+						STATEMENT 1 ON LINE 95
+	     else if arg = "-no_label" | arg = "-nlbl" then label_sw = "0"b;
+
+001352  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001353  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001354  aa   776534 00 0011	desc9a	-676,9		000106 = 055156157137
+001355  aa   000005 6000 04	tze  	5,ic		001362
+001356  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001357  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001360  aa   776504 00 0005	desc9a	-700,5		000062 = 055156154142
+001361  aa   000003 6010 04	tnz  	3,ic		001364
+001362  aa  6 00272 4501 00	stz  	pr6|186		label_sw
+001363  aa   000142 7100 04	tra  	98,ic		001525
+						STATEMENT 1 ON LINE 96
+	     else if arg = "-status" | arg = "-st" | arg = "-stats" then do;
+
+001364  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001365  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001366  aa   776474 00 0007	desc9a	-708,7		000060 = 055163164141
+001367  aa   000011 6000 04	tze  	9,ic		001400
+001370  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001371  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001372  aa   776437 00 0003	desc9a	-737,3		000027 = 055163164000
+001373  aa   000005 6000 04	tze  	5,ic		001400
+001374  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001375  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001376  aa   776462 00 0006	desc9a	-718,6		000056 = 055163164141
+001377  aa   000006 6010 04	tnz  	6,ic		001405
+						STATEMENT 1 ON LINE 97
+		type = -1;
+
+001400  aa   000001 3360 07	lcq  	1,dl
+001401  aa  6 00270 7561 00	stq  	pr6|184		type
+						STATEMENT 1 ON LINE 98
+		stats = "1"b;
+
+001402  aa   400000 2350 03	lda  	131072,du
+001403  aa  6 00265 7551 00	sta  	pr6|181		stats
+						STATEMENT 1 ON LINE 99
+	     end;
+
+001404  aa   000121 7100 04	tra  	81,ic		001525
+						STATEMENT 1 ON LINE 100
+	     else if arg = "-vol" | arg = "-volname" then do;
+
+001405  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001406  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001407  aa   776606 00 0004	desc9a	-634,4		000213 = 055166157154
+001410  aa   000005 6000 04	tze  	5,ic		001415
+001411  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001412  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001413  aa   776602 00 0010	desc9a	-638,8		000213 = 055166157154
+001414  aa   000056 6010 04	tnz  	46,ic		001472
+						STATEMENT 1 ON LINE 101
+		ac = ac + 1;
+
+001415  aa  6 00175 0541 00	aos  	pr6|125		ac
+						STATEMENT 1 ON LINE 102
+		call cu_$arg_ptr (ac, argp, argl, code);
+
+001416  aa  6 00175 3521 00	epp2 	pr6|125		ac
+001417  aa  6 00420 2521 00	spri2	pr6|272
+001420  aa  6 00172 3521 00	epp2 	pr6|122		argp
+001421  aa  6 00422 2521 00	spri2	pr6|274
+001422  aa  6 00171 3521 00	epp2 	pr6|121		argl
+001423  aa  6 00424 2521 00	spri2	pr6|276
+001424  aa  6 00266 3521 00	epp2 	pr6|182		code
+001425  aa  6 00426 2521 00	spri2	pr6|278
+001426  aa  6 00416 6211 00	eax1 	pr6|270
+001427  aa   020000 4310 07	fld  	8192,dl
+001430  aa  6 00044 3701 20	epp4 	pr6|36,*
+001431  la  4 00012 3521 20	epp2 	pr4|10,*		cu_$arg_ptr
+001432  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 103
+		if code ^= 0 then do;
+
+001433  aa  6 00266 2361 00	ldq  	pr6|182		code
+001434  aa   000026 6000 04	tze  	22,ic		001462
+						STATEMENT 1 ON LINE 104
+		     call com_err_ (code, myname, "Error getting volname");
+
+001435  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001436  aa   776520 00 0030	desc9a	-688,24		000155 = 105162162157
+001437  aa  6 00474 00 0030	desc9a	pr6|316,24
+001440  aa  6 00266 3521 00	epp2 	pr6|182		code
+001441  aa  6 00432 2521 00	spri2	pr6|282
+001442  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001443  aa  6 00434 2521 00	spri2	pr6|284
+001444  aa  6 00474 3521 00	epp2 	pr6|316
+001445  aa  6 00436 2521 00	spri2	pr6|286
+001446  aa   776376 3520 04	epp2 	-770,ic		000044 = 404000000043
+001447  aa  6 00440 2521 00	spri2	pr6|288
+001450  aa   776373 3520 04	epp2 	-773,ic		000043 = 530000000040
+001451  aa  6 00442 2521 00	spri2	pr6|290
+001452  aa   776354 3520 04	epp2 	-788,ic		000026 = 524000000025
+001453  aa  6 00444 2521 00	spri2	pr6|292
+001454  aa  6 00430 6211 00	eax1 	pr6|280
+001455  aa   014000 4310 07	fld  	6144,dl
+001456  aa  6 00044 3701 20	epp4 	pr6|36,*
+001457  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+001460  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 105
+		     goto finale;
+
+001461  aa   000774 7100 04	tra  	508,ic		002455
+						STATEMENT 1 ON LINE 106
+		end;
+
+						STATEMENT 1 ON LINE 107
+		volname = arg;
+
+001462  aa  6 00172 3735 20	epp7 	pr6|122,*		argp
+001463  aa  6 00171 7271 00	lxl7 	pr6|121		argl
+001464  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001465  aa  7 00000 00 0017	desc9a	pr7|0,x7		arg
+001466  aa  6 00250 00 0040	desc9a	pr6|168,32	volname
+						STATEMENT 1 ON LINE 108
+		type = -1;
+
+001467  aa   000001 3360 07	lcq  	1,dl
+001470  aa  6 00270 7561 00	stq  	pr6|184		type
+						STATEMENT 1 ON LINE 109
+	     end;
+
+001471  aa   000034 7100 04	tra  	28,ic		001525
+						STATEMENT 1 ON LINE 110
+	     else do;
+
+						STATEMENT 1 ON LINE 111
+		call com_err_ (error_table_$badopt, myname, "^a", arg);
+
+001472  aa  6 00171 2361 00	ldq  	pr6|121		argl
+001473  aa   526000 2760 03	orq  	175104,du
+001474  aa  6 00414 7561 00	stq  	pr6|268
+001475  aa   136141 2350 03	lda  	48225,du
+001476  aa  6 00415 7551 00	sta  	pr6|269
+001477  aa  6 00044 3701 20	epp4 	pr6|36,*
+001500  la  4 00040 3521 20	epp2 	pr4|32,*		error_table_$badopt
+001501  aa  6 00432 2521 00	spri2	pr6|282
+001502  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001503  aa  6 00434 2521 00	spri2	pr6|284
+001504  aa  6 00415 3521 00	epp2 	pr6|269
+001505  aa  6 00436 2521 00	spri2	pr6|286
+001506  aa  7 00000 3521 00	epp2 	pr7|0		arg
+001507  aa  6 00440 2521 00	spri2	pr6|288
+001510  aa   776334 3520 04	epp2 	-804,ic		000044 = 404000000043
+001511  aa  6 00442 2521 00	spri2	pr6|290
+001512  aa   776331 3520 04	epp2 	-807,ic		000043 = 530000000040
+001513  aa  6 00444 2521 00	spri2	pr6|292
+001514  aa   776311 3520 04	epp2 	-823,ic		000025 = 524000000002
+001515  aa  6 00446 2521 00	spri2	pr6|294
+001516  aa  6 00414 3521 00	epp2 	pr6|268
+001517  aa  6 00450 2521 00	spri2	pr6|296
+001520  aa  6 00430 6211 00	eax1 	pr6|280
+001521  aa   020000 4310 07	fld  	8192,dl
+001522  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+001523  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 112
+		goto finale;
+
+001524  aa   000731 7100 04	tra  	473,ic		002455
+						STATEMENT 1 ON LINE 113
+	     end;
+
+						STATEMENT 1 ON LINE 114
+	     ac = ac + 1;
+
+001525  aa  6 00175 0541 00	aos  	pr6|125		ac
+						STATEMENT 1 ON LINE 115
+	end;
+
+001526  aa   777412 7100 04	tra  	-246,ic		001140
+						STATEMENT 1 ON LINE 119
+	call hcs_$initiate (volog_dir, volog_name, "", 0, 0, bvlp, code);
+
+001527  aa  6 00415 4501 00	stz  	pr6|269
+001530  aa  6 00652 4501 00	stz  	pr6|426
+001531  aa  6 00117 3521 00	epp2 	pr6|79		volog_dir
+001532  aa  6 00432 2521 00	spri2	pr6|282
+001533  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001534  aa  6 00434 2521 00	spri2	pr6|284
+001535  aa  6 00414 3521 00	epp2 	pr6|268
+001536  aa  6 00436 2521 00	spri2	pr6|286
+001537  aa  6 00415 3521 00	epp2 	pr6|269
+001540  aa  6 00440 2521 00	spri2	pr6|288
+001541  aa  6 00652 3521 00	epp2 	pr6|426
+001542  aa  6 00442 2521 00	spri2	pr6|290
+001543  aa  6 00322 3521 00	epp2 	pr6|210		bvlp
+001544  aa  6 00444 2521 00	spri2	pr6|292
+001545  aa  6 00266 3521 00	epp2 	pr6|182		code
+001546  aa  6 00446 2521 00	spri2	pr6|294
+001547  aa   776267 3520 04	epp2 	-841,ic		000036 = 526000000250
+001550  aa  6 00450 2521 00	spri2	pr6|296
+001551  aa   776264 3520 04	epp2 	-844,ic		000035 = 526000000040
+001552  aa  6 00452 2521 00	spri2	pr6|298
+001553  aa   776251 3520 04	epp2 	-855,ic		000024 = 524000000000
+001554  aa  6 00454 2521 00	spri2	pr6|300
+001555  aa   776246 3520 04	epp2 	-858,ic		000023 = 404000000021
+001556  aa  6 00456 2521 00	spri2	pr6|302
+001557  aa  6 00460 2521 00	spri2	pr6|304
+001560  aa   776242 3520 04	epp2 	-862,ic		000022 = 464000000000
+001561  aa  6 00462 2521 00	spri2	pr6|306
+001562  aa   776262 3520 04	epp2 	-846,ic		000044 = 404000000043
+001563  aa  6 00464 2521 00	spri2	pr6|308
+001564  aa  6 00430 6211 00	eax1 	pr6|280
+001565  aa   034000 4310 07	fld  	14336,dl
+001566  aa  6 00044 3701 20	epp4 	pr6|36,*
+001567  la  4 00022 3521 20	epp2 	pr4|18,*		hcs_$initiate
+001570  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 120
+	if bvlp = null then do;
+
+001571  aa  6 00322 2371 00	ldaq 	pr6|210		bvlp
+001572  aa   776306 6770 04	eraq 	-826,ic		000100 = 077777000043 000001000000
+001573  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001574  aa   000035 6010 04	tnz  	29,ic		001631
+						STATEMENT 1 ON LINE 121
+	     call com_err_ (code, myname, "^a>^a", volog_dir, volog_name);
+
+001575  aa   776257 2370 04	ldaq 	-849,ic		000054 = 136141076136 141000000000
+001576  aa  6 00650 7571 00	staq 	pr6|424
+001577  aa  6 00266 3521 00	epp2 	pr6|182		code
+001600  aa  6 00432 2521 00	spri2	pr6|282
+001601  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001602  aa  6 00434 2521 00	spri2	pr6|284
+001603  aa  6 00650 3521 00	epp2 	pr6|424
+001604  aa  6 00436 2521 00	spri2	pr6|286
+001605  aa  6 00117 3521 00	epp2 	pr6|79		volog_dir
+001606  aa  6 00440 2521 00	spri2	pr6|288
+001607  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001610  aa  6 00442 2521 00	spri2	pr6|290
+001611  aa   776233 3520 04	epp2 	-869,ic		000044 = 404000000043
+001612  aa  6 00444 2521 00	spri2	pr6|292
+001613  aa   776230 3520 04	epp2 	-872,ic		000043 = 530000000040
+001614  aa  6 00446 2521 00	spri2	pr6|294
+001615  aa   776222 3520 04	epp2 	-878,ic		000037 = 524000000005
+001616  aa  6 00450 2521 00	spri2	pr6|296
+001617  aa   776217 3520 04	epp2 	-881,ic		000036 = 526000000250
+001620  aa  6 00452 2521 00	spri2	pr6|298
+001621  aa   776214 3520 04	epp2 	-884,ic		000035 = 526000000040
+001622  aa  6 00454 2521 00	spri2	pr6|300
+001623  aa  6 00430 6211 00	eax1 	pr6|280
+001624  aa   024000 4310 07	fld  	10240,dl
+001625  aa  6 00044 3701 20	epp4 	pr6|36,*
+001626  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+001627  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 122
+	     goto finale;
+
+001630  aa   000625 7100 04	tra  	405,ic		002455
+						STATEMENT 1 ON LINE 123
+	end;
+
+						STATEMENT 1 ON LINE 127
+          call set_lock_$lock (backup_volume_log.lock, lock_wait_time, code);
+
+001631  aa  6 00322 3735 20	epp7 	pr6|210,*		bvlp
+001632  aa  7 02016 3521 00	epp2 	pr7|1038		backup_volume_log.lock
+001633  aa  6 00420 2521 00	spri2	pr6|272
+001634  aa   776144 3520 04	epp2 	-924,ic		000000 = 000000000036
+001635  aa  6 00422 2521 00	spri2	pr6|274
+001636  aa  6 00266 3521 00	epp2 	pr6|182		code
+001637  aa  6 00424 2521 00	spri2	pr6|276
+001640  aa  6 00416 6211 00	eax1 	pr6|270
+001641  aa   014000 4310 07	fld  	6144,dl
+001642  aa  6 00044 3701 20	epp4 	pr6|36,*
+001643  la  4 00032 3521 20	epp2 	pr4|26,*		set_lock_$lock
+001644  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 128
+	if code ^= 0 then do;
+
+001645  aa  6 00266 2361 00	ldq  	pr6|182		code
+001646  aa   000060 6000 04	tze  	48,ic		001726
+						STATEMENT 1 ON LINE 129
+	     if code = error_table_$invalid_lock_reset then code = 0;
+
+001647  aa  6 00044 3701 20	epp4 	pr6|36,*
+001650  la  4 00042 1161 20	cmpq 	pr4|34,*		error_table_$invalid_lock_reset
+001651  aa   000003 6010 04	tnz  	3,ic		001654
+001652  aa  6 00266 4501 00	stz  	pr6|182		code
+001653  aa   000053 7100 04	tra  	43,ic		001726
+						STATEMENT 1 ON LINE 130
+	     else do;
+
+						STATEMENT 1 ON LINE 131
+		if code = error_table_$no_w_permission then do;
+
+001654  la  4 00046 1161 20	cmpq 	pr4|38,*		error_table_$no_w_permission
+001655  aa   000021 6010 04	tnz  	17,ic		001676
+						STATEMENT 1 ON LINE 132
+		call ioa_("Unable to lock ^a, data may be in the process of being changed.", volog_name);
+
+001656  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001657  aa   776502 00 0100	desc9a	-702,64		000360 = 125156141142
+001660  aa  6 00430 00 0100	desc9a	pr6|280,64
+001661  aa  6 00430 3521 00	epp2 	pr6|280
+001662  aa  6 00420 2521 00	spri2	pr6|272
+001663  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001664  aa  6 00422 2521 00	spri2	pr6|274
+001665  aa   776134 3520 04	epp2 	-932,ic		000021 = 524000000077
+001666  aa  6 00424 2521 00	spri2	pr6|276
+001667  aa   776146 3520 04	epp2 	-922,ic		000035 = 526000000040
+001670  aa  6 00426 2521 00	spri2	pr6|278
+001671  aa  6 00416 6211 00	eax1 	pr6|270
+001672  aa   010000 4310 07	fld  	4096,dl
+001673  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+001674  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 133
+		goto cant_lock;
+
+001675  aa   000033 7100 04	tra  	27,ic		001730
+						STATEMENT 1 ON LINE 134
+		end;
+
+						STATEMENT 1 ON LINE 135
+	     call com_err_ (code, myname, "Unable to lock volog ^a", volog_name);
+
+001676  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001677  aa   776251 00 0030	desc9a	-855,24		000147 = 125156141142
+001700  aa  6 00502 00 0030	desc9a	pr6|322,24
+001701  aa  6 00266 3521 00	epp2 	pr6|182		code
+001702  aa  6 00432 2521 00	spri2	pr6|282
+001703  aa  6 00276 3521 00	epp2 	pr6|190		myname
+001704  aa  6 00434 2521 00	spri2	pr6|284
+001705  aa  6 00502 3521 00	epp2 	pr6|322
+001706  aa  6 00436 2521 00	spri2	pr6|286
+001707  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001710  aa  6 00440 2521 00	spri2	pr6|288
+001711  aa   776133 3520 04	epp2 	-933,ic		000044 = 404000000043
+001712  aa  6 00442 2521 00	spri2	pr6|290
+001713  aa   776130 3520 04	epp2 	-936,ic		000043 = 530000000040
+001714  aa  6 00444 2521 00	spri2	pr6|292
+001715  aa   776103 3520 04	epp2 	-957,ic		000020 = 524000000027
+001716  aa  6 00446 2521 00	spri2	pr6|294
+001717  aa   776116 3520 04	epp2 	-946,ic		000035 = 526000000040
+001720  aa  6 00450 2521 00	spri2	pr6|296
+001721  aa  6 00430 6211 00	eax1 	pr6|280
+001722  aa   020000 4310 07	fld  	8192,dl
+001723  la  4 00014 3521 20	epp2 	pr4|12,*		com_err_
+001724  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 136
+	     goto finale;
+
+001725  aa   000530 7100 04	tra  	344,ic		002455
+						STATEMENT 1 ON LINE 137
+	     end;
+
+						STATEMENT 1 ON LINE 138
+	end;
+
+						STATEMENT 1 ON LINE 139
+          locked = "1"b;
+
+001726  aa   400000 2350 03	lda  	131072,du
+001727  aa  6 00274 7551 00	sta  	pr6|188		locked
+						STATEMENT 1 ON LINE 140
+cant_lock:
+          if label_sw | all_sw then do;
+
+001730  aa  6 00272 2351 00	lda  	pr6|186		label_sw
+001731  aa   000003 6010 04	tnz  	3,ic		001734
+001732  aa  6 00273 2351 00	lda  	pr6|187		all_sw
+001733  aa   000037 6000 04	tze  	31,ic		001772
+						STATEMENT 1 ON LINE 142
+	   call ioa_ ("
+Backup Volume Log Label for Multics Storage System Volume ^a^/",
+	      volog_name);
+
+001734  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001735  aa   776404 00 0100	desc9a	-764,64		000340 = 012102141143
+001736  aa  6 00430 00 0100	desc9a	pr6|280,64
+001737  aa  6 00430 3521 00	epp2 	pr6|280
+001740  aa  6 00420 2521 00	spri2	pr6|272
+001741  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001742  aa  6 00422 2521 00	spri2	pr6|274
+001743  aa   776056 3520 04	epp2 	-978,ic		000021 = 524000000077
+001744  aa  6 00424 2521 00	spri2	pr6|276
+001745  aa   776070 3520 04	epp2 	-968,ic		000035 = 526000000040
+001746  aa  6 00426 2521 00	spri2	pr6|278
+001747  aa  6 00416 6211 00	eax1 	pr6|270
+001750  aa   010000 4310 07	fld  	4096,dl
+001751  aa  6 00044 3701 20	epp4 	pr6|36,*
+001752  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+001753  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 145
+	   call display_disk_label_ (addr (addr (backup_volume_log.info) -> backup_pvol_info.label));
+
+001754  aa  6 00322 3735 20	epp7 	pr6|210,*		bvlp
+001755  aa  7 00010 3735 00	epp7 	pr7|8		backup_pvol_info.label
+001756  aa  6 00650 6535 00	spri7	pr6|424
+001757  aa  6 00650 3521 00	epp2 	pr6|424
+001760  aa  6 00512 2521 00	spri2	pr6|330
+001761  aa  6 00510 6211 00	eax1 	pr6|328
+001762  aa   004000 4310 07	fld  	2048,dl
+001763  aa  6 00044 3701 20	epp4 	pr6|36,*
+001764  la  4 00016 3521 20	epp2 	pr4|14,*		display_disk_label_
+001765  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 146
+	   if ^all_sw & type=0 then go to finale;
+
+001766  aa  6 00273 2351 00	lda  	pr6|187		all_sw
+001767  aa   000003 6010 04	tnz  	3,ic		001772
+001770  aa  6 00270 2361 00	ldq  	pr6|184		type
+001771  aa   000464 6000 04	tze  	308,ic		002455
+						STATEMENT 1 ON LINE 147
+	   end;
+
+						STATEMENT 1 ON LINE 149
+	if header_sw then do;
+
+001772  aa  6 00271 2351 00	lda  	pr6|185		header_sw
+001773  aa   000142 6000 04	tze  	98,ic		002135
+						STATEMENT 1 ON LINE 150
+	     call ioa_ ("
+^2-Backup Volume Log for Physical Volume ^a
+^2-       Consolidated Sets Saved: ^[all^s^;^d^]
+^2-       Incremental Sets Saved : ^[all^s^;^d^]
+^2-       Reload Groups          : ^d",
+	        reverse(after(reverse(volog_name), ".")),
+	        backup_volume_log.Nsaved_cons_sets < 1,
+	        backup_volume_log.Nsaved_cons_sets,
+	        backup_volume_log.Nsaved_incr_sets < 1,
+	        backup_volume_log.Nsaved_incr_sets,
+	        backup_volume_log.reload_groups);
+
+001774  aa   000040 2360 07	ldq  	32,dl
+001775  aa  6 00100 3521 00	epp2 	pr6|64		volog_name
+001776  aa  0 01227 7001 00	tsx0 	pr0|663		set_chars_eis
+001777  aa  0 01144 7001 00	tsx0 	pr0|612		reverse_cs
+002000  aa  6 00050 3735 20	epp7 	pr6|40,*
+002001  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+002002  aa  7 00000 00 0040	desc9a	pr7|0,32
+002003  aa  6 00416 00 0040	desc9a	pr6|270,32
+002004  aa  000 003 124 500	scm  	(pr),(du),mask(000)
+002005  aa  6 00416 00 0040	desc9a	pr6|270,32
+002006  aa   056000 00 0001	desc9a	23552,1
+002007  aa  6 00056 0001 00	arg  	pr6|46
+002010  aa  6 00056 2361 00	ldq  	pr6|46
+002011  aa   000002 6064 04	ttn  	2,ic		002013
+002012  aa   000001 0760 07	adq  	1,dl
+002013  aa  6 00415 7561 00	stq  	pr6|269
+002014  aa   000040 2360 07	ldq  	32,dl
+002015  aa  6 00415 1761 00	sbq  	pr6|269
+002016  aa  6 00414 7561 00	stq  	pr6|268
+002017  aa   524000 2760 03	orq  	174080,du
+002020  aa  6 00652 7561 00	stq  	pr6|426
+002021  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002022  aa   776451 00 0264	desc9a	-727,180		000472 = 012136062055
+002023  aa  6 00562 00 0264	desc9a	pr6|370,180
+002024  aa  6 00414 2361 00	ldq  	pr6|268
+002025  aa  6 00415 2351 00	lda  	pr6|269
+002026  aa  6 00416 3521 00	epp2 	pr6|270
+002027  aa  2 00000 5005 05	a9bd 	pr2|0,al
+002030  aa  0 01227 7001 00	tsx0 	pr0|663		set_chars_eis
+002031  aa  0 01144 7001 00	tsx0 	pr0|612		reverse_cs
+002032  aa  6 00434 2521 00	spri2	pr6|284
+002033  aa  6 00322 3715 20	epp5 	pr6|210,*		bvlp
+002034  aa  5 02040 2361 00	ldq  	pr5|1056		backup_volume_log.Nsaved_cons_sets
+002035  aa   000001 1160 07	cmpq 	1,dl
+002036  aa  0 00474 7001 00	tsx0 	pr0|316		r_l_a
+002037  aa  6 00415 7551 00	sta  	pr6|269
+002040  aa  5 02037 2361 00	ldq  	pr5|1055		backup_volume_log.Nsaved_incr_sets
+002041  aa   000001 1160 07	cmpq 	1,dl
+002042  aa  0 00474 7001 00	tsx0 	pr0|316		r_l_a
+002043  aa  6 00653 7551 00	sta  	pr6|427
+002044  aa  6 00562 3521 00	epp2 	pr6|370
+002045  aa  6 00432 2521 00	spri2	pr6|282
+002046  aa  6 00415 3521 00	epp2 	pr6|269
+002047  aa  6 00436 2521 00	spri2	pr6|286
+002050  aa  5 02040 3521 00	epp2 	pr5|1056		backup_volume_log.Nsaved_cons_sets
+002051  aa  6 00440 2521 00	spri2	pr6|288
+002052  aa  6 00653 3521 00	epp2 	pr6|427
+002053  aa  6 00442 2521 00	spri2	pr6|290
+002054  aa  5 02037 3521 00	epp2 	pr5|1055		backup_volume_log.Nsaved_incr_sets
+002055  aa  6 00444 2521 00	spri2	pr6|292
+002056  aa  5 02031 3521 00	epp2 	pr5|1049		backup_volume_log.reload_groups
+002057  aa  6 00446 2521 00	spri2	pr6|294
+002060  aa   775737 3520 04	epp2 	-1057,ic		000017 = 524000000264
+002061  aa  6 00450 2521 00	spri2	pr6|296
+002062  aa  6 00652 3521 00	epp2 	pr6|426
+002063  aa  6 00452 2521 00	spri2	pr6|298
+002064  aa   775732 3520 04	epp2 	-1062,ic		000016 = 514000000001
+002065  aa  6 00454 2521 00	spri2	pr6|300
+002066  aa  6 00460 2521 00	spri2	pr6|304
+002067  aa   775734 3520 04	epp2 	-1060,ic		000023 = 404000000021
+002070  aa  6 00456 2521 00	spri2	pr6|302
+002071  aa  6 00462 2521 00	spri2	pr6|306
+002072  aa  6 00464 2521 00	spri2	pr6|308
+002073  aa  6 00430 6211 00	eax1 	pr6|280
+002074  aa   034000 4310 07	fld  	14336,dl
+002075  aa  6 00044 3701 20	epp4 	pr6|36,*
+002076  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002077  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 162
+	     if ^stats then
+		call ioa_ ("
+rld dump  volume^57tdir   dir   seg    seg
+grp type  name^22tstart time^39tstop time^57tnum   rec   num    rec");
+
+002100  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+002101  aa  6 00265 2351 00	lda  	pr6|181		stats
+002102  aa   000016 6010 04	tnz  	14,ic		002120
+002103  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002104  aa   776275 00 0160	desc9a	-835,112		000400 = 012162154144
+002105  aa  6 00430 00 0160	desc9a	pr6|280,112
+002106  aa  6 00430 3521 00	epp2 	pr6|280
+002107  aa  6 00520 2521 00	spri2	pr6|336
+002110  aa   775705 3520 04	epp2 	-1083,ic		000015 = 524000000157
+002111  aa  6 00522 2521 00	spri2	pr6|338
+002112  aa  6 00516 6211 00	eax1 	pr6|334
+002113  aa   004000 4310 07	fld  	2048,dl
+002114  aa  6 00044 3701 20	epp4 	pr6|36,*
+002115  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002116  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+002117  aa   000027 7100 04	tra  	23,ic		002146
+						STATEMENT 1 ON LINE 166
+	     else call ioa_ ("entries^-dir num^-dir rec^-seg num^-seg rec");
+
+002120  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002121  aa   776165 00 0054	desc9a	-907,44		000305 = 145156164162
+002122  aa  6 00430 00 0054	desc9a	pr6|280,44
+002123  aa  6 00430 3521 00	epp2 	pr6|280
+002124  aa  6 00526 2521 00	spri2	pr6|342
+002125  aa   775667 3520 04	epp2 	-1097,ic		000014 = 524000000053
+002126  aa  6 00530 2521 00	spri2	pr6|344
+002127  aa  6 00524 6211 00	eax1 	pr6|340
+002130  aa   004000 4310 07	fld  	2048,dl
+002131  aa  6 00044 3701 20	epp4 	pr6|36,*
+002132  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002133  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 167
+	     end;
+
+002134  aa   000012 7100 04	tra  	10,ic		002146
+						STATEMENT 1 ON LINE 168
+          else
+	   call ioa_ ("");
+
+002135  aa  6 00652 3521 00	epp2 	pr6|426
+002136  aa  6 00534 2521 00	spri2	pr6|348
+002137  aa   775665 3520 04	epp2 	-1099,ic		000024 = 524000000000
+002140  aa  6 00536 2521 00	spri2	pr6|350
+002141  aa  6 00532 6211 00	eax1 	pr6|346
+002142  aa   004000 4310 07	fld  	2048,dl
+002143  aa  6 00044 3701 20	epp4 	pr6|36,*
+002144  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002145  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 172
+	comp_cycle_uid = "0"b;
+
+002146  aa  6 00112 4501 00	stz  	pr6|74		comp_cycle_uid
+						STATEMENT 1 ON LINE 173
+	group = 1;
+
+002147  aa   000001 2360 07	ldq  	1,dl
+002150  aa  6 00111 7561 00	stq  	pr6|73		group
+						STATEMENT 1 ON LINE 174
+	comp_open_time = 0;
+
+002151  aa   775701 2370 04	ldaq 	-1087,ic		000052 = 000000000000 000000000000
+002152  aa  6 00114 7571 00	staq 	pr6|76		comp_open_time
+						STATEMENT 1 ON LINE 176
+	do i = backup_volume_log.next to 1 by -1;
+
+002153  aa  6 00322 3735 20	epp7 	pr6|210,*		bvlp
+002154  aa  7 02030 2361 00	ldq  	pr7|1048		backup_volume_log.next
+002155  aa  6 00174 7561 00	stq  	pr6|124		i
+002156  aa  6 00174 2361 00	ldq  	pr6|124		i
+002157  aa   000001 1160 07	cmpq 	1,dl
+002160  aa   000237 6040 04	tmi  	159,ic		002417
+						STATEMENT 1 ON LINE 177
+	     bvlep = addr (backup_volume_log.array (i));
+
+002161  aa   000042 4020 07	mpy  	34,dl
+002162  aa  6 00322 3735 20	epp7 	pr6|210,*		bvlp
+002163  aa  7 02036 3735 06	epp7 	pr7|1054,ql	backup_volume_log.array
+002164  aa  6 00324 6535 00	spri7	pr6|212		bvlep
+						STATEMENT 1 ON LINE 178
+	     if (volname ^= "" & volname = bvle.volname) | (volname = "")
+	     | stats then do;
+
+002165  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+002166  aa  6 00250 00 0040	desc9a	pr6|168,32	volname
+002167  aa   000447 00 0000	desc9a	295,0		002634 = 055141000000
+002170  aa   000005 6000 04	tze  	5,ic		002175
+002171  aa  040 100 106 500	cmpc 	(pr),(pr),fill(040)
+002172  aa  6 00250 00 0040	desc9a	pr6|168,32	volname
+002173  aa  7 00002 00 0040	desc9a	pr7|2,32		bvle.volname
+002174  aa   000007 6000 04	tze  	7,ic		002203
+002175  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+002176  aa  6 00250 00 0040	desc9a	pr6|168,32	volname
+002177  aa   000437 00 0000	desc9a	287,0		002634 = 055141000000
+002200  aa   000003 6000 04	tze  	3,ic		002203
+002201  aa  6 00265 2351 00	lda  	pr6|181		stats
+002202  aa   000212 6000 04	tze  	138,ic		002414
+						STATEMENT 1 ON LINE 180
+	        if bvle.dump_type = comp then do;
+
+002203  aa  7 00001 2361 00	ldq  	pr7|1		bvle.dump_type
+002204  aa   000003 1160 07	cmpq 	3,dl
+002205  aa   000031 6010 04	tnz  	25,ic		002236
+						STATEMENT 1 ON LINE 181
+		   if bvle.cycle_uid ^= comp_cycle_uid then do;
+
+002206  aa  7 00000 2351 00	lda  	pr7|0		bvle.cycle_uid
+002207  aa  6 00112 1151 00	cmpa 	pr6|74		comp_cycle_uid
+002210  aa   000026 6000 04	tze  	22,ic		002236
+						STATEMENT 1 ON LINE 182
+		      if comp_cycle_uid ^= "0"b then
+		         group = group + 1;
+
+002211  aa  6 00112 2351 00	lda  	pr6|74		comp_cycle_uid
+002212  aa   000002 6000 04	tze  	2,ic		002214
+002213  aa  6 00111 0541 00	aos  	pr6|73		group
+						STATEMENT 1 ON LINE 184
+		      comp_cycle_uid = bvle.cycle_uid;
+
+002214  aa  7 00000 2351 00	lda  	pr7|0		bvle.cycle_uid
+002215  aa  6 00112 7551 00	sta  	pr6|74		comp_cycle_uid
+						STATEMENT 1 ON LINE 186
+		      do lowest_start_idx = i to 1 by -1;
+
+002216  aa  6 00174 2361 00	ldq  	pr6|124		i
+002217  aa  6 00110 7561 00	stq  	pr6|72		lowest_start_idx
+002220  aa  6 00110 2361 00	ldq  	pr6|72		lowest_start_idx
+002221  aa   000001 1160 07	cmpq 	1,dl
+002222  aa   000014 6040 04	tmi  	12,ic		002236
+						STATEMENT 1 ON LINE 187
+		         if backup_volume_log.array (lowest_start_idx).cycle_uid = bvle.cycle_uid then
+			  comp_open_time = backup_volume_log.array (lowest_start_idx).open_time;
+
+002223  aa   000042 4020 07	mpy  	34,dl
+002224  aa  6 00652 7561 00	stq  	pr6|426
+002225  aa  6 00322 3735 20	epp7 	pr6|210,*		bvlp
+002226  aa  7 02036 2351 06	lda  	pr7|1054,ql	backup_volume_log.cycle_uid
+002227  aa  6 00324 1151 20	cmpa 	pr6|212,*		bvle.cycle_uid
+002230  aa   000003 6010 04	tnz  	3,ic		002233
+002231  aa  7 02050 2371 06	ldaq 	pr7|1064,ql	backup_volume_log.open_time
+002232  aa  6 00114 7571 00	staq 	pr6|76		comp_open_time
+						STATEMENT 1 ON LINE 189
+		         end;
+
+002233  aa   000001 3360 07	lcq  	1,dl
+002234  aa  6 00110 0561 00	asq  	pr6|72		lowest_start_idx
+002235  aa   777763 7100 04	tra  	-13,ic		002220
+						STATEMENT 1 ON LINE 190
+		      end;
+
+						STATEMENT 1 ON LINE 191
+		   end;
+
+						STATEMENT 1 ON LINE 193
+                    if ^stats then
+                       if type = 0 | type = bvle.dump_type then
+		      call ioa_ ("^[^2d^s^;^s^2d^]  ^4a  ^10a^22t^15a^39t^15a^55t^5d ^5d ^5d ^6d",
+   		         (comp_open_time < bvle.close_time & bvle.close_time > 0), group, group + 1,
+ 		         ascii_type (bvle.dump_type), bvle.volname, time_string_ (bvle.open_time),
+		         time_string_ (bvle.close_time), bvle.dir_num, bvle.dir_rec, bvle.seg_num, bvle.seg_rec);
+
+002236  aa  6 00265 2351 00	lda  	pr6|181		stats
+002237  aa   000135 6010 04	tnz  	93,ic		002374
+002240  aa  6 00270 2361 00	ldq  	pr6|184		type
+002241  aa   000004 6000 04	tze  	4,ic		002245
+002242  aa  6 00324 3735 20	epp7 	pr6|212,*		bvlep
+002243  aa  7 00001 1161 00	cmpq 	pr7|1		bvle.dump_type
+002244  aa   000150 6010 04	tnz  	104,ic		002414
+002245  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002246  aa   776053 00 0100	desc9a	-981,64		000320 = 136133136062
+002247  aa  6 00430 00 0100	desc9a	pr6|280,64
+002250  aa  6 00324 3735 20	epp7 	pr6|212,*		bvlep
+002251  aa  7 00014 2371 00	ldaq 	pr7|12		bvle.close_time
+002252  aa  0 00503 7001 00	tsx0 	pr0|323		r_g_a
+002253  aa  6 00652 7551 00	sta  	pr6|426
+002254  aa  6 00114 2371 00	ldaq 	pr6|76		comp_open_time
+002255  aa  7 00014 1171 00	cmpaq	pr7|12		bvle.close_time
+002256  aa  0 00474 7001 00	tsx0 	pr0|316		r_l_a
+002257  aa  6 00652 3751 00	ana  	pr6|426
+002260  aa  6 00652 7551 00	sta  	pr6|426
+002261  aa  6 00111 2361 00	ldq  	pr6|73		group
+002262  aa   000001 0760 07	adq  	1,dl
+002263  aa  6 00653 7561 00	stq  	pr6|427
+002264  aa  7 00012 3521 00	epp2 	pr7|10		bvle.open_time
+002265  aa  6 00420 2521 00	spri2	pr6|272
+002266  aa  6 00540 3521 00	epp2 	pr6|352
+002267  aa  6 00422 2521 00	spri2	pr6|274
+002270  aa  6 00416 3521 00	epp2 	pr6|270
+002271  aa   010000 4310 07	fld  	4096,dl
+002272  aa  2 00000 7571 00	staq 	pr2|0
+002273  aa   000167 6700 04	tsp4 	119,ic		002462
+002274  aa  6 00324 3735 20	epp7 	pr6|212,*		bvlep
+002275  aa  7 00014 3521 00	epp2 	pr7|12		bvle.close_time
+002276  aa  6 00420 2521 00	spri2	pr6|272
+002277  aa  6 00546 3521 00	epp2 	pr6|358
+002300  aa  6 00422 2521 00	spri2	pr6|274
+002301  aa  6 00416 3521 00	epp2 	pr6|270
+002302  aa   010000 4310 07	fld  	4096,dl
+002303  aa  2 00000 7571 00	staq 	pr2|0
+002304  aa   000156 6700 04	tsp4 	110,ic		002462
+002305  aa  6 00430 3521 00	epp2 	pr6|280
+002306  aa  6 00564 2521 00	spri2	pr6|372
+002307  aa  6 00652 3521 00	epp2 	pr6|426
+002310  aa  6 00566 2521 00	spri2	pr6|374
+002311  aa  6 00111 3521 00	epp2 	pr6|73		group
+002312  aa  6 00570 2521 00	spri2	pr6|376
+002313  aa  6 00653 3521 00	epp2 	pr6|427
+002314  aa  6 00572 2521 00	spri2	pr6|378
+002315  aa  6 00324 3735 20	epp7 	pr6|212,*		bvlep
+002316  aa  7 00001 7271 00	lxl7 	pr7|1		bvle.dump_type
+002317  ta   000000 3520 17	epp2 	0,7
+002320  aa  6 00574 2521 00	spri2	pr6|380
+002321  aa  7 00002 3521 00	epp2 	pr7|2		bvle.volname
+002322  aa  6 00576 2521 00	spri2	pr6|382
+002323  aa  6 00540 3521 00	epp2 	pr6|352
+002324  aa  6 00600 2521 00	spri2	pr6|384
+002325  aa  6 00546 3521 00	epp2 	pr6|358
+002326  aa  6 00602 2521 00	spri2	pr6|386
+002327  aa  7 00037 3521 00	epp2 	pr7|31		bvle.dir_num
+002330  aa  6 00604 2521 00	spri2	pr6|388
+002331  aa   000022 7260 07	lxl6 	18,dl
+002332  aa  7 00037 3521 00	epp2 	pr7|31		bvle.dir_rec
+002333  aa  2 00000 5035 16	abd  	pr2|0,6
+002334  aa  6 00606 2521 00	spri2	pr6|390
+002335  aa  7 00040 3521 00	epp2 	pr7|32		bvle.seg_num
+002336  aa  6 00610 2521 00	spri2	pr6|392
+002337  aa  7 00040 3521 00	epp2 	pr7|32		bvle.seg_rec
+002340  aa  2 00000 5035 16	abd  	pr2|0,6
+002341  aa  6 00612 2521 00	spri2	pr6|394
+002342  aa   775451 3520 04	epp2 	-1239,ic		000013 = 524000000076
+002343  aa  6 00614 2521 00	spri2	pr6|396
+002344  aa   775452 3520 04	epp2 	-1238,ic		000016 = 514000000001
+002345  aa  6 00616 2521 00	spri2	pr6|398
+002346  aa   775455 3520 04	epp2 	-1235,ic		000023 = 404000000021
+002347  aa  6 00620 2521 00	spri2	pr6|400
+002350  aa   775442 3520 04	epp2 	-1246,ic		000012 = 404000000022
+002351  aa  6 00622 2521 00	spri2	pr6|402
+002352  aa   775437 3520 04	epp2 	-1249,ic		000011 = 526000000004
+002353  aa  6 00624 2521 00	spri2	pr6|404
+002354  aa   775434 3520 04	epp2 	-1252,ic		000010 = 524000000040
+002355  aa  6 00626 2521 00	spri2	pr6|406
+002356  aa   775431 3520 04	epp2 	-1255,ic		000007 = 524000000017
+002357  aa  6 00630 2521 00	spri2	pr6|408
+002360  aa  6 00632 2521 00	spri2	pr6|410
+002361  aa   775425 3520 04	epp2 	-1259,ic		000006 = 406000000021
+002362  aa  6 00634 2521 00	spri2	pr6|412
+002363  aa  6 00636 2521 00	spri2	pr6|414
+002364  aa  6 00640 2521 00	spri2	pr6|416
+002365  aa  6 00642 2521 00	spri2	pr6|418
+002366  aa  6 00562 6211 00	eax1 	pr6|370
+002367  aa   060000 4310 07	fld  	24576,dl
+002370  aa  6 00044 3701 20	epp4 	pr6|36,*
+002371  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002372  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 199
+                       else;
+
+002373  aa   000021 7100 04	tra  	17,ic		002414
+						STATEMENT 1 ON LINE 200
+		else do;
+
+						STATEMENT 1 ON LINE 201
+		     entries = entries + 1;
+
+002374  aa  6 00262 0541 00	aos  	pr6|178		entries
+						STATEMENT 1 ON LINE 202
+		     dir_num = dir_num + bvle.dir_num;
+
+002375  aa  6 00324 3735 20	epp7 	pr6|212,*		bvlep
+002376  aa  7 00037 2351 00	lda  	pr7|31		bvle.dir_num
+002377  aa   000066 7330 00	lrs  	54
+002400  aa  6 00264 0561 00	asq  	pr6|180		dir_num
+						STATEMENT 1 ON LINE 203
+		     dir_rec = dir_rec + bvle.dir_rec;
+
+002401  aa  7 00037 2351 00	lda  	pr7|31		bvle.dir_rec
+002402  aa   000022 7350 00	als  	18
+002403  aa   000066 7330 00	lrs  	54
+002404  aa  6 00263 0561 00	asq  	pr6|179		dir_rec
+						STATEMENT 1 ON LINE 204
+		     seg_num = seg_num + bvle.seg_num;
+
+002405  aa  7 00040 2351 00	lda  	pr7|32		bvle.seg_num
+002406  aa   000066 7330 00	lrs  	54
+002407  aa  6 00260 0561 00	asq  	pr6|176		seg_num
+						STATEMENT 1 ON LINE 205
+		     seg_rec = seg_rec + bvle.seg_rec;
+
+002410  aa  7 00040 2351 00	lda  	pr7|32		bvle.seg_rec
+002411  aa   000022 7350 00	als  	18
+002412  aa   000066 7330 00	lrs  	54
+002413  aa  6 00261 0561 00	asq  	pr6|177		seg_rec
+						STATEMENT 1 ON LINE 206
+		end;
+
+						STATEMENT 1 ON LINE 207
+	     end;
+
+						STATEMENT 1 ON LINE 208
+	end;
+
+002414  aa   000001 3360 07	lcq  	1,dl
+002415  aa  6 00174 0561 00	asq  	pr6|124		i
+002416  aa   777540 7100 04	tra  	-160,ic		002156
+						STATEMENT 1 ON LINE 210
+	if stats then call ioa_ ("^d^-^d^-^d^-^d^-^d",
+	     entries, dir_num, dir_rec, seg_num, seg_rec);
+
+002417  aa  6 00265 2351 00	lda  	pr6|181		stats
+002420  aa   000035 6000 04	tze  	29,ic		002455
+002421  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002422  aa   775506 00 0024	desc9a	-1210,20		000127 = 136144136055
+002423  aa  6 00554 00 0024	desc9a	pr6|364,20
+002424  aa  6 00554 3521 00	epp2 	pr6|364
+002425  aa  6 00432 2521 00	spri2	pr6|282
+002426  aa  6 00262 3521 00	epp2 	pr6|178		entries
+002427  aa  6 00434 2521 00	spri2	pr6|284
+002430  aa  6 00264 3521 00	epp2 	pr6|180		dir_num
+002431  aa  6 00436 2521 00	spri2	pr6|286
+002432  aa  6 00263 3521 00	epp2 	pr6|179		dir_rec
+002433  aa  6 00440 2521 00	spri2	pr6|288
+002434  aa  6 00260 3521 00	epp2 	pr6|176		seg_num
+002435  aa  6 00442 2521 00	spri2	pr6|290
+002436  aa  6 00261 3521 00	epp2 	pr6|177		seg_rec
+002437  aa  6 00444 2521 00	spri2	pr6|292
+002440  aa   775345 3520 04	epp2 	-1307,ic		000005 = 524000000022
+002441  aa  6 00446 2521 00	spri2	pr6|294
+002442  aa   775361 3520 04	epp2 	-1295,ic		000023 = 404000000021
+002443  aa  6 00450 2521 00	spri2	pr6|296
+002444  aa  6 00452 2521 00	spri2	pr6|298
+002445  aa  6 00454 2521 00	spri2	pr6|300
+002446  aa  6 00456 2521 00	spri2	pr6|302
+002447  aa  6 00460 2521 00	spri2	pr6|304
+002450  aa  6 00430 6211 00	eax1 	pr6|280
+002451  aa   030000 4310 07	fld  	12288,dl
+002452  aa  6 00044 3701 20	epp4 	pr6|36,*
+002453  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002454  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 212
+finale:						/* cleanup - unlock and terminate */
+	call finish_;
+
+002455  aa  6 00056 6211 00	eax1 	pr6|46
+002456  aa   000000 4310 07	fld  	0,dl
+002457  aa   000051 3520 04	epp2 	41,ic		002530 = 000120627000
+002460  aa  0 00625 7001 00	tsx0 	pr0|405		call_int_this
+						STATEMENT 1 ON LINE 214
+	return;
+
+002461  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 297
+     end display_volume_log;
+
+BEGIN PROCEDURE time_string_
+ENTRY TO time_string_                                       STATEMENT 1 ON LINE 216
+time_string_: proc (time) returns (char (15));
+
+002462  aa  6 00326 6501 00	spri4	pr6|214
+002463  aa  6 00330 2521 00	spri2	pr6|216
+						STATEMENT 1 ON LINE 221
+	    return (date_time_$format (
+	        "^my/^dm/^yc ^Hd^99v.9MH", time, "", ""));
+
+002464  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002465  aa   775455 00 0030	desc9a	-1235,24		000141 = 136155171057
+002466  aa  6 00654 00 0030	desc9a	pr6|428,24
+002467  aa  6 00654 3521 00	epp2 	pr6|428
+002470  aa  6 00766 2521 00	spri2	pr6|502
+002471  aa  6 00330 3735 20	epp7 	pr6|216,*
+002472  aa  7 00002 3521 20	epp2 	pr7|2,*		time
+002473  aa  6 00770 2521 00	spri2	pr6|504
+002474  aa  6 00662 3521 00	epp2 	pr6|434
+002475  aa  6 00772 2521 00	spri2	pr6|506
+002476  aa  6 00663 3521 00	epp2 	pr6|435
+002477  aa  6 00774 2521 00	spri2	pr6|508
+002500  aa  6 00665 3521 00	epp2 	pr6|437
+002501  aa  6 00776 2521 00	spri2	pr6|510
+002502  aa   775316 3520 04	epp2 	-1330,ic		000020 = 524000000027
+002503  aa  6 01000 2521 00	spri2	pr6|512
+002504  aa   775300 3520 04	epp2 	-1344,ic		000004 = 410000000107
+002505  aa  6 01002 2521 00	spri2	pr6|514
+002506  aa   775316 3520 04	epp2 	-1330,ic		000024 = 524000000000
+002507  aa  6 01004 2521 00	spri2	pr6|516
+002510  aa  6 01006 2521 00	spri2	pr6|518
+002511  aa   775335 3520 04	epp2 	-1315,ic		000046 = 530000000372
+002512  aa  6 01010 2521 00	spri2	pr6|520
+002513  aa  6 00764 6211 00	eax1 	pr6|500
+002514  aa   024000 4310 07	fld  	10240,dl
+002515  aa  6 00044 3701 20	epp4 	pr6|36,*
+002516  la  4 00030 3521 20	epp2 	pr4|24,*		date_time_$format
+002517  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+002520  aa  6 00330 3735 20	epp7 	pr6|216,*
+002521  aa  7 00004 3715 20	epp5 	pr7|4,*
+002522  aa  6 00664 7271 00	lxl7 	pr6|436
+002523  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+002524  aa  6 00665 00 0017	desc9a	pr6|437,x7
+002525  aa  5 00000 00 0017	desc9a	pr5|0,15
+002526  aa  6 00326 6101 00	rtcd 	pr6|214
+						STATEMENT 1 ON LINE 223
+	end time_string_;
+
+  END PROCEDURE time_string_
+BEGIN PROCEDURE finish_
+ENTRY TO finish_                                            STATEMENT 1 ON LINE 225
+finish_:	proc;
+
+002527  da     000242200000
+002530  aa   000120 6270 00	eax7 	80
+002531  aa  7 00034 3521 20	epp2 	pr7|28,*
+002532  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+002533  aa     000000000000
+002534  aa     000000000000
+						STATEMENT 1 ON LINE 226
+	     if (bvlp ^= null) & (locked) then call set_lock_$unlock (backup_volume_log.lock, ignore);
+
+002535  aa  6 00040 3735 20	epp7 	pr6|32,*
+002536  aa  7 00322 2371 00	ldaq 	pr7|210		bvlp
+002537  aa   775341 6770 04	eraq 	-1311,ic		000100 = 077777000043 000001000000
+002540  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+002541  aa   000014 6000 04	tze  	12,ic		002555
+002542  aa  7 00274 2351 00	lda  	pr7|188		locked
+002543  aa   000012 6000 04	tze  	10,ic		002555
+002544  aa  7 00322 3715 20	epp5 	pr7|210,*		bvlp
+002545  aa  5 02016 3521 00	epp2 	pr5|1038		backup_volume_log.lock
+002546  aa  6 00102 2521 00	spri2	pr6|66
+002547  aa  7 00267 3521 00	epp2 	pr7|183		ignore
+002550  aa  6 00104 2521 00	spri2	pr6|68
+002551  aa  6 00100 6211 00	eax1 	pr6|64
+002552  aa   010000 4310 07	fld  	4096,dl
+002553  la  4 00034 3521 20	epp2 	pr4|28,*		set_lock_$unlock
+002554  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 227
+	     if bvlp ^= null then call hcs_$terminate_noname (bvlp, ignore);
+
+002555  aa  6 00040 3735 20	epp7 	pr6|32,*
+002556  aa  7 00322 2371 00	ldaq 	pr7|210		bvlp
+002557  aa   775321 6770 04	eraq 	-1327,ic		000100 = 077777000043 000001000000
+002560  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+002561  aa   000012 6000 04	tze  	10,ic		002573
+002562  aa  7 00322 3521 00	epp2 	pr7|210		bvlp
+002563  aa  6 00102 2521 00	spri2	pr6|66
+002564  aa  7 00267 3521 00	epp2 	pr7|183		ignore
+002565  aa  6 00104 2521 00	spri2	pr6|68
+002566  aa  6 00100 6211 00	eax1 	pr6|64
+002567  aa   010000 4310 07	fld  	4096,dl
+002570  aa  6 00044 3701 20	epp4 	pr6|36,*
+002571  la  4 00024 3521 20	epp2 	pr4|20,*		hcs_$terminate_noname
+002572  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 228
+	     call ioa_ ("");
+
+002573  aa  6 00106 3521 00	epp2 	pr6|70
+002574  aa  6 00102 2521 00	spri2	pr6|66
+002575  aa   775227 3520 04	epp2 	-1385,ic		000024 = 524000000000
+002576  aa  6 00104 2521 00	spri2	pr6|68
+002577  aa  6 00100 6211 00	eax1 	pr6|64
+002600  aa   004000 4310 07	fld  	2048,dl
+002601  aa  6 00044 3701 20	epp4 	pr6|36,*
+002602  la  4 00026 3521 20	epp2 	pr4|22,*		ioa_
+002603  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 229
+	end finish_;
+
+002604  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END PROCEDURE finish_
+BEGIN PROCEDURE wdir_
+ENTRY TO wdir_                                              STATEMENT 1 ON LINE 230
+wdir_:	proc returns (char (168) aligned);
+
+002605  aa  6 00334 6501 00	spri4	pr6|220
+002606  aa  6 00336 2521 00	spri2	pr6|222
+						STATEMENT 1 ON LINE 235
+	     call hcs_$fs_search_get_wdir (addr (wdir), ignore);
+
+002607  aa  6 00342 3735 00	epp7 	pr6|226		wdir
+002610  aa  6 01012 6535 00	spri7	pr6|522
+002611  aa  6 01012 3521 00	epp2 	pr6|522
+002612  aa  6 01016 2521 00	spri2	pr6|526
+002613  aa  6 00267 3521 00	epp2 	pr6|183		ignore
+002614  aa  6 01020 2521 00	spri2	pr6|528
+002615  aa  6 01014 6211 00	eax1 	pr6|524
+002616  aa   010000 4310 07	fld  	4096,dl
+002617  aa  6 00044 3701 20	epp4 	pr6|36,*
+002620  la  4 00010 3521 20	epp2 	pr4|8,*		hcs_$fs_search_get_wdir
+002621  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 236
+	     return (wdir);
+
+002622  aa  6 00336 3735 20	epp7 	pr6|222,*
+002623  aa  7 00002 3715 20	epp5 	pr7|2,*
+002624  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+002625  aa  6 00342 00 0250	desc9a	pr6|226,168	wdir
+002626  aa  5 00000 00 0250	desc9a	pr5|0,168
+002627  aa  6 00334 6101 00	rtcd 	pr6|220
+						STATEMENT 1 ON LINE 237
+	end wdir_;
+
+  END PROCEDURE wdir_
+  END PROCEDURE display_volume_log
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

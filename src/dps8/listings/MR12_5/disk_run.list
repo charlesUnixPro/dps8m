@@ -1,0 +1,120 @@
+	COMPILATION LISTING OF SEGMENT disk_run
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1004.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 disk_run: proc;
+       14 
+       15 /* disk_run - externally  callable  subroutine  that  forces
+       16*   looking  at status returns from disk, regardless of whether
+       17*   interrupt has come in or not (i.e. if interrupts are  masked
+       18*   due   to  some  unexplainable  set  of  circumstances,  this
+       19*   subroutine will win).
+       20*
+       21*   coded by J. A. Bush 3/11/80
+       22**/
+       23 dcl  page$time_out entry;
+       24 dcl  pmut$wire_and_mask entry (fixed bin (71), ptr);
+       25 dcl  pmut$unwire_unmask entry (fixed bin (71), ptr);
+       26 dcl  temp_msk_ptr ptr;				/* temporary for wire_and_mask (and unwire_unmask) */
+       27 dcl  mask_temp fixed bin (71);			/* temporary for wire_and_mask (and unwire_unmask) */
+       28 
+       29 	call pmut$wire_and_mask (mask_temp, temp_msk_ptr); /* wire our stack (and mask interrupts) */
+       30 	call page$time_out;				/* force looking at status */
+       31 	call pmut$unwire_unmask (mask_temp, temp_msk_ptr); /* can unwire stack now */
+       32 
+       33      end disk_run;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.5  disk_run.pl1                      >special_ldd>install>MR12.3-1114>disk_run.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+mask_temp                       000102 automatic       fixed bin(71,0)          dcl 27 set ref 29* 31*
+page$time_out                   000010 constant        entry                    external dcl 23 ref 30
+pmut$unwire_unmask              000014 constant        entry                    external dcl 25 ref 31
+pmut$wire_and_mask              000012 constant        entry                    external dcl 24 ref 29
+temp_msk_ptr                    000100 automatic       pointer                  dcl 26 set ref 29* 31*
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+disk_run                        000001 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       112         130      35         122
+Length       276      35        16         131      54           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+disk_run                             74 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+disk_run                 000100 temp_msk_ptr                disk_run
+                         000102 mask_temp                   disk_run
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+page$time_out                 pmut$unwire_unmask            pmut$wire_and_mask
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000000        29 000006        30 000016        31 000023        33 000034
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

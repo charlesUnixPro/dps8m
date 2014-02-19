@@ -1,0 +1,199 @@
+	COMPILATION LISTING OF SEGMENT initializer
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 initializer: proc ();
+        9 
+       10 /* *	INITIALIZER
+       11*   *
+       12*   *	This program is the driving procedure of Multics Initialization.
+       13*   *	It receives control from bootstrap2, and never returns. It must
+       14*   *	be separate from bootstrap2, and, in fact, be part of the permanent
+       15*   *	supervisor, because it makes the call to delete all the initialization
+       16*   *	segments. However, it does little else, and just calls real_initializer
+       17*   *	(which is an init-seg, and therefore gets deleted) to do the
+       18*   *	real work of initialization.
+       19*   *
+       20*   *	Remodeled, 12/21/80 by W. Olin Sibert
+       21*   *	Changed 10/27/84 by Allen Ball to set slt.(first last)_init_seg = 32768 after deleting them. 
+       22*   */
+       23 
+       24 	dcl     addr		 builtin;
+       25 	dcl     delete_segs$delete_segs_init entry ();
+       26 	dcl     init_proc		 entry ();
+       27 	dcl     real_initializer	 entry ();
+       28 	dcl     slt$		 external;
+       29 
+       30 
+       31 	sltp = addr (slt$);
+       32 	call real_initializer;			/* Call  the real thing */
+       33 
+       34 	call delete_segs$delete_segs_init;		/* Clean up after the previous call */
+       35 
+       36 	slt.first_init_seg = 32768;			/* These segs are no more. */
+       37 	slt.last_init_seg = 32768;			/* 32768 is > possible valid segno */
+       38 
+       39 	call init_proc;				/* And call out to ring 1, never to return */
+       40 
+  1     1 /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  1     2 
+  1     3 /* Declarations for Segment Loading Table header and array.
+  1     4*
+  1     5*   Used by Initialization and MST Checker subroutines */
+  1     6 
+  1     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  1     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  1     9     namep ptr,					/* pointer to segment name list block */
+  1    10     pathp ptr,					/* pointer to segment's directory path name */
+  1    11     aclp ptr;					/* pointer to acl structure */
+  1    12 
+  1    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  1    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  1    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  1    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  1    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  1    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  1    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  1    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  1    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  1    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  1    23 
+  1    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  1    25 
+  1    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  1    27 	2 pad bit (18) unal,
+  1    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  1    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  1    30 
+  1    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  1    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  1    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  1    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  1    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  1    36 	  3 pad bit (5) unal,
+  1    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  1    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  1    39 
+  1    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  1    41 	2 size fixed bin (17),			/* length of pathname */
+  1    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  1    43 	2 acls fixed bin;				/* ACL list starts here */
+  1    44 
+  1    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  1    46 	2 count fixed bin,				/* number of entries in acl list */
+  1    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  1    48 	  3 userid char (32),			/* user specification */
+  1    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  1    50 	  3 pad bit (36) aligned,
+  1    51 	  3 code fixed bin;
+  1    52 
+  1    53 
+  1    54 /* END INCLUDE FILE slt.incl.pl1 */
+       41 
+       42      end initializer;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0825.5  initializer.pl1                   >special_ldd>install>MR12.3-1114>initializer.pl1
+41           1    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 24 ref 31
+delete_segs$delete_segs_init    000010 constant        entry                    external dcl 25 ref 34
+first_init_seg            5            based           fixed bin(18,0)          level 2 dcl 1-13 set ref 36*
+init_proc                       000012 constant        entry                    external dcl 26 ref 39
+last_init_seg             6            based           fixed bin(18,0)          level 2 dcl 1-13 set ref 37*
+real_initializer                000014 constant        entry                    external dcl 27 ref 32
+slt                                    based           structure                level 1 dcl 1-13
+slt$                            000016 external static fixed bin(17,0)          dcl 28 set ref 31
+sltp                            000100 automatic       pointer                  dcl 1-7 set ref 31* 36 37
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+aclp                                   automatic       pointer                  dcl 1-7
+acls                                   based           structure                level 1 dcl 1-45
+name_seg                               based           structure                level 1 dcl 1-26
+namep                                  automatic       pointer                  dcl 1-7
+names_ptr                              automatic       pointer                  dcl 1-7
+path                                   based           structure                level 1 dcl 1-40
+pathp                                  automatic       pointer                  dcl 1-7
+segnam                                 based           structure                level 1 dcl 1-31
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+initializer                     000001 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       114         134      33         124
+Length       316      33        20         145      61           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+initializer                          66 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+initializer              000100 sltp                        initializer
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+delete_segs$delete_segs_init  init_proc                     real_initializer
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+slt$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000000        31 000006        32 000010        34 000014        36 000021        37 000024        39 000025
+     42 000032
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

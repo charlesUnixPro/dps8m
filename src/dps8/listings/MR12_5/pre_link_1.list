@@ -1,0 +1,1139 @@
+ASSEMBLY LISTING OF SEGMENT >dumps>old>recomp>pre_link_1.alm                  
+ASSEMBLED ON:	10/28/82  1222.7 mst Thu
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.4  April 1981    
+ASSEMBLER CREATED:	07/17/81  1819.2 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " ***********************************************************
+                                     6  " PRE_LINK_1 - Pre-Link Driver for Multics Initialization.
+                                     7  
+                                     8  "Last modified (date and reason)
+                                     9  "	10/76 by M. Weaver to reference lot size from stack header
+                                    10  "	4/5/76 by N. I. Morris for separate defs
+                                    11  "	6/20/75  by S.Webber to add separate static capability
+                                    12  "	9/21/74  by S.Webber as part of combining stack,lot, and clr
+                                    13  "	6/15/72  by C.Jensen for followon
+                                    14  "	01/20/69 by N.Morris for new file system
+                                    15  "	08/12/76 by N.Morris to remove lot_maintainer
+                                    16  
+                                    17  
+                                    18  "  ******************************************************
+                                    19  "  *                                                    *
+                                    20  "  *                                                    *
+                                    21  "  * Copyright (c) 1972 by Massachusetts Institute of   *
+                                    22  "  * Technology and Honeywell Information Systems, Inc. *
+                                    23  "  *                                                    *
+                                    24  "  *                                                    *
+                                    25  "  ******************************************************
+                                    26  
+                                    27  
+                                    28  
+                                    29  
+    000000                          30  	name	pre_link_1
+                                    31  
+                                    32  
+                                    33  	tempd	slt_man_ptr	pointer to the SLT manager
+                                    34  	tempd	stp		pointer to static section
+                                    35  	tempd	arglist(4)	argument list for random calls
+                                    36  	tempd	slt_ptr		pointer to the SLT
+                                    37  	tempd	lot_ptr		pointer to the LOT
+                                    38  	tempd	pre_linker_ptr	pointer to pre-linking linker
+                                    39  	tempd	dseg_ptr		pointer to the descriptor segment
+                                    40  	tempd	lp		linkage section pointer
+                                    41  	tempd	textp		text segment pointer
+                                    42  	tempd	get_text_link_ptr_ptr(2) pointer to slt_manager$get_text_link_ptr
+                                    43  	tempd	link_pair_ptr	pointer to linkage fault pair
+                                    44  	temp	lim		segment number limit
+                                    45  	temp	temp		temporary
+                                    46  	temp	err_sw		error switch
+                                    47  
+                                    48  
+                                    49  " 
+                                    50  
+                                    51  " Offsets of SLT manager entries.
+                                    52  
+                        000002      53  	equ	get_seg_ptr,2
+                        000004      54  	equ	get_text_link_ptr,4
+                                    55  
+                                    56  " Offsets of LOT maintainer entries.
+                                    57  
+                        000002      58  	equ	copy_linkage,2
+                        000001      59  	equ	set_lp,1
+                        000000      60  	equ	get_lp,0
+                                    61  
+                                    62  " Offset of Pre-linker entry.
+                                    63  
+                        000000      64  	equ	force_link,0
+                                    65  
+                        000046      66  	bool	f2,46		fault tag 2 code
+                                    67  
+                                    68  
+                                    69  
+                                    70  	include	slt
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE slt.incl.alm
+                                   1-4  
+                                   1-5  	"Created 11/04/76  1459.6 est Thu by convert_include_file,
+                                   1-6  	"   Version of 04/30/76  1208.1 est Fri.
+                                   1-7  
+                                   1-8  	"Made from >user_dir_dir>Multics>Morris>slt>include>slt.incl.pl1,
+                                   1-9  	"   modified 11/04/76  1459.5 est Thu
+                                  1-10  
+                                  1-11  "
+                                  1-12  "	Structure slt
+                                  1-13  "
+                        100010    1-14  	equ	slt_size,32776
+                                  1-15  
+                                  1-16  
+                        000000    1-17  	equ	slt.name_seg_ptr,0
+                        000002    1-18  	equ	slt.free_core_start,2
+                        000003    1-19  	equ	slt.first_sup_seg,3
+                        000004    1-20  	equ	slt.last_sup_seg,4
+                        000005    1-21  	equ	slt.first_init_seg,5
+                        000006    1-22  	equ	slt.last_init_seg,6
+                        000007    1-23  	equ	slt.free_core_size,7
+                        000010    1-24  	equ	slt.seg,8			"LEVEL 2
+                                  1-25  
+                        000010    1-26  	equ	slt.slte,8
+                                  1-27  
+                                  1-28  "
+                                  1-29  "	Structure name_seg
+                                  1-30  "
+                        000201    1-31  	equ	name_seg_size,129
+                                  1-32  
+                        000000    1-33  	equ	name_seg.next_loc,0		"LOWER
+                                  1-34  
+                        000001    1-35  	equ	name_seg.ht,1		"UPPER
+                                  1-36  
+                                  1-37  "
+                                  1-38  "	Structure segnam
+                                  1-39  "
+                                  1-40  
+                        000000    1-41  	equ	segnam.count,0
+                        000001    1-42  	equ	segnam.names,1		"LEVEL 2
+                                  1-43  
+                        000001    1-44  	equ	segnam.hp,1		"UPPER
+                        400000    1-45  	bool	segnam.ref,400000		"DL
+                        000000    1-46  	equ	segnam.segno_shift,0
+                        007777    1-47  	bool	segnam.segno_mask,007777
+                                  1-48  
+                        000002    1-49  	equ	segnam.name,2		"DOUBLE
+                                  1-50  
+                                  1-51  "
+                                  1-52  "	Structure path
+                                  1-53  "
+                        000000    1-54  	equ	path.size,0
+                        000001    1-55  	equ	path.name,1
+                        000000    1-56  	equ	path.acls,0
+                                  1-57  
+                                  1-58  "
+                                  1-59  "	Structure acls
+                                  1-60  "
+                        000000    1-61  	equ	acls.count,0
+                        000001    1-62  	equ	acls.acl,1		"LEVEL 2
+                                  1-63  
+                        000001    1-64  	equ	acls.userid,1		"DOUBLE
+                        000011    1-65  	equ	acls.mode,9
+                        000013    1-66  	equ	acls.code,11
+                                  1-67  
+                                  1-68       "END INCLUDE FILE slt.incl.alm
+                                    71  
+                                    72  " 
+                                    73  
+                                    74  	include	slte
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE slte.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 08/13/82  0906.3 edt Fri by convert_include_file,
+                                   2-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   2-8  
+                                   2-9  	"Made from >bootload>include>slte.incl.pl1,
+                                  2-10  	"   modified 08/12/82  1335.9 edt Thu
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure slte_uns
+                                  2-14  "
+                        000004    2-15  	equ	slte_uns_size,4
+                                  2-16  
+                        000000    2-17  	equ	slte_uns.names_ptr,0	" UPPER
+                        000000    2-18  	equ	slte_uns.path_ptr,0		" LOWER
+                                  2-19  
+                        000001    2-20  	equ	slte_uns.access_word,1
+                        000040    2-21  	equ	slte_uns.access_shift,32
+                        000017    2-22  	bool	slte_uns.access_mask,000017
+                        000001    2-23  	equ	slte_uns.cache_word,1
+                        020000    2-24  	bool	slte_uns.cache,020000	" DU
+                        000001    2-25  	equ	slte_uns.abs_seg_word,1
+                        010000    2-26  	bool	slte_uns.abs_seg,010000	" DU
+                        000001    2-27  	equ	slte_uns.firmware_seg_word,1
+                        004000    2-28  	bool	slte_uns.firmware_seg,004000	" DU
+                        000001    2-29  	equ	slte_uns.layout_seg_word,1
+                        002000    2-30  	bool	slte_uns.layout_seg,002000	" DU
+                        000001    2-31  	equ	slte_uns.wired_word,1
+                        000040    2-32  	bool	slte_uns.wired,000040	" DU
+                        000001    2-33  	equ	slte_uns.paged_word,1
+                        000020    2-34  	bool	slte_uns.paged,000020	" DU
+                        000001    2-35  	equ	slte_uns.per_process_word,1
+                        000010    2-36  	bool	slte_uns.per_process,000010	" DU
+                        000001    2-37  	equ	slte_uns.acl_provided_word,1
+                        000001    2-38  	bool	slte_uns.acl_provided,000001	" DU
+                        000001    2-39  	equ	slte_uns.branch_required_word,1
+                        040000    2-40  	bool	slte_uns.branch_required,040000 " DL
+                        000001    2-41  	equ	slte_uns.init_seg_word,1
+                        020000    2-42  	bool	slte_uns.init_seg,020000	" DL
+                        000001    2-43  	equ	slte_uns.temp_seg_word,1
+                        010000    2-44  	bool	slte_uns.temp_seg,010000	" DL
+                        000001    2-45  	equ	slte_uns.link_provided_word,1
+                        004000    2-46  	bool	slte_uns.link_provided,004000	" DL
+                        000001    2-47  	equ	slte_uns.link_sect_word,1
+                        002000    2-48  	bool	slte_uns.link_sect,002000	" DL
+                        000001    2-49  	equ	slte_uns.link_sect_wired_word,1
+                        001000    2-50  	bool	slte_uns.link_sect_wired,001000 " DL
+                        000001    2-51  	equ	slte_uns.combine_link_word,1
+                        000400    2-52  	bool	slte_uns.combine_link,000400	" DL
+                        000001    2-53  	equ	slte_uns.pre_linked_word,1
+                        000200    2-54  	bool	slte_uns.pre_linked,000200	" DL
+                        000001    2-55  	equ	slte_uns.defs_word,1
+                        000100    2-56  	bool	slte_uns.defs,000100	" DL
+                                  2-57  
+                        000002    2-58  	equ	slte_uns.cur_length_word,2
+                        000033    2-59  	equ	slte_uns.cur_length_shift,27
+                        000777    2-60  	bool	slte_uns.cur_length_mask,000777
+                        000002    2-61  	equ	slte_uns.ringbrack_word,2
+                        000030    2-62  	equ	slte_uns.ringbrack_shift,24
+                        000007    2-63  	bool	slte_uns.ringbrack_mask,000007
+                        000002    2-64  	equ	slte_uns.segno,2		" LOWER
+                                  2-65  
+                        000003    2-66  	equ	slte_uns.max_length_word,3
+                        000030    2-67  	equ	slte_uns.max_length_shift,24
+                        000777    2-68  	bool	slte_uns.max_length_mask,000777
+                        000003    2-69  	equ	slte_uns.bit_count_word,3
+                        000000    2-70  	equ	slte_uns.bit_count_shift,0
+                                  2-71  
+                                  2-72  "
+                                  2-73  "	Structure slte
+                                  2-74  "
+                        000004    2-75  	equ	slte_size,4
+                                  2-76  
+                        000000    2-77  	equ	slte.names_ptr,0		" UPPER
+                        000000    2-78  	equ	slte.path_ptr,0		" LOWER
+                                  2-79  
+                        000001    2-80  	equ	slte.access_word,1
+                        000040    2-81  	equ	slte.access_shift,32
+                        000017    2-82  	bool	slte.access_mask,000017
+                        000001    2-83  	equ	slte.cache_word,1
+                        020000    2-84  	bool	slte.cache,020000		" DU
+                        000001    2-85  	equ	slte.abs_seg_word,1
+                        010000    2-86  	bool	slte.abs_seg,010000		" DU
+                        000001    2-87  	equ	slte.firmware_seg_word,1
+                        004000    2-88  	bool	slte.firmware_seg,004000	" DU
+                        000001    2-89  	equ	slte.layout_seg_word,1
+                        002000    2-90  	bool	slte.layout_seg,002000	" DU
+                        000001    2-91  	equ	slte.wired_word,1
+                        000040    2-92  	bool	slte.wired,000040		" DU
+                        000001    2-93  	equ	slte.paged_word,1
+                        000020    2-94  	bool	slte.paged,000020		" DU
+                        000001    2-95  	equ	slte.per_process_word,1
+                        000010    2-96  	bool	slte.per_process,000010	" DU
+                        000001    2-97  	equ	slte.acl_provided_word,1
+                        000001    2-98  	bool	slte.acl_provided,000001	" DU
+                        000001    2-99  	equ	slte.branch_required_word,1
+                        040000   2-100  	bool	slte.branch_required,040000	" DL
+                        000001   2-101  	equ	slte.init_seg_word,1
+                        020000   2-102  	bool	slte.init_seg,020000	" DL
+                        000001   2-103  	equ	slte.temp_seg_word,1
+                        010000   2-104  	bool	slte.temp_seg,010000	" DL
+                        000001   2-105  	equ	slte.link_provided_word,1
+                        004000   2-106  	bool	slte.link_provided,004000	" DL
+                        000001   2-107  	equ	slte.link_sect_word,1
+                        002000   2-108  	bool	slte.link_sect,002000	" DL
+                        000001   2-109  	equ	slte.link_sect_wired_word,1
+                        001000   2-110  	bool	slte.link_sect_wired,001000	" DL
+                        000001   2-111  	equ	slte.combine_link_word,1
+                        000400   2-112  	bool	slte.combine_link,000400	" DL
+                        000001   2-113  	equ	slte.pre_linked_word,1
+                        000200   2-114  	bool	slte.pre_linked,000200	" DL
+                        000001   2-115  	equ	slte.defs_word,1
+                        000100   2-116  	bool	slte.defs,000100		" DL
+                                 2-117  
+                        000002   2-118  	equ	slte.cur_length_word,2
+                        000033   2-119  	equ	slte.cur_length_shift,27
+                        000777   2-120  	bool	slte.cur_length_mask,000777
+                        000002   2-121  	equ	slte.ringbrack_word,2
+                        000030   2-122  	equ	slte.ringbrack_shift,24
+                        000007   2-123  	bool	slte.ringbrack_mask,000007
+                        000002   2-124  	equ	slte.segno,2		" LOWER
+                                 2-125  
+                        000003   2-126  	equ	slte.max_length_word,3
+                        000030   2-127  	equ	slte.max_length_shift,24
+                        000777   2-128  	bool	slte.max_length_mask,000777
+                        000003   2-129  	equ	slte.bit_count_word,3
+                        000000   2-130  	equ	slte.bit_count_shift,0
+                                 2-131  
+                                 2-132       "END INCLUDE FILE slte.incl.alm
+                                    75  
+                                    76  " 
+                                    77  
+                                    78  	include	stack_header
+                                   3-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   3-2  "
+                                   3-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   3-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   3-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   3-6  
+                        000004     3-7  	equ	stack_header.old_lot_ptr,4		obsolete ptr to lot
+                        000006     3-8  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                   3-9  
+                        000010    3-10  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    3-11  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    3-12  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    3-13  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    3-14  	equ	stack_header.cur_lot_size,11		number of words (entries) in lot
+                                  3-15  
+                        000014    3-16  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    3-17  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  3-18  
+                        000020    3-19  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    3-20  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    3-21  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    3-22  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  3-23  
+                        000030    3-24  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    3-25  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    3-26  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    3-27  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  3-28  
+                        000040    3-29  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    3-30  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    3-31  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    3-32  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  3-33  
+                        000050    3-34  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    3-35  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    3-36  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    3-37  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  3-38  
+                        000060    3-39  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    3-40  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    3-41  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    3-42  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                                  3-43  
+                        000100    3-44  	equ	stack_header_end,64			length of stack header
+                                  3-45  
+                                  3-46  
+                                  3-47  
+                                  3-48  
+                                  3-49  "	The  following constant is an offset within the  pl1  operators table.
+                                  3-50  "	It  references a  transfer vector table.
+                                  3-51  
+                        000551    3-52  	bool	tv_offset,551
+                                  3-53  
+                                  3-54  
+                                  3-55  "	The  following constants are offsets within this transfer vector table.
+                                  3-56  
+                        001170    3-57  	equ	call_offset,tv_offset+271
+                        001171    3-58  	equ	push_offset,tv_offset+272
+                        001172    3-59  	equ	return_offset,tv_offset+273
+                        001173    3-60  	equ	return_no_pop_offset,tv_offset+274
+                        001174    3-61  	equ	entry_offset,tv_offset+275
+                                  3-62  
+                                  3-63  
+                                  3-64  " 	END INCLUDE FILE stack_header.incl.alm
+                                    79  
+                                    80  " 
+                                    81  
+                                    82  	include	stack_frame
+                                   4-1  "
+                                   4-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   4-3  "
+                                   4-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   4-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   4-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   4-7  "
+                        000020     4-8  	equ	stack_frame.prev_sp,16
+                        000020     4-9  	equ	stack_frame.condition_word,16
+                        000022    4-10  	equ	stack_frame.next_sp,18
+                        000022    4-11  	equ	stack_frame.signaller_word,18
+                        000024    4-12  	equ	stack_frame.return_ptr,20
+                        000026    4-13  	equ	stack_frame.entry_ptr,22
+                        000030    4-14  	equ	stack_frame.operator_ptr,24
+                        000030    4-15  	equ	stack_frame.lp_ptr,24
+                        000032    4-16  	equ	stack_frame.arg_ptr,26
+                        000034    4-17  	equ	stack_frame.static_ptr,28
+                        000035    4-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    4-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    4-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    4-21  	equ	stack_frame.translator_id,31
+                        000040    4-22  	equ	stack_frame.regs,32
+                        000060    4-23  	equ	stack_frame.min_length,48
+                        000020    4-24  	equ	stack_frame.flag_word,16
+                        020000    4-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    4-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    4-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    4-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    4-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    4-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    4-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    4-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  4-33  
+                                  4-34  "
+                                  4-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  4-36  "
+                                    83  
+                                    84  " 
+                                    85  
+                                    86  
+                                    87  
+                                    88  " 
+                                    89  " Generate Pointers to Necessary Segments.
+                                    90  
+                        000000      91  	segdef	pre_link_1
+                                    92  
+    000000                          93  pre_link_1:
+    000000  0a   000233 2270 00     94  	ldx7	push		size of stack frame in X7
+    000001  aa  7 00024 3521 20     95  	eppbp	sb|stack_header.stack_end_ptr,* bp -> new stack frame
+    000002  aa  2 00020 6521 00     96  	sprisp	bp|stack_frame.prev_sp save pointer to previous frame
+    000003  aa  2 00000 3721 00     97  	eppsp	bp|0		sp -> new frame
+    000004  aa  6 00000 3521 17     98  	eppbp	sp|0,7		bp -> next frame
+    000005  aa  6 00022 2521 00     99  	spribp	sp|stack_frame.next_sp set pointer to next frame
+    000006  aa  7 00024 2521 00    100  	spribp	sb|stack_header.stack_end_ptr  save it in stack header too
+    000007  0a   000236 2370 00    101  	ldaq	null		make operator pointer null
+    000010  aa  6 00030 7571 00    102  	staq	sp|stack_frame.operator_ptr	..
+                                   103  
+                                   104  
+    000011  aa  0 00002 3521 20    105  	eppbp	ap|2,*		bp -> slt_manager pointer
+    000012  aa  2 00000 3521 20    106  	eppbp	bp|0,*		bp -> slt_manager
+    000013  aa  6 00050 2521 00    107  	spribp	slt_man_ptr	save pointer to slt_manager
+                                   108  
+    000014  aa  6 00110 3501 00    109  	eppap	err_sw		ap -> error switch
+    000015  aa  6 00062 2501 00    110  	spriap	arglist+6		place in argument list
+    000016  aa   014000 4310 07    111  	fld	=3b24,dl		set argument list header
+    000017  aa   000004 2750 07    112  	ora	=4,dl		..
+    000020  aa  6 00054 7571 00    113  	staq	arglist		..
+                                   114  
+    000021  aa  6 00064 3501 00    115  	eppap	slt_ptr		ap -> slt pointer
+    000022  0a   000073 7070 00    116  	tsx7	get_ptr		get a pointer to the SLT
+    000023  0a   000173 0000 00    117  	arg	slt_name		..
+                                   118  
+    000024  aa  6 00066 3501 00    119  	eppap	lot_ptr		ap -> Linkage Offset Table pointer
+    000025  0a   000073 7070 00    120  	tsx7	get_ptr		get a pointer to the LOT
+    000026  0a   000203 0000 00    121  	arg	lot_name		..
+                                   122  
+    000027  aa  6 00066 3501 20    123  	eppap	lot_ptr,*	copy lot_ptr into stack for later use by bootstrap2
+    000030  aa  7 00026 2501 00    124  	spriap	sb|stack_header.lot_ptr
+    000031  aa  7 00052 2501 00    125  	spriap	sb|stack_header.isot_ptr fill in the isot pointer as well
+                                   126  
+    000032  aa   000600 6350 00    127  	eaa	384		fill in the lot header
+    000033  aa  7 00013 7551 00    128  	sta	sb|stack_header.cur_lot_size
+    000034  aa  7 00012 7551 00    129  	sta	sb|stack_header.max_lot_size
+                                   130  
+    000035  aa  6 00070 3501 00    131  	eppap	pre_linker_ptr	ap -> pre-linker pointer
+    000036  0a   000073 7070 00    132  	tsx7	get_ptr		get a pointer to the pre-linker
+    000037  0a   000213 0000 00    133  	arg	pre_linker_name	..
+                                   134  
+    000040  aa  6 00072 3501 00    135  	eppap	dseg_ptr		ap -> descriptor segment pointer
+    000041  0a   000073 7070 00    136  	tsx7	get_ptr		get a pointer to the descriptor segment
+    000042  0a   000223 0000 00    137  	arg	dseg_name		..
+                                   138  
+                                   139  
+                                   140  " 
+                                   141  "	Create and initialize the argument list used.
+                                   142  "
+                                   143  "	The argument list used is:
+                                   144  
+                                   145  "	call pre_link_2$force_link (link_pair_ptr, slt_manager$get_text_link_ptr)
+                                   146  "
+                                   147  
+    000043  aa  6 00104 3521 00    148  	eppbp	link_pair_ptr	bp -> linkage fault pair pointer
+    000044  aa  6 00056 2521 00    149  	spribp	arglist+2		place in argument list for pre-linker
+                                   150  
+    000045  aa  6 00050 3521 20    151  	eppbp	slt_man_ptr,*	bp -> SLT manager
+    000046  aa  2 00004 3521 00    152  	eppbp	bp|get_text_link_ptr bp -> slt_manager$get_text_link_ptr
+    000047  aa  6 00100 2521 00    153  	spribp	get_text_link_ptr_ptr set pointer to get_text_link_ptr
+    000050  aa  6 00102 6521 00    154  	sprisp	get_text_link_ptr_ptr+2 save current stack pointer
+    000051  aa  6 00100 3521 00    155  	eppbp	get_text_link_ptr_ptr bp -> pointer
+    000052  aa  6 00060 2521 00    156  	spribp	arglist+4		place in argument list for pre-linker
+                                   157  
+    000053  aa   010000 4310 07    158  	fld	=2b24,dl		set pre-linker argument list header
+    000054  aa   000004 2750 07    159  	ora	=o4,dl		..
+    000055  aa  6 00054 7571 00    160  	staq	arglist		..
+                                   161  
+                                   162  
+                                   163  " 
+                                   164  
+                                   165  " Pre-Link All Linkage Sections.
+                                   166  
+    000056  aa  6 00064 3501 20    167  	eppap	slt_ptr,*		ap -> SLT
+    000057  aa  0 00000 3511 00    168  	epbpab	ap|0		ab -> SLT base
+                                   169  
+    000060  0a   000133 6250 00    170  	eax5	pre_link_linkage	X5 -> pre-linking subroutine
+                                   171  
+    000061  aa  1 00005 7211 00    172  	lxl1	ab|slt.first_init_seg X1 = first initializer segment
+    000062  aa  1 00006 7221 00    173  	lxl2	ab|slt.last_init_seg X2 = last initializer segment
+    000063  0a   000104 7070 00    174  	tsx7	scan_slt_entries	go scan all SLT initialization segments
+                                   175  
+    000064  aa  1 00003 7211 00    176  	lxl1	ab|slt.first_sup_seg X1 = first supervisor segment
+    000065  aa  1 00004 7221 00    177  	lxl2	ab|slt.last_sup_seg	X2 = last supervisor segment
+    000066  0a   000104 7070 00    178  	tsx7	scan_slt_entries	go scan all SLT supervisor entries
+                                   179  
+                                   180  
+                                   181  " RETURN Sequence.
+                                   182  
+    000067  aa  7 00024 6521 00    183  	sprisp	sb|stack_header.stack_end_ptr  pop end pointer back down
+    000070  aa  6 00020 3721 20    184  	eppsp	sp|stack_frame.prev_sp,*  sp -> previous stack frame
+    000071  aa  6 00030 3501 20    185  	eppap	sp|stack_frame.operator_ptr,*  restore ptr to caller's ops
+    000072  aa  6 00024 6101 00    186  	rtcd	sp|stack_frame.return_ptr  return to caller
+                                   187  
+                                   188  
+                                   189  " 
+                                   190  " GET_PTR - Call SLT Manager to Get a Pointer to a Segment.
+                                   191  
+    000073                         192  get_ptr:
+    000073  aa  6 00060 2501 00    193  	spriap	arglist+4		save pointer to pointer in argument list
+                                   194  
+    000074  aa   000000 3500 37    195  	eppap	0,7*		ap -> specifier for segment name
+    000075  aa  6 00056 2501 00    196  	spriap	arglist+2		..
+                                   197  
+    000076  aa  2 00002 3715 00    198  	epplb	bp|get_seg_ptr	lb -> SLT manager entry
+    000077  aa  6 00054 3501 00    199  	eppap	arglist		..
+    000100  0a   000164 7000 00    200  	tsx0	call		call the SLT manager
+                                   201  
+    000101  aa  6 00110 2351 00    202  	lda	err_sw		test for error
+    000102  0a   000102 6010 00    203  	tnz	*		STOP on error
+                                   204  
+    000103  aa   000001 7100 17    205  	tra	1,7		return to caller
+                                   206  
+                                   207  
+                                   208  " 
+                                   209  " SCAN_SLT_ENTRIES - Find all Text Segments for which Linkage has been Provided.
+                                   210  
+    000104                         211  scan_slt_entries:
+    000104  aa   000001 6220 12    212  	eax2	1,2		last segment # + 1 in X2
+    000105  aa  6 00106 7421 00    213  	stx2	lim		save scanning limit
+                                   214  
+    000106                         215  scan_loop:
+    000106  aa  6 00106 1011 00    216  	cmpx1	lim		are we finished?
+    000107  aa   000000 6030 17    217  	trc	0,7		yes, return to caller
+    000110  aa   000000 6360 11    218  	eaq	0,1		first segment # in Q
+    000111  aa   000004 4020 07    219  	mpy	slte_size,dl	multiply by length of SLT entry
+    000112  aa   000000 6220 02    220  	eax2	0,qu		X2 = index to first SLT entry
+                                   221  
+    000113  aa  1 00010 3501 12    222  	eppap	ab|slt.seg,2	ap -> SLT entry
+                                   223  
+    000114  aa  0 00001 2351 00    224  	lda	ap|slte.link_sect_word is this a text segment?
+    000115  aa   002100 3150 07    225  	cana	slte.link_sect+slte.defs,dl	..
+    000116  0a   000131 6010 00    226  	tnz	next_entry	if not, skip this segment
+                                   227  
+    000117  aa  0 00001 2351 00    228  	lda	ap|slte.link_provided_word has linkage been provided for this segment?
+    000120  aa   004000 3150 07    229  	cana	slte.link_provided,dl ..
+    000121  0a   000131 6000 00    230  	tze	next_entry	if not, go on to the next
+                                   231  
+    000122  aa   000000 6350 11    232  	eaa	0,1		segment # in A
+    000123  aa   000001 7350 00    233  	als	1		multiply by 2
+    000124  aa  6 00072 2341 61    234  	szn	dseg_ptr,*au	is the segment deleted?
+    000125  0a   000131 6000 00    235  	tze	next_entry	yes
+                                   236  
+    000126  aa   000000 3130 11    237  	easpbp	0,1		text segment number in bp
+    000127  aa  6 00076 2525 00    238  	spbpbp	textp		save pointer
+                                   239  
+    000130  aa   000000 7060 15    240  	tsx6	0,5		call subroutine
+                                   241  
+    000131                         242  next_entry:
+    000131  aa   000001 6210 11    243  	eax1	1,1		step to next entry.
+    000132  0a   000106 7100 00    244  	tra	scan_loop
+                                   245  
+                                   246  
+                                   247  
+                                   248  " 
+                                   249  " PRE_LINK_LINKAGE - Scan Linkage Section and Snap All Links.
+                                   250  
+    000133                         251  pre_link_linkage:
+    000133  aa  6 00076 2241 00    252  	ldx4	textp		X4 contains segno of text
+    000134  aa  6 00066 2341 74    253  	szn	lot_ptr,*4	any linkage?
+    000135  0a   000135 6000 00    254  	tze	*		STOP if not
+                                   255  
+    000136  aa  6 00066 7621 74    256  	lprpbp	lot_ptr,*4	bp -> linkage
+    000137  aa  6 00074 2521 00    257  	spribp	lp		save linkage pointer
+                                   258  
+    000140                         259  rescan:
+    000140  aa  2 00006 7241 00    260  	lxl4	bp|6		length of linkage block in X4
+    000141  aa  6 00107 7441 00    261  	stx4	temp		save it
+    000142  aa  2 00006 2241 00    262  	ldx4	bp|6		X4 contains loc'n where fault pairs start
+                                   263  
+    000143                         264  link_loop:
+    000143  aa  6 00107 1041 00    265  	cmpx4	temp		test for completion
+    000144  aa   000000 6030 16    266  	trc	0,6		loop if finished
+                                   267  
+    000145  aa  2 00000 7231 14    268  	lxl3	bp|0,4		pick up tag of pair
+    000146  aa   000046 1030 03    269  	cmpx3	f2,du		is it fault tag 2?
+    000147  0a   000162 6010 00    270  	tnz	next_f2		if not, skip this pair
+                                   271  
+    000150  aa  2 00000 6231 14    272  	eax3	bp|0,4		x3 -> linkage pair
+    000151  aa  2 00000 0231 14    273  	adlx3	bp|0,4		add in the back pointer to header
+    000152  aa  6 00075 1031 00    274  	cmpx3	lp+1		compare with offset of linkage pointer
+    000153  0a   000162 6010 00    275  	tnz	next_f2		if not equal, skip this pair
+                                   276  
+    000154  aa  2 00000 3701 14    277  	epplp	bp|0,4		lp -> fault pair
+    000155  aa  6 00104 6501 00    278  	sprilp	link_pair_ptr	save pointer to linkage pair
+                                   279  
+    000156  aa  6 00070 3701 20    280  	epplp	pre_linker_ptr,*	lp -> pre-linker
+    000157  aa  4 00000 3715 00    281  	epplb	lp|force_link	snap the link
+    000160  aa  6 00054 3501 00    282  	eppap	arglist		..
+    000161  0a   000164 7000 00    283  	tsx0	call		..
+                                   284  
+    000162                         285  next_f2:
+    000162  aa   000002 6240 14    286  	eax4	2,4		step to next word pair
+    000163  0a   000143 7100 00    287  	tra	link_loop		process all linkage pairs
+                                   288  
+                                   289  
+                                   290  " 
+                                   291  
+                                   292  " CALL - Perform Standard Call.
+                                   293  
+    000164                         294  call:
+    000164  aa  6 00000 2541 00    295  	spri	sp|0		save prs
+    000165  aa  6 00040 7531 00    296  	sreg	sp|stack_frame.regs  and registers
+    000166  aa  6 00024 3571 00    297  	stcd	sp|stack_frame.return_ptr  save return
+    000167  aa  5 00000 7101 00    298  	tra	lb|0		call out
+    000170  aa  6 00000 1731 00    299  	lpri	sp|0		restore the prs
+    000171  aa  6 00040 0731 00    300  	lreg	sp|stack_frame.regs and registers
+                                   301  
+    000172  aa   000000 7100 10    302  	tra	0,0		return to caller
+                                   303  
+                                   304  
+                                   305  " 
+                                   306  
+                                   307  " Segment Names.
+                                   308  
+    000173                         309  slt_name:
+    000173  aa  163 154 164 040    310  	aci	"slt                             "
+    000174  aa  040 040 040 040
+    000175  aa  040 040 040 040
+    000176  aa  040 040 040 040
+    000177  aa  040 040 040 040
+    000200  aa  040 040 040 040
+    000201  aa  040 040 040 040
+    000202  aa  040 040 040 040
+    000203                         311  lot_name:
+    000203  aa  154 157 164 040    312  	aci	"lot                             "
+    000204  aa  040 040 040 040
+    000205  aa  040 040 040 040
+    000206  aa  040 040 040 040
+    000207  aa  040 040 040 040
+    000210  aa  040 040 040 040
+    000211  aa  040 040 040 040
+    000212  aa  040 040 040 040
+    000213                         313  pre_linker_name:
+    000213  aa  160 162 145 137    314  	aci	"pre_link_2                      "
+    000214  aa  154 151 156 153
+    000215  aa  137 062 040 040
+    000216  aa  040 040 040 040
+    000217  aa  040 040 040 040
+    000220  aa  040 040 040 040
+    000221  aa  040 040 040 040
+    000222  aa  040 040 040 040
+    000223                         315  dseg_name:
+    000223  aa  144 163 145 147    316  	aci	"dseg                            "
+    000224  aa  040 040 040 040
+    000225  aa  040 040 040 040
+    000226  aa  040 040 040 040
+    000227  aa  040 040 040 040
+    000230  aa  040 040 040 040
+    000231  aa  040 040 040 040
+    000232  aa  040 040 040 040
+                                   317  
+                                   318  
+                                   319  " 
+                                   320  
+    000233  aa   000120 6270 00    321  push:	push	"Used to obtain size of stack frame.
+    000234  aa  7 00040 2721 20
+                                   322  
+                                   323  
+    000235  aa   000000 0110 03    324  	even
+    000236  aa   077777 000043     325  null:	its	-1,1
+    000237  aa   000001 000000 
+                                   326  
+                                   327  
+                                   328  
+                                   329  	end	pre_link_1
+
+NO LITERALS
+
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000240  5a   000003 000000 
+    000241  5a   000026 600000 
+    000242  aa   000000 000000 
+    000243  55   000011 000002 
+    000244  5a   000002 400003 
+    000245  55   000006 000011 
+    000246  aa  012 160 162 145
+    000247  aa  137 154 151 156
+    000250  aa  153 137 061 000
+    000251  55   000017 000003 
+    000252  0a   000000 400000 
+    000253  55   000014 000003 
+    000254  aa  012 160 162 145         pre_link_1
+    000255  aa  137 154 151 156
+    000256  aa  153 137 061 000
+    000257  55   000002 000011 
+    000260  6a   000000 400002 
+    000261  55   000022 000003 
+    000262  aa  014 163 171 155         symbol_table
+    000263  aa  142 157 154 137
+    000264  aa  164 141 142 154
+    000265  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000266  aa   000000 000015 
+    000267  aa   000000 000000 
+    000270  aa   000000 000000 
+    000271  5a   000011 000000 
+    000272  aa   000000 000000 
+    000273  aa   000000 000000 
+    000274  aa   000000 000000 
+    000275  5a   000017 000000 
+    000276  aa   000000 000000 
+    000277  aa   000000 000000 
+    000300  aa   000000 000000 
+    000301  aa   000000 000000 
+    000302  aa   000000 000000 
+    000303  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000304  aa   000001 000000 
+    000305  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+
+    000000  aa   000000 000000 
+    000001  0a   000240 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+
+SYMBOL TABLE HEADER
+
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 110172 
+    000005  aa   711315 365225 
+    000006  aa   000000 111306 
+    000007  aa   773555 224244 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000214 
+    000020  aa   000000 000162 
+    000021  aa   000000 000200 
+    000022  aa   000203 000162 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056064 
+    000030  aa   040040 101160 
+    000031  aa   162151 154040 
+    000032  aa   061071 070061 
+    000033  aa   040040 040040 
+    000034  aa   110157 154155 
+    000035  aa   163164 145144 
+    000036  aa   164056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056155 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000005 
+    000066  aa   000112 000040 
+    000067  aa   113022 164714 
+    000070  aa   000000 111305 
+    000071  aa   541036 600000 
+    000072  aa   000122 000031 
+    000073  aa   043243 130516 
+    000074  aa   000000 104205 
+    000075  aa   554413 200000 
+    000076  aa   000131 000032 
+    000077  aa   112741 326631 
+    000100  aa   000000 111274 
+    000101  aa   624414 000000 
+    000102  aa   000140 000042 
+    000103  aa   052721 247135 
+    000104  aa   000000 105272 
+    000105  aa   317220 200000 
+    000106  aa   000151 000041 
+    000107  aa   052721 247134 
+    000110  aa   000000 105272 
+    000111  aa   317215 400000 
+    000112  aa   076144 165155          >dumps>old>recomp>pre_link_1.alm
+    000113  aa   160163 076157 
+    000114  aa   154144 076162 
+    000115  aa   145143 157155 
+    000116  aa   160076 160162 
+    000117  aa   145137 154151 
+    000120  aa   156153 137061 
+    000121  aa   056141 154155 
+    000122  aa   076154 144144          >ldd>include>slt.incl.alm
+    000123  aa   076151 156143 
+    000124  aa   154165 144145 
+    000125  aa   076163 154164 
+    000126  aa   056151 156143 
+    000127  aa   154056 141154 
+    000130  aa   155040 040040 
+    000131  aa   076154 144144          >ldd>include>slte.incl.alm
+    000132  aa   076151 156143 
+    000133  aa   154165 144145 
+    000134  aa   076163 154164 
+    000135  aa   145056 151156 
+    000136  aa   143154 056141 
+    000137  aa   154155 040040 
+    000140  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000141  aa   076151 156143 
+    000142  aa   154165 144145 
+    000143  aa   076163 164141 
+    000144  aa   143153 137150 
+    000145  aa   145141 144145 
+    000146  aa   162056 151156 
+    000147  aa   143154 056141 
+    000150  aa   154155 040040 
+    000151  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000152  aa   076151 156143 
+    000153  aa   154165 144145 
+    000154  aa   076163 164141 
+    000155  aa   143153 137146 
+    000156  aa   162141 155145 
+    000157  aa   056151 156143 
+    000160  aa   154056 141154 
+    000161  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           1    acls.acl                 slt:           62.
+          13    acls.code                slt:           66.
+           0    acls.count               slt:           61.
+          11    acls.mode                slt:           65.
+           1    acls.userid              slt:           64.
+          54    arglist                  pre_link_1:    35,  110,  113,  149,  156,  160,  193,  196,  199,  282.
+         164    call                     pre_link_1:   200,  283,  294.
+        1170    call_offset              stack_header:        57.
+           2    copy_linkage             pre_link_1:    58.
+         223    dseg_name                pre_link_1:   137,  315.
+          72    dseg_ptr                 pre_link_1:    39,  135,  234.
+        1174    entry_offset             stack_header:        61.
+         110    err_sw                   pre_link_1:    46,  109,  202.
+          46    f2                       pre_link_1:    66,  269.
+           0    force_link               pre_link_1:    64,  281.
+           0    get_lp                   pre_link_1:    60.
+          73    get_ptr                  pre_link_1:   116,  120,  132,  136,  192.
+           2    get_seg_ptr              pre_link_1:    53,  198.
+           4    get_text_link_ptr        pre_link_1:    54,  152.
+         100    get_text_link_ptr_ptr    pre_link_1:    42,  153,  154,  155.
+         106    lim                      pre_link_1:    44,  213,  216.
+         143    link_loop                pre_link_1:   264,  287.
+         104    link_pair_ptr            pre_link_1:    43,  148,  278.
+         203    lot_name                 pre_link_1:   121,  311.
+          66    lot_ptr                  pre_link_1:    37,  119,  123,  253,  256.
+          74    lp                       pre_link_1:    40,  257,  274.
+           1    name_seg.ht              slt:           35.
+           0    name_seg.next_loc        slt:           33.
+         201    name_seg_size            slt:           31.
+         131    next_entry               pre_link_1:   226,  230,  235,  242.
+         162    next_f2                  pre_link_1:   270,  275,  285.
+         236    null                     pre_link_1:   101,  325.
+           0    path.acls                slt:           56.
+           1    path.name                slt:           55.
+           0    path.size                slt:           54.
+         213    pre_linker_name          pre_link_1:   133,  313.
+          70    pre_linker_ptr           pre_link_1:    38,  131,  280.
+           0    pre_link_1               pre_link_1:    91,   93.
+         133    pre_link_linkage         pre_link_1:   170,  251.
+         233    push                     pre_link_1:    94,  321.
+        1171    push_offset              stack_header:        58.
+         140    rescan                   pre_link_1:   259.
+        1173    return_no_pop_offset     stack_header:        60.
+        1172    return_offset            stack_header:        59.
+         106    scan_loop                pre_link_1:   215,  244.
+         104    scan_slt_entries         pre_link_1:   174,  178,  211.
+           0    segnam.count             slt:           41.
+           1    segnam.hp                slt:           44.
+           2    segnam.name              slt:           49.
+           1    segnam.names             slt:           42.
+      400000    segnam.ref               slt:           45.
+        7777    segnam.segno_mask        slt:           47.
+           0    segnam.segno_shift       slt:           46.
+           1    set_lp                   pre_link_1:    59.
+           5    slt.first_init_seg       pre_link_1:   172,
+                                         slt:           21.
+           3    slt.first_sup_seg        pre_link_1:   176,
+                                         slt:           19.
+           7    slt.free_core_size       slt:           23.
+           2    slt.free_core_start      slt:           18.
+           6    slt.last_init_seg        pre_link_1:   173,
+                                         slt:           22.
+           4    slt.last_sup_seg         pre_link_1:   177,
+                                         slt:           20.
+           0    slt.name_seg_ptr         slt:           17.
+          10    slt.seg                  pre_link_1:   222,
+                                         slt:           24.
+          10    slt.slte                 slt:           26.
+       10000    slte.abs_seg             slte:          86.
+           1    slte.abs_seg_word        slte:          85.
+          17    slte.access_mask         slte:          82.
+          40    slte.access_shift        slte:          81.
+           1    slte.access_word         slte:          80.
+           1    slte.acl_provided        slte:          98.
+           1    slte.acl_provided_word   slte:          97.
+           0    slte.bit_count_shift     slte:         130.
+           3    slte.bit_count_word      slte:         129.
+       40000    slte.branch_required     slte:         100.
+           1    slte.branch_required_word      slte:          99.
+       20000    slte.cache               slte:          84.
+           1    slte.cache_word          slte:          83.
+         400    slte.combine_link        slte:         112.
+           1    slte.combine_link_word   slte:         111.
+         777    slte.cur_length_mask     slte:         120.
+          33    slte.cur_length_shift    slte:         119.
+           2    slte.cur_length_word     slte:         118.
+         100    slte.defs                pre_link_1:   225,
+                                         slte:         116.
+           1    slte.defs_word           slte:         115.
+        4000    slte.firmware_seg        slte:          88.
+           1    slte.firmware_seg_word   slte:          87.
+       20000    slte.init_seg            slte:         102.
+           1    slte.init_seg_word       slte:         101.
+        2000    slte.layout_seg          slte:          90.
+           1    slte.layout_seg_word     slte:          89.
+        4000    slte.link_provided       pre_link_1:   229,
+                                         slte:         106.
+           1    slte.link_provided_word  pre_link_1:   228,
+                                         slte:         105.
+        2000    slte.link_sect           pre_link_1:   225,
+                                         slte:         108.
+        1000    slte.link_sect_wired     slte:         110.
+           1    slte.link_sect_wired_word      slte:         109.
+           1    slte.link_sect_word      pre_link_1:   224,
+                                         slte:         107.
+         777    slte.max_length_mask     slte:         128.
+          30    slte.max_length_shift    slte:         127.
+           3    slte.max_length_word     slte:         126.
+           0    slte.names_ptr           slte:          77.
+          20    slte.paged               slte:          94.
+           1    slte.paged_word          slte:          93.
+           0    slte.path_ptr            slte:          78.
+          10    slte.per_process         slte:          96.
+           1    slte.per_process_word    slte:          95.
+         200    slte.pre_linked          slte:         114.
+           1    slte.pre_linked_word     slte:         113.
+           7    slte.ringbrack_mask      slte:         123.
+          30    slte.ringbrack_shift     slte:         122.
+           2    slte.ringbrack_word      slte:         121.
+           2    slte.segno               slte:         124.
+       10000    slte.temp_seg            slte:         104.
+           1    slte.temp_seg_word       slte:         103.
+          40    slte.wired               slte:          92.
+           1    slte.wired_word          slte:          91.
+           4    slte_size                pre_link_1:   219,
+                                         slte:          75.
+       10000    slte_uns.abs_seg         slte:          26.
+           1    slte_uns.abs_seg_word    slte:          25.
+          17    slte_uns.access_mask     slte:          22.
+          40    slte_uns.access_shift    slte:          21.
+           1    slte_uns.access_word     slte:          20.
+           1    slte_uns.acl_provided    slte:          38.
+           1    slte_uns.acl_provided_word     slte:          37.
+           0    slte_uns.bit_count_shift       slte:          70.
+           3    slte_uns.bit_count_word  slte:          69.
+       40000    slte_uns.branch_required       slte:          40.
+           1    slte_uns.branch_required_word  slte:          39.
+       20000    slte_uns.cache           slte:          24.
+           1    slte_uns.cache_word      slte:          23.
+         400    slte_uns.combine_link    slte:          52.
+           1    slte_uns.combine_link_word     slte:          51.
+         777    slte_uns.cur_length_mask       slte:          60.
+          33    slte_uns.cur_length_shift      slte:          59.
+           2    slte_uns.cur_length_word       slte:          58.
+         100    slte_uns.defs            slte:          56.
+           1    slte_uns.defs_word       slte:          55.
+        4000    slte_uns.firmware_seg    slte:          28.
+           1    slte_uns.firmware_seg_word     slte:          27.
+       20000    slte_uns.init_seg        slte:          42.
+           1    slte_uns.init_seg_word   slte:          41.
+        2000    slte_uns.layout_seg      slte:          30.
+           1    slte_uns.layout_seg_word       slte:          29.
+        4000    slte_uns.link_provided   slte:          46.
+           1    slte_uns.link_provided_word    slte:          45.
+        2000    slte_uns.link_sect       slte:          48.
+        1000    slte_uns.link_sect_wired       slte:          50.
+           1    slte_uns.link_sect_wired_word  slte:          49.
+           1    slte_uns.link_sect_word  slte:          47.
+         777    slte_uns.max_length_mask       slte:          68.
+          30    slte_uns.max_length_shift      slte:          67.
+           3    slte_uns.max_length_word       slte:          66.
+           0    slte_uns.names_ptr       slte:          17.
+          20    slte_uns.paged           slte:          34.
+           1    slte_uns.paged_word      slte:          33.
+           0    slte_uns.path_ptr        slte:          18.
+          10    slte_uns.per_process     slte:          36.
+           1    slte_uns.per_process_word      slte:          35.
+         200    slte_uns.pre_linked      slte:          54.
+           1    slte_uns.pre_linked_word       slte:          53.
+           7    slte_uns.ringbrack_mask  slte:          63.
+          30    slte_uns.ringbrack_shift       slte:          62.
+           2    slte_uns.ringbrack_word  slte:          61.
+           2    slte_uns.segno           slte:          64.
+       10000    slte_uns.temp_seg        slte:          44.
+           1    slte_uns.temp_seg_word   slte:          43.
+          40    slte_uns.wired           slte:          32.
+           1    slte_uns.wired_word      slte:          31.
+           4    slte_uns_size            slte:          15.
+          50    slt_man_ptr              pre_link_1:    33,  107,  151.
+         173    slt_name                 pre_link_1:   117,  309.
+          64    slt_ptr                  pre_link_1:    36,  115,  167.
+      100010    slt_size                 slt:           14.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      pre_link_1:    99,
+                                         stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       pre_link_1:   102,  185,
+                                               stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      pre_link_1:    96,  184,
+                                         stack_frame:    8.
+          40    stack_frame.regs         pre_link_1:   296,  300,
+                                         stack_frame:   22.
+          24    stack_frame.return_ptr   pre_link_1:   186,  297,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        42.
+          32    stack_header.bar_mode_sp       stack_header:        25.
+          36    stack_header.call_op_ptr       stack_header:        27.
+          10    stack_header.clr_ptr     stack_header:        10.
+           6    stack_header.combined_stat_ptr       stack_header:         8.
+          13    stack_header.cur_lot_size      pre_link_1:   128,
+                                               stack_header:        14.
+          64    stack_header.ect_ptr     stack_header:        41.
+          46    stack_header.entry_op_ptr      stack_header:        32.
+          52    stack_header.isot_ptr    pre_link_1:   125,
+                                         stack_header:        35.
+          26    stack_header.lot_ptr     pre_link_1:   124,
+                                         stack_header:        22.
+          12    stack_header.main_proc_invoked       stack_header:        12.
+          12    stack_header.max_lot_size      pre_link_1:   129,
+                                               stack_header:        11.
+           4    stack_header.old_lot_ptr       stack_header:         7.
+          20    stack_header.parent_ptr  stack_header:        19.
+          34    stack_header.pl1_operators_ptr       stack_header:        26.
+          40    stack_header.push_op_ptr       stack_header:        29.
+          42    stack_header.return_op_ptr     stack_header:        30.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        31.
+          62    stack_header.rnt_ptr     stack_header:        40.
+          12    stack_header.run_unit_depth    stack_header:        13.
+          54    stack_header.sct_ptr     stack_header:        36.
+          30    stack_header.signal_ptr  stack_header:        24.
+          22    stack_header.stack_begin_ptr   stack_header:        20.
+          24    stack_header.stack_end_ptr     pre_link_1:    95,  100,  183,
+                                               stack_header:        21.
+          14    stack_header.system_free_ptr   stack_header:        16.
+          60    stack_header.sys_link_info_ptr       stack_header:        39.
+          50    stack_header.trans_op_tv_ptr   stack_header:        34.
+          56    stack_header.unwinder_ptr      stack_header:        37.
+          16    stack_header.user_free_ptr     stack_header:        17.
+         100    stack_header_end         stack_header:        44.
+          52    stp                      pre_link_1:    34.
+         107    temp                     pre_link_1:    45,  261,  265.
+          76    textp                    pre_link_1:    41,  238,  252.
+         551    tv_offset                stack_header:        52,   57,   58,   59,   60,   61.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

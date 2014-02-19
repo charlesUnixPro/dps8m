@@ -1,0 +1,313 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXmdfbddh
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1059.2 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 template_area_header: proc;
+       14 
+       15 
+       16 /* Automatic */
+       17 
+       18 dcl 1 template_area aligned,
+       19     2 template_area_header aligned like area_header;
+       20 dcl 1 cdsa aligned like cds_args;
+       21 dcl  code fixed bin (35);
+       22 
+       23 /* Builtin */
+       24 
+       25 dcl (null, unspec, bit, bin, size, addr, string) builtin;
+       26 
+       27 /* Entries */
+       28 
+       29 dcl  create_data_segment_ entry (ptr, fixed bin (35));
+       30 
+       31 /*  */
+       32 	unspec (template_area) = "0"b;
+       33 
+       34 	template_area.version = 1;
+       35 	template_area.next_virgin = bit (bin (size (template_area), 18), 18);
+       36 	template_area.last_size = bit (bin (2, 18), 18);
+       37 	template_area.last_block = bit (bin (size (template_area)-2, 18), 18);
+       38 
+       39 
+       40 /* Now call data base create program */
+       41 
+       42 	cdsa.sections (1).p = addr (template_area);
+       43 	cdsa.sections (1).len = size (template_area);
+       44 	cdsa.sections (1).struct_name = "template_area";
+       45 
+       46 	cdsa.seg_name = "template_area_header";
+       47 	cdsa.num_exclude_names = 0;
+       48 	cdsa.exclude_array_ptr = null;;
+       49 
+       50 	string (cdsa.switches) = "0"b;
+       51 	cdsa.switches.have_text = "1"b;
+       52 
+       53 	call create_data_segment_ (addr (cdsa), code);
+       54 	return;
+       55 
+       56 /*  */
+       57 
+  1     1 /* BEGIN INCLUDE FILE area_structures.incl.pl1  10/75 */
+  1     2 /* Modified September 1981 by J. Bongiovanni for allocation_p_clock */
+  1     3 
+  1     4 dcl  area_version_1 fixed bin static init (1);		/* version number for this area format */
+  1     5 
+  1     6 dcl  areap ptr;
+  1     7 
+  1     8 dcl 1 area_header aligned based (areap),
+  1     9     2 version fixed bin (35),				/* 0 for buddy system, 1 for current areas */
+  1    10     2 last_usable bit (18),				/* rel pointer to end of area */
+  1    11     2 next_virgin bit (18),				/* rel pointer to next slot in virgin territory */
+  1    12     2 flags,
+  1    13       3 extend bit (1) unal,				/* says area is extensible */
+  1    14       3 zero_on_alloc bit (1) unal,			/* says to zero after allocation */
+  1    15       3 zero_on_free bit (1) unal,			/* says to zero after freeing */
+  1    16       3 dont_free bit (1) unal,			/* dont honor free request -- debugging tool */
+  1    17       3 defined_by_call bit (1) unal,			/* says area seg got via define_area_ call */
+  1    18       3 system bit (1) unal,				/* ayss area is managed by the system */
+  1    19       3 mbz bit (30) unal,
+  1    20     2 allocation_method fixed bin,			/* 0 is standard, 1 is no_freeing method */
+  1    21     2 last_size bit (18),				/* size of last allocated block before virgin territory */
+  1    22     2 last_block bit (18),				/* rel pointer to last allocated block before virgin territory */
+  1    23     2 freep (3:16),					/* free list info */
+  1    24       3 relp bit (18) unal,				/* pointer to first block on list */
+  1    25       3 max_block_size bit (18) unal,			/* size of largest block on list, if known. else zero */
+  1    26     2 allocation_p_clock bit (36) aligned,		/* counter to prevent IPS race */
+  1    27     2 extend_info bit (18) unal,			/* offset to extend info block */
+  1    28     2 recovery_info bit (18) unal,			/* eventually will hold recovery info relp */
+  1    29     2 n_allocated fixed bin (17) unal,			/* number of allocated blocks */
+  1    30     2 n_free fixed bin (17) unal;			/* number of free blocks */
+  1    31 
+  1    32 dcl (STANDARD_ALLOCATION_METHOD init (0),
+  1    33      NO_FREEING_ALLOCATION_METHOD init (1)
+  1    34      ) fixed bin internal static;
+  1    35 
+  1    36 dcl  extend_blockp ptr;
+  1    37 
+  1    38 dcl 1 extend_block aligned based (extend_blockp),		/* contents of extend block for extensible areas */
+  1    39     2 first_area ptr unal,				/* pointer to first area */
+  1    40     2 next_area ptr unal,				/* pointer to next area in chain */
+  1    41     2 sequence_no fixed bin,				/* sequence number for this component */
+  1    42     2 name char (32),				/* owner of the area */
+  1    43     2 pad fixed;					/* brings it to an even, 12 word allocation */
+  1    44 
+  1    45 dcl alloc_blkhdrsz static internal init(2);
+  1    46 dcl 1 no_free_area_header aligned based(areap),		/* overlay for no_free areas */
+  1    47     2 pad(4) ptr,
+  1    48     2 current_component ptr;				/* points to component from which we are allocating */
+  1    49 
+  1    50 dcl  blockp ptr;
+  1    51 
+  1    52 dcl 1 block aligned based (blockp),			/* declaration for block header */
+  1    53     2 prev_size bit (18) unal,			/* size of preceding block */
+  1    54     2 cur_size bit (18) unal,				/* size of current block */
+  1    55     2 buddy_pad bit (8) unal,				/* non_zero for buddy system area */
+  1    56     2 prev_busy bit (1) unal,				/* previous-block-is-used flag */
+  1    57     2 marked bit (1) unal,
+  1    58     2 q_no bit (8) unal,				/* stratum number when in free list */
+  1    59     2 header bit (18) unal,				/* pointer to head of area */
+  1    60     2 fp bit (18) unal,				/* forward free list thread */
+  1    61     2 bp bit (18) unal;				/* backward free list thread */
+  1    62 
+  1    63 dcl  min_block_size fixed bin static init (8);		/* minimum allowed block size */
+  1    64 
+  1    65 /* END INCLUDE FILE area_structures.incl.pl1 */
+       58 
+  2     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  2     2 
+  2     3 dcl 1 cds_args based aligned,
+  2     4     2 sections (2),
+  2     5       3 p ptr,					/* pointer to data for text/static section */
+  2     6       3 len fixed bin (18),				/* size of text/static section */
+  2     7       3 struct_name char (32),			/* name of declared structure for this section */
+  2     8     2 seg_name char (32),				/* name to create segment by */
+  2     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  2    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  2    11     2 switches,					/* control switches */
+  2    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  2    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  2    14       3 have_text bit (1) unal,			/* ON if text section given */
+  2    15       3 have_static bit (1) unal,			/* ON if static section given */
+  2    16       3 pad bit (32) unal;
+  2    17 
+  2    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  2    19 
+  2    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       59 
+       60      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  !BBBJZjXmdfbddh.pl1               >spec>install>1110>template_area_header.cds
+58           1    09/14/81  1347.6  area_structures.incl.pl1          >ldd>include>area_structures.incl.pl1
+59           2    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 25 ref 42 53 53
+area_header                            based           structure                level 1 dcl 1-8
+areap                           000176 automatic       pointer                  dcl 1-6 ref 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8
+                                                                                  1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8 1-8
+                                                                                  1-8
+bin                                                    builtin function         dcl 25 ref 35 36 37
+bit                                                    builtin function         dcl 25 ref 35 36 37
+cds_args                               based           structure                level 1 dcl 2-3
+cdsa                            000130 automatic       structure                level 1 dcl 20 set ref 53 53
+code                            000175 automatic       fixed bin(35,0)          dcl 21 set ref 53*
+create_data_segment_            000020 constant        entry                    external dcl 29 ref 53
+exclude_array_ptr        42     000130 automatic       pointer                  level 2 dcl 20 set ref 48*
+have_text                44(02) 000130 automatic       bit(1)                   level 3 packed packed unaligned dcl 20 set ref 51*
+last_block                6     000100 automatic       bit(18)                  level 3 dcl 18 set ref 37*
+last_size                 5     000100 automatic       bit(18)                  level 3 dcl 18 set ref 36*
+len                       2     000130 automatic       fixed bin(18,0)          array level 3 dcl 20 set ref 43*
+next_virgin               2     000100 automatic       bit(18)                  level 3 dcl 18 set ref 35*
+null                                                   builtin function         dcl 25 ref 48
+num_exclude_names        40     000130 automatic       fixed bin(17,0)          level 2 dcl 20 set ref 47*
+p                               000130 automatic       pointer                  array level 3 dcl 20 set ref 42*
+sections                        000130 automatic       structure                array level 2 dcl 20
+seg_name                 30     000130 automatic       char(32)                 level 2 dcl 20 set ref 46*
+size                                                   builtin function         dcl 25 ref 35 37 43
+string                                                 builtin function         dcl 25 set ref 50*
+struct_name               3     000130 automatic       char(32)                 array level 3 dcl 20 set ref 44*
+switches                 44     000130 automatic       structure                level 2 dcl 20 set ref 50*
+template_area                   000100 automatic       structure                level 1 dcl 18 set ref 32* 35 37 42 43
+template_area_header            000100 automatic       structure                level 2 dcl 18
+unspec                                                 builtin function         dcl 25 set ref 32*
+version                         000100 automatic       fixed bin(35,0)          level 3 dcl 18 set ref 34*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+NO_FREEING_ALLOCATION_METHOD    000012 internal static fixed bin(17,0)          initial dcl 1-32
+STANDARD_ALLOCATION_METHOD      000011 internal static fixed bin(17,0)          initial dcl 1-32
+alloc_blkhdrsz                  000013 internal static fixed bin(17,0)          initial dcl 1-45
+area_version_1                  000010 internal static fixed bin(17,0)          initial dcl 1-4
+block                                  based           structure                level 1 dcl 1-52
+blockp                          000202 automatic       pointer                  dcl 1-50
+exclude_names                          based           char(32)                 array packed unaligned dcl 2-18
+extend_block                           based           structure                level 1 dcl 1-38
+extend_blockp                   000200 automatic       pointer                  dcl 1-36
+min_block_size                  000014 internal static fixed bin(17,0)          initial dcl 1-63
+no_free_area_header                    based           structure                level 1 dcl 1-46
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+template_area_header            000014 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       150         172     101         160
+Length      1740     101        22        1531      47           6
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+template_area_header                140 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 area_version_1              template_area_header
+000011 STANDARD_ALLOCATION_METHOD  template_area_header
+000012 NO_FREEING_ALLOCATION_METHOD
+                                   template_area_header
+000013 alloc_blkhdrsz              template_area_header
+000014 min_block_size              template_area_header
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+template_area_header     000100 template_area               template_area_header
+                         000130 cdsa                        template_area_header
+                         000175 code                        template_area_header
+                         000176 areap                       template_area_header
+                         000200 extend_blockp               template_area_header
+                         000202 blockp                      template_area_header
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000013        32 000021        34 000024        35 000026        36 000033        37 000040        42 000046
+     43 000050        44 000052        46 000055        47 000060        48 000061        50 000063        51 000064
+     53 000066        54 000100
+
+
+Object Segment >spec>install>1110>template_area_header
+Created on 11/11/89  1059.3 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0      30      64      74      74
+Length     260      30      34      10     150       0
+
+
+3 Definitions:
+
+
+segname:    template_area_header
+
+symb|0          symbol_table
+text|0          template_area_header
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

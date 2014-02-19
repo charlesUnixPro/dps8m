@@ -1,0 +1,646 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>double_tangent_.alm                                                                                                                                  
+ASSEMBLED ON:	11/11/89  0945.1 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1985 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+    000000                           6  	name	double_tangent_
+                                     7  " Modification history:
+                                     8  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                     9  "	based on GCOS routine '7nav'.
+                                    10  "
+                                    11  " Function:  Approximate to double precision the tangent or cotangent of an
+                                    12  "	angle given in degrees or radians.
+                                    13  "
+                                    14  " Entry:	through the appropriately named entry point with:
+                                    15  " 	EAQ = the angle whose tangent is desired.
+                                    16  "	PR2 = the address of a 14 word, even-word aligned scratch area.
+                                    17  "	      6 words are used in this program and 14 are used by the
+                                    18  "	      routine "double_principal_angle_".  The storage for
+                                    19  "	      double_tangent_ and double_principal_angle_ overlap.
+                                    20  "	PR3 = the return address.
+                                    21  "
+                                    22  " Exit:	EAQ = the desired tangent or cotangent.
+                                    23  "
+                                    24  " Uses:	X0, X1, X2, X3.
+                                    25  "	X0 = saves a return address from double_principal_angle_ routines
+                                    26  "	X1 = shift (returned by double_principal_angle_ routines)
+                                    27  "	X2 = indicates BFP or HFP mode - all of the floating point math
+                                    28  "	     routines use this register for the same thing.
+                                    29  "	X3 = indicates Tangent or Cotangent function
+                                    30  "	The double_principal_angle_ routines use registers X1 and X2.
+                                    31  
+                                    32  
+    000000                          33  	segref	math_constants_,max_value,one_degree,quarter_pi
+    000000                          34  	segref	double_principal_angle_,double_principal_radians_,double_principal_degrees_
+                                    35  
+                        000000      36  	equ	BFP,0
+                        000002      37  	equ	HFP,2
+                 777777 777777      38  	equ	Cotangent,-1
+                        000001      39  	equ	Tangent,1
+                        000000      40  	equ	sign,0
+                        000000      41  	equ	x,0
+                        000002      42  	equ	xx,2
+                        000004      43  	equ	q,4
+                                    44  
+                        000000      45  	segdef	double_cotangent_degrees_,hfp_double_cotangent_degrees_
+                        000022      46  	segdef	double_cotangent_radians_,hfp_double_cotangent_radians_
+                        000042      47  	segdef	double_tangent_degrees_,hfp_double_tangent_degrees_
+                        000065      48  	segdef	double_tangent_radians_,hfp_double_tangent_radians_
+                                    49  
+                                    50  
+    000000                          51  hfp_double_cotangent_degrees_:
+    000000  aa   000002 6220 00     52  	eax2	HFP		" 2 word offset for HFP constants
+    000001  0a   000003 7100 00     53  	tra	cotangent_degrees
+                                    54  
+    000002                          55  double_cotangent_degrees_:
+    000002  aa   000000 6220 00     56  	eax2	BFP		" no offset for BFP constants
+                                    57  
+    000003                          58  cotangent_degrees:
+    000003  aa   400000 4750 03     59  	fad	=0.0,du		" normalize input
+    000004  aa   000000 6210 00     60  	eax1	0		" initialize X1 := shift = 1
+    000005  0a   000176 4270 12     61  	dfcmg	forty_five,x2
+    000006  aa   000002 6044 04     62  	tmoz	2,ic		" if abs (angle) > 45:
+                                    63  				"   call double_principal_degrees_
+    000007  4a  4 00010 7001 20     64  	  tsx0	double_principal_degrees_
+                                    65  
+    000010  0a   000162 4270 12     66  	dfcmg	eps1,x2		" if conversion to radians underflows
+    000011  0a   000151 6040 00     67  	tmi	infinity		"   return (infinity (degrees))
+                                    68  				" else:
+    000012  4a  4 00012 4631 20     69  	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+                                    70  
+    000013  aa   000001 3010 03     71  	canx1	=1,du
+    000014  aa   000003 6010 04     72  	tnz	3,ic		" if shift = 0 | shift = 2:
+    000015  aa   777777 6230 00     73  	  eax3	Cotangent		"   X3 := Cotangent
+    000016  0a   000104 7100 00     74  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, degrees*one_degree))
+                                    75  				" else if shift = 1 | shift = 3
+    000017  aa   000001 6230 00     76  	eax3	Tangent		"   X3 := Cotangent
+    000020  aa   000000 5130 00     77  	fneg	0		"   EAQ := -degrees*one_degree
+    000021  0a   000104 7100 00     78  	tra	part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -(degrees*one_degree)))
+                                    79  
+                                    80  
+    000022                          81  hfp_double_cotangent_radians_:
+    000022  aa   000002 6220 00     82  	eax2	HFP		" 2 word offset for HFP constants
+    000023  0a   000025 7100 00     83  	tra	cotangent_radians
+                                    84  
+    000024                          85  double_cotangent_radians_:
+    000024  aa   000000 6220 00     86  	eax2	BFP		" no offset for BFP constants
+                                    87  
+    000025                          88  cotangent_radians:
+    000025  aa   400000 4750 03     89  	fad	=0.0,du		" normalize input
+    000026  4a  4 00014 4271 20     90  	dfcmg	quarter_pi,x2
+    000027  aa   000003 6050 04     91  	tpl	3,ic		" if abs (angle) > quarter_pi:
+    000030  aa   777777 6230 00     92  	  eax3	Cotangent		"   X3 := Cotangent
+    000031  0a   000104 7100 00     93  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians)
+                                    94  				" call double_principal_radians_
+    000032  4a  4 00016 7001 20     95  	tsx0	double_principal_radians_
+                                    96  
+    000033  aa   000001 3010 03     97  	canx1	=1,du
+    000034  aa   000003 6010 04     98  	tnz	3,ic		" if shift = 0 | shift = 2:
+    000035  aa   777777 6230 00     99  	  eax3	Cotangent		"   X3 := Cotangent
+    000036  0a   000104 7100 00    100  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, radians))
+                                   101  				" else if shift = 1 | shift = 3
+    000037  aa   000001 6230 00    102  	eax3	Tangent		"   X3 := Cotangent
+    000040  aa   000000 5130 00    103  	fneg	0		"   EAQ := -radians
+    000041  0a   000104 7100 00    104  	tra	part_tan_or_cot	"   return (part_tan_or_cot (Tangent, -radians))
+                                   105  
+                                   106  
+    000042                         107  hfp_double_tangent_degrees_:
+    000042  aa   000002 6220 00    108  	eax2	HFP		" 2 word offset for HFP constants
+    000043  0a   000045 7100 00    109  	tra	tangent_degrees
+                                   110  
+    000044                         111  double_tangent_degrees_:
+    000044  aa   000000 6220 00    112  	eax2	BFP		" no offset for BFP constants
+                                   113  
+    000045                         114  tangent_degrees:
+    000045  aa   400000 4750 03    115  	fad	=0.0,du		" normalize input
+    000046  aa   000000 6210 00    116  	eax1	0		" initialize X1 := shift = 1
+    000047  0a   000176 4270 12    117  	dfcmg	forty_five,x2
+    000050  aa   000002 6044 04    118  	tmoz	2,ic		" if abs (angle) > 45:
+                                   119  				"   call double_principal_degrees_
+    000051  4a  4 00010 7001 20    120  	  tsx0	double_principal_degrees_
+                                   121  
+    000052  0a   000162 4270 12    122  	dfcmg	eps1,x2		" if conversion to radians underflows
+    000053  aa   000002 6050 04    123  	tpl	2,ic
+    000054  aa   400000 4310 03    124  	  fld	=0.0,du	  	"   then use zero
+                                   125  				" else:
+    000055  4a  4 00012 4631 20    126  	dfmp	one_degree,x2	"   EAQ := degrees * one_degree
+                                   127  
+    000056  aa   000001 3010 03    128  	canx1	=1,du
+    000057  aa   000003 6010 04    129  	tnz	3,ic		" if shift = 0 | shift = 2:
+    000060  aa   000001 6230 00    130  	  eax3	Tangent		"   X3 := Tangent
+    000061  0a   000104 7100 00    131  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Tangent, degrees*one_degree))
+                                   132  				" else if shift = 1 | shift = 3
+    000062  aa   777777 6230 00    133  	eax3	Cotangent		"   X3 := Cotangent
+    000063  aa   000000 5130 00    134  	fneg	0		"   EAQ := -radians
+    000064  0a   000104 7100 00    135  	tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, -(degrees*one_degree)))
+                                   136  
+                                   137  
+    000065                         138  hfp_double_tangent_radians_:
+    000065  aa   000002 6220 00    139  	eax2	HFP		" 2 word offset for HFP constants
+    000066  0a   000070 7100 00    140  	tra	tangent_radians
+                                   141  
+    000067                         142  double_tangent_radians_:
+    000067  aa   000000 6220 00    143  	eax2	BFP		" no offset for BFP constants
+                                   144  
+    000070                         145  tangent_radians:
+    000070  aa   400000 4750 03    146  	fad	=0.0,du		" normalize input
+    000071  4a  4 00014 4271 20    147  	dfcmg	quarter_pi,x2
+    000072  aa   000003 6050 04    148  	tpl	3,ic		" if abs (angle) <= quarter_pi:
+    000073  aa   000001 6230 00    149  	  eax3	Tangent
+    000074  0a   000104 7100 00    150  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+                                   151  
+                                   152  				" call double_principal_radians_
+    000075  4a  4 00016 7001 20    153  	tsx0	double_principal_radians_
+                                   154  
+    000076  aa   000001 3010 03    155  	canx1	=1,du
+    000077  aa   000003 6010 04    156  	tnz	3,ic		" if shift = 0 | shift = 2:
+    000100  aa   000001 6230 00    157  	  eax3	Tangent		"   X3 := Tangent
+    000101  0a   000104 7100 00    158  	  tra	part_tan_or_cot	"   return (part_tan_or_cot (Tangent, radians))
+                                   159  				" else if shift = 1 | shift = 3
+    000102  aa   777777 6230 00    160  	eax3	Cotangent		"   X3 := Cotangent
+    000103  aa   000000 5130 00    161  	fneg	0		"   EAQ := -radians
+                                   162  "	tra	part_tan_or_cot	"   return (part_tan_or_cot (Cotangent, -radians))
+                                   163  
+                                   164  
+                                   165  " Procedure 'part_tan_or_cot' (function, x) calculates either 'tan(x)'
+                                   166  " or 'cot(x)' to double precision accuracy, for 'x' in [-pi/4, pi/4].
+                                   167  " Argument 'x' is given in the EAQ and the function to be calculated is
+                                   168  " given in X3.  X3=-1 indicates 'cot' and X3=1 indicates 'tan'.
+                                   169  
+    000104                         170  part_tan_or_cot:
+    000104  0a   000166 4250 00    171  	fcmg	eps2		" if abs(x) < 5e-10:
+    000105  0a   000116 6050 00    172  	tpl	use_polynomial
+    000106  aa   000001 1030 03    173  	  cmpx3	Tangent,du	"   if function = Tangent
+    000107  aa   000003 6010 04    174  	  tnz	3,ic
+    000110  aa   000000 4730 00    175  	    dfrd	0		"     then return (result)
+    000111  aa  3 00000 7101 00    176  	    tra	pr3|0
+    000112  0a   000172 4270 12    177  	  dfcmg	eps3,x2		"   else if 1/result overflows
+    000113  0a   000151 6044 00    178  	    tmoz	infinity		"     then return (infinity (result))
+    000114  0a   000202 5270 12    179  	    dfdi  one,x2    	"     else return (1/result)
+    000115  aa  3 00000 7101 00    180  	    tra	pr3|0
+                                   181  
+    000116                         182  use_polynomial:
+    000116  aa  2 00000 4721 00    183  	dfstr	pr2|x
+    000117  aa  2 00000 4631 00    184  	dfmp	pr2|x		" calculate xx = x*x
+    000120  aa  2 00002 4721 00    185  	dfstr	pr2|xx
+    000121  0a   000246 4770 12    186  	dfad	q3,x2		" calculate q = q(xx)
+    000122  aa  2 00002 4631 00    187  	dfmp	pr2|xx
+    000123  0a   000242 4770 12    188  	dfad	q2,x2
+    000124  aa  2 00002 4631 00    189  	dfmp	pr2|xx
+    000125  0a   000236 4770 12    190  	dfad	q1,x2
+    000126  aa  2 00002 4631 00    191  	dfmp	pr2|xx
+    000127  0a   000232 4770 12    192  	dfad	q0,x2
+    000130  aa  2 00004 4721 00    193  	dfstr	pr2|q
+    000131  aa  2 00002 4331 00    194  	dfld	pr2|xx		" calculate p(xx)
+    000132  0a   000226 4630 12    195  	dfmp	p4,x2
+    000133  0a   000222 4770 12    196  	dfad	p3,x2
+    000134  aa  2 00002 4631 00    197  	dfmp	pr2|xx
+    000135  0a   000216 4770 12    198  	dfad	p2,x2
+    000136  aa  2 00002 4631 00    199  	dfmp	pr2|xx
+    000137  0a   000212 4770 12    200  	dfad	p1,x2
+    000140  aa  2 00002 4631 00    201  	dfmp	pr2|xx
+    000141  0a   000206 4770 12    202  	dfad	p0,x2
+    000142  aa  2 00000 4631 00    203  	dfmp	pr2|x		" calculate p = x*p(xx)
+    000143  aa   000001 1030 03    204  	cmpx3	Tangent,du
+    000144  aa   000003 6010 04    205  	tnz	3,ic		" if function = Tangent
+    000145  aa  2 00004 5671 00    206  	  dfdv	pr2|q		" then return (p/q)
+    000146  aa  3 00000 7101 00    207  	  tra	pr3|0
+    000147  aa  2 00004 5271 00    208  	dfdi	pr2|q		" else return (q/p)
+    000150  aa  3 00000 7101 00    209  	tra	pr3|0
+                                   210  
+                                   211  
+    000151                         212  infinity:
+    000151  aa  2 00000 4551 00    213  	fst	pr2|sign
+    000152  4a  4 00020 4311 20    214  	fld	max_value
+    000153  4a  4 00020 4751 20    215  	fad	max_value		" signal overflow
+    000154  4a  4 00020 4331 20    216  	dfld	max_value
+    000155  aa  2 00000 4301 00    217  	fszn	pr2|sign		" if sign >= 0
+    000156  aa  3 00000 6051 00    218  	tpl	pr3|0		" then return (max_value)
+    000157  aa   000000 5130 00    219  	fneg	0		" else return (-max_value)
+    000160  aa  3 00000 7101 00    220  	tra	pr3|0
+                                   221  
+                                   222  
+                                   223  " Constants:
+                                   224  
+    000161  aa   000000 0110 03    225  	even
+    000162  aa   412712 273406     226  eps1:	dec	8.418858142948452884d-38
+    000163  aa   461701 757347 
+    000164  aa   402162 456701     227  	oct	402162456701,514360373670	" 2.670821537926801391d-154
+    000165  aa   514360 373670 
+    000166  aa   704422 701372     228  eps2:	dec	5.0d-10
+    000167  aa   023326 451314 
+    000170  aa   762104 560277     229  	oct	762104560277,000000000000
+    000171  aa   000000 000000 
+    000172  aa   404400 000000     230  eps3:	oct	404400000000,000000000001
+    000173  aa   000000 000001 
+    000174  aa   404040 000000     231  	oct	404040000000,000000000001
+    000175  aa   000000 000001 
+    000176                         232  forty_five:
+    000176  aa   014550 000000     233  	dec	45.0d0
+    000177  aa   000000 000000 
+    000200  aa   004132 000000     234  	oct	004132000000,000000000000
+    000201  aa   000000 000000 
+    000202  aa   002400 000000     235  one:	dec	1.d0
+    000203  aa   000000 000000 
+    000204  aa   002040 000000     236  	oct	002040000000,000000000000
+    000205  aa   000000 000000 
+    000206  aa   050563 711322     237  p0:	dec	 7.61637646334745151d5
+    000207  aa   566143 202611 
+    000210  aa   012563 711322     238  	oct	012563711322,566143202611
+    000211  aa   566143 202611 
+    000212  aa   043147 427107     239  p1:	dec	-1.045644297708972282d5
+    000213  aa   724215 164170 
+    000214  aa   013714 742710     240  	oct	013714742710,772421516417
+    000215  aa   772421 516417 
+    000216  aa   030565 610740     241  p2:	dec	 2.990139654186652781d3
+    000217  aa   140350 661251 
+    000220  aa   006565 610740     242  	oct	006565610740,140350661251
+    000221  aa   140350 661251 
+    000222  aa   013240 570164     243  p3:	dec	-2.195407375452258719d1
+    000223  aa   505132 405221 
+    000224  aa   005724 057016     244  	oct	005724057016,450513240522
+    000225  aa   450513 240522 
+    000226  aa   766555 224035     245  p4:	dec	 2.229548191006262686d-2
+    000227  aa   515756 727105 
+    000230  aa   776266 512016     246  	oct	776266512016,646767353442
+    000231  aa   646767 353442 
+    000232  aa   050563 711322     247  q0:	dec	 7.61637646334745151d5
+    000233  aa   566143 202611 
+    000234  aa   012563 711322     248  	oct	012563711322,566143202611
+    000235  aa   566143 202611 
+    000236  aa   047241 752132     249  q1:	dec	-3.584436452158122785d5
+    000237  aa   646213 633156 
+    000240  aa   013520 765055     250  	oct	013520765055,323105715467
+    000241  aa   323105 715467 
+    000242  aa   036506 675262     251  q2:	dec	 2.091966854815805879d4
+    000243  aa   277066 524736 
+    000244  aa   010243 336531     252  	oct	010243336531,137433252357
+    000245  aa   137433 252357 
+    000246  aa   023315 034200     253  q3:	dec	-3.069448235422934591d2
+    000247  aa   132625 572506 
+    000250  aa   007731 503420     254  	oct	007731503420,013262557251
+    000251  aa   013262 557251 
+                                   255  
+                                   256  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000252  5a   000003 000000 
+    000253  5a   000141 600000 
+    000254  aa   000000 000000 
+    000255  55   000012 000002 
+    000256  5a   000002 400003 
+    000257  55   000006 000012 
+    000260  aa  017 144 157 165
+    000261  aa  142 154 145 137
+    000262  aa  164 141 156 147
+    000263  aa  145 156 164 137
+    000264  55   000024 000003 
+    000265  0a   000065 400000 
+    000266  55   000015 000003 
+    000267  aa  033 150 146 160         hfp_double_tangent_radians_
+    000270  aa  137 144 157 165
+    000271  aa  142 154 145 137
+    000272  aa  164 141 156 147
+    000273  aa  145 156 164 137
+    000274  aa  162 141 144 151
+    000275  aa  141 156 163 137
+    000276  55   000035 000012 
+    000277  0a   000067 400000 
+    000300  55   000027 000003 
+    000301  aa  027 144 157 165         double_tangent_radians_
+    000302  aa  142 154 145 137
+    000303  aa  164 141 156 147
+    000304  aa  145 156 164 137
+    000305  aa  162 141 144 151
+    000306  aa  141 156 163 137
+    000307  55   000047 000024 
+    000310  0a   000042 400000 
+    000311  55   000040 000003 
+    000312  aa  033 150 146 160         hfp_double_tangent_degrees_
+    000313  aa  137 144 157 165
+    000314  aa  142 154 145 137
+    000315  aa  164 141 156 147
+    000316  aa  145 156 164 137
+    000317  aa  144 145 147 162
+    000320  aa  145 145 163 137
+    000321  55   000060 000035 
+    000322  0a   000044 400000 
+    000323  55   000052 000003 
+    000324  aa  027 144 157 165         double_tangent_degrees_
+    000325  aa  142 154 145 137
+    000326  aa  164 141 156 147
+    000327  aa  145 156 164 137
+    000330  aa  144 145 147 162
+    000331  aa  145 145 163 137
+    000332  55   000073 000047 
+    000333  0a   000022 400000 
+    000334  55   000063 000003 
+    000335  aa  035 150 146 160         hfp_double_cotangent_radians_
+    000336  aa  137 144 157 165
+    000337  aa  142 154 145 137
+    000340  aa  143 157 164 141
+    000341  aa  156 147 145 156
+    000342  aa  164 137 162 141
+    000343  aa  144 151 141 156
+    000344  aa  163 137 000 000
+    000345  55   000105 000060 
+    000346  0a   000024 400000 
+    000347  55   000076 000003 
+    000350  aa  031 144 157 165         double_cotangent_radians_
+    000351  aa  142 154 145 137
+    000352  aa  143 157 164 141
+    000353  aa  156 147 145 156
+    000354  aa  164 137 162 141
+    000355  aa  144 151 141 156
+    000356  aa  163 137 000 000
+    000357  55   000120 000073 
+    000360  0a   000000 400000 
+    000361  55   000110 000003 
+    000362  aa  035 150 146 160         hfp_double_cotangent_degrees_
+    000363  aa  137 144 157 165
+    000364  aa  142 154 145 137
+    000365  aa  143 157 164 141
+    000366  aa  156 147 145 156
+    000367  aa  164 137 144 145
+    000370  aa  147 162 145 145
+    000371  aa  163 137 000 000
+    000372  55   000132 000105 
+    000373  0a   000002 400000 
+    000374  55   000123 000003 
+    000375  aa  031 144 157 165         double_cotangent_degrees_
+    000376  aa  142 154 145 137
+    000377  aa  143 157 164 141
+    000400  aa  156 147 145 156
+    000401  aa  164 137 144 145
+    000402  aa  147 162 145 145
+    000403  aa  163 137 000 000
+    000404  55   000002 000120 
+    000405  6a   000000 400002 
+    000406  55   000135 000003 
+    000407  aa  014 163 171 155         symbol_table
+    000410  aa  142 157 154 137
+    000411  aa  164 141 142 154
+    000412  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000413  aa   000000 000015 
+    000414  aa   000000 000000 
+    000415  aa   000000 000000 
+    000416  5a   000024 000000 
+    000417  5a   000047 000000 
+    000420  aa   000000 000000 
+    000421  5a   000073 000000 
+    000422  5a   000012 000000 
+    000423  5a   000035 000000 
+    000424  5a   000120 000000 
+    000425  5a   000060 000000 
+    000426  5a   000105 000000 
+    000427  5a   000132 000000 
+    000430  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000431  aa  031 144 157 165         double_principal_degrees_
+    000432  aa  142 154 145 137
+    000433  aa  160 162 151 156
+    000434  aa  143 151 160 141
+    000435  aa  154 137 144 145
+    000436  aa  147 162 145 145
+    000437  aa  163 137 000 000
+    000440  aa  031 144 157 165         double_principal_radians_
+    000441  aa  142 154 145 137
+    000442  aa  160 162 151 156
+    000443  aa  143 151 160 141
+    000444  aa  154 137 162 141
+    000445  aa  144 151 141 156
+    000446  aa  163 137 000 000
+    000447  aa  027 144 157 165         double_principal_angle_
+    000450  aa  142 154 145 137
+    000451  aa  160 162 151 156
+    000452  aa  143 151 160 141
+    000453  aa  154 137 141 156
+    000454  aa  147 154 145 137
+    000455  aa  012 161 165 141         quarter_pi
+    000456  aa  162 164 145 162
+    000457  aa  137 160 151 000
+    000460  aa  012 157 156 145         one_degree
+    000461  aa  137 144 145 147
+    000462  aa  162 145 145 000
+    000463  aa  011 155 141 170         max_value
+    000464  aa  137 166 141 154
+    000465  aa  165 145 000 000
+    000466  aa  017 155 141 164         math_constants_
+    000467  aa  150 137 143 157
+    000470  aa  156 163 164 141
+    000471  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000472  aa   000004 000000 
+    000473  55   000175 000157 
+    000474  aa   000004 000000 
+    000475  55   000175 000166 
+    000476  aa   000004 000000 
+    000477  55   000214 000203 
+    000500  aa   000004 000000 
+    000501  55   000214 000206 
+    000502  aa   000004 000000 
+    000503  55   000214 000211 
+    000504  aa   000001 000000 
+    000505  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000506  5a   000230 000000 
+    000507  5a   000222 000000 
+    000510  5a   000224 000000 
+    000511  5a   000226 000000 
+    000512  5a   000220 000000 
+    000513  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000252 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000022 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         double_principal_angle_|double_principal_degrees_
+    000011  5a   000240 0000 00
+    000012  9a   777766 0000 46         math_constants_|one_degree
+    000013  5a   000237 0000 12
+    000014  9a   777764 0000 46         math_constants_|quarter_pi
+    000015  5a   000236 0000 12
+    000016  9a   777762 0000 46         double_principal_angle_|double_principal_radians_
+    000017  5a   000235 0000 00
+    000020  9a   777760 0000 46         math_constants_|max_value
+    000021  5a   000234 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253417 215660 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000164 
+    000020  aa   000000 000104 
+    000021  aa   000132 000125 
+    000022  aa   000156 000104 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000046 
+    000067  aa   175453 020002 
+    000070  aa   000000 117547 
+    000071  aa   176726 400000 
+    000072  aa   076163 160145          >spec>install>1110>double_tangent_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076144 
+    000077  aa   157165 142154 
+    000100  aa   145137 164141 
+    000101  aa   156147 145156 
+    000102  aa   164137 056141 
+    000103  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    BFP                      double_tangent_:     36,   56,   86,  112,  143.
+      777777    Cotangent                double_tangent_:     38,   73,   92,   99,  133,  160.
+           3    cotangent_degrees        double_tangent_:     53,   58.
+          25    cotangent_radians        double_tangent_:     83,   88.
+           2    double_cotangent_degrees_      double_tangent_:     45,   55.
+          24    double_cotangent_radians_      double_tangent_:     46,   85.
+                double_principal_angle_  double_tangent_:     34.
+                double_principal_degrees_      double_tangent_:     34,   64,  120.
+                double_principal_radians_      double_tangent_:     34,   95,  153.
+          44    double_tangent_degrees_  double_tangent_:     47,  111.
+          67    double_tangent_radians_  double_tangent_:     48,  142.
+         162    eps1                     double_tangent_:     66,  122,  226.
+         166    eps2                     double_tangent_:    171,  228.
+         172    eps3                     double_tangent_:    177,  230.
+         176    forty_five               double_tangent_:     61,  117,  232.
+           2    HFP                      double_tangent_:     37,   52,   82,  108,  139.
+           0    hfp_double_cotangent_degrees_  double_tangent_:     45,   51.
+          22    hfp_double_cotangent_radians_  double_tangent_:     46,   81.
+          42    hfp_double_tangent_degrees_    double_tangent_:     47,  107.
+          65    hfp_double_tangent_radians_    double_tangent_:     48,  138.
+         151    infinity                 double_tangent_:     67,  178,  212.
+                math_constants_          double_tangent_:     33.
+                max_value                double_tangent_:     33,  214,  215,  216.
+         202    one                      double_tangent_:    179,  235.
+                one_degree               double_tangent_:     33,   69,  126.
+         206    p0                       double_tangent_:    202,  237.
+         212    p1                       double_tangent_:    200,  239.
+         216    p2                       double_tangent_:    198,  241.
+         222    p3                       double_tangent_:    196,  243.
+         226    p4                       double_tangent_:    195,  245.
+         104    part_tan_or_cot          double_tangent_:     74,   78,   93,  100,  104,  131,  135,  150,  158,  170.
+           4    q                        double_tangent_:     43,  193,  206,  208.
+         232    q0                       double_tangent_:    192,  247.
+         236    q1                       double_tangent_:    190,  249.
+         242    q2                       double_tangent_:    188,  251.
+         246    q3                       double_tangent_:    186,  253.
+                quarter_pi               double_tangent_:     33,   90,  147.
+           0    sign                     double_tangent_:     40,  213,  217.
+           1    Tangent                  double_tangent_:     39,   76,  102,  130,  149,  157,  173,  204.
+          45    tangent_degrees          double_tangent_:    109,  114.
+          70    tangent_radians          double_tangent_:    140,  145.
+         116    use_polynomial           double_tangent_:    172,  182.
+           0    x                        double_tangent_:     41,  183,  184,  203.
+           2    xx                       double_tangent_:     42,  185,  187,  189,  191,  194,  197,  199,  201.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

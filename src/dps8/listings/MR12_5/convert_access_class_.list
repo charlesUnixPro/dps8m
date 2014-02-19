@@ -1,0 +1,1114 @@
+	COMPILATION LISTING OF SEGMENT convert_access_class_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1001.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+       14 
+       15 convert_access_class_:
+       16      procedure;
+       17 
+       18 /* CONVERT_ACCESS_CLASS_
+       19*   program to convert Multics AIM authorizations between their
+       20*   character and binary representations.
+       21*
+       22*   PG 740801
+       23*   Modified 740823 by PG for $minimum and $test_cva entries.
+       24*   Modified 740917 by PG for $to_string_short entry.
+       25*   Modified 740930 by PG to allow only level-0 name to be null.
+       26*   Modified 741119 by PG to add "system_high" and "system_low" keywords.
+       27*   Modified 741213 by PG to call aim_check_ instead of using inline code.
+       28*   Modified 750316 by PG (per DAM) to fix bugs in calculation of name lengths in $to_string
+       29*   Modified 750604 by PG to allow leading blanks on keywords in $from_string
+       30*   Modified 10/05/78 by CDT to add "range" entrypoints.
+       31*   Modified: 7 July 1982 by G. Palter to make it recompile again
+       32*   Modified 84-03-22 BIM to recognize and present system_high on output.
+       33*   Modified 84-12-21 by Lee A. Newcomb:  Changed $encode to output "system_low"
+       34*   instead of a null string for that access class, and to
+       35*   have $decode accept that string in addition to the null
+       36*   string to imply system_low.
+       37**/
+       38 
+       39 
+       40 /****^  HISTORY COMMENTS:
+       41*  1) change(87-02-19,Farley), approve(87-07-20,MCR7691),
+       42*     audit(87-03-11,Fawcett), install(87-08-04,MR12.1-1055):
+       43*     Added maximum entry point to compute the max authorization of an array of
+       44*     authorizations.
+       45*                                                   END HISTORY COMMENTS */
+       46 
+       47 
+       48 /* parameters */
+       49 
+       50 declare  (
+       51          bv_authorization_array dimension (*) bit (72) aligned,
+       52          bv_authorization_binary bit (72) aligned,
+       53          bv_authorization_string char (*),
+       54          bv_code fixed bin (35),
+       55          bv_maximum_authorization bit (72) aligned,
+       56          bv_minimum_authorization bit (72) aligned,
+       57          bv_n_authorizations fixed bin
+       58          ) parameter;
+       59 
+       60 /* automatic */
+       61 
+       62 declare  sensitivity_level_undefined bit (1) aligned,
+       63          category_set_undefined bit (36) aligned,
+       64          (i, k, lb, hb, output_index, string_index) fixed bin,
+       65          (next_level, sensitivity_level) fixed bin (18),
+       66          (next_category_set, category_set) bit (36) aligned,
+       67          (max_length, name_length) fixed bin,
+       68          name char (32) aligned,
+       69          (bad_authorization, more_names, short) bit (1) aligned,
+       70          temp_string bit (72),
+       71          comma char (2) varying,
+       72          colon char (3) varying,
+       73          second_string_ptr pointer,
+       74          second_string_len fixed bin (21);
+       75 
+       76 /* based */
+       77 
+       78 declare  second_string_based char (second_string_len) based (second_string_ptr),
+       79          based_char_array (output_index) char (1) unaligned based;
+       80 
+       81 /* internal static initial */
+       82 
+       83 declare  (
+       84          initialized bit (1) aligned initial ("0"b),
+       85          system_directory char (168) initial (">system_control_1"),
+       86          ip ptr init (null)
+       87          ) internal static;
+       88 
+       89 /* external static */
+       90 
+       91 declare  (
+       92          error_table_$smallarg,
+       93          error_table_$ai_above_allowed_max,
+       94          error_table_$ai_invalid_string,
+       95          error_table_$ai_invalid_range,
+       96          error_table_$ai_invalid_binary
+       97          ) fixed bin (35) external static;
+       98 
+       99 /* entries */
+      100 
+      101 declare  aim_check_$greater_or_equal entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned),
+      102          aim_check_$greater entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned),
+      103          aim_check_$equal entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned),
+      104          hcs_$initiate entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr, fixed bin (35)),
+      105          unique_chars_ entry (bit (*)) returns (char (15)),
+      106          unique_chars_$bits entry (char (15)) returns (bit (70));
+      107 
+      108 /* builtin */
+      109 
+      110 declare  (addr, hbound, index, lbound, length, null, rtrim, string, substr, unspec, verify) builtin;
+      111 
+      112 /* include files */
+      113 
+  1     1 /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+  1     2 
+  1     3 /* Created 740723 by PG */
+  1     4 /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+  1     5 /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+  1     6 
+  1     7 /* This structure defines the components of both an access
+  1     8*   class and an access authorization as interpreted by the
+  1     9*   Access Isolation Mechanism. */
+  1    10 
+  1    11 
+  1    12 dcl  1 aim_template aligned based,			/* authorization/access class template */
+  1    13        2 categories bit (36),				/* access categories */
+  1    14        2 level fixed bin (17) unaligned,		/* sensitivity level */
+  1    15        2 privileges unaligned,			/* special access privileges (in authorization only) */
+  1    16         (3 ipc,					/* interprocess communication privilege */
+  1    17          3 dir,					/* directory privilege */
+  1    18          3 seg,					/* segment privilege */
+  1    19          3 soos,					/* security out-of-service privilege */
+  1    20          3 ring1,					/* ring 1 access privilege */
+  1    21          3 rcp,					/* RCP resource access privilege */
+  1    22          3 comm) bit (1),				/* communications cross-AIM privilege */
+  1    23          3 pad bit (11);
+  1    24 
+  1    25 
+  1    26 /* END INCLUDE FILE aim_template.incl.pl1 */
+      114 
+  2     1 /* BEGIN INCLUDE FILE ... installation_parms.incl.pl1 */
+  2     2 
+  2     3 /* Modified 740723 by PG to add short AIM access names */
+  2     4 /* Modified Fall 1977 by T. Casey to add fatal loop and trm_ signal parameters */
+  2     5 /* Modified 04/03/78 by CDT to add rcp_init_flags structure */
+  2     6 /* Modified May 1978 by T. Casey to add resource timer and resource price list parameters */
+  2     7 /* Modified November 1978 by T. Casey for MR7.0, to add absentee control parameters */
+  2     8 /* Modified 17 September 1980 by G. Palter to add default absentee queue */
+  2     9 /* Modified April 1981 by E. N. Kittlitz for chn_wakeup_error_loop, chn_wakeup_error_count */
+  2    10 /* Modified June 1981 by E. N. Kittlitz for nrates/rate_structures UNCA rate_structure support.
+  2    11*     Version, expand foregound_cpu_default_limit and abs_cpu_max_limit to fixed bin (35) fields.
+  2    12*     nrscp & resource array moved from offset 2064 (octal) to 2400 (octal). */
+  2    13 /* Modified 1984-06-19 BIM to remove obsolete fields, and add 
+  2    14*		       strict_trusted_path. */
+  2    15 /* Modified 1984-10-24 BIM for default_pdir_quota. */
+  2    16 /* Modified 1984-12-05 BIM for require_operator_login. */
+  2    17 /* Modified 1985-03-01 by E. Swenson for password flags. */
+  2    18 
+  2    19 
+  2    20 /****^  HISTORY COMMENTS:
+  2    21*  1) change(86-01-27,MSharpe), approve(87-05-25,MCR7690),
+  2    22*     audit(87-03-29,GDixon), install(87-08-04,MR12.1-1056):
+  2    23*     added vchn_requires_accept parameter.
+  2    24*  2) change(87-02-17,GDixon), approve(87-05-25,MCR7680),
+  2    25*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  2    26*     Correct formatting problems.
+  2    27*                                                   END HISTORY COMMENTS */
+  2    28 
+  2    29 
+  2    30 /* NOTE: rate_structure.incl.pl1 uses these declarations */
+  2    31 
+  2    32 
+  2    33 dcl 1 installation_parms based (ip) aligned,		/* describes installation parameters */
+  2    34     2 part_1 like installation_parms_part_1 aligned,
+  2    35     2 resource (0 refer (installation_parms.nrscp)) like installation_parms_resource_array_part aligned;
+  2    36 
+  2    37 dcl  installation_parms_version_1 fixed bin init (1) static internal options (constant);
+  2    38 dcl  installation_parms_version_2 fixed bin init (2) static internal options (constant);
+  2    39 
+  2    40 dcl 1 installation_parms_part_1 based aligned,		/* Used only by installation_parms and rate_structure */
+  2    41     2 installation_id char (32),			/* Name printed at dialup and in who */
+  2    42     2 company char (64),				/* company name */
+  2    43     2 department char (64),				/* department */
+  2    44     2 companyds char (120),				/* company, double spaced */
+  2    45     2 departmentds char (120),			/* dpeartment double spaced */
+  2    46     2 shifttab (336) bit (3) unal,			/* half-hrs from 0000 Mon, value is shift no */
+  2    47     2 cpu_price (0: 7) float bin,			/* price for cpu hour, by shift */
+  2    48     2 log_base_price (0: 7) float bin,			/* price for log hour, by shift */
+  2    49     2 io_ops_price (0: 7) float bin,			/* price per 1000 terminal io ops */
+  2    50     2 core_price (0: 7) float bin,			/* price for core page-hour, by shift */
+  2    51     2 ndevices fixed bin,				/* number of devices to charge */
+  2    52     2 devtab (16),					/* Maximum 16 */
+  2    53       3 device_id char (8),				/* Name of device */
+  2    54       3 device_price (0: 7) float bin,			/* Price by shift */
+  2    55     2 inactive_time fixed bin,			/* seconds of inactivity permitted */
+  2    56     2 warning_time fixed bin,				/* seconds from warning to logout */
+  2    57     2 login_time fixed bin,				/* seconds in which to complete login */
+  2    58     2 acct_update fixed bin,				/* seconds between acct update */
+  2    59     2 login_tries fixed bin,				/* number of login tries allowed */
+  2    60     2 disk_price float bin,				/* disk rate, in $/page-sec */
+  2    61     2 registration_price float bin,			/* fee per month per user */
+  2    62     2 dolsign char (1),				/* "dollar sign" */
+  2    63     2 abs_cpu_price (4) float bin,			/* price for absentee cpu by queue */
+  2    64     2 abs_mem_price (4) float bin,			/* Absentee memory charge */
+  2    65     2 iod_rec_price (4) float bin,			/* price for io daemon lines, per K, by queue */
+  2    66     2 abs_timax (4) fixed bin (35),			/* Absentee TIMAX parameter */
+  2    67     2 abs_cpu_default_limit (4) fixed bin (35),		/* default absentee cpu limit in seconds (changed from usec.) */
+  2    68     2 syserr_log_copy_threshold fixed bin (9),		/* Threshold (in PAGES) at which the
+  2    69*						   Initializer will copy the syserr_log */
+  2    70     2 default_pdir_seg_quota fixed bin (17) unaligned,	/* if system and project say 0 */
+  2    71     2 default_pdir_dir_quota fixed bin (17) unaligned,       /* Always used */
+  2    72     2 fatal_error_loop_count fixed bin (17) unaligned,
+  2    73     2 fatal_error_loop_seconds fixed bin (17) unaligned,
+  2    74     2 term_real_time_seconds fixed bin (17) unaligned,
+  2    75     2 term_cpu_time_seconds fixed bin (17) unaligned,
+  2    76     2 rcp_init_flags like rcp_init_flags aligned,		/* one word long */
+  2    77     2 rsc_timer_seconds fixed bin (17) unaligned,		/* time interval at which to check for resource availability */
+  2    78     2 pad_old_fg_cpu_default_limit bit (18) unaligned,
+  2    79     2 foreground_queue_position fixed bin (17) unal,	/* queue that foreground queue comes after */
+  2    80     2 idle_time_constant_seconds fixed bin (17) unal,	/* how far back to maintain moving average of load */
+  2    81     2 sus_cpu_time_seconds fixed bin (17) unal,		/* allow suspended process this much cpu time */
+  2    82     2 sus_real_time_seconds fixed bin (17) unal,		/* and this much real time, before bumping it */
+  2    83     2 foreground_cpu_default_limit fixed bin (35),	/* default cpu time limit (sec) for foreground absentee jobs */
+  2    84     2 access_authorization_ceiling bit (72),		/* "System high" access authorization. */
+  2    85     2 level_names (0:7) char (32),			/* Names for security levels. */
+  2    86     2 category_names (18) char (32),			/* Names for security categories. */
+  2    87     2 short_level_names (0:7) char (8),			/* Abbreviated level names. */
+  2    88     2 short_category_names (18) char (8),		/* Abbreviated category names. */
+  2    89     2 ncon fixed bin,				/* Number of config elements. */
+  2    90     2 cona (51),					/* each entry is 5 words long */
+  2    91       3 cpu fixed bin (5) unal,			/* Number of CPU's */
+  2    92       3 shift fixed bin (5) unal,			/* Shift number */
+  2    93       3 x1 fixed bin (23) unal,
+  2    94       3 kmem fixed bin (17) unal,			/* Memory size */
+  2    95       3 kbulk fixed bin (17) unal,			/* Bulk store size */
+  2    96       3 x2 fixed bin (17) unal,
+  2    97       3 maxa fixed bin (11) unal,			/* Max abs users */
+  2    98       3 maxq fixed bin (5) unal,			/* Max abs q */
+  2    99       3 maxu_base fixed bin (17) unal,
+  2   100       3 response_high fixed bin (17) unal,
+  2   101       3 response_low fixed bin (17) unal,
+  2   102       3 x3 fixed bin (17) unal,
+  2   103 
+  2   104 /* Absentee control parameters. New for MR7.0 */
+  2   105 
+  2   106     2 max_abs (0:7) fixed bin (17) unal,		/* per-shift upper limit on abs_maxu */
+  2   107     2 min_abs (0:7) fixed bin (17) unal,		/* per-shift lower limit on abs_maxu */
+  2   108     2 pct_abs (0:7) fixed bin (17) unal,		/* abs_maxu is this pct (per-shift) of idle units */
+  2   109 
+  2   110     2 max_qres (0:7, 4) fixed bin (17) unal,		/* per-shift-and-queue upper limit on reserved slots */
+  2   111     2 min_qres (0:7, 4) fixed bin (17) unal,		/* per-shift-and-queue lower limit on reserved slots */
+  2   112     2 pct_qres (0:7, 4) fixed bin (17) unal,		/* reserved slots are these pcts of abs_maxu */
+  2   113 
+  2   114     2 abs_cpu_max_limit (0:7, 4) fixed bin (35),		/* per-shift-and-queue upper limit (sec) on jobs' cpu times */
+  2   115 
+  2   116     2 default_absentee_queue fixed binary (17) unaligned,	/* default absentee queue for ear, etc. */
+  2   117 
+  2   118     2 chn_wakeup_error_loop_count fixed bin (17) unaligned, /* maximum number of channel wakeups in following interval */
+  2   119     2 chn_wakeup_error_loop_seconds fixed bin (17) unaligned, /* works like fatal_error_loop_count/seconds */
+  2   120     2 rate_structure_number fixed bin (17) unaligned,	/* rate_structure number of this RS */
+  2   121     2 version fixed bin (35),				/* must be 2 */
+  2   122     2 nrates fixed bin,				/* number of rate structures */
+  2   123     2 rate_structures (0:9) char (32),			/* names of rate_structures */
+  2   124     2 trusted_path_login bit (1) aligned,		/* forbid logout -hold and new_proc -auth */
+  2   125     2 require_operator_login bit (1) aligned,		/* just what it says */
+  2   126     2 operator_inactive_time fixed bin,			/* seconds between commands --> not logged in. */
+  2   127     2 validate_daemon_commands bit (1) aligned,		/* force existence and adequate access to 
+  2   128*						   mcacs segments for operators */
+  2   129     2 password_min_length fixed bin,			/* minimum length of passwords */
+  2   130     2 password_gpw_length fixed bin,			/* length of generated passwords */
+  2   131     2 password_change_interval fixed bin,		/* number of days until must change */
+  2   132     2 password_expiration_interval fixed bin,		/* number of days that a password may remain unused */
+  2   133     2 vchn_requires_accept bit (1) aligned,		/* "login personid -op -vchn foo" must be
+  2   134*						   "accepted" by operator if personid is not 
+  2   135*						   signed on system console */
+  2   136     2 end_pad (219) bit (36) aligned,			/* leave plenty of pad before the variable length price list */
+  2   137     2 nrscp fixed bin;				/* length of resource price array; must have offset 2400 (octal),
+  2   138*						   or someone miscounted when using part of pad2 */
+  2   139 
+  2   140 
+  2   141 /* Entries in the following array may be accessed via system_info_$resource_price.
+  2   142*   This array should not be accessed directly, since its format will change in subsequent releases of Multics. */
+  2   143 
+  2   144 dcl 1 installation_parms_resource_array_part (0 refer (installation_parms.nrscp)) based,
+  2   145       2 name char (32),
+  2   146       2 price float bin;
+  2   147 
+  3     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  3     2 
+  3     3 /* Created on 04/24/78 by Michael R. Jordan */
+  3     4 /* Modified 04/10/79 by C. D. Tavares */
+  3     5 
+  3     6 dcl  rifp ptr;
+  3     7 
+  3     8 dcl 1 rcp_init_flags based (rifp),
+  3     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  3    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  3    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  3    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  3    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  3    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  3    15 
+  3    16 dcl (No_authentication initial (0),
+  3    17      Nominal_authentication initial (1),
+  3    18      Automatic_authentication initial (2),
+  3    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  3    20 
+  3    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  3    22     ("none", "nominal", "automatic", "manual");
+  3    23 
+  3    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  2   148 
+  2   149 
+  2   150 /* END INCLUDE FILE ... installation_parms.incl.pl1 */
+      115 
+      116 
+      117 /* program */
+      118 
+      119 from_string:
+      120      entry (bv_authorization_binary, bv_authorization_string, bv_code);
+      121 
+      122 	bv_code = 0;
+      123 	call from_string_internal (bv_authorization_binary, bv_authorization_string, bv_code);
+      124 	return;
+      125 
+      126 from_string_range:
+      127      entry (bv_authorization_range, bv_authorization_string, bv_code);
+      128 
+      129 declare  bv_authorization_range (2) bit (72) aligned parameter;
+      130 
+      131 declare  colon_idx fixed bin (21);
+      132 
+      133 	bv_code = 0;
+      134 	colon_idx = index (bv_authorization_string, ":");
+      135 
+      136 	if colon_idx = 0 then do;
+      137 	     call from_string_internal (bv_authorization_range (1), bv_authorization_string, bv_code);
+      138 	     bv_authorization_range (2) = bv_authorization_range (1);
+      139 	     return;
+      140 	end;
+      141 
+      142 	call from_string_internal (bv_authorization_range (1), substr (bv_authorization_string, 1, colon_idx - 1),
+      143 	     bv_code);
+      144 	if bv_code = error_table_$ai_above_allowed_max then bv_code = 0;
+      145 						/* we can afford to ignore this-- if LOW bound
+      146*						   is above max, either high bound will be too
+      147*						   or we will generate ai_invalid_range. */
+      148 	if bv_code ^= 0 then return;
+      149 
+      150 	call from_string_internal (bv_authorization_range (2), substr (bv_authorization_string, colon_idx + 1), bv_code)
+      151 	     ;
+      152 	if bv_code ^= 0 then
+      153 	     if bv_code ^= error_table_$ai_above_allowed_max then return;
+      154 
+      155 	if ^aim_check_$greater_or_equal (bv_authorization_range (2), bv_authorization_range (1)) then
+      156 	     bv_code = error_table_$ai_invalid_range;
+      157 
+      158 	return;
+      159 
+      160 
+      161 from_string_internal:
+      162      proc (bv_authorization_binary, bv_authorization_string, bv_code);
+      163 
+      164 declare  (
+      165          bv_authorization_binary bit (72) aligned,
+      166          bv_authorization_string char (*),
+      167          bv_code fixed bin (35)
+      168          ) parameter;
+      169 
+      170 	if ^initialized then do;
+      171 	     call initialize_me (bv_code);
+      172 	     if bv_code ^= 0 then return;
+      173 	end;
+      174 
+      175 /* strip leading blanks. If input is all blank, treat same as "system_low" */
+      176 
+      177 	string_index = verify (bv_authorization_string, " ");
+      178 
+      179 	if string_index = 0 then do;
+      180 	     if installation_parms.level_names (0) ^= ""	/* If neither level-0 name is blank, invalid */
+      181 		& installation_parms.short_level_names (0) ^= "" then
+      182 		bv_code = error_table_$ai_invalid_string;
+      183 	     else bv_code = 0;
+      184 	     bv_authorization_binary = ""b;		/* input is all blank */
+      185 	     return;
+      186 	end;
+      187 
+      188 	if substr (bv_authorization_string, string_index) = "system_low" then do;
+      189 	     bv_authorization_binary = ""b;
+      190 	     bv_code = 0;
+      191 	     return;
+      192 	end;
+      193 
+      194 	if substr (bv_authorization_string, string_index) = "system_high" then do;
+      195 	     bv_authorization_binary = installation_parms.access_authorization_ceiling;
+      196 	     bv_code = 0;
+      197 	     return;
+      198 	end;
+      199 
+      200 	more_names = "1"b;				/* not a trivial case, must parse input */
+      201 
+      202 	sensitivity_level_undefined = "1"b;
+      203 	category_set_undefined = (36)"1"b;
+      204 
+      205 	sensitivity_level = 0;
+      206 	category_set = (36)"0"b;
+      207 
+      208 	output_index = 1;
+      209 
+      210 	do while (more_names);
+      211 	     name_length = index (substr (bv_authorization_string, string_index), ",") - 1;
+      212 	     if name_length = -1			/* if last name on line */
+      213 		then
+      214 		name_length = length (bv_authorization_string) - string_index + 1;
+      215 
+      216 	     name = substr (bv_authorization_string, string_index, name_length);
+      217 	     string_index = string_index + name_length + 1;
+      218 
+      219 	     if string_index > length (bv_authorization_string) then more_names = "0"b;
+      220 						/* done if no more input left */
+      221 
+      222 	     lb = lbound (installation_parms.level_names (*), 1);
+      223 	     hb = hbound (installation_parms.level_names (*), 1);
+      224 
+      225 	     do i = lb to hb while (installation_parms.level_names (i) ^= name);
+      226 						/* try long level names. */
+      227 	     end;
+      228 
+      229 	     if i = hb + 1				/* not a long level name, try short level names. */
+      230 		then
+      231 		do i = lb to hb while (installation_parms.short_level_names (i) ^= name);
+      232 	     end;
+      233 
+      234 	     if i <= hb				/* is a (long or short) level name */
+      235 		then
+      236 		if sensitivity_level_undefined then do;
+      237 		     sensitivity_level = i;
+      238 		     sensitivity_level_undefined = "0"b;
+      239 		end;
+      240 		else do;
+      241 		     bv_code = error_table_$ai_invalid_string;
+      242 		     return;
+      243 		end;
+      244 	     else do;				/* not a level name, try category names */
+      245 		lb = lbound (installation_parms.category_names (*), 1);
+      246 		hb = hbound (installation_parms.category_names (*), 1);
+      247 
+      248 		do i = lb to hb while (installation_parms.category_names (i) ^= name);
+      249 		end;
+      250 
+      251 		if i = hb + 1			/* not a long category name, try short category name. */
+      252 		     then
+      253 		     do i = lb to hb while (installation_parms.short_category_names (i) ^= name);
+      254 		end;
+      255 
+      256 		if i <= hb			/* is a (long or short) category name */
+      257 		     then
+      258 		     if substr (category_set_undefined, i, 1) then do;
+      259 			substr (category_set, i, 1) = "1"b;
+      260 			substr (category_set_undefined, i, 1) = "0"b;
+      261 		     end;
+      262 		     else do;
+      263 			bv_code = error_table_$ai_invalid_string;
+      264 			return;
+      265 		     end;
+      266 		else do;
+      267 		     bv_code = error_table_$ai_invalid_string;
+      268 		     return;
+      269 		end;
+      270 	     end;
+      271 
+      272 /* strip leading blanks on next name */
+      273 
+      274 	     if more_names then do;
+      275 		k = verify (substr (bv_authorization_string, string_index), " ") - 1;
+      276 
+      277 		if k = -1 then
+      278 		     more_names = "0"b;		/* rest of input is blank */
+      279 		else string_index = string_index + k;	/* step over k blanks */
+      280 	     end;
+      281 	end;
+      282 
+      283 	addr (bv_authorization_binary) -> aim_template.categories = category_set;
+      284 	addr (bv_authorization_binary) -> aim_template.level = sensitivity_level;
+      285 	string (addr (bv_authorization_binary) -> aim_template.privileges) = ""b;
+      286 
+      287 /* Authorization has been converted. See if it is greater than the authorization ceiling.
+      288*   This is a non-fatal error; the converted value will still be returned. */
+      289 
+      290 	if ^aim_check_$greater_or_equal (installation_parms.access_authorization_ceiling, bv_authorization_binary) then
+      291 	     bv_code = error_table_$ai_above_allowed_max;
+      292 	else bv_code = 0;
+      293 
+      294 	return;
+      295      end from_string_internal;
+      296 
+      297 /* ---------- */
+      298 
+      299 /* Entry to convert the binary form of an authorization/access class to the character string form.
+      300*   Works properly for null names. */
+      301 
+      302 to_string:
+      303      entry (bv_authorization_binary, bv_authorization_string, bv_code);
+      304 
+      305 	bv_code = 0;
+      306 	short = "0"b;				/* use long names */
+      307 	comma = ", ";				/* make output a little prettier */
+      308 
+      309 	call to_string_internal (bv_authorization_binary, bv_authorization_string, bv_code);
+      310 	return;
+      311 
+      312 
+      313 /* Entry to convert binary form to the character string form, using the short names. */
+      314 
+      315 to_string_short:
+      316      entry (bv_authorization_binary, bv_authorization_string, bv_code);
+      317 
+      318 	bv_code = 0;
+      319 	short = "1"b;				/* use short names */
+      320 	comma = ",";				/* put names close together */
+      321 
+      322 	call to_string_internal (bv_authorization_binary, bv_authorization_string, bv_code);
+      323 	return;
+      324 
+      325 
+      326 /* Entry to convert pair of binary forms to character string form. */
+      327 
+      328 to_string_range:
+      329      entry (bv_authorization_range, bv_authorization_string, bv_code);
+      330 
+      331 	bv_code = 0;
+      332 	short = "0"b;				/* use long names */
+      333 	comma = ", ";				/* make output a little prettier */
+      334 	colon = " : ";
+      335 	goto to_range_common;
+      336 
+      337 
+      338 /* Entry to convert pair of binary forms to the character string form, using the short names. */
+      339 
+      340 to_string_range_short:
+      341      entry (bv_authorization_range, bv_authorization_string, bv_code);
+      342 
+      343 	bv_code = 0;
+      344 	short = "1"b;				/* use short names */
+      345 	comma = ",";				/* put names close together */
+      346 	colon = ":";
+      347 
+      348 to_range_common:
+      349 	call to_string_internal (bv_authorization_range (1), bv_authorization_string, bv_code);
+      350 	if bv_code ^= 0 then return;
+      351 
+      352 	if bv_authorization_string = "" then bv_authorization_string = "system_low";
+      353 
+      354 	if bv_authorization_range (1) = bv_authorization_range (2) then return;
+      355 
+      356 	output_index = length (rtrim (bv_authorization_string, " ")) + 1;
+      357 	if output_index + length (colon) + 1 > length (bv_authorization_string) then do;
+      358 	     bv_code = error_table_$smallarg;
+      359 	     return;
+      360 	end;
+      361 
+      362 	substr (bv_authorization_string, output_index, length (colon)) = colon;
+      363 	output_index = output_index + length (colon);
+      364 
+      365 	second_string_ptr = addr (addr (bv_authorization_string) -> based_char_array (output_index));
+      366 	second_string_len = length (substr (bv_authorization_string, output_index));
+      367 
+      368 	call to_string_internal (bv_authorization_range (2), second_string_based, bv_code);
+      369 	if bv_code ^= 0 then return;
+      370 
+      371 	if ^aim_check_$greater_or_equal (bv_authorization_range (2), bv_authorization_range (1)) then
+      372 	     bv_code = error_table_$ai_invalid_range;
+      373 
+      374 	if second_string_based = "" then
+      375 	     if bv_code = 0 then
+      376 		if short then
+      377 		     bv_authorization_string = "";
+      378 		else bv_authorization_string = "system_low";
+      379 	     else do;
+      380 		second_string_based = "system_low";
+      381 		if second_string_based ^= "system_low" then bv_code = error_table_$smallarg;
+      382 	     end;
+      383 
+      384 	return;
+      385 
+      386 to_string_internal:
+      387      proc (bv_authorization_binary, bv_authorization_string, bv_code);
+      388 
+      389 declare  (
+      390          bv_authorization_binary bit (72) aligned,
+      391          bv_authorization_string char (*),
+      392          bv_code fixed bin (35)
+      393          ) parameter;
+      394 
+      395 	if ^initialized then do;
+      396 	     call initialize_me (bv_code);
+      397 	     if bv_code ^= 0 then return;
+      398 	end;
+      399 
+      400 	bad_authorization = "0"b;
+      401 
+      402 	if short then
+      403 	     max_length = length (installation_parms.short_level_names (1));
+      404 	else max_length = length (installation_parms.level_names (1));
+      405 
+      406 	if aim_check_$greater (installation_parms.access_authorization_ceiling, ""b)
+      407 						/* is system_high greater than system_low? */
+      408 	     then
+      409 	     if aim_check_$equal (bv_authorization_binary, installation_parms.access_authorization_ceiling) then do;
+      410 		bv_authorization_string = "system_high";
+      411 		return;
+      412 	     end;
+      413 
+      414 	sensitivity_level = addr (bv_authorization_binary) -> aim_template.level;
+      415 	category_set = addr (bv_authorization_binary) -> aim_template.categories;
+      416 
+      417 /* Sensitivity level name comes first (may be null string). */
+      418 
+      419 	if sensitivity_level <= hbound (installation_parms.level_names (*), 1)
+      420 	     & sensitivity_level >= lbound (installation_parms.level_names (*), 1) then do;
+      421 	     if short then
+      422 		name_length = length (rtrim (installation_parms.short_level_names (sensitivity_level), " "));
+      423 	     else name_length = length (rtrim (installation_parms.level_names (sensitivity_level), " "));
+      424 
+      425 /* only level 0 can have a null name */
+      426 
+      427 	     if name_length = 0 then
+      428 		if sensitivity_level ^= 0 then bad_authorization = "1"b;
+      429 
+      430 /* copy in level name, and set rest of output string to blanks */
+      431 
+      432 	     if short then
+      433 		bv_authorization_string = installation_parms.short_level_names (sensitivity_level);
+      434 	     else bv_authorization_string = installation_parms.level_names (sensitivity_level);
+      435 
+      436 	     output_index = name_length + 1;
+      437 	end;
+      438 	else do;
+      439 	     bad_authorization = "1"b;
+      440 	     output_index = 1;			/* level was bad, but still try to convert categories */
+      441 	     bv_authorization_string = "";
+      442 	end;
+      443 
+      444 /* Category names follow level name. */
+      445 /* (we assume max_length of category names is same as max_length of level names). */
+      446 
+      447 	do i = lbound (installation_parms.category_names (*), 1) to hbound (installation_parms.category_names (*), 1);
+      448 
+      449 	     if substr (category_set, i, 1) then do;
+      450 		if short then
+      451 		     name_length = length (rtrim (installation_parms.short_category_names (i), " "));
+      452 		else name_length = length (rtrim (installation_parms.category_names (i), " "));
+      453 
+      454 /* null category names are not allowed */
+      455 
+      456 		if name_length = 0 then bad_authorization = "1"b;
+      457 
+      458 /* make sure comma, optional space, and whole name will fit */
+      459 
+      460 		if output_index + name_length + length (comma) - 1 > length (bv_authorization_string) then do;
+      461 		     bv_code = error_table_$smallarg;
+      462 		     return;
+      463 		end;
+      464 
+      465 		if output_index > 1			/* if there is a preceding name */
+      466 		then do;
+      467 		     substr (bv_authorization_string, output_index, length (comma)) = comma;
+      468 		     output_index = output_index + length (comma);
+      469 		end;
+      470 
+      471 		if short then
+      472 		     substr (bv_authorization_string, output_index, name_length) =
+      473 			installation_parms.short_category_names (i);
+      474 		else substr (bv_authorization_string, output_index, name_length) =
+      475 			installation_parms.category_names (i);
+      476 
+      477 		output_index = output_index + name_length;
+      478 	     end;
+      479 	end;
+      480 
+      481 	if i <= length (category_set) then
+      482 	     if substr (category_set, i)		/* if any bits are on in unused category bits */
+      483 		then
+      484 		bad_authorization = "1"b;
+      485 
+      486 /* we do not check that the aim_template.privileges field is all zero. */
+      487 /* (so that programs who call us don't have to worry about exception bits stored there). */
+      488 
+      489 	if bad_authorization then
+      490 	     bv_code = error_table_$ai_invalid_binary;
+      491 	else bv_code = 0;
+      492 	return;
+      493      end to_string_internal;
+      494 
+      495 /* Entry to compute the max reduction of a vector of authorizations.
+      496*   The result has a sensitivity level greater than or equal to each input level,
+      497*   and a category set which is a (possibly improper) superset of all input category sets. */
+      498 
+      499 maximum:
+      500      entry (bv_authorization_array, bv_n_authorizations, bv_maximum_authorization);
+      501 
+      502 	sensitivity_level = addr (bv_authorization_array (1)) -> aim_template.level;
+      503 	category_set = addr (bv_authorization_array (1)) -> aim_template.categories;
+      504 
+      505 	do i = 2 to bv_n_authorizations;		/* even works for n = 1 */
+      506 	     next_level = addr (bv_authorization_array (i)) -> aim_template.level;
+      507 	     next_category_set = addr (bv_authorization_array (i)) -> aim_template.categories;
+      508 
+      509 	     if sensitivity_level < next_level then sensitivity_level = next_level;
+      510 
+      511 	     category_set = category_set | next_category_set;
+      512 	end;
+      513 
+      514 	addr (bv_maximum_authorization) -> aim_template.level = sensitivity_level;
+      515 	addr (bv_maximum_authorization) -> aim_template.categories = category_set;
+      516 	string (addr (bv_maximum_authorization) -> aim_template.privileges) = ""b;
+      517 	return;
+      518 
+      519 /* Entry to compute the min reduction of a vector of authorizations.
+      520*   The result has a sensitivity level less than or equal to each input level,
+      521*   and a category set which is a (possibly improper) subset of all input category sets. */
+      522 
+      523 minimum:
+      524      entry (bv_authorization_array, bv_n_authorizations, bv_minimum_authorization);
+      525 
+      526 	sensitivity_level = addr (bv_authorization_array (1)) -> aim_template.level;
+      527 	category_set = addr (bv_authorization_array (1)) -> aim_template.categories;
+      528 
+      529 	do i = 2 to bv_n_authorizations;		/* even works for n = 1 */
+      530 	     next_level = addr (bv_authorization_array (i)) -> aim_template.level;
+      531 	     next_category_set = addr (bv_authorization_array (i)) -> aim_template.categories;
+      532 
+      533 	     if sensitivity_level > next_level then sensitivity_level = next_level;
+      534 
+      535 	     category_set = category_set & next_category_set;
+      536 	end;
+      537 
+      538 	addr (bv_minimum_authorization) -> aim_template.level = sensitivity_level;
+      539 	addr (bv_minimum_authorization) -> aim_template.categories = category_set;
+      540 	string (addr (bv_minimum_authorization) -> aim_template.privileges) = ""b;
+      541 	return;
+      542 
+      543 /* Entry to encode an authorization as a character string short enough   */
+      544 /* to be used as an entry name.  For system_low, the string "system_low" */
+      545 /* is returned; for all other access classes, we use unique_chars_.	   */
+      546 
+      547 encode:
+      548      entry (bv_authorization_binary, bv_authorization_encoded);
+      549 
+      550 /* parameters */
+      551 
+      552 declare  bv_authorization_encoded char (*);
+      553 
+      554 /* program */
+      555 
+      556 	temp_string = unspec (bv_authorization_binary);
+      557 	string (addr (temp_string) -> aim_template.privileges) = ""b;
+      558 
+      559 	if temp_string ^= ""b then
+      560 	     bv_authorization_encoded = unique_chars_ (temp_string);
+      561 	else bv_authorization_encoded = "system_low";
+      562 
+      563 	return;
+      564 
+      565 /* Entry to decode back into an authorization. */
+      566 
+      567 decode:
+      568      entry (bv_authorization_binary, bv_authorization_encoded);
+      569 
+      570 /* program */
+      571 
+      572 	if bv_authorization_encoded = "" | bv_authorization_encoded = "system_low" then
+      573 	     temp_string = ""b;
+      574 	else temp_string = unique_chars_$bits ((bv_authorization_encoded));
+      575 
+      576 	unspec (bv_authorization_binary) = temp_string;
+      577 	return;
+      578 
+      579 /* Entry to change the default system directory for testing purposes. */
+      580 
+      581 test_cva:
+      582      entry (bv_system_directory);
+      583 
+      584 /* parameters */
+      585 
+      586 declare  bv_system_directory char (*) parameter;
+      587 
+      588 /* program */
+      589 
+      590 	system_directory = bv_system_directory;
+      591 	initialized = "0"b;
+      592 	return;
+      593 
+      594 /* Internal procedure to get a pointer to installation_parms. */
+      595 
+      596 initialize_me:
+      597      procedure (bv_code);
+      598 
+      599 /* parameters */
+      600 
+      601 declare  bv_code fixed bin (35) parameter;
+      602 
+      603 /* program */
+      604 
+      605 	call hcs_$initiate (system_directory, "installation_parms", "", 0, 0, ip, bv_code);
+      606 	if ip = null then return;
+      607 
+      608 	bv_code = 0;
+      609 	initialized = "1"b;
+      610 
+      611      end initialize_me;
+      612 
+      613      end convert_access_class_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.6  convert_access_class_.pl1         >spec>install>1111>convert_access_class_.pl1
+114          1    09/07/83  1610.6  aim_template.incl.pl1             >ldd>include>aim_template.incl.pl1
+115          2    08/06/87  0913.4  installation_parms.incl.pl1       >ldd>include>installation_parms.incl.pl1
+2-148        3    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access_authorization_ceiling
+                        546            based           bit(72)                  level 3 dcl 2-33 set ref 195 290* 406* 406*
+addr                                                   builtin function         dcl 110 ref 283 284 285 365 365 414 415 502 503 506
+                                                                                  507 514 515 516 526 527 530 531 538 539 540 557
+aim_check_$equal                000104 constant        entry                    external dcl 101 ref 406
+aim_check_$greater              000102 constant        entry                    external dcl 101 ref 406
+aim_check_$greater_or_equal     000100 constant        entry                    external dcl 101 ref 155 290 371
+aim_template                           based           structure                level 1 dcl 1-12
+bad_authorization               000126 automatic       bit(1)                   dcl 62 set ref 400* 427* 439* 456* 481* 489
+based_char_array                       based           char(1)                  array packed unaligned dcl 78 set ref 365
+bv_authorization_array                 parameter       bit(72)                  array dcl 50 set ref 499 502 503 506 507 523 526 527
+                                                                                  530 531
+bv_authorization_binary                parameter       bit(72)                  dcl 389 in procedure "to_string_internal" set ref
+                                                                                  386 406* 414 415
+bv_authorization_binary                parameter       bit(72)                  dcl 50 in procedure "convert_access_class_" set ref
+                                                                                  119 123* 302 309* 315 322* 547 556 567 576*
+bv_authorization_binary                parameter       bit(72)                  dcl 164 in procedure "from_string_internal" set ref
+                                                                                  161 184* 189* 195* 283 284 285 290*
+bv_authorization_encoded               parameter       char                     packed unaligned dcl 552 set ref 547 559* 561* 567
+                                                                                  572 572 574
+bv_authorization_range                 parameter       bit(72)                  array dcl 129 set ref 126 137* 138* 138 142* 150*
+                                                                                  155* 155* 328 340 348* 354 354 368* 371* 371*
+bv_authorization_string                parameter       char                     packed unaligned dcl 50 in procedure
+                                                                                  "convert_access_class_" set ref 119 123* 126 134
+                                                                                  137* 142 142 150 150 302 309* 315 322* 328 340
+                                                                                  348* 352 352* 356 357 362* 365 366 374* 378*
+bv_authorization_string                parameter       char                     packed unaligned dcl 389 in procedure
+                                                                                  "to_string_internal" set ref 386 410* 432* 434*
+                                                                                  441* 460 467* 471* 474*
+bv_authorization_string                parameter       char                     packed unaligned dcl 164 in procedure
+                                                                                  "from_string_internal" ref 161 177 188 194 211 212
+                                                                                  216 219 275
+bv_code                                parameter       fixed bin(35,0)          dcl 164 in procedure "from_string_internal" set ref
+                                                                                  161 171* 172 180* 183* 190* 196* 241* 263* 267*
+                                                                                  290* 292*
+bv_code                                parameter       fixed bin(35,0)          dcl 50 in procedure "convert_access_class_" set ref
+                                                                                  119 122* 123* 126 133* 137* 142* 144 144* 148 150*
+                                                                                  152 152 155* 302 305* 309* 315 318* 322* 328 331*
+                                                                                  340 343* 348* 350 358* 368* 369 371* 374 381*
+bv_code                                parameter       fixed bin(35,0)          dcl 389 in procedure "to_string_internal" set ref
+                                                                                  386 396* 397 461* 489* 491*
+bv_code                                parameter       fixed bin(35,0)          dcl 601 in procedure "initialize_me" set ref 596
+                                                                                  605* 608*
+bv_maximum_authorization               parameter       bit(72)                  dcl 50 set ref 499 514 515 516
+bv_minimum_authorization               parameter       bit(72)                  dcl 50 set ref 523 538 539 540
+bv_n_authorizations                    parameter       fixed bin(17,0)          dcl 50 ref 499 505 523 529
+bv_system_directory                    parameter       char                     packed unaligned dcl 586 ref 581 590
+categories                             based           bit(36)                  level 2 dcl 1-12 set ref 283* 415 503 507 515* 527
+                                                                                  531 539*
+category_names          650            based           char(32)                 array level 3 dcl 2-33 ref 245 246 248 447 447 452
+                                                                                  474
+category_set                    000113 automatic       bit(36)                  dcl 62 set ref 206* 259* 283 415* 449 481 481 503*
+                                                                                  511* 511 515 527* 535* 535 539
+category_set_undefined          000101 automatic       bit(36)                  dcl 62 set ref 203* 256 260*
+colon                           000136 automatic       varying char(3)          dcl 62 set ref 334* 346* 357 362 362 363
+colon_idx                       000143 automatic       fixed bin(21,0)          dcl 131 set ref 134* 136 142 142 150 150
+comma                           000134 automatic       varying char(2)          dcl 62 set ref 307* 320* 333* 345* 460 467 467 468
+error_table_$ai_above_allowed_max
+                                000070 external static fixed bin(35,0)          dcl 91 ref 144 152 290
+error_table_$ai_invalid_binary  000076 external static fixed bin(35,0)          dcl 91 ref 489
+error_table_$ai_invalid_range   000074 external static fixed bin(35,0)          dcl 91 ref 155 371
+error_table_$ai_invalid_string  000072 external static fixed bin(35,0)          dcl 91 ref 180 241 263 267
+error_table_$smallarg           000066 external static fixed bin(35,0)          dcl 91 ref 358 381 461
+hb                              000105 automatic       fixed bin(17,0)          dcl 62 set ref 223* 225 229 229 234 246* 248 251 251
+                                                                                  256
+hbound                                                 builtin function         dcl 110 ref 223 246 419 447
+hcs_$initiate                   000106 constant        entry                    external dcl 101 ref 605
+i                               000102 automatic       fixed bin(17,0)          dcl 62 set ref 225* 225* 229 229* 229* 234 237 248*
+                                                                                  248* 251 251* 251* 256 256 259 260 447* 449 450
+                                                                                  452 471 474* 481 481 505* 506 507* 529* 530 531*
+index                                                  builtin function         dcl 110 ref 134 211
+initialized                     000010 internal static bit(1)                   initial dcl 83 set ref 170 395 591* 609*
+installation_parms                     based           structure                level 1 dcl 2-33
+installation_parms_part_1              based           structure                level 1 dcl 2-40
+installation_parms_resource_array_part based           structure                array level 1 unaligned dcl 2-144
+ip                              000064 internal static pointer                  initial dcl 83 set ref 180 180 195 222 223 225 229
+                                                                                  245 246 248 251 290 402 404 406 406 419 419 421
+                                                                                  423 432 434 447 447 450 452 471 474 605* 606
+k                               000103 automatic       fixed bin(17,0)          dcl 62 set ref 275* 277 279
+lb                              000104 automatic       fixed bin(17,0)          dcl 62 set ref 222* 225 229 245* 248 251
+lbound                                                 builtin function         dcl 110 ref 222 245 419 447
+length                                                 builtin function         dcl 110 ref 212 219 356 357 357 362 363 366 402 404
+                                                                                  421 423 450 452 460 460 467 468 481
+level                     1            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-12 set ref
+                                                                                  284* 414 502 506 514* 526 530 538*
+level_names             550            based           char(32)                 array level 3 dcl 2-33 ref 180 222 223 225 404 419
+                                                                                  419 423 434
+max_length                      000114 automatic       fixed bin(17,0)          dcl 62 set ref 402* 404*
+more_names                      000127 automatic       bit(1)                   dcl 62 set ref 200* 210 219* 274 277*
+name                            000116 automatic       char(32)                 dcl 62 set ref 216* 225 229 248 251
+name_length                     000115 automatic       fixed bin(17,0)          dcl 62 set ref 211* 212 212* 216 217 421* 423* 427
+                                                                                  436 450* 452* 456 460 471 474 477
+next_category_set               000112 automatic       bit(36)                  dcl 62 set ref 507* 511 531* 535
+next_level                      000110 automatic       fixed bin(18,0)          dcl 62 set ref 506* 509 509 530* 533 533
+null                                                   builtin function         dcl 110 ref 606
+output_index                    000106 automatic       fixed bin(17,0)          dcl 62 set ref 208* 356* 357 362 363* 363 365 366
+                                                                                  436* 440* 460 465 467 468* 468 471 474 477* 477
+part_1                                 based           structure                level 2 dcl 2-33
+privileges                1(18)        based           structure                level 2 packed packed unaligned dcl 1-12 set ref
+                                                                                  285* 516* 540* 557*
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 3-8
+rtrim                                                  builtin function         dcl 110 ref 356 421 423 450 452
+second_string_based                    based           char                     packed unaligned dcl 78 set ref 368* 374 380* 381
+second_string_len               000142 automatic       fixed bin(21,0)          dcl 62 set ref 366* 368 368 374 380 381
+second_string_ptr               000140 automatic       pointer                  dcl 62 set ref 365* 368 374 380 381
+sensitivity_level               000111 automatic       fixed bin(18,0)          dcl 62 set ref 205* 237* 284 414* 419 419 421 423
+                                                                                  427 432 434 502* 509 509* 514 526* 533 533* 538
+sensitivity_level_undefined     000100 automatic       bit(1)                   dcl 62 set ref 202* 234 238*
+short                           000130 automatic       bit(1)                   dcl 62 set ref 306* 319* 332* 344* 374 402 421 432
+                                                                                  450 471
+short_category_names   1110            based           char(8)                  array level 3 dcl 2-33 ref 251 450 471
+short_level_names      1070            based           char(8)                  array level 3 dcl 2-33 ref 180 229 402 421 432
+string                                                 builtin function         dcl 110 set ref 285* 516* 540* 557*
+string_index                    000107 automatic       fixed bin(17,0)          dcl 62 set ref 177* 179 188 194 211 212 216 217* 217
+                                                                                  219 275 279* 279
+substr                                                 builtin function         dcl 110 set ref 142 142 150 150 188 194 211 216 256
+                                                                                  259* 260* 275 362* 366 449 467* 471* 474* 481
+system_directory                000011 internal static char(168)                initial packed unaligned dcl 83 set ref 590* 605*
+temp_string                     000132 automatic       bit(72)                  packed unaligned dcl 62 set ref 556* 557 559 559*
+                                                                                  572* 574* 576
+unique_chars_                   000110 constant        entry                    external dcl 101 ref 559
+unique_chars_$bits              000112 constant        entry                    external dcl 101 ref 574
+unspec                                                 builtin function         dcl 110 set ref 556 576*
+verify                                                 builtin function         dcl 110 ref 177 275
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 3-16
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 3-16
+No_authentication                      internal static fixed bin(17,0)          initial dcl 3-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 3-16
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 3-21
+installation_parms_version_1           internal static fixed bin(17,0)          initial dcl 2-37
+installation_parms_version_2           internal static fixed bin(17,0)          initial dcl 2-38
+rifp                                   automatic       pointer                  dcl 3-6
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+convert_access_class_           000050 constant        entry                    external dcl 15
+decode                          001251 constant        entry                    external dcl 567
+encode                          001171 constant        entry                    external dcl 547
+from_string                     000062 constant        entry                    external dcl 119
+from_string_internal            001357 constant        entry                    internal dcl 161 ref 123 137 142 150
+from_string_range               000125 constant        entry                    external dcl 126
+initialize_me                   002476 constant        entry                    internal dcl 596 ref 171 396
+maximum                         000770 constant        entry                    external dcl 499
+minimum                         001067 constant        entry                    external dcl 523
+test_cva                        001332 constant        entry                    external dcl 581
+to_range_common                 000534 constant        label                    dcl 348 ref 335
+to_string                       000340 constant        entry                    external dcl 302
+to_string_internal              002053 constant        entry                    internal dcl 386 ref 309 322 348 368
+to_string_range                 000455 constant        entry                    external dcl 328
+to_string_range_short           000506 constant        entry                    external dcl 340
+to_string_short                 000406 constant        entry                    external dcl 315
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3070        3204    2567        3100
+Length      3512    2567       114         272     300          56
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+convert_access_class_               167 external procedure  is an external procedure.  
+from_string_internal                 84 internal procedure  is called during a stack extension.  
+to_string_internal                      internal procedure  shares stack frame of external procedure convert_access_class_.  
+initialize_me                       102 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 initialized                 convert_access_class_
+000011 system_directory            convert_access_class_
+000064 ip                          convert_access_class_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+convert_access_class_    000100 sensitivity_level_undefined convert_access_class_
+                         000101 category_set_undefined      convert_access_class_
+                         000102 i                           convert_access_class_
+                         000103 k                           convert_access_class_
+                         000104 lb                          convert_access_class_
+                         000105 hb                          convert_access_class_
+                         000106 output_index                convert_access_class_
+                         000107 string_index                convert_access_class_
+                         000110 next_level                  convert_access_class_
+                         000111 sensitivity_level           convert_access_class_
+                         000112 next_category_set           convert_access_class_
+                         000113 category_set                convert_access_class_
+                         000114 max_length                  convert_access_class_
+                         000115 name_length                 convert_access_class_
+                         000116 name                        convert_access_class_
+                         000126 bad_authorization           convert_access_class_
+                         000127 more_names                  convert_access_class_
+                         000130 short                       convert_access_class_
+                         000132 temp_string                 convert_access_class_
+                         000134 comma                       convert_access_class_
+                         000136 colon                       convert_access_class_
+                         000140 second_string_ptr           convert_access_class_
+                         000142 second_string_len           convert_access_class_
+                         000143 colon_idx                   convert_access_class_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_this_desc  call_int_this       call_int_other
+return_mac          shorten_stack       ext_entry           ext_entry_desc      int_entry           int_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+aim_check_$equal              aim_check_$greater            aim_check_$greater_or_equal   hcs_$initiate
+unique_chars_                 unique_chars_$bits
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$ai_above_allowed_max                           error_table_$ai_invalid_binary
+error_table_$ai_invalid_range error_table_$ai_invalid_string                              error_table_$smallarg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000047       119 000055       122 000075       123 000077       124 000120       126 000121       133 000140
+    134 000142       136 000155       137 000156       138 000177       139 000205       142 000206       144 000236
+    148 000245       150 000247       152 000303       155 000312       158 000335       302 000336       305 000353
+    306 000355       307 000356       309 000362       310 000403       315 000404       318 000421       319 000423
+    320 000425       322 000431       323 000452       328 000453       331 000470       332 000472       333 000473
+    334 000477       335 000503       340 000504       343 000521       344 000523       345 000525       346 000531
+    348 000534       350 000555       352 000560       354 000571       356 000600       357 000614       358 000620
+    359 000623       362 000624       363 000632       365 000634       366 000642       368 000650       369 000673
+    371 000676       374 000721       378 000742       380 000750       381 000754       384 000763       499 000764
+    502 000775       503 001012       505 001014       506 001024       507 001042       509 001044       511 001050
+    512 001051       514 001053       515 001060       516 001062       517 001064       523 001065       526 001074
+    527 001111       529 001113       530 001124       531 001142       533 001144       535 001150       536 001151
+    538 001153       539 001160       540 001162       541 001164       547 001165       556 001204       557 001211
+    559 001213       561 001241       563 001246       567 001247       572 001264       574 001302       576 001321
+    577 001326       581 001327       590 001345       591 001354       592 001355       161 001356       170 001372
+    171 001374       172 001404       177 001407       179 001425       180 001426       183 001445       184 001446
+    185 001452       188 001453       189 001465       190 001471       191 001472       194 001473       195 001477
+    196 001506       197 001507       200 001510       202 001512       203 001513       205 001515       206 001516
+    208 001517       210 001521       211 001525       212 001545       216 001553       217 001556       219 001561
+    222 001564       223 001565       225 001567       227 001606       229 001610       232 001634       234 001636
+    237 001643       238 001644       239 001645       241 001646       242 001652       243 001653       245 001654
+    246 001656       248 001660       249 001700       251 001702       254 001726       256 001730       259 001737
+    260 001742       261 001745       263 001746       264 001752       265 001753       267 001754       268 001760
+    274 001761       275 001764       277 002005       279 002011       281 002012       283 002013       284 002016
+    285 002022       290 002024       292 002050       294 002052       386 002053       395 002064       396 002067
+    397 002076       400 002102       402 002103       404 002110       406 002112       410 002153       411 002161
+    414 002162       415 002167       419 002171       421 002175       423 002217       427 002236       432 002243
+    434 002257       436 002270       437 002273       439 002274       440 002276       441 002300       447 002305
+    449 002313       450 002317       452 002341       456 002360       460 002363       461 002370       462 002373
+    465 002374       467 002377       468 002406       471 002410       474 002426       477 002441       479 002443
+    481 002445       489 002463       491 002472       492 002474       596 002475       605 002503       606 002554
+    608 002561       609 002563       611 002565
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

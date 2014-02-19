@@ -1,0 +1,1722 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_console.alm                                                                                                                   
+ASSEMBLED ON:	11/11/89  0937.9 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    10  "
+                                    11  " BOOTLOAD_CONSOLE 
+                                    12  "
+                                    13  "  console io for collection 0 (bound_bootload_0)
+                                    14  "
+                                    15  "
+                                    16  
+                                    17  " HISTORY COMMENTS:
+                                    18  "  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+                                    19  "     audit(86-03-04,GDixon), install(86-03-21,MR12.0-1033):
+                                    20  "      Support IMU and FIPS.
+                                    21  "                                                      END HISTORY COMMENTS
+                                    22  
+    000000                          23  	name	bootload_console
+                                    24  "
+                                    25  "
+                                    26  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    27  " BIM 1982-08-08
+                                    28  " Modified 830622 for multiple OPC cards, (and consoles)... -E. A. Ranzenbach
+                                    29  " Modified 9/83 for adp by Keith Loepere.
+                                    30  " Modified 840306 for IPC-CONS-2 IDCW I/O... -E. A. Ranzenbach
+                                    31  " Modified June-July 1984 by Paul Farley to get IPC-CONS-2 to work.
+                                    32  " Modified June 1985 by Paul Farley to remove tape mpc reset/mask-connect.
+                                    33  
+                                    34  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    35  	include	bootload_cpu_macros
+                                   2-1  " CPU_MACROS
+                                   2-2  "
+                                   2-3  " Macros used to lend a bit of CPU independence to bootloader code.
+                                   2-4  "
+                                   2-5  " 04/22/81, Chris Jones
+                                   2-6  " 9/83, Keith Loepere so they can work for both machines at once.
+                                   2-7  "
+                                   2-8  "
+                                   2-9  " Macro to get the absolute address of its argument into au
+                                  2-10  " This macro assumes that the address will fit into 18 bits
+                                  2-11  "
+                                  2-12  	macro	absa_au
+                              1   2-13  	lda	bootload_info$system_type
+                              2   2-14  	cmpa	ADP_SYSTEM,dl
+                              3   2-15  	tze	4,ic
+                              4   2-16  	absa	&F1
+                              5   2-17  	als	24-18
+                              6   2-18  	tra	3,ic
+                              7   2-19  	absa	&F1
+                              8   2-20  	als	26-18
+                              9   2-21  &end
+                                  2-22  
+                                  2-23  
+                                  2-24  "
+                                  2-25  " Macro to get the absolute address of its arguments into al
+                                  2-26  "
+                                  2-27  	macro	absa_al
+                              1   2-28  	lda	bootload_info$system_type
+                              2   2-29  	cmpa	ADP_SYSTEM,dl
+                              3   2-30  	tze	4,ic
+                              4   2-31  	absa	&F1
+                              5   2-32  	arl	36-24
+                              6   2-33  	tra	3,ic
+                              7   2-34  	absa	&F1
+                              8   2-35  	arl	36-26
+                              9   2-36  &end
+                                  2-37  
+                                  2-38  " End include file bootload_cpu_macros.incl.alm
+                                    36  	include_nolist	make_data_macros
+                                    37  	include_nolist	iom_word_macros
+                                    38  	include	console_io_commands
+                                   5-1  " BEGIN INCLUDE FILE console_io_commands.incl.alm BIM 6-82
+                                   5-2  " PCW/IDCW commands for consoles
+                                   5-3  " Note that the PCW has to have the command for this beast.
+                                   5-4  " Modified '82 for CONSOLE.read_id
+                                   5-5  
+                        000003     5-6  	bool	CONSOLE.read,03
+                        000013     5-7  	bool	CONSOLE.write,13
+                        000051     5-8  	bool	CONSOLE.write_alert,51
+                        000040     5-9  	bool	CONSOLE.reset_status,40
+                        000033    5-10  	bool	CONSOLE.write_ASCII,33
+                        000023    5-11  	bool	CONSOLE.read_ASCII,23
+                        000007    5-12  	bool	CONSOLE.t_and_d_read,07
+                        000057    5-13  	bool	CONSOLE.read_id,57
+                                  5-14  
+                                  5-15  " END INCLUDE FILE console_io_commands.incl.alm
+                                    39  	include	config_deck
+                                   6-1  
+                                   6-2  
+                                   6-3       "BEGIN INCLUDE FILE config_deck.incl.alm
+                                   6-4  
+                                   6-5  
+                                   6-6  	"Created 06/07/82  1353.0 edt Mon by convert_include_file,
+                                   6-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   6-8  
+                                   6-9  	"Made from >ldd>include>config_deck.incl.pl1,
+                                  6-10  	"   modified 04/29/81  1457.3 edt Wed
+                                  6-11  
+                                  6-12  "
+                                  6-13  "	Structure config_deck
+                                  6-14  "
+                                  6-15  
+                        000000    6-16  	equ	config_deck.cards,0		" LEVEL 2
+                                  6-17  
+                        000000    6-18  	equ	config_deck.pad_cards,0	" LEVEL 2
+                                  6-19  
+                                  6-20  
+                                  6-21  "
+                                  6-22  "	Structure config_card
+                                  6-23  "
+                        000020    6-24  	equ	config_card_size,16
+                                  6-25  
+                        000000    6-26  	equ	config_card.word,0
+                        000001    6-27  	equ	config_card.data_field,1
+                        000017    6-28  	equ	config_card.type_word,15	" LEVEL 2
+                                  6-29  
+                                  6-30  
+                                  6-31       "END INCLUDE FILE config_deck.incl.alm
+                                    40  	include	config_prph_opc_card
+                                   7-1  
+                                   7-2  
+                                   7-3       "BEGIN INCLUDE FILE config_prph_opc_card.incl.alm
+                                   7-4  
+                                   7-5  
+                                   7-6  	"Created 09/19/83  1330.4 edt Mon by convert_include_file,
+                                   7-7  	"   Version of 11/07/82  1545.1 edt Sun.
+                                   7-8  
+                                   7-9  	"Made from >cdd>include>config_prph_opc_card.incl.pl1,
+                                  7-10  	"   modified 09/19/83  1330.4 edt Mon
+                                  7-11  
+                                  7-12  "
+                                  7-13  "	Structure prph_opc_card
+                                  7-14  "
+                        000020    7-15  	equ	prph_opc_card_size,16
+                                  7-16  
+                                  7-17  
+                        000000    7-18  	equ	prph_opc_card.word,0
+                        000001    7-19  	equ	prph_opc_card.name,1
+                        000002    7-20  	equ	prph_opc_card.iom,2
+                        000003    7-21  	equ	prph_opc_card.chan,3
+                        000004    7-22  	equ	prph_opc_card.model,4
+                        000005    7-23  	equ	prph_opc_card.line_leng,5
+                        000006    7-24  	equ	prph_opc_card.state,6
+                        000017    7-25  	equ	prph_opc_card.type_word,15	" LEVEL 2
+                                  7-26  
+                        000042    7-27  	equ	prph_opc_card.field_type_shift,34
+                        000003    7-28  	bool	prph_opc_card.field_type_mask,000003
+                        000000    7-29  	equ	prph_opc_card.n_fields_shift,0
+                        000017    7-30  	bool	prph_opc_card.n_fields_mask,000017
+                                  7-31  
+                                  7-32       "END INCLUDE FILE config_prph_opc_card.incl.alm
+                                    41  	include	coll0_segnos
+                                   8-1  " BEGIN INCLUDE FILE coll0_segnos.incl.alm
+                                   8-2  " Modified in '83 for new bce segments, Keith Loepere.
+                                   8-3  
+                        000000     8-4  	equ	ds_segno_,0	" dseg
+                        000001     8-5  	equ	toehold_segno_,1	" bos_toehold
+                        000002     8-6  	equ	config_segno_,2	" config_deck
+                        000003     8-7  	equ	dn355_mbx_segno_,3	" dn355_mailbox
+                        000004     8-8  	equ	fv_segno_,4	" fault_vector
+                        000005     8-9  	equ	fgbx_segno_,5	" flagbox
+                        000006    8-10  	equ	nt_segno_,6	" name_table
+                        000007    8-11  	equ	slt_segno_,7	" slt
+                        000010    8-12  	equ	toehold_data_segno_,8 " toehold_data
+                        000011    8-13  	equ	iom_mbx_segno_,9	" iom_mailbox
+                        000012    8-14  	equ	upt_segno_,10	" unpaged_page_tables
+                        000013    8-15  	equ	toe_segno_,11	" (bce) toehold
+                                  8-16  
+                        000400    8-17  	equ	bbl0_segno_,256	" bound_bootload_0
+                        000401    8-18  	equ	prb_segno_,257	" physical_record_buffer
+                        000402    8-19  	equ	abs_seg0_segno_,258	" abs_seg0
+                        000403    8-20  	equ	iupt_segno_,259	" int_unpaged_page_tables
+                        000404    8-21  	equ	ed_segno_,260	" early_dump (used for early dump save to tape)
+                                  8-22  
+                                  8-23  " END INCLUDE FILE coll0_segnos.incl.alm
+                                    42  	include	system_types
+                                   9-1  
+                                   9-2  
+                                   9-3       "BEGIN INCLUDE FILE system_types.incl.alm
+                                   9-4  
+                                   9-5  
+                                   9-6  	"Created 04/05/81  2144.9 est Sun by convert_include_file,
+                                   9-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   9-8  
+                                   9-9  	"Made from >udd>Multics>nss>new_pc>include>system_types.incl.pl1,
+                                  9-10  	"   modified 03/21/81  2300.0 est Sat
+                                  9-11  
+                                  9-12  
+                        000001    9-13  	equ	L68_SYSTEM,1		" MANIFEST
+                        000002    9-14  	equ	ADP_SYSTEM,2		" MANIFEST
+                                  9-15  
+                                  9-16       "END INCLUDE FILE system_types.incl.alm
+                                    43  "
+                                    44  
+                                    45  """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                    46  "
+                                    47  "	tsx2	bootload_console$write
+                                    48  "	arg	line_to_write
+                                    49  "	arg	length_in_chars
+                                    50  "
+                                    51  "
+                                    52  "	tsx2	bootload_console$write_alert
+                                    53  "
+                                    54  "	tsx2	bootload_console$init	
+                                    55  "
+                                    56  """""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+                                    57  
+                                    58  
+                                    59  	mod	16
+    000000                          60  	bss	pr_save,16
+    000020                          61  	bss	register_save,8
+                                    62  
+                        000030      63  	segdef	in_bootload_console
+    000030                          64  	bss	in_bootload_console,1
+                                    65  
+                                    66  	macro	Centry
+                              1     67  	Bentry	&F1
+                              2     68  
+                              3     69  	macro	&1_return          " redefine
+                              4     70  	stz	in_bootload_console
+                              5     71  	lreg	register_save
+                              6     72  	lpri	pr_save
+                              7     73  	Breturn	&<&K,2&[0&;&2&]
+                              8     74  &&end
+                              9     75  
+                             10     76  &1:	Bpush
+                             11     77  	stc1	in_bootload_console
+                             12     78  	sreg	register_save
+                             13     79  	spri	pr_save
+                             14     80  &end
+                                    81  
+                                    82  
+                                    83  " WRITE entry begins here
+                                    84  
+                                    85  	Centry	write,2
+                                        	Bentry	write,2
+                        000031          	segdef	write
+                                        	macro	write_return
+                              1         	Breturn	2
+                              2         &end
+                                        
+                                        	macro	write_return          " redefine
+                              1         	stz	in_bootload_console
+                              2         	lreg	register_save
+                              3         	lpri	pr_save
+                              4         	Breturn	2
+                              5         &end
+                                        
+                                        write:	Bpush
+    000031  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000032  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000033  0a   000030 5540 00         	stc1	in_bootload_console
+    000034  0a   000020 7530 00         	sreg	register_save
+    000035  0a   000000 2540 00         	spri	pr_save
+                                    86  
+    000036  4a  4 00014 2341 20     87  	szn	bootload_info$console_available
+    000037  0a   000045 6040 00     88  	tmi	write.okay
+                                    89  	write_return
+    000040  0a   000030 4500 00         	stz	in_bootload_console
+    000041  0a   000020 0730 00         	lreg	register_save
+    000042  0a   000000 1730 00         	lpri	pr_save
+                                        	Breturn	2
+    000043  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000044  aa   000002 7100 12         	tra	0+2,x2
+    000045                          90  write.okay:
+                                    91  
+                                    92  	absa_au	0,x2*		" address of the string
+    000045  4a  4 00020 2351 20         	lda	bootload_info$system_type
+    000046  aa   000002 1150 07         	cmpa	ADP_SYSTEM,dl
+    000047  aa   000004 6000 04         	tze	4,ic
+    000050  aa   000000 2120 32         	absa	0,x2*
+    000051  aa   000006 7350 00         	als	24-18
+    000052  aa   000003 7100 04         	tra	3,ic
+    000053  aa   000000 2120 32         	absa	0,x2*
+    000054  aa   000010 7350 00         	als	26-18
+    000055  0a   000516 7510 70     93  	stca	write_ascii_ddcw,70
+                                    94  
+    000056  aa   000001 2350 32     95  	lda	1,x2*		" length
+    000057  aa   000003 0750 07     96  	ada	3,dl		" round up
+    000060  aa   000002 7310 00     97  	ars	2                   " divide by 4, console dont unnerstand
+                                    98  				" chars.
+    000061  0a   000516 7510 03     99  	stca	write_ascii_ddcw,03	" bottom 6 bits is tally.
+                                   100  
+    000062  4a  4 00022 7021 20    101  	tsx2	bootload_io$connect
+    000063  4a  4 00024 0001 20    102  	arg	bootload_info$console_iom_number
+    000064  4a  4 00026 0001 20    103  	arg	bootload_info$console_channel_number
+    000065  0a   000452 0000 20    104  	arg	write_pcw_ptr,*
+    000066  0a   000455 0000 20    105  	arg	write_dcw_list_ptr,*
+                                   106  
+    000067  4a  4 00030 3151 20    107  	cana	bootload_info$status_mask
+    000070  0a   000444 6010 00    108  	tnz	console_write_error			" x2 destroyed
+                                   109  
+                                   110  	write_return
+    000071  0a   000030 4500 00         	stz	in_bootload_console
+    000072  0a   000020 0730 00         	lreg	register_save
+    000073  0a   000000 1730 00         	lpri	pr_save
+                                        	Breturn	2
+    000074  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000075  aa   000002 7100 12         	tra	0+2,x2
+                                   111  
+                                   112  "
+                                   113  
+                                   114  " WRITE_NL
+                                   115  
+                                   116  	Centry	write_nl
+                                        	Bentry	write_nl
+                        000076          	segdef	write_nl
+                                        	macro	write_nl_return
+                              1         	Breturn	0
+                              2         &end
+                                        
+                                        	macro	write_nl_return          " redefine
+                              1         	stz	in_bootload_console
+                              2         	lreg	register_save
+                              3         	lpri	pr_save
+                              4         	Breturn	0
+                              5         &end
+                                        
+                                        write_nl:	Bpush
+    000076  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000077  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000100  0a   000030 5540 00         	stc1	in_bootload_console
+    000101  0a   000020 7530 00         	sreg	register_save
+    000102  0a   000000 2540 00         	spri	pr_save
+    000103  aa   000000 6250 00    117  	eax5	0
+    000104  0a   000113 7100 00    118  	tra	nl_alert_common
+                                   119  
+                                   120  " WRITE_ALERT entry begins here
+                                   121  
+                                   122  	Centry	write_alert
+                                        	Bentry	write_alert
+                        000105          	segdef	write_alert
+                                        	macro	write_alert_return
+                              1         	Breturn	0
+                              2         &end
+                                        
+                                        	macro	write_alert_return          " redefine
+                              1         	stz	in_bootload_console
+                              2         	lreg	register_save
+                              3         	lpri	pr_save
+                              4         	Breturn	0
+                              5         &end
+                                        
+                                        write_alert:	Bpush
+    000105  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000106  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000107  0a   000030 5540 00         	stc1	in_bootload_console
+    000110  0a   000020 7530 00         	sreg	register_save
+    000111  0a   000000 2540 00         	spri	pr_save
+    000112  aa   000001 6250 00    123  	eax5	1
+    000113                         124  nl_alert_common:
+    000113  4a  4 00014 2341 20    125  	szn	bootload_info$console_available
+    000114  0a   000122 6040 00    126  	tmi	write_alert.okay
+                                   127  	write_alert_return
+    000115  0a   000030 4500 00         	stz	in_bootload_console
+    000116  0a   000020 0730 00         	lreg	register_save
+    000117  0a   000000 1730 00         	lpri	pr_save
+                                        	Breturn	0
+    000120  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000121  aa   000000 7100 12         	tra	0+0,x2
+                                   128  
+    000122                         129  write_alert.okay:
+    000122  aa   000001 1050 03    130  	cmpx5	1,du
+    000123  0a   000132 6010 00    131  	tnz	nl
+    000124  4a  4 00022 7021 20    132  	tsx2	bootload_io$connect
+    000125  4a  4 00024 0001 20    133  	arg	bootload_info$console_iom_number
+    000126  4a  4 00026 0001 20    134  	arg	bootload_info$console_channel_number
+    000127  0a   000453 0000 20    135  	arg	write_alert_pcw_ptr,*
+    000130  0a   000457 0000 20    136  	arg	write_alert_dcw_list_ptr,*
+                                   137  
+    000131  0a   000137 7100 00    138  	tra	nl_alert.check_status
+                                   139  
+    000132                         140  nl:
+    000132  4a  4 00022 7021 20    141  	tsx2	bootload_io$connect
+    000133  4a  4 00024 0001 20    142  	arg	bootload_info$console_iom_number
+    000134  4a  4 00026 0001 20    143  	arg	bootload_info$console_channel_number
+    000135  0a   000452 0000 20    144  	arg	write_pcw_ptr,*
+    000136  0a   000456 0000 20    145  	arg	write_nl_dcw_list_ptr,*
+                                   146  
+    000137                         147  nl_alert.check_status:
+    000137  4a  4 00030 3151 20    148  	cana	bootload_info$status_mask
+    000140  0a   000444 6010 00    149  	tnz	console_write_error			" x2 destroyed
+                                   150  
+                                   151  	write_alert_return
+    000141  0a   000030 4500 00         	stz	in_bootload_console
+    000142  0a   000020 0730 00         	lreg	register_save
+    000143  0a   000000 1730 00         	lpri	pr_save
+                                        	Breturn	0
+    000144  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000145  aa   000000 7100 12         	tra	0+0,x2
+                                   152  "
+                                   153  
+                                   154  "
+                                   155  " READ_LINE
+                                   156  "
+                                   157  "	tsx2	bootload_console$read_line
+                                   158  "	arg	buffer_to_read_to
+                                   159  "	arg	length_to_read
+                                   160  "	<return with the goods>
+                                   161  
+                        000000     162  	equ	read_buffer,0
+                        000001     163  	equ	read_length,1
+                                   164  
+                                   165  " We do not set the "in console package" flag.
+                                   166  " thus an error on input will provoke an attempt to
+                                   167  " do output for a message, which might even work.
+                                   168  
+                                   169  	Bentry	read_line,2
+                        000146          	segdef	read_line
+                                        	macro	read_line_return
+                              1         	Breturn	2
+                              2         &end
+                                   170  
+    000146                         171  read_line:
+                                   172  	Bpush
+    000146  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000147  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000150  aa   000000 3720 32    173  	epp6	read_buffer,x2*
+    000151  aa   000001 2350 32    174  	lda	read_length,x2*
+                                   175  
+                                   176  	absa_au	pr6|0		" note the buffer address
+    000152  4a  4 00020 2351 20         	lda	bootload_info$system_type
+    000153  aa   000002 1150 07         	cmpa	ADP_SYSTEM,dl
+    000154  aa   000004 6000 04         	tze	4,ic
+    000155  aa  6 00000 2121 00         	absa	pr6|0
+    000156  aa   000006 7350 00         	als	24-18
+    000157  aa   000003 7100 04         	tra	3,ic
+    000160  aa  6 00000 2121 00         	absa	pr6|0
+    000161  aa   000010 7350 00         	als	26-18
+    000162  0a   000523 7510 70    177  	stca	read_line_ddcw,70
+                                   178  
+    000163  aa   000001 2350 32    179  	lda	1,x2*		" length (round DOWN)
+    000164  aa   000002 7310 00    180  	ars	2                   " divide by 4, console dont unnerstand
+                                   181  				" chars.
+    000165  0a   000523 7510 03    182  	stca	read_line_ddcw,03	" bottom 6 bits is tally.
+                                   183  
+    000166                         184  REREAD:
+    000166  aa   040140 1004 00    185  	mlr	(),(pr,rl),fill(040)   " clear out buffer
+    000167  aa   000000 000000     186  	desc9a	0
+    000170  aa   600000 000005     187  	desc9a	pr6|0,al
+                                   188  
+    000171  4a  4 00022 7021 20    189  	tsx2	bootload_io$connect
+    000172  4a  4 00024 0001 20    190  	arg	bootload_info$console_iom_number
+    000173  4a  4 00026 0001 20    191  	arg	bootload_info$console_channel_number
+    000174  0a   000454 0000 20    192  	arg	read_line_pcw_ptr,*
+    000175  0a   000460 0000 20    193  	arg	read_line_dcw_list_ptr,*
+                                   194  
+    000176  0a   000450 7570 00    195  	staq	last_console_status
+                                   196  
+    000177  0a   000526 3150 00    197  	cana	=o200000770000         " power off or central or channel
+    000200  0a   000445 6010 00    198  	tnz	read_error
+    000201  aa   770000 3750 03    199  	ana	=o770000,du	" only major status
+    000202  aa   400000 1150 03    200  	cmpa	=o400000,du	" READY
+    000203  0a   000262 6000 00    201  	tze	read_succeeded
+    000204  aa   430000 1150 03    202  	cmpa	=o430000,du	" might be operator error or timeout
+    000205  0a   000445 6010 00    203  	tnz	read_error	" error based on major
+                                   204  
+                                   205  " Now analyze minor status
+                                   206  
+    000206  0a   000450 2350 00    207  	lda	last_console_status
+    000207  aa   000400 3150 03    208  	cana	=o000400,du	" OPERATOR ERROR
+    000210  0a   000215 6000 00    209  	tze	not_oper_err
+    000211  0a   000031 7020 00    210  	tsx2	write
+    000212  0a   000236 0000 00    211  	arg	operator_error_message
+    000213  0a   000242 0000 00    212  	arg	operator_error_length
+    000214  0a   000231 7100 00    213  	tra	REPROMPT_REREAD
+                                   214  
+    000215                         215  not_oper_err:
+    000215  aa   001000 3150 03    216  	cana	=o001000,du	" TIMEOUT
+    000216  0a   000223 6000 00    217  	tze	not_timeout	
+    000217  0a   000031 7020 00    218  	tsx2	write
+    000220  0a   000243 0000 00    219  	arg	timeout_message
+    000221  0a   000250 0000 00    220  	arg	timeout_length
+    000222  0a   000231 7100 00    221  	tra	REPROMPT_REREAD
+                                   222  
+    000223                         223  not_timeout:
+    000223  aa   004000 3150 03    224  	cana	=o004000,du
+    000224  0a   000445 6000 00    225  	tze	read_error
+    000225  0a   000076 7020 00    226  	tsx2	write_nl
+    000226  0a   000031 7020 00    227  	tsx2	write
+    000227  0a   000251 0000 00    228  	arg	too_long_message
+    000230  0a   000256 0000 00    229  	arg	too_long_length
+                                   230  
+    000231                         231  REPROMPT_REREAD:
+    000231  0a   000076 7020 00    232  	tsx2	write_nl
+    000232  0a   000031 7020 00    233  	tsx2	write
+    000233  0a   000257 0000 00    234  	arg	reprompt_message
+    000234  0a   000261 0000 00    235  	arg	reprompt_length
+    000235  0a   000166 7100 00    236  	tra	REREAD
+                                   237  
+                                   238  	" message	name,(TEXT OF MESSAGE)
+                                   239  
+                                   240  	macro	message
+                              1    241  &1_message:
+                              2    242  	aci	~&2~
+                              3    243  &1_length:
+                              4    244  	dec	&l2
+                              5    245  &end
+                                   246  	message	operator_error,( * Line ignored.)
+    000236                              operator_error_message:
+    000236  aa  040 052 040 114         	aci	~ * Line ignored.~
+    000237  aa  151 156 145 040
+    000240  aa  151 147 156 157
+    000241  aa  162 145 144 056
+    000242                              operator_error_length:
+    000242  aa   000000 000020          	dec	16
+                                   247  	message	timeout,( * Console timeout.)
+    000243                              timeout_message:
+    000243  aa  040 052 040 103         	aci	~ * Console timeout.~
+    000244  aa  157 156 163 157
+    000245  aa  154 145 040 164
+    000246  aa  151 155 145 157
+    000247  aa  165 164 056 000
+    000250                              timeout_length:
+    000250  aa   000000 000023          	dec	19
+                                   248  	message	too_long,( * Input too long.)
+    000251                              too_long_message:
+    000251  aa  040 052 040 111         	aci	~ * Input too long.~
+    000252  aa  156 160 165 164
+    000253  aa  040 164 157 157
+    000254  aa  040 154 157 156
+    000255  aa  147 056 000 000
+    000256                              too_long_length:
+    000256  aa   000000 000022          	dec	18
+                                   249  	message	reprompt,(Answer: )
+    000257                              reprompt_message:
+    000257  aa  101 156 163 167         	aci	~Answer: ~
+    000260  aa  145 162 072 040
+    000261                              reprompt_length:
+    000261  aa   000000 000010          	dec	8
+                                   250  
+    000262                         251  read_succeeded:
+                                   252  	read_line_return
+                                        	Breturn	2
+    000262  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000263  aa   000002 7100 12         	tra	0+2,x2
+                                   253  
+                                   254  "
+                                   255  " INIT entry begins here
+                                   256  
+                                   257  	Centry	init
+                                        	Bentry	init
+                        000264          	segdef	init
+                                        	macro	init_return
+                              1         	Breturn	0
+                              2         &end
+                                        
+                                        	macro	init_return          " redefine
+                              1         	stz	in_bootload_console
+                              2         	lreg	register_save
+                              3         	lpri	pr_save
+                              4         	Breturn	0
+                              5         &end
+                                        
+                                        init:	Bpush
+    000264  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000265  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+    000266  0a   000030 5540 00         	stc1	in_bootload_console
+    000267  0a   000020 7530 00         	sreg	register_save
+    000270  0a   000000 2540 00         	spri	pr_save
+                                   258  
+                                   259  	absa_au	cr
+    000271  4a  4 00020 2351 20         	lda	bootload_info$system_type
+    000272  aa   000002 1150 07         	cmpa	ADP_SYSTEM,dl
+    000273  aa   000004 6000 04         	tze	4,ic
+    000274  0a   000524 2120 00         	absa	cr
+    000275  aa   000006 7350 00         	als	24-18
+    000276  aa   000003 7100 04         	tra	3,ic
+    000277  0a   000524 2120 00         	absa	cr
+    000300  aa   000010 7350 00         	als	26-18
+    000301  0a   000521 7510 70    260  	stca	write_nl_ddcw,70			" relocate DCW
+                                   261  
+                                   262  " If there is a config deck, expect a PRPH OPC.  If not, find the console.
+                                   263  
+    000302  4a  4 00032 2341 20    264  	szn	bootload_info$assume_config_deck
+    000303  0a   000342 6000 00    265  	tze	poll_for_console
+                                   266  
+                                   267  " Search config deck.
+                                   268  
+    000304  0a   000530 3720 20    269  	epp	seg,=its(config_segno_,0),*	" seg -> config_deck
+    000305  aa   000000 6210 00    270  	eax1	0			" for skipping them
+                                   271  
+    000306                         272  config_console.next_card:
+                                   273  
+    000306  aa  6 00000 2371 11    274  	ldaq	seg|0,x1			" get word and name
+    000307  0a   000320 1170 00    275  	cmpaq     config_console.FREE_CARD	" is it a fence?...
+    000310  0a   000342 6000 00    276  	tze	poll_for_console		" yes, find the console...
+    000311  0a   000316 6770 00    277  	eraq	config_console.OPC_CARD	" or in the card...
+    000312  0a   000322 3770 00    278  	anaq	config_console.MASK_CARD	" mask it...
+    000313  0a   000325 6000 00    279  	tze	config_console.found_card
+                                   280  
+    000314  aa   000020 6210 11    281  	eax1	config_card_size,x1		" skip it...
+    000315  0a   000306 7100 00    282  	tra	config_console.next_card
+                                   283  
+                                   284  	even
+    000316                         285  config_console.OPC_CARD:
+    000316  aa  160 162 160 150    286  	aci	"prphopc ",8		" first two words
+    000317  aa  157 160 143 040
+    000320                         287  config_console.FREE_CARD:
+    000320  aa   777777 777777     288  	dec	-1			" all 7's...
+    000321  aa   777777 777777     289  	dec	-1
+    000322                         290  config_console.MASK_CARD:
+    000322  aa   777777 777777     291  	oct	777777777777		"777777777777777777777000
+    000323  aa   777777 777000     292  	oct	777777777000
+                                   293  
+                                   294  	even
+    000324                         295  config_console.STATE:
+    000324  aa  157 156 040 040    296  	aci	"on  ",4			" console must be "on"...
+                                   297  
+                                   298  " When we get here, seg|0 -> config_deck$, seg|0,x1 -> prph opc card.
+                                   299  
+    000325                         300  config_console.found_card:
+                                   301  
+    000325  aa  6 00000 3515 11    302  	epp	seg2,seg|0,x1		" point at base of OPC card
+    000326  aa  1 00006 2351 00    303  	lda	seg2|prph_opc_card.state	" -> status...
+    000327  0a   000324 1150 00    304  	cmpa	config_console.STATE	" is it on?...
+    000330  0a   000333 6000 00    305  	tze	config_console.active_console	" yes, start initialization...
+    000331  aa   000020 6210 11    306  	eax1	config_card_size,x1		" no, skip card...
+    000332  0a   000306 7100 00    307  	tra	config_console.next_card	" here we go again...
+                                   308  
+    000333                         309  config_console.active_console:
+    000333  aa  1 00002 2351 00    310  	lda	seg2|prph_opc_card.iom         " multiple IOM's -- some day
+    000334  4a  4 00024 7551 20    311  	sta	bootload_info$console_iom_number
+    000335  aa  1 00003 2351 00    312  	lda	seg2|prph_opc_card.chan         " channel   
+    000336  4a  4 00026 7551 20    313  	sta	bootload_info$console_channel_number
+    000337  aa  1 00004 2351 00    314  	lda	seg2|prph_opc_card.model        " determines PCW vs. IDCW
+    000340  4a  4 00034 7551 20    315  	sta	bootload_info$console_model
+    000341  0a   000371 7100 00    316  	tra	find.got_it
+                                   317  
+    000342                         318  poll_for_console:
+    000342  4a  4 00020 2351 20    319  	lda	bootload_info$system_type
+    000343  aa   000002 1150 07    320  	cmpa	ADP_SYSTEM,dl
+    000344  0a   000366 6000 00    321  	tze	ssf
+                                   322  
+    000345  aa   000010 2350 07    323  	lda	8,dl			prepare to find operator's console
+    000346  4a  4 00026 7551 20    324  	sta	bootload_info$console_channel_number
+    000347  4a  4 00036 2351 20    325  	lda	bootload_info$tape_iom_number
+    000350  4a  4 00024 7551 20    326  	sta	bootload_info$console_iom_number
+                                   327  
+    000351                         328  find.next:
+    000351  4a  4 00040 7021 20    329  	tsx2	bootload_io$connect_timeout
+    000352  4a  4 00024 0001 20    330  	arg	bootload_info$console_iom_number
+    000353  4a  4 00026 0001 20    331  	arg	bootload_info$console_channel_number
+    000354  0a   000502 0000 00    332  	arg	write_alert_pcw		" might be an EMC
+    000355  0a   000517 0000 00    333  	arg	write_alert_idcw		" or an IPC-CONS
+    000356  0a   000361 7100 00    334  	tra	find.skip_this_channel
+                                   335  
+    000357  4a  4 00030 3151 20    336  	cana	bootload_info$status_mask
+    000360  0a   000371 6000 00    337  	tze	find.got_it
+                                   338  
+    000361                         339  find.skip_this_channel:
+    000361  4a  4 00026 0541 20    340  	aos	bootload_info$console_channel_number
+    000362  4a  4 00026 2351 20    341  	lda	bootload_info$console_channel_number
+    000363  aa   000100 1150 07    342  	cmpa	64,dl
+    000364  0a   000351 6040 00    343  	tmi	find.next		try next one
+    000365  0a   000342 7100 00    344  	tra	poll_for_console	keep trying... hope lcc wakes up
+                                   345  " 
+                                   346  " We have a console. Now figure out what kind.
+                                   347  
+    000366  4a  4 00024 4501 20    348  ssf:	stz	bootload_info$console_iom_number
+    000367  4a  4 00026 4501 20    349  	stz	bootload_info$console_channel_number
+    000370  0a   000404 7100 00    350  	tra	init.lcc
+                                   351  
+    000371                         352  find.got_it:
+                                   353  
+                                   354  " Short pause for ipc-cons-2 console to settle down
+                                   355  
+    000371  aa   000000 0110 03    356  	even
+    000372  aa   040000 2350 07    357  	lda	=o40000,dl		" about a second
+    000373  aa   000001 1750 07    358  	sba	1,dl
+    000374  aa   777777 6050 04    359  	tpl	-1,ic
+                                   360  
+    000375  4a  4 00022 7021 20    361  	tsx2	bootload_io$connect
+    000376  4a  4 00024 0001 20    362  	arg	bootload_info$console_iom_number
+    000377  4a  4 00026 0001 20    363  	arg	bootload_info$console_channel_number
+    000400  0a   000512 0000 00    364  	arg	read_id_pcw		" might be an EMC
+    000401  0a   000514 0000 00    365  	arg	read_id_idcw		" or an IPC-CONS
+                                   366  
+    000402  4a  4 00030 3151 20    367  	cana	bootload_info$status_mask
+    000403  0a   000427 6010 00    368  	tnz	init.emc
+                                   369  
+    000404  aa   014711 2350 07    370  init.lcc:	lda	6601,dl			" LCC model #
+    000405  4a  4 00034 7551 20    371  	sta	bootload_info$console_model
+                                   372  
+    000406  aa   000000 1004 00    373  	mlr	(),()			" set up to use IDCW's
+    000407  0a   000470 000034     374  	desc9a	idcw_ptrs,n_dcw_ptrs*4
+    000410  0a   000452 000034     375  	desc9a	dcw_ptrs,n_dcw_ptrs*4
+                                   376  
+                                   377  " Short pause for ipc-cons-2 console to settle down
+                                   378  
+    000411  aa   000000 0110 03    379  	even
+    000412  aa   040000 2350 07    380  	lda	=o40000,dl		" about a second
+    000413  aa   000001 1750 07    381  	sba	1,dl
+    000414  aa   777777 6050 04    382  	tpl	-1,ic
+                                   383  
+    000415  aa   400000 2350 03    384  	lda	=o400000,du
+    000416  4a  4 00014 7551 20    385  	sta	bootload_info$console_available	" set us up.
+    000417  4a  4 00042 7551 20    386  	sta	bootload_info$console_pcw_check " let's chk to see if PCWs are used
+    000420  4a  4 00044 7551 20    387  	sta	bootload_info$console_uses_pcw  " set the default to YES
+                                   388  
+    000421  4a  4 00022 7021 20    389  	tsx2	bootload_io$connect		" bootload_io will make the final desision.
+    000422  4a  4 00024 0001 20    390  	arg	bootload_info$console_iom_number
+    000423  4a  4 00026 0001 20    391  	arg	bootload_info$console_channel_number
+    000424  0a   000452 0000 20    392  	arg	write_pcw_ptr,*
+    000425  0a   000456 0000 20    393  	arg	write_nl_dcw_list_ptr,*
+    000426  0a   000436 7100 00    394  	tra	init.model_join
+                                   395  
+    000427                         396  init.emc:
+    000427  aa   013561 2350 07    397  	lda	6001,dl
+    000430  4a  4 00034 7551 20    398  	sta	bootload_info$console_model
+                                   399  
+    000431  aa   000000 1004 00    400  	mlr	(),()			" use PCW's
+    000432  0a   000461 000034     401  	desc9a	pcw_ptrs,n_dcw_ptrs*4
+    000433  0a   000452 000034     402  	desc9a	dcw_ptrs,n_dcw_ptrs*4
+    000434  aa   400000 2350 03    403  	lda	=o400000,du
+    000435  4a  4 00014 7551 20    404  	sta	bootload_info$console_available	" set us up.
+                                   405  
+    000436                         406  init.model_join:
+    000436  4a  4 00046 7021 20    407  	tsx2	bootload_error$first_message		" let them know
+                                   408  
+                                   409  	init_return
+    000437  0a   000030 4500 00         	stz	in_bootload_console
+    000440  0a   000020 0730 00         	lreg	register_save
+    000441  0a   000000 1730 00         	lpri	pr_save
+                                        	Breturn	0
+    000442  4a  4 00016 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000443  aa   000000 7100 12         	tra	0+0,x2
+                                   410  "
+    000444                         411  console_write_error:
+    000444  0a   000450 7570 00    412  	staq	last_console_status
+    000445                         413  read_error:
+    000445  4a  4 00014 4501 20    414  	stz	bootload_info$console_available
+    000446  4a  4 00050 7101 20    415  	tra	bootload_error$console_failure
+                                   416  
+    000447  aa   000000 0110 03    417  	even
+                        000450     418  	segdef	last_console_status
+    000450                         419  last_console_status:
+    000450                         420  	bss	,2
+                                   421  
+    000452                         422  dcw_ptrs:
+    000452  aa   000000 0000 00    423  write_pcw_ptr:		arg	0
+    000453  aa   000000 0000 00    424  write_alert_pcw_ptr:	arg	0
+    000454  aa   000000 0000 00    425  read_line_pcw_ptr:		arg	0
+    000455  aa   000000 0000 00    426  write_dcw_list_ptr:		arg	0
+    000456  aa   000000 0000 00    427  write_nl_dcw_list_ptr:	arg	0
+    000457  aa   000000 0000 00    428  write_alert_dcw_list_ptr:	arg	0
+    000460  aa   000000 0000 00    429  read_line_dcw_list_ptr:	arg	0
+                        000007     430  	equ	n_dcw_ptrs,*-dcw_ptrs
+                                   431  
+    000461                         432  pcw_ptrs:
+    000461  0a   000500 0000 00    433  	arg	write_pcw		" write
+    000462  0a   000502 0000 00    434  	arg	write_alert_pcw	" write_alert
+    000463  0a   000504 0000 00    435  	arg	read_line_pcw	" read_line
+    000464  0a   000516 0000 00    436  	arg	write_ascii_ddcw	" write
+    000465  0a   000521 0000 00    437  	arg	write_nl_ddcw	" write_nl
+    000466  aa   000000 0000 00    438  	arg	0		" write_alert
+    000467  0a   000523 0000 00    439  	arg	read_line_ddcw	" read_line
+                                   440  
+    000470                         441  idcw_ptrs:
+    000470  0a   000510 0000 00    442  	arg	reset_status_p_pcw	" reset & proceed
+    000471  0a   000510 0000 00    443  	arg	reset_status_p_pcw  " reset & proceed
+    000472  0a   000510 0000 00    444  	arg	reset_status_p_pcw	" reset & proceed
+    000473  0a   000515 0000 00    445  	arg	write_ascii_idcw	" write
+    000474  0a   000520 0000 00    446  	arg	write_nl_idcw	" write_nl
+    000475  0a   000517 0000 00    447  	arg	write_alert_idcw	" write_alert
+    000476  0a   000522 0000 00    448  	arg	read_line_idcw	" read_line
+                                   449  
+    000477  aa   000000 0110 03    450  	even
+                                   451  
+                                   452  	make_pcw	write_pcw,
+                                   453  		CONSOLE.write_ASCII,
+                                   454  		0,0,
+                                   455  		record,terminate
+                                        	even
+    000500                              write_pcw:
+    000500  aa   330000 700000 
+    000501  aa   000000 000000 
+                                   456  
+                                   457  	make_pcw	write_alert_pcw,
+                                   458  		CONSOLE.write_alert,
+                                   459  		0,0,
+                                   460  		nondata,terminate
+                                        	even
+    000502                              write_alert_pcw:
+    000502  aa   510000 700200 
+    000503  aa   000000 000000 
+                                   461  
+                                   462  	make_pcw	read_line_pcw,
+                                   463  		CONSOLE.read_ASCII,
+                                   464  		0,0,
+                                   465  		record,terminate
+                                        	even
+    000504                              read_line_pcw:
+    000504  aa   230000 700000 
+    000505  aa   000000 000000 
+                                   466  
+                                   467  	make_pcw	reset_status_pcw,
+                                   468  		CONSOLE.reset_status,
+                                   469  		0,0,nondata,terminate
+                                        	even
+    000506                              reset_status_pcw:
+    000506  aa   400000 700200 
+    000507  aa   000000 000000 
+                                   470  
+                                   471  	make_pcw	reset_status_p_pcw,
+                                   472  		CONSOLE.reset_status,
+                                   473  		0,0,nondata,proceed,1
+                                        	even
+    000510                              reset_status_p_pcw:
+    000510  aa   400000 720201 
+    000511  aa   000000 000000 
+                                   474  
+                                   475  	make_pcw	read_id_pcw,
+                                   476  		CONSOLE.read_id,
+                                   477  		0,0,nondata,terminate
+                                        	even
+    000512                              read_id_pcw:
+    000512  aa   570000 700200 
+    000513  aa   000000 000000 
+                                   478  
+    000514                         479  	null				" make room for pcw inserted 
+                                   480  					" as idcw in IOX case
+                                   481  	make_idcw	read_id_idcw,
+                                   482  		CONSOLE.read_id,
+                                   483  		0,
+                                   484  		record,
+                                   485  		terminate
+    000514                              read_id_idcw:
+    000514  aa   570000 700000 
+                                   486  
+    000515                         487  	null
+                                   488  	make_idcw	write_ascii_idcw,
+                                   489  		CONSOLE.write_ASCII,
+                                   490  		0,
+                                   491  		record,
+                                   492  		terminate
+    000515                              write_ascii_idcw:
+    000515  aa   330000 700000 
+                                   493  	make_ddcw write_ascii_ddcw,
+                                   494  		0,0,iotd,word
+    000516                              write_ascii_ddcw:
+    000516  aa   000000 000000 
+                                   495  
+    000517                         496  	null
+                                   497  	make_idcw	write_alert_idcw,
+                                   498  		CONSOLE.write_alert,
+                                   499  		0,
+                                   500  		record,
+                                   501  		terminate
+    000517                              write_alert_idcw:
+    000517  aa   510000 700000 
+                                   502  
+    000520                         503  	null
+                                   504  	make_idcw	write_nl_idcw,
+                                   505  		CONSOLE.write_ASCII,
+                                   506  		0,
+                                   507  		record,
+                                   508  		terminate
+    000520                              write_nl_idcw:
+    000520  aa   330000 700000 
+                                   509  	make_ddcw write_nl_ddcw,
+                                   510  		0,1,iotd,word
+    000521                              write_nl_ddcw:
+    000521  aa   000000 000001 
+                                   511  
+    000522                         512  	null
+                                   513  	make_idcw	read_line_idcw,
+                                   514  		CONSOLE.read_ASCII,
+                                   515  		0,
+                                   516  		record,
+                                   517  		terminate
+    000522                              read_line_idcw:
+    000522  aa   230000 700000 
+                                   518  	make_ddcw	read_line_ddcw,
+                                   519  		0,0,iotd,word
+    000523                              read_line_ddcw:
+    000523  aa   000000 000000 
+                                   520  
+    000524  aa   012015 000000     521  cr:	vfd	o9/012,o9/015,18/0
+                                   522  	end
+LITERALS
+     
+    000526  aa   200000 770000 
+    000530  aa   000002 000043 
+    000531  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000532  5a   000003 000000 
+    000533  5a   000076 600000 
+    000534  aa   000000 000000 
+    000535  55   000013 000002 
+    000536  5a   000002 400003 
+    000537  55   000006 000013 
+    000540  aa  020 142 157 157
+    000541  aa  164 154 157 141
+    000542  aa  144 137 143 157
+    000543  aa  156 163 157 154
+    000544  aa  145 000 000 000
+    000545  55   000023 000003 
+    000546  0a   000450 400000 
+    000547  55   000016 000003 
+    000550  aa  023 154 141 163         last_console_status
+    000551  aa  164 137 143 157
+    000552  aa  156 163 157 154
+    000553  aa  145 137 163 164
+    000554  aa  141 164 165 163
+    000555  55   000030 000013 
+    000556  0a   000264 400000 
+    000557  55   000026 000003 
+    000560  aa  004 151 156 151         init
+    000561  aa  164 000 000 000
+    000562  55   000036 000023 
+    000563  0a   000146 400000 
+    000564  55   000033 000003 
+    000565  aa  011 162 145 141         read_line
+    000566  aa  144 137 154 151
+    000567  aa  156 145 000 000
+    000570  55   000044 000030 
+    000571  0a   000105 400000 
+    000572  55   000041 000003 
+    000573  aa  013 167 162 151         write_alert
+    000574  aa  164 145 137 141
+    000575  aa  154 145 162 164
+    000576  55   000052 000036 
+    000577  0a   000076 400000 
+    000600  55   000047 000003 
+    000601  aa  010 167 162 151         write_nl
+    000602  aa  164 145 137 156
+    000603  aa  154 000 000 000
+    000604  55   000057 000044 
+    000605  0a   000031 400000 
+    000606  55   000055 000003 
+    000607  aa  005 167 162 151         write
+    000610  aa  164 145 000 000
+    000611  55   000067 000052 
+    000612  0a   000030 400000 
+    000613  55   000062 000003 
+    000614  aa  023 151 156 137         in_bootload_console
+    000615  aa  142 157 157 164
+    000616  aa  154 157 141 144
+    000617  aa  137 143 157 156
+    000620  aa  163 157 154 145
+    000621  55   000002 000057 
+    000622  6a   000000 400002 
+    000623  55   000072 000003 
+    000624  aa  014 163 171 155         symbol_table
+    000625  aa  142 157 154 137
+    000626  aa  164 141 142 154
+    000627  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000630  aa   000000 000015 
+    000631  aa   000000 000000 
+    000632  5a   000030 000000 
+    000633  aa   000000 000000 
+    000634  5a   000057 000000 
+    000635  aa   000000 000000 
+    000636  aa   000000 000000 
+    000637  5a   000067 000000 
+    000640  5a   000013 000000 
+    000641  5a   000036 000000 
+    000642  5a   000044 000000 
+    000643  5a   000023 000000 
+    000644  5a   000052 000000 
+    000645  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000646  aa  017 143 157 156         console_failure
+    000647  aa  163 157 154 145
+    000650  aa  137 146 141 151
+    000651  aa  154 165 162 145
+    000652  aa  015 146 151 162         first_message
+    000653  aa  163 164 137 155
+    000654  aa  145 163 163 141
+    000655  aa  147 145 000 000
+    000656  aa  020 143 157 156         console_uses_pcw
+    000657  aa  163 157 154 145
+    000660  aa  137 165 163 145
+    000661  aa  163 137 160 143
+    000662  aa  167 000 000 000
+    000663  aa  021 143 157 156         console_pcw_check
+    000664  aa  163 157 154 145
+    000665  aa  137 160 143 167
+    000666  aa  137 143 150 145
+    000667  aa  143 153 000 000
+    000670  aa  017 143 157 156         connect_timeout
+    000671  aa  156 145 143 164
+    000672  aa  137 164 151 155
+    000673  aa  145 157 165 164
+    000674  aa  017 164 141 160         tape_iom_number
+    000675  aa  145 137 151 157
+    000676  aa  155 137 156 165
+    000677  aa  155 142 145 162
+    000700  aa  015 143 157 156         console_model
+    000701  aa  163 157 154 145
+    000702  aa  137 155 157 144
+    000703  aa  145 154 000 000
+    000704  aa  022 141 163 163         assume_config_deck
+    000705  aa  165 155 145 137
+    000706  aa  143 157 156 146
+    000707  aa  151 147 137 144
+    000710  aa  145 143 153 000
+    000711  aa  013 163 164 141         status_mask
+    000712  aa  164 165 163 137
+    000713  aa  155 141 163 153
+    000714  aa  026 143 157 156         console_channel_number
+    000715  aa  163 157 154 145
+    000716  aa  137 143 150 141
+    000717  aa  156 156 145 154
+    000720  aa  137 156 165 155
+    000721  aa  142 145 162 000
+    000722  aa  022 143 157 156         console_iom_number
+    000723  aa  163 157 154 145
+    000724  aa  137 151 157 155
+    000725  aa  137 156 165 155
+    000726  aa  142 145 162 000
+    000727  aa  007 143 157 156         connect
+    000730  aa  156 145 143 164
+    000731  aa  013 142 157 157         bootload_io
+    000732  aa  164 154 157 141
+    000733  aa  144 137 151 157
+    000734  aa  013 163 171 163         system_type
+    000735  aa  164 145 155 137
+    000736  aa  164 171 160 145
+    000737  aa  021 143 157 156         console_available
+    000740  aa  163 157 154 145
+    000741  aa  137 141 166 141
+    000742  aa  151 154 141 142
+    000743  aa  154 145 000 000
+    000744  aa  015 142 157 157         bootload_info
+    000745  aa  164 154 157 141
+    000746  aa  144 137 151 156
+    000747  aa  146 157 000 000
+    000750  aa  014 157 165 164         out_of_stack
+    000751  aa  137 157 146 137
+    000752  aa  163 164 141 143
+    000753  aa  153 000 000 000
+    000754  aa  016 142 157 157         bootload_error
+    000755  aa  164 154 157 141
+    000756  aa  144 137 145 162
+    000757  aa  162 157 162 000
+    000760  aa  017 145 156 164         entry_stack_ptr
+    000761  aa  162 171 137 163
+    000762  aa  164 141 143 153
+    000763  aa  137 160 164 162
+    000764  aa  012 142 157 157         bootload_0
+    000765  aa  164 154 157 141
+    000766  aa  144 137 060 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000767  aa   000004 000000 
+    000770  55   000222 000114 
+    000771  aa   000004 000000 
+    000772  55   000222 000120 
+    000773  aa   000004 000000 
+    000774  55   000212 000124 
+    000775  aa   000004 000000 
+    000776  55   000212 000131 
+    000777  aa   000004 000000 
+    001000  55   000177 000136 
+    001001  aa   000004 000000 
+    001002  55   000212 000142 
+    001003  aa   000004 000000 
+    001004  55   000212 000146 
+    001005  aa   000004 000000 
+    001006  55   000212 000152 
+    001007  aa   000004 000000 
+    001010  55   000212 000157 
+    001011  aa   000004 000000 
+    001012  55   000212 000162 
+    001013  aa   000004 000000 
+    001014  55   000212 000170 
+    001015  aa   000004 000000 
+    001016  55   000177 000175 
+    001017  aa   000004 000000 
+    001020  55   000212 000202 
+    001021  aa   000004 000000 
+    001022  55   000212 000205 
+    001023  aa   000004 000000 
+    001024  55   000222 000216 
+    001025  aa   000004 000000 
+    001026  55   000232 000226 
+    001027  aa   000001 000000 
+    001030  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001031  5a   000235 000000 
+    001032  5a   000237 000000 
+    001033  5a   000241 000000 
+    001034  5a   000243 000000 
+    001035  5a   000245 000000 
+    001036  5a   000247 000000 
+    001037  5a   000251 000000 
+    001040  5a   000253 000000 
+    001041  5a   000255 000000 
+    001042  5a   000257 000000 
+    001043  5a   000261 000000 
+    001044  5a   000263 000000 
+    001045  5a   000265 000000 
+    001046  5a   000267 000000 
+    001047  5a   000271 000000 
+    001050  5a   000273 000000 
+    001051  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000532 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000052 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_0|entry_stack_ptr
+    000011  5a   000316 0000 56
+    000012  9a   777766 0000 46         bootload_error|out_of_stack
+    000013  5a   000315 0000 00
+    000014  9a   777764 0000 46         bootload_info|console_available
+    000015  5a   000314 0000 00
+    000016  9a   777762 0000 46         bootload_0|entry_stack_ptr
+    000017  5a   000316 0000 54
+    000020  9a   777760 0000 46         bootload_info|system_type
+    000021  5a   000313 0000 00
+    000022  9a   777756 0000 46         bootload_io|connect
+    000023  5a   000312 0000 00
+    000024  9a   777754 0000 46         bootload_info|console_iom_number
+    000025  5a   000311 0000 00
+    000026  9a   777752 0000 46         bootload_info|console_channel_number
+    000027  5a   000310 0000 00
+    000030  9a   777750 0000 46         bootload_info|status_mask
+    000031  5a   000307 0000 00
+    000032  9a   777746 0000 46         bootload_info|assume_config_deck
+    000033  5a   000306 0000 00
+    000034  9a   777744 0000 46         bootload_info|console_model
+    000035  5a   000305 0000 00
+    000036  9a   777742 0000 46         bootload_info|tape_iom_number
+    000037  5a   000304 0000 00
+    000040  9a   777740 0000 46         bootload_io|connect_timeout
+    000041  5a   000303 0000 00
+    000042  9a   777736 0000 46         bootload_info|console_pcw_check
+    000043  5a   000302 0000 00
+    000044  9a   777734 0000 46         bootload_info|console_uses_pcw
+    000045  5a   000301 0000 00
+    000046  9a   777732 0000 46         bootload_error|first_message
+    000047  5a   000300 0000 00
+    000050  9a   777730 0000 46         bootload_error|console_failure
+    000051  5a   000277 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   250230 725251 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000020 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000436 
+    000020  aa   000000 000305 
+    000021  aa   000370 000357 
+    000022  aa   000421 000305 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000012 
+    000066  aa   000136 000065 
+    000067  aa   175453 021664 
+    000070  aa   000000 117547 
+    000071  aa   215104 000000 
+    000072  aa   000154 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000165 000051 
+    000077  aa   127236 043476 
+    000100  aa   000000 112724 
+    000101  aa   701742 600000 
+    000102  aa   000200 000046 
+    000103  aa   112375 747473 
+    000104  aa   000000 111240 
+    000105  aa   207531 200000 
+    000106  aa   000212 000045 
+    000107  aa   112375 747472 
+    000110  aa   000000 111240 
+    000111  aa   207531 200000 
+    000112  aa   000224 000051 
+    000113  aa   120665 316461 
+    000114  aa   000000 112067 
+    000115  aa   253502 400000 
+    000116  aa   000237 000041 
+    000117  aa   112741 326573 
+    000120  aa   000000 111274 
+    000121  aa   624354 400000 
+    000122  aa   000250 000052 
+    000123  aa   121630 013241 
+    000124  aa   000000 112163 
+    000125  aa   522061 000000 
+    000126  aa   000263 000042 
+    000127  aa   127236 043504 
+    000130  aa   000000 112724 
+    000131  aa   701743 200000 
+    000132  aa   000274 000042 
+    000133  aa   106701 740577 
+    000134  aa   000000 110670 
+    000135  aa   206425 600000 
+    000136  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_console.alm
+    000137  aa   143151 141154 
+    000140  aa   137154 144144 
+    000141  aa   076151 156163 
+    000142  aa   164141 154154 
+    000143  aa   076115 122061 
+    000144  aa   062056 063055 
+    000145  aa   061061 061064 
+    000146  aa   076142 157157 
+    000147  aa   164154 157141 
+    000150  aa   144137 143157 
+    000151  aa   156163 157154 
+    000152  aa   145056 141154 
+    000153  aa   155040 040040 
+    000154  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000155  aa   076151 156143 
+    000156  aa   154165 144145 
+    000157  aa   076142 157157 
+    000160  aa   164154 157141 
+    000161  aa   144137 145161 
+    000162  aa   165163 056151 
+    000163  aa   156143 154056 
+    000164  aa   141154 155040 
+    000165  aa   076154 144144          >ldd>include>bootload_cpu_macros.incl.alm
+    000166  aa   076151 156143 
+    000167  aa   154165 144145 
+    000170  aa   076142 157157 
+    000171  aa   164154 157141 
+    000172  aa   144137 143160 
+    000173  aa   165137 155141 
+    000174  aa   143162 157163 
+    000175  aa   056151 156143 
+    000176  aa   154056 141154 
+    000177  aa   155040 040040 
+    000200  aa   076154 144144          >ldd>include>make_data_macros.incl.alm
+    000201  aa   076151 156143 
+    000202  aa   154165 144145 
+    000203  aa   076155 141153 
+    000204  aa   145137 144141 
+    000205  aa   164141 137155 
+    000206  aa   141143 162157 
+    000207  aa   163056 151156 
+    000210  aa   143154 056141 
+    000211  aa   154155 040040 
+    000212  aa   076154 144144          >ldd>include>iom_word_macros.incl.alm
+    000213  aa   076151 156143 
+    000214  aa   154165 144145 
+    000215  aa   076151 157155 
+    000216  aa   137167 157162 
+    000217  aa   144137 155141 
+    000220  aa   143162 157163 
+    000221  aa   056151 156143 
+    000222  aa   154056 141154 
+    000223  aa   155040 040040 
+    000224  aa   076154 144144          >ldd>include>console_io_commands.incl.alm
+    000225  aa   076151 156143 
+    000226  aa   154165 144145 
+    000227  aa   076143 157156 
+    000230  aa   163157 154145 
+    000231  aa   137151 157137 
+    000232  aa   143157 155155 
+    000233  aa   141156 144163 
+    000234  aa   056151 156143 
+    000235  aa   154056 141154 
+    000236  aa   155040 040040 
+    000237  aa   076154 144144          >ldd>include>config_deck.incl.alm
+    000240  aa   076151 156143 
+    000241  aa   154165 144145 
+    000242  aa   076143 157156 
+    000243  aa   146151 147137 
+    000244  aa   144145 143153 
+    000245  aa   056151 156143 
+    000246  aa   154056 141154 
+    000247  aa   155040 040040 
+    000250  aa   076154 144144          >ldd>include>config_prph_opc_card.incl.alm
+    000251  aa   076151 156143 
+    000252  aa   154165 144145 
+    000253  aa   076143 157156 
+    000254  aa   146151 147137 
+    000255  aa   160162 160150 
+    000256  aa   137157 160143 
+    000257  aa   137143 141162 
+    000260  aa   144056 151156 
+    000261  aa   143154 056141 
+    000262  aa   154155 040040 
+    000263  aa   076154 144144          >ldd>include>coll0_segnos.incl.alm
+    000264  aa   076151 156143 
+    000265  aa   154165 144145 
+    000266  aa   076143 157154 
+    000267  aa   154060 137163 
+    000270  aa   145147 156157 
+    000271  aa   163056 151156 
+    000272  aa   143154 056141 
+    000273  aa   154155 040040 
+    000274  aa   076154 144144          >ldd>include>system_types.incl.alm
+    000275  aa   076151 156143 
+    000276  aa   154165 144145 
+    000277  aa   076163 171163 
+    000300  aa   164145 155137 
+    000301  aa   164171 160145 
+    000302  aa   163056 151156 
+    000303  aa   143154 056141 
+    000304  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+         402    abs_seg0_segno_          coll0_segnos:        19.
+           2    ADP_SYSTEM               bootload_console:    92,  176,  259,  320,
+                                         system_types:        14.
+                assume_config_deck       bootload_console:   264.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+         400    bbl0_segno_              coll0_segnos:        17.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_0               bootload_console:    85,   89,  110,  116,  122,  127,  151,  172,  252,  257,  409.
+                bootload_error           bootload_console:    85,  116,  122,  172,  257,  407,  415.
+                bootload_info            bootload_console:    87,   92,  102,  103,  107,  125,  133,  134,  142,  143,  148,
+                                                             176,  190,  191,  259,  264,  311,  313,  315,  319,  324,  325,
+                                                             326,  330,  331,  336,  340,  341,  348,  349,  362,  363,  367,
+                                                             371,  385,  386,  387,  390,  391,  398,  404,  414.
+                bootload_io              bootload_console:   101,  132,  141,  189,  329,  361,  389.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+           1    config_card.data_field   config_deck:   27.
+          17    config_card.type_word    config_deck:   28.
+           0    config_card.word         config_deck:   26.
+          20    config_card_size         bootload_console:   281,  306,
+                                         config_deck:   24.
+         333    config_console.active_console  bootload_console:   305,  309.
+         325    config_console.found_card      bootload_console:   279,  300.
+         320    config_console.FREE_CARD       bootload_console:   275,  287.
+         322    config_console.MASK_CARD       bootload_console:   278,  290.
+         306    config_console.next_card       bootload_console:   272,  282,  307.
+         316    config_console.OPC_CARD  bootload_console:   277,  285.
+         324    config_console.STATE     bootload_console:   295,  304.
+           0    config_deck.cards        config_deck:   16.
+           0    config_deck.pad_cards    config_deck:   18.
+           2    config_segno_            bootload_console:   269,
+                                         coll0_segnos:         6.
+                connect                  bootload_console:   101,  132,  141,  189,  361,  389.
+                connect_timeout          bootload_console:   329.
+           3    CONSOLE.read             console_io_commands:        6.
+          23    CONSOLE.read_ASCII       bootload_console:   465,  517,
+                                         console_io_commands:       11.
+          57    CONSOLE.read_id          bootload_console:   477,  485,
+                                         console_io_commands:       13.
+          40    CONSOLE.reset_status     bootload_console:   469,  473,
+                                         console_io_commands:        9.
+           7    CONSOLE.t_and_d_read     console_io_commands:       12.
+          13    CONSOLE.write            console_io_commands:        7.
+          51    CONSOLE.write_alert      bootload_console:   460,  501,
+                                         console_io_commands:        8.
+          33    CONSOLE.write_ASCII      bootload_console:   455,  492,  508,
+                                         console_io_commands:       10.
+                console_available        bootload_console:    87,  125,  385,  404,  414.
+                console_channel_number   bootload_console:   103,  134,  143,  191,  313,  324,  331,  340,  341,  349,  363,  391.
+                console_failure          bootload_console:   415.
+                console_iom_number       bootload_console:   102,  133,  142,  190,  311,  326,  330,  348,  362,  390.
+                console_model            bootload_console:   315,  371,  398.
+                console_pcw_check        bootload_console:   386.
+                console_uses_pcw         bootload_console:   387.
+         444    console_write_error      bootload_console:   108,  149,  411.
+         524    cr                       bootload_console:   259,  521.
+         452    dcw_ptrs                 bootload_console:   375,  402,  422,  430.
+           3    dn355_mbx_segno_         coll0_segnos:         7.
+           0    ds                       bootload_equs:       12.
+           0    ds_segno_                coll0_segnos:         4.
+         404    ed_segno_                coll0_segnos:        21.
+                entry_stack_ptr          bootload_console:    85,   89,  110,  116,  122,  127,  151,  172,  252,  257,  409.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+           5    fgbx_segno_              coll0_segnos:         9.
+         371    find.got_it              bootload_console:   316,  337,  352.
+         351    find.next                bootload_console:   328,  343.
+         361    find.skip_this_channel   bootload_console:   334,  339.
+                first_message            bootload_console:   407.
+           7    fv                       bootload_equs:       19.
+           4    fv_segno_                coll0_segnos:         8.
+         470    idcw_ptrs                bootload_console:   374,  441.
+         264    init                     bootload_console:   257.
+         427    init.emc                 bootload_console:   368,  396.
+         404    init.lcc                 bootload_console:   350,  370.
+         436    init.model_join          bootload_console:   394,  406.
+          30    in_bootload_console      bootload_console:    63,   64,   85,   89,  110,  116,  122,  127,  151,  257,  409.
+          11    iom_mbx_segno_           coll0_segnos:        13.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+         403    iupt_segno_              coll0_segnos:        20.
+           1    L68_SYSTEM               system_types:        13.
+         450    last_console_status      bootload_console:   195,  207,  412,  418,  419.
+           0    make_ddcw.address        bootload_console:   494,  510,  519.
+           0    make_ddcw.char_offset    bootload_console:   494,  510,  519.
+           0    make_ddcw.op_type        bootload_console:   494,  510,  519.
+           0    make_ddcw.tally          bootload_console:   494,  510,  519.
+           0    make_ddcw.tally_type     bootload_console:   494,  510,  519.
+           0    make_pcw.channel         bootload_console:   455,  460,  465,  469,  473,  477.
+           0    make_pcw.chan_cmd        bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           0    make_pcw.chan_ctrl       bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           0    make_pcw.chan_data       bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+          23    make_pcw.command         bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           0    make_pcw.device          bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           0    make_pcw.extension       bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           0    make_pcw.mask            bootload_console:   455,  460,  465,  469,  473,  477,  485,  492,  501,  508,  517.
+           2    mb                       bootload_equs:       14.
+         132    nl                       bootload_console:   131,  140.
+         137    nl_alert.check_status    bootload_console:   138,  147.
+         113    nl_alert_common          bootload_console:   118,  124.
+         215    not_oper_err             bootload_console:   209,  215.
+         223    not_timeout              bootload_console:   217,  223.
+           4    nt                       bootload_equs:       16.
+           6    nt_segno_                coll0_segnos:        10.
+           7    n_dcw_ptrs               bootload_console:   374,  375,  401,  402,  430.
+         242    operator_error_length    bootload_console:   212,  246.
+         236    operator_error_message   bootload_console:   211,  246.
+                out_of_stack             bootload_console:    85,  116,  122,  172,  257.
+         461    pcw_ptrs                 bootload_console:   401,  432.
+         342    poll_for_console         bootload_console:   265,  276,  318,  344.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+         401    prb_segno_               coll0_segnos:        18.
+           3    prph_opc_card.chan       bootload_console:   312,
+                                         config_prph_opc_card:      21.
+           3    prph_opc_card.field_type_mask  config_prph_opc_card:      28.
+          42    prph_opc_card.field_type_shift       config_prph_opc_card:      27.
+           2    prph_opc_card.iom        bootload_console:   310,
+                                         config_prph_opc_card:      20.
+           5    prph_opc_card.line_leng  config_prph_opc_card:      23.
+           4    prph_opc_card.model      bootload_console:   314,
+                                         config_prph_opc_card:      22.
+           1    prph_opc_card.name       config_prph_opc_card:      19.
+          17    prph_opc_card.n_fields_mask    config_prph_opc_card:      30.
+           0    prph_opc_card.n_fields_shift   config_prph_opc_card:      29.
+           6    prph_opc_card.state      bootload_console:   303,
+                                         config_prph_opc_card:      24.
+          17    prph_opc_card.type_word  config_prph_opc_card:      25.
+           0    prph_opc_card.word       config_prph_opc_card:      18.
+          20    prph_opc_card_size       config_prph_opc_card:      15.
+           0    pr_save                  bootload_console:    60,   85,   89,  110,  116,  122,  127,  151,  257,  409.
+           0    read_buffer              bootload_console:   162,  173.
+         445    read_error               bootload_console:   198,  203,  225,  413.
+         514    read_id_idcw             bootload_console:   365,  485.
+         512    read_id_pcw              bootload_console:   364,  477.
+           1    read_length              bootload_console:   163,  174.
+         146    read_line                bootload_console:   169,  171.
+         460    read_line_dcw_list_ptr   bootload_console:   193,  429.
+         523    read_line_ddcw           bootload_console:   177,  182,  439,  519.
+         522    read_line_idcw           bootload_console:   448,  517.
+         504    read_line_pcw            bootload_console:   435,  465.
+         454    read_line_pcw_ptr        bootload_console:   192,  425.
+         262    read_succeeded           bootload_console:   201,  251.
+          20    register_save            bootload_console:    61,   85,   89,  110,  116,  122,  127,  151,  257,  409.
+         261    reprompt_length          bootload_console:   235,  249.
+         257    reprompt_message         bootload_console:   234,  249.
+         231    REPROMPT_REREAD          bootload_console:   213,  221,  231.
+         166    REREAD                   bootload_console:   184,  236.
+         506    reset_status_pcw         bootload_console:   469.
+         510    reset_status_p_pcw       bootload_console:   442,  443,  444,  473.
+           6    seg                      bootload_console:   269,  274,  302,
+                                         bootload_equs:       18.
+           1    seg2                     bootload_console:   302,  303,  310,  312,  314,
+                                         bootload_equs:       13.
+           3    slt                      bootload_equs:       15.
+           7    slt_segno_               coll0_segnos:        11.
+         366    ssf                      bootload_console:   321,  348.
+                status_mask              bootload_console:   107,  148,  336,  367.
+                system_type              bootload_console:    92,  176,  259,  319.
+                tape_iom_number          bootload_console:   325.
+         250    timeout_length           bootload_console:   220,  247.
+         243    timeout_message          bootload_console:   219,  247.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+          10    toehold_data_segno_      coll0_segnos:        12.
+           1    toehold_segno_           coll0_segnos:         5.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+          13    toe_segno_               coll0_segnos:        15.
+         256    too_long_length          bootload_console:   229,  248.
+         251    too_long_message         bootload_console:   228,  248.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+          12    upt_segno_               coll0_segnos:        14.
+          31    write                    bootload_console:    85,  210,  218,  227,  233.
+          45    write.okay               bootload_console:    88,   90.
+         105    write_alert              bootload_console:   122.
+         122    write_alert.okay         bootload_console:   126,  129.
+         457    write_alert_dcw_list_ptr       bootload_console:   136,  428.
+         517    write_alert_idcw         bootload_console:   333,  447,  501.
+         502    write_alert_pcw          bootload_console:   332,  434,  460.
+         453    write_alert_pcw_ptr      bootload_console:   135,  424.
+         516    write_ascii_ddcw         bootload_console:    93,   99,  436,  494.
+         515    write_ascii_idcw         bootload_console:   445,  492.
+         455    write_dcw_list_ptr       bootload_console:   105,  426.
+          76    write_nl                 bootload_console:   116,  226,  232.
+         456    write_nl_dcw_list_ptr    bootload_console:   145,  393,  427.
+         521    write_nl_ddcw            bootload_console:   260,  437,  510.
+         520    write_nl_idcw            bootload_console:   446,  508.
+         500    write_pcw                bootload_console:   433,  455.
+         452    write_pcw_ptr            bootload_console:   104,  144,  392,  423.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

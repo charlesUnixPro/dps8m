@@ -1,0 +1,344 @@
+	COMPILATION LISTING OF SEGMENT ioi_config
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1018.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /****^  HISTORY COMMENTS:
+       10*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+       11*     audit(86-01-16,CLJones), install(86-03-21,MR12.0-1033):
+       12*     Support FIPS by
+       13*     adding "ipc fips" card.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 /* config deck searches and the like */
+       17 
+       18 /* Written Patriots' Day, 1983 by Chris Jones */
+       19 /* Modified Jan 1985 by Paul Farley to add IPC FIPS. */
+       20 
+       21 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       22 ioi_config:
+       23      proc;
+       24 
+       25 dcl	p_chanid		   char (8) aligned;
+       26 
+       27 dcl	chanid		   char (8) aligned;
+       28 dcl	channo		   fixed bin (7);
+       29 dcl	code		   fixed bin (35);
+       30 dcl	iomno		   fixed bin (3);
+       31 dcl	portno		   fixed bin;
+       32 
+       33 dcl	config_$find	   entry (char (4) aligned, ptr);
+       34 
+       35 dcl	(divide, hbound, lbound, max, null, substr)
+       36 			   builtin;
+       37 
+       38 /* Entry to find the controller (e.g. MPC or IPC) card in the config deck which contains a given channel.
+       39*   It returns a pointer to the first such card it finds (there should only be one of them)
+       40*   or null if it can't find one. */
+       41 
+       42 find_controller_card:
+       43      entry (p_chanid) returns (ptr);
+       44 
+       45 	call find_controller_card_proc;
+       46 	return (mpc_cardp);
+       47 
+       48 /* Entry to return the base channel of the given channel. */
+       49 
+       50 find_base_channel:
+       51      entry (p_chanid) returns (char (8) aligned);
+       52 
+       53 	call find_controller_card_proc;		/* leaves mpc_cardp pointing at the right card */
+       54 	if mpc_cardp = null () then
+       55 	     return ("");				/* let our caller decide what to make of this */
+       56 	if mpc_card.word = IPC_CARD_WORD then do;
+       57 	     ipc_cardp = mpc_cardp;
+       58 	     if (ipc_card.iom = iomno) & (ipc_card.chan <= channo) & (channo < ipc_card.chan + ipc_card.nchan) then do;
+       59 		call io_chnl_util$iom_to_name (ipc_card.iom, (ipc_card.chan), chanid, code);
+       60 		if code = 0 then
+       61 		     return (chanid);
+       62 		else return ("");			/* oh well... */
+       63 	     end;
+       64 	end;
+       65 	if (substr (mpc_card.name, 1, 3) ^= "msp") & (substr (mpc_card.name, 1, 3) ^= "mtp") then
+       66 	     return (p_chanid);			/* not a multiplexed MPC, every channel is a base */
+       67 
+       68 	do portno = lbound (mpc_card_array.port, 1) to hbound (mpc_card_array.port, 1);
+       69 	     if (mpc_card_array.port (portno).iom = iomno) & (mpc_card_array.port (portno).chan <= channo)
+       70 		& (channo < mpc_card_array.port (portno).chan + mpc_card_array.port (portno).nchan) then do;
+       71 		call io_chnl_util$iom_to_name (mpc_card_array.port (portno).iom, (mpc_card_array.port (portno).chan),
+       72 		     chanid, code);
+       73 		if code = 0 then
+       74 		     return (chanid);
+       75 		else return ("");			/* oh well... */
+       76 	     end;
+       77 	end;
+       78 
+       79 	return ("");				/* can't happen... */
+       80 
+       81 find_controller_card_proc:
+       82      proc;
+       83 
+       84 	chanid = p_chanid;
+       85 	mpc_cardp, ipc_cardp = null ();		/* Start at the beginning of the config deck. */
+       86 	call io_chnl_util$name_to_iom (chanid, iomno, channo, code);
+       87 	if code ^= 0 then
+       88 	     return;				/* illegal chanid, can't be on any mpc card */
+       89 
+       90 	call config_$find (MPC_CARD_WORD, mpc_cardp);	/* find first mpc card */
+       91 	do while (mpc_cardp ^= null ());		/* ...or until we find what we're looking for */
+       92 	     do portno = lbound (mpc_card_array.port, 1) to hbound (mpc_card_array.port, 1);
+       93 		if (mpc_card_array.port (portno).iom = iomno) & (mpc_card_array.port (portno).chan <= channo)
+       94 		     & (channo < mpc_card_array.port (portno).chan + mpc_card_array.port (portno).nchan) then
+       95 		     return;			/* this is the one */
+       96 	     end;
+       97 	     call config_$find (MPC_CARD_WORD, mpc_cardp);/* on to the next one */
+       98 	end;
+       99 
+      100 	call config_$find (IPC_CARD_WORD, ipc_cardp);	/* find first ipc card */
+      101 	do while (ipc_cardp ^= null ());		/* ...or until we find what we're looking for */
+      102 	     if ipc_card.type = IPC_FIPS then do;	/* for now only fips */
+      103 		if (ipc_card.iom = iomno) & (ipc_card.chan <= channo) & (channo < ipc_card.chan + ipc_card.nchan)
+      104 		then do;
+      105 		     mpc_cardp = ipc_cardp;		/* this is the one */
+      106 		     return;
+      107 		end;
+      108 	     end;
+      109 	     call config_$find (IPC_CARD_WORD, ipc_cardp);/* on to the next one */
+      110 	end;
+      111 	return;					/* wasn't on any of the card, signal failure */
+      112 
+      113      end find_controller_card_proc;
+      114 
+  1     1 /*  START OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 /* Written by Charles Hornig, 1st quarter 1981 */
+  1     4 /* Canonicalization entry added by Chris Jones, January 1984 */
+  1     5 
+  1     6 /* chanid = canonicalize_chanid (chanid); */
+  1     7 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1     8 dcl	io_chnl_util$canonicalize_chanid
+  1     9 			   entry (char (8) aligned) returns (char (8) aligned);
+  1    10 
+  1    11 /* call iom_to_name (iomno, channo, name, code); */
+  1    12 dcl	io_chnl_util$iom_to_name
+  1    13 			   entry (fixed bin (3), fixed bin (7), char (8) aligned, fixed bin (35));
+  1    14 
+  1    15 /* call name_to_iom (name, iomno, channo, code); */
+  1    16 dcl	io_chnl_util$name_to_iom
+  1    17 			   entry (char (8) aligned, fixed bin (3), fixed bin (7), fixed bin (35));
+  1    18 
+  1    19 /*  END OF:	io_chnl_util_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      115 
+      116 
+  2     1 /* BEGIN INCLUDE FILE ... config_mpc_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  mpc_cardp ptr;					/* Pointer to an MPC card. */
+  2     4 
+  2     5 dcl 1 mpc_card aligned based (mpc_cardp),
+  2     6     2 word char (4),				/* "mpc" */
+  2     7     2 name char (4),				/* Name of this MPC - e.g., "mspa" */
+  2     8     2 model fixed bin,				/* Model of this MPC - e.g., 601. */
+  2     9     2 port (4),					/* Per port information. 12 fields total */
+  2    10       3 iom fixed bin (3),				/* IOM number */
+  2    11       3 chan fixed bin (8),				/* Channel number. */
+  2    12       3 nchan fixed bin,				/* Number of logical channels on this channel. */
+  2    13 
+  2    14     2 type_word aligned,
+  2    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    16       3 pad1 bit (4) unaligned,
+  2    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    18 
+  2    19 dcl 1 mpc_card_array aligned based (mpc_cardp),		/* Overlay for MPC port array */
+  2    20     2 pad1 (3) bit (36) aligned,
+  2    21     2 port (divide (max (0, (mpc_card.n_fields - 2)), 3, 17, 0)),
+  2    22       3 iom fixed bin (3),				/* IOM number */
+  2    23       3 chan fixed bin (8),				/* Channel number. */
+  2    24       3 nchan fixed bin;				/* Number of logical channels on this channel. */
+  2    25 
+  2    26 dcl  MPC_CARD_WORD char (4) aligned internal static options (constant) init ("mpc");
+  2    27 
+  2    28 /* END INCLUDE FILE ... config_mpc_card.incl.pl1 */
+      117 
+      118 
+  3     1 /* BEGIN INCLUDE FILE ... config_ipc_card.incl.pl1 ... */
+  3     2 /****^  HISTORY COMMENTS:
+  3     3*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  3     4*     audit(86-03-08,CLJones), install(86-03-21,MR12.0-1033):
+  3     5*     Create IPC card.
+  3     6*                                                   END HISTORY COMMENTS */
+  3     7 
+  3     8 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  3     9 
+  3    10 dcl	ipc_cardp		   ptr;                      /* card pointer */
+  3    11 
+  3    12 dcl	1 ipc_card	   aligned based (ipc_cardp),
+  3    13 	  2 word		   char (4),		/* "ipc" */
+  3    14 	  2 type		   char (4),		/* Type of this IPC - e.g., "fips" */
+  3    15 	  2 iom		   fixed bin (3),		/* IOM number */
+  3    16 	  2 chan		   fixed bin (8),		/* Channel number. */
+  3    17 	  2 nchan		   fixed bin,		/* Number of logical channels on this channel. */
+  3    18 	  2 pad (10) bit (36) aligned,			/* Pad to 15 fields */
+  3    19 	  2 type_word	   aligned,
+  3    20 	    3 field_type	   (14) bit (2) unaligned,	/* type of each field; see config_deck.incl.pl1 */
+  3    21 	    3 pad1	   bit (4) unaligned,
+  3    22 	    3 n_fields	   fixed bin (4) unsigned unaligned;
+  3    23 						/* number of fields used on card */
+  3    24 
+  3    25 dcl	IPC_CARD_WORD	   char (4) aligned internal static options (constant) init ("ipc");
+  3    26 dcl	IPC_FIPS		   char (4) aligned internal static options (constant) init ("fips");
+  3    27 
+  3    28 /* END INCLUDE FILE ... config_ipc_card.incl.pl1 */
+      119 
+      120      end ioi_config;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.3  ioi_config.pl1                    >spec>install>1110>ioi_config.pl1
+115          1    07/11/84  0937.3  io_chnl_util_dcls.incl.pl1        >ldd>include>io_chnl_util_dcls.incl.pl1
+117          2    05/08/81  1853.6  config_mpc_card.incl.pl1          >ldd>include>config_mpc_card.incl.pl1
+119          3    03/27/86  1120.0  config_ipc_card.incl.pl1          >ldd>include>config_ipc_card.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+IPC_CARD_WORD                   000001 constant        char(4)                  initial dcl 3-25 set ref 56 100* 109*
+IPC_FIPS                        000000 constant        char(4)                  initial dcl 3-26 ref 102
+MPC_CARD_WORD                   000002 constant        char(4)                  initial dcl 2-26 set ref 90* 97*
+chan                      4            based           fixed bin(8,0)           array level 3 in structure "mpc_card_array" dcl 2-19
+                                                                                  in procedure "ioi_config" ref 69 69 71 93 93
+chan                      3            based           fixed bin(8,0)           level 2 in structure "ipc_card" dcl 3-12
+                                                                                  in procedure "ioi_config" ref 58 58 59 103 103
+chanid                          000100 automatic       char(8)                  dcl 27 set ref 59* 60 71* 73 84* 86*
+channo                          000102 automatic       fixed bin(7,0)           dcl 28 set ref 58 58 69 69 86* 93 93 103 103
+code                            000103 automatic       fixed bin(35,0)          dcl 29 set ref 59* 60 71* 73 86* 87
+config_$find                    000010 constant        entry                    external dcl 33 ref 90 97 100 109
+divide                                                 builtin function         dcl 35 ref 68 92
+hbound                                                 builtin function         dcl 35 ref 68 92
+io_chnl_util$iom_to_name        000012 constant        entry                    external dcl 1-12 ref 59 71
+io_chnl_util$name_to_iom        000014 constant        entry                    external dcl 1-16 ref 86
+iom                       3            based           fixed bin(3,0)           array level 3 in structure "mpc_card_array" dcl 2-19
+                                                                                  in procedure "ioi_config" set ref 69 71* 93
+iom                       2            based           fixed bin(3,0)           level 2 in structure "ipc_card" dcl 3-12
+                                                                                  in procedure "ioi_config" set ref 58 59* 103
+iomno                           000104 automatic       fixed bin(3,0)           dcl 30 set ref 58 69 86* 93 103
+ipc_card                               based           structure                level 1 dcl 3-12
+ipc_cardp                       000110 automatic       pointer                  dcl 3-10 set ref 57* 58 58 58 58 59 59 85* 100* 101
+                                                                                  102 103 103 103 103 105 109*
+lbound                                                 builtin function         dcl 35 ref 68 92
+max                                                    builtin function         dcl 35 ref 68 92
+mpc_card                               based           structure                level 1 dcl 2-5
+mpc_card_array                         based           structure                level 1 dcl 2-19
+mpc_cardp                       000106 automatic       pointer                  dcl 2-3 set ref 46 54 56 57 65 65 68 68 68 69 69 69
+                                                                                  69 71 71 85* 90* 91 92 92 92 93 93 93 93 97* 105*
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 2-5 ref
+                                                                                  68 92
+name                      1            based           char(4)                  level 2 dcl 2-5 ref 65 65
+nchan                     4            based           fixed bin(17,0)          level 2 in structure "ipc_card" dcl 3-12
+                                                                                  in procedure "ioi_config" ref 58 103
+nchan                     5            based           fixed bin(17,0)          array level 3 in structure "mpc_card_array" dcl 2-19
+                                                                                  in procedure "ioi_config" ref 69 93
+null                                                   builtin function         dcl 35 ref 54 85 91 101
+p_chanid                               parameter       char(8)                  dcl 25 ref 42 50 65 84
+port                      3            based           structure                array level 2 dcl 2-19 set ref 68 68 92 92
+portno                          000105 automatic       fixed bin(17,0)          dcl 31 set ref 68* 69 69 69 69 71 71* 92* 93 93 93
+                                                                                  93*
+substr                                                 builtin function         dcl 35 ref 65 65
+type                      1            based           char(4)                  level 2 dcl 3-12 ref 102
+type_word                17            based           structure                level 2 dcl 2-5
+word                                   based           char(4)                  level 2 dcl 2-5 ref 56
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+io_chnl_util$canonicalize_chanid
+                                000000 constant        entry                    external dcl 1-8
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+find_base_channel               000070 constant        entry                    external dcl 50
+find_controller_card            000037 constant        entry                    external dcl 42
+find_controller_card_proc       000376 constant        entry                    internal dcl 81 ref 45 53
+ioi_config                      000023 constant        entry                    external dcl 22
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       660         676     564         670
+Length      1122     564        16         210      74           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioi_config                          108 external procedure  is an external procedure.  
+find_controller_card_proc               internal procedure  shares stack frame of external procedure ioi_config.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioi_config               000100 chanid                      ioi_config
+                         000102 channo                      ioi_config
+                         000103 code                        ioi_config
+                         000104 iomno                       ioi_config
+                         000105 portno                      ioi_config
+                         000106 mpc_cardp                   ioi_config
+                         000110 ipc_cardp                   ioi_config
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          signal_op           ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find                  io_chnl_util$iom_to_name      io_chnl_util$name_to_iom
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     22 000022        42 000032        45 000046        46 000047        50 000063        53 000076        54 000077
+     56 000121        57 000124        58 000126        59 000140        60 000157        62 000177        65 000215
+     68 000244        69 000263        71 000300        73 000317        75 000337        77 000355        79 000357
+    120 000375        81 000376        84 000377        85 000404        86 000407        87 000424        90 000427
+     91 000440        92 000444        93 000463        96 000501        97 000503        98 000514       100 000515
+    101 000526       102 000532       103 000536       105 000547       106 000550       109 000551       110 000562
+    111 000563
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

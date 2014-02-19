@@ -1,0 +1,1112 @@
+	COMPILATION LISTING OF SEGMENT mdc_status_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1019.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* MDC_STATUS_: Procedure that performs status operations from MDCS */
+       14 
+       15 /* Written April 1976 by Larry Johnson */
+       16 /* Modified September 1977 by Larry Johnson */
+       17 
+       18 mdc_status_: proc;
+       19 
+       20 /* Parameters */
+       21 
+       22 dcl  arg_volume char (*);				/* Name of volume in question */
+       23 dcl  arg_argp ptr;					/* Pointer to argument structure */
+       24 dcl  arg_volume_datap ptr;				/* Pointer to volume_data structure returned here */
+       25 dcl  arg_code fixed bin (35);
+       26 
+       27 dcl 1 arg_names (msargs.names) aligned based (msargs.namesp),
+       28     2 person char (22) unal,
+       29     2 project char (9) unal;
+       30 
+       31 /* Automatic */
+       32 
+       33 dcl  code fixed bin (35);
+       34 dcl  volume char (32);
+       35 dcl  access bit (36) aligned;				/* Access to logical volume */
+       36 dcl  person char (22);
+       37 dcl  project char (9);
+       38 dcl  last_ownerp ptr;
+       39 dcl (p, q) ptr;
+       40 
+       41 dcl 1 auto_args like msargs aligned automatic;
+       42 
+       43 
+       44 /* Things allocated in system free area */
+       45 
+       46 dcl  free_area_ptr ptr init (null);			/* Pointer to the area */
+       47 dcl  free_area area based (free_area_ptr);
+       48 dcl  pnamep ptr init (null);
+       49 dcl 1 pname (msargs.nnames) based (pnamep),		/* List of names */
+       50     2 person char (22) unal,
+       51     2 project char (9) unal;
+       52 
+       53 dcl  oname_head ptr init (null);			/* Pointer to a list of owner structrutes */
+       54 dcl  oname_tail ptr;
+       55 dcl  onamep ptr;
+       56 dcl 1 oname aligned based (onamep),			/* One of these allocated for each owner processed */
+       57     2 person char (22) unal,
+       58     2 project char (9) unal,
+       59     2 list_end ptr,
+       60     2 next ptr;
+       61 
+       62 
+       63 /* External stuff */
+       64 
+       65 dcl  admin_gate_$decode_uidpath entry (dim (0:15) bit (36) aligned, char (*), char (*), fixed bin (35));
+       66 dcl  mdc_lock_$set entry (fixed bin (35));
+       67 dcl  mdc_lock_$reset entry;
+       68 dcl  mdc_lock_$cleanup entry;
+       69 dcl  mdcs_util_$find_mdcs entry (char (*), ptr, bit (36) aligned, fixed bin (35));
+       70 dcl  mdcs_util_$term_mdcs entry (ptr);
+       71 dcl  mdc_parse_acct_ entry (char (*), char (*), char (*), fixed bin (35));
+       72 dcl  mdc_util_$find_matching_acctent entry (ptr, char (*), char (*), ptr);
+       73 dcl  get_system_free_area_ entry returns (ptr);
+       74 
+       75 dcl  error_table_$mdc_exec_access ext fixed bin (35);
+       76 dcl  error_table_$area_too_small ext fixed bin (35);
+       77 dcl  error_table_$argerr ext fixed bin (35);
+       78 dcl  error_table_$root ext fixed bin (35);
+       79 
+       80 dcl  cleanup condition;
+       81 
+       82 dcl (addr, null, ptr, rel, substr, addrel, size, string) builtin;
+       83 
+  1     1 /* Begin include file ..... mdc_status_args.incl.pl1 */
+  1     2 
+  1     3 /* This include file defines the param structure used to call mdc_$status */
+  1     4 
+  1     5 /* Written April 1976 by Larry Johnson */
+  1     6 
+  1     7 dcl  argp ptr;
+  1     8 
+  1     9 dcl 1 msargs aligned based (argp),
+  1    10     2 version fixed bin,
+  1    11     2 output_size fixed bin (19),			/* Number of words in output area */
+  1    12     2 flags,
+  1    13       3 exec bit (1) unal,				/* Set if user wants to exercixe exec access */
+  1    14       3 dirs bit (1) unal,				/* Set if user wants info in directories returned */
+  1    15       3 account bit (1) unal,				/* Set is user has passed a list of accounts (exec only) */
+  1    16       3 owner bit (1) unal,				/* Set if user has passed a list of owners (exec only) */
+  1    17       3 backup bit (1) unal,				/* Set if backup data wanted (exec only) */
+  1    18       3 restrict bit (1) unal,			/* Set if caller wants restricting paths returnd */
+  1    19       3 accounting bit (1) unal,			/* Set if caller wants accounting data */
+  1    20       3 fill bit (29) unal,
+  1    21     2 nnames fixed bin,				/* Number of names passed (if account or owner set) */
+  1    22     2 namesp ptr,					/* Pointer to the names */
+  1    23     2 output_ptr ptr;				/* Pointer to place for results */
+  1    24 
+  1    25 /* End include file ..... mdc_status_args.incl.pl1 */
+       84 
+       85 
+  2     1 /* Begin include file ..... mdc_status_info.incl.pl1 */
+  2     2 
+  2     3 /* This include file defines the format of data returned by mdc_$status operations. */
+  2     4 
+  2     5 /* Coded April 1976 by Larry Johnson */
+  2     6 /* Modified 83-12-07 BIM for correct quota precisions */
+  2     7 
+  2     8 dcl  volume_datap ptr;
+  2     9 
+  2    10 dcl 1 volume_data aligned based (volume_datap),
+  2    11     2 version fixed bin,
+  2    12     2 accountp ptr,					/* Pointer to first account_data entry returned */
+  2    13     2 ownerp ptr,					/* Pointer to list of owner_data entries */
+  2    14     2 restrictp ptr,				/* Pointer to list of path restrictions */
+  2    15     2 defaultp ptr,					/* Pointer to list of path defaults */
+  2    16     2 backup (3) fixed bin (35);			/* Data for backup accounting */
+  2    17 
+  2    18 dcl  account_datap ptr;
+  2    19 
+  2    20 dcl 1 account_data aligned based (account_datap),		/* Structure returned for each quota account */
+  2    21     2 next ptr,					/* Pointer to next one */
+  2    22     2 name,					/* Name of account */
+  2    23       3 person char (22) unal,
+  2    24       3 project char (9) unal,
+  2    25     2 quota fixed bin (35),				/* Total quota available to account */
+  2    26     2 quota_used fixed bin (35),			/* Total used currently */
+  2    27     2 trp fixed bin (71),				/* Time-record prodecut of deleted directories */
+  2    28     2 backup (3) fixed bin (35),			/* Backup account data */
+  2    29     2 dirp ptr,					/* Pointer to first directory charaged agains account */
+  2    30     2 restrictp ptr;				/* Pointer to pathame restriction list */
+  2    31 
+  2    32 dcl  dir_datap ptr;
+  2    33 
+  2    34 dcl 1 dir_data aligned based (dir_datap),		/* Structure allocated for each master directory */
+  2    35     2 next ptr,					/* Pointer to next one */
+  2    36     2 pathp ptr,					/* Pointer to pathane entry */
+  2    37     2 name,
+  2    38       3 person char (22) unal,
+  2    39       3 project char (9) unal,
+  2    40     2 quota fixed bin (18),				/* Quota allocated to directory */
+  2    41     2 backup (3) fixed bin (35);			/* Backup account data */
+  2    42 
+  2    43 dcl  owner_datap ptr;
+  2    44 
+  2    45 dcl 1 owner_data aligned based (owner_datap),		/* Structure allocated for each master dir owner */
+  2    46     2 next ptr,
+  2    47     2 name,					/* Owner name */
+  2    48       3 person char (22) unal,
+  2    49       3 project char (9) unal,
+  2    50     2 dirp ptr;					/* Pointer to list of owners dirs */
+  2    51 
+  2    52 dcl  path_datap ptr;
+  2    53 
+  2    54 dcl 1 path_data aligned based (path_datap),		/* One of these is allocated for each pathname */
+  2    55     2 next ptr,
+  2    56     2 code fixed bin (35),				/* Status code from decoding pathname */
+  2    57     2 dir char (168) unal,
+  2    58     2 ename char (32) unal;
+  2    59 
+  2    60 /* End include file ..... mdc_status_info.incl.pl1 */
+       86 
+       87 
+  3     1 /* Begin include file ..... mdcs.incl.pl1 */
+  3     2 /* Modified to give quota enough precision BIM 83-12-07 */
+  3     3 
+  3     4 /* Format of a master directory control segment */
+  3     5 
+  3     6 dcl  mdcsp ptr;					/* Pointer to structure */
+  3     7 
+  3     8 dcl 1 mdcs aligned based (mdcsp),			/* A master directory control segment */
+  3     9     2 head like mdcs_head,				/* First the header */
+  3    10     2 area area (0 refer (mdcs.area_size));		/* Followed by an area for allocating data */
+  3    11 
+  3    12 dcl 1 mdcs_head aligned based,			/* The header portion of the mdcs */
+  3    13     2 version fixed bin,				/* Version of structure */
+  3    14     2 init bit (1) unal,				/* Set when mdcs created */
+  3    15     2 free_bits bit (35) unal,
+  3    16     2 time_checked fixed bin (71),			/* Time this MDCS last checked for consistency */
+  3    17     2 volume char (32),				/* Name of volume */
+  3    18     2 uid bit (36),					/* Unique id of volume */
+  3    19     2 acct_offset bit (18),				/* Offset to first account entry */
+  3    20     2 dir_offset bit (18),				/* Pointer to first directory entry */
+  3    21     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  3    22     2 area_size fixed bin (18),			/* Size of the area (rest of segment) */
+  3    23     2 restrict_path bit (18),				/* List of pathnames in volume restict list */
+  3    24     2 default_path bit (18),				/* List of pathnames in volume default list */
+  3    25     2 fill (43) bit (36) aligned;			/* Pad to octal 100 */
+  3    26 
+  3    27 dcl  mdcs_version fixed bin int static options (constant) init (1); /* Latest version */
+  3    28 
+  3    29 dcl  mdirp ptr;					/* Pointer to directory entry */
+  3    30 
+  3    31 dcl 1 mdirent aligned based (mdirp),
+  3    32     2 next bit (18) unal,				/* Pointer to next entry */
+  3    33     2 fill bit (18) unal,
+  3    34     2 uidpath (0:15) bit (36),			/* Uid pathname of master dir */
+  3    35     2 owner,					/* Owner of directory */
+  3    36       3 person char (22) unal,
+  3    37       3 project char (9) unal,
+  3    38     2 quota_offset bit (18),				/* Rel pointer to quota account */
+  3    39     2 quota fixed bin (18),				/* The quota */
+  3    40     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  3    41     2 fill2 (10) bit (36) aligned;
+  3    42 
+  3    43 dcl  acctp ptr;					/* Pointer to account entry */
+  3    44 
+  3    45 dcl 1 acctent aligned based (acctp),
+  3    46     2 next bit (18) unal,				/* Relative pointer to next entry */
+  3    47     2 fill bit (18) unal,
+  3    48     2 name,					/* Name of quota account */
+  3    49       3 person char (22) unal,
+  3    50       3 project char (9) unal,
+  3    51     2 quota fixed bin (35),				/* Total quota for account */
+  3    52     2 quota_used fixed bin (35),			/* Amount of quota assigned to master dirs */
+  3    53     2 trp fixed bin (71) unal,			/* Time record product for deleted dirs */
+  3    54     2 backup (3) fixed bin (35),			/* Backup accounting data */
+  3    55     2 restrict_path bit (18),				/* List of restricting paths for account */
+  3    56     2 fill2 (7) bit (36) aligned;
+  3    57 
+  3    58 dcl  pathp ptr;					/* Pointer to uid pathname entry */
+  3    59 
+  3    60 dcl 1 pathent aligned based (pathp),			/* Entry in a list of pathnames */
+  3    61     2 next bit (18) unal,
+  3    62     2 fill bit (18) unal,
+  3    63     2 uidpath (0:15) bit (36);
+  3    64 
+  3    65 
+  3    66 /* End include file ..... mdcs.incl.pl1 */
+       88 
+       89 
+       90 /* Entry to perform mdc_$status operation */
+       91 
+       92 list:	entry (arg_volume, arg_argp, arg_volume_datap, arg_code);
+       93 
+       94 	call copy_args;				/* Get argument list */
+       95 
+       96 	mdcsp = null;
+       97 	on cleanup call clean_up;
+       98 
+       99 	call locate_vol;				/* Get mdcs pointer and check access */
+      100 
+      101 
+      102 	call make_volume_data;
+      103 
+      104 	if ^msargs.exec then call get_user_info;	/* For non-privlidged user */
+      105 	else call get_exec_info;			/* For volume executive */
+      106 	arg_volume_datap = volume_datap;		/* Return the anser */
+      107 
+      108 	code = 0;
+      109 term_return:
+      110 	call mdcs_util_$term_mdcs (mdcsp);
+      111 unlock_return:
+      112 	call mdc_lock_$reset;
+      113 return_code:
+      114 	call free_storage;
+      115 	arg_code = code;
+      116 	return;
+      117 
+      118 /* This procedure does the work for a normal user call. */
+      119 /* A user gets his quota account and a list of his directories */
+      120 
+      121 get_user_info: proc;
+      122 
+      123 	     call mdc_parse_acct_ ("", person, project, code); /* This is to see who I am */
+      124 	     if code ^= 0 then go to term_return;
+      125 	     call mdc_util_$find_matching_acctent (mdcsp, person, project, acctp); /* Find my account */
+      126 	     if acctp ^= null then do;		/* There is one */
+      127 		call make_account_data;
+      128 		volume_data.accountp = account_datap;	/* Return pointer to caller */
+      129 		if msargs.restrict then if acctent.restrict_path ^= "0"b then
+      130 			call copy_restrict_path (account_data.restrictp, acctent.restrict_path);
+      131 		     else call copy_restrict_path (account_data.restrictp, mdcs.default_path);
+      132 	     end;
+      133 
+      134 	     call make_owner_data;			/* Get structure to head directory list */
+      135 	     owner_data.person = person;
+      136 	     owner_data.project = project;
+      137 	     volume_data.ownerp = owner_datap;
+      138 
+      139 	     if ^msargs.dirs then return;
+      140 
+      141 	     p = null;
+      142 	     mdirp = ptr (mdcsp, mdcs.dir_offset);	/* Head of directory list for volume */
+      143 	     do while (rel (mdirp) ^= "0"b);		/* Scan list */
+      144 		if mdirent.person = person & mdirent.project = project then do; /* Its mine */
+      145 		     call make_dir_data;
+      146 		     acctp = ptr (mdcsp, mdirent.quota_offset);
+      147 		     dir_data.person = acctent.person;
+      148 		     dir_data.project = acctent.project;
+      149 		     dir_data.quota = mdirent.quota;
+      150 		     call make_path_data (mdirent.uidpath);
+      151 		     dir_data.pathp = path_datap;
+      152 		     if p = null then owner_data.dirp = dir_datap; /* Thread on list */
+      153 		     else p -> dir_data.next = dir_datap;
+      154 		     p = dir_datap;
+      155 		end;
+      156 		mdirp = ptr (mdcsp, mdirent.next);
+      157 	     end;
+      158 	     return;
+      159 
+      160 	end get_user_info;
+      161 
+      162 /* Procedre to get data for a volumeexecutive call */
+      163 
+      164 get_exec_info: proc;
+      165 
+      166 	     if ^(msargs.account | msargs.owner) then msargs.account = "1"b;
+      167 
+      168 	     if msargs.account then call build_account_list;
+      169 	     else call build_owner_list;
+      170 	     if msargs.restrict then do;
+      171 		call copy_restrict_path (volume_data.defaultp, mdcs.default_path);
+      172 		call copy_restrict_path (volume_data.restrictp, mdcs.restrict_path);
+      173 	     end;
+      174 
+      175 	end get_exec_info;
+      176 
+      177 build_account_list: proc;
+      178 	     p = null;
+      179 	     do acctp = ptr (mdcsp, mdcs.acct_offset) repeat (ptr (mdcsp, acctent.next)) while (rel (acctp) ^= "0"b);
+      180 		if account_needed () then do;		/* Data requested here */
+      181 		     call make_account_data;		/* Get place to stor data */
+      182 		     if p = null then volume_data.accountp = account_datap; /* Chain it */
+      183 		     else p -> account_data.next = account_datap;
+      184 		     p = account_datap;		/* Remember end of list */
+      185 		     q = null;
+      186 		     do mdirp = ptr (mdcsp, mdcs.dir_offset) repeat (ptr (mdcsp, mdirent.next)) while (rel (mdirp) ^= "0"b);
+      187 			if mdirent.quota_offset = rel (acctp) then do; /* If chaged to this account */
+      188 			     call make_dir_data;
+      189 			     if q = null then account_data.dirp = dir_datap; /* Chain it */
+      190 			     else q -> dir_data.next = dir_datap;
+      191 			     q = dir_datap;
+      192 			     dir_data.person = mdirent.person;
+      193 			     dir_data.project = mdirent.project;
+      194 			     dir_data.quota = mdirent.quota;
+      195 			     if msargs.backup then dir_data.backup = mdirent.backup;
+      196 			     call make_path_data (mdirent.uidpath);
+      197 			     dir_data.pathp = path_datap;
+      198 			end;
+      199 		     end;
+      200 		end;
+      201 	     end;
+      202 	     return;
+      203 
+      204 	end build_account_list;
+      205 
+      206 account_needed: proc returns (bit (1));
+      207 
+      208 dcl  i fixed bin;
+      209 
+      210 	     if msargs.nnames = 0 then return ("1"b);
+      211 
+      212 	     do i = 1 to msargs.nnames;
+      213 		if ((pname.person (i) = "") | (pname.person (i) = acctent.person)) &
+      214 		((pname.project (i) = "") | (pname.project (i) = acctent.project)) then return ("1"b);
+      215 	     end;
+      216 	     return ("0"b);
+      217 
+      218 	end account_needed;
+      219 
+      220 build_owner_list: proc;
+      221 
+      222 	     p = null;
+      223 	     last_ownerp = null;
+      224 	     do mdirp = ptr (mdcsp, mdcs.dir_offset) repeat (ptr (mdcsp, mdirent.next)) while (rel (mdirp) ^= "0"b);
+      225 		if owner_needed () then do;		/* Check of owner requested */
+      226 		     call find_onamep;		/* Get pointer to structure for this owner */
+      227 		     call make_dir_data;		/* Build entry for new directory */
+      228 		     acctp = ptr (mdcsp, mdirent.quota_offset);
+      229 		     dir_data.person = acctent.person;	/* Copy quota account name */
+      230 		     dir_data.project = acctent.project;
+      231 		     dir_data.quota = mdirent.quota;
+      232 		     if msargs.backup then dir_data.backup = mdirent.backup;
+      233 		     if oname.list_end = null then owner_data.dirp = dir_datap; /* First dir for owner */
+      234 		     else oname.list_end -> dir_data.next = dir_datap;
+      235 		     oname.list_end = dir_datap;
+      236 		     call make_path_data (mdirent.uidpath);
+      237 		     dir_data.pathp = path_datap;
+      238 		end;
+      239 	     end;
+      240 
+      241 	     return;
+      242 
+      243 	end build_owner_list;
+      244 
+      245 owner_needed: proc returns (bit (1));
+      246 
+      247 dcl  i fixed bin;
+      248 
+      249 	     if msargs.nnames = 0 then return ("1"b);
+      250 	     do i = 1 to msargs.nnames;
+      251 		if ((pname.person (i) = "") | (pname.person (i) = "*") | (pname.person (i) = mdirent.person)) &
+      252 		((pname.project (i) = "") | (pname.project (i) = "*") | (pname.project (i) = mdirent.project)) then
+      253 		     return ("1"b);
+      254 	     end;
+      255 	     return ("0"b);
+      256 
+      257 	end owner_needed;
+      258 
+      259 
+      260 find_onamep: proc;
+      261 
+      262 	     owner_datap = null;
+      263 	     do onamep = oname_head repeat (oname.next) while (onamep ^= null); /* Scan existing list */
+      264 		if oname.person = mdirent.person & oname.project = mdirent.project then return;
+      265 	     end;
+      266 
+      267 	     if free_area_ptr = null then free_area_ptr = get_system_free_area_ ();
+      268 	     allocate oname in (free_area);
+      269 	     oname.person = mdirent.person;
+      270 	     oname.project = mdirent.project;
+      271 	     oname.list_end = null;
+      272 	     oname.next = null;
+      273 	     if oname_head = null then oname_head = onamep; /* Thread on list */
+      274 	     else oname_tail -> oname.next = onamep;
+      275 	     oname_tail = onamep;
+      276 	     call make_owner_data;			/* Build structure for caller */
+      277 	     owner_data.person = mdirent.person;
+      278 	     owner_data.project = mdirent.project;
+      279 	     if last_ownerp = null then volume_data.ownerp = owner_datap; /* If first */
+      280 	     else last_ownerp -> owner_data.next = owner_datap;
+      281 	     last_ownerp = owner_datap;
+      282 
+      283 	     return;
+      284 
+      285 	end find_onamep;
+      286 
+      287 /* Copy arguments into stack */
+      288 
+      289 copy_args: proc;
+      290 
+      291 dcl  i fixed bin;
+      292 
+      293 	     arg_code = 0;
+      294 	     arg_volume_datap = null;
+      295 	     volume = arg_volume;
+      296 	     argp = addr (auto_args);
+      297 	     msargs.version = arg_argp -> msargs.version;
+      298 	     if msargs.version ^= 1 then do;
+      299 		code = error_table_$argerr;
+      300 		go to return_code;
+      301 	     end;
+      302 	     msargs.output_size = arg_argp -> msargs.output_size;
+      303 	     string (msargs.flags) = string (arg_argp -> msargs.flags);
+      304 	     msargs.nnames = arg_argp -> msargs.nnames;
+      305 	     msargs.namesp = arg_argp -> msargs.namesp;
+      306 	     msargs.output_ptr = arg_argp -> msargs.output_ptr;
+      307 	     if ^msargs.exec then do;			/* Ignore volume exec requests */
+      308 		msargs.account = "0"b;
+      309 		msargs.owner = "0"b;
+      310 		msargs.backup = "0"b;
+      311 		msargs.accounting = "0"b;
+      312 	     end;
+      313 	     if ^(msargs.account | msargs.owner) then msargs.nnames = 0;
+      314 	     if msargs.nnames > 0 then do;
+      315 		if free_area_ptr = null then free_area_ptr = get_system_free_area_ ();
+      316 		on area begin;
+      317 		     code = error_table_$area_too_small;
+      318 		     go to return_code;
+      319 		end;
+      320 		allocate pname in (free_area);
+      321 		do i = 1 to msargs.nnames;
+      322 		     pname.person (i) = arg_names.person (i);
+      323 		     pname.project (i) = arg_names.project (i);
+      324 		end;
+      325 	     end;
+      326 	     return;
+      327 
+      328 	end copy_args;
+      329 
+      330 /* Procedure to find mdcs and check access */
+      331 
+      332 locate_vol: proc;
+      333 
+      334 	     call mdc_lock_$set (code);
+      335 	     if code ^= 0 then go to return_code;
+      336 	     call mdcs_util_$find_mdcs (volume, mdcsp, access, code);
+      337 	     if code ^= 0 then go to unlock_return;
+      338 	     if msargs.exec & ^substr (access, 2, 1) then do;
+      339 		code = error_table_$mdc_exec_access;
+      340 		go to term_return;
+      341 	     end;
+      342 	     return;
+      343 
+      344 	end locate_vol;
+      345 
+      346 /* Procedure to allocate an initialize a volume_data structire */
+      347 
+      348 make_volume_data: proc;
+      349 
+      350 	     call get_block (volume_datap, size (volume_data));
+      351 
+      352 	     volume_data.version = 1;
+      353 	     volume_data.accountp = null;
+      354 	     volume_data.ownerp = null;
+      355 	     volume_data.defaultp = null;
+      356 	     volume_data.restrictp = null;
+      357 	     volume_data.backup = 0;
+      358 	     return;
+      359 
+      360 	end make_volume_data;
+      361 
+      362 /* Procedure to allocate and initialize an account_data sructure */
+      363 
+      364 make_account_data: proc;
+      365 
+      366 	     call get_block (account_datap, size (account_data));
+      367 
+      368 	     account_data.next = null;
+      369 	     account_data.person = acctent.person;	/* Copy data from acctent in mdcs */
+      370 	     account_data.project = acctent.project;
+      371 	     account_data.quota = acctent.quota;
+      372 	     account_data.quota_used = acctent.quota_used;
+      373 	     if msargs.backup then account_data.backup = acctent.backup;
+      374 	     if msargs.accounting then account_data.trp = acctent.trp;
+      375 	     account_data.dirp = null;
+      376 	     account_data.restrictp = null;
+      377 	     return;
+      378 
+      379 	end make_account_data;
+      380 
+      381 /* Procedure to allocate and initialize an owner_data structure */
+      382 
+      383 make_owner_data: proc;
+      384 
+      385 	     call get_block (owner_datap, size (owner_data));
+      386 
+      387 	     owner_data.next = null;
+      388 	     owner_data.person = "";
+      389 	     owner_data.project = "";
+      390 	     owner_data.dirp = null;
+      391 	     return;
+      392 
+      393 	end make_owner_data;
+      394 
+      395 /* Procedure to allocate and initialize a path_data structure */
+      396 
+      397 make_path_data: proc (up);
+      398 
+      399 dcl  up (0:15) bit (36) aligned;
+      400 
+      401 	     call get_block (path_datap, size (path_data));
+      402 	     path_data.next = null;
+      403 	     call admin_gate_$decode_uidpath (up, path_data.dir, path_data.ename, path_data.code);
+      404 	     if path_data.code = error_table_$root then path_data.code = 0;
+      405 	     return;
+      406 
+      407 	end make_path_data;
+      408 
+      409 /* Procedure to allocate and initialize a dir_data structure */
+      410 
+      411 make_dir_data: proc;
+      412 
+      413 	     call get_block (dir_datap, size (dir_data));
+      414 	     dir_data.next = null;
+      415 	     dir_data.pathp = null;
+      416 	     dir_data.person = "";
+      417 	     dir_data.project = "";
+      418 	     dir_data.quota = 0;
+      419 	     dir_data.backup = 0;
+      420 	     return;
+      421 
+      422 	end make_dir_data;
+      423 
+      424 
+      425 /* Procedure to get a block of words in the callers output area */
+      426 
+      427 get_block: proc (p, n);
+      428 
+      429 dcl  p ptr;					/* Returnd pointer to words gotten */
+      430 dcl  n fixed bin (19);				/* Number of words needed */
+      431 
+      432 	     if substr (rel (msargs.output_ptr), 18, 1) then do; /* If at odd address */
+      433 		msargs.output_ptr = addrel (msargs.output_ptr, 1);
+      434 		msargs.output_size = msargs.output_size - 1;
+      435 	     end;
+      436 
+      437 	     if n > msargs.output_size then do;
+      438 		code = error_table_$area_too_small;
+      439 		go to term_return;
+      440 	     end;
+      441 	     p = msargs.output_ptr;
+      442 	     msargs.output_ptr = addrel (msargs.output_ptr, n);
+      443 	     msargs.output_size = msargs.output_size - n;
+      444 	     return;
+      445 
+      446 	end get_block;
+      447 
+      448 
+      449 /* Procedure that copys a list of restricting pathnames */
+      450 
+      451 copy_restrict_path: proc (p, o);
+      452 dcl  p ptr;
+      453 dcl  o bit (18) aligned;
+      454 dcl  q ptr init (null);
+      455 
+      456 	     do pathp = ptr (mdcsp, o) repeat (ptr (mdcsp, pathent.next)) while (rel (pathp) ^= "0"b);
+      457 		call make_path_data (pathent.uidpath);
+      458 		if q = null then p = path_datap;
+      459 		else q -> path_data.next = path_datap;
+      460 		q = path_datap;
+      461 	     end;
+      462 	     return;
+      463 
+      464 	end copy_restrict_path;
+      465 
+      466 /* Cleanup handler */
+      467 
+      468 clean_up:	proc;
+      469 
+      470 	     if mdcsp ^= null then call mdcs_util_$term_mdcs (mdcsp);
+      471 	     call mdc_lock_$cleanup;
+      472 	     call free_storage;
+      473 	     return;
+      474 
+      475 	end clean_up;
+      476 
+      477 free_storage: proc;
+      478 
+      479 	     if pnamep ^= null then free pname;
+      480 	     p = oname_head;
+      481 	     do while (p ^= null);
+      482 		onamep = p;
+      483 		p = oname.next;
+      484 		free oname;
+      485 	     end;
+      486 
+      487 	     return;
+      488 
+      489 	end free_storage;
+      490 
+      491      end mdc_status_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.6  mdc_status_.pl1                   >spec>install>1111>mdc_status_.pl1
+84           1    06/22/76  0904.8  mdc_status_args.incl.pl1          >ldd>include>mdc_status_args.incl.pl1
+86           2    11/20/84  1944.9  mdc_status_info.incl.pl1          >ldd>include>mdc_status_info.incl.pl1
+88           3    11/20/84  1944.9  mdcs.incl.pl1                     >ldd>include>mdcs.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access                          000111 automatic       bit(36)                  dcl 35 set ref 336* 338
+account                   2(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 166
+                                                                                  166* 168 308* 313
+account_data                           based           structure                level 1 dcl 2-20 set ref 366 366
+account_datap                   000166 automatic       pointer                  dcl 2-18 set ref 128 129 131 182 183 184 189 366*
+                                                                                  366 366 368 369 370 371 372 373 374 375 376
+accounting                2(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 311*
+                                                                                  374
+accountp                  2            based           pointer                  level 2 dcl 2-10 set ref 128* 182* 353*
+acct_offset              15            based           bit(18)                  level 3 dcl 3-8 ref 179
+acctent                                based           structure                level 1 dcl 3-45
+acctp                           000202 automatic       pointer                  dcl 3-43 set ref 125* 126 129 129 146* 147 148 179*
+                                                                                  179* 187* 201 213 213 228* 229 230 369 370 371 372
+                                                                                  373 374
+addr                                                   builtin function         dcl 82 ref 296
+addrel                                                 builtin function         dcl 82 ref 433 442
+admin_gate_$decode_uidpath      000010 constant        entry                    external dcl 65 ref 403
+area                    100            based           area                     level 2 dcl 3-8 ref 316
+arg_argp                               parameter       pointer                  dcl 23 ref 92 297 302 303 304 305 306
+arg_code                               parameter       fixed bin(35,0)          dcl 25 set ref 92 115* 293*
+arg_names                              based           structure                array level 1 dcl 27
+arg_volume                             parameter       char                     packed unaligned dcl 22 ref 92 295
+arg_volume_datap                       parameter       pointer                  dcl 24 set ref 92 106* 294*
+argp                            000162 automatic       pointer                  dcl 1-7 set ref 104 129 139 166 166 166 168 170 195
+                                                                                  210 212 232 249 250 296* 297 298 302 303 304 305
+                                                                                  306 307 308 309 310 311 313 313 313 314 320 321
+                                                                                  322 323 338 373 374 432 433 433 434 434 437 441
+                                                                                  442 442 443 443 479
+auto_args                       000132 automatic       structure                level 1 dcl 41 set ref 296
+backup                   33            based           fixed bin(35,0)          array level 2 in structure "mdirent" dcl 3-31
+                                                                                  in procedure "mdc_status_" ref 195 232
+backup                   12            based           fixed bin(35,0)          array level 2 in structure "volume_data" dcl 2-10
+                                                                                  in procedure "mdc_status_" set ref 357*
+backup                   15            based           fixed bin(35,0)          array level 2 in structure "acctent" dcl 3-45
+                                                                                  in procedure "mdc_status_" ref 373
+backup                   16            based           fixed bin(35,0)          array level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 373*
+backup                    2(04)        based           bit(1)                   level 3 in structure "msargs" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "mdc_status_" set
+                                                                                  ref 195 232 310* 373
+backup                   15            based           fixed bin(35,0)          array level 2 in structure "dir_data" dcl 2-34
+                                                                                  in procedure "mdc_status_" set ref 195* 232* 419*
+cleanup                         000154 stack reference condition                dcl 80 ref 97
+code                      2            based           fixed bin(35,0)          level 2 in structure "path_data" dcl 2-54
+                                                                                  in procedure "mdc_status_" set ref 403* 404 404*
+code                            000100 automatic       fixed bin(35,0)          dcl 33 in procedure "mdc_status_" set ref 108* 115
+                                                                                  123* 124 299* 317* 334* 335 336* 337 339* 438*
+default_path             24            based           bit(18)                  level 3 dcl 3-8 set ref 131* 171*
+defaultp                 10            based           pointer                  level 2 dcl 2-10 set ref 171* 355*
+dir                       3            based           char(168)                level 2 packed packed unaligned dcl 2-54 set ref
+                                                                                  403*
+dir_data                               based           structure                level 1 dcl 2-34 set ref 413 413
+dir_datap                       000170 automatic       pointer                  dcl 2-32 set ref 147 148 149 151 152 153 154 189 190
+                                                                                  191 192 193 194 195 197 229 230 231 232 233 234
+                                                                                  235 237 413* 413 413 414 415 416 417 418 419
+dir_offset               16            based           bit(18)                  level 3 dcl 3-8 ref 142 186 224
+dirp                     12            based           pointer                  level 2 in structure "owner_data" dcl 2-45
+                                                                                  in procedure "mdc_status_" set ref 152* 233* 390*
+dirp                     22            based           pointer                  level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 189* 375*
+dirs                      2(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 139
+ename                    55            based           char(32)                 level 2 packed packed unaligned dcl 2-54 set ref
+                                                                                  403*
+error_table_$area_too_small     000034 external static fixed bin(35,0)          dcl 76 ref 317 438
+error_table_$argerr             000036 external static fixed bin(35,0)          dcl 77 ref 299
+error_table_$mdc_exec_access    000032 external static fixed bin(35,0)          dcl 75 ref 339
+error_table_$root               000040 external static fixed bin(35,0)          dcl 78 ref 404
+exec                      2            based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 104
+                                                                                  307 338
+flags                     2            based           structure                level 2 dcl 1-9 set ref 303* 303
+free_area                              based           area(1024)               dcl 47 ref 268 320
+free_area_ptr                   000142 automatic       pointer                  initial dcl 46 set ref 46* 267 267* 268 315 315* 320
+get_system_free_area_           000030 constant        entry                    external dcl 73 ref 267 315
+head                                   based           structure                level 2 dcl 3-8
+i                               000100 automatic       fixed bin(17,0)          dcl 291 in procedure "copy_args" set ref 321* 322
+                                                                                  322 323 323*
+i                               000254 automatic       fixed bin(17,0)          dcl 247 in procedure "owner_needed" set ref 250* 251
+                                                                                  251 251 251 251 251*
+i                               000236 automatic       fixed bin(17,0)          dcl 208 in procedure "account_needed" set ref 212*
+                                                                                  213 213 213 213*
+last_ownerp                     000124 automatic       pointer                  dcl 38 set ref 223* 279 280 281*
+list_end                 10            based           pointer                  level 2 dcl 56 set ref 233 234 235* 271*
+mdc_lock_$cleanup               000016 constant        entry                    external dcl 68 ref 471
+mdc_lock_$reset                 000014 constant        entry                    external dcl 67 ref 111
+mdc_lock_$set                   000012 constant        entry                    external dcl 66 ref 334
+mdc_parse_acct_                 000024 constant        entry                    external dcl 71 ref 123
+mdc_util_$find_matching_acctent 000026 constant        entry                    external dcl 72 ref 125
+mdcs                                   based           structure                level 1 dcl 3-8
+mdcs_head                              based           structure                level 1 dcl 3-12
+mdcs_util_$find_mdcs            000020 constant        entry                    external dcl 69 ref 336
+mdcs_util_$term_mdcs            000022 constant        entry                    external dcl 70 ref 109 470
+mdcsp                           000176 automatic       pointer                  dcl 3-6 set ref 96* 109* 125* 131 142 142 146 156
+                                                                                  171 172 179 179 186 186 199 201 224 224 228 239
+                                                                                  336* 456 461 470 470*
+mdirent                                based           structure                level 1 dcl 3-31
+mdirp                           000200 automatic       pointer                  dcl 3-29 set ref 142* 143 144 144 146 149 150 156*
+                                                                                  156 186* 186* 187 192 193 194 195 196* 199 224*
+                                                                                  224* 228 231 232 236* 239 251 251 264 264 269 270
+                                                                                  277 278
+msargs                                 based           structure                level 1 dcl 1-9
+n                                      parameter       fixed bin(19,0)          dcl 430 ref 427 437 442 443
+name                      1            based           structure                level 2 in structure "acctent" dcl 3-45 in procedure
+                                                                                  "mdc_status_"
+name                      2            based           structure                level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_"
+name                      2            based           structure                level 2 in structure "owner_data" dcl 2-45
+                                                                                  in procedure "mdc_status_"
+name                      4            based           structure                level 2 in structure "dir_data" dcl 2-34
+                                                                                  in procedure "mdc_status_"
+namesp                    4            based           pointer                  level 2 dcl 1-9 set ref 305* 305 322 323
+next                                   based           bit(18)                  level 2 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 3-31 in procedure "mdc_status_" ref
+                                                                                  156 199 239
+next                                   based           bit(18)                  level 2 in structure "acctent" packed packed
+                                                                                  unaligned dcl 3-45 in procedure "mdc_status_" ref
+                                                                                  201
+next                                   based           pointer                  level 2 in structure "dir_data" dcl 2-34
+                                                                                  in procedure "mdc_status_" set ref 153* 190* 234*
+                                                                                  414*
+next                     12            based           pointer                  level 2 in structure "oname" dcl 56 in procedure
+                                                                                  "mdc_status_" set ref 265 272* 274* 483
+next                                   based           pointer                  level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 183* 368*
+next                                   based           bit(18)                  level 2 in structure "pathent" packed packed
+                                                                                  unaligned dcl 3-60 in procedure "mdc_status_" ref
+                                                                                  461
+next                                   based           pointer                  level 2 in structure "path_data" dcl 2-54
+                                                                                  in procedure "mdc_status_" set ref 402* 459*
+next                                   based           pointer                  level 2 in structure "owner_data" dcl 2-45
+                                                                                  in procedure "mdc_status_" set ref 280* 387*
+nnames                    3            based           fixed bin(17,0)          level 2 dcl 1-9 set ref 210 212 249 250 304* 304
+                                                                                  313* 314 320 321 479
+null                                                   builtin function         dcl 82 ref 46 48 53 96 126 141 152 178 182 185 189
+                                                                                  222 223 233 262 263 267 271 272 273 279 294 315
+                                                                                  353 354 355 356 368 375 376 387 390 402 414 415
+                                                                                  454 458 470 479 481
+o                                      parameter       bit(18)                  dcl 453 ref 451 456
+oname                                  based           structure                level 1 dcl 56 set ref 268 484
+oname_head                      000146 automatic       pointer                  initial dcl 53 set ref 53* 263 273 273* 480
+oname_tail                      000150 automatic       pointer                  dcl 54 set ref 274 275*
+onamep                          000152 automatic       pointer                  dcl 55 set ref 233 234 235 263* 263* 264 264* 265
+                                                                                  268* 269 270 271 272 273 274 275 482* 483 484
+output_ptr                6            based           pointer                  level 2 dcl 1-9 set ref 306* 306 432 433* 433 441
+                                                                                  442* 442
+output_size               1            based           fixed bin(19,0)          level 2 dcl 1-9 set ref 302* 302 434* 434 437 443*
+                                                                                  443
+owner                     2(03)        based           bit(1)                   level 3 in structure "msargs" packed packed
+                                                                                  unaligned dcl 1-9 in procedure "mdc_status_" set
+                                                                                  ref 166 309* 313
+owner                    21            based           structure                level 2 in structure "mdirent" dcl 3-31 in procedure
+                                                                                  "mdc_status_"
+owner_data                             based           structure                level 1 dcl 2-45 set ref 385 385
+owner_datap                     000172 automatic       pointer                  dcl 2-43 set ref 135 136 137 152 233 262* 277 278
+                                                                                  279 280 281 385* 385 385 387 388 389 390
+ownerp                    4            based           pointer                  level 2 dcl 2-10 set ref 137* 279* 354*
+p                                      parameter       pointer                  dcl 429 in procedure "get_block" set ref 427 441*
+p                                      parameter       pointer                  dcl 452 in procedure "copy_restrict_path" set ref
+                                                                                  451 458*
+p                               000126 automatic       pointer                  dcl 39 in procedure "mdc_status_" set ref 141* 152
+                                                                                  153 154* 178* 182 183 184* 222* 480* 481 482 483*
+path_data                              based           structure                level 1 dcl 2-54 set ref 401 401
+path_datap                      000174 automatic       pointer                  dcl 2-52 set ref 151 197 237 401* 401 401 402 403
+                                                                                  403 403 404 404 458 459 460
+pathent                                based           structure                level 1 dcl 3-60
+pathp                     2            based           pointer                  level 2 in structure "dir_data" dcl 2-34
+                                                                                  in procedure "mdc_status_" set ref 151* 197* 237*
+                                                                                  415*
+pathp                           000204 automatic       pointer                  dcl 3-58 in procedure "mdc_status_" set ref 456*
+                                                                                  456* 457* 461
+person                   21            based           char(22)                 level 3 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 3-31 in procedure "mdc_status_" ref
+                                                                                  144 192 251 264 269 277
+person                                 based           char(22)                 array level 2 in structure "pname" packed packed
+                                                                                  unaligned dcl 49 in procedure "mdc_status_" set
+                                                                                  ref 213 213 251 251 251 322*
+person                    1            based           char(22)                 level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 3-45 in procedure "mdc_status_" ref
+                                                                                  147 213 229 369
+person                                 based           char(22)                 level 2 in structure "oname" packed packed unaligned
+                                                                                  dcl 56 in procedure "mdc_status_" set ref 264 269*
+person                    2            based           char(22)                 level 3 in structure "owner_data" packed packed
+                                                                                  unaligned dcl 2-45 in procedure "mdc_status_" set
+                                                                                  ref 135* 277* 388*
+person                          000112 automatic       char(22)                 packed unaligned dcl 36 in procedure "mdc_status_"
+                                                                                  set ref 123* 125* 135 144
+person                    2            based           char(22)                 level 3 in structure "account_data" packed packed
+                                                                                  unaligned dcl 2-20 in procedure "mdc_status_" set
+                                                                                  ref 369*
+person                                 based           char(22)                 array level 2 in structure "arg_names" packed packed
+                                                                                  unaligned dcl 27 in procedure "mdc_status_" ref
+                                                                                  322
+person                    4            based           char(22)                 level 3 in structure "dir_data" packed packed
+                                                                                  unaligned dcl 2-34 in procedure "mdc_status_" set
+                                                                                  ref 147* 192* 229* 416*
+pname                                  based           structure                array level 1 packed packed unaligned dcl 49 set ref
+                                                                                  320 479
+pnamep                          000144 automatic       pointer                  initial dcl 48 set ref 48* 213 213 213 213 251 251
+                                                                                  251 251 251 251 320* 322 323 479 479
+project                   5(18)        based           char(9)                  array level 2 in structure "pname" packed packed
+                                                                                  unaligned dcl 49 in procedure "mdc_status_" set
+                                                                                  ref 213 213 251 251 251 323*
+project                   7(18)        based           char(9)                  level 3 in structure "owner_data" packed packed
+                                                                                  unaligned dcl 2-45 in procedure "mdc_status_" set
+                                                                                  ref 136* 278* 389*
+project                  11(18)        based           char(9)                  level 3 in structure "dir_data" packed packed
+                                                                                  unaligned dcl 2-34 in procedure "mdc_status_" set
+                                                                                  ref 148* 193* 230* 417*
+project                         000120 automatic       char(9)                  packed unaligned dcl 37 in procedure "mdc_status_"
+                                                                                  set ref 123* 125* 136 144
+project                  26(18)        based           char(9)                  level 3 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 3-31 in procedure "mdc_status_" ref
+                                                                                  144 193 251 264 270 278
+project                   6(18)        based           char(9)                  level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 3-45 in procedure "mdc_status_" ref
+                                                                                  148 213 230 370
+project                   5(18)        based           char(9)                  array level 2 in structure "arg_names" packed packed
+                                                                                  unaligned dcl 27 in procedure "mdc_status_" ref
+                                                                                  323
+project                   7(18)        based           char(9)                  level 3 in structure "account_data" packed packed
+                                                                                  unaligned dcl 2-20 in procedure "mdc_status_" set
+                                                                                  ref 370*
+project                   5(18)        based           char(9)                  level 2 in structure "oname" packed packed unaligned
+                                                                                  dcl 56 in procedure "mdc_status_" set ref 264 270*
+ptr                                                    builtin function         dcl 82 ref 142 146 156 179 186 199 201 224 228 239
+                                                                                  456 461
+q                               000350 automatic       pointer                  initial dcl 454 in procedure "copy_restrict_path"
+                                                                                  set ref 454* 458 459 460*
+q                               000130 automatic       pointer                  dcl 39 in procedure "mdc_status_" set ref 185* 189
+                                                                                  190 191*
+quota                    14            based           fixed bin(18,0)          level 2 in structure "dir_data" dcl 2-34
+                                                                                  in procedure "mdc_status_" set ref 149* 194* 231*
+                                                                                  418*
+quota                    12            based           fixed bin(35,0)          level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 371*
+quota                    11            based           fixed bin(35,0)          level 2 in structure "acctent" dcl 3-45 in procedure
+                                                                                  "mdc_status_" ref 371
+quota                    32            based           fixed bin(18,0)          level 2 in structure "mdirent" dcl 3-31 in procedure
+                                                                                  "mdc_status_" ref 149 194 231
+quota_offset             31            based           bit(18)                  level 2 dcl 3-31 ref 146 187 228
+quota_used               13            based           fixed bin(35,0)          level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 372*
+quota_used               12            based           fixed bin(35,0)          level 2 in structure "acctent" dcl 3-45 in procedure
+                                                                                  "mdc_status_" ref 372
+rel                                                    builtin function         dcl 82 ref 143 179 186 187 224 432 456
+restrict                  2(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-9 set ref 129
+                                                                                  170
+restrict_path            20            based           bit(18)                  level 2 in structure "acctent" dcl 3-45 in procedure
+                                                                                  "mdc_status_" set ref 129 129*
+restrict_path            23            based           bit(18)                  level 3 in structure "mdcs" dcl 3-8 in procedure
+                                                                                  "mdc_status_" set ref 172*
+restrictp                24            based           pointer                  level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 129* 131* 376*
+restrictp                 6            based           pointer                  level 2 in structure "volume_data" dcl 2-10
+                                                                                  in procedure "mdc_status_" set ref 172* 356*
+size                                                   builtin function         dcl 82 ref 350 350 366 366 385 385 401 401 413 413
+string                                                 builtin function         dcl 82 set ref 303* 303
+substr                                                 builtin function         dcl 82 ref 338 432
+trp                      14            based           fixed bin(71,0)          level 2 in structure "account_data" dcl 2-20
+                                                                                  in procedure "mdc_status_" set ref 374*
+trp                      13            based           fixed bin(71,0)          level 2 in structure "acctent" packed packed
+                                                                                  unaligned dcl 3-45 in procedure "mdc_status_" ref
+                                                                                  374
+uidpath                   1            based           bit(36)                  array level 2 in structure "mdirent" dcl 3-31
+                                                                                  in procedure "mdc_status_" set ref 150* 196* 236*
+uidpath                   1            based           bit(36)                  array level 2 in structure "pathent" dcl 3-60
+                                                                                  in procedure "mdc_status_" set ref 457*
+up                                     parameter       bit(36)                  array dcl 399 set ref 397 403*
+version                                based           fixed bin(17,0)          level 2 in structure "msargs" dcl 1-9 in procedure
+                                                                                  "mdc_status_" set ref 297* 297 298
+version                                based           fixed bin(17,0)          level 2 in structure "volume_data" dcl 2-10
+                                                                                  in procedure "mdc_status_" set ref 352*
+volume                          000101 automatic       char(32)                 packed unaligned dcl 34 set ref 295* 336*
+volume_data                            based           structure                level 1 dcl 2-10 set ref 350 350
+volume_datap                    000164 automatic       pointer                  dcl 2-8 set ref 106 128 137 171 172 182 279 350* 350
+                                                                                  350 352 353 354 355 356 357
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+mdcs_version                           internal static fixed bin(17,0)          initial dcl 3-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+account_needed                  000616 constant        entry                    internal dcl 206 ref 180
+build_account_list              000456 constant        entry                    internal dcl 177 ref 168
+build_owner_list                000702 constant        entry                    internal dcl 220 ref 169
+clean_up                        002030 constant        entry                    internal dcl 468 ref 97
+copy_args                       001223 constant        entry                    internal dcl 289 ref 94
+copy_restrict_path              001763 constant        entry                    internal dcl 451 ref 129 131 171 172
+find_onamep                     001104 constant        entry                    internal dcl 260 ref 226
+free_storage                    002061 constant        entry                    internal dcl 477 ref 113 472
+get_block                       001730 constant        entry                    internal dcl 427 ref 350 366 385 401 413
+get_exec_info                   000410 constant        entry                    internal dcl 164 ref 105
+get_user_info                   000153 constant        entry                    internal dcl 121 ref 104
+list                            000052 constant        entry                    external dcl 92
+locate_vol                      001427 constant        entry                    internal dcl 332 ref 99
+make_account_data               001536 constant        entry                    internal dcl 364 ref 127 181
+make_dir_data                   001675 constant        entry                    internal dcl 411 ref 145 188 227
+make_owner_data                 001607 constant        entry                    internal dcl 383 ref 134 276
+make_path_data                  001627 constant        entry                    internal dcl 397 ref 150 196 236 457
+make_volume_data                001504 constant        entry                    internal dcl 348 ref 102
+mdc_status_                     000036 constant        entry                    external dcl 18
+owner_needed                    001010 constant        entry                    internal dcl 245 ref 225
+return_code                     000143 constant        label                    dcl 113 ref 300 318 335
+term_return                     000127 constant        label                    dcl 109 ref 124 340 439
+unlock_return                   000136 constant        label                    dcl 111 ref 337
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2422        2464    2177        2432
+Length      2730    2177        42         227     223           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+mdc_status_                         342 external procedure  is an external procedure.  
+on unit on line 97                   74 on unit               
+get_user_info                           internal procedure  shares stack frame of external procedure mdc_status_.  
+get_exec_info                           internal procedure  shares stack frame of external procedure mdc_status_.  
+build_account_list                      internal procedure  shares stack frame of external procedure mdc_status_.  
+account_needed                          internal procedure  shares stack frame of external procedure mdc_status_.  
+build_owner_list                        internal procedure  shares stack frame of external procedure mdc_status_.  
+owner_needed                            internal procedure  shares stack frame of external procedure mdc_status_.  
+find_onamep                             internal procedure  shares stack frame of external procedure mdc_status_.  
+copy_args                            78 internal procedure  enables or reverts conditions.  
+on unit on line 316                  64 on unit               
+locate_vol                              internal procedure  shares stack frame of external procedure mdc_status_.  
+make_volume_data                        internal procedure  shares stack frame of external procedure mdc_status_.  
+make_account_data                       internal procedure  shares stack frame of external procedure mdc_status_.  
+make_owner_data                         internal procedure  shares stack frame of external procedure mdc_status_.  
+make_path_data                          internal procedure  shares stack frame of external procedure mdc_status_.  
+make_dir_data                           internal procedure  shares stack frame of external procedure mdc_status_.  
+get_block                               internal procedure  shares stack frame of external procedure mdc_status_.  
+copy_restrict_path                      internal procedure  shares stack frame of external procedure mdc_status_.  
+clean_up                                internal procedure  shares stack frame of on unit on line 97.  
+free_storage                         64 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+copy_args                000100 i                           copy_args
+mdc_status_              000100 code                        mdc_status_
+                         000101 volume                      mdc_status_
+                         000111 access                      mdc_status_
+                         000112 person                      mdc_status_
+                         000120 project                     mdc_status_
+                         000124 last_ownerp                 mdc_status_
+                         000126 p                           mdc_status_
+                         000130 q                           mdc_status_
+                         000132 auto_args                   mdc_status_
+                         000142 free_area_ptr               mdc_status_
+                         000144 pnamep                      mdc_status_
+                         000146 oname_head                  mdc_status_
+                         000150 oname_tail                  mdc_status_
+                         000152 onamep                      mdc_status_
+                         000162 argp                        mdc_status_
+                         000164 volume_datap                mdc_status_
+                         000166 account_datap               mdc_status_
+                         000170 dir_datap                   mdc_status_
+                         000172 owner_datap                 mdc_status_
+                         000174 path_datap                  mdc_status_
+                         000176 mdcsp                       mdc_status_
+                         000200 mdirp                       mdc_status_
+                         000202 acctp                       mdc_status_
+                         000204 pathp                       mdc_status_
+                         000236 i                           account_needed
+                         000254 i                           owner_needed
+                         000350 q                           copy_restrict_path
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          tra_ext_1
+enable_op           ext_entry           ext_entry_desc      int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$decode_uidpath    get_system_free_area_         mdc_lock_$cleanup             mdc_lock_$reset
+mdc_lock_$set                 mdc_parse_acct_               mdc_util_$find_matching_acctent
+mdcs_util_$find_mdcs          mdcs_util_$term_mdcs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$area_too_small   error_table_$argerr           error_table_$mdc_exec_access  error_table_$root
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     46 000027        48 000031        53 000032        18 000035        92 000044        94 000066        96 000072
+     97 000074        99 000112       102 000113       104 000114       105 000122       106 000123       108 000126
+    109 000127       111 000136       113 000143       115 000147       116 000152       121 000153       123 000154
+    124 000201       125 000203       126 000227       127 000233       128 000234       129 000237       131 000261
+    134 000273       135 000274       136 000300       137 000303       139 000305       141 000312       142 000314
+    143 000321       144 000324       145 000335       146 000336       147 000343       148 000347       149 000352
+    150 000354       151 000362       152 000365       153 000375       154 000377       156 000401       157 000406
+    158 000407       164 000410       166 000411       168 000417       169 000424       170 000425       171 000431
+    172 000443       175 000455       177 000456       178 000457       179 000461       180 000470       181 000475
+    182 000476       183 000506       184 000510       185 000512       186 000514       187 000524       188 000530
+    189 000531       190 000541       191 000543       192 000545       193 000551       194 000554       195 000556
+    196 000570       197 000576       199 000601       201 000607       202 000615       206 000616       210 000620
+    212 000630       213 000637       215 000672       216 000674       220 000702       222 000703       223 000705
+    224 000706       225 000716       226 000723       227 000724       228 000725       229 000732       230 000736
+    231 000741       232 000743       233 000755       234 000765       235 000766       236 000770       237 000776
+    239 001001       241 001007       245 001010       249 001012       250 001022       251 001031       254 001074
+    255 001076       260 001104       262 001105       263 001107       264 001116       265 001131       267 001134
+    268 001147       269 001154       270 001160       271 001163       272 001165       273 001166       274 001173
+    275 001175       276 001176       277 001177       278 001204       279 001207       280 001216       281 001217
+    283 001221       289 001222       293 001230       294 001233       295 001235       296 001242       297 001244
+    298 001247       299 001251       300 001253       302 001256       303 001262       304 001264       305 001266
+    306 001271       307 001277       308 001302       309 001304       310 001306       311 001310       313 001312
+    314 001316       315 001320       316 001332       317 001346       318 001352       320 001355       321 001370
+    322 001401       323 001416       324 001424       326 001426       332 001427       334 001430       335 001437
+    336 001441       337 001466       338 001470       339 001477       340 001502       342 001503       348 001504
+    350 001505       352 001511       353 001513       354 001516       355 001520       356 001522       357 001524
+    358 001535       364 001536       366 001537       368 001543       369 001545       370 001552       371 001555
+    372 001557       373 001561       374 001573       375 001602       376 001604       377 001606       383 001607
+    385 001610       387 001614       388 001616       389 001622       390 001625       391 001626       397 001627
+    401 001631       402 001635       403 001637       404 001666       405 001674       411 001675       413 001676
+    414 001702       415 001704       416 001706       417 001712       418 001715       419 001716       420 001727
+    427 001730       432 001732       433 001737       434 001742       437 001744       438 001747       439 001752
+    441 001753       442 001755       443 001760       444 001762       451 001763       454 001765       456 001767
+    457 001776       458 002005       459 002015       460 002017       461 002021       462 002027       468 002030
+    470 002031       471 002045       472 002052       473 002057       477 002060       479 002066       480 002102
+    481 002106       482 002113       483 002115       484 002120       485 002122       487 002123
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1127 @@
+	COMPILATION LISTING OF SEGMENT tape_ioi_wks_man
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1005.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 
+       11 /****^  HISTORY COMMENTS:
+       12*  1) change(86-06-10,GWMay), approve(86-10-10,MCR7546),
+       13*     audit(86-10-13,Martinson), install(86-10-20,MR12.0-1189):
+       14*     Added complete initialization of tape_ioi workspace variables.
+       15*                                                   END HISTORY COMMENTS */
+       16 
+       17 
+       18 /* This program manages the tape_ioi_ workspace. */
+       19 /* Written 3 May 1982 by Chris Jones */
+       20 /* Modified 25 January 1983 by Chris Jones to wait a while on on I/O in progress */
+       21 /* Modified 9 February 1983 by Chris Jones to not deallocate reserved buffers when a deallocate_buffers call is made. */
+       22 /* Modified 30 April 1985 by Chris Jones to always have one more status queue entry than buffers. */
+       23 
+       24 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+       25 tape_ioi_wks_man:
+       26      proc;
+       27 
+       28 /* Parameters */
+       29 
+       30 dcl	p_actual_count	   fixed bin parameter;	/* (O) actual number of buffers allocated */
+       31 dcl	p_actual_length	   fixed bin (21) parameter;	/* (O) actual length (in chars) of each buffer */
+       32 dcl	p_actual_wka_size	   fixed bin (19) parameter;	/* (O) actual size of user workarea */
+       33 dcl	p_buffer_ptrs	   (*) ptr parameter;	/* (O) pointers to the allocated buffers */
+       34 dcl	p_code		   fixed bin (35) parameter;	/* (O) standard system status code */
+       35 dcl	p_requested_count	   fixed bin parameter;	/* (I) desired number of buffers */
+       36 dcl	p_requested_length	   fixed bin (21) parameter;	/* (I) desired length (in chars) of each buffer */
+       37 dcl	p_requested_wka_size   fixed bin (19) parameter;	/* (I) desired size of user workarea */
+       38 dcl	p_tioi_id		   bit (36) aligned parameter;/* (I) tape_ioi_ ID */
+       39 dcl	p_wka_ptr		   ptr parameter;		/* (O) pointer to the user workarea */
+       40 
+       41 /* Automatic variables */
+       42 
+       43 dcl	basic_buffer_header_size
+       44 			   fixed bin;
+       45 dcl	buffer_count	   fixed bin;
+       46 dcl	buffer_idx	   fixed bin;
+       47 dcl	buffer_length	   fixed bin (21);		/* length in characters */
+       48 dcl	buffer_offset	   fixed bin (18);
+       49 dcl	buffer_space_available fixed bin (19);
+       50 dcl	cbufp		   ptr;
+       51 dcl	code		   fixed bin (35);
+       52 dcl	deadline		   fixed bin (71);
+       53 dcl	extra_dcws	   fixed bin;
+       54 dcl	obufp		   ptr;
+       55 dcl	save_workarea_and_reserved_buffers
+       56 			   bit (1) aligned;
+       57 dcl	status_entry_count	   fixed bin (8);
+       58 dcl	status_queue_offset	   fixed bin (18);
+       59 dcl	tries		   fixed bin;
+       60 dcl	user_workarea_offset   fixed bin (18);
+       61 dcl	user_workarea_size	   fixed bin (19);
+       62 dcl	words_left_in_page	   fixed bin;
+       63 dcl	workspace_length	   fixed bin (19);
+       64 dcl	workspace_ptr	   ptr;
+       65 
+       66 /* Constants */
+       67 
+       68 dcl	BITS_PER_WORD	   fixed bin static options (constant) init (36);
+       69 dcl	BYTES_PER_DCW_TALLY	   fixed bin static options (constant) init (16384);
+       70 dcl	BYTES_PER_WORD	   fixed bin static options (constant) init (4);
+       71 dcl	TEN_SECONDS	   fixed bin (71) static options (constant) init (10000000);
+       72 dcl	WORDS_PER_DCW_TALLY	   fixed bin static options (constant) init (4096);
+       73 
+       74 /* Builtins */
+       75 
+       76 dcl	(addr, bin, clock, dim, divide, lbound, min, mod, null, ptr, rel, size)
+       77 			   builtin;
+       78 
+       79 /* External entries */
+       80 
+       81 dcl	ioi_$set_status	   entry (fixed bin, fixed bin (18), fixed bin (8), fixed bin (35));
+       82 dcl	ioi_$workspace	   entry (fixed bin, ptr, fixed bin (19), fixed bin (35));
+       83 dcl	tape_ioi_utils$get_workspace_ptr
+       84 			   entry (bit (36) aligned, ptr);
+       85 dcl	tape_ioi_utils$io_in_progress
+       86 			   entry (ptr) returns (bit (1) aligned);
+       87 
+       88 dcl	error_table_$action_not_performed
+       89 			   fixed bin (35) ext static;
+       90 dcl	error_table_$bad_arg   fixed bin (35) ext static;
+       91 dcl	error_table_$device_active
+       92 			   fixed bin (35) ext static;
+       93 dcl	error_table_$out_of_sequence
+       94 			   fixed bin (35) ext static;
+       95 dcl	error_table_$too_many_buffers
+       96 			   fixed bin (35) ext static;
+       97 
+       98 dcl	sys_info$page_size	   fixed bin ext static;
+       99 
+      100 /* Entry to allocate a number of buffers.  All are the same length.  Pointers to the data area
+      101*   of the buffers will be returned. */
+      102 
+      103 allocate_buffers:
+      104      entry (p_tioi_id, p_requested_length, p_requested_count, p_actual_length, p_actual_count, p_buffer_ptrs, p_code);
+      105 
+      106 	call setup;
+      107 	if tai.workarea_last then			/* if caller has already allocated a workarea... */
+      108 	     call quit (error_table_$out_of_sequence);	/* ...at the end of the workspace, then quit */
+      109 
+      110 /* Figure out what the caller really wants.  If the count is 0, give as many of the requested size as
+      111*   will fit.  If the length is 0, make each buffer as big as possible.  If both are 0, punt. */
+      112 
+      113 	buffer_count = p_requested_count;
+      114 	buffer_length = p_requested_length;
+      115 	if ((buffer_length = 0) & (buffer_count = 0)) | (buffer_length < 0) | (buffer_count < 0) then
+      116 	     call quit (error_table_$bad_arg);
+      117 
+      118 	buffer_space_available = tai.workspace_max - tai.workspace_len;
+      119 
+      120 	if buffer_length ^= 0 then do;		/* caller knows how big the buffers are to be */
+      121 
+      122 /* round up to next two word boundary */
+      123 
+      124 	     if mod (buffer_length, 2 * BYTES_PER_WORD) ^= 0 then
+      125 		buffer_length = buffer_length + 2 * BYTES_PER_WORD - mod (buffer_length, 2 * BYTES_PER_WORD);
+      126 	     extra_dcws = divide (buffer_length - 1, BYTES_PER_DCW_TALLY, 17);
+      127 	     if buffer_count = 0 then			/* we have to figure out how many buffers to grab */
+      128 		buffer_count =
+      129 		     divide (BYTES_PER_WORD * buffer_space_available,
+      130 		     buffer_length + BYTES_PER_WORD * (size (tbi) + extra_dcws), 17);
+      131 	end;
+      132 
+      133 	else do;					/* we have to figure out how big each buffer will be */
+      134 
+      135 /* Now, this turns out to be a sticky problem.  The storage per buffer consists of the storage per header plus the
+      136*   storage per data area.  However, the storage per header is dependent on the storage per data area (because
+      137*   the number of DCWs in the header varies with the storage per data area.  So, given:
+      138*
+      139*   Sh	storage per buffer header
+      140*   Stot	total storage available			(known, it is buffer_space_available)
+      141*   Nb	number of buffers
+      142*   Sho	length of constant part of buffer header	(known)
+      143*   Ds	amount of storage described by one DCW		(known, 4096 words)
+      144*   Sd	amount of storage 1 DCW itself takes up		(known, 1 word)
+      145*   Sb	storage per buffer (header + data)
+      146*   Nd	number of DCWs per buffer
+      147*
+      148*   We want to solve for Nd.
+      149*
+      150*   1. Sb = Stot / Nb
+      151*   2. Sh = Sho + Nd * Sd		or	2a. Sh = Sho + Nd	(since Sd = 1)
+      152*   3. Nd = (Sb - Sh) / Ds
+      153*   4. Nd = (Sb - (Sho + Nd)) / Ds		substituting (2a) into 3
+      154*   5. Ds * Nd = Sb - Sho - Nd			multiplying both sides of (4) by Ds
+      155*   6. Nd * (Ds + 1) = Sb - Sho		adding Nd to both sides and combining factors
+      156*   7. Nd = (Sb - Sho) / (Ds + 1)		dividing both sides by (Ds + 1)
+      157*   8. Nd = ((Stot / Nb) - Sho) / (Ds + 1)	combining (1) and (7)
+      158**/
+      159 
+      160 	     basic_buffer_header_size = size (tbi) + 1;	/* allow for first word of data */
+      161 	     extra_dcws =
+      162 		divide (divide (buffer_space_available, buffer_count, 17) - (basic_buffer_header_size + size (istat)),
+      163 		WORDS_PER_DCW_TALLY + 1, 17);
+      164 	     buffer_length =
+      165 		BYTES_PER_WORD
+      166 		* (divide (buffer_space_available, buffer_count, 17) - (size (tbi) + size (istat) + extra_dcws));
+      167 	     buffer_length = buffer_length - mod (buffer_length, 2 * BYTES_PER_WORD);
+      168 	     if (buffer_length <= 0) | (extra_dcws < 0) then
+      169 		call quit (error_table_$too_many_buffers);
+      170 	end;
+      171 
+      172 /* Now we have the count and correct length of all the buffers we're going to allocate.
+      173*   Grab a workspace big enough for all of these buffers. */
+      174 
+      175 	if buffer_count = 0 then
+      176 	     call quit (error_table_$bad_arg);
+      177 
+      178 	workspace_length = tai.workspace_len + 1	/* unpack */
+      179 	     + buffer_count * (size (tbi) + size (istat) + extra_dcws + divide (buffer_length, BYTES_PER_WORD, 17));
+      180 
+      181 	call set_workspace (workspace_ptr, workspace_length, code);
+      182 	call quit_if_error;
+      183 	tai.workspace_len = workspace_length - 1;	/* pack */
+      184 
+      185 /* Relocate the status queue to the end of the workspace */
+      186 
+      187 	status_entry_count = tai.buffer_count + buffer_count + 1;	/* allow for the MPC to hiccup */
+      188 	status_queue_offset = workspace_length - size (istat) * status_entry_count;
+      189 	call set_status (status_queue_offset, status_entry_count, code);
+      190 	call quit_if_error;
+      191 
+      192 /**** Remember where the status queue was (this is where the new buffers will begin). */
+      193 	buffer_offset = tai.status_queue_offset;
+      194 
+      195 	tai.status_queue_offset = status_queue_offset;
+      196 	tai.status_entry_idx = 0;
+      197 	tai.status_entry_count = status_entry_count;
+      198 
+      199 /* Now thread the buffers onto the lists.  First, thread all of the newly created buffers together. */
+      200 
+      201 	cbufp = ptr (wksp, buffer_offset);
+      202 	do buffer_idx = 1 to buffer_count;
+      203 	     cbufp -> tbi.data_offset = size (tbi) + extra_dcws + bin (rel (cbufp));
+      204 	     cbufp -> tbi.next_buf_offset = cbufp -> tbi.data_offset + divide (buffer_length, BYTES_PER_WORD, 17);
+      205 	     cbufp -> tbi.next_state_offset = cbufp -> tbi.next_buf_offset;
+      206 	     cbufp -> tbi.state = READY_STATE;
+      207 	     cbufp -> tbi.ndcws = 1 + extra_dcws;
+      208 	     cbufp -> tbi.modes = tai.modes;
+      209 	     cbufp -> tbi.reserved = "0"b;
+      210 	     cbufp -> tbi.buffer_len = buffer_length;
+      211 	     cbufp -> tbi.data_len = 0;
+      212 	     cbufp -> tbi.bit_len = 0;
+      213 	     cbufp -> tbi.idcw_word = "0"b;
+      214 	     cbufp -> tbi.dcw_words = "0"b;
+      215 	     cbufp -> tbi.tdcw_word = "0"b;
+      216 	     idcwp = addr (cbufp -> tbi.idcw_word);
+      217 	     idcw.device = addr (tai.order_idcw) -> idcw.device;
+      218 	     idcw.ext = "0"b;
+      219 	     idcw.code = "111"b;
+      220 	     idcw.ext_ctl = "0"b;
+      221 	     obufp = cbufp;
+      222 	     cbufp = ptr (wksp, cbufp -> tbi.next_buf_offset);
+      223 	end;
+      224 
+      225 	obufp -> tbi.next_buf_offset = 0;		/* unlink the last one */
+      226 	obufp -> tbi.next_state_offset = 0;
+      227 
+      228 	if tai.buffer_list_offset = 0 then
+      229 	     tai.buffer_list_offset = buffer_offset;	/* first buffers allocated */
+      230 	else do;
+      231 	     do obufp = ptr (wksp, tai.buffer_list_offset) repeat ptr (wksp, obufp -> tbi.next_buf_offset)
+      232 		while (obufp -> next_buf_offset ^= 0);
+      233 	     end;
+      234 	     obufp -> tbi.next_buf_offset = buffer_offset;
+      235 	end;
+      236 	if tai.free_list_offset = 0 then
+      237 	     tai.free_list_offset = buffer_offset;	/* first buffers allocated */
+      238 	else do;
+      239 	     do obufp = ptr (wksp, tai.free_list_offset) repeat ptr (wksp, obufp -> tbi.next_state_offset)
+      240 		while (obufp -> next_state_offset ^= 0);
+      241 	     end;
+      242 	     obufp -> tbi.next_state_offset = buffer_offset;
+      243 	end;
+      244 
+      245 /* Update tai to reflect these new buffers */
+      246 
+      247 	obufp = cbufp;
+      248 	cbufp = ptr (wksp, buffer_offset);		/* remember first buffer allocated */
+      249 	tai.buffer_count = tai.buffer_count + buffer_count;
+      250 
+      251 /* Now return all sorts of information to the caller. */
+      252 
+      253 	p_actual_count = buffer_count;
+      254 	p_actual_length = buffer_length;
+      255 	do buffer_idx = 1 to min (buffer_count, dim (p_buffer_ptrs, 1));
+      256 	     p_buffer_ptrs (lbound (p_buffer_ptrs, 1) + buffer_idx - 1) = ptr (wksp, cbufp -> tbi.data_offset);
+      257 	     cbufp = ptr (wksp, cbufp -> tbi.next_buf_offset);
+      258 	end;
+      259 	p_code = 0;
+      260 	return;
+      261 
+      262 /* Entry to allocate a workarea for the caller.  This has the advantage that it will usually be wired,
+      263*   so page faults will be kept to a minimum. */
+      264 
+      265 allocate_work_area:
+      266      entry (p_tioi_id, p_requested_wka_size, p_actual_wka_size, p_wka_ptr, p_code);
+      267 
+      268 	call setup;
+      269 	if tai.workarea_offset ^= 0 then		/* tsk, tsk */
+      270 	     call quit (error_table_$action_not_performed);
+      271 
+      272 	user_workarea_size = p_requested_wka_size;
+      273 	if tai.buffer_count = 0 then do;		/* no buffers have been allocated yet */
+      274 	     if user_workarea_size = 0 then
+      275 		call quit (error_table_$bad_arg);
+      276 
+      277 	     user_workarea_offset = tai.status_queue_offset;
+      278 	     if mod (user_workarea_offset, 2) ^= 0 then
+      279 		user_workarea_size = user_workarea_size + 1;
+      280 	     workspace_length = user_workarea_size + tai.workspace_len + 1;
+      281 	     call set_workspace (workspace_ptr, workspace_length, code);
+      282 	     call quit_if_error;
+      283 	     status_queue_offset = tai.status_queue_offset + user_workarea_size;
+      284 	     status_entry_count = tai.status_entry_count;
+      285 	     call set_status (status_queue_offset, status_entry_count, code);
+      286 	     call quit_if_error;
+      287 	     tai.workarea_offset = user_workarea_offset;	/* workarea starts where status queue was */
+      288 	     tai.workarea_len = user_workarea_size;
+      289 	     tai.status_queue_offset = status_queue_offset;
+      290 						/* remember where we put the status queue */
+      291 	     tai.status_entry_idx = 0;
+      292 	end;
+      293 	else do;					/* we've already allocated some buffers */
+      294 	     words_left_in_page = sys_info$page_size - mod (tai.workspace_len, sys_info$page_size) - 1;
+      295 	     if user_workarea_size = 0 then		/* user wants all of last page */
+      296 		user_workarea_size = words_left_in_page;
+      297 	     else if user_workarea_size < words_left_in_page - mod (user_workarea_size, 2) then
+      298 		call quit (error_table_$bad_arg);
+      299 
+      300 	     workspace_length = tai.workspace_len + user_workarea_size + 1;
+      301 	     call set_workspace (workspace_ptr, workspace_length, code);
+      302 	     call quit_if_error;
+      303 
+      304 	     tai.workarea_last = "1"b;
+      305 	     user_workarea_offset = tai.workspace_len;	/* so calculation after this clause will be set up */
+      306 	     tai.workarea_offset = tai.workspace_len;
+      307 	     tai.workarea_len = user_workarea_size;
+      308 	end;
+      309 	tai.workspace_len = workspace_length - 1;
+      310 	if mod (user_workarea_offset, 2) ^= 0 then do;	/* ensure it's on an even word boundary */
+      311 	     user_workarea_offset = user_workarea_offset + 1;
+      312 	     user_workarea_size = user_workarea_size - 1;
+      313 	end;
+      314 	p_wka_ptr = ptr (wksp, user_workarea_offset);
+      315 	p_actual_wka_size = user_workarea_size;
+      316 	p_code = 0;
+      317 	return;
+      318 
+      319 /* Entry to deallocate all unreserved buffers and as many status queue entries as we can. */
+      320 
+      321 deallocate_buffers:
+      322      entry (p_tioi_id, p_code);
+      323 
+      324 	save_workarea_and_reserved_buffers = "1"b;
+      325 	goto DEALLOCATE_COMMON;
+      326 
+      327 /* Entry to deallocate all buffers, the user workarea, and all but one status queue entry. */
+      328 
+      329 deallocate:
+      330      entry (p_tioi_id, p_code);
+      331 
+      332 	save_workarea_and_reserved_buffers = "0"b;
+      333 DEALLOCATE_COMMON:
+      334 	call setup;
+      335 
+      336 	if (tai.workarea_last | tai.susp_list_offset ^= 0) & save_workarea_and_reserved_buffers then
+      337 	     call quit (error_table_$action_not_performed);
+      338 
+      339 	if ^save_workarea_and_reserved_buffers then do;
+      340 	     tai.buffer_list_offset = 0;
+      341 	     tai.free_list_offset = 0;
+      342 	     tai.susp_list_offset = 0;
+      343 	     tai.buffer_count = 0;
+      344 	     tai.workarea_len = 0;
+      345 	     tai.workarea_offset = 0;
+      346 	     tai.workarea_last = "0"b;
+      347 	     status_queue_offset = size (tai);
+      348 	     status_entry_count = 1;
+      349 	end;
+      350 	else do;
+      351 	     cbufp = ptr (wksp, tai.buffer_list_offset);
+      352 	     buffer_count = 0;
+      353 	     if tai.workarea_offset = 0 then
+      354 		status_queue_offset = size (tai);
+      355 	     else status_queue_offset = tai.workarea_offset + tai.workarea_len + 1;
+      356 	     do while (rel (cbufp));
+      357 		if cbufp -> tbi.reserved then do;
+      358 		     buffer_count = buffer_count + 1;
+      359 		     status_queue_offset =
+      360 			cbufp -> tbi.data_offset + divide (cbufp -> tbi.buffer_len, BYTES_PER_WORD, 17, 0);
+      361 		     cbufp -> tbi.next_state_offset = cbufp -> tbi.next_buf_offset;
+      362 		     obufp = cbufp;
+      363 		     cbufp = ptr (wksp, cbufp -> tbi.next_buf_offset);
+      364 		end;
+      365 		else do;
+      366 		     if buffer_count ^= 0 then do;
+      367 			obufp -> tbi.next_buf_offset = 0;
+      368 			obufp -> tbi.next_state_offset = 0;
+      369 		     end;
+      370 		     cbufp = wksp;			/* this will stop the loop */
+      371 		end;
+      372 	     end;
+      373 	     if buffer_count = 0 then
+      374 		tai.buffer_list_offset, tai.free_list_offset = 0;
+      375 	     else tai.free_list_offset = tai.buffer_list_offset;
+      376 	     status_entry_count = buffer_count + 1;
+      377 	     tai.buffer_count = buffer_count;
+      378 	end;
+      379 
+      380 	call set_status (status_queue_offset, status_entry_count, code);
+      381 	call quit_if_error;
+      382 	tai.status_queue_offset = status_queue_offset;
+      383 	tai.status_entry_count = status_entry_count;
+      384 	tai.status_entry_idx = 0;
+      385 
+      386 	workspace_length = status_queue_offset + size (istat) * tai.status_entry_count;
+      387 	call set_workspace (workspace_ptr, workspace_length, code);
+      388 	call quit_if_error;
+      389 	tai.workspace_len = workspace_length - 1;
+      390 	p_code = 0;
+      391 	return;
+      392 
+      393 /* Routine to change the size of the workspace */
+      394 
+      395 set_workspace:
+      396      proc (ws_ptr, ws_len, code);
+      397 
+      398 dcl	ws_ptr		   ptr parameter;
+      399 dcl	ws_len		   fixed bin (19) parameter;
+      400 dcl	code		   fixed bin (35) parameter;
+      401 
+      402 	deadline = clock () + TEN_SECONDS;
+      403 	do while ("1"b);
+      404 	     do tries = 1 to 10;
+      405 		call ioi_$workspace (tai.ioi_index, workspace_ptr, workspace_length, code);
+      406 		if code ^= error_table_$device_active then
+      407 		     return;
+      408 	     end;
+      409 	     if clock () > deadline then
+      410 		return;
+      411 	end;
+      412 
+      413      end set_workspace;
+      414 
+      415 /* Routine to change the size of the status queue */
+      416 
+      417 set_status:
+      418      proc (q_offset, q_len, code);
+      419 
+      420 dcl	q_offset		   fixed bin (18) parameter;
+      421 dcl	q_len		   fixed bin (8) parameter;
+      422 dcl	code		   fixed bin (35) parameter;
+      423 
+      424 
+      425 /* Clear the status queue */
+      426 
+      427 	begin;
+      428 
+      429 dcl	status_bit_string	   bit (BITS_PER_WORD * q_len * size (istat)) based (ptr (wksp, q_offset));
+      430 
+      431 	     status_bit_string = ""b;
+      432 
+      433 	end;
+      434 
+      435 	deadline = clock () + TEN_SECONDS;
+      436 	do while ("1"b);
+      437 	     do tries = 1 to 10;
+      438 		call ioi_$set_status (tai.ioi_index, q_offset, q_len, code);
+      439 		if code ^= error_table_$device_active then
+      440 		     return;
+      441 	     end;
+      442 	     if clock () > deadline then
+      443 		return;
+      444 	end;
+      445 
+      446      end set_status;
+      447 
+      448 /* Setup routine.  Verifies p_tioi_id.  Also ensures no I/O is in progress. */
+      449 
+      450 setup:
+      451      proc;
+      452 
+      453 	call tape_ioi_utils$get_workspace_ptr (p_tioi_id, wksp);
+      454 	if wksp = null () then
+      455 	     call quit (error_table_$bad_arg);
+      456 	if tape_ioi_utils$io_in_progress (wksp) then
+      457 	     call quit (error_table_$device_active);
+      458 
+      459      end setup;
+      460 
+      461 /* Routine to return to the caller if an error was found. */
+      462 
+      463 quit_if_error:
+      464      proc;
+      465 
+      466 	if code ^= 0 then
+      467 	     call quit (code);
+      468 
+      469      end quit_if_error;
+      470 
+      471 quit:
+      472      proc (code);
+      473 
+      474 dcl	code		   fixed bin (35);
+      475 
+      476 	p_code = code;
+      477 	goto ERROR_RETURN;
+      478 
+      479      end quit;
+      480 
+      481 ERROR_RETURN:
+      482 	return;
+      483 
+  1     1 /*  START OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  1     2 
+  1     3 
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(87-07-06,Hartogs), approve(87-07-06,MCR7726),
+  1     7*     audit(87-08-27,GWMay), install(87-08-27,MR12.1-1094):
+  1     8*     A) Added variable at_bot to structure tai.
+  1     9*     B) Added density_command to tai structure for use by error_retry.
+  1    10*                                                   END HISTORY COMMENTS */
+  1    11 
+  1    12 
+  1    13 /*
+  1    14*   *	     This include file describes the workspace maintained by tape_ioi_.
+  1    15*   *	No programs other than tape_ioi_ programs should need to use this include file.
+  1    16*   *
+  1    17*   *	This workspace is the ioi_ workspace.
+  1    18**/
+  1    19 /* Written 8/78 by R.J.C. Kissel. */
+  1    20 /* Modified April-May 1982 by Chris Jones for installation. */
+  1    21 /* Modified 2/4/83 by Chris Jones to add last_terminate_time */
+  1    22 
+  1    23 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  1    24 
+  1    25 dcl	wksp		   ptr;
+  1    26 
+  1    27 dcl	1 tai		   based (wksp) aligned,	/* Activation info and order buffer. */
+  1    28 	  2 ioi_index	   fixed bin,		/* For communication with ioi. */
+  1    29 	  2 tioi_id	   unal,			/* 36 bit activation identifier. */
+  1    30 	    3 segno	   bit (18),		/* Segment number of the workspace. */
+  1    31 	    3 actid	   fixed bin (18) unsigned,	/* Per process, per activation number. */
+  1    32 	  2 event_id	   fixed bin (71),		/* All ipc done on this channel. */
+  1    33 	  2 max_timeout	   fixed bin (71),		/* maximum timeout value */
+  1    34 	  2 cur_timeout	   fixed bin (71),		/* current timeout value */
+  1    35 	  2 last_terminate_time
+  1    36 			   fixed bin (71),		/* when the last terminate interrupt was received */
+  1    37 	  (
+  1    38 	  2 workspace_max	   fixed bin (18) unsigned,	/* max_len-1 to fit in 18 bits. */
+  1    39 	  2 workspace_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    40 	  2 buffer_list_offset fixed bin (18) unsigned,	/* to list of all buffers */
+  1    41 	  2 free_list_offset   fixed bin (18) unsigned,	/* to list of free buffers */
+  1    42 	  2 queue_list_offset  fixed bin (18) unsigned,	/* to list of buffers which are queued */
+  1    43 	  2 susp_list_offset   fixed bin (18) unsigned,	/* to list of suspended buffers */
+  1    44 	  2 retry_count	   fixed bin (9) unsigned,	/* number of times we've retried this operation */
+  1    45 	  2 buffer_count	   fixed bin (9) unsigned,	/* Number of I/O buffers allocated. */
+  1    46 	  2 status_entry_count fixed bin (9) unsigned,	/* Number of status queue entries. */
+  1    47 	  2 status_entry_idx   fixed bin (9) unsigned,	/* index of next status entry to be used */
+  1    48 	  2 status_queue_offset
+  1    49 			   fixed bin (18) unsigned,	/* Status queue offset. */
+  1    50 	  2 pad1               bit (12),
+  1    51 	  2 density_command    bit (6),                   /* density of data on storage */
+  1    52 	  2 workarea_len	   fixed bin (18) unsigned,	/* len-1 to fit in 18 bits. */
+  1    53 	  2 workarea_offset	   fixed bin (18) unsigned	/* Workarea offset. */
+  1    54 	  )		   unal,
+  1    55 	  2 modes		   unal,			/* tape_ioi_ modes settings. */
+  1    56 	    3 data_code	   bit (6),		/* Encoded representation of data mode. */
+  1    57 	    3 cif_code	   bit (6),		/* CIF field for channel instructions. */
+  1    58 	    3 align	   bit (1),		/* "0"b--left aligned, "1"b--right aligned. */
+  1    59 	    3 length	   bit (1),		/* "0"b--normal, "1"b--special. */
+  1    60 	    3 recovery	   bit (1),		/* "0"b--no error recovery, "1"b--error recovery. */
+  1    61 	    3 wait	   bit (1),		/* "0"b--simplex, "1"b--multiplex. */
+  1    62 	    3 req_len	   bit (1),		/* "0"b--don't need to know record length, "1"b--do need it */
+  1    63 	  2 flags		   unal,			/* Used internally by tape_ioi_. */
+  1    64 	    3 order_queued	   bit (1),		/* "0"b--no order queued, "1"b--order queued. */
+  1    65 	    3 read_queued	   bit (1),		/* "0"b--no read queued, "1"b--read queued. */
+  1    66 	    3 write_queued	   bit (1),		/* "0"b--no write queued, "1"b--write queued. */
+  1    67 	    3 order_done	   bit (1),		/* "1"b--the queue_order entry finished the order */
+  1    68 	    3 workarea_last	   bit (1),		/* "1"b--user workarea at end of workspace */
+  1    69 	    3 special_status_expected
+  1    70 			   bit (1),		/* set if we're waiting for a special interrupt */
+  1    71 	    3 retry_in_progress
+  1    72 			   bit (1),
+  1    73 	    3 suspect_short_record bit (1),		/* "1"b--got invalid DCW on list service last */
+  1    74 	    3 at_bot	   bit (1),		/* "1"b-- tape is positioned to BOT. */
+  1    75 	  2 pad2		   bit (1) unal,
+  1    76 	  2 order_idx	   fixed bin (9) unsigned unaligned,
+  1    77 						/* encoding of last order queued */
+  1    78 	  2 counts	   aligned,		/* error and operation counts */
+  1    79 	    3 total_reads	   fixed bin (35),
+  1    80 	    3 read_errors	   fixed bin (35),
+  1    81 	    3 total_writes	   fixed bin (35),
+  1    82 	    3 write_errors	   fixed bin (35),
+  1    83 	    3 total_orders	   fixed bin (35),
+  1    84 	    3 order_errors	   fixed bin (35),
+  1    85 	    3 times_status_lost
+  1    86 			   fixed bin (35),
+  1    87 	    3 extra_statuses   fixed bin (35),
+  1    88 	    3 times_tape_stopped
+  1    89 			   fixed bin (35),
+  1    90 	    3 recovery_succeeded
+  1    91 			   (7) fixed bin (35),	/* meters which kind of recovery worked */
+  1    92 	  2 order_count_requested
+  1    93 			   fixed bin (18) unsigned unaligned,
+  1    94 	  2 order_count_done   fixed bin (18) unsigned unaligned,
+  1    95 	  2 saved_special_status
+  1    96 			   bit (36),
+  1    97 	  2 order_data_ptr	   ptr,
+  1    98 	  2 order_idcw	   bit (36) aligned,
+  1    99 	  2 order_dcw	   bit (36) aligned,
+  1   100 	  2 order_data	   (1:8) bit (36) aligned;
+  1   101 /**** The buffers go here, followed by the status queue entries.  There are min (1, tai.nbufs) status queue entries. */
+  1   102 /**** It is considered a good idea to have the length of the previous structure b an even number of words long.  This
+  1   103*      is accomplished by the aligned pointer "order_data_ptr" being followed by an even number of words. */
+  1   104 
+  1   105 /* Tape buffer overlay.  Each tape buffer consists of a variable length header followed by the data area.
+  1   106*   Whenever a buffer pointer is returned to a caller of tape_ioi_, it points to the data area. */
+  1   107 
+  1   108 dcl	1 tbi		   based aligned,		/* I/O buffer overlay. */
+  1   109 	( 2 data_offset	   fixed bin (18) unsigned,	/* to the data portion of the buffer */
+  1   110 	  2 next_buf_offset	   fixed bin (18) unsigned,	/* to the next buffer in list of all buffers */
+  1   111 	  2 next_state_offset  fixed bin (18) unsigned,	/* to the next buffer in the same state */
+  1   112 	  2 state		   fixed bin (9) unsigned,	/* buffer state */
+  1   113 	  2 ndcws		   fixed bin (9) unsigned	/* number of DCWs necessary to fill buffer */
+  1   114 	  )		   unal,
+  1   115 	  2 modes		   unal like tai.modes,	/* mode settings when buffer was queued */
+  1   116 	  2 reserved	   bit (1) unal,		/* "1"b=>won't be used for reads unless explicitly asked */
+  1   117 	  2 buffer_len	   fixed bin (21),		/* length of buffer in 9-bit bytes */
+  1   118 	  2 data_len	   fixed bin (21),		/* length of data in buffer in 9-bit bytes */
+  1   119 	  2 bit_len	   fixed bin (24),		/* length of data in buffer in bits */
+  1   120 	  2 idcw_word	   bit (36),		/* holds IDCW */
+  1   121 	  2 dcw_words	   (1 refer (tbi.ndcws)) bit (36),
+  1   122 						/* data DCWs */
+  1   123 	  2 tdcw_word	   bit (36);		/* transfer to the next buffer */
+  1   124 						/* This header is followed by the actual buffer area. */
+  1   125 
+  1   126 /*
+  1   127*   *	N__o_t_e_s
+  1   128*   *
+  1   129*   *	     Both structures are carefully packed into words, so care should be
+  1   130*   *	taken when modifying them.
+  1   131*   *
+  1   132*   *	     The workspace_max, workspace_len, and workarea_len must be at least one long.
+  1   133*   *	This allows us to store the value-1 and thus fit into 18 bits.
+  1   134*   *
+  1   135*   *	     None of the offsets (first_buf_off, statq_off, etc.) can be zero since the first
+  1   136*   *	word in the workspace contains the ioi_index.  This allows a zero offset
+  1   137*   *	to be used as a null offset indication.
+  1   138*   *
+  1   139*   *	     The data_code, cif_code, and tbi.state are encoded as follows:
+  1   140*   *
+  1   141*   *	data mode |                                                     buffer |
+  1   142*   *	setting   | data_code     cif_code |    Meaning		    state  | Meaning
+  1   143*   *	__________|__________     _________|_______________________     _______|________
+  1   144*   *	  bin     |   05            20     | no retry, high                1   | ready
+  1   145*   *	  bcd     |   04            21     | no retry, low                 2   | busy
+  1   146*   *	  tap9    |   03            22     | no retry, high, deskew        3   | suspended
+  1   147*   *	  asc     |   27            23     | no retry, low, deskew
+  1   148*   *	  ebc     |   24            30     | retry, high
+  1   149*   *	  a/e     |   25            31     | retry, low
+  1   150*   *			        32     | retry, high, deskew
+  1   151*   *			        33     | retry, low, deskew
+  1   152*   *
+  1   153*   *
+  1   154*   *	     Before data_code can be used for the command field in the IDCW the fourth
+  1   155*   *	bit (from the right) must be set to "0"b for read commands and to "1"b for write commands.
+  1   156*   *
+  1   157*   *	     The general layout of the workspace maintained by tape_ioi_ is as follows:
+  1   158*   *
+  1   159*   *			_________________________
+  1   160*   *			|                       |
+  1   161*   *			|  General Information  |
+  1   162*   *			|       (see tai)       |
+  1   163*   *			|_______________________|
+  1   164*   *			|______O____r__d__e__r_I_D_C_W________|
+  1   165*   *			|______O____r__d__e__r_D_C_W_________|
+  1   166*   *			|                       |
+  1   167*   *			|   Order data buffer   |
+  1   168*   *			|       (8 words)       |
+  1   169*   *			|_______________________|
+  1   170*   *			|                       |
+  1   171*   *			|   Optional workarea   |
+  1   172*   *			|      (unlimited)      |
+  1   173*   *			|_______________________|
+  1   174*   *			|________I__O___I_D_C_W_________|
+  1   175*   *			|                       |
+  1   176*   *			|      IO DCW list      |
+  1   177*   *			|_______________________|
+  1   178*   *			|________I__O___T_D_C_W_________|
+  1   179*   *			|                       |
+  1   180*   *			|       IO buffer       |
+  1   181*   *			|   (user specified)    |
+  1   182*   *			|_______________________|
+  1   183*   *			            .
+  1   184*   *			            .
+  1   185*   *			            .
+  1   186*   *			_________________________
+  1   187*   *			|________I__O___I_D_C_W_________|
+  1   188*   *			|                       |
+  1   189*   *			|      IO DCW list      |
+  1   190*   *			|_______________________|
+  1   191*   *			|__________z_e_r_o_s_________|
+  1   192*   *			|                       |
+  1   193*   *			|       IO buffer       |
+  1   194*   *			|    (user specified)   |
+  1   195*   *			|_______________________|
+  1   196*   *			|                       |
+  1   197*   *			|     Status queue      |
+  1   198*   *			| (at least one entry)  |
+  1   199*   *			|_______________________|
+  1   200*   *			|                       |
+  1   201*   *			|   Optional workarea   |
+  1   202*   *			|       (limited)       |
+  1   203*   *			|_______________________|
+  1   204**/
+  1   205 
+  1   206 /*  END OF:	tape_ioi_workspace.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      484 
+      485 
+  2     1 
+  2     2 /* Begin include file ...... iom_pcw.incl.pl1 */
+  2     3 
+  2     4 dcl  pcwp ptr;					/* pointer to PCW */
+  2     5 
+  2     6 dcl 1 pcw based (pcwp) aligned,			/* Peripheral Control Word */
+  2     7      (2 command bit (6),				/* device command */
+  2     8       2 device bit (6),				/* device code */
+  2     9       2 ext bit (6),				/* address extension */
+  2    10       2 code bit (3),				/* should be "111"b for PCW */
+  2    11       2 mask bit (1),				/* channel mask bit */
+  2    12       2 control bit (2),				/* terminate/proceed and marker control bits */
+  2    13       2 chan_cmd bit (6),				/* type of I/O operation */
+  2    14       2 count bit (6),				/* record count or control character */
+  2    15       2 mbz1 bit (3),
+  2    16       2 channel bit (6),				/* channel number */
+  2    17       2 mbz2 bit (27)) unal;
+  2    18 
+  2    19 dcl  idcwp ptr;					/* pointer to IDCW */
+  2    20 
+  2    21 dcl 1 idcw based (idcwp) aligned,			/* Instruction DCW */
+  2    22      (2 command bit (6),				/* device command */
+  2    23       2 device bit (6),				/* device code */
+  2    24       2 ext bit (6),				/* address extension */
+  2    25       2 code bit (3),				/* should be "111"b for PCW */
+  2    26       2 ext_ctl bit (1),				/* "1"b if address extension to be used */
+  2    27       2 control bit (2),				/* terminate/proceed and marker control bits */
+  2    28       2 chan_cmd bit (6),				/* type of I/O operation */
+  2    29       2 count bit (6)) unal;				/* record count or control character */
+  2    30 
+  2    31 /* End include file ...... iom_pcw.incl.pl1 */
+  2    32 
+      486 
+      487 
+  3     1 /* Begin include file ..... tape_ioi_buffer_status.incl.pl1 */
+  3     2 
+  3     3 /* This structure defines the data returned by tape_ioi_$buffer_status */
+  3     4 /* Modified April 1982 by Chris Jones */
+  3     5 /* Modified 2 February 1983 by Chris Jones to add support for reserved buffers. */
+  3     6 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  3     7 dcl	tbs_ptr		   ptr;
+  3     8 
+  3     9 dcl	1 tbs		   aligned based (tbs_ptr),
+  3    10 	  2 version	   fixed bin,
+  3    11 	  2 state		   fixed bin,
+  3    12 	  2 buffer_len	   fixed bin (21),
+  3    13 	  2 data_len	   fixed bin (21),
+  3    14 	  2 bit_count	   fixed bin (24),
+  3    15 	  2 channel_inst	   bit (6),
+  3    16 	  2 data_mode	   char (4),
+  3    17 	  (
+  3    18 	  2 align_mode	   bit (1),
+  3    19 	  2 length_mode	   bit (1),
+  3    20 	  2 recovery_mode	   bit (1),
+  3    21 	  2 reserved bit (1),
+  3    22 	  2 pad		   bit (32)
+  3    23 	  )		   unal;
+  3    24 
+  3    25 dcl	TBS_VERSION_1	   fixed bin internal static init (1) options (constant);
+  3    26 
+  3    27 dcl	TBS_VERSION	   fixed bin internal static init (1) options (constant);
+  3    28 
+  3    29 dcl	READY_STATE	   fixed bin internal static options (constant) init (1);
+  3    30 dcl	QUEUED_STATE	   fixed bin internal static options (constant) init (2);
+  3    31 dcl	SUSPENDED_STATE	   fixed bin internal static options (constant) init (3);
+  3    32 dcl READY_AND_RESERVED_STATE fixed bin internal static options (constant) init (4);
+  3    33 
+  3    34 /* End include file ..... tape_ioi_buffer_status.incl.pl1 */
+      488 
+      489 
+  4     1 
+  4     2 /* Begin include file ...... ioi_stat.incl.pl1 */
+  4     3 /* Last modified 3/24/75 by Noel I. Morris */
+  4     4 
+  4     5 dcl  isp ptr;					/* pointer to status structure */
+  4     6 
+  4     7 dcl 1 istat based (isp) aligned,			/* I/O Interfacer status structure */
+  4     8     2 completion,					/* completion flags */
+  4     9      (3 st bit (1),					/* "1"b if status returned */
+  4    10       3 er bit (1),					/* "1"b if status indicates error condition */
+  4    11       3 run bit (1),				/* "1"b if channel still running */
+  4    12       3 time_out bit (1)) unal,			/* "1"b if time-out occurred */
+  4    13     2 level fixed bin (3),				/* IOM interrupt level */
+  4    14     2 offset fixed bin (18),				/* DCW list offset */
+  4    15     2 absaddr fixed bin (24),				/* absolute address of workspace */
+  4    16     2 iom_stat bit (72),				/* IOM status */
+  4    17     2 lpw bit (72);					/* LPW residue */
+  4    18 
+  4    19 dcl  imp ptr;					/* pointer to message structure */
+  4    20 
+  4    21 dcl 1 imess based (imp) aligned,			/* I/O Interfacer event message structure */
+  4    22    (2 completion like istat.completion,			/* completion flags */
+  4    23     2 pad bit (11),
+  4    24     2 level bit (3),				/* interrupt level */
+  4    25     2 offset bit (18),				/* DCW list offset */
+  4    26     2 status bit (36)) unal;				/* first 36 bits of status */
+  4    27 
+  4    28 /* End of include file ...... ioi_stat.incl.pl1 */
+  4    29 
+      490 
+      491 
+      492      end tape_ioi_wks_man;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0812.1  tape_ioi_wks_man.pl1              >spec>install>1112>tape_ioi_wks_man.pl1
+484          1    08/27/87  1445.9  tape_ioi_workspace.incl.pl1       >ldd>include>tape_ioi_workspace.incl.pl1
+486          2    05/06/74  1742.1  iom_pcw.incl.pl1                  >ldd>include>iom_pcw.incl.pl1
+488          3    09/16/83  1110.4  tape_ioi_buffer_status.incl.pl1   >ldd>include>tape_ioi_buffer_status.incl.pl1
+490          4    08/17/79  2215.0  ioi_stat.incl.pl1                 >ldd>include>ioi_stat.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BITS_PER_WORD                          internal static fixed bin(17,0)          initial dcl 68 ref 429
+BYTES_PER_DCW_TALLY                    constant        fixed bin(17,0)          initial dcl 69 ref 126
+BYTES_PER_WORD                         constant        fixed bin(17,0)          initial dcl 70 ref 124 124 124 127 127 164 167 178
+                                                                                  204 359
+READY_STATE                            constant        fixed bin(17,0)          initial dcl 3-29 ref 206
+TEN_SECONDS                     000000 constant        fixed bin(71,0)          initial dcl 71 ref 402 435
+WORDS_PER_DCW_TALLY                    constant        fixed bin(17,0)          initial dcl 72 ref 161
+addr                                                   builtin function         dcl 76 ref 216 217
+basic_buffer_header_size        000100 automatic       fixed bin(17,0)          dcl 43 set ref 160* 161
+bin                                                    builtin function         dcl 76 ref 203
+bit_len                   5            based           fixed bin(24,0)          level 2 dcl 1-108 set ref 212*
+buffer_count             15(09)        based           fixed bin(9,0)           level 2 in structure "tai" packed packed unsigned
+                                                                                  unaligned dcl 1-27 in procedure "tape_ioi_wks_man"
+                                                                                  set ref 187 249* 249 273 343* 377*
+buffer_count                    000101 automatic       fixed bin(17,0)          dcl 45 in procedure "tape_ioi_wks_man" set ref 113*
+                                                                                  115 115 127 127* 161 164 175 178 187 202 249 253
+                                                                                  255 352* 358* 358 366 373 376 377
+buffer_idx                      000102 automatic       fixed bin(17,0)          dcl 46 set ref 202* 255* 256*
+buffer_len                3            based           fixed bin(21,0)          level 2 dcl 1-108 set ref 210* 359
+buffer_length                   000103 automatic       fixed bin(21,0)          dcl 47 set ref 114* 115 115 120 124 124* 124 124 126
+                                                                                  127 164* 167* 167 167 168 178 204 210 254
+buffer_list_offset       13            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 228 228* 231 340* 351 373* 375
+buffer_offset                   000104 automatic       fixed bin(18,0)          dcl 48 set ref 193* 201 228 234 236 242 248
+buffer_space_available          000105 automatic       fixed bin(19,0)          dcl 49 set ref 118* 127 161 164
+cbufp                           000106 automatic       pointer                  dcl 50 set ref 201* 203 203 204 204 205 205 206 207
+                                                                                  208 209 210 211 212 213 214 215 216 221 222* 222
+                                                                                  247 248* 256 257* 257 351* 356 357 359 359 361 361
+                                                                                  362 363* 363 370*
+clock                                                  builtin function         dcl 76 ref 402 409 435 442
+code                                   parameter       fixed bin(35,0)          dcl 400 in procedure "set_workspace" set ref 395
+                                                                                  405* 406
+code                                   parameter       fixed bin(35,0)          dcl 474 in procedure "quit" ref 471 476
+code                      0(18)        based           bit(3)                   level 2 in structure "idcw" packed packed unaligned
+                                                                                  dcl 2-21 in procedure "tape_ioi_wks_man" set ref
+                                                                                  219*
+code                            000110 automatic       fixed bin(35,0)          dcl 51 in procedure "tape_ioi_wks_man" set ref 181*
+                                                                                  189* 281* 285* 301* 380* 387* 466 466*
+code                                   parameter       fixed bin(35,0)          dcl 422 in procedure "set_status" set ref 417 438*
+                                                                                  439
+completion                             based           structure                level 2 dcl 4-7
+data_len                  4            based           fixed bin(21,0)          level 2 dcl 1-108 set ref 211*
+data_offset                            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 203* 204 256 359
+dcw_words                 7            based           bit(36)                  array level 2 dcl 1-108 set ref 214*
+deadline                        000112 automatic       fixed bin(71,0)          dcl 52 set ref 402* 409 435* 442
+device                    0(06)        based           bit(6)                   level 2 packed packed unaligned dcl 2-21 set ref
+                                                                                  217* 217
+dim                                                    builtin function         dcl 76 ref 255
+divide                                                 builtin function         dcl 76 ref 126 127 161 161 164 178 204 359
+error_table_$action_not_performed
+                                000020 external static fixed bin(35,0)          dcl 88 set ref 269* 336*
+error_table_$bad_arg            000022 external static fixed bin(35,0)          dcl 90 set ref 115* 175* 274* 297* 454*
+error_table_$device_active      000024 external static fixed bin(35,0)          dcl 91 set ref 406 439 456*
+error_table_$out_of_sequence    000026 external static fixed bin(35,0)          dcl 93 set ref 107*
+error_table_$too_many_buffers   000030 external static fixed bin(35,0)          dcl 95 set ref 168*
+ext                       0(12)        based           bit(6)                   level 2 packed packed unaligned dcl 2-21 set ref
+                                                                                  218*
+ext_ctl                   0(21)        based           bit(1)                   level 2 packed packed unaligned dcl 2-21 set ref
+                                                                                  220*
+extra_dcws                      000114 automatic       fixed bin(17,0)          dcl 53 set ref 126* 127 161* 164 168 178 203 207
+flags                    20(17)        based           structure                level 2 packed packed unaligned dcl 1-27
+free_list_offset         13(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 236 236* 239 341* 373* 375*
+idcw                                   based           structure                level 1 dcl 2-21
+idcw_word                 6            based           bit(36)                  level 2 dcl 1-108 set ref 213* 216
+idcwp                           000134 automatic       pointer                  dcl 2-19 set ref 216* 217 218 219 220
+ioi_$set_status                 000010 constant        entry                    external dcl 81 ref 438
+ioi_$workspace                  000012 constant        entry                    external dcl 82 ref 405
+ioi_index                              based           fixed bin(17,0)          level 2 dcl 1-27 set ref 405* 438*
+isp                                    automatic       pointer                  dcl 4-5 ref 161 164 178 188 386 431
+istat                                  based           structure                level 1 dcl 4-7 ref 161 164 178 188 386 431
+lbound                                                 builtin function         dcl 76 ref 256
+min                                                    builtin function         dcl 76 ref 255
+mod                                                    builtin function         dcl 76 ref 124 124 167 278 294 297 310
+modes                     2            based           structure                level 2 in structure "tbi" packed packed unaligned
+                                                                                  dcl 1-108 in procedure "tape_ioi_wks_man" set ref
+                                                                                  208*
+modes                    20            based           structure                level 2 in structure "tai" packed packed unaligned
+                                                                                  dcl 1-27 in procedure "tape_ioi_wks_man" ref 208
+ndcws                     1(27)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 207* 214 215
+next_buf_offset           0(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 204* 205 222 225* 231 233 234* 257 361 363
+                                                                                  367*
+next_state_offset         1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 205* 226* 239 241 242* 361* 368*
+null                                                   builtin function         dcl 76 ref 454
+obufp                           000116 automatic       pointer                  dcl 54 set ref 221* 225 226 231* 231* 233 234 239*
+                                                                                  239* 241 242 247* 362* 367 368
+order_idcw               46            based           bit(36)                  level 2 dcl 1-27 set ref 217
+p_actual_count                         parameter       fixed bin(17,0)          dcl 30 set ref 103 253*
+p_actual_length                        parameter       fixed bin(21,0)          dcl 31 set ref 103 254*
+p_actual_wka_size                      parameter       fixed bin(19,0)          dcl 32 set ref 265 315*
+p_buffer_ptrs                          parameter       pointer                  array dcl 33 set ref 103 255 256* 256
+p_code                                 parameter       fixed bin(35,0)          dcl 34 set ref 103 259* 265 316* 321 329 390* 476*
+p_requested_count                      parameter       fixed bin(17,0)          dcl 35 ref 103 113
+p_requested_length                     parameter       fixed bin(21,0)          dcl 36 ref 103 114
+p_requested_wka_size                   parameter       fixed bin(19,0)          dcl 37 ref 265 272
+p_tioi_id                              parameter       bit(36)                  dcl 38 set ref 103 265 321 329 453*
+p_wka_ptr                              parameter       pointer                  dcl 39 set ref 265 314*
+ptr                                                    builtin function         dcl 76 ref 201 222 231 233 239 241 248 256 257 314
+                                                                                  351 363 431
+q_len                                  parameter       fixed bin(8,0)           dcl 421 set ref 417 431 438*
+q_offset                               parameter       fixed bin(18,0)          dcl 420 set ref 417 431 438*
+rel                                                    builtin function         dcl 76 ref 203 356
+reserved                  2(17)        based           bit(1)                   level 2 packed packed unaligned dcl 1-108 set ref
+                                                                                  209* 357
+save_workarea_and_reserved_buffers
+                                000120 automatic       bit(1)                   dcl 55 set ref 324* 332* 336 339
+size                                                   builtin function         dcl 76 ref 127 160 161 164 164 178 178 188 203 347
+                                                                                  353 386 431
+state                     1(18)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-108
+                                                                                  set ref 206*
+status_bit_string                      based           bit                      packed unaligned dcl 429 set ref 431*
+status_entry_count              000121 automatic       fixed bin(8,0)           dcl 57 in procedure "tape_ioi_wks_man" set ref 187*
+                                                                                  188 189* 197 284* 285* 348* 376* 380* 383
+status_entry_count       15(18)        based           fixed bin(9,0)           level 2 in structure "tai" packed packed unsigned
+                                                                                  unaligned dcl 1-27 in procedure "tape_ioi_wks_man"
+                                                                                  set ref 197* 284 383* 386
+status_entry_idx         15(27)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 196* 291* 384*
+status_queue_offset             000122 automatic       fixed bin(18,0)          dcl 58 in procedure "tape_ioi_wks_man" set ref 188*
+                                                                                  189* 195 283* 285* 289 347* 353* 355* 359* 380*
+                                                                                  382 386
+status_queue_offset      16            based           fixed bin(18,0)          level 2 in structure "tai" packed packed unsigned
+                                                                                  unaligned dcl 1-27 in procedure "tape_ioi_wks_man"
+                                                                                  set ref 193 195* 277 283 289* 382*
+susp_list_offset         14(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 336 342*
+sys_info$page_size              000032 external static fixed bin(17,0)          dcl 98 ref 294 294
+tai                                    based           structure                level 1 dcl 1-27 set ref 347 353
+tape_ioi_utils$get_workspace_ptr
+                                000014 constant        entry                    external dcl 83 ref 453
+tape_ioi_utils$io_in_progress   000016 constant        entry                    external dcl 85 ref 456
+tbi                                    based           structure                level 1 dcl 1-108 set ref 127 160 164 178 203
+tdcw_word                              based           bit(36)                  level 2 dcl 1-108 set ref 215*
+tries                           000123 automatic       fixed bin(17,0)          dcl 59 set ref 404* 437*
+user_workarea_offset            000124 automatic       fixed bin(18,0)          dcl 60 set ref 277* 278 287 305* 310 311* 311 314
+user_workarea_size              000125 automatic       fixed bin(19,0)          dcl 61 set ref 272* 274 278* 278 280 283 288 295
+                                                                                  295* 297 297 300 307 312* 312 315
+wksp                            000132 automatic       pointer                  dcl 1-25 set ref 107 118 118 178 183 187 193 195 196
+                                                                                  197 201 208 217 222 228 228 231 231 233 236 236
+                                                                                  239 239 241 248 249 249 256 257 269 273 277 280
+                                                                                  283 284 287 288 289 291 294 300 304 305 306 306
+                                                                                  307 309 314 336 336 340 341 342 343 344 345 346
+                                                                                  347 351 351 353 353 355 355 363 370 373 373 375
+                                                                                  375 377 382 383 384 386 389 405 431 438 453* 454
+                                                                                  456*
+words_left_in_page              000126 automatic       fixed bin(17,0)          dcl 62 set ref 294* 295 297
+workarea_last            20(21)        based           bit(1)                   level 3 packed packed unaligned dcl 1-27 set ref 107
+                                                                                  304* 336 346*
+workarea_len             17            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 288* 307* 344* 355
+workarea_offset          17(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 269 287* 306* 345* 353 355
+workspace_len            12(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  set ref 118 178 183* 280 294 300 305 306 309* 389*
+workspace_length                000127 automatic       fixed bin(19,0)          dcl 63 set ref 178* 181* 183 188 280* 281* 300* 301*
+                                                                                  309 386* 387* 389 405*
+workspace_max            12            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-27
+                                                                                  ref 118
+workspace_ptr                   000130 automatic       pointer                  dcl 64 set ref 181* 281* 301* 387* 405*
+ws_len                                 parameter       fixed bin(19,0)          dcl 399 ref 395
+ws_ptr                                 parameter       pointer                  dcl 398 ref 395
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+QUEUED_STATE                           internal static fixed bin(17,0)          initial dcl 3-30
+READY_AND_RESERVED_STATE               internal static fixed bin(17,0)          initial dcl 3-32
+SUSPENDED_STATE                        internal static fixed bin(17,0)          initial dcl 3-31
+TBS_VERSION                            internal static fixed bin(17,0)          initial dcl 3-27
+TBS_VERSION_1                          internal static fixed bin(17,0)          initial dcl 3-25
+imess                                  based           structure                level 1 dcl 4-21
+imp                                    automatic       pointer                  dcl 4-19
+pcw                                    based           structure                level 1 dcl 2-6
+pcwp                                   automatic       pointer                  dcl 2-4
+tbs                                    based           structure                level 1 dcl 3-9
+tbs_ptr                                automatic       pointer                  dcl 3-7
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DEALLOCATE_COMMON               001103 constant        label                    dcl 333 ref 325
+ERROR_RETURN                    001315 constant        label                    dcl 481 ref 477
+allocate_buffers                000037 constant        entry                    external dcl 103
+allocate_work_area              000632 constant        entry                    external dcl 265
+deallocate                      001072 constant        entry                    external dcl 329
+deallocate_buffers              001055 constant        entry                    external dcl 321
+quit                            001525 constant        entry                    internal dcl 471 ref 107 115 168 175 269 274 297 336
+                                                                                  454 456 466
+quit_if_error                   001517 constant        entry                    internal dcl 463 ref 182 190 282 286 302 381 388
+set_status                      001365 constant        entry                    internal dcl 417 ref 189 285 380
+set_workspace                   001316 constant        entry                    internal dcl 395 ref 181 281 301 387
+setup                           001445 constant        entry                    internal dcl 450 ref 106 268 333
+tape_ioi_wks_man                000023 constant        entry                    external dcl 25
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1772        2026    1563        2002
+Length      2310    1563        34         246     206           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+tape_ioi_wks_man                    169 external procedure  is an external procedure.  
+set_workspace                           internal procedure  shares stack frame of external procedure tape_ioi_wks_man.  
+set_status                              internal procedure  shares stack frame of external procedure tape_ioi_wks_man.  
+begin block on line 427                 begin block         shares stack frame of external procedure tape_ioi_wks_man.  
+setup                                   internal procedure  shares stack frame of external procedure tape_ioi_wks_man.  
+quit_if_error                           internal procedure  shares stack frame of external procedure tape_ioi_wks_man.  
+quit                                    internal procedure  shares stack frame of external procedure tape_ioi_wks_man.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+tape_ioi_wks_man         000100 basic_buffer_header_size    tape_ioi_wks_man
+                         000101 buffer_count                tape_ioi_wks_man
+                         000102 buffer_idx                  tape_ioi_wks_man
+                         000103 buffer_length               tape_ioi_wks_man
+                         000104 buffer_offset               tape_ioi_wks_man
+                         000105 buffer_space_available      tape_ioi_wks_man
+                         000106 cbufp                       tape_ioi_wks_man
+                         000110 code                        tape_ioi_wks_man
+                         000112 deadline                    tape_ioi_wks_man
+                         000114 extra_dcws                  tape_ioi_wks_man
+                         000116 obufp                       tape_ioi_wks_man
+                         000120 save_workarea_and_reserved_buffers
+                                                            tape_ioi_wks_man
+                         000121 status_entry_count          tape_ioi_wks_man
+                         000122 status_queue_offset         tape_ioi_wks_man
+                         000123 tries                       tape_ioi_wks_man
+                         000124 user_workarea_offset        tape_ioi_wks_man
+                         000125 user_workarea_size          tape_ioi_wks_man
+                         000126 words_left_in_page          tape_ioi_wks_man
+                         000127 workspace_length            tape_ioi_wks_man
+                         000130 workspace_ptr               tape_ioi_wks_man
+                         000132 wksp                        tape_ioi_wks_man
+                         000134 idcwp                       tape_ioi_wks_man
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          mdfx1               ext_entry           ext_entry_desc      divide_fx4
+clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ioi_$set_status               ioi_$workspace                tape_ioi_utils$get_workspace_ptr
+tape_ioi_utils$io_in_progress
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$bad_arg          error_table_$device_active
+error_table_$out_of_sequence  error_table_$too_many_buffers sys_info$page_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000022       103 000030       106 000047       107 000050       113 000063       114 000066       115 000070
+    118 000106       120 000116       124 000120       126 000133       127 000137       131 000154       160 000155
+    161 000161       164 000174       167 000204       168 000214       175 000227       178 000240       181 000256
+    182 000260       183 000261       187 000265       188 000273       189 000300       190 000302       193 000303
+    195 000307       196 000312       197 000314       201 000317       202 000323       203 000333       204 000344
+    205 000354       206 000357       207 000361       208 000364       209 000374       210 000376       211 000400
+    212 000401       213 000402       214 000403       215 000417       216 000421       217 000423       218 000426
+    219 000430       220 000432       221 000434       222 000435       223 000442       225 000444       226 000447
+    228 000452       231 000463       233 000472       234 000476       236 000501       239 000511       241 000521
+    242 000525       247 000530       248 000532       249 000536       253 000545       254 000550       255 000552
+    256 000573       257 000614       258 000621       259 000623       260 000624       265 000625       268 000642
+    269 000643       272 000656       273 000661       274 000666       277 000677       278 000703       280 000707
+    281 000714       282 000716       283 000717       284 000724       285 000730       286 000732       287 000733
+    288 000736       289 000741       291 000744       292 000746       294 000747       295 000761       297 000766
+    300 001003       301 001011       302 001013       304 001014       305 001017       306 001022       307 001023
+    309 001026       310 001031       311 001035       312 001036       314 001040       315 001045       316 001047
+    317 001050       321 001051       324 001065       325 001067       329 001070       332 001102       333 001103
+    336 001104       339 001124       340 001126       341 001131       342 001133       343 001135       344 001137
+    345 001141       346 001143       347 001145       348 001147       349 001151       351 001152       352 001160
+    353 001161       355 001170       356 001175       357 001200       358 001204       359 001205       361 001214
+    362 001217       363 001220       364 001225       366 001226       367 001230       368 001233       370 001236
+    372 001240       373 001241       375 001251       376 001255       377 001257       380 001262       381 001264
+    382 001265       383 001271       384 001274       386 001276       387 001304       388 001306       389 001307
+    390 001313       391 001314       481 001315       395 001316       402 001320       403 001323       404 001324
+    405 001331       406 001347       408 001355       409 001357       411 001363       413 001364       417 001365
+    431 001367       435 001401       437 001404       438 001411       439 001427       441 001435       442 001437
+    444 001443       446 001444       450 001445       453 001446       454 001460       456 001473       459 001516
+    463 001517       466 001520       469 001524       471 001525       476 001527       477 001531
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

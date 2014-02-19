@@ -1,0 +1,1332 @@
+	COMPILATION LISTING OF SEGMENT link_man
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1045.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+       16*     audit(86-08-01,Schroth), install(86-11-20,MR12.0-1222):	
+       17*     initialize the heap_header_ptr to null in get_initial_linkage.
+       18*  2) change(86-10-01,Fawcett), approve(86-10-01,MCR7473),
+       19*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+       20*     Changed to eliminate stack_header.old_lot_ptr, this obsolete ptr was
+       21*     replaced by stack_header.cpm_data_ptr for Control Point Management.
+       22*                                                   END HISTORY COMMENTS */
+       23 
+       24 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+       25 link_man$other_linkage:
+       26      proc (atxp, alp, astp, asymbp, acode);
+       27 
+       28 /* LINK_MAN
+       29*   "
+       30*
+       31*   This program is the utility program used by the Multics ring 0 linker.
+       32*
+       33*
+       34*   Last modified (date and reason):
+       35*
+       36*   9/20/74 by S.Webber Complete rewrite from an earlier version as part
+       37*   of combining stacks, lots, and clr's.
+       38*
+       39*   rewritten 8/76 by M. Weaver to turn linkage regions into areas.
+       40*   modified 4/77 by M. Weaver to add entry combine_linkage for lot_fault_handler_
+       41*   modified 5/77 by M. Weaver to process perprocess_static bit
+       42*   modified 9/77 by M. Weaver to change assign_linkage to use assign_linkage_ptr
+       43*   modified 2/78 by M. Weaver to grow lot at correct boundary
+       44*   Modified April 1981 by J. Bongiovanni to fix recursive grow_lot bug
+       45*   Modified May, 1981, Charlie Hornig, to convert for ADP SDW formats
+       46*   Modified August 1981, E. N. Kittlitz per S. Harris (UNCA), check lot size in getlp
+       47*   Modified 83-12-08 BIM to flush support for .link segments, once and for all.
+       48*   Modified April 10, 1984 by M. Weaver to check ring arg in $combine_linkage
+       49*   Modified 84-07-02 BIM to check ring arg in grow_lot.
+       50*   Modified 85-01-22 Keith Loepere to increment usage count for segment in
+       51*   target ring when its linkage is combined.
+       52**/
+       53 
+       54 /* Parameters */
+       55 
+       56 dcl  acode fixed bin (35);
+       57 dcl  alp ptr;
+       58 dcl  aring fixed bin;
+       59 dcl  astp ptr;
+       60 dcl  asymbp ptr;
+       61 dcl  atxp ptr;
+       62 
+       63 /* Automatic */
+       64 
+       65 dcl  1 ainfo aligned like area_info;
+       66 dcl  cl fixed bin (14);
+       67 dcl  cl_sw bit (1) aligned;
+       68 dcl  code fixed bin (35);
+       69 dcl  count fixed bin (24);
+       70 dcl  dummy bit (36) aligned;
+       71 dcl  lp ptr;
+       72 dcl  nwords fixed bin (18);
+       73 dcl  1 oi like object_info;
+       74 dcl  ring fixed bin;
+       75 dcl  rings (3) fixed bin;
+       76 dcl  1 sdwi aligned like sdw_info;
+       77 dcl  sp ptr;
+       78 dcl  stack_end fixed bin (18);
+       79 dcl  stp ptr;
+       80 dcl  target fixed bin;
+       81 dcl  target_sp ptr;
+       82 dcl  tcode fixed bin (35);
+       83 dcl  txp ptr;
+       84 dcl  type fixed bin (2);
+       85 
+       86 /* Entries */
+       87 
+       88 dcl  define_area_ entry (ptr, fixed bin (35));
+       89 dcl  level$get entry returns (fixed bin);
+       90 dcl  makestack entry (fixed bin);
+       91 dcl  object_info_$brief entry (ptr, fixed bin (24), ptr, fixed bin (35));
+       92 dcl  sdw_util_$dissect entry (ptr, ptr);
+       93 dcl  segno_usage$increment_other_ring entry (fixed bin, fixed bin, fixed bin (35));
+       94 dcl  status_$mins entry (ptr, fixed bin (2), fixed bin (24), fixed bin (35));
+       95 dcl  terminate_proc entry (fixed bin (35));
+       96 
+       97 /* External */
+       98 
+       99 dcl  dseg$ (0:1) fixed bin (71) ext;
+      100 dcl  error_table_$bad_segment fixed bin (35) ext;
+      101 dcl  error_table_$badringno fixed bin (35) ext;
+      102 dcl  error_table_$invalidsegno fixed bin (35) ext;
+      103 dcl  error_table_$no_linkage fixed bin (35) ext;
+      104 dcl  error_table_$noalloc fixed bin (35) ext;
+      105 dcl  error_table_$nrmkst fixed bin (35) ext;
+      106 dcl  error_table_$termination_requested fixed bin (35) ext;
+      107 dcl  pds$clr_stack_size (0:7) fixed bin (18) ext;
+      108 dcl  pds$lot_stack_size (0:7) fixed bin (17) ext;
+      109 dcl  pds$max_lot_size (0:7) fixed bin (17) ext;
+      110 dcl  pds$stacks (0:7) ptr ext;
+      111 dcl  sys_info$max_seg_size ext fixed bin (19);
+      112 
+      113 /* Builtins */
+      114 
+      115 dcl  (addr, addrel, baseno, bin, bit, divide, max, mod, null, ptr, size, segno, string, substr, wordno) builtin;
+      116 
+      117 /* Conditions */
+      118 
+      119 dcl  area condition;
+      120 dcl  cleanup condition;
+      121 
+      122 /* Based */
+      123 
+      124 dcl  based_area area (100) based;
+      125 dcl  based_array (nwords) bit (36) aligned based;
+      126 dcl  based_ptr ptr based;
+      127 dcl  based_word fixed bin based;
+      128 dcl  linkage_section (oi.llng) bit (36) aligned based;
+      129 dcl  static_section (oi.ilng) bit (36) aligned based;
+      130 
+      131 /* EXECUTION OF LINK_MAN$OTHER_LINKAGE BEGINS HERE */
+      132 
+      133 	cl_sw = "0"b;
+      134 	acode = 0;
+      135 	txp = atxp;
+      136 	alp = null;
+      137 	astp = null;
+      138 	asymbp = null;
+      139 
+      140 	ring = level$get ();
+      141 
+      142 /* Now get the target ring of the linkage fault, i.e. the ring in which
+      143*   the snapped link will be relevant */
+      144 
+      145 /* The following  sequence of code (through the reference to sdw.r3) should be
+      146*   replaced by a call to fs_get$brackets when that entry becomes efficient */
+      147 
+      148 retry:
+      149 	code = txp -> based_word;			/* touch the segment to make SDW valid */
+      150 	call sdw_util_$dissect (addr (dseg$ (segno (txp))), addr (sdwi));
+      151 	if sdwi.faulted
+      152 	then					/* try again */
+      153 	     goto retry;
+      154 
+      155 	cl = sdwi.gate_entry_bound + 1;		/* get offset of linkage pointer in ring zero gates */
+      156 	rings (1) = bin (sdwi.r1, 3);			/* copy ring numbers */
+      157 	rings (2) = bin (sdwi.r2, 3);
+      158 	rings (3) = bin (sdwi.r3, 3);
+      159 
+      160 	if ring < rings (1)
+      161 	then target = rings (1);			/* calculate target ring ... */
+      162 	else if ring > rings (2)
+      163 	     then target = rings (2);
+      164 	     else target = ring;
+      165 
+      166 	if target = 0 then do;			/* snapping a link to hardcore gate */
+      167 	     alp = ptr (txp, cl + mod (cl, 2)) -> based_ptr;
+      168 						/* fetch linkage pointer from text */
+      169 	     return;				/* that's all for hardcore gates */
+      170 	     end;
+      171 
+      172 	target_sp = get_sp (target);
+      173 
+      174 	lp = null;
+      175 	call getlp (target_sp, txp, lp, stp);
+      176 	if lp ^= null then do;			/* yes, just return */
+      177 ret:
+      178 	     alp = lp;
+      179 	     astp = stp;
+      180 	     asymbp = lp -> header.symbol_ptr;
+      181 	     addr (alp) -> its_unsigned.ringno = target;	/* So we can link to gates */
+      182 	     return;
+      183 	     end;
+      184 cl_join:
+      185 	call status_$mins (txp, type, count, code);	/* get bit count for object info call */
+      186 	if code ^= 0 then goto error;
+      187 
+      188 	code = error_table_$bad_segment;
+      189 	oi.version_number = object_info_version_2;	/* set version number of structure */
+      190 	oi.symbp = null;				/* in case object_info_ doesn't fill it in */
+      191 	if count > 0 then call object_info_$brief (txp, count, addr (oi), code);
+      192 	if code = error_table_$bad_segment then do;	/* all format flags are turned off */
+      193 	     acode = error_table_$no_linkage;
+      194 	     return;
+      195 	     end;
+      196 	else if code ^= 0 then do;
+      197 error:
+      198 		acode = code;
+      199 		return;
+      200 		end;
+      201 
+      202 	tcode = 1;
+      203 
+      204 	if oi.linkp -> its.its_mod = "100011"b
+      205 	then lp, stp = oi.linkp;			/* .link segment; pre-initialized when created */
+      206 
+      207 	else do;
+      208 	     on area call terminate_proc (error_table_$noalloc);
+      209 	     allocate linkage_section in (target_sp -> stack_header.clr_ptr -> based_area) set (lp);
+      210 	     dummy = lp -> linkage_section (oi.llng);	/* avoid bounds fault during EIS copy */
+      211 	     lp -> linkage_section = oi.linkp -> linkage_section;
+      212 	     lp -> header.original_linkage_ptr = oi.linkp;
+      213 
+      214 	     if lp -> virgin_linkage_header.first_ref_relp
+      215 	     then lp -> virgin_linkage_header.first_ref_relp = "000000000001000000"b;
+      216 						/* replace offset with flag */
+      217 
+      218 	     if oi.separate_static then do;		/* must copy static separately */
+      219 		lp -> header.stats.static_length = bit (bin (oi.ilng, 18), 18);
+      220 		allocate static_section in (target_sp -> stack_header.combined_stat_ptr -> based_area) set (stp);
+      221 		dummy = stp -> static_section (oi.ilng);/* avoid bounds fault during EIS copy */
+      222 		stp -> static_section = oi.statp -> static_section;
+      223 		end;
+      224 	     else do;				/* combined static already copied */
+      225 		lp -> header.stats.static_length =
+      226 		     bit (bin (bin (lp -> header.stats.begin_links, 18) - size (header), 18), 18);
+      227 						/* static section is between header & first link */
+      228 		stp = lp;
+      229 		end;
+      230 	     lp -> header.stats.segment_number = baseno (txp);
+      231 	     lp -> header.symbol_ptr = oi.symbp;
+      232 	     end;
+      233 
+      234 	call setlp (txp, lp, stp, target);
+      235 	substr (lp -> its.pad2, 9, 1) = oi.perprocess_static;
+      236 						/* set flag in 1st word of def_ptr for run unit manager */
+      237 	if cl_sw then return;			/* no output arguments for this entry */
+      238 	goto ret;
+      239 
+      240 combine_linkage:
+      241      entry (atxp, aring, acode);
+      242 
+      243 /* This entry is available through hcs_ and is intended for the lot_fault handler */
+      244 
+      245 	cl_sw = "1"b;
+      246 	txp = atxp;
+      247 	target = aring;
+      248 	if target ^= level$get () then do;		/* caller must set level to correct ring */
+      249 	     acode = error_table_$badringno;
+      250 	     return;
+      251 	     end;
+      252 	target_sp = get_sp (target);
+      253 	acode = 0;
+      254 	lp = null;
+      255 
+      256 	goto cl_join;
+      257 
+      258 own_linkage:
+      259      entry (atxp, alp, astp, asymbp, acode);
+      260 
+      261 /* Entry to return information about a segment and its linkage which has
+      262*   been set up earlier in the process */
+      263 
+      264 	acode = 0;
+      265 	txp = atxp;
+      266 	alp, astp, asymbp = null;
+      267 
+      268 	ring = level$get ();
+      269 	sb = get_sp (ring);
+      270 	call getlp (sb, txp, lp, stp);
+      271 	if lp = null then do;
+      272 	     acode = error_table_$no_linkage;
+      273 	     return;
+      274 	     end;
+      275 	;
+      276 	alp = lp;
+      277 	astp = stp;
+      278 	asymbp = lp -> header.symbol_ptr;
+      279 	return;
+      280 
+      281 /* SET_LP
+      282*   "
+      283**/
+      284 
+      285 set_lp:
+      286      entry (atxp, alp);
+      287 
+      288 /* This entry is obsolete. It is used by the trap-before-link stuff, however, and must be supported.
+      289*   The callers of the entry must assume that no separate static will be allocated, hence, the
+      290*   static pointer passed to setlp is the same as the linkage pointer. */
+      291 
+      292 	ring = level$get ();
+      293 	call setlp (atxp, alp, alp, ring);
+      294 	return;
+      295 
+      296 /* GET_LP
+      297*   "
+      298**/
+      299 
+      300 get_lp:
+      301      entry (atxp, alp);				/* OBSOLETE */
+      302 
+      303 	ring = level$get ();			/* get caller's validation level */
+      304 	sb = get_sp (ring);
+      305 	call getlp (sb, atxp, alp, (null));
+      306 	return;
+      307 
+      308 /* ASSIGN_LINKAGE
+      309*   "
+      310**/
+      311 
+      312 assign_linkage:
+      313      entry (aamount, rp, rcode);
+      314 
+      315 dcl  aamount fixed bin (18);
+      316 dcl  rcode fixed bin (35);
+      317 dcl  rp ptr;
+      318 
+      319 	rcode = 0;
+      320 	rp = null;
+      321 
+      322 	on area go to a_l_error;
+      323 
+      324 	sb = get_sp ((level$get ()));
+      325 	nwords = aamount;
+      326 	allocate based_array in (sb -> stack_header.assign_linkage_ptr -> based_area) set (rp);
+      327 						/* must go in same seg as ipc static */
+      328 
+      329 	return;
+      330 
+      331 a_l_error:
+      332 	rcode = error_table_$noalloc;
+      333 	return;
+      334 
+      335 /* GET_INITIAL_LINKAGE
+      336*   "
+      337**/
+      338 
+      339 get_initial_linkage:
+      340      entry (aring);
+      341 
+      342 /* This entry is called only by makestack when a new ring is being created. The program makestack
+      343*   may have been called by link_man. */
+      344 
+      345 	sp = pds$stacks (aring);
+      346 	stack_end = wordno (sp -> stack_header.stack_end_ptr);
+      347 
+      348 /* allocate space for lot in stack */
+      349 
+      350 	nwords = pds$lot_stack_size (aring);
+      351 	if nwords = 0 then nwords = 512;		/* force 512 word lot in stack */
+      352 	lotp = sp;				/* unused part of lot overlays stack header */
+      353 	sp -> stack_header.cur_lot_size = nwords;
+      354 	stack_end = max (stack_end, nwords * 2);	/* the "2"  is for isot as well as lot */
+      355 	stack_end = divide (stack_end + 15, 16, 17, 0) * 16;
+      356 						/* round up */
+      357 
+      358 /* set up linkage section area */
+      359 
+      360 	if pds$clr_stack_size (aring) > 0 then do;	/* initial area is in stack */
+      361 	     ainfo.size = pds$clr_stack_size (aring);
+      362 	     ainfo.areap = ptr (sp, stack_end);
+      363 	     stack_end = stack_end + ainfo.size;	/* update length of stack */
+      364 	     stack_end = divide (stack_end + 15, 16, 17, 0) * 16;
+      365 						/* round up */
+      366 	     end;
+      367 	else do;					/* clr is to go into separate seg */
+      368 	     ainfo.size = sys_info$max_seg_size;
+      369 	     ainfo.areap = null;
+      370 	     end;
+      371 
+      372 	ainfo.version = area_info_version_1;
+      373 	string (ainfo.control) = "0"b;
+      374 	ainfo.control.extend = "1"b;
+      375 	ainfo.control.zero_on_free = "1"b;
+      376 	ainfo.control.system = "1"b;
+      377 	ainfo.owner = "linker";
+      378 	call define_area_ (addr (ainfo), code);
+      379 	if code ^= 0 then call terminate_proc (error_table_$termination_requested);
+      380 
+      381 	sp -> stack_header.max_lot_size = pds$max_lot_size (aring);
+      382 	sp -> stack_header.stack_end_ptr = ptr (sp, stack_end);
+      383 	sp -> stack_header.stack_begin_ptr = ptr (sp, stack_end);
+      384 	sp -> stack_header.lot_ptr = lotp;
+      385 	sp -> stack_header.isot_ptr = addrel (lotp, sp -> stack_header.cur_lot_size);
+      386 	sp -> stack_header.sct_ptr = addrel (lotp, sp -> stack_header.cur_lot_size);
+      387 	sp -> stack_header.system_free_ptr, sp -> stack_header.user_free_ptr, sp -> stack_header.assign_linkage_ptr,
+      388 	     sp -> stack_header.clr_ptr, sp -> stack_header.combined_stat_ptr = ainfo.areap;
+      389 	sp -> stack_header.heap_header_ptr = null;
+      390 	sp -> stack_header.sys_link_info_ptr = null;
+      391 	return;
+      392 
+      393 grow_lot:
+      394      entry (a_ring);
+      395 
+      396 /* This entry is for initiate to call if it needs to before setting a lot_fault */
+      397 
+      398 dcl  a_ring fixed bin (3);
+      399 
+      400 dcl  grow_lot_invalid_ring_ condition;
+      401 
+      402 	ring = a_ring;
+      403 	if ring ^= level$get () then signal grow_lot_invalid_ring_;
+      404 	call make_lot (ring);
+      405 	return;
+      406 
+      407 setlp:
+      408      proc (txp, lp, stp, ring);
+      409 
+      410 dcl  lp ptr;
+      411 dcl  ring fixed bin;
+      412 dcl  stp ptr;
+      413 dcl  txp ptr;
+      414 
+      415 dcl  segnum fixed bin;
+      416 dcl  shp ptr;
+      417 
+      418 	shp = get_sp (ring);
+      419 	segnum = segno (txp);
+      420 	if segnum >= shp -> stack_header.cur_lot_size then do;
+      421 	     if segnum > shp -> stack_header.max_lot_size then do;
+      422 		code = error_table_$invalidsegno;
+      423 		go to error;
+      424 		end;
+      425 	     call make_lot (ring);			/* new lot will be max lot size */
+      426 	     end;
+      427 
+      428 	call segno_usage$increment_other_ring (segnum, ring, code);
+      429 						/* setting linkage for segment in target ring is a good
+      430*						   reason to hold segment - prevents termination of lower ring gates */
+      431 
+      432 	shp -> stack_header.lot_ptr -> lot.lp (segnum) = lp;
+      433 	shp -> stack_header.isot_ptr -> isot.isp (segnum) = stp;
+      434 	if baseno (lp) = "0"b then return;		/* just zeroing slot */
+      435 
+      436 /* don't disturb flags in lower half of 2nd word in linkage header */
+      437 
+      438 	if lp -> its.its_mod = "100011"b
+      439 	then return;				/*  def ptr already set */
+      440 	else if lp -> its.its_mod = "0"b
+      441 	     then lp -> its_unsigned.segno = segno (txp); /* defs in text */
+      442 	     else do;				/* defs in linkage after links */
+      443 		lp -> its_unsigned.segno = segno (lp);
+      444 		lp -> its_unsigned.offset = lp -> its_unsigned.offset + wordno (lp);
+      445 		end;
+      446 	lp -> its.its_mod = "100011"b;		/* turn it into a pointer */
+      447 	return;
+      448 
+      449      end setlp;
+      450 
+      451 getlp:
+      452      proc (gsp, gtxp, glp, gstp);
+      453 
+      454 dcl  (glp, gsp, gstp, gtxp) ptr;
+      455 dcl  segnum fixed bin;
+      456 
+      457 	glp, gstp = null;				/* assume the worst */
+      458 	segnum = segno (gtxp);
+      459 	if segnum >= gsp -> stack_header.cur_lot_size then return;
+      460 						/* lot isn't that big in this ring */
+      461 	if baseno (gsp -> stack_header.lot_ptr -> lot.lp (segnum))
+      462 						/* non-zero lot entry? */
+      463 	then glp = gsp -> stack_header.lot_ptr -> lot.lp (segnum);
+      464 	else return;				/* no linkage for this segno */
+      465 
+      466 	if baseno (gsp -> stack_header.isot_ptr -> isot.isp (segnum)) ^= "0"b
+      467 	then gstp = gsp -> stack_header.isot_ptr -> isot.isp (segnum);
+      468 
+      469 	return;
+      470      end;
+      471 
+      472 make_lot:
+      473      proc (ring);
+      474 
+      475 dcl  ring fixed bin;
+      476 
+      477 dcl  lotp ptr;
+      478 dcl  newisotp ptr;
+      479 dcl  newlotp ptr;
+      480 dcl  save_max_lot_size fixed bin;
+      481 dcl  sp ptr;
+      482 
+      483 
+      484 /* This procedure is called to make a larger LOT than the initial lot given a process.
+      485*   It assumes the stack, lot, and clr are already there and makes a new lot
+      486*   by allocating one in the current linkage region.
+      487**/
+      488 
+      489 
+      490 	sp = pds$stacks (ring);
+      491 	lotp = sp -> stack_header.lot_ptr;
+      492 
+      493 	if sp -> stack_header.cur_lot_size >= sp -> stack_header.max_lot_size
+      494 	then call terminate_proc (error_table_$nrmkst);
+      495 
+      496 	nwords = 2 * sp -> stack_header.max_lot_size;
+      497 
+      498 /* Set stack_header.max_lot_size temporarily so that we won't be called
+      499*   recursively.  Otherwise, this could happen if a segment is
+      500*   created to satisfy the allocate								*/
+      501 
+      502 	save_max_lot_size = sp -> stack_header.max_lot_size;
+      503 	sp -> stack_header.max_lot_size = sp -> stack_header.cur_lot_size;
+      504 	on cleanup
+      505 	     begin;				/* in case of crawlout			*/
+      506 	     sp -> stack_header.max_lot_size = save_max_lot_size;
+      507 	end;
+      508 
+      509 	allocate based_array in (sp -> stack_header.clr_ptr -> based_area) set (newlotp);
+      510 
+      511 	sp -> stack_header.max_lot_size = save_max_lot_size;
+      512 	revert cleanup;
+      513 
+      514 	newisotp = addrel (newlotp, sp -> stack_header.max_lot_size);
+      515 	nwords = sp -> stack_header.cur_lot_size;
+      516 	newlotp -> based_array = lotp -> based_array;
+      517 	newisotp -> based_array = sp -> stack_header.isot_ptr -> based_array;
+      518 	sp -> stack_header.cur_lot_size = sp -> stack_header.max_lot_size;
+      519 
+      520 	sp -> stack_header.lot_ptr = newlotp;
+      521 	sp -> stack_header.isot_ptr = newisotp;
+      522 
+      523 	return;
+      524      end make_lot;
+      525 
+      526 get_sp:
+      527      proc (ring) returns (ptr);
+      528 
+      529 /* This procedure returns a pointer to the initial stack in a ring */
+      530 
+      531 dcl  ring fixed bin;
+      532 
+      533 	if pds$stacks (ring) = null then call makestack (ring);
+      534 
+      535 	return (pds$stacks (ring));
+      536 
+      537      end;
+      538 
+  1     1 /* BEGIN INCLUDE FILE area_info.incl.pl1  12/75 */
+  1     2 
+  1     3 dcl  area_info_version_1 fixed bin static init (1) options (constant);
+  1     4 
+  1     5 dcl  area_infop ptr;
+  1     6 
+  1     7 dcl 1 area_info aligned based (area_infop),
+  1     8     2 version fixed bin,				/* version number for this structure is 1 */
+  1     9     2 control aligned like area_control,		/* control bits for the area */
+  1    10     2 owner char (32) unal,				/* creator of the area */
+  1    11     2 n_components fixed bin,				/* number of components in the area (returned only) */
+  1    12     2 size fixed bin (18),				/* size of the area in words */
+  1    13     2 version_of_area fixed bin,			/* version of area (returned only) */
+  1    14     2 areap ptr,					/* pointer to the area (first component on multisegment area) */
+  1    15     2 allocated_blocks fixed bin,			/* number of blocks allocated */
+  1    16     2 free_blocks fixed bin,				/* number of free blocks not in virgin */
+  1    17     2 allocated_words fixed bin (30),			/* number of words allocated in the area */
+  1    18     2 free_words fixed bin (30);			/* number of words free in area not in virgin */
+  1    19 
+  1    20 dcl 1 area_control aligned based,
+  1    21     2 extend bit (1) unal,				/* says area is extensible */
+  1    22     2 zero_on_alloc bit (1) unal,			/* says block gets zerod at allocation time */
+  1    23     2 zero_on_free bit (1) unal,			/* says block gets zerod at free time */
+  1    24     2 dont_free bit (1) unal,			/* debugging aid, turns off free requests */
+  1    25     2 no_freeing bit (1) unal,			/* for allocation method without freeing */
+  1    26     2 system bit (1) unal,				/* says area is managed by system */
+  1    27     2 pad bit (30) unal;
+  1    28 
+  1    29 /* END INCLUDE FILE area_info.incl.pl1 */
+      539 
+  2     1 /* BEGIN INCLUDE FILE its.incl.pl1
+  2     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  2     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  2     4 
+  2     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  2     6     2 pad1 bit (3) unaligned,
+  2     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  2     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  2     9     2 pad2 bit (9) unaligned,
+  2    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  2    11 
+  2    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  2    13     2 pad3 bit (3) unaligned,
+  2    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  2    15     2 pad4 bit (3) unaligned,
+  2    16     2 mod bit (6) unaligned;				/* further modification */
+  2    17 
+  2    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  2    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  2    20     2 pad1 bit (27) unaligned,
+  2    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  2    22 
+  2    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  2    24     2 pad2 bit (3) unaligned,
+  2    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  2    26     2 pad3 bit (3) unaligned,
+  2    27     2 mod bit (6) unaligned;				/* further modification */
+  2    28 
+  2    29 
+  2    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  2    31     2 pad1 bit (3) unaligned,
+  2    32     2 segno fixed bin (15) unsigned unaligned,
+  2    33     2 ringno fixed bin (3) unsigned unaligned,
+  2    34     2 pad2 bit (9) unaligned,
+  2    35     2 its_mod bit (6) unaligned,
+  2    36 
+  2    37     2 offset fixed bin (18) unsigned unaligned,
+  2    38     2 pad3 bit (3) unaligned,
+  2    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    40     2 pad4 bit (3) unaligned,
+  2    41     2 mod bit (6) unaligned;
+  2    42 
+  2    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  2    44     2 pr_no fixed bin (3) unsigned unaligned,
+  2    45     2 pad1 bit (27) unaligned,
+  2    46     2 itp_mod bit (6) unaligned,
+  2    47 
+  2    48     2 offset fixed bin (18) unsigned unaligned,
+  2    49     2 pad2 bit (3) unaligned,
+  2    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    51     2 pad3 bit (3) unaligned,
+  2    52     2 mod bit (6) unaligned;
+  2    53 
+  2    54 
+  2    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  2    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  2    57 
+  2    58 /* END INCLUDE FILE   its.incl.pl1 */
+      540 
+  3     1 /* BEGIN INCLUDE FILE linkdcl.incl.pl1 --- last modified 15 Nov 1971 by C Garman */
+  3     2 
+  3     3 /* Last Modified (Date and Reason):
+  3     4*   6/75 by M.Weaver to add virgin_linkage_header declaration
+  3     5*   6/75 by S.Webber to comment existing structures better
+  3     6*   9/77 by M. Weaver to add run_depth to link
+  3     7*   2/83 by M. Weaver to add linkage header flags and change run_depth precision
+  3     8**/
+  3     9 
+  3    10 /* format: style3 */
+  3    11 dcl	1 link		based aligned,		/* link pair in linkage section */
+  3    12 	  2 head_ptr	bit (18) unal,		/* rel pointer to beginning of linkage section */
+  3    13 	  2 ringno	bit (3) unal,
+  3    14 	  2 mbz		bit (6) unal,
+  3    15 	  2 run_depth	fixed bin (2) unal,		/* run unit depth, filled when link is snapped */
+  3    16 	  2 ft2		bit (6) unal,		/* fault tag. 46(8) if not snapped, 43(8) if snapped */
+  3    17 	  2 exp_ptr	bit (18) unal,		/* pointer (rel to defs) of expression word */
+  3    18 	  2 mbz2		bit (12) unal,
+  3    19 	  2 modifier	bit (6) unal;		/* modifier to be left in snapped link */
+  3    20 
+  3    21 dcl	1 exp_word	based aligned,		/* expression word in link definition */
+  3    22 	  2 type_ptr	bit (18) unal,		/* pointer (rel to defs) of type pair structure */
+  3    23 	  2 exp		bit (18) unal;		/* constant expression to be added in when snapping link */
+  3    24 
+  3    25 dcl	1 type_pair	based aligned,		/* type pair in link definition */
+  3    26 	  2 type		bit (18) unal,		/* type of link. may be 1,2,3,4,5, or 6 */
+  3    27 	  2 trap_ptr	bit (18) unal,		/* pointer (rel to defs) to the trap word */
+  3    28 	  2 seg_ptr	bit (18) unal,		/* pointer to ACC reference name for segment referenced */
+  3    29 	  2 ext_ptr	bit (18) unal;		/* pointer (rel to defs)  of ACC segdef name */
+  3    30 
+  3    31 dcl	1 header		based aligned,		/* linkage block header */
+  3    32 	  2 def_ptr	ptr,			/* pointer to definition section */
+  3    33 	  2 symbol_ptr	ptr unal,			/* pointer to symbol section in object segment */
+  3    34 	  2 original_linkage_ptr
+  3    35 			ptr unal,			/* pointer to linkage section in object segment */
+  3    36 	  2 unused	bit (72),
+  3    37 	  2 stats,
+  3    38 	    3 begin_links	bit (18) unal,		/* offset (rel to this section) of first link */
+  3    39 	    3 block_length	bit (18) unal,		/* number of words in this linkage section */
+  3    40 	    3 segment_number
+  3    41 			bit (18) unal,		/* text segment number associated with this section */
+  3    42 	    3 static_length bit (18) unal;		/* number of words of static for this segment */
+  3    43 
+  3    44 dcl	1 linkage_header_flags
+  3    45 			aligned based,		/* overlay of def_ptr for flags */
+  3    46 	  2 pad1		bit (28) unaligned,		/* flags are in first word */
+  3    47 	  2 static_vlas	bit (1) unaligned,		/* static section "owns" some LA/VLA segments */
+  3    48 	  2 perprocess_static
+  3    49 			bit (1) unaligned,		/* 1 copy of static section is used by all tasks/run units */
+  3    50 	  2 pad2		bit (6) unaligned;
+  3    51 
+  3    52 dcl	1 virgin_linkage_header
+  3    53 			aligned based,		/* template for linkage header in object segment */
+  3    54 	  2 pad		bit (30) unaligned,		/* is filled in by linker */
+  3    55 	  2 defs_in_link	bit (6) unaligned,		/* =o20 if defs in linkage (nonstandard) */
+  3    56 	  2 def_offset	bit (18) unaligned,		/* offset of definition section */
+  3    57 	  2 first_ref_relp	bit (18) unaligned,		/* offset of trap-at-first-reference offset array */
+  3    58 	  2 filled_in_later bit (144),
+  3    59 	  2 link_begin	bit (18) unaligned,		/* offset of first link */
+  3    60 	  2 linkage_section_lng
+  3    61 			bit (18) unaligned,		/* length of linkage section */
+  3    62 	  2 segno_pad	bit (18) unaligned,		/* will be segment number of copied linkage */
+  3    63 	  2 static_length	bit (18) unaligned;		/* length of static section */
+  3    64 
+  3    65 
+  3    66 dcl	1 trap_word	based aligned,		/* trap word in link definition */
+  3    67 	  2 call_ptr	bit (18) unal,		/* pointer (rel to link) of link to trap procedure */
+  3    68 	  2 arg_ptr	bit (18) unal;		/* pointer (rel to link) of link to arg info for trap proc */
+  3    69 
+  3    70 dcl	1 name		based aligned,		/* storage of ASCII names in definitions */
+  3    71 	  2 nchars	bit (9) unaligned,		/* number of characters in name */
+  3    72 	  2 char_string	char (31) unaligned;	/* 31-character name */
+  3    73 
+  3    74 /* END INCLUDE FILE linkdcl.incl.pl1 */
+      541 
+  4     1 /* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  4     2 /* modified by M. Weaver 3/77 */
+  4     3 
+  4     4 dcl  lotp ptr;
+  4     5 
+  4     6 dcl 1 lot based (lotp) aligned,
+  4     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  4     8 
+  4     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  4    10 						/* lot fault has fault code = 0 and offset = 0 */
+  4    11 
+  4    12 dcl  isotp ptr;
+  4    13 dcl 1 isot based (isotp) aligned,
+  4    14     2 isp (0:9999) ptr unaligned;
+  4    15 
+  4    16 dcl 1 isot1 (0 :9999) aligned based,
+  4    17     2 flags unaligned,
+  4    18       3 fault bit (2) unaligned,
+  4    19       3 system bit (1) unaligned,
+  4    20       3 mbz bit (6) unaligned,
+  4    21     2 fault_code fixed bin (8) unaligned,
+  4    22     2 static_offset bit (18) unaligned;
+  4    23 
+  4    24 
+  4    25 /* END INCLUDE FILE  lot.incl.pl1 */
+      542 
+  5     1 /* BEGIN INCLUDE FILE ... object_info.incl.pl1
+  5     2*coded February 8, 1972 by Michael J. Spier	*/
+  5     3 /* modified May 26, 1972 by M. Weaver */
+  5     4 /* modified 15 April, 1975 by M. Weaver */
+  5     5 
+  5     6 declare	1 object_info aligned based,		/* structure containing object info based, returned by object_info_ */
+  5     7 	2 version_number fixed bin,		/* version number of current structure format (=2) */
+  5     8 	2 textp pointer,			/* pointer to beginning of text section */
+  5     9 	2 defp pointer,			/* pointer to beginning of definition section */
+  5    10 	2 linkp pointer,			/* pointer to beginning of linkage section */
+  5    11 	2 statp pointer,			/* pointer to beginning of static section */
+  5    12 	2 symbp pointer,			/* pointer to beginning of symbol section */
+  5    13 	2 bmapp pointer,			/* pointer to beginning of break map (may be null) */
+  5    14 	2 tlng fixed bin,			/* length in words of text section */
+  5    15 	2 dlng fixed bin,			/* length in words of definition section */
+  5    16 	2 llng fixed bin,			/* length in words of linkage section */
+  5    17 	2 ilng fixed bin,			/* length in words of static section */
+  5    18 	2 slng fixed bin,			/* length in words of symbol section */
+  5    19 	2 blng fixed bin,			/* length in words of break map */
+  5    20 	2 format,				/* word containing bit flags about object type */
+  5    21 	  3 old_format bit(1) unaligned,	/* on if segment isn't in new format, i.e. has old style object map */
+  5    22 	  3 bound bit(1) unaligned,		/* on if segment is bound */
+  5    23 	  3 relocatable bit(1) unaligned,	/* on if seg has relocation info in its first symbol block */
+  5    24 	  3 procedure bit(1) unaligned,	/* on if segment is an executable object program */
+  5    25 	  3 standard bit(1) unaligned,	/* on if seg is in standard format (more than just standard map) */
+  5    26 	  3 gate bit(1) unaligned,		/* on if segment is a gate */
+  5    27 	  3 separate_static bit(1) unaligned,	/* on if static not in linkage */
+  5    28 	  3 links_in_text bit(1) unaligned,	/* on if there are threaded links in text */
+  5    29 	  3 perprocess_static bit (1) unaligned, /* on if static is not to be per run unit */
+  5    30 	  3 pad bit(27) unaligned,
+  5    31 	2 entry_bound fixed bin,		/* entry bound if segment is a gate */
+  5    32 	2 textlinkp pointer,		/* ptr to first link in text */
+  5    33 
+  5    34 	/* LIMIT OF BRIEF STRUCTURE */
+  5    35 
+  5    36 	2 compiler char(8) aligned,		/* name of processor which generated segment */
+  5    37 	2 compile_time fixed bin(71),		/* clock reading of date/time object was generated */
+  5    38 	2 userid char(32) aligned,		/* standard Multics id of creator of object segment */
+  5    39 	2 cvers aligned,			/* generator version name in printable char string form */
+  5    40 	  3 offset bit(18) unaligned,		/* offset of name in words relative to base of symbol section */
+  5    41 	  3 length bit(18) unaligned,		/* length of name in characters */
+  5    42 	2 comment aligned,			/* printable comment concerning generator or generation of segment */
+  5    43 	  3 offset bit(18) unaligned,		/* offset of comment in words relative to base of symbol section */
+  5    44 	  3 length bit(18) unaligned,		/* length of comment in characters */
+  5    45 	2 source_map fixed bin,		/* offset, relative to base of symbol section, of source map structure */
+  5    46 
+  5    47 	/* LIMIT OF DISPLAY STRUCTURE */
+  5    48 
+  5    49 	2 rel_text pointer,			/* pointer to text section relocation info */
+  5    50 	2 rel_def pointer,			/* pointer to definition section relocation info */
+  5    51 	2 rel_link pointer,			/* pointer to linkage section relocation info */
+  5    52 	2 rel_static pointer,		/* pointer to static section relocation info */
+  5    53 	2 rel_symbol pointer,		/* pointer to symbol section relocation info */
+  5    54 	2 text_boundary fixed bin,		/* specifies mod  of text section base boundary */
+  5    55 	2 static_boundary fixed bin,		/* specifies mod of internal static base boundary */
+  5    56 					/* currently not used by system */
+  5    57 	2 default_truncate fixed bin,		/* offset rel to symbp for binder to automatically trunc. symb sect. */
+  5    58 	2 optional_truncate fixed bin;	/* offset rel to symbp for binder to optionally trunc. symb sect. */
+  5    59 
+  5    60 declare	object_info_version_2 fixed bin int static init(2);
+  5    61 
+  5    62 /* END INCLUDE FILE ... object_info.incl.pl1 */
+      543 
+  6     1 /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  6     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  6     3 
+  6     4 dcl  sdw_info_ptr pointer;
+  6     5 
+  6     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  6     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  6     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  6     9 
+  6    10     2 access unaligned,				/* REWP */
+  6    11       3 read bit (1) unaligned,
+  6    12       3 execute bit (1) unaligned,
+  6    13       3 write bit (1) unaligned,
+  6    14       3 privileged bit (1) unaligned,
+  6    15 
+  6    16     2 pad1 bit (32) unaligned,
+  6    17 
+  6    18     2 rings unaligned,				/* Ring brackets */
+  6    19       3 r1 bit (3) unaligned,
+  6    20       3 r2 bit (3) unaligned,
+  6    21       3 r3 bit (3) unaligned,
+  6    22 
+  6    23     2 pad2 bit (27) unaligned,
+  6    24 
+  6    25     2 flags aligned,
+  6    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  6    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  6    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  6    29       3 pad3 bit (33) unaligned,
+  6    30 
+  6    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  6    32 
+  6    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      544 
+  7     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  7     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  7     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  7     4 /*	Modified April 1983 by C. Hornig for tasking */
+  7     5 
+  7     6 /****^  HISTORY COMMENTS:
+  7     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  7     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  7     9*     added the heap_header_ptr definition.
+  7    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  7    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  7    12*     Modified to support control point management.  These changes were actually
+  7    13*     made in February 1985 by G. Palter.
+  7    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  7    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  7    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  7    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  7    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  7    19*     (ITS pair).
+  7    20*                                                   END HISTORY COMMENTS */
+  7    21 
+  7    22 /* format: style2 */
+  7    23 
+  7    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  7    25 
+  7    26      dcl	   1 stack_header	      based (sb) aligned,
+  7    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  7    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  7    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  7    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  7    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  7    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  7    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  7    34 	     2 pad4	      bit (2) unal,
+  7    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  7    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  7    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  7    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  7    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  7    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  7    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  7    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  7    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  7    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  7    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  7    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  7    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  7    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  7    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  7    50 	     2 return_no_pop_op_ptr
+  7    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  7    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  7    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  7    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  7    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  7    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  7    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  7    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  7    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  7    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  7    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  7    62 	     2 trace,
+  7    63 	       3 frames,
+  7    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  7    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  7    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  7    67 	     2 pad2	      bit (36),		/*  (61) */
+  7    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  7    69 
+  7    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  7    71 
+  7    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  7    73 						/* (551) octal */
+  7    74 
+  7    75 
+  7    76 /*	The following constants are offsets within this transfer vector table.  */
+  7    77 
+  7    78      dcl	   (
+  7    79 	   call_offset	      fixed bin init (271),
+  7    80 	   push_offset	      fixed bin init (272),
+  7    81 	   return_offset	      fixed bin init (273),
+  7    82 	   return_no_pop_offset   fixed bin init (274),
+  7    83 	   entry_offset	      fixed bin init (275)
+  7    84 	   )		      internal static;
+  7    85 
+  7    86 
+  7    87 
+  7    88 
+  7    89 
+  7    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  7    91*	move the whole stack header should use this overlay.
+  7    92**/
+  7    93 
+  7    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  7    95 
+  7    96 
+  7    97 
+  7    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      545 
+      546      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  link_man.pl1                      >spec>install>1110>link_man.pl1
+539          1    06/11/76  1043.4  area_info.incl.pl1                >ldd>include>area_info.incl.pl1
+540          2    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+541          3    07/27/83  0910.0  linkdcl.incl.pl1                  >ldd>include>linkdcl.incl.pl1
+542          4    08/05/77  1022.4  lot.incl.pl1                      >ldd>include>lot.incl.pl1
+543          5    08/05/77  1022.5  object_info.incl.pl1              >ldd>include>object_info.incl.pl1
+544          6    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+545          7    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_ring                                 parameter       fixed bin(3,0)           dcl 398 ref 393 402
+aamount                                parameter       fixed bin(18,0)          dcl 315 ref 312 325
+acode                                  parameter       fixed bin(35,0)          dcl 56 set ref 25 134* 193* 197* 240 249* 253* 258
+                                                                                  264* 272*
+addr                                                   builtin function         dcl 115 ref 150 150 150 150 181 191 191 378 378
+addrel                                                 builtin function         dcl 115 ref 385 386 514
+ainfo                           000100 automatic       structure                level 1 dcl 65 set ref 378 378
+alp                                    parameter       pointer                  dcl 57 set ref 25 136* 167* 177* 181 258 266* 276*
+                                                                                  285 293* 293* 300 305*
+area                            000256 stack reference condition                dcl 119 ref 208 322
+area_control                           based           structure                level 1 dcl 1-20
+area_info                              based           structure                level 1 dcl 1-7
+area_info_version_1                    constant        fixed bin(17,0)          initial dcl 1-3 ref 372
+areap                    16     000100 automatic       pointer                  level 2 dcl 65 set ref 362* 369* 387
+aring                                  parameter       fixed bin(17,0)          dcl 58 ref 240 247 339 345 350 360 361 381
+assign_linkage_ptr       66            based           pointer                  level 2 dcl 7-26 set ref 326 387*
+astp                                   parameter       pointer                  dcl 59 set ref 25 137* 179* 258 266* 277*
+asymbp                                 parameter       pointer                  dcl 60 set ref 25 138* 180* 258 266* 278*
+atxp                                   parameter       pointer                  dcl 61 set ref 25 135 240 246 258 265 285 293* 300
+                                                                                  305*
+based_area                             based           area(100)                dcl 124 ref 209 220 326 509
+based_array                            based           bit(36)                  array dcl 125 set ref 326 509 516* 516 517* 517
+based_ptr                              based           pointer                  dcl 126 ref 167
+based_word                             based           fixed bin(17,0)          dcl 127 ref 148
+baseno                                                 builtin function         dcl 115 ref 230 434 461 466
+begin_links               6            based           bit(18)                  level 3 packed packed unaligned dcl 3-31 ref 225
+bin                                                    builtin function         dcl 115 ref 156 157 158 219 225 225
+bit                                                    builtin function         dcl 115 ref 219 225
+cl                              000124 automatic       fixed bin(14,0)          dcl 66 set ref 155* 167 167
+cl_sw                           000125 automatic       bit(1)                   dcl 67 set ref 133* 237 245*
+cleanup                         000000 stack reference condition                dcl 120 ref 504 512
+clr_ptr                  10            based           pointer                  level 2 dcl 7-26 set ref 209 387* 509
+code                            000126 automatic       fixed bin(35,0)          dcl 68 set ref 148* 184* 186 188* 191* 192 196 197
+                                                                                  378* 379 422* 428*
+combined_stat_ptr         6            based           pointer                  level 2 dcl 7-26 set ref 220 387*
+control                   1     000100 automatic       structure                level 2 dcl 65 set ref 373*
+count                           000127 automatic       fixed bin(24,0)          dcl 69 set ref 184* 191 191*
+cur_lot_size             13            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 7-26 set ref
+                                                                                  353* 385 386 420 459 493 503 515 518*
+define_area_                    000010 constant        entry                    external dcl 88 ref 378
+divide                                                 builtin function         dcl 115 ref 355 364
+dseg$                           000030 external static fixed bin(71,0)          array dcl 99 set ref 150 150
+dummy                           000130 automatic       bit(36)                  dcl 70 set ref 210* 221*
+error_table_$bad_segment        000032 external static fixed bin(35,0)          dcl 100 ref 188 192
+error_table_$badringno          000034 external static fixed bin(35,0)          dcl 101 ref 249
+error_table_$invalidsegno       000036 external static fixed bin(35,0)          dcl 102 ref 422
+error_table_$no_linkage         000040 external static fixed bin(35,0)          dcl 103 ref 193 272
+error_table_$noalloc            000042 external static fixed bin(35,0)          dcl 104 set ref 208* 331
+error_table_$nrmkst             000044 external static fixed bin(35,0)          dcl 105 set ref 493*
+error_table_$termination_requested
+                                000046 external static fixed bin(35,0)          dcl 106 set ref 379*
+extend                    1     000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 65 set ref 374*
+faulted                   4(01) 000230 automatic       bit(1)                   level 3 packed packed unaligned dcl 76 set ref 151
+first_ref_relp            1(18)        based           bit(18)                  level 2 packed packed unaligned dcl 3-52 set ref 214
+                                                                                  214*
+flags                     4     000230 automatic       structure                level 2 dcl 76
+format                   24     000136 automatic       structure                level 2 packed packed unaligned dcl 73
+gate_entry_bound          5     000230 automatic       fixed bin(14,0)          level 2 dcl 76 set ref 155
+glp                                    parameter       pointer                  dcl 454 set ref 451 457* 461*
+grow_lot_invalid_ring_          000264 stack reference condition                dcl 400 ref 403
+gsp                                    parameter       pointer                  dcl 454 ref 451 459 461 461 466 466
+gstp                                   parameter       pointer                  dcl 454 set ref 451 457* 466*
+gtxp                                   parameter       pointer                  dcl 454 ref 451 458
+header                                 based           structure                level 1 dcl 3-31 set ref 225
+heap_header_ptr          70            based           pointer                  level 2 dcl 7-26 set ref 389*
+ilng                     21     000136 automatic       fixed bin(17,0)          level 2 dcl 73 set ref 219 220 221 222
+isot                                   based           structure                level 1 dcl 4-13
+isot_ptr                 52            based           pointer                  level 2 dcl 7-26 set ref 385* 433 466 466 517 521*
+isp                                    based           pointer                  array level 2 packed packed unaligned dcl 4-13 set
+                                                                                  ref 433* 466 466
+its                                    based           structure                level 1 dcl 2-5
+its_mod                   0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 2-5 set ref 204
+                                                                                  438 440 446*
+its_unsigned                           based           structure                level 1 dcl 2-30
+level$get                       000012 constant        entry                    external dcl 89 ref 140 248 268 292 303 324 403
+linkage_section                        based           bit(36)                  array dcl 128 set ref 209 210 211* 211
+linkp                     6     000136 automatic       pointer                  level 2 dcl 73 set ref 204 204 211 212
+llng                     20     000136 automatic       fixed bin(17,0)          level 2 dcl 73 set ref 209 210 211
+lot                                    based           structure                level 1 dcl 4-6
+lot_ptr                  26            based           pointer                  level 2 dcl 7-26 set ref 384* 432 461 461 491 520*
+lotp                            000272 automatic       pointer                  dcl 4-4 in procedure "link_man$other_linkage" set
+                                                                                  ref 352* 384 385 386
+lotp                            000100 automatic       pointer                  dcl 477 in procedure "make_lot" set ref 491* 516
+lp                                     parameter       pointer                  dcl 410 in procedure "setlp" ref 407 432 434 438 440
+                                                                                  440 443 443 444 444 444 446
+lp                                     based           pointer                  array level 2 in structure "lot" packed packed
+                                                                                  unaligned dcl 4-6 in procedure
+                                                                                  "link_man$other_linkage" set ref 432* 461 461
+lp                              000132 automatic       pointer                  dcl 71 in procedure "link_man$other_linkage" set ref
+                                                                                  174* 175* 176 177 180 204* 209* 210 211 212 214
+                                                                                  214 219 225 225 228 230 231 234* 235 254* 270* 271
+                                                                                  276 278
+makestack                       000014 constant        entry                    external dcl 90 ref 533
+max                                                    builtin function         dcl 115 ref 354
+max_lot_size             12            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 7-26 set ref
+                                                                                  381* 421 493 496 502 503* 506* 511* 514 518
+mod                                                    builtin function         dcl 115 ref 167
+newisotp                        000102 automatic       pointer                  dcl 478 set ref 514* 517 521
+newlotp                         000104 automatic       pointer                  dcl 479 set ref 509* 514 516 520
+null                                                   builtin function         dcl 115 ref 136 137 138 174 176 190 254 266 271 305
+                                                                                  320 369 389 390 457 533
+nwords                          000134 automatic       fixed bin(18,0)          dcl 72 set ref 325* 326 350* 351 351* 353 354 496*
+                                                                                  509 515* 516 517
+object_info                            based           structure                level 1 dcl 5-6
+object_info_$brief              000016 constant        entry                    external dcl 91 ref 191
+object_info_version_2                  constant        fixed bin(17,0)          initial dcl 5-60 ref 189
+offset                    1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 2-30
+                                                                                  set ref 444* 444
+oi                              000136 automatic       structure                level 1 unaligned dcl 73 set ref 191 191
+original_linkage_ptr      3            based           pointer                  level 2 packed packed unaligned dcl 3-31 set ref
+                                                                                  212*
+owner                     2     000100 automatic       char(32)                 level 2 packed packed unaligned dcl 65 set ref 377*
+pad2                      0(21)        based           bit(9)                   level 2 packed packed unaligned dcl 2-5 set ref 235*
+pds$clr_stack_size              000050 external static fixed bin(18,0)          array dcl 107 ref 360 361
+pds$lot_stack_size              000052 external static fixed bin(17,0)          array dcl 108 ref 350
+pds$max_lot_size                000054 external static fixed bin(17,0)          array dcl 109 ref 381
+pds$stacks                      000056 external static pointer                  array dcl 110 ref 345 490 533 535
+perprocess_static        24(08) 000136 automatic       bit(1)                   level 3 packed packed unaligned dcl 73 set ref 235
+ptr                                                    builtin function         dcl 115 ref 167 362 382 383
+r1                        3     000230 automatic       bit(3)                   level 3 packed packed unaligned dcl 76 set ref 156
+r2                        3(03) 000230 automatic       bit(3)                   level 3 packed packed unaligned dcl 76 set ref 157
+r3                        3(06) 000230 automatic       bit(3)                   level 3 packed packed unaligned dcl 76 set ref 158
+rcode                                  parameter       fixed bin(35,0)          dcl 316 set ref 312 319* 331*
+ring                            000224 automatic       fixed bin(17,0)          dcl 74 in procedure "link_man$other_linkage" set ref
+                                                                                  140* 160 162 164 268* 269* 292* 293* 303* 304*
+                                                                                  402* 403 404*
+ring                                   parameter       fixed bin(17,0)          dcl 475 in procedure "make_lot" ref 472 490
+ring                                   parameter       fixed bin(17,0)          dcl 531 in procedure "get_sp" set ref 526 533 533*
+                                                                                  535
+ring                                   parameter       fixed bin(17,0)          dcl 411 in procedure "setlp" set ref 407 418* 425*
+                                                                                  428*
+ringno                    0(18)        based           fixed bin(3,0)           level 2 packed packed unsigned unaligned dcl 2-30
+                                                                                  set ref 181*
+rings                           000225 automatic       fixed bin(17,0)          array dcl 75 in procedure "link_man$other_linkage"
+                                                                                  set ref 156* 157* 158* 160 160 162 162
+rings                     3     000230 automatic       structure                level 2 in structure "sdwi" packed packed unaligned
+                                                                                  dcl 76 in procedure "link_man$other_linkage"
+rp                                     parameter       pointer                  dcl 317 set ref 312 320* 326*
+save_max_lot_size               000106 automatic       fixed bin(17,0)          dcl 480 set ref 502* 506 511
+sb                              000274 automatic       pointer                  dcl 7-24 set ref 269* 270* 304* 305* 324* 326
+sct_ptr                  54            based           pointer                  level 2 dcl 7-26 set ref 386*
+sdw_info                               based           structure                level 1 dcl 6-6
+sdw_util_$dissect               000020 constant        entry                    external dcl 92 ref 150
+sdwi                            000230 automatic       structure                level 1 dcl 76 set ref 150 150
+segment_number            7            based           bit(18)                  level 3 packed packed unaligned dcl 3-31 set ref
+                                                                                  230*
+segno                                                  builtin function         dcl 115 in procedure "link_man$other_linkage" ref
+                                                                                  150 150 419 440 443 458
+segno                     0(03)        based           fixed bin(15,0)          level 2 in structure "its_unsigned" packed packed
+                                                                                  unsigned unaligned dcl 2-30 in procedure
+                                                                                  "link_man$other_linkage" set ref 440* 443*
+segno_usage$increment_other_ring
+                                000022 constant        entry                    external dcl 93 ref 428
+segnum                          000310 automatic       fixed bin(17,0)          dcl 415 in procedure "setlp" set ref 419* 420 421
+                                                                                  428* 432 433
+segnum                          000322 automatic       fixed bin(17,0)          dcl 455 in procedure "getlp" set ref 458* 459 461
+                                                                                  461 466 466
+separate_static          24(06) 000136 automatic       bit(1)                   level 3 packed packed unaligned dcl 73 set ref 218
+shp                             000312 automatic       pointer                  dcl 416 set ref 418* 420 421 432 433
+size                                                   builtin function         dcl 115 in procedure "link_man$other_linkage" ref
+                                                                                  225
+size                     13     000100 automatic       fixed bin(18,0)          level 2 in structure "ainfo" dcl 65 in procedure
+                                                                                  "link_man$other_linkage" set ref 361* 363 368*
+sp                              000236 automatic       pointer                  dcl 77 in procedure "link_man$other_linkage" set ref
+                                                                                  345* 346 352 353 362 381 382 382 383 383 384 385
+                                                                                  385 386 386 387 387 387 387 387 389 390
+sp                              000110 automatic       pointer                  dcl 481 in procedure "make_lot" set ref 490* 491 493
+                                                                                  493 496 502 503 503 506 509 511 514 515 517 518
+                                                                                  518 520 521
+stack_begin_ptr          22            based           pointer                  level 2 dcl 7-26 set ref 383*
+stack_end                       000240 automatic       fixed bin(18,0)          dcl 78 set ref 346* 354* 354 355* 355 362 363* 363
+                                                                                  364* 364 382 383
+stack_end_ptr            24            based           pointer                  level 2 dcl 7-26 set ref 346 382*
+stack_header                           based           structure                level 1 dcl 7-26
+static_length             7(18)        based           bit(18)                  level 3 packed packed unaligned dcl 3-31 set ref
+                                                                                  219* 225*
+static_section                         based           bit(36)                  array dcl 129 set ref 220 221 222* 222
+statp                    10     000136 automatic       pointer                  level 2 dcl 73 set ref 222
+stats                     6            based           structure                level 2 dcl 3-31
+status_$mins                    000024 constant        entry                    external dcl 94 ref 184
+stp                                    parameter       pointer                  dcl 412 in procedure "setlp" ref 407 433
+stp                             000242 automatic       pointer                  dcl 79 in procedure "link_man$other_linkage" set ref
+                                                                                  175* 179 204* 220* 221 222 228* 234* 270* 277
+string                                                 builtin function         dcl 115 set ref 373*
+substr                                                 builtin function         dcl 115 set ref 235*
+symbol_ptr                2            based           pointer                  level 2 packed packed unaligned dcl 3-31 set ref 180
+                                                                                  231* 278
+symbp                    12     000136 automatic       pointer                  level 2 dcl 73 set ref 190* 231
+sys_info$max_seg_size           000060 external static fixed bin(19,0)          dcl 111 ref 368
+sys_link_info_ptr        60            based           pointer                  level 2 dcl 7-26 set ref 390*
+system                    1(05) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 65 set ref 376*
+system_free_ptr          14            based           pointer                  level 2 dcl 7-26 set ref 387*
+target                          000244 automatic       fixed bin(17,0)          dcl 80 set ref 160* 162* 164* 166 172* 181 234* 247*
+                                                                                  248 252*
+target_sp                       000246 automatic       pointer                  dcl 81 set ref 172* 175* 209 220 252*
+tcode                           000250 automatic       fixed bin(35,0)          dcl 82 set ref 202*
+terminate_proc                  000026 constant        entry                    external dcl 95 ref 208 379 493
+txp                                    parameter       pointer                  dcl 413 in procedure "setlp" ref 407 419 440
+txp                             000252 automatic       pointer                  dcl 83 in procedure "link_man$other_linkage" set ref
+                                                                                  135* 148 150 150 167 175* 184* 191* 230 234* 246*
+                                                                                  265* 270*
+type                            000254 automatic       fixed bin(2,0)           dcl 84 set ref 184*
+user_free_ptr            16            based           pointer                  level 2 dcl 7-26 set ref 387*
+version                         000100 automatic       fixed bin(17,0)          level 2 dcl 65 set ref 372*
+version_number                  000136 automatic       fixed bin(17,0)          level 2 dcl 73 set ref 189*
+virgin_linkage_header                  based           structure                level 1 dcl 3-52
+wordno                                                 builtin function         dcl 115 ref 346 444
+zero_on_free              1(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 65 set ref 375*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-56
+ITS_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-55
+area_infop                             automatic       pointer                  dcl 1-5
+call_offset                            internal static fixed bin(17,0)          initial dcl 7-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 7-78
+exp_word                               based           structure                level 1 dcl 3-21
+isot1                                  based           structure                array level 1 dcl 4-16
+isotp                                  automatic       pointer                  dcl 4-12
+itp                                    based           structure                level 1 dcl 2-18
+itp_unsigned                           based           structure                level 1 dcl 2-43
+link                                   based           structure                level 1 dcl 3-11
+linkage_header_flags                   based           structure                level 1 dcl 3-44
+lot_fault                              internal static bit(36)                  initial dcl 4-9
+name                                   based           structure                level 1 dcl 3-70
+push_offset                            internal static fixed bin(17,0)          initial dcl 7-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 7-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 7-78
+sdw_info_ptr                           automatic       pointer                  dcl 6-4
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 7-94
+trap_word                              based           structure                level 1 dcl 3-66
+tv_offset                              internal static fixed bin(17,0)          initial dcl 7-72
+type_pair                              based           structure                level 1 dcl 3-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+a_l_error                       000735 constant        label                    dcl 331 ref 322
+assign_linkage                  000661 constant        entry                    external dcl 312
+cl_join                         000201 constant        label                    dcl 184 ref 256
+combine_linkage                 000433 constant        entry                    external dcl 240
+error                           000260 constant        label                    dcl 197 ref 186 423
+get_initial_linkage             000745 constant        entry                    external dcl 339
+get_lp                          000617 constant        entry                    external dcl 300
+get_sp                          001535 constant        entry                    internal dcl 526 ref 172 252 269 304 324 418
+getlp                           001334 constant        entry                    internal dcl 451 ref 175 270 305
+grow_lot                        001137 constant        entry                    external dcl 393
+link_man$other_linkage          000027 constant        entry                    external dcl 25
+make_lot                        001377 constant        entry                    internal dcl 472 ref 404 425
+own_linkage                     000503 constant        entry                    external dcl 258
+ret                             000164 constant        label                    dcl 177 ref 238
+retry                           000056 constant        label                    dcl 148 ref 151
+set_lp                          000563 constant        entry                    external dcl 285
+setlp                           001173 constant        entry                    internal dcl 407 ref 234 293
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2240        2322    1645        2250
+Length      2700    1645        62         341     373           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+link_man$other_linkage              272 external procedure  is an external procedure.  
+on unit on line 208                  68 on unit               
+on unit on line 322                  64 on unit               
+setlp                                   internal procedure  shares stack frame of external procedure link_man$other_linkage.  
+getlp                                   internal procedure  shares stack frame of external procedure link_man$other_linkage.  
+make_lot                             86 internal procedure  enables or reverts conditions.  
+on unit on line 504                  64 on unit               
+get_sp                                  internal procedure  shares stack frame of external procedure link_man$other_linkage.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+link_man$other_linkage   000100 ainfo                       link_man$other_linkage
+                         000124 cl                          link_man$other_linkage
+                         000125 cl_sw                       link_man$other_linkage
+                         000126 code                        link_man$other_linkage
+                         000127 count                       link_man$other_linkage
+                         000130 dummy                       link_man$other_linkage
+                         000132 lp                          link_man$other_linkage
+                         000134 nwords                      link_man$other_linkage
+                         000136 oi                          link_man$other_linkage
+                         000224 ring                        link_man$other_linkage
+                         000225 rings                       link_man$other_linkage
+                         000230 sdwi                        link_man$other_linkage
+                         000236 sp                          link_man$other_linkage
+                         000240 stack_end                   link_man$other_linkage
+                         000242 stp                         link_man$other_linkage
+                         000244 target                      link_man$other_linkage
+                         000246 target_sp                   link_man$other_linkage
+                         000250 tcode                       link_man$other_linkage
+                         000252 txp                         link_man$other_linkage
+                         000254 type                        link_man$other_linkage
+                         000272 lotp                        link_man$other_linkage
+                         000274 sb                          link_man$other_linkage
+                         000310 segnum                      setlp
+                         000312 shp                         setlp
+                         000322 segnum                      getlp
+make_lot                 000100 lotp                        make_lot
+                         000102 newisotp                    make_lot
+                         000104 newlotp                     make_lot
+                         000106 save_max_lot_size           make_lot
+                         000110 sp                          make_lot
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        call_int_this       return_mac          tra_ext_1           mdfx1               signal_op
+enable_op           ext_entry           int_entry           op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+define_area_                  level$get                     makestack                     object_info_$brief
+sdw_util_$dissect             segno_usage$increment_other_ring                            status_$mins
+terminate_proc
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dseg$                         error_table_$bad_segment      error_table_$badringno        error_table_$invalidsegno
+error_table_$no_linkage       error_table_$noalloc          error_table_$nrmkst
+error_table_$termination_requested                          pds$clr_stack_size            pds$lot_stack_size
+pds$max_lot_size              pds$stacks                    sys_info$max_seg_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000022       133 000037       134 000040       135 000041       136 000044       137 000046       138 000047
+    140 000050       148 000056       150 000060       151 000101       155 000104       156 000107       157 000112
+    158 000116       160 000122       162 000130       164 000135       166 000136       167 000140       169 000151
+    172 000152       174 000154       175 000156       176 000160       177 000164       179 000167       180 000171
+    181 000173       182 000200       184 000201       186 000216       188 000220       189 000223       190 000225
+    191 000227       192 000247       193 000253       194 000255       196 000256       197 000260       199 000262
+    202 000263       204 000265       208 000275       209 000320       210 000326       211 000331       212 000337
+    214 000340       218 000345       219 000350       220 000355       221 000363       222 000366       223 000374
+    225 000375       228 000406       230 000407       231 000413       234 000415       235 000417       237 000424
+    238 000426       240 000427       245 000445       246 000447       247 000453       248 000455       249 000467
+    250 000472       252 000473       253 000475       254 000476       256 000500       258 000501       264 000513
+    265 000514       266 000520       268 000524       269 000533       270 000535       271 000537       272 000543
+    273 000546       276 000547       277 000552       278 000554       279 000556       285 000557       292 000570
+    293 000577       294 000614       300 000615       303 000624       304 000633       305 000635       306 000654
+    312 000655       319 000666       320 000670       322 000672       324 000711       325 000722       326 000725
+    329 000734       331 000735       333 000741       339 000742       345 000755       346 000763       350 000766
+    351 000771       352 000774       353 000775       354 000777       355 001005       360 001011       361 001013
+    362 001014       363 001020       364 001022       366 001027       368 001030       369 001032       372 001034
+    373 001036       374 001037       375 001041       376 001043       377 001045       378 001050       379 001062
+    381 001073       382 001101       383 001105       384 001110       385 001112       386 001117       387 001122
+    389 001130       390 001132       391 001133       393 001134       402 001144       403 001147       404 001164
+    405 001172       407 001173       418 001175       419 001205       420 001214       421 001221       422 001225
+    423 001230       425 001231       428 001237       432 001253       433 001261       434 001264       438 001270
+    440 001276       443 001312       444 001321       446 001331       447 001333       451 001334       457 001336
+    458 001341       459 001347       461 001356       464 001365       466 001366       469 001375       472 001376
+    490 001404       491 001412       493 001414       496 001431       502 001440       503 001442       504 001444
+    506 001460       507 001465       509 001466       511 001475       512 001501       514 001502       515 001507
+    516 001514       517 001521       518 001527       520 001532       521 001533       523 001534       526 001535
+    533 001537       535 001554
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

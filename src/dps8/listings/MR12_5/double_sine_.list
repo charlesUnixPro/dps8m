@@ -1,0 +1,640 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>double_sine_.alm                                                                                                                                     
+ASSEMBLED ON:	11/11/89  0945.4 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ******************************************
+                                     2  " *                                        *
+                                     3  " * Copyright, (C) Honeywell Limited, 1985 *
+                                     4  " *                                        *
+                                     5  " ******************************************
+    000000                           6  	name	double_sine_
+                                     7  " Modification history:
+                                     8  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                     9  "	based on the GCOS routine '7nat'.
+                                    10  "
+                                    11  " Function:  Approximate to double precision the sine or cosine of an
+                                    12  "	angle given in degrees or radians.
+                                    13  "
+                                    14  " Entry:	through the appropriately named entry point with:
+                                    15  " 	EAQ = the angle whose sine or cosine is desired.
+                                    16  "	PR2 = the address of a 14 word, even-word aligned scratch area.
+                                    17  "	      4 words are used in this program and 14 are used by the
+                                    18  "	      routine "double_principal_angle_".  The storage for
+                                    19  "	      double_sine_ and double_principal_angle_ overlap.
+                                    20  "	PR3 = the return address.
+                                    21  "
+                                    22  " Exit:	EAQ = the desired sine or cosine.
+                                    23  "
+                                    24  " Uses:	X0, X1, X2.
+                                    25  "	X0 = saves a return address from double_principal_angle_ routines
+                                    26  "	X1 = shift (returned by double_principal_angle_ routines)
+                                    27  "	X2 = indicates BFP or HFP mode - all of the floating point math
+                                    28  "	      math routines use this register for the same thing.
+                                    29  "	The double_principal_angle_ routines use registers X1 and X2.
+                                    30  
+                                    31  
+    000000                          32  	segref	math_constants_,half_pi,one_degree,pi
+    000000                          33  	segref	double_principal_angle_,double_principal_radians_,double_principal_degrees_
+                                    34  
+                        000000      35  	equ	BFP,0
+                        000002      36  	equ	HFP,2
+                        000000      37  	equ	x,0
+                        000002      38  	equ	xx,2
+                                    39  
+                        000000      40  	segdef	double_cosine_degrees_,hfp_double_cosine_degrees_
+                        000010      41  	segdef	double_cosine_radians_,hfp_double_cosine_radians_
+                        000020      42  	segdef	double_sine_degrees_,hfp_double_sine_degrees_
+                        000030      43  	segdef	double_sine_radians_,hfp_double_sine_radians_
+                                    44  
+                                    45  
+    000000                          46  hfp_double_cosine_degrees_:
+    000000  aa   000002 6220 00     47  	eax2	HFP		" 2 word offset for HFP constants
+    000001  0a   000003 7100 00     48  	tra	double_cosine_degrees
+                                    49  
+    000002                          50  double_cosine_degrees_:
+    000002  aa   000000 6220 00     51  	eax2	BFP		" no offset for BFP constants
+                                    52  
+    000003                          53  double_cosine_degrees:
+    000003  aa   400000 4750 03     54  	fad	=0.0,du		" normalize input
+    000004  0a   000172 4270 12     55  	dfcmg	one_eighty,x2	" if abs_angle <= 180:
+    000005  0a   000070 6040 00     56  	tmi	case1_degrees	" then no angle reduction is necessary
+    000006  4a  4 00010 7001 20     57  	tsx0	double_principal_degrees_
+    000007  0a   000064 7100 11     58  	tra	case_degrees+1,x1	" select appropriate case
+                                    59  
+                                    60  
+    000010                          61  hfp_double_cosine_radians_:
+    000010  aa   000002 6220 00     62  	eax2	HFP		" 2 word offset for HFP constants
+    000011  0a   000013 7100 00     63  	tra	double_cosine_radians
+                                    64  
+    000012                          65  double_cosine_radians_:
+    000012  aa   000000 6220 00     66  	eax2	BFP		" no offset for BFP constants
+                                    67  
+    000013                          68  double_cosine_radians:
+    000013  aa   400000 4750 03     69  	fad	=0.0,du		" normalize input and set indicators
+    000014  4a  4 00012 4271 20     70  	dfcmg	pi,x2		" if abs (angle) <= pi
+    000015  0a   000045 6040 00     71  	tmi	case1_radians	" then no angle reduction is necessary
+    000016  4a  4 00014 7001 20     72  	tsx0	double_principal_radians_
+    000017  0a   000041 7100 11     73  	tra	case_radians+1,x1	" select appropriate case
+                                    74  				
+                                    75  
+    000020                          76  hfp_double_sine_degrees_:
+    000020  aa   000002 6220 00     77  	eax2	HFP		" 2 word offset for HFP constants
+    000021  0a   000023 7100 00     78  	tra	double_sine_degrees
+                                    79  
+    000022                          80  double_sine_degrees_:
+    000022  aa   000000 6220 00     81  	eax2	BFP		" no offset for BFP constants
+                                    82  
+    000023                          83  double_sine_degrees:
+    000023  aa   400000 4750 03     84  	fad	=0.0,du		" normalize input
+    000024  0a   000166 4270 12     85  	dfcmg	ninety,x2		" if abs (angle) < pi/2
+    000025  0a   000103 6040 00     86  	tmi	case0_degrees	" then no angle reduction is necessary
+    000026  4a  4 00010 7001 20     87  	tsx0	double_principal_degrees_
+    000027  0a   000063 7100 11     88  	tra	case_degrees,x1	" select appropriate case
+                                    89  
+                                    90  
+    000030                          91  hfp_double_sine_radians_:
+    000030  aa   000002 6220 00     92  	eax2	HFP		" 2 word offset for HFP constants
+    000031  0a   000033 7100 00     93  	tra	double_sine_radians
+                                    94  
+    000032                          95  double_sine_radians_:
+    000032  aa   000000 6220 00     96  	eax2	BFP		" no offset for BFP constants
+                                    97  
+    000033                          98  double_sine_radians:
+    000033  aa   400000 4750 03     99  	fad	=0.0,du		" normalize input
+    000034  4a  4 00016 4271 20    100  	dfcmg	half_pi,x2	" if abs (angle) <= pi/2
+    000035  0a   000107 6044 00    101  	tmoz	case0_radians	" then no angle reduction is necessary
+    000036  4a  4 00014 7001 20    102  	tsx0	double_principal_radians_
+    000037  0a   000040 7100 11    103  	tra	case_radians,x1	" Case select appropriate case_radians
+                                   104  
+    000040                         105  case_radians:
+    000040  0a   000107 7100 00    106  	tra	case0_radians
+    000041  0a   000045 7100 00    107  	tra	case1_radians
+    000042  0a   000053 7100 00    108  	tra	case2_radians
+    000043  0a   000055 7100 00    109  	tra	case3_radians
+    000044  0a   000107 7100 00    110  	tra	case0_radians
+                                   111  
+    000045                         112  case1_radians:
+    000045  aa   400000 4750 03    113  	fad	=0.0,du		" set indicators
+    000046  aa   000002 6040 04    114  	tmi	2,ic		" EAQ = - abs (EAQ)
+    000047  aa   000000 5330 00    115  	  negl	0		" fneg underflows at o400400000000
+                                   116  
+    000050  0a   000156 4770 12    117  	dfad	half_pi1,x2
+    000051  0a   000162 4770 12    118  	dfad	half_pi2,x2
+    000052  0a   000107 7100 00    119  	tra	part_sine_radians
+                                   120  
+    000053                         121  case2_radians:
+    000053  aa   000000 5130 00    122  	fneg	0
+    000054  0a   000107 7100 00    123  	tra	part_sine_radians
+                                   124  
+    000055                         125  case3_radians:
+    000055  aa   400000 4750 03    126  	fad	=0.0,du		" set indicators
+    000056  aa   000002 6050 04    127  	tpl	2,ic		" EAQ = abs (EAQ)
+    000057  aa   000000 5130 00    128  	  fneg	0
+                                   129  
+    000060  0a   000156 5770 12    130  	dfsb	half_pi1,x2
+    000061  0a   000162 5770 12    131  	dfsb	half_pi2,x2
+    000062  0a   000107 7100 00    132  	tra	part_sine_radians
+                                   133  
+    000063                         134  case_degrees:
+    000063  0a   000103 7100 00    135  	tra	case0_degrees
+    000064  0a   000070 7100 00    136  	tra	case1_degrees
+    000065  0a   000075 7100 00    137  	tra	case2_degrees
+    000066  0a   000077 7100 00    138  	tra	case3_degrees
+    000067  0a   000103 7100 00    139  	tra	case0_degrees
+                                   140  
+    000070                         141  case1_degrees:
+    000070  aa   400000 4750 03    142  	fad	=0.0,du		" set indicators
+    000071  aa   000002 6040 04    143  	tmi	2,ic		" EAQ = - abs (EAQ)
+    000072  aa   000000 5330 00    144  	  negl	0		" fneg underflows at o400400000000
+                                   145  
+    000073  0a   000166 4750 12    146  	fad	ninety,x2
+    000074  0a   000103 7100 00    147  	tra	part_sine_degrees
+                                   148  
+    000075                         149  case2_degrees:
+    000075  aa   000000 5130 00    150  	fneg	0
+    000076  0a   000103 7100 00    151  	tra	part_sine_degrees
+                                   152  
+    000077                         153  case3_degrees:
+    000077  aa   400000 4750 03    154  	fad	=0.0,du		" set indicators
+    000100  aa   000002 6050 04    155  	tpl	2,ic		" EAQ = abs (EAQ)
+    000101  aa   000000 5130 00    156  	fneg
+                                   157  
+    000102  0a   000166 5750 12    158  	fsb	ninety,x2
+                                   159  "	tra	part_sine_degrees
+                                   160  
+    000103                         161  case0_degrees:			" case0_degrees is just part_sine_degrees
+                                   162  
+    000103                         163  part_sine_degrees:
+    000103  0a   000146 4270 12    164  	dfcmg	eps2,x2		" if conversion to radians underflows
+    000104  aa   000002 6050 04    165  	tpl	2,ic
+    000105  aa   400000 4310 03    166  	  fld	=0.0,du		" then use zero
+    000106  4a  4 00020 4631 20    167  	dfmp	one_degree,x2	" convert to radians.
+                                   168  "	tra	part_sine_radians
+                                   169  
+    000107                         170  case0_radians:			" case0_radians is just part_sine_radians
+                                   171  
+                                   172  
+                                   173  " Procedure part_sine (x) calculates 'sin(x)' for 'x' in the range
+                                   174  " [-pi/2, pi/2] given 'x' in the EAQ.
+                                   175  
+    000107                         176  part_sine_radians:
+    000107  aa   000000 4730 00    177  	dfrd	0
+    000110  0a   000152 4270 12    178  	dfcmg	eps3,x2		"if abs (x) < 5e-10:
+    000111  aa  3 00000 6041 00    179  	tmi	pr3|0		"    sine is x for small x
+    000112  aa  2 00000 4571 00    180  	dfst	pr2|x
+    000113  aa  2 00000 4631 00    181  	dfmp	pr2|x		" calculate xx = x*x
+    000114  aa  2 00002 4721 00    182  	dfstr	pr2|xx
+    000115  0a   000242 4630 12    183  	dfmp	p9,x2		" calculate p(xx)
+    000116  0a   000236 4770 12    184  	dfad	p8,x2
+    000117  aa  2 00002 4631 00    185  	dfmp	pr2|xx
+    000120  0a   000232 4770 12    186  	dfad	p7,x2
+    000121  aa  2 00002 4631 00    187  	dfmp	pr2|xx
+    000122  0a   000226 4770 12    188  	dfad	p6,x2
+    000123  aa  2 00002 4631 00    189  	dfmp	pr2|xx
+    000124  0a   000222 4770 12    190  	dfad	p5,x2
+    000125  aa  2 00002 4631 00    191  	dfmp	pr2|xx
+    000126  0a   000216 4770 12    192  	dfad	p4,x2
+    000127  aa  2 00002 4631 00    193  	dfmp	pr2|xx
+    000130  0a   000212 4770 12    194  	dfad	p3,x2
+    000131  aa  2 00002 4631 00    195  	dfmp	pr2|xx
+    000132  0a   000206 4770 12    196  	dfad	p2,x2
+    000133  aa  2 00002 4631 00    197  	dfmp	pr2|xx
+    000134  0a   000202 4770 12    198  	dfad	p1,x2
+    000135  aa  2 00002 4631 00    199  	dfmp	pr2|xx
+    000136  0a   000176 4750 12    200  	fad	p0,x2
+    000137  aa  2 00000 4631 00    201  	dfmp	pr2|x		" return x*p(xx)
+    000140  aa   000000 4730 00    202  	dfrd	0
+    000141  aa  3 00000 7101 00    203  	tra	pr3|0
+                                   204  
+                                   205  
+                                   206  " Constants:
+                                   207  
+                                   208  	even
+    000142  aa   716504 072231     209  eps1:	dec	1.886591d-8
+    000143  aa   175750 642262 
+    000144  aa   764242 035115     210  	oct	764242035115,000000000000
+    000145  aa   000000 000000 
+    000146  aa   412712 273406     211  eps2:	dec	8.418858142948452884d-38
+    000147  aa   461701 757347 
+    000150  aa   402162 456701     212  	oct	402162456701,514360373670	" 2.670821537926801391d-154
+    000151  aa   514360 373670 
+    000152  aa   704422 701372     213  eps3:	dec	5.0d-10
+    000153  aa   023326 451314 
+    000154  aa   762104 560276     214  	oct	762104560276,404665512263
+    000155  aa   404665 512263 
+    000156  aa   002622 077325     215  half_pi1:	oct	002622077325,042055060432	" 1.570796326794896619d0
+    000157  aa   042055 060432 
+    000160  aa   002062 207732     216  	oct	002062207732,504205506043	" 1.570796326794896619d0
+    000161  aa   504205 506043 
+    000162  aa   602611 431424     217  half_pi2:	oct	602611431424,270033407150	" 8.333742918520878328d-20
+    000163  aa   270033 407150 
+    000164  aa   742461 143142     218  	oct	742461143142,427003340714	" 5.170182981794105568d-19
+    000165  aa   427003 340714 
+    000166  aa   016550 000000     219  ninety:	dec	90.0d0
+    000167  aa   000000 000000 
+    000170  aa   004264 000000     220  	oct	004264000000,000000000000
+    000171  aa   000000 000000 
+    000172                         221  one_eighty:
+    000172  aa   020550 000000     222  	dec	180.0d0
+    000173  aa   000000 000000 
+    000174  aa   004550 000000     223  	oct	004550000000,000000000000
+    000175  aa   000000 000000 
+    000176  aa   002400 000000     224  p0:	dec	 9.9999999999999999998d-1	" this rounds to 1.0d0
+    000177  aa   000000 000000 
+    000200  aa   002040 000000     225  	oct	002040000000,000000000000
+    000201  aa   000000 000000 
+    000202  aa   775252 525252     226  p1:	dec	-1.6666666666666666664d-1
+    000203  aa   525252 525254 
+    000204  aa   001652 525252     227  	oct	001652525252,525252525253
+    000205  aa   525252 525253 
+    000206  aa   764421 042104     228  p2:	dec	 8.333333333333332952d-3
+    000207  aa   210421 041543 
+    000210  aa   776104 210421     229  	oct	776104210421,042104210331
+    000211  aa   042104 210331 
+    000212  aa   751137 713771     230  p3:	dec	-1.9841269841269648946d-4
+    000213  aa   377140 131713 
+    000214  aa   773137 713771     231  	oct	773137713771,377140131713
+    000215  aa   377140 131713 
+    000216  aa   734561 674351     232  p4:	dec	 2.7557319223936401884d-6
+    000217  aa   253231 434555 
+    000220  aa   770134 357072     233  	oct	770134357072,252646307133
+    000221  aa   252646 307133 
+    000222  aa   717121 467246     234  p5:	dec	-2.5052108378101760587d-8
+    000223  aa   026224 465270 
+    000224  aa   765450 633523     235  	oct	765450633523,013112232534
+    000225  aa   013112 232534 
+    000226  aa   700541 110601     236  p6:	dec	 1.60590431721336921d-10
+    000227  aa   052315 030325 
+    000230  aa   760541 110601     237  	oct	760541110601,052315030325
+    000231  aa   052315 030325 
+    000232  aa   661121 402455     238  p7:	dec	-7.647126379076958d-13
+    000233  aa   333370 604367 
+    000234  aa   755121 402455     239  	oct	755121402455,333370604367
+    000235  aa   333370 604367 
+    000236  aa   640624 773046     240  p8:	dec	 2.8101852815318d-15
+    000237  aa   213725 310300 
+    000240  aa   750624 773046     241  	oct	750624773046,213725310300
+    000241  aa   213725 310300 
+    000242  aa   621331 460002     242  p9:	dec	-7.9798971356d-18
+    000243  aa   411662 206514 
+    000244  aa   745331 460002     243  	oct	745331460002,411662206514
+    000245  aa   411662 206514 
+                                   244  
+                                   245  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000246  5a   000003 000000 
+    000247  5a   000135 600000 
+    000250  aa   000000 000000 
+    000251  55   000012 000002 
+    000252  5a   000002 400003 
+    000253  55   000006 000012 
+    000254  aa  014 144 157 165
+    000255  aa  142 154 145 137
+    000256  aa  163 151 156 145
+    000257  aa  137 000 000 000
+    000260  55   000024 000003 
+    000261  0a   000030 400000 
+    000262  55   000015 000003 
+    000263  aa  030 150 146 160         hfp_double_sine_radians_
+    000264  aa  137 144 157 165
+    000265  aa  142 154 145 137
+    000266  aa  163 151 156 145
+    000267  aa  137 162 141 144
+    000270  aa  151 141 156 163
+    000271  aa  137 000 000 000
+    000272  55   000035 000012 
+    000273  0a   000032 400000 
+    000274  55   000027 000003 
+    000275  aa  024 144 157 165         double_sine_radians_
+    000276  aa  142 154 145 137
+    000277  aa  163 151 156 145
+    000300  aa  137 162 141 144
+    000301  aa  151 141 156 163
+    000302  aa  137 000 000 000
+    000303  55   000047 000024 
+    000304  0a   000020 400000 
+    000305  55   000040 000003 
+    000306  aa  030 150 146 160         hfp_double_sine_degrees_
+    000307  aa  137 144 157 165
+    000310  aa  142 154 145 137
+    000311  aa  163 151 156 145
+    000312  aa  137 144 145 147
+    000313  aa  162 145 145 163
+    000314  aa  137 000 000 000
+    000315  55   000060 000035 
+    000316  0a   000022 400000 
+    000317  55   000052 000003 
+    000320  aa  024 144 157 165         double_sine_degrees_
+    000321  aa  142 154 145 137
+    000322  aa  163 151 156 145
+    000323  aa  137 144 145 147
+    000324  aa  162 145 145 163
+    000325  aa  137 000 000 000
+    000326  55   000072 000047 
+    000327  0a   000010 400000 
+    000330  55   000063 000003 
+    000331  aa  032 150 146 160         hfp_double_cosine_radians_
+    000332  aa  137 144 157 165
+    000333  aa  142 154 145 137
+    000334  aa  143 157 163 151
+    000335  aa  156 145 137 162
+    000336  aa  141 144 151 141
+    000337  aa  156 163 137 000
+    000340  55   000103 000060 
+    000341  0a   000012 400000 
+    000342  55   000075 000003 
+    000343  aa  026 144 157 165         double_cosine_radians_
+    000344  aa  142 154 145 137
+    000345  aa  143 157 163 151
+    000346  aa  156 145 137 162
+    000347  aa  141 144 151 141
+    000350  aa  156 163 137 000
+    000351  55   000115 000072 
+    000352  0a   000000 400000 
+    000353  55   000106 000003 
+    000354  aa  032 150 146 160         hfp_double_cosine_degrees_
+    000355  aa  137 144 157 165
+    000356  aa  142 154 145 137
+    000357  aa  143 157 163 151
+    000360  aa  156 145 137 144
+    000361  aa  145 147 162 145
+    000362  aa  145 163 137 000
+    000363  55   000126 000103 
+    000364  0a   000002 400000 
+    000365  55   000120 000003 
+    000366  aa  026 144 157 165         double_cosine_degrees_
+    000367  aa  142 154 145 137
+    000370  aa  143 157 163 151
+    000371  aa  156 145 137 144
+    000372  aa  145 147 162 145
+    000373  aa  145 163 137 000
+    000374  55   000002 000115 
+    000375  6a   000000 400002 
+    000376  55   000131 000003 
+    000377  aa  014 163 171 155         symbol_table
+    000400  aa  142 157 154 137
+    000401  aa  164 141 142 154
+    000402  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000403  aa   000000 000015 
+    000404  aa   000000 000000 
+    000405  aa   000000 000000 
+    000406  aa   000000 000000 
+    000407  aa   000000 000000 
+    000410  5a   000024 000000 
+    000411  5a   000047 000000 
+    000412  5a   000126 000000 
+    000413  5a   000072 000000 
+    000414  5a   000012 000000 
+    000415  5a   000035 000000 
+    000416  5a   000115 000000 
+    000417  5a   000060 000000 
+    000420  5a   000103 000000 
+
+EXTERNAL NAMES
+
+    000421  aa  031 144 157 165         double_principal_degrees_
+    000422  aa  142 154 145 137
+    000423  aa  160 162 151 156
+    000424  aa  143 151 160 141
+    000425  aa  154 137 144 145
+    000426  aa  147 162 145 145
+    000427  aa  163 137 000 000
+    000430  aa  031 144 157 165         double_principal_radians_
+    000431  aa  142 154 145 137
+    000432  aa  160 162 151 156
+    000433  aa  143 151 160 141
+    000434  aa  154 137 162 141
+    000435  aa  144 151 141 156
+    000436  aa  163 137 000 000
+    000437  aa  027 144 157 165         double_principal_angle_
+    000440  aa  142 154 145 137
+    000441  aa  160 162 151 156
+    000442  aa  143 151 160 141
+    000443  aa  154 137 141 156
+    000444  aa  147 154 145 137
+    000445  aa  002 160 151 000         pi
+    000446  aa  012 157 156 145         one_degree
+    000447  aa  137 144 145 147
+    000450  aa  162 145 145 000
+    000451  aa  007 150 141 154         half_pi
+    000452  aa  146 137 160 151
+    000453  aa  017 155 141 164         math_constants_
+    000454  aa  150 137 143 157
+    000455  aa  156 163 164 141
+    000456  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000457  aa   000004 000000 
+    000460  55   000171 000153 
+    000461  aa   000004 000000 
+    000462  55   000171 000162 
+    000463  aa   000004 000000 
+    000464  55   000205 000177 
+    000465  aa   000004 000000 
+    000466  55   000205 000200 
+    000467  aa   000004 000000 
+    000470  55   000205 000203 
+    000471  aa   000001 000000 
+    000472  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000473  5a   000217 000000 
+    000474  5a   000221 000000 
+    000475  5a   000213 000000 
+    000476  5a   000215 000000 
+    000477  5a   000211 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000246 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000022 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         double_principal_angle_|double_principal_degrees_
+    000011  5a   000231 0000 00
+    000012  9a   777766 0000 46         math_constants_|pi
+    000013  5a   000230 0000 12
+    000014  9a   777764 0000 46         double_principal_angle_|double_principal_radians_
+    000015  5a   000227 0000 00
+    000016  9a   777762 0000 46         math_constants_|half_pi
+    000017  5a   000226 0000 12
+    000020  9a   777760 0000 46         math_constants_|one_degree
+    000021  5a   000225 0000 12
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253520 477746 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000163 
+    000020  aa   000000 000103 
+    000021  aa   000132 000125 
+    000022  aa   000155 000103 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000043 
+    000067  aa   175453 020014 
+    000070  aa   000000 117547 
+    000071  aa   176724 200000 
+    000072  aa   076163 160145          >spec>install>1110>double_sine_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076144 
+    000077  aa   157165 142154 
+    000100  aa   145137 163151 
+    000101  aa   156145 137056 
+    000102  aa   141154 155040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    BFP                      double_sine_:        35,   51,   66,   81,   96.
+         103    case0_degrees            double_sine_:        86,  135,  139,  161.
+         107    case0_radians            double_sine_:       101,  106,  110,  170.
+          70    case1_degrees            double_sine_:        56,  136,  141.
+          45    case1_radians            double_sine_:        71,  107,  112.
+          75    case2_degrees            double_sine_:       137,  149.
+          53    case2_radians            double_sine_:       108,  121.
+          77    case3_degrees            double_sine_:       138,  153.
+          55    case3_radians            double_sine_:       109,  125.
+          63    case_degrees             double_sine_:        58,   88,  134.
+          40    case_radians             double_sine_:        73,  103,  105.
+           3    double_cosine_degrees    double_sine_:        48,   53.
+           2    double_cosine_degrees_   double_sine_:        40,   50.
+          13    double_cosine_radians    double_sine_:        63,   68.
+          12    double_cosine_radians_   double_sine_:        41,   65.
+                double_principal_angle_  double_sine_:        33.
+                double_principal_degrees_      double_sine_:        33,   57,   87.
+                double_principal_radians_      double_sine_:        33,   72,  102.
+          23    double_sine_degrees      double_sine_:        78,   83.
+          22    double_sine_degrees_     double_sine_:        42,   80.
+          33    double_sine_radians      double_sine_:        93,   98.
+          32    double_sine_radians_     double_sine_:        43,   95.
+         142    eps1                     double_sine_:       209.
+         146    eps2                     double_sine_:       164,  211.
+         152    eps3                     double_sine_:       178,  213.
+                half_pi                  double_sine_:        32,  100.
+         156    half_pi1                 double_sine_:       117,  130,  215.
+         162    half_pi2                 double_sine_:       118,  131,  217.
+           2    HFP                      double_sine_:        36,   47,   62,   77,   92.
+           0    hfp_double_cosine_degrees_     double_sine_:        40,   46.
+          10    hfp_double_cosine_radians_     double_sine_:        41,   61.
+          20    hfp_double_sine_degrees_       double_sine_:        42,   76.
+          30    hfp_double_sine_radians_       double_sine_:        43,   91.
+                math_constants_          double_sine_:        32.
+         166    ninety                   double_sine_:        85,  146,  158,  219.
+                one_degree               double_sine_:        32,  167.
+         172    one_eighty               double_sine_:        55,  221.
+         176    p0                       double_sine_:       200,  224.
+         202    p1                       double_sine_:       198,  226.
+         206    p2                       double_sine_:       196,  228.
+         212    p3                       double_sine_:       194,  230.
+         216    p4                       double_sine_:       192,  232.
+         222    p5                       double_sine_:       190,  234.
+         226    p6                       double_sine_:       188,  236.
+         232    p7                       double_sine_:       186,  238.
+         236    p8                       double_sine_:       184,  240.
+         242    p9                       double_sine_:       183,  242.
+         103    part_sine_degrees        double_sine_:       147,  151,  163.
+         107    part_sine_radians        double_sine_:       119,  123,  132,  176.
+                pi                       double_sine_:        32,   70.
+           0    x                        double_sine_:        37,  180,  181,  201.
+           2    xx                       double_sine_:        38,  182,  185,  187,  189,  191,  193,  195,  197,  199.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

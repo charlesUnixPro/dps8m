@@ -1,0 +1,564 @@
+	COMPILATION LISTING OF SEGMENT grab_aste
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1002.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 grab_aste: procedure (segptr, a_len, rcode) returns (ptr);
+       14 
+       15 /*  This  procedure  is  responsible for forcibly activating segments.  The I/O
+       16*Buffer  Manager  uses  the  _io entries, which also clean up the segment w.r.t.
+       17*cache  control.   The  directory containing the segment must not be locked when
+       18*grab_aste is called.
+       19*
+       20*Bernard Greenberg,   May 10, 1974
+       21*
+       22**/
+       23 /* 5/8/75 by BSG for NSS */
+       24 /* 4/26/77 by BSG for aste.ddnp */
+       25 /* 12/1/78 by BSG for not crashing on activate errors */
+       26 /* 1/82 BIM for dir write lock to get exclusive lock */
+       27 
+       28 dcl	(segptr,				/* pointer to segment.   KST-recognized segment number */
+       29 	 a_astep) pointer;			/* argument astep of segment  on release calls. */
+       30 
+       31 dcl	(rcode,				/* return error code */
+       32 	 code,				/* code from called routines */
+       33 	 word) fixed bin (35);		/* used for touching  seg */
+       34 
+       35 dcl	do_io bit (1);			/* flag for _io entry */
+       36 dcl	prewithdraw bit (1);		/* flag for page prewithdrawing */
+       37 dcl	segno fixed bin (17);		/* segno for syserr calls */
+       38 dcl	dp ptr;				/* ptr to dir */
+       39 
+       40 dcl	(null, baseno, ptr, fixed) builtin;
+       41 
+       42 dcl	based_word (0:262143) fixed bin (35) based;
+       43 dcl	(len, a_len) fixed bin (18);
+       44 dcl	pno fixed bin;				/* Page number when prewithdrawing seg */
+       45 
+       46 dcl	error_table_$dirseg fixed bin (35)  ext;
+       47 
+       48 dcl	sum$getbranch entry (ptr, bit (36) aligned,  ptr, fixed bin (35)),
+       49 	lock$unlock_ast entry,
+       50 	activate entry (ptr, fixed bin (35)) returns (ptr),
+       51 	lock$dir_unlock entry (ptr),
+       52 	setfaults$cache entry (ptr, bit (1) aligned),
+       53 	syserr entry options (variable),
+       54 	syserr$error_code entry options (variable);
+       55 
+       56 /**/
+  1     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  1     2 
+  1     3 
+  1     4 /* Template for an entry. Length = 38 words */
+  1     5 
+  1     6 dcl  ep ptr;
+  1     7 
+  1     8 dcl 1 entry based (ep) aligned,
+  1     9 
+  1    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  1    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  1    12 
+  1    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  1    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  1    15 
+  1    16     2 uid bit (36),					/* unique id of entry */
+  1    17 
+  1    18     2 dtem bit (36),				/* date-time entry modified */
+  1    19 
+  1    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  1    21     2 pad0 bit (17),
+  1    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  1    23 
+  1    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  1    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  1    26 
+  1    27     2 author,					/* user who created branch */
+  1    28       3 pers_rp bit (18),				/* name of user who created branch */
+  1    29       3 proj_rp bit (18),				/* project of user who created branch */
+  1    30 
+  1    31       3 tag char (1),				/* tag of user who created branch */
+  1    32       3 pad1 char (3),
+  1    33 
+  1    34     2 primary_name bit (504),				/* first name on name list */
+  1    35 
+  1    36     2 dtd bit (36),					/* date time dumped */
+  1    37 
+  1    38     2 pad2 bit (36),
+  1    39 
+  1    40 
+  1    41 /* the declarations below are for branch only */
+  1    42 
+  1    43 
+  1    44     2 pvid bit (36),				/* physical volume id */
+  1    45 
+  1    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    47     2 pad3 bit (18),
+  1    48 
+  1    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  1    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  1    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  1    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  1    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  1    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  1    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  1    56     2 security_oosw bit (1),				/* security out of service switch */
+  1    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  1    58     2 master_dir bit (1),				/* TRUE for master directory */
+  1    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  1    60     2 pad4 bit (11),
+  1    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  1    62 
+  1    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  1    64 
+  1    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  1    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  1    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  1    68 
+  1    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  1    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  1    71 
+  1    72     2 bc_author,					/* user who last set the bit count */
+  1    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  1    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  1    75 
+  1    76       3 tag char (1),				/* tag of user who set the bit count */
+  1    77       3 pad5 bit (2),
+  1    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  1    79 
+  1    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  1    81 
+  1    82     2 pad6 bit (36),
+  1    83 
+  1    84     2 checksum bit (36),				/* checksum from dtd */
+  1    85 
+  1    86     2 owner bit (36);				/* uid of containing directory */
+  1    87 
+  1    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+       57 
+  2     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  2     2 
+  2     3 /* Template for an AST entry. Length = 12 words. */
+  2     4 
+  2     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  2     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  2     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  2     8 
+  2     9 dcl  astep ptr;
+  2    10 
+  2    11 dcl 1 aste based (astep) aligned,
+  2    12 
+  2    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  2    14     2 bp bit (18),					/* backward used list rel pointer */
+  2    15 
+  2    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  2    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  2    18 
+  2    19     2 strp bit (18),				/* rel pointer to process trailer */
+  2    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  2    21 
+  2    22     2 uid bit (36),					/* segment unique id */
+  2    23 
+  2    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  2    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    27 
+  2    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  2    29     2 init bit (1),					/* used bit - insure 1 lap */
+  2    30     2 gtus bit (1),					/* global transparent usage switch */
+  2    31     2 gtms bit (1),					/* global transparent modified switch */
+  2    32     2 hc bit (1),					/* hard core segment */
+  2    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  2    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  2    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  2    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  2    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  2    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  2    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  2    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  2    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  2    42     2 pad1 bit (2),					/* OO */
+  2    43     2 dius bit (1),					/* dumper in use switch */
+  2    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  2    45     2 dmpr_pad bit (1),
+  2    46     2 ehs bit (1),					/* entry hold switch */
+  2    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    48     2 dirsw bit (1),				/* directory switch */
+  2    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  2    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  2    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  2    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  2    53 
+  2    54     2 dtu bit (36),					/* date and time segment last used */
+  2    55 
+  2    56     2 dtm bit (36),					/* date and time segment last modified */
+  2    57 
+  2    58 
+  2    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    60 
+  2    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    62 
+  2    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  2    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  2    65     2 fms bit (1),					/* file modified switch */
+  2    66     2 npfs bit (1),					/* no page fault switch */
+  2    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  2    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  2    69     2 per_process bit (1),				/* use master quota for this entry */
+  2    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  2    71     2 pad2 bit (2),
+  2    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  2    73     2 np bit (9),					/* number of pages in core */
+  2    74 
+  2    75 
+  2    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  2    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  2    78     2 damaged bit (1),				/* PC declared segment unusable */
+  2    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  2    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  2    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  2    82     2 ptsi bit (2),					/* page table size index */
+  2    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  2    84 
+  2    85 
+  2    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  2    87 
+  2    88 
+  2    89 dcl 1 aste_part aligned based (astep),
+  2    90 
+  2    91     2 one bit (36) unaligned,				/* fp and bp */
+  2    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  2    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  2    94 
+  2    95 
+  2    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  2    97     2 pad1 bit (8*36),
+  2    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    99     2 pad2 bit (3*36);
+  2   100 
+  2   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+       58 
+       59 /**/
+       60 
+       61 
+       62 	do_io = "0"b;				/* set flag for no  cache  business */
+       63 	prewithdraw = "0"b;
+       64 	go to grab_join;
+       65 
+       66 grab_aste_io: entry (segptr, a_len, rcode) returns (ptr);
+       67 
+       68 	do_io = "1"b;				/* set cache flags flag */
+       69 	prewithdraw = "0"b;
+       70 	go to grab_join;
+       71 
+       72 prewithdraw: entry (segptr, a_len, rcode) returns (ptr);
+       73 
+       74 	do_io = "0"b;
+       75 	prewithdraw = "1"b;
+       76 
+       77 grab_join:
+       78 	segno = fixed (baseno (segptr), 17);		/* get segment number forr syserr calls */
+       79 
+       80 	len = divide (a_len + 1023, 1024, 17, 0);	/* len = NUMBER OF PAGES in request */
+       81 
+       82 
+       83 	call sum$getbranch (segptr, (36)"1"b /* WRITE */, ep, code);	/* access  entry, and lock dir. Root and
+       84*						  mylock are not acceptable */
+       85 
+       86 /* The point of locking the directory is so that nobody else can try to activate the
+       87*	segment while we try. Boundfaults and segfaults in this state are acceptable. */
+       88 
+       89 	if code ^= 0 then do;			/* no errors are acceptable */
+       90 	     rcode = code;				/* pass the buck */
+       91 	     return (null());
+       92 	end;
+       93 	dp = ptr (ep, 0);				/* get dir ptr for unlock call */
+       94 	if ep -> entry.dirsw then do;			/* we do not take kindly to ehs'ing dirs */
+       95 	     call lock$dir_unlock (dp);
+       96 	     rcode = error_table_$dirseg;		/* operation not allowed for dirs */
+       97 	     return (null());
+       98 	end;
+       99 
+      100 	astep = activate (ep, code);			/* Force to be active. Must have
+      101*						   large enough ASTE. */
+      102 
+      103 	if astep = null then do;			/* Could be disk offline, etc. */
+      104 	     call lock$dir_unlock (dp);
+      105 	     rcode = code;
+      106 	     return (null ());
+      107 	end;
+      108 
+      109 	if astep -> aste.ehs then
+      110 		call syserr (1, "grab_aste: Attempt to re-use seg ^o", segno);
+      111 
+      112 	astep -> aste.ddnp = "1"b;			/* Don't deposit null pages- this protects
+      113*						   against deactivation, but boundsfaults go thru,
+      114*						   and segment moves reproduce the withdrawals! */
+      115 
+      116 	call lock$unlock_ast;			/* Unlock AST to allow segmoves and boundsfaults */
+      117 
+      118 	if prewithdraw then pno = 1;
+      119 	else pno = len;				/* Get prewithdraw range */
+      120 
+      121 	do pno = pno to len by 1;			/* Touch all pages */
+      122 	     word = segptr -> based_word ((pno - 1) * 1024);	/* Cause allocation */
+      123 						/* aste.ddnp prevents against deallocation */
+      124 	end;
+      125 
+      126 	astep = activate (ep, code);
+      127 	if astep = null then call syserr$error_code (1, code, "grab_aste: failed to reactivate ^p", ep);
+      128 
+      129 	astep -> aste.ddnp = prewithdraw;		/* Conditionally turn off ddnp */
+      130 
+      131 	astep -> aste.ehs = "1"b;			/* set entry hold active */
+      132 
+      133 	if do_io then do;				/* if used for i/o, must disencache  */
+      134 	     astep -> aste.any_access_on = "0"b;	/* put in non-encached state */
+      135 	     astep -> aste.write_access_on,
+      136 	     astep -> aste.inhibit_cache = "1"b;	/* and make sure it stays there. */
+      137 	     call setfaults$cache (astep, "0"b);	/* take it out of current caches */
+      138 	end;
+      139 
+      140 	call lock$unlock_ast;
+      141 	call lock$dir_unlock (dp);	/* unlock dir, now that ehs is on */
+      142 	rcode = 0;				/* all is ok */
+      143 
+      144 	return (astep);				/* return ast entry  ptr */
+      145 
+      146 /**/
+      147 release_io:	entry (a_astep);			/* entry to un-disencache and de-ehs */
+      148 	do_io  = "1"b;
+      149 	prewithdraw = "0"b;
+      150 	go to release_join;
+      151 
+      152 release_prewithdraw: entry (a_astep);			/* Release nondepositable segments as ssch */
+      153 
+      154 	prewithdraw = "1"b;
+      155 	do_io = "0"b;
+      156 	go to release_join;
+      157 
+      158 release:	entry (a_astep);
+      159 	do_io = "0"b;
+      160 	prewithdraw = "0"b;
+      161 
+      162 release_join:
+      163 	astep = a_astep;				/* copy arg */
+      164 	if ^astep -> aste.ehs then
+      165 	     call syserr (1, "grab_aste: Unprotected segment:  astep = ^p", astep);
+      166 						/* must have ehs on */
+      167 	astep -> aste.ehs = "0"b;			/* turn off ehs */
+      168 	if do_io then astep -> aste.inhibit_cache = "0"b; /* resume standard cache control */
+      169 	if prewithdraw then astep -> aste.ddnp = "0"b;
+      170 	return;
+      171 
+      172 /* BEGIN MESSAGE DOCUMENTATION
+      173*
+      174*   Message:
+      175*   grab_aste: Attempt to reuse segno SSS
+      176*
+      177*   S: $crash
+      178*
+      179*   T: $run
+      180*
+      181*   M: A call has been made to force active a segment already forced active.
+      182*   This indicates an inconsistency in the programming of the supervisor.
+      183*   $err
+      184*
+      185*   A: $recover
+      186*   $notify
+      187*
+      188*   Message:
+      189*   grab_aste: failed to reactivate PPPP ERRORMESSAGE
+      190*
+      191*   S: $crash
+      192*
+      193*   T: $run
+      194*
+      195*   M: $err
+      196*
+      197*   A: $recover
+      198*   $notify
+      199*
+      200*   Message:
+      201*   grab_aste: Unprotected segment: astep = AAA
+      202*
+      203*   S: $crash
+      204*
+      205*   T: $run
+      206*
+      207*   M: An attempt was made to release from forced activity a segment (whose
+      208*   AST entry is at AAA) which was not even in a state of forced activity.
+      209*   $err
+      210*
+      211*   A: $inform
+      212*   $recover
+      213*
+      214*   END MESSAGE DOCUMENTATION */
+      215 
+      216 end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  grab_aste.pl1                     >spec>install>1111>grab_aste.pl1
+57           1    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+58           2    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_astep                                parameter       pointer                  dcl 28 ref 147 152 158 162
+a_len                                  parameter       fixed bin(18,0)          dcl 43 ref 13 66 72 80
+activate                        000016 constant        entry                    external dcl 48 ref 100 126
+any_access_on             5(06)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  134*
+aste                                   based           structure                level 1 dcl 2-11
+astep                           000114 automatic       pointer                  dcl 2-9 set ref 100* 103 109 112 126* 127 129 131
+                                                                                  134 135 135 137* 144 162* 164 164* 167 168 169
+based_word                             based           fixed bin(35,0)          array dcl 42 ref 122
+baseno                                                 builtin function         dcl 40 ref 77
+code                            000100 automatic       fixed bin(35,0)          dcl 31 set ref 83* 89 90 100* 105 126* 127*
+ddnp                     12(15)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  112* 129* 169*
+dirsw                    32            based           bit(1)                   level 2 packed packed unaligned dcl 1-8 ref 94
+do_io                           000102 automatic       bit(1)                   packed unaligned dcl 35 set ref 62* 68* 74* 133 148*
+                                                                                  155* 159* 168
+dp                              000106 automatic       pointer                  dcl 38 set ref 93* 95* 104* 141*
+ehs                       5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref 109
+                                                                                  131* 164 167*
+entry                                  based           structure                level 1 dcl 1-8
+ep                              000112 automatic       pointer                  dcl 1-6 set ref 83* 93 94 100* 126* 127*
+error_table_$dirseg             000010 external static fixed bin(35,0)          dcl 46 ref 96
+fixed                                                  builtin function         dcl 40 ref 77
+inhibit_cache             5(08)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  135* 168*
+len                             000110 automatic       fixed bin(18,0)          dcl 43 set ref 80* 119 121
+lock$dir_unlock                 000020 constant        entry                    external dcl 48 ref 95 104 141
+lock$unlock_ast                 000014 constant        entry                    external dcl 48 ref 116 140
+null                                                   builtin function         dcl 40 ref 91 97 103 106 127
+pno                             000111 automatic       fixed bin(17,0)          dcl 44 set ref 118* 119* 121* 121* 122*
+prewithdraw                     000103 automatic       bit(1)                   packed unaligned dcl 36 set ref 63* 69* 75* 118 129
+                                                                                  149* 154* 160* 169
+ptr                                                    builtin function         dcl 40 ref 93
+rcode                                  parameter       fixed bin(35,0)          dcl 31 set ref 13 66 72 90* 96* 105* 142*
+segno                           000104 automatic       fixed bin(17,0)          dcl 37 set ref 77* 109*
+segptr                                 parameter       pointer                  dcl 28 set ref 13 66 72 77 83* 122
+setfaults$cache                 000022 constant        entry                    external dcl 48 ref 137
+sum$getbranch                   000012 constant        entry                    external dcl 48 ref 83
+syserr                          000024 constant        entry                    external dcl 48 ref 109 164
+syserr$error_code               000026 constant        entry                    external dcl 48 ref 127
+word                            000101 automatic       fixed bin(35,0)          dcl 31 set ref 122*
+write_access_on           5(07)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  135*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+asta                                   based           bit(432)                 array dcl 2-86
+aste_part                              based           structure                level 1 dcl 2-89
+seg_aste                               based           structure                level 1 dcl 2-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+grab_aste                       000062 constant        entry                    external dcl 13
+grab_aste_io                    000076 constant        entry                    external dcl 66
+grab_join                       000125 constant        label                    dcl 77 ref 64 70
+prewithdraw                     000113 constant        entry                    external dcl 72
+release                         000547 constant        entry                    external dcl 158
+release_io                      000517 constant        entry                    external dcl 147
+release_join                    000557 constant        label                    dcl 162 ref 150 156
+release_prewithdraw             000533 constant        entry                    external dcl 152
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+divide                                                 builtin function         ref 80
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1016        1046     642        1026
+Length      1264     642        30         202     153           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+grab_aste                           124 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+grab_aste                000100 code                        grab_aste
+                         000101 word                        grab_aste
+                         000102 do_io                       grab_aste
+                         000103 prewithdraw                 grab_aste
+                         000104 segno                       grab_aste
+                         000106 dp                          grab_aste
+                         000110 len                         grab_aste
+                         000111 pno                         grab_aste
+                         000112 ep                          grab_aste
+                         000114 astep                       grab_aste
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          signal_op           ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+activate                      lock$dir_unlock               lock$unlock_ast               setfaults$cache
+sum$getbranch                 syserr                        syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$dirseg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000055        62 000071        63 000072        64 000073        66 000074        68 000105        69 000107
+     70 000110        72 000111        74 000122        75 000123        77 000125        80 000134        83 000140
+     89 000157        90 000161        91 000163        93 000174        94 000176        95 000202        96 000211
+     97 000215       100 000226       103 000241       104 000245       105 000254       106 000257       109 000270
+    112 000322       116 000325       118 000332       119 000337       121 000341       122 000351       124 000357
+    126 000361       127 000374       129 000432       131 000440       133 000442       134 000444       135 000446
+    137 000452       140 000465       141 000472       142 000501       144 000503       147 000514       148 000525
+    149 000527       150 000530       152 000531       154 000541       155 000543       156 000544       158 000545
+    159 000555       160 000556       162 000557       164 000563       167 000614       168 000617       169 000623
+    170 000627
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

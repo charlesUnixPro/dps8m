@@ -1,0 +1,671 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_faults.alm                                                                                                                    
+ASSEMBLED ON:	11/11/89  0936.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " HISTORY COMMENTS:
+                                    10  "  1) change(86-04-03,Fawcett), approve(86-04-03,MCR7246),
+                                    11  "     audit(86-04-03,Farley), install(86-04-07,MR12.0-1036):
+                                    12  "     Correct ignore_fault to work in append mode.
+                                    13  "                                                      END HISTORY COMMENTS
+                                    14  
+                                    15  
+                                    16  "
+                                    17  "         BOOTLOAD_FAULTS
+                                    18  "
+                                    19  "         This module is used to initialize the fault and interrupt vectors
+                                    20  "         for running in bound_bootload_0. It ignores all interrupts, and
+                                    21  "         some faults. All other faults are directed to bootload_error.
+                                    22  "
+                                    23  " Created from bootstrap1 and FWLOAD, 10/04/80 W. Olin Sibert
+                                    24  " Cleaned up and modified for bootload_error, 12/14/80 WOS
+                                    25  "
+                                    26  " Entrypoint:       tsx2      bootload_faults$init
+                                    27  " Ignore SCU data at:         bootload_faults$ignore_scu
+                                    28  " Interrupts ignored by:      bootload_faults$ignore_fault
+                                    29  "
+                                    30  
+    000000                          31  	name	bootload_faults
+    000000                          32  	decor	L68
+                                    33  
+                                    34            include   bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    35            include   fault_vector
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE fault_vector.incl.alm
+                                   2-4  
+                                   2-5  "	Modified February 1981 by J. Bongiovanni to add fault types
+                                   2-6  
+                                   2-7  "
+                                   2-8  "	Structure fv
+                                   2-9  "
+                        000600    2-10  	equ	fv_size,384
+                                  2-11  
+                                  2-12  
+                        000000    2-13  	equ	fv.ipair,0		"LEVEL 2
+                                  2-14  
+                        000000    2-15  	equ	fv.ipair.scu,0
+                        000001    2-16  	equ	fv.ipair.tra,1
+                        000100    2-17  	equ	fv.fpair,64		"LEVEL 2
+                                  2-18  
+                        000100    2-19  	equ	fv.fpair.scu,64
+                        000101    2-20  	equ	fv.fpair.tra,65
+                        000200    2-21  	equ	fv.i_tra_ptr,128
+                        000300    2-22  	equ	fv.i_scu_ptr,192
+                        000400    2-23  	equ	fv.f_tra_ptr,256
+                        000500    2-24  	equ	fv.f_scu_ptr,320
+                                  2-25  
+                        000000    2-26  	equ	FAULT_NO_SDF,0		" Shutdown
+                        000001    2-27  	equ	FAULT_NO_STR,1		" Store
+                        000002    2-28  	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+                        000003    2-29  	equ	FAULT_NO_F1,3		" Fault Tag 1
+                        000004    2-30  	equ	FAULT_NO_TRO,4		" Timer Runout
+                        000005    2-31  	equ	FAULT_NO_CMD,5		" Command
+                        000006    2-32  	equ	FAULT_NO_DRL,6		" Derail
+                        000007    2-33  	equ	FAULT_NO_LUF,7		" Lockup
+                        000010    2-34  	equ	FAULT_NO_CON,8		" Connect
+                        000011    2-35  	equ	FAULT_NO_PAR,9		" Parity
+                        000012    2-36  	equ	FAULT_NO_IPR,10		" Illegal Procedure
+                        000013    2-37  	equ	FAULT_NO_ONC,11		" Operation Not Complete
+                        000014    2-38  	equ	FAULT_NO_SUF,12		" Startup
+                        000015    2-39  	equ	FAULT_NO_OFL,13		" Overflow
+                        000016    2-40  	equ	FAULT_NO_DIV,14		" Divide Check
+                        000017    2-41  	equ	FAULT_NO_EXF,15		" Execute
+                        000020    2-42  	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+                        000021    2-43  	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+                        000022    2-44  	equ	FAULT_NO_DF2,18		" Directed Fault 2
+                        000023    2-45  	equ	FAULT_NO_DF3,19		" Directed Fault 3
+                        000024    2-46  	equ	FAULT_NO_ACV,20		" Access Violation
+                        000025    2-47  	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+                        000026    2-48  	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+                        000027    2-49  	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+                        000030    2-50  	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+                        000031    2-51  	equ	FAULT_NO_F3,25		" Fault Tag 3
+                                  2-52  					" Fault No. 26-30 are Undefined
+                        000037    2-53  	equ	FAULT_NO_TRB,31		" Trouble
+                                  2-54  
+                                  2-55       "END INCLUDE FILE fault_vector.incl.alm
+                                    36  
+                                    37  "
+                                    38  
+                                    39  " Initialize all fault and interrupt pairs to SCU, TRA pair.
+                                    40  " Increment addresses in each instruction to reference different
+                                    41  " ITS pairs later in fault_vector.
+                                    42  "
+                                    43            even
+                                    44  
+    000000                          45            inhibit   on                  <+><+><+><+><+><+><+><+><+><+><+><+><+><+>
+    000000                          46  interrupt_pair:                         " SCU/TRA pair for interrupts, executed in
+    000000  aa   000300 6572 20     47            scu       fv.i_scu_ptr,*	 " absolute mode.
+    000001  aa   000200 7102 20     48            tra       fv.i_tra_ptr,*
+    000002                          49  fault_pair:                             " and another pair for faults
+    000002  aa   000500 6572 20     50            scu       fv.f_scu_ptr,*
+    000003  aa   000400 7102 20     51            tra       fv.f_tra_ptr,*
+    000004                          52            inhibit   off                 <-><-><-><-><-><-><-><-><-><-><-><-><-><->
+                                    53  
+                                    54  
+                        000004      55            segdef    init
+                                    56  init:     Bpush
+    000004  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000005  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    57  
+    000006  aa   000000 6270 00     58            eax7      0                   " X7 is offset of current vector. We set
+                                    59                                          " up all the vectors and ITS pairs in parallel
+                                    60  
+    000007  aa   000000 6350 17     61  loop:     eaa       0,x7                " Put the offset in the AQ, to and pick up the
+    000010  aa   000000 6360 17     62            eaq       0,x7                " instruction pair. Each vector pair indirects
+    000011  0a   000000 0370 00     63            adlaq     interrupt_pair      " through a different set of ITS pairs later in
+    000012  aa  7 00000 7571 17     64            staq      fv|fv.ipair,x7      " the fault_vector, one for the SCU and one for
+                                    65                                          " the transfer. The addresses in the vector
+    000013  aa   000000 6350 17     66            eaa       0,x7                " instructions are all absolute, relative to the
+    000014  aa   000000 6360 17     67            eaq       0,x7                " known absolute location of the fault_vector
+    000015  0a   000002 0370 00     68            adlaq     fault_pair          " segment. These instructions never change from
+    000016  aa  7 00100 7571 17     69            staq      fv|fv.fpair,x7      " now on -- only the pointers are modified.
+                                    70  
+    000017  4a  4 00014 3721 20     71            epp6      bootload_error$unexpected_scu " Now, initialize the ITS pointers for the
+    000020  aa  7 00500 6521 17     72            spri6     fv|fv.f_scu_ptr,x7  " SCUs and transfers
+    000021  4a  4 00016 3721 20     73            epp6      bootload_error$unexpected_fault
+    000022  aa  7 00400 6521 17     74            spri6     fv|fv.f_tra_ptr,x7
+                                    75  
+    000023  4a  4 00020 3721 20     76            epp6      bootload_faults$ignore_scu " Fake external references, which will be
+    000024  aa  7 00300 6521 17     77            spri6     fv|fv.i_scu_ptr,x7  " fixed up by the binder.
+    000025  4a  4 00022 3721 20     78            epp6      bootload_faults$ignore_fault
+    000026  aa  7 00200 6521 17     79            spri6     fv|fv.i_tra_ptr,x7
+                                    80  
+    000027  aa   000002 0270 03     81            adlx7     2,du                " On to the next vector
+    000030  aa   000100 1070 03     82            cmpx7     64,du               " (of which there are but 32)
+    000031  0a   000007 6010 00     83            tnz       loop
+                                    84  
+                                    85  " 
+                                    86  
+    000032  4a  4 00020 3721 20     87            epp6      bootload_faults$ignore_scu " Now, change to treat lockup faults and
+    000033  aa  7 00510 6521 00     88            spri6     fv|fv.f_scu_ptr+FAULT_NO_TRO*2 " timer runouts like interrupts
+                                    89  
+    000034  4a  4 00022 3721 20     90            epp6      bootload_faults$ignore_fault
+    000035  aa  7 00410 6521 00     91            spri6     fv|fv.f_tra_ptr+FAULT_NO_TRO*2
+                                    92  
+                                    93  	Breturn
+    000036  4a  4 00024 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000037  aa   000000 7100 12         	tra	0+,x2
+                                    94  
+                                    95  "
+                                    96  " Following is the data area for ignoring faults, and the instruction to do it.
+                                    97  "
+                                    98  
+                        000040      99            segdef    ignore_scu
+                        000060     100            segdef    ignore_fault
+                                   101  
+                                   102            eight                         " Align for SCU data
+    000040                         103  ignore_scu:
+    000040                         104            bss       ,8
+    000050                         105  pointers_and_lengths:
+    000050                         106  	bss	,8
+                                   107  
+    000060                         108            inhibit   on                  <+><+><+><+><+><+><+><+><+><+><+><+><+><+><->
+    000060                         109  ignore_fault:                           " Come here to do nothing
+    000060  0a   000050 4476 00    110  	spl	pointers_and_lengths
+    000061  0a   000050 4676 00    111  	lpl	pointers_and_lengths
+    000062  0a   000040 6132 00    112            rcu       ignore_scu	" Complicated, isn't it?
+    000063                         113            inhibit   off                 <-><-><-><-><-><-><-><-><-><-><-><-><-><-><->
+                                   114  
+                                   115            end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000064  5a   000003 000000 
+    000065  5a   000043 600000 
+    000066  aa   000000 000000 
+    000067  55   000012 000002 
+    000070  5a   000002 400003 
+    000071  55   000006 000012 
+    000072  aa  017 142 157 157
+    000073  aa  164 154 157 141
+    000074  aa  144 137 146 141
+    000075  aa  165 154 164 163
+    000076  55   000021 000003 
+    000077  0a   000060 400000 
+    000100  55   000015 000003 
+    000101  aa  014 151 147 156         ignore_fault
+    000102  aa  157 162 145 137
+    000103  aa  146 141 165 154
+    000104  aa  164 000 000 000
+    000105  55   000027 000012 
+    000106  0a   000040 400000 
+    000107  55   000024 000003 
+    000110  aa  012 151 147 156         ignore_scu
+    000111  aa  157 162 145 137
+    000112  aa  163 143 165 000
+    000113  55   000034 000021 
+    000114  0a   000004 400000 
+    000115  55   000032 000003 
+    000116  aa  004 151 156 151         init
+    000117  aa  164 000 000 000
+    000120  55   000002 000027 
+    000121  6a   000000 400002 
+    000122  55   000037 000003 
+    000123  aa  014 163 171 155         symbol_table
+    000124  aa  142 157 154 137
+    000125  aa  164 141 142 154
+    000126  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000127  aa   000000 000015 
+    000130  aa   000000 000000 
+    000131  aa   000000 000000 
+    000132  5a   000021 000000 
+    000133  aa   000000 000000 
+    000134  aa   000000 000000 
+    000135  5a   000012 000000 
+    000136  5a   000034 000000 
+    000137  aa   000000 000000 
+    000140  aa   000000 000000 
+    000141  aa   000000 000000 
+    000142  5a   000027 000000 
+    000143  aa   000000 000000 
+    000144  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000145  aa  017 142 157 157         bootload_faults
+    000146  aa  164 154 157 141
+    000147  aa  144 137 146 141
+    000150  aa  165 154 164 163
+    000151  aa  020 165 156 145         unexpected_fault
+    000152  aa  170 160 145 143
+    000153  aa  164 145 144 137
+    000154  aa  146 141 165 154
+    000155  aa  164 000 000 000
+    000156  aa  016 165 156 145         unexpected_scu
+    000157  aa  170 160 145 143
+    000160  aa  164 145 144 137
+    000161  aa  163 143 165 000
+    000162  aa  014 157 165 164         out_of_stack
+    000163  aa  137 157 146 137
+    000164  aa  163 164 141 143
+    000165  aa  153 000 000 000
+    000166  aa  016 142 157 157         bootload_error
+    000167  aa  164 154 157 141
+    000170  aa  144 137 145 162
+    000171  aa  162 157 162 000
+    000172  aa  017 145 156 164         entry_stack_ptr
+    000173  aa  162 171 137 163
+    000174  aa  164 141 143 153
+    000175  aa  137 160 164 162
+    000176  aa  012 142 157 157         bootload_0
+    000177  aa  164 154 157 141
+    000200  aa  144 137 060 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000201  aa   000004 000000 
+    000202  55   000061 000015 
+    000203  aa   000004 000000 
+    000204  55   000061 000024 
+    000205  aa   000004 000000 
+    000206  55   000102 000065 
+    000207  aa   000004 000000 
+    000210  55   000102 000072 
+    000211  aa   000004 000000 
+    000212  55   000102 000076 
+    000213  aa   000004 000000 
+    000214  55   000112 000106 
+    000215  aa   000001 000000 
+    000216  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000217  5a   000115 000000 
+    000220  5a   000117 000000 
+    000221  5a   000121 000000 
+    000222  5a   000123 000000 
+    000223  5a   000125 000000 
+    000224  5a   000127 000000 
+    000225  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000064 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000026 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_0|entry_stack_ptr
+    000011  5a   000140 0000 56
+    000012  9a   777766 0000 46         bootload_error|out_of_stack
+    000013  5a   000137 0000 00
+    000014  9a   777764 0000 46         bootload_error|unexpected_scu
+    000015  5a   000136 0000 00
+    000016  9a   777762 0000 46         bootload_error|unexpected_fault
+    000017  5a   000135 0000 00
+    000020  9a   777760 0000 46         bootload_faults|ignore_scu
+    000021  5a   000134 0000 00
+    000022  9a   777756 0000 46         bootload_faults|ignore_fault
+    000023  5a   000133 0000 00
+    000024  9a   777754 0000 46         bootload_0|entry_stack_ptr
+    000025  5a   000140 0000 54
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   247646 545510 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000010 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000203 
+    000020  aa   000000 000141 
+    000021  aa   000156 000150 
+    000022  aa   000173 000141 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000064 
+    000067  aa   175453 021656 
+    000070  aa   000000 117547 
+    000071  aa   215115 000000 
+    000072  aa   000117 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000130 000042 
+    000077  aa   101301 045475 
+    000100  aa   000000 110133 
+    000101  aa   352304 600000 
+    000102  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_faults.alm
+    000103  aa   143151 141154 
+    000104  aa   137154 144144 
+    000105  aa   076151 156163 
+    000106  aa   164141 154154 
+    000107  aa   076115 122061 
+    000110  aa   062056 063055 
+    000111  aa   061061 061064 
+    000112  aa   076142 157157 
+    000113  aa   164154 157141 
+    000114  aa   144137 146141 
+    000115  aa   165154 164163 
+    000116  aa   056141 154155 
+    000117  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000120  aa   076151 156143 
+    000121  aa   154165 144145 
+    000122  aa   076142 157157 
+    000123  aa   164154 157141 
+    000124  aa   144137 145161 
+    000125  aa   165163 056151 
+    000126  aa   156143 154056 
+    000127  aa   141154 155040 
+    000130  aa   076154 144144          >ldd>include>fault_vector.incl.alm
+    000131  aa   076151 156143 
+    000132  aa   154165 144145 
+    000133  aa   076146 141165 
+    000134  aa   154164 137166 
+    000135  aa   145143 164157 
+    000136  aa   162056 151156 
+    000137  aa   143154 056141 
+    000140  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_0               bootload_faults:     56,   93.
+                bootload_error           bootload_faults:     56,   71,   73.
+                bootload_faults          bootload_faults:     76,   78,   87,   90.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+           0    ds                       bootload_equs:       12.
+                entry_stack_ptr          bootload_faults:     56,   93.
+          24    FAULT_NO_ACV             fault_vector:        46.
+           5    FAULT_NO_CMD             fault_vector:        31.
+          10    FAULT_NO_CON             fault_vector:        34.
+          20    FAULT_NO_DF0             fault_vector:        42.
+          21    FAULT_NO_DF1             fault_vector:        43.
+          22    FAULT_NO_DF2             fault_vector:        44.
+          23    FAULT_NO_DF3             fault_vector:        45.
+          16    FAULT_NO_DIV             fault_vector:        40.
+           6    FAULT_NO_DRL             fault_vector:        32.
+          17    FAULT_NO_EXF             fault_vector:        41.
+           3    FAULT_NO_F1              fault_vector:        29.
+          30    FAULT_NO_F2              fault_vector:        50.
+          31    FAULT_NO_F3              fault_vector:        51.
+          12    FAULT_NO_IPR             fault_vector:        36.
+           7    FAULT_NO_LUF             fault_vector:        33.
+           2    FAULT_NO_MME             fault_vector:        28.
+          25    FAULT_NO_MME2            fault_vector:        47.
+          26    FAULT_NO_MME3            fault_vector:        48.
+          27    FAULT_NO_MME4            fault_vector:        49.
+          15    FAULT_NO_OFL             fault_vector:        39.
+          13    FAULT_NO_ONC             fault_vector:        37.
+          11    FAULT_NO_PAR             fault_vector:        35.
+           0    FAULT_NO_SDF             fault_vector:        26.
+           1    FAULT_NO_STR             fault_vector:        27.
+          14    FAULT_NO_SUF             fault_vector:        38.
+          37    FAULT_NO_TRB             fault_vector:        53.
+           4    FAULT_NO_TRO             bootload_faults:     88,   91,
+                                         fault_vector:        30.
+           2    fault_pair               bootload_faults:     49,   68.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+           7    fv                       bootload_faults:     64,   69,   72,   74,   77,   79,   88,   91,
+                                         bootload_equs:       19.
+         100    fv.fpair                 bootload_faults:     69,
+                                         fault_vector:        17.
+         100    fv.fpair.scu             fault_vector:        19.
+         101    fv.fpair.tra             fault_vector:        20.
+         500    fv.f_scu_ptr             bootload_faults:     50,   72,   88,
+                                         fault_vector:        24.
+         400    fv.f_tra_ptr             bootload_faults:     51,   74,   91,
+                                         fault_vector:        23.
+           0    fv.ipair                 bootload_faults:     64,
+                                         fault_vector:        13.
+           0    fv.ipair.scu             fault_vector:        15.
+           1    fv.ipair.tra             fault_vector:        16.
+         300    fv.i_scu_ptr             bootload_faults:     47,   77,
+                                         fault_vector:        22.
+         200    fv.i_tra_ptr             bootload_faults:     48,   79,
+                                         fault_vector:        21.
+         600    fv_size                  fault_vector:        10.
+          60    ignore_fault             bootload_faults:     78,   90,  100,  109.
+          40    ignore_scu               bootload_faults:     76,   87,   99,  103,  112.
+           4    init                     bootload_faults:     55,   56.
+           0    interrupt_pair           bootload_faults:     46,   63.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+           7    loop                     bootload_faults:     61,   83.
+           2    mb                       bootload_equs:       14.
+           4    nt                       bootload_equs:       16.
+                out_of_stack             bootload_faults:     56.
+          50    pointers_and_lengths     bootload_faults:    105,  110,  111.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+           6    seg                      bootload_equs:       18.
+           1    seg2                     bootload_equs:       13.
+           3    slt                      bootload_equs:       15.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+                unexpected_fault         bootload_faults:     73.
+                unexpected_scu           bootload_faults:     71.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

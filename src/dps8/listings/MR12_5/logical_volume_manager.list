@@ -1,0 +1,552 @@
+	COMPILATION LISTING OF SEGMENT logical_volume_manager
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1002.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 logical_volume_manager: proc ();
+       14 
+       15 /*
+       16*
+       17*   Written on Janurary 26, 1976 by R. Bratt
+       18*
+       19*   Last modified:
+       20*
+       21*   March 1982, J. Bongiovanni, for new PVTE
+       22*   June 1982, J. Bongiovanni, for deactivate_for_demount
+       23*
+       24*   logical_volume_manager manages the ring zero logical volume table (LVT). The add, delete, and add_pv
+       25*   entry points are intended to be used exclusively by ring one RCP. These operations are assumed to be
+       26*   performed under the protection of a global RCP lock. As a result, no lock is provided in the LVT.
+       27*   When mounting a LV, RCP should call ring zero to mount each PV in the LV and finally it should
+       28*   call logical_volume_manager$add to define the LV for segment control. At this time the physical
+       29*   volume table (PVT) is scanned and all PVs belonging to the LV are threaded from the LVTE.
+       30*   If a LV is grown then RCP should call the add_pv entry point to logically add the PV to the LV.
+       31*   Before demounting a LV, RCP should call logical_volume_manager$delete to remove segment control's knowledge
+       32*   of the LV before any PVs of the LV are demounted. The final entry point, logical_volume_manager$lvtep,
+       33*   is called to locate information about a LV. Programs using this entry point must be prepared to have the LVTE
+       34*   disappear from under there noses. This program does not demount physical volumes,
+       35*   but must be called before any physical volumes in a logical volume are demounted.
+       36*
+       37**/
+       38 
+       39 dcl  a_lvtep ptr,
+       40      a_lvid bit (36) aligned,
+       41      a_code fixed bin (35),
+       42      a_pvid bit (36) aligned;
+       43 
+       44 dcl 1 local_lvte aligned like lvte,
+       45      must_exist bit (1) aligned static init ("1"b),
+       46      must_not_exist bit (1) aligned static init ("0"b),
+       47      code fixed bin (35),
+       48     (pvtex, next_pvtex) fixed bin (8),
+       49      lvid bit (36) aligned,
+       50      prev_lvtep ptr;
+       51 
+       52 dcl (error_table_$logical_volume_table_full, error_table_$logical_volume_is_defined,
+       53      error_table_$pv_is_in_lv, error_table_$argerr,
+       54      error_table_$logical_volume_not_defined) ext fixed bin (35);
+       55 
+       56 dcl  pvt$n_entries fixed bin external;
+       57 
+       58 dcl  syserr entry options (variable),
+       59      deactivate_for_demount$lv entry (bit (36) aligned, fixed bin (35)),
+       60      get_pvtx entry (bit (36) aligned, fixed bin (35)) returns (fixed bin (8));
+       61 
+       62 /*  */
+       63 add:	entry (a_lvtep, a_code);
+       64 	local_lvte = a_lvtep -> lvte;
+       65 	a_code = 0;
+       66 	call find (local_lvte.lvid, (must_not_exist));
+       67 	call get_lvte ();
+       68 	lvte = local_lvte;
+       69 	lvte.lvtep = null ();			/* initialize threads in lvte */
+       70 	lvte.pvtex = 0;
+       71 	pvt_arrayp = addr (pvt$array);		/* collect PV thread */
+       72 	do pvtex = 1 to pvt$n_entries;
+       73 	     if (pvt_array (pvtex).lvid = lvte.lvid) & pvt_array (pvtex).used
+       74 	     then do;
+       75 		if pvt_array (pvtex).brother_pvtx ^= 0
+       76 		then call syserr (1, "logical_volume_manager: nonzero brother pvt thread");
+       77 		pvt_array (pvtex).brother_pvtx = lvte.pvtex;
+       78 		lvte.pvtex = pvtex;
+       79 	     end;
+       80 	end;
+       81 	prev_lvtep -> lvte.lvtep = lvtep;		/* attach LV to hash  thread */
+       82 	return;
+       83 
+       84 lvtep:	entry (a_lvid, a_lvtep, a_code);
+       85 	a_code = 0;
+       86 	a_lvtep = null ();
+       87 	call find ((a_lvid), (must_exist));
+       88 	a_lvtep = lvtep;
+       89 	return;
+       90 
+       91 delete:	entry (a_lvid, a_code);
+       92 	a_code = 0;
+       93 	lvid = a_lvid;
+       94 	call find (lvid, (must_exist));
+       95 	lvte.lvid = "0"b;				/* stop find from locating this LV */
+       96 	pvt_arrayp = addr (pvt$array);		/* cleanup all PVs of this LV */
+       97 	do pvtex = lvte.pvtex repeat (pvt_array (pvtex).brother_pvtx) while (pvtex ^= 0);
+       98 	     pvt_array (pvtex).being_demounted = "1"b;
+       99 	end;
+      100 	call deactivate_for_demount$lv (lvid, code);	/* deactivate all segments on the LV */
+      101 	if code ^= 0 then do;			/* error -back out */
+      102 	     lvte.lvid = lvid;
+      103 	     do pvtex = lvte.pvtex repeat (pvt_array (pvtex).brother_pvtx) while (pvtex ^= 0);
+      104 		pvt_array (pvtex).being_demounted = "0"b;
+      105 	     end;
+      106 	     call abort (code);
+      107 	end;
+      108 
+      109 	do pvtex = lvte.pvtex repeat (pvt_array (pvtex).brother_pvtx) while (pvtex ^= 0);
+      110 	     pvt_array (pvtex).brother_pvtx = 0;
+      111 	end;
+      112 	prev_lvtep -> lvte.lvtep = lvte.lvtep;		/* thread out of hash class */
+      113 	lvte.lvtep = lvt.free_lvtep;			/* thread onto free list */
+      114 	lvt.free_lvtep = lvtep;
+      115 	return;
+      116 
+      117 add_pv:	entry (a_lvid, a_pvid, a_code);
+      118 	a_code = 0;
+      119 	lvid = a_lvid;
+      120 	pvtex = get_pvtx ((a_pvid), code);
+      121 	if code ^= 0 then call abort (code);
+      122 	pvt_arrayp = addr (pvt$array);
+      123 	if pvt_array (pvtex).lvid ^= lvid
+      124 	then call abort (error_table_$argerr);
+      125 	if pvt_array (pvtex).brother_pvtx ^= 0
+      126 	then call abort (error_table_$pv_is_in_lv);
+      127 	call find (lvid, (must_exist));
+      128 	pvt_array (pvtex).brother_pvtx = lvte.pvtex;
+      129 	lvte.pvtex = pvtex;
+      130 	return;
+      131 
+      132 /*  */
+      133 find:	proc (lvid, match_desired /* ,lvtp, prev_lvtep, lvtep */);
+      134 dcl  lvid bit (36) aligned,
+      135      match_desired bit (1) aligned,
+      136      hashx fixed bin (35);
+      137 
+      138 	     lvtp = addr (lvt$);
+      139 	     hashx = mod (bin (bin (lvid), 35), dimension (lvt.ht, 1));
+      140 	     prev_lvtep = addr (lvt.ht (hashx));
+      141 	     do lvtep = lvt.ht (hashx) repeat (lvte.lvtep) while (lvtep ^= null ());
+      142 		if lvte.lvid = lvid
+      143 		then if match_desired
+      144 		     then return;
+      145 		     else call abort (error_table_$logical_volume_is_defined);
+      146 		prev_lvtep = lvtep;
+      147 	     end;
+      148 	     if match_desired
+      149 	     then call abort (error_table_$logical_volume_not_defined);
+      150 	     else return;
+      151 	end find;
+      152 
+      153 get_lvte:	proc ( /* lvtp, lvtep */);
+      154 	     if lvt.free_lvtep ^= null ()
+      155 	     then do;
+      156 		lvtep = lvt.free_lvtep;
+      157 		lvt.free_lvtep = lvte.lvtep;
+      158 		return;
+      159 	     end;
+      160 	     else if lvt.high_water_lvtex < lvt.max_lvtex
+      161 	     then do;
+      162 		lvt.high_water_lvtex = lvt.high_water_lvtex + 1;
+      163 		lvtep = addr (lvt.lvtes (lvt.high_water_lvtex));
+      164 		return;
+      165 	     end;
+      166 	     else call abort (error_table_$logical_volume_table_full);
+      167 	end get_lvte;
+      168 
+      169 abort:	proc (code);
+      170 dcl  code fixed bin (35);
+      171 	     a_code = code;
+      172 	     go to return_to_caller;
+      173 	end abort;
+      174 
+      175 return_to_caller:
+      176 	return;
+      177 						/*
+      178*						   
+      179*						   */
+      180 
+  1     1 /* BEGIN INCLUDE FILE lvt.incl.pl1 -- Written Jan. 1976 by R. Bratt       */
+  1     2 /*
+  1     3*   This include file defines the format of the hardcore L_ogical V_olume T_able (LVT).
+  1     4**/
+  1     5 
+  1     6 dcl  lvt$ ext;
+  1     7 dcl  lvtp ptr;
+  1     8 dcl  lvtep ptr;
+  1     9 
+  1    10 dcl 1 lvt aligned based (lvtp),
+  1    11     2 max_lvtex fixed bin (17),			/* maximum number of LVs describable */
+  1    12     2 high_water_lvtex fixed bin (17),			/* highest LVT index assigned */
+  1    13     2 free_lvtep ptr,				/* pointer to  first free lvte  */
+  1    14     2 pad1 (4) bit (36),
+  1    15     2 ht (0:63) ptr unal,				/* lvid hash table */
+  1    16     2 lvtes (1:1 refer (lvt.max_lvtex)) like lvte;	/* LVT entries */
+  1    17 
+  1    18 dcl 1 lvte aligned based (lvtep),			/* logical volume table entry */
+  1    19     2 lvtep ptr unaligned,				/* lvid hash thread */
+  1    20     2 pvtex fixed bin (17),				/* thread of mounted PVs */
+  1    21     2 lvid bit (36),				/* logical volume id */
+  1    22     2 access_class aligned,				/* access isolation mechanism stuff */
+  1    23       3 min bit (72),				/* minimum access class allowed on LV */
+  1    24       3 max bit (72),				/* maximum access class allowed on volume */
+  1    25     2 flags unaligned,				/* flags */
+  1    26       3 public bit (1),				/* => anyone can connect to this LV */
+  1    27       3 read_only bit (1),				/* => no writes on this LV */
+  1    28       3 pad bit (16),
+  1    29       3 cycle_pvtx fixed bin (17);			/* pvtx for next per_process seg */
+  1    30 
+  1    31 /* END INCLUDE FILE lvt.incl.pl1                                                    */
+      181 
+      182 /*
+      183*   
+      184**/
+      185 
+  2     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  2     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2     8*     Add the support for subvolumes
+  2     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  2    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  2    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2    14*     Added inconsistent_dbm bit for determining the status of volume
+  2    15*     dumper bit maps.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18      dcl	   pvt$array	      aligned external;
+  2    19      dcl	   pvt$max_n_entries      fixed bin external;
+  2    20 
+  2    21      dcl	   pvt_arrayp	      ptr;
+  2    22      dcl	   pvtep		      ptr;
+  2    23 
+  2    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  2    25 
+  2    26      dcl	   1 pvte		      based (pvtep) aligned,
+  2    27 
+  2    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  2    29 
+  2    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  2    31 
+  2    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  2    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  2    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  2    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  2    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  2    37 	     2 pad3	      bit (2) unaligned,
+  2    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  2    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  2    40 
+  2    41 
+  2    42 
+  2    43 	     2 devname	      char (4),		/* device name */
+  2    44 
+  2    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  2    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  2    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  2    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  2    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  2    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  2    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  2    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  2    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  2    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  2    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  2    56 	     2 scav_check_address
+  2    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  2    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  2    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  2    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  2    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  2    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  2    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  2    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  2    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  2    66 
+  2    67 
+  2    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  2    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  2    70 
+  2    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  2    72 
+  2    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  2    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  2    75 
+  2    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  2    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  2    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  2    79 	     2 records_per_cyl    fixed bin,
+  2    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  2    81 	     2 sv_name            char (2) aligned,
+  2    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  2    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  2    84 
+  2    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  2    86 	     2 pad2	      bit (18) unaligned,
+  2    87 
+  2    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  2    89 
+  2    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  2    91 
+  2    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  2    93 
+  2    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  2    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  2    96 
+  2    97 
+  2    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  2    99 
+  2   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  2   101 
+  2   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  2   103 
+  2   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  2   105 
+  2   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  2   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  2   108 
+  2   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  2   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  2   111 
+  2   112 
+  2   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  2   114 	   VOLMAP_ASYNC_READ      init (1),
+  2   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  2   116 
+  2   117 
+  2   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      186 
+      187 
+      188 /* BEGIN MESSAGE DOCUMENTATION
+      189*
+      190*Message:
+      191*logical_volume_manager: nonzero brother pvt thread
+      192*
+      193*S:	$crash
+      194*
+      195*T:	$run
+      196*
+      197*M:	$err
+      198*
+      199*A:	$recover
+      200*
+      201*
+      202*END MESSAGE DOCUMENTATION */
+      203 
+      204      end logical_volume_manager;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0838.7  logical_volume_manager.pl1        >special_ldd>install>MR12.3-1114>logical_volume_manager.pl1
+181          1    11/30/76  1555.4  lvt.incl.pl1                      >ldd>include>lvt.incl.pl1
+186          2    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_code                                 parameter       fixed bin(35,0)          dcl 39 set ref 63 65* 84 85* 91 92* 117 118* 171*
+a_lvid                                 parameter       bit(36)                  dcl 39 ref 84 87 91 93 117 119
+a_lvtep                                parameter       pointer                  dcl 39 set ref 63 64 84 86* 88*
+a_pvid                                 parameter       bit(36)                  dcl 39 ref 117 120
+being_demounted           4(23)        based           bit(1)                   array level 2 packed packed unaligned dcl 2-24 set
+                                                                                  ref 98* 104*
+brother_pvtx              2(09)        based           fixed bin(8,0)           array level 2 packed packed unaligned dcl 2-24 set
+                                                                                  ref 75 77* 99 105 110* 111 125 128*
+code                                   parameter       fixed bin(35,0)          dcl 170 in procedure "abort" ref 169 171
+code                            000110 automatic       fixed bin(35,0)          dcl 44 in procedure "logical_volume_manager" set ref
+                                                                                  100* 101 106* 120* 121 121*
+deactivate_for_demount$lv       000026 constant        entry                    external dcl 58 ref 100
+error_table_$argerr             000016 external static fixed bin(35,0)          dcl 52 set ref 123*
+error_table_$logical_volume_is_defined
+                                000012 external static fixed bin(35,0)          dcl 52 set ref 145*
+error_table_$logical_volume_not_defined
+                                000020 external static fixed bin(35,0)          dcl 52 set ref 148*
+error_table_$logical_volume_table_full
+                                000010 external static fixed bin(35,0)          dcl 52 set ref 166*
+error_table_$pv_is_in_lv        000014 external static fixed bin(35,0)          dcl 52 set ref 125*
+free_lvtep                2            based           pointer                  level 2 dcl 1-10 set ref 113 114* 154 156 157*
+get_pvtx                        000030 constant        entry                    external dcl 58 ref 120
+hashx                           000140 automatic       fixed bin(35,0)          dcl 134 set ref 139* 140 141
+high_water_lvtex          1            based           fixed bin(17,0)          level 2 dcl 1-10 set ref 160 162* 162 163
+ht                       10            based           pointer                  array level 2 packed packed unaligned dcl 1-10 set
+                                                                                  ref 139 140 141
+local_lvte                      000100 automatic       structure                level 1 dcl 44 set ref 64* 68
+lvid                      1            based           bit(36)                  array level 2 in structure "pvt_array" dcl 2-24
+                                                                                  in procedure "logical_volume_manager" ref 73 123
+lvid                            000112 automatic       bit(36)                  dcl 44 in procedure "logical_volume_manager" set ref
+                                                                                  93* 94* 100* 102 119* 123 127*
+lvid                      2     000100 automatic       bit(36)                  level 2 in structure "local_lvte" dcl 44
+                                                                                  in procedure "logical_volume_manager" set ref 66*
+lvid                                   parameter       bit(36)                  dcl 134 in procedure "find" ref 133 139 142
+lvid                      2            based           bit(36)                  level 2 in structure "lvte" dcl 1-18 in procedure
+                                                                                  "logical_volume_manager" set ref 73 95* 102* 142
+lvt                                    based           structure                level 1 dcl 1-10
+lvt$                            000032 external static fixed bin(17,0)          dcl 1-6 set ref 138
+lvte                                   based           structure                level 1 dcl 1-18 set ref 64 68*
+lvtep                           000120 automatic       pointer                  dcl 1-8 in procedure "logical_volume_manager" set
+                                                                                  ref 68 69 70 73 77 78 81 88 95 97 102 103 109 112
+                                                                                  113 114 128 129 141* 141* 142 146* 147 156* 157
+                                                                                  163*
+lvtep                                  based           pointer                  level 2 in structure "lvte" packed packed unaligned
+                                                                                  dcl 1-18 in procedure "logical_volume_manager" set
+                                                                                  ref 69* 81* 112* 112 113* 147 157
+lvtes                   110            based           structure                array level 2 dcl 1-10 set ref 163
+lvtp                            000116 automatic       pointer                  dcl 1-7 set ref 113 114 138* 139 140 141 154 156 157
+                                                                                  160 160 162 162 163 163
+match_desired                          parameter       bit(1)                   dcl 134 ref 133 142 148
+max_lvtex                              based           fixed bin(17,0)          level 2 dcl 1-10 ref 160
+must_exist                             constant        bit(1)                   initial dcl 44 ref 87 94 127
+must_not_exist                         constant        bit(1)                   initial dcl 44 ref 66
+prev_lvtep                      000114 automatic       pointer                  dcl 44 set ref 81 112 140* 146*
+pvt$array                       000034 external static fixed bin(17,0)          dcl 2-18 set ref 71 96 122
+pvt$n_entries                   000022 external static fixed bin(17,0)          dcl 56 ref 72
+pvt_array                              based           structure                array level 1 dcl 2-24
+pvt_arrayp                      000122 automatic       pointer                  dcl 2-21 set ref 71* 73 73 75 77 96* 98 99 104 105
+                                                                                  110 111 122* 123 125 128
+pvte                                   based           structure                level 1 dcl 2-26
+pvtex                     1            based           fixed bin(17,0)          level 2 in structure "lvte" dcl 1-18 in procedure
+                                                                                  "logical_volume_manager" set ref 70* 77 78* 97 103
+                                                                                  109 128 129*
+pvtex                           000111 automatic       fixed bin(8,0)           dcl 44 in procedure "logical_volume_manager" set ref
+                                                                                  72* 73 73 75 77 78* 97* 97* 98* 99 103* 103* 104*
+                                                                                  105 109* 109* 110* 111 120* 123 125 128 129
+syserr                          000024 constant        entry                    external dcl 58 ref 75
+used                      4(18)        based           bit(1)                   array level 2 packed packed unaligned dcl 2-24 ref
+                                                                                  73
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 2-113
+next_pvtex                             automatic       fixed bin(8,0)           dcl 44
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 2-19
+pvtep                                  automatic       pointer                  dcl 2-22
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+abort                           000617 constant        entry                    internal dcl 169 ref 106 121 123 125 145 148 166
+add                             000042 constant        entry                    external dcl 63
+add_pv                          000363 constant        entry                    external dcl 117
+delete                          000226 constant        entry                    external dcl 91
+find                            000475 constant        entry                    internal dcl 133 ref 66 87 94 127
+get_lvte                        000563 constant        entry                    internal dcl 153 ref 67
+logical_volume_manager          000030 constant        entry                    external dcl 13
+lvtep                           000173 constant        entry                    external dcl 84
+return_to_caller                000474 constant        label                    dcl 175 ref 172
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 71 96 122 138 140 163
+bin                                                    builtin function         ref 139 139
+dimension                                              builtin function         ref 139
+mod                                                    builtin function         ref 139
+null                                                   builtin function         ref 69 86 141 154
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1054        1112     657        1064
+Length      1344     657        36         215     174           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+logical_volume_manager              148 external procedure  is an external procedure.  
+find                                    internal procedure  shares stack frame of external procedure logical_volume_manager.  
+get_lvte                                internal procedure  shares stack frame of external procedure logical_volume_manager.  
+abort                                   internal procedure  shares stack frame of external procedure logical_volume_manager.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+logical_volume_manager   000100 local_lvte                  logical_volume_manager
+                         000110 code                        logical_volume_manager
+                         000111 pvtex                       logical_volume_manager
+                         000112 lvid                        logical_volume_manager
+                         000114 prev_lvtep                  logical_volume_manager
+                         000116 lvtp                        logical_volume_manager
+                         000120 lvtep                       logical_volume_manager
+                         000122 pvt_arrayp                  logical_volume_manager
+                         000140 hashx                       find
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+deactivate_for_demount$lv     get_pvtx                      syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$logical_volume_is_defined
+error_table_$logical_volume_not_defined                     error_table_$logical_volume_table_full
+error_table_$pv_is_in_lv      lvt$                          pvt$array                     pvt$n_entries
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000027        63 000035        64 000054        65 000061        66 000062        67 000066        68 000067
+     69 000073        70 000075        71 000076        72 000101        73 000111        75 000123        77 000151
+     78 000160        80 000162        81 000164        82 000166        84 000167        85 000205        86 000206
+     87 000210        88 000217        89 000221        91 000222        92 000236        93 000237        94 000242
+     95 000246        96 000250        97 000253        98 000260        99 000264       100 000271       101 000302
+    102 000304       103 000307       104 000314       105 000320       106 000325       109 000327       110 000334
+    111 000341       112 000346       113 000350       114 000353       115 000356       117 000357       118 000373
+    119 000374       120 000377       121 000414       122 000420       123 000423       125 000436       127 000454
+    128 000460       129 000471       130 000473       175 000474       133 000475       138 000477       139 000502
+    140 000507       141 000511       142 000520       145 000531       146 000540       147 000542       148 000545
+    150 000561       151 000562       153 000563       154 000564       156 000571       157 000573       158 000575
+    160 000576       162 000601       163 000602       164 000606       166 000607       167 000616       169 000617
+    171 000621       172 000623
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

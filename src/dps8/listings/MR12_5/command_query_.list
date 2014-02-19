@@ -1,0 +1,1662 @@
+	COMPILATION LISTING OF SEGMENT command_query_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1001.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 command_query_:
+       13      procedure (qip, varying_answer);
+       14 
+       15 /* BEGIN DESCRIPTION */
+       16 
+       17 /* function: */
+       18 
+       19 /* The standard procedure to ask a question and read the user's answer: the question is formatted and the condition
+       20*   "command_question" is signalled allowing for programs like "answer" to supply answers automatically; the
+       21*   "repeat_query" command is also contained herein to reask the last question */
+       22 
+       23 /* history: */
+       24 
+       25 /* Created:  September 1971 by Jerry Stern */
+       26 /* Modified: 15 September 1971 by Jerry Stern */
+       27 /* Modified: 20 November 1975 by Steve Herbst to add the repeat_query command */
+       28 /* Modified: 26 October 1976 by Paul Green to switch to iox_ (get it?) */
+       29 /* Modified: 13 June 1978 by Steve Herbst to add the temporary entry point user_io */
+       30 /* Modified: July 1978 by J. C. Whitmore to remove user_io entry in favor of extended info structures */
+       31 /* Modified: 11 August 1978 by W. O. Sibert to add cu_$cp escape feature and set_allow_cp_escape entrypoint */
+       32 /* Modified: 23 January 1979 by William M. York to fix overlength substr assignment bug (see MCR 3661), lengthen the
+       33*             internal buffers, and call iox_$put_chars directly, avoiding the 256 char ioa_ restriction */
+       34 /* Modified: 7 September 1979 by Steve Herbst to signal command_query_error for bad answers in absentee */
+       35 /* Modified: 8 May 1981 by Steve Herbst to add command_query_$yes_no, the explanantion feature, and to accept y/n */
+       36 /* Modified: June 1981 by Benson Margulies to set the quiet_restart bit in condition structure */
+       37 /* Modified: 6 August 1981 by Richard Lamson to fix out-of-range version numbers in query_info structure */
+       38 /* Modified: 11 March 1982 by G. Palter to issue reset_more control order before asking questions */
+       39 /* Modified: 12/15/82 by S. Herbst to add literal_sw, prompt_after_explanation, and cp_escape_control value "01"b */
+       40 /* Modified: 02/08/84 by S. Herbst to check whether called with varying or nonvarying answer arg */
+       41 /* Modified: 02/08/84 by S. Herbst to change length fields in command_question_info.incl.pl1 from fixed to fixed (21) */
+       42 /* Modified: 03/27/84 by S. Herbst to say "Answer yes, no, or ? for an explanation" */
+       43 /* Modified: 06/14/84 by S. Herbst to call sub_err_ if error from iox_ writing question/reading answer */
+       44 
+       45 /****^  HISTORY COMMENTS:
+       46*  1) change(85-03-01,Backs), approve(85-01-09,MCR7134),
+       47*     audit(85-03-01,RBarstad), install(86-03-05,MR12.0-1028):
+       48*     Changed command_query_ to accept case insensitive yes or no.
+       49*  2) change(88-09-14,Beattie), approve(88-10-06,MCR8006),
+       50*     audit(88-10-06,Farley), install(88-10-10,MR12.2-1155):
+       51*     Remove setting of answer variable length. It was trashing word in front
+       52*     of fixed length answer variables.  This is taken care of in the
+       53*     set_answer internal procedure. Check length of big_str before testing it
+       54*     from within a substr.
+       55*                                                   END HISTORY COMMENTS */
+       56 
+       57 /* format: style4,delnl,insnl,ifthenstmt,ifthen */
+       58 
+       59 
+       60 /* PARAMETERS */
+       61 
+       62 dcl  varying_answer character (*) varying parameter;
+       63 dcl  qip pointer parameter;
+       64 dcl  yes_sw bit (1) parameter;
+       65 dcl  A_query_code fixed binary (35) parameter;
+       66 
+       67 
+       68 /* CONSTANTS */
+       69 
+       70 dcl  GRIPE1 character (27) static options (constant) initial
+       71 	("Please answer yes or no.   ");
+       72 dcl  GRIPE2 character (50) static options (constant) initial
+       73 	("Please answer yes, no, or ? for an explanation.   ");
+       74 
+       75 dcl  NL character (1) static options (constant) initial ("
+       76 ");
+       77 dcl  WHITE character (5) static options (constant) initial (/* SP HT VT FF NL */ " 	
+       78 ");
+       79 
+       80 dcl  LOWERCASE_YN character (5) static options (constant) initial ("yesno");
+       81 dcl  UPPERCASE_YN character (5) static options (constant) initial ("YESNO");
+       82 
+       83 /* BASED */
+       84 
+       85 dcl  alloc_str character (alloc_len) based (alloc_ptr);
+       86 dcl  big_str character (big_len) based (big_ptr);
+       87 dcl  callername character (question_info.name_lth) based (question_info.name_ptr);
+       88 dcl  explanation character (query_info.explanation_len) based (query_info.explanation_ptr);
+       89 dcl  fixed_answer char (fixed_answer_len) based (fixed_answer_ptr);
+       90 dcl  question character (question_info.question_lth) based (question_info.question_ptr);
+       91 dcl  nchars fixed binary (21) based;
+       92 dcl  area area based (area_ptr);
+       93 
+       94 dcl  1 input_info aligned based (qip) like query_info;
+       95 
+       96 /* AUTOMATIC */
+       97 
+       98 dcl  1 question_info aligned like command_question_info;
+       99 
+      100 dcl  retstring character (1000);
+      101 dcl  buffer character (1000) aligned;
+      102 dcl  output_buffer character (1004) aligned;
+      103 dcl  yn_answer character (500) aligned varying;
+      104 dcl  error_string character (100) aligned;
+      105 
+      106 dcl  (alloc_sw, allow_cp_escape, fixed_answer_sw, interpret_cp_escape) bit (1) aligned;
+      107 dcl  (packed, saved_rflag, timer_set, yn_entry_sw) bit (1) aligned;
+      108 
+      109 dcl  (alloc_ptr, area_ptr, alp, big_ptr, fixed_answer_ptr) pointer;
+      110 
+      111 dcl  (abs_queue, arg_count, bi, callername_index, control_string_index, ndims, scale, type) fixed binary;
+      112 dcl  (alloc_len, big_len, fixed_answer_len, fixed21, len) fixed binary (21);
+      113 dcl  code fixed binary (35);
+      114 
+      115 dcl  saved_rlabel label variable;
+      116 
+      117 /* BUILTINS */
+      118 
+      119 dcl  (addr, addrel, bin, bit, index, length, ltrim, max, maxlength, min, null, rtrim, size, substr, translate, unspec) builtin;
+      120 
+      121 /* CONDITIONS */
+      122 
+      123 dcl  cleanup condition;
+      124 
+      125 /* EXTERNAL STATIC */
+      126 
+      127 dcl  iox_$user_input pointer external;
+      128 dcl  iox_$user_io pointer external;
+      129 dcl  iox_$user_output pointer external;
+      130 
+      131 dcl  error_table_$long_record fixed binary (35) external;
+      132 
+      133 /* INTERNAL STATIC */
+      134 
+      135 dcl  repeat_label label variable static;
+      136 dcl  repeat_flag bit (1) aligned initial ("0"b) static;
+      137 
+      138 dcl  first_call bit (1) static initial ("1"b);
+      139 dcl  static_allow_cp_escape bit (1) aligned static initial ("0"b);
+      140 
+      141 /* ENTRIES */
+      142 
+      143 dcl  com_err_ entry () options (variable);
+      144 dcl  convert_status_code_ entry (fixed binary (35), character (8) aligned, character (100) aligned);
+      145 dcl  cu_$arg_count entry (fixed binary);
+      146 dcl  cu_$arg_list_ptr entry (pointer);
+      147 dcl  cu_$arg_ptr entry (fixed binary, pointer, fixed binary (21), fixed binary (35));
+      148 dcl  cu_$cp entry (pointer, fixed binary (21), fixed binary (35));
+      149 dcl  decode_descriptor_
+      150 	entry (pointer, fixed binary, fixed binary, bit (1) aligned, fixed binary, fixed binary, fixed binary);
+      151 dcl  get_group_id_ entry () returns (character (32));
+      152 dcl  get_system_free_area_ entry () returns (pointer);
+      153 dcl  ioa_$general_rs
+      154 	entry (pointer, fixed binary, fixed binary, character (*), fixed binary (21), bit (1) aligned, bit (1) aligned);
+      155 dcl  ioa_$ioa_switch entry () options (variable);
+      156 dcl  ioa_$ioa_switch_nnl entry () options (variable);
+      157 dcl  iox_$control entry (pointer, character (*), pointer, fixed binary (35));
+      158 dcl  iox_$get_line entry (pointer, pointer, fixed binary (21), fixed binary (21), fixed binary (35));
+      159 dcl  iox_$put_chars entry (pointer, pointer, fixed binary (21), fixed binary (35));
+      160 dcl  signal_ entry (character (*), pointer, pointer, pointer);
+      161 dcl  sub_err_ entry () options (variable);
+      162 dcl  timer_manager_$alarm_call entry (fixed binary (71), bit (2) aligned, entry);
+      163 dcl  timer_manager_$reset_alarm_call entry (entry);
+      164 dcl  user_info_$absentee_queue entry (fixed binary);
+      165 
+      166 
+      167 /* BEGIN */
+      168 
+      169 /* command_query_: entry (qip, varying_answer); */
+      170 
+      171 	query_info.version = input_info.version;
+      172 	if query_info.version < 1 | query_info.version > 6 then do;
+      173 						/* Old programs are grandfathered */
+      174 	     query_info.version = 2;			/* Harmless version number */
+      175 	end;
+      176 
+      177 	yn_entry_sw = "0"b;
+      178 	callername_index = 3;
+      179 	control_string_index = 4;
+      180 	query_info.yes_or_no_sw = input_info.yes_or_no_sw;/* copy the input data */
+      181 	query_info.suppress_name_sw = input_info.suppress_name_sw;
+      182 	query_info.status_code = input_info.status_code;
+      183 	query_info.query_code = input_info.query_code;
+      184 
+      185 	if query_info.version >= 3 then do;		/* if more is defined, use it */
+      186 	     if query_info.version >= 4 then do;	/* use new bits */
+      187 		query_info.cp_escape_control = input_info.cp_escape_control;
+      188 		query_info.suppress_spacing = input_info.suppress_spacing;
+      189 		if query_info.version >= 5 then do;
+      190 		     query_info.explanation_len = input_info.explanation_len;
+      191 		     if query_info.explanation_len ^= 0 then query_info.explanation_ptr = input_info.explanation_ptr;
+      192 		     if query_info.version >= 6 then do;
+      193 			query_info.literal_sw = input_info.literal_sw;
+      194 			query_info.prompt_after_explanation = input_info.prompt_after_explanation;
+      195 		     end;
+      196 		end;
+      197 	     end;
+      198 	     query_info.question_iocbp = input_info.question_iocbp;
+      199 	     query_info.answer_iocbp = input_info.answer_iocbp;
+      200 	     query_info.repeat_time = input_info.repeat_time;
+      201 	end;
+      202 
+      203 	if query_info.literal_sw | query_info.cp_escape_control = "01"b then do;
+      204 	     allow_cp_escape = "1"b;
+      205 	     interpret_cp_escape = "0"b;
+      206 	end;
+      207 	else if query_info.cp_escape_control = "11"b then allow_cp_escape, interpret_cp_escape = "1"b;
+      208 	else if query_info.cp_escape_control = "10"b then allow_cp_escape, interpret_cp_escape = "0"b;
+      209 	else allow_cp_escape, interpret_cp_escape = static_allow_cp_escape;
+      210 
+      211 	go to COMMON;
+      212 
+      213 
+      214 /* format: off */
+      215 /* An easy-to-use entry which requires a yes/no answer:
+      216*	call command_query_$yes_no (yes_sw, status_code, callername, explanation, control_string, args...) */
+      217 /* format: on */
+      218 
+      219 yes_no:
+      220      entry (yes_sw, A_query_code);
+      221 
+      222 	yn_entry_sw = "1"b;
+      223 	callername_index = 3;
+      224 	control_string_index = 5;
+      225 	unspec (query_info) = "0"b;
+      226 	query_info.yes_or_no_sw = "1"b;
+      227 	query_info.query_code = A_query_code;
+      228 	query_info.question_iocbp, query_info.answer_iocbp = null;
+      229 	allow_cp_escape, interpret_cp_escape = static_allow_cp_escape;
+      230 
+      231 
+      232 COMMON:
+      233 	if first_call then do;			/* be sure the labels are correctly defined */
+      234 	     repeat_label = ASK;			/* basis for saved label */
+      235 	     repeat_flag = "0"b;
+      236 	     first_call = "0"b;			/* done for this process */
+      237 	end;
+      238 	saved_rflag = repeat_flag;			/* save the state of any previous invocation */
+      239 	saved_rlabel = repeat_label;
+      240 	repeat_label = ASK;				/* redefine question repeat label to this block */
+      241 	repeat_flag = "0"b;				/* but a repeat is not defined yet */
+      242 	timer_set = "0"b;				/* no repeat timer set for this block */
+      243 
+      244 	call cu_$arg_count (arg_count);
+      245 	call cu_$arg_list_ptr (alp);			/* get arglist ptr */
+      246 
+      247 	if ^yn_entry_sw then do;			/* find out if answer arg is varying or non */
+      248 	     call decode_descriptor_ (alp, 2, type, packed, ndims, 0, scale);
+      249 	     fixed_answer_sw = (type = char_dtype);
+      250 	     if fixed_answer_sw then call cu_$arg_ptr (2, fixed_answer_ptr, fixed_answer_len, 0);
+      251 	end;
+      252 
+      253 	call cu_$arg_ptr (callername_index, question_info.name_ptr, fixed21, 0);
+      254 	question_info.name_lth = fixed21;
+      255 	call decode_descriptor_ (alp, callername_index, type, packed, ndims, question_info.name_lth, scale);
+      256 						/* get data type & length of callername */
+      257 	if type = varying_char_dtype then		/* varying string, must get current length */
+      258 	     question_info.name_lth = addrel (question_info.name_ptr, -1) -> nchars;
+      259 						/* the kludge shows its face */
+      260 
+      261 /* get callername */
+      262 
+      263 	bi = 1;
+      264 	if ^query_info.suppress_name_sw then
+      265 	     if question_info.name_lth ^= 0 then do;	/* put caller name in buffer */
+      266 		buffer = rtrim (callername);
+      267 		if buffer ^= "" then do;
+      268 		     bi = length (rtrim (buffer)) + 3;
+      269 		     substr (buffer, bi - 2, 2) = ": ";
+      270 		end;
+      271 	     end;
+      272 
+      273 /* Get query_code message and verbose explanation of question for $yes_no */
+      274 
+      275 	if yn_entry_sw then do;
+      276 	     if A_query_code ^= 0 then do;
+      277 		call convert_status_code_ (A_query_code, "", error_string);
+      278 		buffer = substr (buffer, 1, bi - 1) || error_string;
+      279 		bi = bi + length (rtrim (error_string)) + 1;
+      280 		substr (buffer, bi - 1, 1) = " ";
+      281 	     end;
+      282 	     call cu_$arg_ptr (callername_index + 1, query_info.explanation_ptr, query_info.explanation_len, code);
+      283 	     if code ^= 0 | query_info.explanation_len = 0 then query_info.explanation_ptr = null;
+      284 	end;
+      285 
+      286 /* get user message */
+      287 
+      288 	if arg_count >= control_string_index then do;
+      289 	     call ioa_$general_rs (alp, control_string_index, control_string_index + 1, retstring, len, "0"b, "0"b);
+      290 	     len = min (len, length (buffer) - bi + 1);
+      291 	     substr (buffer, bi, len) = substr (retstring, 1, len);
+      292 	     bi = bi + len;
+      293 	end;
+      294 
+      295 /* fill in question_info...which will be passed to the handler of the command_question condition. */
+      296 
+      297 get_ready_to_signal:
+      298 	question_info.length = size (question_info);
+      299 	question_info.version = cq_info_version_7;
+      300 	question_info.action_flags.cant_restart = "0"b;
+      301 	question_info.action_flags.default_restart = "1"b;
+      302 	question_info.action_flags.quiet_restart = "1"b;
+      303 	question_info.status_code = query_info.status_code;
+      304 	question_info.query_code = query_info.query_code;
+      305 	question_info.question_sw = "1"b;		/* by default, print the question */
+      306 	question_info.yes_or_no_sw = query_info.yes_or_no_sw;
+      307 	question_info.preset_sw = "0"b;		/* don't expect a preset answer */
+      308 	question_info.answer_sw = "1"b;		/* but if one comes, print it by default */
+      309 	question_info.allow_cp_escape = allow_cp_escape;	/* computed earlier */
+      310 	question_info.suppress_spacing = query_info.suppress_spacing;
+      311 	question_info.interpret_cp_escape = interpret_cp_escape;
+      312 	question_info.literal_sw = query_info.literal_sw;
+      313 	question_info.prompt_after_explanation = query_info.prompt_after_explanation;
+      314 	question_info.max_question_lth = size (buffer);
+      315 	question_info.question_ptr = addr (buffer);
+      316 	question_info.question_lth = bi - 1;
+      317 	question_info.info_string = substr (buffer, 1, question_info.question_lth);
+      318 	if yn_entry_sw then do;
+      319 	     question_info.answer_ptr, big_ptr = addrel (addr (yn_answer), 1);
+      320 	     question_info.max_answer_lth = maxlength (yn_answer);
+      321 	end;
+      322 	else do;
+      323 	     if fixed_answer_sw then do;
+      324 		question_info.answer_ptr, big_ptr = fixed_answer_ptr;
+      325 		question_info.max_answer_lth = fixed_answer_len;
+      326 	     end;
+      327 	     else do;				/* varying answer, skip the length word */
+      328 		question_info.answer_ptr, big_ptr = addrel (addr (varying_answer), 1);
+      329 		question_info.max_answer_lth = maxlength (varying_answer);
+      330 	     end;
+      331 	end;
+      332 	question_info.question_iocbp = query_info.question_iocbp;
+      333 						/* give handler caller's output switch */
+      334 	question_info.answer_iocbp = query_info.answer_iocbp;
+      335 						/* and input switch */
+      336 	question_info.repeat_time = query_info.repeat_time;
+      337 						/* and also caller's repeat time */
+      338 	question_info.explanation_ptr = query_info.explanation_ptr;
+      339 	question_info.explanation_len = query_info.explanation_len;
+      340 
+      341 	alloc_ptr = null;
+      342 
+      343 /* signal command_question */
+      344 
+      345 SIGNAL:
+      346 	call signal_ ("command_question", null, addr (question_info), null);
+      347 
+      348 	on cleanup call clean_up;
+      349 
+      350 	if question_info.question_sw & ^question_info.preset_sw then
+      351 	     repeat_flag = "1"b;			/* if asking a question */
+      352 	else repeat_flag = "0"b;
+      353 
+      354 	if question_info.question_iocbp = null then	/* if no output switch defined by caller or handler */
+      355 	     if question_info.preset_sw then
+      356 		question_info.question_iocbp = iox_$user_output;
+      357 						/* put question in file?? */
+      358 	     else question_info.question_iocbp = iox_$user_io;
+      359 						/* if really asking, go to the terminal */
+      360 
+      361 	if question_info.answer_iocbp = null then	/* if no input switch defined by caller or handler */
+      362 	     question_info.answer_iocbp = iox_$user_input;/* set the default input switch */
+      363 
+      364 ASK:
+      365 	if question_info.question_sw then do;		/* do we print the question? */
+      366 	     if ^question_info.preset_sw then		/* and if we need a reply ... */
+      367 		call iox_$control (question_info.question_iocbp, "reset_more", null (), (0));
+      368 						/* ... make sure the user sees the question */
+      369 	     call print_question;
+      370 	end;
+      371 
+      372 /* process the answer */
+      373 
+      374 	alloc_sw = "0"b;
+      375 
+      376 	if question_info.preset_sw then		/* kludge in the current length */
+      377 	     big_len = question_info.answer_lth;
+      378 	else do;					/* read the answer from the user's terminal */
+      379 READ_ANSWER:
+      380 	     if repeat_flag & question_info.repeat_time >= 30 then do;
+      381 						/* put 30 second lower limit on repeats */
+      382 		call timer_manager_$alarm_call (question_info.repeat_time, "11"b, repeat_query);
+      383 		timer_set = "1"b;			/* indicate that a timer is pending */
+      384 	     end;
+      385 
+      386 GET_LINE:
+      387 	     call iox_$get_line (question_info.answer_iocbp, addr (retstring), length (retstring), len, code);
+      388 
+      389 	     if code = error_table_$long_record then do;
+      390 		if ^alloc_sw | big_len + len > alloc_len then do;
+      391 						/* need more room */
+      392 		     if ^alloc_sw then do;
+      393 			alloc_len = length (retstring) * 4;
+      394 			area_ptr = get_system_free_area_ ();
+      395 		     end;
+      396 		     else alloc_len = max (2 * alloc_len, big_len + len);
+      397 		     alloc_ptr = null;
+      398 
+      399 		     allocate alloc_str in (area) set (alloc_ptr);
+      400 
+      401 		     if alloc_sw then do;
+      402 			substr (alloc_ptr -> big_str, 1, big_len) = substr (big_ptr -> big_str, 1, big_len);
+      403 			free big_ptr -> big_str in (area);
+      404 		     end;
+      405 		     else big_len = 0;
+      406 
+      407 		     big_ptr = alloc_ptr;
+      408 		     alloc_sw = "1"b;
+      409 		end;
+      410 
+      411 		substr (big_ptr -> big_str, big_len + 1, length (retstring)) = retstring;
+      412 		big_len = big_len + length (retstring);
+      413 		code = 0;
+      414 		go to GET_LINE;
+      415 	     end;
+      416 
+      417 	     else if code ^= 0 then do;
+      418 ANSWER_ERROR:
+      419 		call sub_err_ (code, callername, ACTION_CAN_RESTART, null, 0, "Reading answer.");
+      420 		go to GET_LINE;
+      421 	     end;
+      422 
+      423 	     if alloc_sw then do;
+      424 		if big_len + len > alloc_len then do;
+      425 		     alloc_len = big_len + len;
+      426 
+      427 		     allocate alloc_str in (area) set (alloc_ptr);
+      428 
+      429 		     substr (alloc_ptr -> big_str, 1, big_len) = substr (big_ptr -> big_str, 1, big_len);
+      430 		     free big_ptr -> big_str in (area);
+      431 		     big_ptr = alloc_ptr;
+      432 		end;
+      433 		substr (big_ptr -> big_str, big_len + 1, len) = substr (retstring, 1, len);
+      434 		big_len = big_len + len;
+      435 	     end;
+      436 	     else do;
+      437 		big_ptr = addr (retstring);
+      438 		big_len = len;
+      439 	     end;
+      440 
+      441 	     if timer_set then call timer_manager_$reset_alarm_call (repeat_query);
+      442 	end;
+      443 
+      444 	if ^query_info.literal_sw & index (WHITE, substr (big_str, 1, 1)) ^= 0 then
+      445 	     big_str = ltrim (big_str, WHITE);		/* strip leading white space from answer */
+      446 
+      447 	if big_len > 1 then
+      448 	if substr (big_str, 1, 2) = ".." then do;	/* command processor escape */
+      449 	     if ^allow_cp_escape then do;
+      450 		call com_err_ (0, callername, "No command processor escape allowed for this question.");
+      451 		if question_info.preset_sw then
+      452 		     go to SIGNAL;
+      453 		else go to ASK;
+      454 	     end;
+      455 
+      456 	     if interpret_cp_escape then do;
+      457 
+      458 		call cu_$cp (addr (substr (big_str, 3, 1)), max (0, big_len - 2), code);
+      459 
+      460 		if alloc_sw then do;
+      461 		     alloc_sw = "0"b;
+      462 		     free alloc_str in (area);
+      463 		     alloc_ptr = null;
+      464 		end;
+      465 
+      466 		if question_info.preset_sw then
+      467 		     go to SIGNAL;
+      468 		else do;
+      469 		     call iox_$control (question_info.question_iocbp, "reset_more", null (), (0));
+      470 		     call ioa_$ioa_switch_nnl (question_info.question_iocbp, "Answer: ");
+      471 		     go to READ_ANSWER;		     	/* brief prompt */
+      472 		end;
+      473 	     end;
+      474 	end;
+      475 
+      476 	if ^query_info.literal_sw then big_len = length (rtrim (big_str, WHITE));
+      477 
+      478 	if question_info.preset_sw & question_info.answer_sw then
+      479 						/* if preset answer exists & should be printed */
+      480 	     if question_info.question_sw | ^(big_str = "")
+      481 						/* and if the question was already printed */
+      482 	     then call ioa_$ioa_switch (question_info.question_iocbp, "^a", big_str);
+      483 						/* print answer and NL */
+      484 
+      485 	if big_str = "?" & query_info.explanation_ptr ^= null & query_info.explanation_len > 0 then do;
+      486 						/* asking for an explanation and there is one */
+      487 	     call expand_explanation ();
+      488 
+      489 	     call iox_$control (question_info.question_iocbp, "reset_more", null (), (0));
+      490 						/* let the user see the explanation */
+      491 PRINT_EXPLANATION:
+      492 	     if query_info.suppress_spacing then
+      493 		call iox_$put_chars (question_info.question_iocbp, addr (retstring), len, code);
+      494 	     else do;
+      495 		substr (output_buffer, 1, 1) = NL;
+      496 		substr (output_buffer, 2, len + 3) = substr (retstring, 1, len);
+      497 		call iox_$put_chars (question_info.question_iocbp, addr (output_buffer), len + 4, code);
+      498 	     end;
+      499 	     if code ^= 0 then do;
+      500 		call sub_err_ (code, callername, ACTION_CAN_RESTART, null, 0, "Writing explanation.");
+      501 		go to PRINT_EXPLANATION;
+      502 	     end;
+      503 
+      504 	     if query_info.prompt_after_explanation then call print_question;
+      505 
+      506 	     go to READ_ANSWER;
+      507 	end;
+      508 
+      509 	if query_info.yes_or_no_sw then do;		/* answer must be "yes" or "no" */
+      510 
+      511 	                                                  /* Translate any uppercase letters to lowercase before testing */
+      512 	     big_str = translate (big_str, LOWERCASE_YN, UPPERCASE_YN);
+      513 
+      514 	     if big_str ^= "yes" & big_str ^= "y" & big_str ^= "no" & big_str ^= "n" then
+      515 		if question_info.preset_sw then do;	/* the handler returned a bum answer */
+      516 		     call signal_ ("command_query_error", null, null, null);
+      517 		     go to get_ready_to_signal;	/* control may return here if a "start" command is issued */
+      518 		end;
+      519 		else do;				/* the user has given a bum answer */
+      520 		     if get_group_id_ () = "Initializer.SysDaemon.z" then
+      521 			abs_queue = -1;
+      522 		     else call user_info_$absentee_queue (abs_queue);
+      523 		     if abs_queue ^= -1 then do;	/* running in absentee */
+      524 			call com_err_ (0, "command_query_", "Invalid answer to question above.");
+      525 			call signal_ ("command_query_error", null, null, null);
+      526 			return;
+      527 		     end;
+      528 		     call iox_$control (question_info.question_iocbp, "reset_more", null (), (0));
+      529 PRINT_GRIPE:
+      530 		     if query_info.explanation_ptr ^= null & query_info.explanation_len > 0 then
+      531 			call iox_$put_chars (question_info.question_iocbp,
+      532 			     addr (GRIPE2), length (GRIPE2), code);
+      533 		     else call iox_$put_chars (question_info.question_iocbp,
+      534 			addr (GRIPE1), length (GRIPE1), code);
+      535 
+      536 		     if code ^=0 then do;
+      537 			call sub_err_ (code, callername, ACTION_CAN_RESTART, null, 0, "Writing question.");
+      538 			go to PRINT_GRIPE;
+      539 		     end;
+      540 						/* complain */
+      541 		     call iox_$control (question_info.answer_iocbp, "resetread", null, code);
+      542 						/* flush any read-ahead */
+      543 		     if alloc_sw then do;
+      544 			alloc_sw = "0"b;
+      545 			free alloc_str in (area);
+      546 			alloc_ptr = null;
+      547 		     end;
+      548 
+      549 		     go to READ_ANSWER;
+      550 		end;
+      551 
+      552 	     if yn_entry_sw then yes_sw = (big_str = "yes" | big_str = "y");
+      553 	     else if big_str = "y" then call set_answer ("yes");
+      554 	     else if big_str = "n" then call set_answer ("no");
+      555 	     else call set_answer (big_str);
+      556 	end;
+      557 
+      558 	else call set_answer (big_str);
+      559 
+      560 	repeat_flag = saved_rflag;
+      561 	repeat_label = saved_rlabel;
+      562 
+      563 	if alloc_sw then free alloc_str in (area);
+      564 	return;
+      565 
+      566 
+      567 /* INTERNAL PROCEDURES */
+      568 
+      569 set_answer: proc (P_str);
+      570 
+      571 dcl P_str char (*);
+      572 
+      573 	if fixed_answer_sw then fixed_answer = P_str;
+      574 	else varying_answer = P_str;
+      575 
+      576 end set_answer;
+      577 
+      578 clean_up:
+      579      procedure ();
+      580 
+      581 	if timer_set then call timer_manager_$reset_alarm_call (repeat_query);
+      582 	repeat_flag = saved_rflag;
+      583 	repeat_label = saved_rlabel;
+      584 
+      585 	if alloc_ptr ^= null then free alloc_ptr -> alloc_str in (area);
+      586 
+      587      end clean_up;
+      588 
+      589 
+      590 /* Substitutes arugments into explanation control string and builds retstring */
+      591 
+      592 expand_explanation:
+      593      procedure ();
+      594 
+      595 dcl  1 arg_list aligned based (alp),
+      596        2 arg_count fixed bin (17) unaligned unsigned,
+      597        2 code bit (19) unaligned,
+      598        2 desc_count fixed bin (17) unaligned unsigned,
+      599        2 mbz bit (19) unaligned,
+      600        2 arg_ptrs (arg_count) ptr,
+      601        2 display_ptr (bin ((arg_list.code & bit (10, 19)) ^= ""b), 1) ptr,
+      602        2 desc_ptrs (arg_count) ptr;
+      603 
+      604 /* For $yes_no, explanation is an argument */
+      605 
+      606 	if yn_entry_sw then
+      607 	     call ioa_$general_rs (alp, control_string_index - 1, control_string_index + 1, retstring, len, "0"b, "0"b);
+      608 
+      609 /* Otherwise, have to build an argument list containing it */
+      610 
+      611 	else begin;
+      612 
+      613 dcl  1 new_arg_list aligned,
+      614        2 arg_count fixed bin (17) unaligned unsigned,
+      615        2 code bit (19) unaligned,
+      616        2 desc_count fixed bin (17) unaligned unsigned,
+      617        2 mbz bit (19) unaligned,
+      618        2 arg_ptrs (arg_list.arg_count) ptr,
+      619        2 display_ptr (bin ((arg_list.code & bit (10, 19)) ^= ""b), 1) ptr,
+      620        2 desc_ptrs (arg_list.arg_count) ptr;
+      621 
+  1     1 /*	BEGIN INCLUDE FILE ... descriptor.incl.pl1	*/
+  1     2 
+  1     3 dcl	1 desc_		aligned,
+  1     4 	2 version2_	bit(1) unal,
+  1     5 	2 type_		fixed bin(6) unsigned unal,
+  1     6 	2 pack_		bit(1) unal,
+  1     7 	2 dimension_	bit(4) unal,
+  1     8 	2 scale_		fixed bin(11) unal,
+  1     9 	2 precision_	fixed bin(11) unal;
+  1    10 
+  1    11 /*	END INCLUDE FILE ... descriptor.incl.pl1	*/
+      622 
+      623 
+      624 dcl  desc_size fixed bin (24) unaligned unsigned based (addr (desc_.scale_));
+      625 
+      626 	     new_arg_list = arg_list;			/* replace question arg with explanation arg */
+      627 	     desc_.version2_ = "1"b;
+      628 	     desc_.type_ = char_dtype;
+      629 	     desc_.pack_ = "1"b;
+      630 	     desc_.dimension_ = "0"b;
+      631 
+      632 	     desc_size = length (explanation);
+      633 
+      634 	     new_arg_list.desc_ptrs (control_string_index) = addr (desc_);
+      635 	     new_arg_list.arg_ptrs (control_string_index) = addr (explanation);
+      636 
+      637 	     call ioa_$general_rs (addr (new_arg_list), control_string_index, control_string_index + 1, retstring, len,
+      638 		"0"b, "0"b);
+      639 
+      640 	end;
+      641 
+      642      end expand_explanation;
+      643 
+      644 
+      645 print_question: proc;
+      646 
+      647 PRINT_QUESTION:
+      648 	     if query_info.suppress_spacing then do;
+      649 		call iox_$put_chars (question_info.question_iocbp, question_info.question_ptr,
+      650 		     (question_info.question_lth), code);
+      651 		if code ^= 0 then do;
+      652 QUESTION_ERROR:
+      653 		     call sub_err_ (code, callername, ACTION_CAN_RESTART, null, 0, "Writing question.");
+      654 		     go to PRINT_QUESTION;
+      655 		end;
+      656 	     end;
+      657 	     else do;
+      658 		substr (output_buffer, 1, 1) = NL;
+      659 		substr (output_buffer, 2, (bi - 1) + 3) = question;
+      660 		call iox_$put_chars (question_info.question_iocbp, addr (output_buffer), (bi - 1) + 4, code);
+      661 		if code ^= 0 then go to QUESTION_ERROR;
+      662 	     end;
+      663 
+      664 end print_question;
+      665 
+      666 
+      667 /* Repeat the last question and ask for the answer again */
+      668 
+      669 repeat_query:
+      670 rq:
+      671      entry () options (variable);
+      672 
+      673 	if first_call then do;			/* be sure the labels are correctly defined */
+      674 	     repeat_label = ASK;			/* basis for saved label */
+      675 	     repeat_flag = "0"b;
+      676 	     first_call = "0"b;			/* done for this process */
+      677 	end;
+      678 
+      679 	if repeat_flag then
+      680 	     go to repeat_label;
+      681 	else call com_err_ (0, "repeat_query", "No pending query.");
+      682 
+      683 	return;
+      684 
+      685 
+      686 /* ENTRYPOINT */
+      687 
+      688 /* Enable/disable use of the command processor escape */
+      689 
+      690 set_cp_escape_enable:
+      691      entry (new_allow_cp_escape, old_allow_cp_escape);
+      692 
+      693 dcl  new_allow_cp_escape bit (1) aligned parameter;	/* whether it is enabled now */
+      694 dcl  old_allow_cp_escape bit (1) aligned parameter;	/* was it enabled before? */
+      695 
+      696 	old_allow_cp_escape = static_allow_cp_escape;
+      697 	static_allow_cp_escape = new_allow_cp_escape;
+      698 
+      699 	return;
+      700 
+      701 
+      702 /* INCLUDE FILES */
+      703 
+  2     1 /*	BEGIN INCLUDE FILE query_info.incl.pl1		TAC June 1, 1973 */
+  2     2 /*        Renamed to query_info.incl.pl1 and cp_escape_control added, 08/10/78 WOS */
+  2     3 /*	version number changed to 4, 08/10/78 WOS */
+  2     4 /* Version 5 adds explanation_(ptr len) 05/08/81 S. Herbst */
+  2     5 /* Version 6 adds literal_sw, prompt_after_explanation switch 12/15/82 S. Herbst */
+  2     6 
+  2     7 dcl 1 query_info aligned,				/* argument structure for command_query_ call */
+  2     8     2 version fixed bin,				/* version of this structure - must be set, see below */
+  2     9     2 switches aligned,                                     /* various bit switch values */
+  2    10       3 yes_or_no_sw bit (1) unaligned init ("0"b),		/* not a yes-or-no question, by default */
+  2    11       3 suppress_name_sw bit (1) unaligned init ("0"b),	/* do not suppress command name */
+  2    12       3 cp_escape_control bit (2) unaligned init ("00"b),   /* obey static default value */
+  2    13                                                             /* "01" -> invalid, "10" -> don't allow, "11" -> allow */
+  2    14       3 suppress_spacing bit (1) unaligned init ("0"b),     /* whether to print extra spacing */
+  2    15       3 literal_sw bit (1) unaligned init ("0"b),		/* ON => do not strip leading/trailing white space */
+  2    16       3 prompt_after_explanation bit (1) unaligned init ("0"b),  /* ON => repeat question after explanation */
+  2    17       3 padding bit (29) unaligned init (""b),		/* pads it out to t word */
+  2    18     2 status_code fixed bin (35) init (0),		/* query not prompted by any error, by default */
+  2    19     2 query_code fixed bin (35) init (0),		/* currently has no meaning */
+  2    20 
+  2    21 /*  Limit of data defined for version 2 */
+  2    22 
+  2    23     2 question_iocbp ptr init (null ()),		/* IO switch to write question */
+  2    24     2 answer_iocbp ptr init (null ()),			/* IO switch to read answer */
+  2    25     2 repeat_time fixed bin (71) init (0),		/* repeat question every N seconds if no answer */
+  2    26 						/* minimum of 30 seconds required for repeat */
+  2    27 						/* otherwise, no repeat will occur */
+  2    28 /* Limit of data defined for version 4 */
+  2    29 
+  2    30     2 explanation_ptr ptr init (null ()),		/* explanation of question to be printed if */
+  2    31     2 explanation_len fixed bin (21) init (0);		/* user answers "?" (disabled if ptr=null or len=0) */
+  2    32 
+  2    33 dcl  query_info_version_3 fixed bin int static options (constant) init (3);
+  2    34 dcl  query_info_version_4 fixed bin int static options (constant) init (4);
+  2    35 dcl  query_info_version_5 fixed bin int static options (constant) init (5);
+  2    36 dcl  query_info_version_6 fixed bin int static options (constant) init (6); /* the current version number */
+  2    37 
+  2    38 /*	END INCLUDE FILE query_info.incl.pl1 */
+      704 
+      705 
+  3     1 /* BEGIN INCLUDE FILE:  command_question_info.incl.pl1 */
+  3     2 
+  3     3 /*	Last modified: 11/02/78 W. Olin Sibert to change to version 5 and make compatible with query_info */
+  3     4 /* Added explanation_ptr & explanation_len (Version 6) 05/13/81 S. Herbst */
+  3     5 /* switched to condition_info_header June 1981 B. Margulies */
+  3     6 
+  3     7 /* This include file depends on condition_info_header.incl.pl1 */
+  3     8 /* It must be included as well */
+  3     9 /* Added interpret_cp_escape, literal_sw, prompt_after_explanation 12/16/82 S. Herbst */
+  3    10 /* Changed ("" max_)(question answer)_lth declarations to fixed bin (21) 02/08/84 S. Herbst */
+  3    11 
+  3    12 
+  3    13 dcl 1 command_question_info based (cq_info_ptr) aligned,
+  3    14     2 header aligned like condition_info_header,
+  3    15     2 query_code fixed bin (35),			/* extra information supplied by caller */
+  3    16     2 switches aligned,                                     /* various bit switches */
+  3    17       3 question_sw bit (1) unaligned,			/* should command_query_ print the question? */
+  3    18       3 yes_or_no_sw bit (1) unaligned,			/* must question be answered yes or no? */
+  3    19       3 preset_sw bit (1) unaligned,			/* is handler supplying a canned answer? */
+  3    20       3 answer_sw bit (1) unaligned,			/* should canned answer be printed? */
+  3    21       3 allow_cp_escape bit (1) unaligned,                  /* whether to allow answers to begin with ".." */
+  3    22       3 suppress_spacing bit (1) unaligned,                 /* whether to print extra newline and spaces */
+  3    23       3 interpret_cp_escape bit (1) unaligned,		/* whether to treat ".." as a cp escape */
+  3    24       3 literal_sw bit (1) unaligned,			/* ON => don't strip whitespace or handle ".." */
+  3    25       3 prompt_after_explanation bit (1) unaligned,	/* ON => repeat question after explanation */
+  3    26       3 mbz bit (27) unaligned,
+  3    27     2 name_ptr pointer,				/* ptr to caller's name */
+  3    28     2 name_lth fixed bin,				/* length of caller's name */
+  3    29     2 question_ptr pointer,				/* ptr to quetion being asked */
+  3    30     2 question_lth fixed bin (21),			/* lentgh of question */
+  3    31     2 max_question_lth fixed bin (21),			/* max question lth in case handler alters question */
+  3    32     2 answer_ptr pointer,				/* pointer to space to return answer in */
+  3    33     2 answer_lth fixed bin (21),			/* length of returned answer */
+  3    34     2 max_answer_lth fixed bin (21),			/* max space in answer space */
+  3    35     2 question_iocbp ptr,				/* IO switch to ask (write) question on */
+  3    36     2 answer_iocbp ptr,				/* IO switch to read the answer from */
+  3    37     2 repeat_time fixed bin (71),			/* repeat question every N seconds if no answer */
+  3    38     2 explanation_ptr ptr,				/* ptr to string to print if user answers "?" */
+  3    39     2 explanation_len fixed bin (21);			/* length of explanation string */
+  3    40 						/* if N < 30 no repeat will occur */
+  3    41 
+  3    42 dcl  cq_info_ptr pointer;
+  3    43 
+  3    44 dcl  cq_info_version_7 fixed bin internal static options (constant) init (7);
+  3    45 
+  3    46 /* END INCLUDE FILE:  command_question_info.incl.pl1 */
+      706 
+      707 
+  4     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  4     2 /* format: style2 */
+  4     3 
+  4     4      declare condition_info_header_ptr
+  4     5 			      pointer;
+  4     6      declare 1 condition_info_header
+  4     7 			      aligned based (condition_info_header_ptr),
+  4     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  4     9 	     2 version	      fixed bin,		/* version number of this structure */
+  4    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  4    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  4    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  4    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  4    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  4    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  4    16 	       3 pad	      bit (32) unaligned,
+  4    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  4    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  4    19 
+  4    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+      708 
+      709 
+  5     1 /* BEGIN INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(86-09-05,JMAthane), approve(86-09-05,MCR7525),
+  5     6*     audit(86-09-11,Martinson), install(86-11-12,MR12.0-1208):
+  5     7*     Added pascal_string_type_dtype descriptor type.  Its number is 87.
+  5     8*     Objects of this type are PASCAL string types.
+  5     9*  2) change(88-09-20,WAAnderson), approve(88-09-20,MCR7952),
+  5    10*     audit(88-09-30,JRGray), install(88-10-24,MR12.2-1184):
+  5    11*     Added the new C types.
+  5    12*                                                   END HISTORY COMMENTS */
+  5    13 
+  5    14 /* This include file defines mnemonic names for the Multics
+  5    15*   standard descriptor types, using both pl1 and cobol terminology.
+  5    16*   PG 780613
+  5    17*   JRD 790530
+  5    18*   JRD 791016
+  5    19*   MBW 810731
+  5    20*   TGO 830614 Add hex types.
+  5    21*   Modified June 83 JMAthane to add PASCAL data types
+  5    22*   TGO 840120 Add float dec extended and generic, float binary generic
+  5    23**/
+  5    24 
+  5    25      dcl	   (real_fix_bin_1_dtype  init (1),
+  5    26 	   real_fix_bin_2_dtype   init (2),
+  5    27 	   real_flt_bin_1_dtype   init (3),
+  5    28 	   real_flt_bin_2_dtype   init (4),
+  5    29 	   cplx_fix_bin_1_dtype   init (5),
+  5    30 	   cplx_fix_bin_2_dtype   init (6),
+  5    31 	   cplx_flt_bin_1_dtype   init (7),
+  5    32 	   cplx_flt_bin_2_dtype   init (8),
+  5    33 	   real_fix_dec_9bit_ls_dtype init (9),
+  5    34 	   real_flt_dec_9bit_dtype init (10),
+  5    35 	   cplx_fix_dec_9bit_ls_dtype init (11),
+  5    36 	   cplx_flt_dec_9bit_dtype init (12),
+  5    37 	   pointer_dtype	      init (13),
+  5    38 	   offset_dtype	      init (14),
+  5    39 	   label_dtype	      init (15),
+  5    40 	   entry_dtype	      init (16),
+  5    41 	   structure_dtype	      init (17),
+  5    42 	   area_dtype	      init (18),
+  5    43 	   bit_dtype	      init (19),
+  5    44 	   varying_bit_dtype      init (20),
+  5    45 	   char_dtype	      init (21),
+  5    46 	   varying_char_dtype     init (22),
+  5    47 	   file_dtype	      init (23),
+  5    48 	   real_fix_dec_9bit_ls_overp_dtype init (29),
+  5    49 	   real_fix_dec_9bit_ts_overp_dtype init (30),
+  5    50 	   real_fix_bin_1_uns_dtype init (33),
+  5    51 	   real_fix_bin_2_uns_dtype init (34),
+  5    52 	   real_fix_dec_9bit_uns_dtype init (35),
+  5    53 	   real_fix_dec_9bit_ts_dtype init (36),
+  5    54 	   real_fix_dec_4bit_uns_dtype init (38),	/* digit-aligned */
+  5    55 	   real_fix_dec_4bit_ts_dtype init (39),	/* byte-aligned */
+  5    56 	   real_fix_dec_4bit_bytealigned_uns_dtype init (40), /* COBOL */
+  5    57 	   real_fix_dec_4bit_ls_dtype init (41),	/* digit-aligned */
+  5    58 	   real_flt_dec_4bit_dtype init (42),		/* digit-aligned */
+  5    59 	   real_fix_dec_4bit_bytealigned_ls_dtype init (43),
+  5    60 	   real_flt_dec_4bit_bytealigned_dtype init (44),
+  5    61 	   cplx_fix_dec_4bit_bytealigned_ls_dtype init (45),
+  5    62 	   cplx_flt_dec_4bit_bytealigned_dtype init (46),
+  5    63 	   real_flt_hex_1_dtype   init (47),
+  5    64 	   real_flt_hex_2_dtype   init (48),
+  5    65 	   cplx_flt_hex_1_dtype   init (49),
+  5    66 	   cplx_flt_hex_2_dtype   init (50),
+  5    67 	   c_typeref_dtype        init (54),
+  5    68 	   c_enum_dtype           init (55),
+  5    69              c_enum_const_dtype     init (56),
+  5    70 	   c_union_dtype          init (57),
+  5    71 	   algol68_straight_dtype init (59),
+  5    72 	   algol68_format_dtype   init (60),
+  5    73 	   algol68_array_descriptor_dtype init (61),
+  5    74 	   algol68_union_dtype    init (62),
+  5    75 
+  5    76 	   cobol_comp_6_dtype     init (1),
+  5    77 	   cobol_comp_7_dtype     init (1),
+  5    78 	   cobol_display_ls_dtype init (9),
+  5    79 	   cobol_structure_dtype  init (17),
+  5    80 	   cobol_char_string_dtype init (21),
+  5    81 	   cobol_display_ls_overp_dtype init (29),
+  5    82 	   cobol_display_ts_overp_dtype init (30),
+  5    83 	   cobol_display_uns_dtype init (35),
+  5    84 	   cobol_display_ts_dtype init (36),
+  5    85 	   cobol_comp_8_uns_dtype init (38),		/* digit aligned */
+  5    86 	   cobol_comp_5_ts_dtype  init (39),		/* byte aligned */
+  5    87 	   cobol_comp_5_uns_dtype init (40),
+  5    88 	   cobol_comp_8_ls_dtype  init (41),		/* digit aligned */
+  5    89 	   real_flt_dec_extended_dtype init (81),	/* 9-bit exponent */
+  5    90 	   cplx_flt_dec_extended_dtype init (82),	/* 9-bit exponent */
+  5    91 	   real_flt_dec_generic_dtype init (83),	/* generic float decimal */
+  5    92 	   cplx_flt_dec_generic_dtype init (84),
+  5    93 	   real_flt_bin_generic_dtype init (85),	/* generic float binary */
+  5    94 	   cplx_flt_bin_generic_dtype init (86)) fixed bin internal static options (constant);
+  5    95 
+  5    96      dcl	   (ft_integer_dtype      init (1),
+  5    97 	   ft_real_dtype	      init (3),
+  5    98 	   ft_double_dtype	      init (4),
+  5    99 	   ft_complex_dtype	      init (7),
+  5   100 	   ft_complex_double_dtype init (8),
+  5   101 	   ft_external_dtype      init (16),
+  5   102 	   ft_logical_dtype	      init (19),
+  5   103 	   ft_char_dtype	      init (21),
+  5   104 	   ft_hex_real_dtype      init (47),
+  5   105 	   ft_hex_double_dtype    init (48),
+  5   106 	   ft_hex_complex_dtype   init (49),
+  5   107 	   ft_hex_complex_double_dtype init (50)
+  5   108 	   )		      fixed bin internal static options (constant);
+  5   109 
+  5   110      dcl	   (algol68_short_int_dtype init (1),
+  5   111 	   algol68_int_dtype      init (1),
+  5   112 	   algol68_long_int_dtype init (2),
+  5   113 	   algol68_real_dtype     init (3),
+  5   114 	   algol68_long_real_dtype init (4),
+  5   115 	   algol68_compl_dtype    init (7),
+  5   116 	   algol68_long_compl_dtype init (8),
+  5   117 	   algol68_bits_dtype     init (19),
+  5   118 	   algol68_bool_dtype     init (19),
+  5   119 	   algol68_char_dtype     init (21),
+  5   120 	   algol68_byte_dtype     init (21),
+  5   121 	   algol68_struct_struct_char_dtype init (22),
+  5   122 	   algol68_struct_struct_bool_dtype init (20)
+  5   123 	   )		      fixed bin internal static options (constant);
+  5   124 
+  5   125      dcl	   (label_constant_runtime_dtype init (24),
+  5   126 	   int_entry_runtime_dtype init (25),
+  5   127 	   ext_entry_runtime_dtype init (26),
+  5   128 	   ext_procedure_runtime_dtype init (27),
+  5   129 	   picture_runtime_dtype  init (63)
+  5   130 	   )		      fixed bin internal static options (constant);
+  5   131 
+  5   132      dcl	   (pascal_integer_dtype  init (1),
+  5   133 	   pascal_real_dtype      init (4),
+  5   134 	   pascal_label_dtype     init (24),
+  5   135 	   pascal_internal_procedure_dtype init (25),
+  5   136 	   pascal_exportable_procedure_dtype init (26),
+  5   137 	   pascal_imported_procedure_dtype init (27),
+  5   138 	   pascal_typed_pointer_type_dtype init (64),
+  5   139 	   pascal_char_dtype      init (65),
+  5   140 	   pascal_boolean_dtype   init (66),
+  5   141 	   pascal_record_file_type_dtype init (67),
+  5   142 	   pascal_record_type_dtype init (68),
+  5   143 	   pascal_set_dtype	      init (69),
+  5   144 	   pascal_enumerated_type_dtype init (70),
+  5   145 	   pascal_enumerated_type_element_dtype init (71),
+  5   146 	   pascal_enumerated_type_instance_dtype init (72),
+  5   147 	   pascal_user_defined_type_dtype init (73),
+  5   148 	   pascal_user_defined_type_instance_dtype init (74),
+  5   149 	   pascal_text_file_dtype init (75),
+  5   150 	   pascal_procedure_type_dtype init (76),
+  5   151 	   pascal_variable_formal_parameter_dtype init (77),
+  5   152 	   pascal_value_formal_parameter_dtype init (78),
+  5   153 	   pascal_entry_formal_parameter_dtype init (79),
+  5   154 	   pascal_parameter_procedure_dtype init (80),
+  5   155 	   pascal_string_type_dtype init (87)) fixed bin int static options (constant);
+  5   156 
+  5   157 
+  5   158 /* END INCLUDE FILE ... std_descriptor_types.incl.pl1 */
+      710 
+      711 
+  6     1 /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  6     2 /* format: style3 */
+  6     3 
+  6     4 /* These constants are to be used for the flags argument of sub_err_ */
+  6     5 /* They are just "string (condition_info_header.action_flags)" */
+  6     6 
+  6     7 declare	(
+  6     8 	ACTION_CAN_RESTART	init (""b),
+  6     9 	ACTION_CANT_RESTART init ("1"b),
+  6    10 	ACTION_DEFAULT_RESTART
+  6    11 			init ("01"b),
+  6    12 	ACTION_QUIET_RESTART
+  6    13 			init ("001"b),
+  6    14 	ACTION_SUPPORT_SIGNAL
+  6    15 			init ("0001"b)
+  6    16 	)		bit (36) aligned internal static options (constant);
+  6    17 
+  6    18 /* End include file */
+      712 
+      713 
+      714 end command_query_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  command_query_.pl1                >spec>install>1111>command_query_.pl1
+622          1    11/30/78  1227.5  descriptor.incl.pl1               >ldd>include>descriptor.incl.pl1
+704          2    03/11/83  1204.3  query_info.incl.pl1               >ldd>include>query_info.incl.pl1
+706          3    02/27/84  1141.9  command_question_info.incl.pl1    >ldd>include>command_question_info.incl.pl1
+708          4    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+710          5    10/26/88  1255.5  std_descriptor_types.incl.pl1     >ldd>include>std_descriptor_types.incl.pl1
+712          6    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CAN_RESTART              000060 constant        bit(36)                  initial dcl 6-7 set ref 418* 500* 537* 652*
+A_query_code                           parameter       fixed bin(35,0)          dcl 65 set ref 219 227 276 277*
+GRIPE1                          000023 constant        char(27)                 initial packed unaligned dcl 70 set ref 533 533 533
+                                                                                  533
+GRIPE2                          000006 constant        char(50)                 initial packed unaligned dcl 72 set ref 529 529 529
+                                                                                  529
+LOWERCASE_YN                    000002 constant        char(5)                  initial packed unaligned dcl 80 ref 512
+NL                                     constant        char(1)                  initial packed unaligned dcl 75 ref 495 658
+P_str                                  parameter       char                     packed unaligned dcl 571 ref 569 573 574
+UPPERCASE_YN                    000000 constant        char(5)                  initial packed unaligned dcl 81 ref 512
+WHITE                           000004 constant        char(5)                  initial packed unaligned dcl 77 ref 444 444 476
+abs_queue                       002066 automatic       fixed bin(17,0)          dcl 111 set ref 520* 522* 523
+action_flags              2     000100 automatic       structure                level 3 dcl 98
+addr                                                   builtin function         dcl 119 ref 315 319 328 345 345 386 386 437 458 458
+                                                                                  491 491 497 497 529 529 533 533 632 634 635 637
+                                                                                  637 660 660
+addrel                                                 builtin function         dcl 119 ref 257 319 328
+alloc_len                       002076 automatic       fixed bin(21,0)          dcl 112 set ref 390 393* 396* 396 399 399 424 425*
+                                                                                  427 427 462 462 545 545 563 563 585 585
+alloc_ptr                       002054 automatic       pointer                  dcl 109 set ref 341* 397* 399* 402 407 427* 429 431
+                                                                                  462 463* 545 546* 563 585 585
+alloc_str                              based           char                     packed unaligned dcl 85 ref 399 427 462 545 563 585
+alloc_sw                        002043 automatic       bit(1)                   dcl 106 set ref 374* 390 392 401 408* 423 460 461*
+                                                                                  543 544* 563
+allow_cp_escape                 002044 automatic       bit(1)                   dcl 106 in procedure "command_query_" set ref 204*
+                                                                                  207* 208* 209* 229* 309 449
+allow_cp_escape         106(04) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 309*
+alp                             002060 automatic       pointer                  dcl 109 set ref 245* 248* 255* 289* 606* 613 613 613
+                                                                                  626 626 626 626 626 626 626 626 626 626 626 626
+                                                                                  626 634 634
+answer_iocbp              6     002116 automatic       pointer                  initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 199* 228*
+                                                                                  334 2-7*
+answer_iocbp            126     000100 automatic       pointer                  level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 334* 361
+                                                                                  361* 386* 541*
+answer_iocbp              6            based           pointer                  initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 199
+answer_lth              122     000100 automatic       fixed bin(21,0)          level 2 dcl 98 set ref 376
+answer_ptr              120     000100 automatic       pointer                  level 2 dcl 98 set ref 319* 324* 328*
+answer_sw               106(03) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 98 set ref 308*
+                                                                                  478
+area                                   based           area(1024)               dcl 92 ref 399 403 427 430 462 545 563 585
+area_ptr                        002056 automatic       pointer                  dcl 109 set ref 394* 399 403 427 430 462 545 563 585
+arg_count                              based           fixed bin(17,0)          level 2 in structure "arg_list" packed packed
+                                                                                  unsigned unaligned dcl 595 in procedure
+                                                                                  "expand_explanation" ref 613 613 626 626 626 626
+                                                                                  626 626 626 626 634
+arg_count                       002067 automatic       fixed bin(17,0)          dcl 111 in procedure "command_query_" set ref 244*
+                                                                                  288
+arg_list                               based           structure                level 1 dcl 595 ref 626
+arg_ptrs                  2     000100 automatic       pointer                  array level 2 dcl 613 set ref 635*
+bi                              002070 automatic       fixed bin(17,0)          dcl 111 set ref 263* 268* 269 278 279* 279 280 290
+                                                                                  291 292* 292 316 659 660
+big_len                         002077 automatic       fixed bin(21,0)          dcl 112 set ref 376* 390 396 402 402 402 402 403 403
+                                                                                  405* 411 411 412* 412 424 425 429 429 429 429 430
+                                                                                  430 433 433 434* 434 438* 444 444 444 447 447 458
+                                                                                  458 458 458 476* 476 478 478 478 485 512 512 514
+                                                                                  514 514 514 552 552 553 554 555 555 558 558
+big_ptr                         002062 automatic       pointer                  dcl 109 set ref 319* 324* 328* 402 403 407* 411 429
+                                                                                  430 431* 433 437* 444 444 444 447 458 458 476 478
+                                                                                  478 485 512 512 514 514 514 514 552 552 553 554
+                                                                                  555 558
+big_str                                based           char                     packed unaligned dcl 86 set ref 402* 402 403 411*
+                                                                                  429* 429 430 433* 444 444* 444 447 458 458 476 478
+                                                                                  478* 485 512* 512 514 514 514 514 552 552 553 554
+                                                                                  555* 558*
+bin                                                    builtin function         dcl 119 ref 613 626 626 626 626 634
+bit                                                    builtin function         dcl 119 ref 613 626 626 626 626 634
+buffer                          000627 automatic       char(1000)               dcl 101 set ref 266* 267 268 269* 278* 278 280* 290
+                                                                                  291* 314 315 317
+callername                             based           char                     packed unaligned dcl 87 set ref 266 418* 450* 500*
+                                                                                  537* 652*
+callername_index                002071 automatic       fixed bin(17,0)          dcl 111 set ref 178* 223* 253* 255* 282
+cant_restart              2     000100 automatic       bit(1)                   level 4 packed packed unaligned dcl 98 set ref 300*
+char_dtype                             constant        fixed bin(17,0)          initial dcl 5-25 ref 249 628
+cleanup                         002110 stack reference condition                dcl 123 ref 348
+code                      0(17)        based           bit(19)                  level 2 in structure "arg_list" packed packed
+                                                                                  unaligned dcl 595 in procedure
+                                                                                  "expand_explanation" ref 613 626 626 626 626 634
+code                            002103 automatic       fixed bin(35,0)          dcl 113 in procedure "command_query_" set ref 282*
+                                                                                  283 386* 389 413* 417 418* 458* 491* 497* 499 500*
+                                                                                  529* 533* 536 537* 541* 649* 651 652* 660* 661
+com_err_                        000030 constant        entry                    external dcl 143 ref 450 524 681
+command_question_info                  based           structure                level 1 dcl 3-13
+condition_info_header                  based           structure                level 1 dcl 4-6
+control_string_index            002072 automatic       fixed bin(17,0)          dcl 111 set ref 179* 224* 288 289* 289 606 606 634
+                                                                                  635 637* 637
+convert_status_code_            000032 constant        entry                    external dcl 144 ref 277
+cp_escape_control         1(02)        based           bit(2)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 187
+cp_escape_control         1(02) 002116 automatic       bit(2)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 187* 203 207 208 2-7*
+cq_info_version_7                      constant        fixed bin(17,0)          initial dcl 3-44 ref 299
+cu_$arg_count                   000034 constant        entry                    external dcl 145 ref 244
+cu_$arg_list_ptr                000036 constant        entry                    external dcl 146 ref 245
+cu_$arg_ptr                     000040 constant        entry                    external dcl 147 ref 250 253 282
+cu_$cp                          000042 constant        entry                    external dcl 148 ref 458
+decode_descriptor_              000044 constant        entry                    external dcl 149 ref 248 255
+default_restart           2(01) 000100 automatic       bit(1)                   level 4 packed packed unaligned dcl 98 set ref 301*
+desc_                           000100 automatic       structure                level 1 dcl 1-3 set ref 634
+desc_ptrs                       000100 automatic       pointer                  array level 2 dcl 613 set ref 634*
+desc_size                              based           fixed bin(24,0)          packed unsigned unaligned dcl 624 set ref 632*
+dimension_                0(08) 000100 automatic       bit(4)                   level 2 packed packed unaligned dcl 1-3 set ref 630*
+error_string                    002012 automatic       char(100)                dcl 104 set ref 277* 278 279
+error_table_$long_record        000026 external static fixed bin(35,0)          dcl 131 ref 389
+explanation                            based           char                     packed unaligned dcl 88 set ref 632 635
+explanation_len          14     002116 automatic       fixed bin(21,0)          initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 190* 191
+                                                                                  282* 283 339 485 529 2-7* 632 635
+explanation_len          14            based           fixed bin(21,0)          initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 190
+explanation_len         134     000100 automatic       fixed bin(21,0)          level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 339*
+explanation_ptr         132     000100 automatic       pointer                  level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 338*
+explanation_ptr          12            based           pointer                  initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 191
+explanation_ptr          12     002116 automatic       pointer                  initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 191* 282*
+                                                                                  283* 338 485 529 2-7* 632 635
+first_call                      000015 internal static bit(1)                   initial packed unaligned dcl 138 set ref 232 236*
+                                                                                  673 676*
+fixed21                         002101 automatic       fixed bin(21,0)          dcl 112 set ref 253* 254
+fixed_answer                           based           char                     packed unaligned dcl 89 set ref 573*
+fixed_answer_len                002100 automatic       fixed bin(21,0)          dcl 112 set ref 250* 325 573
+fixed_answer_ptr                002064 automatic       pointer                  dcl 109 set ref 250* 324 573
+fixed_answer_sw                 002045 automatic       bit(1)                   dcl 106 set ref 249* 250 323 573
+get_group_id_                   000046 constant        entry                    external dcl 151 ref 520
+get_system_free_area_           000050 constant        entry                    external dcl 152 ref 394
+header                          000100 automatic       structure                level 2 dcl 98
+index                                                  builtin function         dcl 119 ref 444
+info_string               3     000100 automatic       varying char(256)        level 3 dcl 98 set ref 317*
+input_info                             based           structure                level 1 dcl 94
+interpret_cp_escape     106(06) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 311*
+interpret_cp_escape             002046 automatic       bit(1)                   dcl 106 in procedure "command_query_" set ref 205*
+                                                                                  207* 208* 209* 229* 311 456
+ioa_$general_rs                 000052 constant        entry                    external dcl 153 ref 289 606 637
+ioa_$ioa_switch                 000054 constant        entry                    external dcl 155 ref 478
+ioa_$ioa_switch_nnl             000056 constant        entry                    external dcl 156 ref 470
+iox_$control                    000060 constant        entry                    external dcl 157 ref 366 469 489 528 541
+iox_$get_line                   000062 constant        entry                    external dcl 158 ref 386
+iox_$put_chars                  000064 constant        entry                    external dcl 159 ref 491 497 529 533 649 660
+iox_$user_input                 000020 external static pointer                  dcl 127 ref 361
+iox_$user_io                    000022 external static pointer                  dcl 128 ref 358
+iox_$user_output                000024 external static pointer                  dcl 129 ref 354
+len                             002102 automatic       fixed bin(21,0)          dcl 112 set ref 289* 290* 290 291 291 292 386* 390
+                                                                                  396 424 425 433 433 434 438 491* 496 496 497 606*
+                                                                                  637*
+length                                                 builtin function         dcl 119 in procedure "command_query_" ref 268 279
+                                                                                  290 386 386 393 411 412 476 529 529 533 533 632
+length                          000100 automatic       fixed bin(17,0)          level 3 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 297*
+literal_sw              106(07) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 312*
+literal_sw                1(05)        based           bit(1)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 193
+literal_sw                1(05) 002116 automatic       bit(1)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 193* 203 312 444 476 2-7*
+ltrim                                                  builtin function         dcl 119 ref 444
+max                                                    builtin function         dcl 119 ref 396 458 458
+max_answer_lth          123     000100 automatic       fixed bin(21,0)          level 2 dcl 98 set ref 320* 325* 329*
+max_question_lth        117     000100 automatic       fixed bin(21,0)          level 2 dcl 98 set ref 314*
+maxlength                                              builtin function         dcl 119 ref 320 329
+min                                                    builtin function         dcl 119 ref 290
+name_lth                112     000100 automatic       fixed bin(17,0)          level 2 dcl 98 set ref 254* 255* 257* 264 266 418
+                                                                                  418 450 450 500 500 537 537 652 652
+name_ptr                110     000100 automatic       pointer                  level 2 dcl 98 set ref 253* 257 266 418 450 500 537
+                                                                                  652
+nchars                                 based           fixed bin(21,0)          dcl 91 ref 257
+ndims                           002073 automatic       fixed bin(17,0)          dcl 111 set ref 248* 255*
+new_allow_cp_escape                    parameter       bit(1)                   dcl 693 ref 690 697
+new_arg_list                    000100 automatic       structure                level 1 dcl 613 set ref 626* 637 637
+null                                                   builtin function         dcl 119 ref 228 283 341 345 345 345 345 354 361 366
+                                                                                  366 397 418 418 463 469 469 485 489 489 500 500
+                                                                                  516 516 516 516 516 516 525 525 525 525 525 525
+                                                                                  528 528 529 537 537 541 541 546 2-7 2-7 2-7 585
+                                                                                  652 652
+old_allow_cp_escape                    parameter       bit(1)                   dcl 694 set ref 690 696*
+output_buffer                   001221 automatic       char(1004)               dcl 102 set ref 495* 496* 497 497 658* 659* 660 660
+pack_                     0(07) 000100 automatic       bit(1)                   level 2 packed packed unaligned dcl 1-3 set ref 629*
+packed                          002047 automatic       bit(1)                   dcl 107 set ref 248* 255*
+padding                   1(07) 002116 automatic       bit(29)                  initial level 3 packed packed unaligned dcl 2-7 set
+                                                                                  ref 2-7*
+preset_sw               106(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 98 set ref 307*
+                                                                                  350 354 366 376 451 466 478 514
+prompt_after_explanation
+                          1(06) 002116 automatic       bit(1)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 194* 313 504 2-7*
+prompt_after_explanation
+                        106(08) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 313*
+prompt_after_explanation
+                          1(06)        based           bit(1)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 194
+qip                                    parameter       pointer                  dcl 63 ref 12 171 180 181 182 183 187 188 190 191
+                                                                                  193 194 198 199 200
+query_code                3            based           fixed bin(35,0)          initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 183
+query_code              105     000100 automatic       fixed bin(35,0)          level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 304*
+query_code                3     002116 automatic       fixed bin(35,0)          initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 183* 227*
+                                                                                  304 2-7*
+query_info                      002116 automatic       structure                level 1 dcl 2-7 set ref 225*
+question                               based           char                     packed unaligned dcl 90 ref 659
+question_info                   000100 automatic       structure                level 1 dcl 98 set ref 297 345 345
+question_iocbp            4            based           pointer                  initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 198
+question_iocbp            4     002116 automatic       pointer                  initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 198* 228*
+                                                                                  332 2-7*
+question_iocbp          124     000100 automatic       pointer                  level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 332* 354
+                                                                                  354* 358* 366* 469* 470* 478* 489* 491* 497* 528*
+                                                                                  529* 533* 649* 660*
+question_lth            116     000100 automatic       fixed bin(21,0)          level 2 dcl 98 set ref 316* 317 649 659
+question_ptr            114     000100 automatic       pointer                  level 2 dcl 98 set ref 315* 649* 659
+question_sw             106     000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 98 set ref 305*
+                                                                                  350 364 478
+quiet_restart             2(02) 000100 automatic       bit(1)                   level 4 packed packed unaligned dcl 98 set ref 302*
+repeat_flag                     000014 internal static bit(1)                   initial dcl 136 set ref 235* 238 241* 350* 352* 379
+                                                                                  560* 582* 675* 679
+repeat_label                    000010 internal static label variable           dcl 135 set ref 234* 239 240* 561* 583* 674* 679
+repeat_time              10     002116 automatic       fixed bin(71,0)          initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 200* 336
+                                                                                  2-7*
+repeat_time              10            based           fixed bin(71,0)          initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 200
+repeat_time             130     000100 automatic       fixed bin(71,0)          level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 336* 379
+                                                                                  382*
+retstring                       000235 automatic       char(1000)               packed unaligned dcl 100 set ref 289* 291 386 386
+                                                                                  386 386 393 411 411 412 433 437 491 491 496 606*
+                                                                                  637*
+rtrim                                                  builtin function         dcl 119 ref 266 268 279 476
+saved_rflag                     002050 automatic       bit(1)                   dcl 107 set ref 238* 560 582
+saved_rlabel                    002104 automatic       label variable           dcl 115 set ref 239* 561 583
+scale                           002074 automatic       fixed bin(17,0)          dcl 111 set ref 248* 255*
+scale_                    0(12) 000100 automatic       fixed bin(11,0)          level 2 packed packed unaligned dcl 1-3 set ref 632
+signal_                         000066 constant        entry                    external dcl 160 ref 345 516 525
+size                                                   builtin function         dcl 119 ref 297 314
+static_allow_cp_escape          000016 internal static bit(1)                   initial dcl 139 set ref 209 229 696 697*
+status_code               2            based           fixed bin(35,0)          initial level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 182
+status_code             104     000100 automatic       fixed bin(35,0)          level 3 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 303*
+status_code               2     002116 automatic       fixed bin(35,0)          initial level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 182* 303
+                                                                                  2-7*
+sub_err_                        000070 constant        entry                    external dcl 161 ref 418 500 537 652
+substr                                                 builtin function         dcl 119 set ref 269* 278 280* 291* 291 317 402* 402
+                                                                                  411* 429* 429 433* 433 444 447 458 458 495* 496*
+                                                                                  496 658* 659*
+suppress_name_sw          1(01)        based           bit(1)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 181
+suppress_name_sw          1(01) 002116 automatic       bit(1)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 181* 264 2-7*
+suppress_spacing        106(05) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 310*
+suppress_spacing          1(04) 002116 automatic       bit(1)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 188* 310 491 2-7* 647
+suppress_spacing          1(04)        based           bit(1)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 188
+switches                  1     002116 automatic       structure                level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_"
+switches                  1            based           structure                level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_"
+switches                106     000100 automatic       structure                level 2 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_"
+timer_manager_$alarm_call       000072 constant        entry                    external dcl 162 ref 382
+timer_manager_$reset_alarm_call 000074 constant        entry                    external dcl 163 ref 441 581
+timer_set                       002051 automatic       bit(1)                   dcl 107 set ref 242* 383* 441 581
+translate                                              builtin function         dcl 119 ref 512
+type                            002075 automatic       fixed bin(17,0)          dcl 111 set ref 248* 249 255* 257
+type_                     0(01) 000100 automatic       fixed bin(6,0)           level 2 packed packed unsigned unaligned dcl 1-3 set
+                                                                                  ref 628*
+unspec                                                 builtin function         dcl 119 set ref 225*
+user_info_$absentee_queue       000076 constant        entry                    external dcl 164 ref 522
+varying_answer                         parameter       varying char             dcl 62 set ref 12 328 329 574*
+varying_char_dtype                     constant        fixed bin(17,0)          initial dcl 5-25 ref 257
+version                         002116 automatic       fixed bin(17,0)          level 2 in structure "query_info" dcl 2-7
+                                                                                  in procedure "command_query_" set ref 171* 172 172
+                                                                                  174* 185 186 189 192
+version                                based           fixed bin(17,0)          level 2 in structure "input_info" dcl 94
+                                                                                  in procedure "command_query_" ref 171
+version                   1     000100 automatic       fixed bin(17,0)          level 3 in structure "question_info" dcl 98
+                                                                                  in procedure "command_query_" set ref 299*
+version2_                       000100 automatic       bit(1)                   level 2 packed packed unaligned dcl 1-3 set ref 627*
+yes_or_no_sw            106(01) 000100 automatic       bit(1)                   level 3 in structure "question_info" packed packed
+                                                                                  unaligned dcl 98 in procedure "command_query_" set
+                                                                                  ref 306*
+yes_or_no_sw              1            based           bit(1)                   initial level 3 in structure "input_info" packed
+                                                                                  packed unaligned dcl 94 in procedure
+                                                                                  "command_query_" ref 180
+yes_or_no_sw              1     002116 automatic       bit(1)                   initial level 3 in structure "query_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "command_query_" set ref 180* 226* 306 509 2-7*
+yes_sw                                 parameter       bit(1)                   packed unaligned dcl 64 set ref 219 552*
+yn_answer                       001614 automatic       varying char(500)        dcl 103 set ref 319 320
+yn_entry_sw                     002052 automatic       bit(1)                   dcl 107 set ref 177* 222* 247 275 318 552 606
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CANT_RESTART                    internal static bit(36)                  initial dcl 6-7
+ACTION_DEFAULT_RESTART                 internal static bit(36)                  initial dcl 6-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 6-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 6-7
+algol68_array_descriptor_dtype         internal static fixed bin(17,0)          initial dcl 5-25
+algol68_bits_dtype                     internal static fixed bin(17,0)          initial dcl 5-110
+algol68_bool_dtype                     internal static fixed bin(17,0)          initial dcl 5-110
+algol68_byte_dtype                     internal static fixed bin(17,0)          initial dcl 5-110
+algol68_char_dtype                     internal static fixed bin(17,0)          initial dcl 5-110
+algol68_compl_dtype                    internal static fixed bin(17,0)          initial dcl 5-110
+algol68_format_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+algol68_int_dtype                      internal static fixed bin(17,0)          initial dcl 5-110
+algol68_long_compl_dtype               internal static fixed bin(17,0)          initial dcl 5-110
+algol68_long_int_dtype                 internal static fixed bin(17,0)          initial dcl 5-110
+algol68_long_real_dtype                internal static fixed bin(17,0)          initial dcl 5-110
+algol68_real_dtype                     internal static fixed bin(17,0)          initial dcl 5-110
+algol68_short_int_dtype                internal static fixed bin(17,0)          initial dcl 5-110
+algol68_straight_dtype                 internal static fixed bin(17,0)          initial dcl 5-25
+algol68_struct_struct_bool_dtype       internal static fixed bin(17,0)          initial dcl 5-110
+algol68_struct_struct_char_dtype       internal static fixed bin(17,0)          initial dcl 5-110
+algol68_union_dtype                    internal static fixed bin(17,0)          initial dcl 5-25
+area_dtype                             internal static fixed bin(17,0)          initial dcl 5-25
+bit_dtype                              internal static fixed bin(17,0)          initial dcl 5-25
+c_enum_const_dtype                     internal static fixed bin(17,0)          initial dcl 5-25
+c_enum_dtype                           internal static fixed bin(17,0)          initial dcl 5-25
+c_typeref_dtype                        internal static fixed bin(17,0)          initial dcl 5-25
+c_union_dtype                          internal static fixed bin(17,0)          initial dcl 5-25
+cobol_char_string_dtype                internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_5_ts_dtype                  internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_5_uns_dtype                 internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_6_dtype                     internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_7_dtype                     internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_8_ls_dtype                  internal static fixed bin(17,0)          initial dcl 5-25
+cobol_comp_8_uns_dtype                 internal static fixed bin(17,0)          initial dcl 5-25
+cobol_display_ls_dtype                 internal static fixed bin(17,0)          initial dcl 5-25
+cobol_display_ls_overp_dtype           internal static fixed bin(17,0)          initial dcl 5-25
+cobol_display_ts_dtype                 internal static fixed bin(17,0)          initial dcl 5-25
+cobol_display_ts_overp_dtype           internal static fixed bin(17,0)          initial dcl 5-25
+cobol_display_uns_dtype                internal static fixed bin(17,0)          initial dcl 5-25
+cobol_structure_dtype                  internal static fixed bin(17,0)          initial dcl 5-25
+condition_info_header_ptr              automatic       pointer                  dcl 4-4
+cplx_fix_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cplx_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cplx_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 5-25
+cplx_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cplx_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+cq_info_ptr                            automatic       pointer                  dcl 3-42
+entry_dtype                            internal static fixed bin(17,0)          initial dcl 5-25
+ext_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 5-125
+ext_procedure_runtime_dtype            internal static fixed bin(17,0)          initial dcl 5-125
+file_dtype                             internal static fixed bin(17,0)          initial dcl 5-25
+ft_char_dtype                          internal static fixed bin(17,0)          initial dcl 5-96
+ft_complex_double_dtype                internal static fixed bin(17,0)          initial dcl 5-96
+ft_complex_dtype                       internal static fixed bin(17,0)          initial dcl 5-96
+ft_double_dtype                        internal static fixed bin(17,0)          initial dcl 5-96
+ft_external_dtype                      internal static fixed bin(17,0)          initial dcl 5-96
+ft_hex_complex_double_dtype            internal static fixed bin(17,0)          initial dcl 5-96
+ft_hex_complex_dtype                   internal static fixed bin(17,0)          initial dcl 5-96
+ft_hex_double_dtype                    internal static fixed bin(17,0)          initial dcl 5-96
+ft_hex_real_dtype                      internal static fixed bin(17,0)          initial dcl 5-96
+ft_integer_dtype                       internal static fixed bin(17,0)          initial dcl 5-96
+ft_logical_dtype                       internal static fixed bin(17,0)          initial dcl 5-96
+ft_real_dtype                          internal static fixed bin(17,0)          initial dcl 5-96
+int_entry_runtime_dtype                internal static fixed bin(17,0)          initial dcl 5-125
+label_constant_runtime_dtype           internal static fixed bin(17,0)          initial dcl 5-125
+label_dtype                            internal static fixed bin(17,0)          initial dcl 5-25
+offset_dtype                           internal static fixed bin(17,0)          initial dcl 5-25
+pascal_boolean_dtype                   internal static fixed bin(17,0)          initial dcl 5-132
+pascal_char_dtype                      internal static fixed bin(17,0)          initial dcl 5-132
+pascal_entry_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 5-132
+pascal_enumerated_type_dtype           internal static fixed bin(17,0)          initial dcl 5-132
+pascal_enumerated_type_element_dtype   internal static fixed bin(17,0)          initial dcl 5-132
+pascal_enumerated_type_instance_dtype  internal static fixed bin(17,0)          initial dcl 5-132
+pascal_exportable_procedure_dtype      internal static fixed bin(17,0)          initial dcl 5-132
+pascal_imported_procedure_dtype        internal static fixed bin(17,0)          initial dcl 5-132
+pascal_integer_dtype                   internal static fixed bin(17,0)          initial dcl 5-132
+pascal_internal_procedure_dtype        internal static fixed bin(17,0)          initial dcl 5-132
+pascal_label_dtype                     internal static fixed bin(17,0)          initial dcl 5-132
+pascal_parameter_procedure_dtype       internal static fixed bin(17,0)          initial dcl 5-132
+pascal_procedure_type_dtype            internal static fixed bin(17,0)          initial dcl 5-132
+pascal_real_dtype                      internal static fixed bin(17,0)          initial dcl 5-132
+pascal_record_file_type_dtype          internal static fixed bin(17,0)          initial dcl 5-132
+pascal_record_type_dtype               internal static fixed bin(17,0)          initial dcl 5-132
+pascal_set_dtype                       internal static fixed bin(17,0)          initial dcl 5-132
+pascal_string_type_dtype               internal static fixed bin(17,0)          initial dcl 5-132
+pascal_text_file_dtype                 internal static fixed bin(17,0)          initial dcl 5-132
+pascal_typed_pointer_type_dtype        internal static fixed bin(17,0)          initial dcl 5-132
+pascal_user_defined_type_dtype         internal static fixed bin(17,0)          initial dcl 5-132
+pascal_user_defined_type_instance_dtype
+                                       internal static fixed bin(17,0)          initial dcl 5-132
+pascal_value_formal_parameter_dtype    internal static fixed bin(17,0)          initial dcl 5-132
+pascal_variable_formal_parameter_dtype internal static fixed bin(17,0)          initial dcl 5-132
+picture_runtime_dtype                  internal static fixed bin(17,0)          initial dcl 5-125
+pointer_dtype                          internal static fixed bin(17,0)          initial dcl 5-25
+query_info_version_3                   internal static fixed bin(17,0)          initial dcl 2-33
+query_info_version_4                   internal static fixed bin(17,0)          initial dcl 2-34
+query_info_version_5                   internal static fixed bin(17,0)          initial dcl 2-35
+query_info_version_6                   internal static fixed bin(17,0)          initial dcl 2-36
+real_fix_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_bin_1_uns_dtype               internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_bin_2_uns_dtype               internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_4bit_bytealigned_ls_dtype internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_4bit_bytealigned_uns_dtype
+                                       internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_4bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_4bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_4bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_9bit_ls_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_9bit_ls_overp_dtype       internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_9bit_ts_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_9bit_ts_overp_dtype       internal static fixed bin(17,0)          initial dcl 5-25
+real_fix_dec_9bit_uns_dtype            internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_bin_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_bin_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_bin_generic_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_dec_4bit_bytealigned_dtype    internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_dec_4bit_dtype                internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_dec_9bit_dtype                internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_dec_extended_dtype            internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_dec_generic_dtype             internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_hex_1_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+real_flt_hex_2_dtype                   internal static fixed bin(17,0)          initial dcl 5-25
+structure_dtype                        internal static fixed bin(17,0)          initial dcl 5-25
+varying_bit_dtype                      internal static fixed bin(17,0)          initial dcl 5-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ANSWER_ERROR                    001631 constant        label                    dcl 418
+ASK                             001401 constant        label                    dcl 364 ref 234 240 453 674
+COMMON                          000461 constant        label                    dcl 232 ref 211
+GET_LINE                        001503 constant        label                    dcl 386 ref 414 420
+PRINT_EXPLANATION               002345 constant        label                    dcl 491 ref 501
+PRINT_GRIPE                     002747 constant        label                    dcl 529 ref 538
+PRINT_QUESTION                  004066 constant        label                    dcl 647 ref 654
+QUESTION_ERROR                  004112 constant        label                    dcl 652 ref 661
+READ_ANSWER                     001452 constant        label                    dcl 379 ref 471 506 549
+SIGNAL                          001262 constant        label                    dcl 345 ref 451 466
+clean_up                        003426 constant        entry                    internal dcl 578 ref 348
+command_query_                  000247 constant        entry                    external dcl 12
+expand_explanation              003467 constant        entry                    internal dcl 592 ref 487
+get_ready_to_signal             001110 constant        label                    dcl 297 ref 517
+print_question                  004065 constant        entry                    internal dcl 645 ref 369 504
+repeat_query                    003267 constant        entry                    external dcl 669 ref 382 382 441 441 581 581
+rq                              003257 constant        entry                    external dcl 669
+set_answer                      003366 constant        entry                    internal dcl 569 ref 553 554 555 558
+set_cp_escape_enable            003350 constant        entry                    external dcl 690
+yes_no                          000426 constant        entry                    external dcl 219
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5216        5316    4662        5226
+Length      5706    4662       100         353     334          10
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+command_query_                     1274 external procedure  is an external procedure.  
+on unit on line 348                  78 on unit               
+set_answer                              internal procedure  shares stack frame of external procedure command_query_.  
+clean_up                                internal procedure  shares stack frame of on unit on line 348.  
+expand_explanation                      internal procedure  shares stack frame of external procedure command_query_.  
+begin block on line 611             108 begin block         uses auto adjustable storage.  
+print_question                          internal procedure  shares stack frame of external procedure command_query_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 repeat_label                command_query_
+000014 repeat_flag                 command_query_
+000015 first_call                  command_query_
+000016 static_allow_cp_escape      command_query_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 611  000100 new_arg_list                begin block on line 611
+                         000100 desc_                       begin block on line 611
+command_query_           000100 question_info               command_query_
+                         000235 retstring                   command_query_
+                         000627 buffer                      command_query_
+                         001221 output_buffer               command_query_
+                         001614 yn_answer                   command_query_
+                         002012 error_string                command_query_
+                         002043 alloc_sw                    command_query_
+                         002044 allow_cp_escape             command_query_
+                         002045 fixed_answer_sw             command_query_
+                         002046 interpret_cp_escape         command_query_
+                         002047 packed                      command_query_
+                         002050 saved_rflag                 command_query_
+                         002051 timer_set                   command_query_
+                         002052 yn_entry_sw                 command_query_
+                         002054 alloc_ptr                   command_query_
+                         002056 area_ptr                    command_query_
+                         002060 alp                         command_query_
+                         002062 big_ptr                     command_query_
+                         002064 fixed_answer_ptr            command_query_
+                         002066 abs_queue                   command_query_
+                         002067 arg_count                   command_query_
+                         002070 bi                          command_query_
+                         002071 callername_index            command_query_
+                         002072 control_string_index        command_query_
+                         002073 ndims                       command_query_
+                         002074 scale                       command_query_
+                         002075 type                        command_query_
+                         002076 alloc_len                   command_query_
+                         002077 big_len                     command_query_
+                         002100 fixed_answer_len            command_query_
+                         002101 fixed21                     command_query_
+                         002102 len                         command_query_
+                         002103 code                        command_query_
+                         002104 saved_rlabel                command_query_
+                         002116 query_info                  command_query_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             alloc_char_temp     enter_begin_block   leave_begin_block   call_ext_out_desc
+call_ext_out        return_mac          tra_ext_2           alloc_auto_adj      mpfx2               enable_op
+shorten_stack       ext_entry           ext_entry_desc      int_entry           op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      convert_status_code_          cu_$arg_count                 cu_$arg_list_ptr
+cu_$arg_ptr                   cu_$cp                        decode_descriptor_            get_group_id_
+get_system_free_area_         ioa_$general_rs               ioa_$ioa_switch               ioa_$ioa_switch_nnl
+iox_$control                  iox_$get_line                 iox_$put_chars                signal_
+sub_err_                      timer_manager_$alarm_call     timer_manager_$reset_alarm_call
+user_info_$absentee_queue
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$long_record      iox_$user_input               iox_$user_io                  iox_$user_output
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+ 2    7 000211        12 000243       171 000263       172 000267       174 000273       177 000275       178 000276
+    179 000300       180 000302       181 000307       182 000313       183 000315       185 000317       186 000322
+    187 000324       188 000330       189 000334       190 000336       191 000340       192 000343       193 000346
+    194 000352       198 000356       199 000360       200 000362       203 000364       204 000376       205 000400
+    206 000401       207 000402       208 000410       209 000415       211 000421       219 000422       222 000434
+    223 000436       224 000440       225 000442       226 000445       227 000447       228 000452       229 000455
+    232 000461       234 000464       235 000467       236 000470       238 000471       239 000473       240 000477
+    241 000502       242 000503       244 000504       245 000512       247 000521       248 000523       249 000551
+    250 000555       253 000576       254 000614       255 000616       257 000641       263 000650       264 000652
+    266 000657       267 000674       268 000700       269 000713       275 000716       276 000720       277 000723
+    278 000740       279 000756       280 000773       282 000776       283 001016       288 001024       289 001027
+    290 001074       291 001103       292 001107       297 001110       299 001112       300 001114       301 001116
+    302 001120       303 001122       304 001124       305 001126       306 001130       307 001135       308 001137
+    309 001141       310 001146       311 001153       312 001160       313 001165       314 001172       315 001174
+    316 001176       317 001201       318 001210       319 001212       320 001220       321 001222       323 001223
+    324 001225       325 001230       326 001232       328 001233       329 001243       330 001245       332 001246
+    334 001250       336 001252       338 001254       339 001256       341 001260       345 001262       348 001320
+    350 001336       352 001353       354 001355       358 001367       361 001372       364 001401       366 001404
+    369 001442       374 001443       376 001444       379 001452       382 001461       383 001501       386 001503
+    389 001526       390 001532       392 001543       393 001545       394 001547       395 001555       396 001556
+    397 001564       399 001566       401 001575       402 001577       403 001604       404 001610       405 001611
+    407 001612       408 001614       411 001616       412 001623       413 001625       414 001626       417 001627
+    418 001631       420 001701       423 001702       424 001704       425 001710       427 001713       429 001722
+    430 001727       431 001734       433 001736       434 001744       435 001745       437 001746       438 001750
+    441 001752       444 001767       447 002032       449 002042       450 002044       451 002074       453 002077
+    456 002100       458 002102       460 002126       461 002130       462 002131       463 002136       466 002140
+    469 002143       470 002176       471 002215       476 002216       478 002232       485 002275       487 002311
+    489 002312       491 002345       495 002370       496 002372       497 002400       499 002422       500 002424
+    501 002475       504 002476       506 002502       509 002503       512 002506       514 002517       516 002543
+    517 002575       520 002576       522 002614       523 002623       524 002626       525 002661       526 002713
+    528 002714       529 002747       533 002777       536 003020       537 003022       538 003073       541 003074
+    543 003127       544 003131       545 003132       546 003137       549 003141       552 003142       553 003165
+    554 003177       555 003211       556 003223       558 003224       560 003237       561 003242       563 003246
+    564 003255       669 003256       673 003275       674 003300       675 003303       676 003304       679 003305
+    681 003312       683 003343       690 003344       696 003356       697 003362       699 003365       569 003366
+    573 003377       574 003412       576 003425       578 003426       581 003427       582 003445       583 003451
+    585 003455       587 003466       592 003467       606 003470       611 003543       613 003546       626 003576
+    627 003750       628 003752       629 003756       630 003760       632 003762       634 003764       635 004011
+    637 004014       640 004063       642 004064       645 004065       647 004066       649 004071       651 004110
+    652 004112       654 004163       656 004164       658 004165       659 004167       660 004176       661 004220
+    664 004222
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

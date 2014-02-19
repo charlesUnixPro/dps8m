@@ -1,0 +1,849 @@
+	COMPILATION LISTING OF SEGMENT salv_dump_copy
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1114.58_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 salv_dump_copy: proc (a_block_p, a_block_len, a_name);
+       14 
+       15 /* *	SALV_DUMP_COPY
+       16*   *
+       17*   *	Procedure to copy data into a segment in >dumps, with condition handlers
+       18*   *	to deal with the unexpected. It is the callers responsibility to ensure that
+       19*   *	the this will not cause a mylock error on >dumps.
+       20*   *
+       21*   *	Created, from on_line_salvager, 10 August 1981, W. Olin Sibert
+       22*   */
+       23 
+       24 dcl  a_block_p ptr parameter; 			/* ptr to block. */
+       25 dcl  a_block_len fixed bin parameter;			/* Number of words in block. */
+       26 dcl  a_name char (*) parameter;			/* name of segment in >dumps */
+       27 
+       28 dcl  block_p pointer;
+       29 dcl  block_len fixed bin;
+       30 dcl  name char (32);
+       31 dcl  rings (3) fixed bin (3);
+       32 dcl  seg_p ptr;					/* Ptr. to segment in >dumps */
+       33 dcl  code fixed bin (35);
+       34 dcl  copy (block_len) bit (36) aligned based;		/* Used to copy block. */
+       35 
+       36 dcl 1 del_acl aligned,
+       37     2 user char (32),
+       38     2 err_code fixed bin (35);
+       39 
+       40 dcl  pds$process_group_id char (32) external static;
+       41 
+       42 dcl  append$branchx entry (char (*), char (*), fixed bin (5), (3) fixed bin (3), char (*),
+       43      fixed bin (1), fixed bin (1), fixed bin (24), fixed bin (35));
+       44 dcl  asd_$del_sentries entry (char (*), char (*), ptr, fixed bin, fixed bin (35));
+       45 dcl  delentry$dseg entry (pointer, fixed bin (35));
+       46 dcl  initiate$priv_init entry (char (*) aligned, char (*) aligned, char (*) aligned,
+       47      fixed bin (1), fixed bin (2), ptr, fixed bin (35));
+       48 dcl  syserr entry options (variable);
+       49 dcl  syserr$error_code entry options (variable);
+       50 
+       51 dcl  WHOAMI char (32) internal static options (constant) init ("salv_dump_copy");
+       52 
+       53 dcl  seg_fault_error condition;
+       54 
+       55 dcl (addr, null, ptr) builtin;
+       56 
+       57 /*  */
+       58 
+       59 	block_p = a_block_p;
+       60 	block_len = a_block_len;
+       61 	name = a_name;
+       62 
+       63 	rings (*) = 7;
+       64 	call append$branchx (">dumps", name, RW_ACCESS_BIN, rings, pds$process_group_id, 0, 0, 36 * block_len, code);
+       65 	if code ^= 0 then do;
+       66 	     call syserr$error_code (LOG, code, "^a: Appending ^a to dump directory.", WHOAMI, name);
+       67 	     return;
+       68 	     end;
+       69 
+       70 	call initiate$priv_init (">dumps", (name), "", 0, 0, seg_p, code); /* get a pointer to the new seg */
+       71 	if seg_p = null then do;
+       72 	     call syserr$error_code (LOG, code, "^a: Intiating ^a.", WHOAMI, name);
+       73 	     return;
+       74 	     end;
+       75 
+       76 	on condition (seg_fault_error) begin;
+       77 	     call syserr (LOG, "^a: seg_fault_error copying ^p into >dumps>^a", WHOAMI, block_p, name);
+       78 	     call delentry$dseg (seg_p, (0));		/* Get rid of it to avoid embarassment later */
+       79 	     goto DUMP_FINISHED;
+       80 	     end;
+       81 
+       82 	seg_p -> copy = block_p -> copy;		/* copy the information */
+       83 
+       84 	del_acl.user = pds$process_group_id;		/* set to delete user */
+       85 	call asd_$del_sentries (">dumps", name, addr (del_acl), 1, (0));
+       86 
+       87 DUMP_FINISHED:
+       88 	return;
+       89 
+       90  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  1     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  1     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  1     4 
+  1     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  1     6 
+  1     7 dcl (
+  1     8 
+  1     9 /* The following constants define the message action codes.  This indicates
+  1    10*how a message is to be handled.  */
+  1    11 
+  1    12      SYSERR_CRASH_SYSTEM	init (1),			
+  1    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  1    14 
+  1    15      SYSERR_TERMINATE_PROCESS	init (2),
+  1    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  1    17 
+  1    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  1    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  1    20 
+  1    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  1    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  1    23 
+  1    24      SYSERR_LOG_OR_PRINT	init (4),
+  1    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  1    26 
+  1    27      SYSERR_LOG_OR_DISCARD	init (5),
+  1    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  1    29 
+  1    30 
+  1    31 /* The following constants are added to the normal severities to indicate
+  1    32*different sorting classes of messages.  */
+  1    33 
+  1    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  1    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  1    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  1    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  1    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  1    39 	) fixed bin internal static options (constant);
+  1    40 
+  1    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       90 
+       91  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  2     2*
+  2     3*   Values for the "access mode" argument so often used in hardcore
+  2     4*   James R. Davis 26 Jan 81  MCR 4844
+  2     5*   Added constants for SM access 4/28/82 Jay Pattin
+  2     6*   Added text strings 03/19/85 Chris Jones
+  2     7**/
+  2     8 
+  2     9 
+  2    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2    11 dcl	(
+  2    12 	N_ACCESS		   init ("000"b),
+  2    13 	R_ACCESS		   init ("100"b),
+  2    14 	E_ACCESS		   init ("010"b),
+  2    15 	W_ACCESS		   init ("001"b),
+  2    16 	RE_ACCESS		   init ("110"b),
+  2    17 	REW_ACCESS	   init ("111"b),
+  2    18 	RW_ACCESS		   init ("101"b),
+  2    19 	S_ACCESS		   init ("100"b),
+  2    20 	M_ACCESS		   init ("010"b),
+  2    21 	A_ACCESS		   init ("001"b),
+  2    22 	SA_ACCESS		   init ("101"b),
+  2    23 	SM_ACCESS		   init ("110"b),
+  2    24 	SMA_ACCESS	   init ("111"b)
+  2    25 	)		   bit (3) internal static options (constant);
+  2    26 
+  2    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  2    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  2    29 
+  2    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  2    31 			   static options (constant);
+  2    32 
+  2    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  2    34 			   static options (constant);
+  2    35 
+  2    36 dcl	(
+  2    37 	N_ACCESS_BIN	   init (00000b),
+  2    38 	R_ACCESS_BIN	   init (01000b),
+  2    39 	E_ACCESS_BIN	   init (00100b),
+  2    40 	W_ACCESS_BIN	   init (00010b),
+  2    41 	RW_ACCESS_BIN	   init (01010b),
+  2    42 	RE_ACCESS_BIN	   init (01100b),
+  2    43 	REW_ACCESS_BIN	   init (01110b),
+  2    44 	S_ACCESS_BIN	   init (01000b),
+  2    45 	M_ACCESS_BIN	   init (00010b),
+  2    46 	A_ACCESS_BIN	   init (00001b),
+  2    47 	SA_ACCESS_BIN	   init (01001b),
+  2    48 	SM_ACCESS_BIN	   init (01010b),
+  2    49 	SMA_ACCESS_BIN	   init (01011b)
+  2    50 	)		   fixed bin (5) internal static options (constant);
+  2    51 
+  2    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+       91 
+       92 
+       93 /*  */
+       94 
+       95 /* BEGIN MESSAGE DOCUMENTATION
+       96*
+       97*   Message:
+       98*   salv_dump_copy: Appending SEGNAME to dump directory ERRORMESSAGE
+       99*
+      100*   S: $log
+      101*
+      102*   T: $run
+      103*
+      104*   M: The directory salvager could not append a copy of a directory being
+      105*   salvaged or the stack at the time of salvage to the system dump directory.
+      106*
+      107*   A: Check the ACL on the system dump directory, and site exec_coms which set it.
+      108*   $notify_sa
+      109*
+      110*   Message:
+      111*   salv_dump_copy: Initiating SEGNAME ERRORMESSAGE
+      112*
+      113*   S: $log
+      114*
+      115*   T: $run
+      116*
+      117*   M: The directory salvager could not initiate a copy of a
+      118*   ring 0 stack or directory being salvaged in the system dump directory.
+      119*   There may be ACL problems in the system dump directory.
+      120*
+      121*   A: $notify_sa
+      122*
+      123*   Message:
+      124*   salv_dump_copy: seg_fault_error copying PPPP into >dumps>SEGNAME
+      125*
+      126*   S: $log
+      127*
+      128*   T: $run
+      129*
+      130*   M: The directory salvager attempted to create a copy of a segment in >dumps,
+      131*   but encountered a seg_fault_error condition
+      132*   while attempting to copy it. This is probably caused by quota problems in
+      133*   >dumps or insufficient space on the logical volume.
+      134*
+      135*   A: $notify_sa
+      136*
+      137*   END MESSAGE DOCUMENTATION */
+      138 
+      139 	end salv_dump_copy;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1114.5  salv_dump_copy.pl1                >udd>sm>ds>w>ml>salv_dump_copy.pl1
+90           1    05/17/85  0715.7  syserr_constants.incl.pl1         >ldd>incl>syserr_constants.incl.pl1
+91           2    04/11/85  1552.6  access_mode_values.incl.pl1       >ldd>incl>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+LOG                             000001 constant        fixed bin(17,0)          initial dcl 1-7 set ref 66* 72* 77*
+RW_ACCESS_BIN                   000000 constant        fixed bin(5,0)           initial dcl 2-36 set ref 64*
+WHOAMI                          000002 constant        char(32)                 initial packed unaligned dcl 51 set ref 66* 72* 77*
+a_block_len                            parameter       fixed bin(17,0)          dcl 25 ref 13 60
+a_block_p                              parameter       pointer                  dcl 24 ref 13 59
+a_name                                 parameter       char                     packed unaligned dcl 26 ref 13 61
+addr                                                   builtin function         dcl 55 ref 85 85
+append$branchx                  000012 constant        entry                    external dcl 42 ref 64
+asd_$del_sentries               000014 constant        entry                    external dcl 44 ref 85
+block_len                       000102 automatic       fixed bin(17,0)          dcl 29 set ref 60* 64 82
+block_p                         000100 automatic       pointer                  dcl 28 set ref 59* 77* 82
+code                            000120 automatic       fixed bin(35,0)          dcl 33 set ref 64* 65 66* 70* 72*
+copy                                   based           bit(36)                  array dcl 34 set ref 82* 82
+del_acl                         000121 automatic       structure                level 1 dcl 36 set ref 85 85
+delentry$dseg                   000016 constant        entry                    external dcl 45 ref 78
+initiate$priv_init              000020 constant        entry                    external dcl 46 ref 70
+name                            000103 automatic       char(32)                 packed unaligned dcl 30 set ref 61* 64* 66* 70 72*
+                                                                                  77* 85*
+null                                                   builtin function         dcl 55 ref 71
+pds$process_group_id            000010 external static char(32)                 packed unaligned dcl 40 set ref 64* 84
+rings                           000113 automatic       fixed bin(3,0)           array dcl 31 set ref 63* 64*
+seg_fault_error                 000132 stack reference condition                dcl 53 ref 76
+seg_p                           000116 automatic       pointer                  dcl 32 set ref 70* 71 78* 82
+syserr                          000022 constant        entry                    external dcl 48 ref 77
+syserr$error_code               000024 constant        entry                    external dcl 49 ref 66 72
+user                            000121 automatic       char(32)                 level 2 dcl 36 set ref 84*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 1-7
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+BEEP                                   internal static fixed bin(17,0)          initial dcl 1-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 1-7
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 1-7
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 1-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 1-7
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 1-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+ptr                                                    builtin function         dcl 55
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DUMP_FINISHED                   000532 constant        label                    dcl 87 set ref 79
+salv_dump_copy                  000104 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       656         704     533         666
+Length      1120     533        26         177     122           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+salv_dump_copy                      166 external procedure  is an external procedure.  
+on unit on line 76                   99 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+salv_dump_copy           000100 block_p                     salv_dump_copy
+                         000102 block_len                   salv_dump_copy
+                         000103 name                        salv_dump_copy
+                         000113 rings                       salv_dump_copy
+                         000116 seg_p                       salv_dump_copy
+                         000120 code                        salv_dump_copy
+                         000121 del_acl                     salv_dump_copy
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           enable_op           ext_entry_desc
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+append$branchx                asd_$del_sentries             delentry$dseg                 initiate$priv_init
+syserr                        syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$process_group_id
+
+
+CONSTANTS
+000000  aa     000000000012
+
+000001  aa     000000000004
+
+000002  aa  163 141 154 166	salv
+000003  aa  137 144 165 155	_dum
+000004  aa  160 137 143 157	p_co
+000005  aa  160 171 040 040	py  
+000006  aa  040 040 040 040	    
+000007  aa  040 040 040 040	    
+000010  aa  040 040 040 040	    
+000011  aa  040 040 040 040	    
+
+000012  aa     524000000055
+
+000013  aa     524000000021
+
+000014  aa     404000000002
+
+000015  aa     524000000000
+
+000016  aa     524000000040
+
+000017  aa     524000000043
+
+000020  aa     404000000043
+
+000021  aa     404000000030
+
+000022  aa     404000000001
+
+000023  aa     404000000005
+
+000024  aa     526000000040
+
+000025  aa     524000000006
+
+000026  aa     526077777777
+
+000027  aa     404000000021
+
+000030  aa     464000000000
+
+000032  aa     077777000043
+000033  aa     000001000000
+
+000034  aa  076 144 165 155	>dum
+000035  aa  160 163 000 000	ps
+
+000036  aa     404100000003
+000037  aa     000000000001
+000040  aa     000000000003
+000041  aa     000000000001
+
+000042  aa  163 145 147 137	seg_
+000043  aa  146 141 165 154	faul
+000044  aa  164 137 145 162	t_er
+000045  aa  162 157 162 000	ror
+
+000046  aa  136 141 072 040	^a: 
+000047  aa  111 156 164 151	Inti
+000050  aa  141 164 151 156	atin
+000051  aa  147 040 136 141	g ^a
+000052  aa  056 000 000 000	.
+
+000053  aa  136 141 072 040	^a: 
+000054  aa  101 160 160 145	Appe
+000055  aa  156 144 151 156	ndin
+000056  aa  147 040 136 141	g ^a
+000057  aa  040 164 157 040	 to 
+000060  aa  144 165 155 160	dump
+000061  aa  040 144 151 162	 dir
+000062  aa  145 143 164 157	ecto
+000063  aa  162 171 056 000	ry.
+
+000064  aa  136 141 072 040	^a: 
+000065  aa  163 145 147 137	seg_
+000066  aa  146 141 165 154	faul
+000067  aa  164 137 145 162	t_er
+000070  aa  162 157 162 040	ror 
+000071  aa  143 157 160 171	copy
+000072  aa  151 156 147 040	ing 
+000073  aa  136 160 040 151	^p i
+000074  aa  156 164 157 040	nto 
+000075  aa  076 144 165 155	>dum
+000076  aa  160 163 076 136	ps>^
+000077  aa  141 000 000 000	a
+
+BEGIN PROCEDURE salv_dump_copy
+ENTRY TO salv_dump_copy                                     STATEMENT 1 ON LINE 13
+salv_dump_copy: proc (a_block_p, a_block_len, a_name);
+
+000100  at     000003000030
+000101  tt     000027000026
+000102  ta     000100000000
+000103  da     000106300000
+000104  aa   000260 6270 00	eax7 	176
+000105  aa  7 00034 3521 20	epp2 	pr7|28,*
+000106  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000107  aa     000006000000
+000110  aa     000000000000
+000111  aa  6 00042 3735 20	epp7 	pr6|34,*
+000112  aa  7 00004 2361 20	ldq  	pr7|4,*
+000113  aa   000002 6040 04	tmi  	2,ic		000115
+000114  aa   777777 3760 07	anq  	262143,dl
+000115  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000116  aa  6 00141 7561 00	stq  	pr6|97
+						STATEMENT 1 ON LINE 59
+	block_p = a_block_p;
+
+000117  aa  6 00032 3715 20	epp5 	pr6|26,*
+000120  aa  5 00002 3535 20	epp3 	pr5|2,*		a_block_p
+000121  aa  3 00000 3535 20	epp3 	pr3|0,*		a_block_p
+000122  aa  6 00100 2535 00	spri3	pr6|64		block_p
+						STATEMENT 1 ON LINE 60
+	block_len = a_block_len;
+
+000123  aa  5 00004 2361 20	ldq  	pr5|4,*		a_block_len
+000124  aa  6 00102 7561 00	stq  	pr6|66		block_len
+						STATEMENT 1 ON LINE 61
+	name = a_name;
+
+000125  aa  5 00006 3515 20	epp1 	pr5|6,*
+000126  aa  6 00141 2351 00	lda  	pr6|97
+000127  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000130  aa  1 00000 00 0005	desc9a	pr1|0,al		a_name
+000131  aa  6 00103 00 0040	desc9a	pr6|67,32		name
+						STATEMENT 1 ON LINE 63
+	rings (*) = 7;
+
+000132  aa   000001 2360 07	ldq  	1,dl
+000133  aa  6 00140 7561 00	stq  	pr6|96
+000134  aa   000007 2360 07	ldq  	7,dl
+000135  aa  6 00140 7271 00	lxl7 	pr6|96
+000136  aa  6 00112 7561 17	stq  	pr6|74,7		rings
+000137  aa  6 00140 2361 00	ldq  	pr6|96
+000140  aa  6 00140 0541 00	aos  	pr6|96
+000141  aa   000003 1160 07	cmpq 	3,dl
+000142  aa   777772 6040 04	tmi  	-6,ic		000134
+						STATEMENT 1 ON LINE 64
+	call append$branchx (">dumps", name, RW_ACCESS_BIN, rings, pds$process_group_id, 0, 0, 36 * block_len, code);
+
+000143  aa   777671 2370 04	ldaq 	-71,ic		000034 = 076144165155 160163000000
+000144  aa  6 00142 7571 00	staq 	pr6|98
+000145  aa  6 00144 4501 00	stz  	pr6|100
+000146  aa  6 00145 4501 00	stz  	pr6|101
+000147  aa  6 00102 2361 00	ldq  	pr6|66		block_len
+000150  aa   000044 4020 07	mpy  	36,dl
+000151  aa  6 00146 7561 00	stq  	pr6|102
+000152  aa  6 00142 3521 00	epp2 	pr6|98
+000153  aa  6 00152 2521 00	spri2	pr6|106
+000154  aa  6 00103 3521 00	epp2 	pr6|67		name
+000155  aa  6 00154 2521 00	spri2	pr6|108
+000156  aa   777622 3520 04	epp2 	-110,ic		000000 = 000000000012
+000157  aa  6 00156 2521 00	spri2	pr6|110
+000160  aa  6 00113 3521 00	epp2 	pr6|75		rings
+000161  aa  6 00160 2521 00	spri2	pr6|112
+000162  aa  6 00044 3701 20	epp4 	pr6|36,*
+000163  la  4 00010 3521 20	epp2 	pr4|8,*		pds$process_group_id
+000164  aa  6 00162 2521 00	spri2	pr6|114
+000165  aa  6 00144 3521 00	epp2 	pr6|100
+000166  aa  6 00164 2521 00	spri2	pr6|116
+000167  aa  6 00145 3521 00	epp2 	pr6|101
+000170  aa  6 00166 2521 00	spri2	pr6|118
+000171  aa  6 00146 3521 00	epp2 	pr6|102
+000172  aa  6 00170 2521 00	spri2	pr6|120
+000173  aa  6 00120 3521 00	epp2 	pr6|80		code
+000174  aa  6 00172 2521 00	spri2	pr6|122
+000175  aa   777630 3520 04	epp2 	-104,ic		000025 = 524000000006
+000176  aa  6 00174 2521 00	spri2	pr6|124
+000177  aa   777625 3520 04	epp2 	-107,ic		000024 = 526000000040
+000200  aa  6 00176 2521 00	spri2	pr6|126
+000201  aa  6 00204 2521 00	spri2	pr6|132
+000202  aa   777621 3520 04	epp2 	-111,ic		000023 = 404000000005
+000203  aa  6 00200 2521 00	spri2	pr6|128
+000204  aa   777632 3520 04	epp2 	-102,ic		000036 = 404100000003
+000205  aa  6 00202 2521 00	spri2	pr6|130
+000206  aa   777614 3520 04	epp2 	-116,ic		000022 = 404000000001
+000207  aa  6 00206 2521 00	spri2	pr6|134
+000210  aa  6 00210 2521 00	spri2	pr6|136
+000211  aa   777610 3520 04	epp2 	-120,ic		000021 = 404000000030
+000212  aa  6 00212 2521 00	spri2	pr6|138
+000213  aa   777605 3520 04	epp2 	-123,ic		000020 = 404000000043
+000214  aa  6 00214 2521 00	spri2	pr6|140
+000215  aa  6 00150 6211 00	eax1 	pr6|104
+000216  aa   044000 4310 07	fld  	18432,dl
+000217  la  4 00012 3521 20	epp2 	pr4|10,*		append$branchx
+000220  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 65
+	if code ^= 0 then do;
+
+000221  aa  6 00120 2361 00	ldq  	pr6|80		code
+000222  aa   000035 6000 04	tze  	29,ic		000257
+						STATEMENT 1 ON LINE 66
+	     call syserr$error_code (LOG, code, "^a: Appending ^a to dump directory.", WHOAMI, name);
+
+000223  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000224  aa   777630 00 0044	desc9a	-104,36		000053 = 136141072040
+000225  aa  6 00150 00 0044	desc9a	pr6|104,36
+000226  aa   777553 3520 04	epp2 	-149,ic		000001 = 000000000004
+000227  aa  6 00220 2521 00	spri2	pr6|144
+000230  aa  6 00120 3521 00	epp2 	pr6|80		code
+000231  aa  6 00222 2521 00	spri2	pr6|146
+000232  aa  6 00150 3521 00	epp2 	pr6|104
+000233  aa  6 00224 2521 00	spri2	pr6|148
+000234  aa   777546 3520 04	epp2 	-154,ic		000002 = 163141154166
+000235  aa  6 00226 2521 00	spri2	pr6|150
+000236  aa  6 00103 3521 00	epp2 	pr6|67		name
+000237  aa  6 00230 2521 00	spri2	pr6|152
+000240  aa   777567 3520 04	epp2 	-137,ic		000027 = 404000000021
+000241  aa  6 00232 2521 00	spri2	pr6|154
+000242  aa   777556 3520 04	epp2 	-146,ic		000020 = 404000000043
+000243  aa  6 00234 2521 00	spri2	pr6|156
+000244  aa   777553 3520 04	epp2 	-149,ic		000017 = 524000000043
+000245  aa  6 00236 2521 00	spri2	pr6|158
+000246  aa   777556 3520 04	epp2 	-146,ic		000024 = 526000000040
+000247  aa  6 00240 2521 00	spri2	pr6|160
+000250  aa  6 00242 2521 00	spri2	pr6|162
+000251  aa  6 00216 6211 00	eax1 	pr6|142
+000252  aa   024000 4310 07	fld  	10240,dl
+000253  aa  6 00044 3701 20	epp4 	pr6|36,*
+000254  la  4 00024 3521 20	epp2 	pr4|20,*		syserr$error_code
+000255  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 67
+	     return;
+
+000256  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 68
+	     end;
+
+						STATEMENT 1 ON LINE 70
+	call initiate$priv_init (">dumps", (name), "", 0, 0, seg_p, code);
+
+000257  aa   777555 2370 04	ldaq 	-147,ic		000034 = 076144165155 160163000000
+000260  aa  6 00142 7571 00	staq 	pr6|98
+000261  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000262  aa  6 00103 00 0040	desc9a	pr6|67,32		name
+000263  aa  6 00216 00 0040	desc9a	pr6|142,32
+000264  aa  6 00145 4501 00	stz  	pr6|101
+000265  aa  6 00144 4501 00	stz  	pr6|100
+000266  aa  6 00142 3521 00	epp2 	pr6|98
+000267  aa  6 00152 2521 00	spri2	pr6|106
+000270  aa  6 00216 3521 00	epp2 	pr6|142
+000271  aa  6 00154 2521 00	spri2	pr6|108
+000272  aa  6 00146 3521 00	epp2 	pr6|102
+000273  aa  6 00156 2521 00	spri2	pr6|110
+000274  aa  6 00145 3521 00	epp2 	pr6|101
+000275  aa  6 00160 2521 00	spri2	pr6|112
+000276  aa  6 00144 3521 00	epp2 	pr6|100
+000277  aa  6 00162 2521 00	spri2	pr6|114
+000300  aa  6 00116 3521 00	epp2 	pr6|78		seg_p
+000301  aa  6 00164 2521 00	spri2	pr6|116
+000302  aa  6 00120 3521 00	epp2 	pr6|80		code
+000303  aa  6 00166 2521 00	spri2	pr6|118
+000304  aa   777521 3520 04	epp2 	-175,ic		000025 = 524000000006
+000305  aa  6 00170 2521 00	spri2	pr6|120
+000306  aa   777510 3520 04	epp2 	-184,ic		000016 = 524000000040
+000307  aa  6 00172 2521 00	spri2	pr6|122
+000310  aa   777505 3520 04	epp2 	-187,ic		000015 = 524000000000
+000311  aa  6 00174 2521 00	spri2	pr6|124
+000312  aa   777510 3520 04	epp2 	-184,ic		000022 = 404000000001
+000313  aa  6 00176 2521 00	spri2	pr6|126
+000314  aa   777500 3520 04	epp2 	-192,ic		000014 = 404000000002
+000315  aa  6 00200 2521 00	spri2	pr6|128
+000316  aa   777512 3520 04	epp2 	-182,ic		000030 = 464000000000
+000317  aa  6 00202 2521 00	spri2	pr6|130
+000320  aa   777500 3520 04	epp2 	-192,ic		000020 = 404000000043
+000321  aa  6 00204 2521 00	spri2	pr6|132
+000322  aa  6 00150 6211 00	eax1 	pr6|104
+000323  aa   034000 4310 07	fld  	14336,dl
+000324  aa  6 00044 3701 20	epp4 	pr6|36,*
+000325  la  4 00020 3521 20	epp2 	pr4|16,*		initiate$priv_init
+000326  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 71
+	if seg_p = null then do;
+
+000327  aa  6 00116 2371 00	ldaq 	pr6|78		seg_p
+000330  aa   777502 6770 04	eraq 	-190,ic		000032 = 077777000043 000001000000
+000331  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000332  aa   000040 6010 04	tnz  	32,ic		000372
+						STATEMENT 1 ON LINE 72
+	     call syserr$error_code (LOG, code, "^a: Intiating ^a.", WHOAMI, name);
+
+000333  aa   777513 2370 04	ldaq 	-181,ic		000046 = 136141072040 111156164151
+000334  aa  6 00216 7571 00	staq 	pr6|142
+000335  aa   777513 2370 04	ldaq 	-181,ic		000050 = 141164151156 147040136141
+000336  aa  6 00220 7571 00	staq 	pr6|144
+000337  aa   056000 2350 03	lda  	23552,du
+000340  aa  6 00222 7551 00	sta  	pr6|146
+000341  aa   777440 3520 04	epp2 	-224,ic		000001 = 000000000004
+000342  aa  6 00152 2521 00	spri2	pr6|106
+000343  aa  6 00120 3521 00	epp2 	pr6|80		code
+000344  aa  6 00154 2521 00	spri2	pr6|108
+000345  aa  6 00216 3521 00	epp2 	pr6|142
+000346  aa  6 00156 2521 00	spri2	pr6|110
+000347  aa   777433 3520 04	epp2 	-229,ic		000002 = 163141154166
+000350  aa  6 00160 2521 00	spri2	pr6|112
+000351  aa  6 00103 3521 00	epp2 	pr6|67		name
+000352  aa  6 00162 2521 00	spri2	pr6|114
+000353  aa   777454 3520 04	epp2 	-212,ic		000027 = 404000000021
+000354  aa  6 00164 2521 00	spri2	pr6|116
+000355  aa   777443 3520 04	epp2 	-221,ic		000020 = 404000000043
+000356  aa  6 00166 2521 00	spri2	pr6|118
+000357  aa   777434 3520 04	epp2 	-228,ic		000013 = 524000000021
+000360  aa  6 00170 2521 00	spri2	pr6|120
+000361  aa   777443 3520 04	epp2 	-221,ic		000024 = 526000000040
+000362  aa  6 00172 2521 00	spri2	pr6|122
+000363  aa  6 00174 2521 00	spri2	pr6|124
+000364  aa  6 00150 6211 00	eax1 	pr6|104
+000365  aa   024000 4310 07	fld  	10240,dl
+000366  aa  6 00044 3701 20	epp4 	pr6|36,*
+000367  la  4 00024 3521 20	epp2 	pr4|20,*		syserr$error_code
+000370  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 73
+	     return;
+
+000371  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 74
+	     end;
+
+						STATEMENT 1 ON LINE 76
+	on condition (seg_fault_error) begin;
+
+000372  aa   000017 7260 07	lxl6 	15,dl
+000373  aa   777447 3520 04	epp2 	-217,ic		000042 = 163145147137
+000374  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000375  aa   000004 7100 04	tra  	4,ic		000401
+000376  aa     000132000000
+000377  aa   000060 7100 04	tra  	48,ic		000457
+BEGIN CONDITION seg_fault_error.1
+ENTRY TO seg_fault_error.1                                  STATEMENT 1 ON LINE 76
+	on condition (seg_fault_error) begin;
+
+000400  da     000116200000
+000401  aa   000160 6270 00	eax7 	112
+000402  aa  7 00034 3521 20	epp2 	pr7|28,*
+000403  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000404  aa     000000000000
+000405  aa     000000000000
+						STATEMENT 1 ON LINE 77
+	     call syserr (LOG, "^a: seg_fault_error copying ^p into >dumps>^a", WHOAMI, block_p, name);
+
+000406  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000407  aa   777456 00 0060	desc9a	-210,48		000064 = 136141072040
+000410  aa  6 00100 00 0060	desc9a	pr6|64,48
+000411  aa   777370 3520 04	epp2 	-264,ic		000001 = 000000000004
+000412  aa  6 00116 2521 00	spri2	pr6|78
+000413  aa  6 00100 3521 00	epp2 	pr6|64
+000414  aa  6 00120 2521 00	spri2	pr6|80
+000415  aa   777365 3520 04	epp2 	-267,ic		000002 = 163141154166
+000416  aa  6 00122 2521 00	spri2	pr6|82
+000417  aa  6 00040 3735 20	epp7 	pr6|32,*
+000420  aa  7 00100 3521 00	epp2 	pr7|64		block_p
+000421  aa  6 00124 2521 00	spri2	pr6|84
+000422  aa  7 00103 3521 00	epp2 	pr7|67		name
+000423  aa  6 00126 2521 00	spri2	pr6|86
+000424  aa   777403 3520 04	epp2 	-253,ic		000027 = 404000000021
+000425  aa  6 00130 2521 00	spri2	pr6|88
+000426  aa   777364 3520 04	epp2 	-268,ic		000012 = 524000000055
+000427  aa  6 00132 2521 00	spri2	pr6|90
+000430  aa   777374 3520 04	epp2 	-260,ic		000024 = 526000000040
+000431  aa  6 00134 2521 00	spri2	pr6|92
+000432  aa  6 00140 2521 00	spri2	pr6|96
+000433  aa   777375 3520 04	epp2 	-259,ic		000030 = 464000000000
+000434  aa  6 00136 2521 00	spri2	pr6|94
+000435  aa  6 00114 6211 00	eax1 	pr6|76
+000436  aa   024000 4310 07	fld  	10240,dl
+000437  la  4 00022 3521 20	epp2 	pr4|18,*		syserr
+000440  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 78
+	     call delentry$dseg (seg_p, (0));
+
+000441  aa  6 00142 4501 00	stz  	pr6|98
+000442  aa  6 00040 3735 20	epp7 	pr6|32,*
+000443  aa  7 00116 3521 00	epp2 	pr7|78		seg_p
+000444  aa  6 00102 2521 00	spri2	pr6|66
+000445  aa  6 00142 3521 00	epp2 	pr6|98
+000446  aa  6 00104 2521 00	spri2	pr6|68
+000447  aa  6 00100 6211 00	eax1 	pr6|64
+000450  aa   010000 4310 07	fld  	4096,dl
+000451  aa  6 00044 3701 20	epp4 	pr6|36,*
+000452  la  4 00016 3521 20	epp2 	pr4|14,*		delentry$dseg
+000453  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 79
+	     goto DUMP_FINISHED;
+
+000454  aa   000056 3520 04	epp2 	46,ic		000532 = 000631710100
+000455  aa   000001 7270 07	lxl7 	1,dl
+000456  aa  0 00657 7101 00	tra  	pr0|431		tra_ext_1
+						STATEMENT 1 ON LINE 80
+	     end;
+
+  END CONDITION seg_fault_error.1
+						STATEMENT 1 ON LINE 82
+	seg_p -> copy = block_p -> copy;
+
+000457  aa  6 00102 2361 00	ldq  	pr6|66		block_len
+000460  aa   000002 7360 00	qls  	2
+000461  aa  6 00116 3735 20	epp7 	pr6|78,*		seg_p
+000462  aa  6 00100 3715 20	epp5 	pr6|64,*		block_p
+000463  aa  000 140 100 540	mlr  	(pr,rl),(pr,rl),fill(000)
+000464  aa  5 00000 00 0006	desc9a	pr5|0,ql		copy
+000465  aa  7 00000 00 0006	desc9a	pr7|0,ql		copy
+						STATEMENT 1 ON LINE 84
+	del_acl.user = pds$process_group_id;
+
+000466  aa  6 00044 3701 20	epp4 	pr6|36,*
+000467  la  4 00010 3535 20	epp3 	pr4|8,*		pds$process_group_id
+000470  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000471  aa  3 00000 00 0040	desc9a	pr3|0,32		pds$process_group_id
+000472  aa  6 00121 00 0040	desc9a	pr6|81,32		del_acl.user
+						STATEMENT 1 ON LINE 85
+	call asd_$del_sentries (">dumps", name, addr (del_acl), 1, (0));
+
+000473  aa   777341 2370 04	ldaq 	-287,ic		000034 = 076144165155 160163000000
+000474  aa  6 00142 7571 00	staq 	pr6|98
+000475  aa  6 00121 3515 00	epp1 	pr6|81		del_acl
+000476  aa  6 00244 2515 00	spri1	pr6|164
+000477  aa   000001 2360 07	ldq  	1,dl
+000500  aa  6 00144 7561 00	stq  	pr6|100
+000501  aa  6 00145 4501 00	stz  	pr6|101
+000502  aa  6 00142 3521 00	epp2 	pr6|98
+000503  aa  6 00220 2521 00	spri2	pr6|144
+000504  aa  6 00103 3521 00	epp2 	pr6|67		name
+000505  aa  6 00222 2521 00	spri2	pr6|146
+000506  aa  6 00244 3521 00	epp2 	pr6|164
+000507  aa  6 00224 2521 00	spri2	pr6|148
+000510  aa  6 00144 3521 00	epp2 	pr6|100
+000511  aa  6 00226 2521 00	spri2	pr6|150
+000512  aa  6 00145 3521 00	epp2 	pr6|101
+000513  aa  6 00230 2521 00	spri2	pr6|152
+000514  aa   777311 3520 04	epp2 	-311,ic		000025 = 524000000006
+000515  aa  6 00232 2521 00	spri2	pr6|154
+000516  aa   777306 3520 04	epp2 	-314,ic		000024 = 526000000040
+000517  aa  6 00234 2521 00	spri2	pr6|156
+000520  aa   777310 3520 04	epp2 	-312,ic		000030 = 464000000000
+000521  aa  6 00236 2521 00	spri2	pr6|158
+000522  aa   777305 3520 04	epp2 	-315,ic		000027 = 404000000021
+000523  aa  6 00240 2521 00	spri2	pr6|160
+000524  aa   777274 3520 04	epp2 	-324,ic		000020 = 404000000043
+000525  aa  6 00242 2521 00	spri2	pr6|162
+000526  aa  6 00216 6211 00	eax1 	pr6|142
+000527  aa   024000 4310 07	fld  	10240,dl
+000530  la  4 00014 3521 20	epp2 	pr4|12,*		asd_$del_sentries
+000531  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 87
+DUMP_FINISHED:
+	return;
+
+000532  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 139
+	end salv_dump_copy;
+
+  END PROCEDURE salv_dump_copy
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

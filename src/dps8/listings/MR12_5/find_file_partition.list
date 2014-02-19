@@ -1,0 +1,475 @@
+	COMPILATION LISTING OF SEGMENT find_file_partition
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-06-05,GJohnson), approve(86-06-05,MCR7387),
+       12*     audit(86-06-10,Martinson), install(86-07-11,MR12.0-1091):
+       13*     Correct error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 find_file_partition: proc;
+       18 
+       19 /* Routine to cause the segment bootload_file_partition to be mapped onto
+       20*the file partition.  Written October 1983 by Keith Loepere. */
+       21 
+       22 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       23 
+       24 dcl  addr			        builtin;
+       25 dcl  bce_abs_seg$add	        entry (fixed bin (15));
+       26 dcl  bootload_file_partition$	        external;
+       27 dcl  bootload_fs_$init	        entry (bit (1) aligned, fixed bin (19), fixed bin (35));
+       28 dcl  code			        fixed bin (35);
+       29 dcl  error_table_$nopart	        fixed bin (35) ext static;
+       30 dcl  first_record		        fixed bin (20);
+       31 dcl  map_onto_disk		        entry (fixed bin, fixed bin (20), fixed bin, ptr, bit (1) aligned);
+       32 dcl  me			        char (19) init ("find_file_partition") static options (constant);
+       33 dcl  1 my_label		        aligned like label;
+       34 dcl  n_records		        fixed bin;
+       35 dcl  px			        fixed bin;
+       36 dcl  pvt$root_pvtx		        fixed bin external static;
+       37 dcl  read_disk_label	        entry (fixed bin, ptr, char (*), fixed bin (35));
+       38 dcl  segno		        builtin;
+       39 dcl  syserr		        entry options (variable);
+       40 dcl  syserr$error_code	        entry options (variable);
+       41 
+       42 	code = 0;
+       43 	labelp = addr (my_label);
+       44 	call read_disk_label (pvt$root_pvtx, labelp, "", code);
+       45 	if code = 0 then do px = 1 to label.nparts;
+       46 	     if label.parts (px).part = "file" then do;
+       47 		first_record = label.parts (px).frec;
+       48 		n_records = label.parts (px).nrec;
+       49 		go to found;
+       50 	     end;
+       51 	end;
+       52 	code = error_table_$nopart;
+       53 found:
+       54 	if code = 0 then
+       55 	     if n_records < 30 | n_records > 255 then call syserr (CRASH, "^a: file partition is ^d records, not between 30 and 255.", me, n_records);
+       56 	if code ^= 0
+       57 	then call syserr$error_code (CRASH, code, "^a: No file partition defined on RPV.", me);
+       58 
+       59 	call map_onto_disk (pvt$root_pvtx, first_record, n_records, addr (bootload_file_partition$), "1"b);
+       60 	call bce_abs_seg$add (segno (addr (bootload_file_partition$)));
+       61 
+       62 	call bootload_fs_$init ("0"b, 1024 * n_records, code); /* prepare to use */
+       63 	if code ^= 0 then do;
+       64 	     call syserr$error_code (ANNOUNCE, code, "^a: Initializing file partition.", me);
+       65 	     call bootload_fs_$init ("1"b, 1024 * n_records, code);
+       66 						/* goodbye old files */
+       67 	end;
+       68 	return;
+  1     1 /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  1     2 
+  1     3 
+  1     4 
+  1     5 
+  1     6 /****^  HISTORY COMMENTS:
+  1     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  1     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  1     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  1    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  1    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  1    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  1    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  1    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  1    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  1    16*                                                   END HISTORY COMMENTS */
+  1    17 
+  1    18 
+  1    19 /*
+  1    20*   All disk packs have the standard layout described below:
+  1    21*
+  1    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  1    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  1    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  1    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  1    26*   Record  7		: formerly contained bad track list; no longer used.
+  1    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  1    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  1    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  1    30*
+  1    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  1    32*   of the particular partition.
+  1    33*
+  1    34*
+  1    35*
+  1    36*   A conceptual declaration for a disk pack could be:
+  1    37*
+  1    38*   dcl 1 disk_pack,
+  1    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  1    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  1    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  1    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  1    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  1    44*   2 vtoc_array_records	(8 : n-1),
+  1    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  1    46*   3 unused				bit(36 * 64),
+  1    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  1    48*
+  1    49*
+  1    50*
+  1    51*
+  1    52**/
+  1    53 
+  1    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  1    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  1    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  1    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  1    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  1    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  1    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  1    61 		         fixed bin (17) int static options (constant);
+  1    62 
+  1    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  1    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  1    65 /* or the physical volume table entry (pvte) device type.		      */
+  1    66 
+  1    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  1    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  1    69 
+  1    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  1    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  1    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  1    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  1    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  1    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  1    76 
+  1    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+       69 
+  2     1 /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  2     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  2     6*     Add the subvolume info.
+  2     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  2    10*     dumper bit maps.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  2    14 /* Note: fsout_vol clears pad fields before writing the label */
+  2    15 
+  2    16 dcl  labelp ptr;
+  2    17 
+  2    18 dcl 1 label based (labelp) aligned,
+  2    19 
+  2    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  2    21 
+  2    22     2 gcos (5*64) fixed bin,
+  2    23 
+  2    24 /* Now we have the Multics label */
+  2    25 
+  2    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  2    27     2 version fixed bin,				/* Version 1 */
+  2    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  2    29     2 pv_name char (32),				/* Physical volume name. */
+  2    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  2    31     2 pvid bit (36),				/* Unique ID of this pack */
+  2    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  2    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  2    34     2 time_registered fixed bin (71),			/* time imported to system */
+  2    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  2    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  2    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  2    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  2    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  2    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  2    41     2 flagpad bit (33) unal,
+  2    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  2    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  2    44     2 password bit (72),				/* not yet used */
+  2    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  2    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  2    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  2    48     2 pad1 (13) fixed bin,
+  2    49     2 time_mounted fixed bin (71),			/* time mounted */
+  2    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  2    51 
+  2    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  2    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  2    54* */
+  2    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  2    56     2 pad6 fixed bin,				
+  2    57 
+  2    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  2    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  2    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  2    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  2    62     2 pad1a (2) fixed bin,
+  2    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  2    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  2    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  2    66     2 pad2 (40) fixed bin,
+  2    67     2 root,
+  2    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  2    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  2    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  2    71       3 pad7 bit (1) aligned,				
+  2    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  2    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  2    74       3 esd_state fixed bin,				/* State of esd */
+  2    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  2    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  2    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  2    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  2    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  2    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  2    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  2    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  2    83     2 pad3 (52) fixed bin,
+  2    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  2    85     2 parts (47),
+  2    86       3 part char (4),				/* Name of partition */
+  2    87       3 frec fixed bin,				/* First record */
+  2    88       3 nrec fixed bin,				/* Number of records */
+  2    89       3 pad5 fixed bin,
+  2    90     2 pad4 (5*64) fixed bin;
+  2    91 
+  2    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  2    93 
+  2    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+       70 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       71 
+       72 
+       73 /* BEGIN MESSAGE DOCUMENTATION
+       74*
+       75*   Message:
+       76*   find_file_partition: file partition is NNN records, not between 30 and 255.
+       77*
+       78*   S: $crash
+       79*
+       80*   T: $init
+       81*
+       82*   M: The partition holding the bce file system is of an invalid size.  The 
+       83*   rpv was either mal-formatted or damaged.
+       84*
+       85*   A: The rpv will need to be rebuilt.
+       86*
+       87*   Message:
+       88*   find_file_partition: No file partition defined on RPV.
+       89*
+       90*   S: $crash
+       91*
+       92*   T: $init
+       93*
+       94*   M: The partition used to hold the bce file system is missing from the
+       95*   rpv.  Suspect damage of the rpv.
+       96*
+       97*   A: The rpv will need to be rebuilt.
+       98*
+       99*   Message:
+      100*   find_file_partition: Initting file partition.
+      101*
+      102*   S: $info
+      103*
+      104*   T: $init
+      105*
+      106*   M: The bce file system was found to be damaged or never initialized.
+      107*   Any previous contents are discarded.
+      108*
+      109*   END MESSAGE DOCUMENTATION */
+      110 
+      111      end find_file_partition;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0815.8  find_file_partition.pl1           >spec>install>1112>find_file_partition.pl1
+69           1    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+70           2    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+71           3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000016 constant        fixed bin(17,0)          initial dcl 3-7 set ref 64*
+CRASH                           000017 constant        fixed bin(17,0)          initial dcl 3-7 set ref 53* 56*
+Multics                 500     000102 automatic       char(32)                 initial level 2 dcl 33 set ref 33*
+addr                                                   builtin function         dcl 24 ref 43 59 59 60 60
+bce_abs_seg$add                 000010 constant        entry                    external dcl 25 ref 60
+bootload_file_partition$        000012 external static fixed bin(17,0)          dcl 26 set ref 59 59 60 60
+bootload_fs_$init               000014 constant        entry                    external dcl 27 ref 62 65
+code                            000100 automatic       fixed bin(35,0)          dcl 28 set ref 42* 44* 45 52* 53 56 56* 62* 63 64*
+                                                                                  65*
+error_table_$nopart             000016 external static fixed bin(35,0)          dcl 29 ref 52
+first_record                    000101 automatic       fixed bin(20,0)          dcl 30 set ref 47* 59*
+frec                   1005            based           fixed bin(17,0)          array level 3 dcl 2-18 ref 47
+label                                  based           structure                level 1 dcl 2-18
+labelp                          002104 automatic       pointer                  dcl 2-16 set ref 43* 44* 45 46 47 48
+map_onto_disk                   000020 constant        entry                    external dcl 31 ref 59
+me                              000000 constant        char(19)                 initial packed unaligned dcl 32 set ref 53* 56* 64*
+my_label                        000102 automatic       structure                level 1 dcl 33 set ref 43
+n_records                       002102 automatic       fixed bin(17,0)          dcl 34 set ref 48* 53 53 53* 59* 62 65
+nparts                 1003            based           fixed bin(17,0)          level 2 dcl 2-18 ref 45
+nrec                   1006            based           fixed bin(17,0)          array level 3 dcl 2-18 ref 48
+part                   1004            based           char(4)                  array level 3 dcl 2-18 ref 46
+parts                  1004            based           structure                array level 2 dcl 2-18
+pvt$root_pvtx                   000022 external static fixed bin(17,0)          dcl 36 set ref 44* 59*
+px                              002103 automatic       fixed bin(17,0)          dcl 35 set ref 45* 46 47 48*
+read_disk_label                 000024 constant        entry                    external dcl 37 ref 44
+segno                                                  builtin function         dcl 38 ref 60 60
+syserr                          000026 constant        entry                    external dcl 39 ref 53
+syserr$error_code               000030 constant        entry                    external dcl 40 ref 56 64
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 1-54
+DUMPER_BIT_MAP_ADDR                    internal static fixed bin(17,0)          initial dcl 1-54
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LABEL_ADDR                             internal static fixed bin(17,0)          initial dcl 1-54
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 1-54
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 2-92
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 1-67
+SECTORS_PER_RECORD                     internal static fixed bin(17,0)          initial array dcl 1-74
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 1-70
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+VOLMAP_ADDR                            internal static fixed bin(17,0)          initial dcl 1-54
+VTOCES_PER_RECORD                      internal static fixed bin(17,0)          initial array dcl 1-72
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 1-68
+VTOC_MAP_ADDR                          internal static fixed bin(17,0)          initial dcl 1-54
+VTOC_ORIGIN                            internal static fixed bin(17,0)          initial dcl 1-54
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+find_file_partition             000072 constant        entry                    external dcl 17
+found                           000164 constant        label                    dcl 53 ref 49
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       540         572     407         550
+Length      1024     407        32         216     130           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+find_file_partition                1136 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+find_file_partition      000100 code                        find_file_partition
+                         000101 first_record                find_file_partition
+                         000102 my_label                    find_file_partition
+                         002102 n_records                   find_file_partition
+                         002103 px                          find_file_partition
+                         002104 labelp                      find_file_partition
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_abs_seg$add               bootload_fs_$init             map_onto_disk                 read_disk_label
+syserr                        syserr$error_code
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bootload_file_partition$      error_table_$nopart           pvt$root_pvtx
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000071        33 000077        42 000102        43 000103        44 000105        45 000131        46 000143
+     47 000151        48 000153        49 000156        51 000157        52 000161        53 000164        56 000222
+     59 000254        60 000277        62 000314        63 000335        64 000337        65 000367        68 000406
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

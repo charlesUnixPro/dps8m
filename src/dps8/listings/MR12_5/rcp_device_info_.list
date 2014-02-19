@@ -1,0 +1,1051 @@
+	COMPILATION LISTING OF SEGMENT rcp_device_info_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0949.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /****^  HISTORY COMMENTS:
+       14*  1) change(85-09-11,Fawcett), approve(85-09-11,MCR6979),
+       15*     audit(85-12-11,CLJones), install(86-03-21,MR12.0-1033):
+       16*     Add MCA support
+       17*                                                   END HISTORY COMMENTS */
+       18 
+       19 /* format: style4 */
+       20 
+       21 rcp_device_info_: procedure;
+       22 
+       23 /*	This program is an internal interface of RCP.
+       24*   *	Created by Bill Silver on 12/12/74.
+       25*   *	Modified by D. Vinograd 6/76 to map model number 450 to 451
+       26*   *	Modified by Noel I. Morris on 01/20/77 for multiple tape controllers.
+       27*   *	Modified by D. Vinograd 2/77 to force access for Initializer process in ring 1.
+       28*   *	Modified by Michael R. Jordan on 11/17/78 to add version 2 tape_info structures and 6250 bpi.
+       29*   *	Modified by C. D. Tavares 04/27/79 for canonicalization.
+       30*   *	Modified by Michael R. Jordan 6/79 for MR7.0R.
+       31*   *	Modified by J. A. Bush 09/30/82 to return more tape info
+       32*   *	Modified by J. A. Bush 09/19/83 to fix a bug when using tape_info_version_3
+       33*   *	Modified by Chris Jones 03/05/85 to add copy entrypoint.
+       34*   *      Modified by Paul Farley & RAF 04/03/85 to add device_type (8) "MCA".
+       35*   *
+       36*   *	This program deals with the various RCP device info structures.
+       37*   *	It has the following entry points:
+       38*   *	     1.  get  -	Get data from a device info structure and put it into
+       39*   *			an RCSE.  Initialize the RCSE.
+       40*   *	     2.  put  -	Get data from an RCSE and put it into a device info structure.
+       41*   *	     3.  copy -	Copy data from one device info structure to another.
+       42**/
+       43 
+       44 /*		ARGUMENT  DATA		*/
+       45 
+       46 dcl  arg_caller_level fixed bin;			/* (I) Caller's validation level. */
+       47 dcl  arg_device_info_ptr ptr;				/* (I) pointer to device info structure. */
+       48 dcl  arg_device_type char (*);			/* (I) Device type name. */
+       49 dcl  arg_ecode fixed bin (35);			/* (O) error_table_ code. */
+       50 dcl  arg_rcse_ptr ptr;				/* (I) Pointer to specified RCS entry. */
+       51 
+       52 
+       53 /*		AUTOMATIC  DATA		*/
+       54 
+       55 dcl  access fixed bin (5);				/* Access to RCP system gate. */
+       56 dcl  am_initializer bit (1) initial ("0"b);		/* On if user is the Initializer */
+       57 dcl  caller_level fixed bin;				/* User's validation level. */
+       58 dcl  device_name char (32) aligned;			/* Device name. */
+       59 dcl  device_type char (32);				/* Device type name. */
+       60 dcl  dtypex fixed bin;				/* Index that => device type. */
+       61 dcl  ecode fixed bin (35);				/* error_table_ code. */
+       62 dcl  i fixed bin;
+       63 dcl  tracks fixed bin;				/* Tape tracks type qualifier. */
+       64 
+       65 dcl  1 local_tape_info like tape_info;			/* A copy for handling version 1 structures. */
+       66 
+       67 
+       68 /*		BASED  DATA		*/
+       69 
+       70 dcl  based_rcse (size (rcse)) bit (36) based (rcse_ptr);
+       71 
+       72 dcl  1 version_1_tape_info based (device_info_ptr) aligned, /* O_L_D_ RCP device info structure for tapes. */
+       73        2 version_num fixed bin,			/* Version number of this structure. */
+       74        2 usage_time fixed bin,			/* Number of minutes drive will/may be used. */
+       75        2 wait_time fixed bin,				/* Number of minutes user will/must wait. */
+       76        2 system_flag bit (1),				/* ON => user wants to be a system process. */
+       77        2 device_name char (8),			/* Tape drive name. */
+       78        2 model fixed bin,				/* Tape drive model number. */
+       79        2 tracks fixed bin,				/* Tracks type. */
+       80        2 density bit (36),				/* Recording density: 200, 556, 800, 1600, 6250. */
+       81        2 volume_name char (32),			/* Tape reel name. */
+       82        2 write_flag bit (1),				/* ON => writing on tape reel. */
+       83        2 position_index fixed bin (35);			/* Counter used to determine tape reel position. */
+       84 
+       85 /*		EXTERNAL ENTRIES CALLED	*/
+       86 
+       87 dcl  (addr, bit, null, size, string, substr) builtin;
+       88 
+       89 dcl  (error_table_$bad_arg,
+       90      error_table_$resource_unknown,
+       91      error_table_$unimplemented_version) fixed bin (35) external;
+       92 
+       93 dcl  get_group_id_ entry returns (char (32) aligned);
+       94 dcl  get_process_id_ entry returns (bit (36) aligned);
+       95 dcl  hcs_$get_user_effmode entry (char (*) aligned, char (*) aligned, char (*) aligned, fixed bin,
+       96 	fixed bin (5), fixed bin (35));
+       97 dcl  rcp_pointers_$com_seg entry returns (ptr);
+       98 dcl  resource_info_$get_dtypex entry (char (*), char (*), fixed bin, fixed bin (35));
+       99 
+      100 /*
+      101*   *
+      102*   *	This entry is called to get information out of a device info structure.
+      103*   *	We will interpret this information and put it into the specified RCS
+      104*   *	entry.  We will validate as much information in the structure as possible.
+      105*   *
+      106**/
+      107 
+      108 
+      109 get: entry (arg_device_type, arg_device_info_ptr, arg_rcse_ptr, arg_caller_level, arg_ecode);
+      110 
+      111 
+      112 	device_type = arg_device_type;		/* Get arguments. */
+      113 	device_info_ptr = arg_device_info_ptr;
+      114 	rcse_ptr = arg_rcse_ptr;
+      115 	caller_level = arg_caller_level;
+      116 
+      117 	call resource_info_$get_dtypex (device_type, device_type, dtypex, ecode);
+      118 	if ecode ^= 0 then goto RETURN_ERR;
+      119 
+      120 	string (based_rcse) = "0"b;			/* Zero entire RCSE. */
+      121 	device_name,				/* Get name of device to assign. */
+      122 	     rcse.device_name = device_info.device_name;
+      123 	rcse.volume_name = " ";			/* Assume no volume. */
+      124 	rcse.dtypex = dtypex;			/* Remember device type. */
+      125 	rcse.model = device_info.model;		/* Every device type has a model number. */
+      126 	rcse.num_qualifiers = NUM_QUALIFIERS (dtypex);
+      127 	do i = 1 to rcse.num_qualifiers;		/* Fill in all qualifiers that device has. */
+      128 	     rcse.qualifiers (i) = device_info.qualifiers (i);
+      129 	end;
+      130 
+      131 	rcse.caller_level = caller_level;		/* Fill in other data common to all device types. */
+      132 	rcse.process_id = get_process_id_ ();
+      133 	rcse.group_id = get_group_id_ ();
+      134 	rcse.version_num = device_info.version_num;
+      135 	rcse.workspace_ptr = null ();
+      136 	if device_name ^= " "			/* Not blank => looking for a specific device. */
+      137 	then rcse.flags.device = "1"b;
+      138 	rcse.flags.system = GET_SYSTEM_FLAG ();
+      139 
+      140 	goto GET_DTYPE (dtypex);			/* Process according to device type. */
+      141 
+      142 
+      143 GET_DTYPE (1):					/* TAPE */
+      144 	if tape_info.version_num = 1 then do;		/* Convert old structures. */
+      145 	     local_tape_info.usage_time = version_1_tape_info.usage_time;
+      146 	     local_tape_info.wait_time = version_1_tape_info.wait_time;
+      147 	     local_tape_info.system_flag = version_1_tape_info.system_flag;
+      148 	     local_tape_info.device_name = version_1_tape_info.device_name;
+      149 	     local_tape_info.model = version_1_tape_info.model;
+      150 	     local_tape_info.tracks = version_1_tape_info.tracks;
+      151 	     local_tape_info.density = version_1_tape_info.density;
+      152 	     local_tape_info.speed = "0"b;
+      153 	     local_tape_info.pad = "0"b;
+      154 	     local_tape_info.volume_name = version_1_tape_info.volume_name;
+      155 	     local_tape_info.write_flag = version_1_tape_info.write_flag;
+      156 	     local_tape_info.position_index = version_1_tape_info.position_index;
+      157 	     device_info_ptr = addr (local_tape_info);	/* Switch to the temporary version 2 copy. */
+      158 	     rcse.qualifiers (3) = 0;			/* No speed in RCSE either. */
+      159 	end;
+      160 	else if tape_info.version_num ^= tape_info_version_3 & tape_info.version_num ^= tape_info_version_2
+      161 	then goto BAD_VERSION;
+      162 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      163 	if rcse.flags.device
+      164 	then do;					/* Specific device => no qualifier tests. */
+      165 	     if substr (device_name, 1, 3) ^= "tap"
+      166 	     then goto BAD_DEVICE;
+      167 	end;
+      168 	else do;					/* Any tape, check qualifiers. */
+      169 	     tracks = tape_info.tracks;		/* Get tracks type. */
+      170 	     if tracks ^= 0				/* If track qualifier specified validate it. */
+      171 	     then if (tracks ^= 9) &
+      172 		     (tracks ^= 7)
+      173 		then goto BAD_QUALIFIER;
+      174 	     if substr (tape_info.density, 6) ^= ""b	/* Extraneous bits set? */
+      175 	     then goto BAD_QUALIFIER;
+      176 	     if (tracks = 7) &			/* Did caller specify 7 track? */
+      177 		(substr (tape_info.density, 4, 2) ^= ""b)
+      178 						/* Then he can't specify possible 1600 or 6250 density. */
+      179 	     then goto BAD_QUALIFIER;
+      180 	     if substr (tape_info.speed, 4) ^= ""b	/* Extraneous bits set? */
+      181 	     then goto BAD_QUALIFIER;
+      182 	     if tape_info.pad ^= "0"b			/* This must be "0"b. */
+      183 	     then goto BAD_QUALIFIER;
+      184 	end;
+      185 	rcse.flags.writing = tape_info.write_flag;
+      186 	if tape_info.volume_name ^= " "		/* Is there a volume name? */
+      187 	then do;					/* Yes. */
+      188 	     rcse.volume_name = tape_info.volume_name;
+      189 	     rcse.flags.volume = "1"b;
+      190 	     if rcse.volume_name = "T&D_Volume"
+      191 	     then do;
+      192 		rcse.flags.t_and_d = "1"b;
+      193 		rcse.volume_name = "scratch";
+      194 	     end;
+      195 	     else call canon_name (VOLUME_TYPE (dtypex), rcse.volume_name, tape_info.volume_name);
+      196 	end;
+      197 	goto RETURN_OK;
+      198 
+      199 
+      200 GET_DTYPE (2):					/* DISK */
+      201 	if disk_info.version_num ^= 1
+      202 	then goto BAD_VERSION;
+      203 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      204 	if rcse.flags.device
+      205 	then if substr (device_name, 1, 3) ^= "dsk"
+      206 	     then goto BAD_DEVICE;
+      207 	rcse.flags.writing = disk_info.write_flag;
+      208 	if disk_info.volume_name ^= " "		/* Is there a volume name? */
+      209 	then do;					/* Yes. */
+      210 	     rcse.volume_name = disk_info.volume_name;
+      211 	     rcse.flags.volume = "1"b;
+      212 	     if rcse.volume_name = "T&D_Volume"
+      213 	     then do;
+      214 		rcse.flags.t_and_d = "1"b;
+      215 		rcse.volume_name = "scratch";
+      216 	     end;
+      217 	     else call canon_name (VOLUME_TYPE (dtypex), rcse.volume_name, disk_info.volume_name);
+      218 	end;
+      219 	if rcse.model = 191				/* Model number 191 replaced by 400. */
+      220 	then rcse.model = 400;
+      221 	if rcse.model = 450				/* then name been changed */
+      222 	then rcse.model = 451;
+      223 	goto RETURN_OK;
+      224 
+      225 
+      226 GET_DTYPE (3):					/* CONSOLE */
+      227 	if device_info.version_num ^= 1
+      228 	then goto BAD_VERSION;
+      229 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      230 	if rcse.flags.device			/* Does caller want a specific device? */
+      231 	then if substr (device_name, 1, 3) ^= "opc"	/* Then it must be this name: "opc". */
+      232 	     then goto BAD_DEVICE;
+      233 	rcse.model = 0;				/* Model number not used. */
+      234 	goto RETURN_OK;
+      235 
+      236 
+      237 GET_DTYPE (4):					/* PRINTER */
+      238 	if device_info.version_num ^= 1
+      239 	then goto BAD_VERSION;
+      240 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      241 	if rcse.flags.device
+      242 	then if substr (device_name, 1, 3) ^= "prt"
+      243 	     then goto BAD_DEVICE;
+      244 	goto RETURN_OK;
+      245 
+      246 
+      247 GET_DTYPE (5):					/* PUNCH */
+      248 	if device_info.version_num ^= 1
+      249 	then goto BAD_VERSION;
+      250 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      251 	if rcse.flags.device
+      252 	then if substr (device_name, 1, 3) ^= "pun"
+      253 	     then goto BAD_DEVICE;
+      254 	goto RETURN_OK;
+      255 
+      256 
+      257 GET_DTYPE (6):					/* READER */
+      258 	if device_info.version_num ^= 1
+      259 	then goto BAD_VERSION;
+      260 	call canon_name (DEVICE_TYPE (dtypex), device_name, rcse.device_name);
+      261 	if rcse.flags.device
+      262 	then if substr (device_name, 1, 3) ^= "rdr"
+      263 	     then goto BAD_DEVICE;
+      264 	goto RETURN_OK;
+      265 
+      266 
+      267 GET_DTYPE (7):					/* SPECIAL */
+      268 GET_DTYPE (8):					/* MCA */
+      269 	if device_info.version_num ^= 1
+      270 	then goto BAD_VERSION;
+      271 						/* Anything goes for name. */
+      272 	goto RETURN_OK;
+      273 
+      274 
+      275 RETURN_OK: arg_ecode = 0;
+      276 	device_info.device_name = rcse.device_name;	/* in case it was changed (canonicalized) */
+      277 	return;
+      278 
+      279 
+      280 RETURN_ERR:
+      281 	arg_ecode = ecode;
+      282 	return;
+      283 
+      284 
+      285 BAD_DEVICE:
+      286 	arg_ecode = error_table_$resource_unknown;
+      287 	return;
+      288 
+      289 
+      290 BAD_QUALIFIER:
+      291 	arg_ecode = error_table_$bad_arg;
+      292 	return;
+      293 
+      294 
+      295 BAD_VERSION:
+      296 	arg_ecode = error_table_$unimplemented_version;
+      297 	return;
+      298 
+      299 canon_name: proc (resource_type, resource_name, copy_resource_name);
+      300 
+      301 
+      302 dcl  resource_type char (*);
+      303 dcl  (resource_name, copy_resource_name) char (*) aligned parameter,
+      304      resource_info_$canonicalize_name ext entry (char (*) aligned, char (*) aligned, char (*) aligned, fixed bin (35));
+      305 
+      306 
+      307 	if am_initializer then
+      308 	     copy_resource_name = resource_name;	/* don't take chance RTDT nonexistent during reload */
+      309 
+      310 	else do;
+      311 	     call resource_info_$canonicalize_name ((resource_type), resource_name, copy_resource_name, ecode);
+      312 	     if ecode ^= 0 then goto RETURN_ERR;
+      313 	end;
+      314 
+      315 	resource_name = copy_resource_name;
+      316 	return;
+      317 
+      318 
+      319      end canon_name;
+      320 
+      321 /*
+      322*   *
+      323*   *	This entry is called to return information in a device info structure.
+      324*   *	The information about this device is take from the specified RCS entry.
+      325*   *
+      326**/
+      327 
+      328 
+      329 set: entry (arg_device_info_ptr, arg_rcse_ptr, arg_ecode);
+      330 
+      331 
+      332 	device_info_ptr = arg_device_info_ptr;		/* Copy arguments. */
+      333 	rcse_ptr = arg_rcse_ptr;
+      334 
+      335 	if device_info.version_num ^= rcse.version_num then /* verson number ^= */
+      336 	     if rcse.dtypex ^= TAPE_DRIVE_DTYPEX then	/* and not tapes */
+      337 		go to BAD_VERSION;
+      338 	     else if device_info.version_num ^= tape_info_version_3 & device_info.version_num ^= tape_info_version_2 then
+      339 		go to BAD_VERSION;
+      340 
+      341 	device_info.usage_time,			/* Return common info. */
+      342 	     device_info.wait_time = 0;
+      343 	device_info.system_flag = rcse.flags.system;
+      344 	device_info.device_name = rcse.device_name;
+      345 	device_info.model = rcse.model;
+      346 	do i = 1 to rcse.num_qualifiers;
+      347 	     device_info.qualifiers (i) = rcse.qualifiers (i);
+      348 	end;
+      349 
+      350 	goto SET_DTYPE (rcse.dtypex);			/* Process according to device type. */
+      351 
+      352 
+      353 SET_DTYPE (1):					/* TAPE */
+      354 	if device_info.version_num = 1 then do;		/* Old version version 1 structure. */
+      355 	     version_1_tape_info.volume_name = rcse.volume_name;
+      356 	     version_1_tape_info.write_flag = rcse.flags.writing;
+      357 	     version_1_tape_info.position_index = 1;	/* Feature not yet implemented. */
+      358 	end;
+      359 	else do;					/* Version 2 or > structure */
+      360 	     tape_info.volume_name = rcse.volume_name;
+      361 	     tape_info.write_flag = rcse.flags.writing;
+      362 	     tape_info.position_index = 1;		/* Feature not yet implemented. */
+      363 	     if tape_info.version_num = tape_info_version_3 then do; /* version 3 */
+      364 		tape_info.volume_density = rcse.volume_density_index;
+      365 		tape_info.volume_type = rcse.label_type;
+      366 		tape_info.opr_auth = rcse.need_auth;
+      367 	     end;
+      368 	end;
+      369 	arg_ecode = 0;
+      370 	return;
+      371 
+      372 
+      373 SET_DTYPE (2):					/* DISK */
+      374 	disk_info.volume_name = rcse.volume_name;
+      375 	disk_info.write_flag = rcse.flags.writing;
+      376 	arg_ecode = 0;
+      377 	return;
+      378 
+      379 
+      380 SET_DTYPE (3):					/* CONSOLE */
+      381 SET_DTYPE (4):					/* PRINTER */
+      382 SET_DTYPE (5):					/* PUNCH */
+      383 SET_DTYPE (6):					/* READER */
+      384 SET_DTYPE (7):					/* SPECIAL */
+      385 SET_DTYPE (8):					/* MCA */
+      386 	arg_ecode = 0;				/* No extra info to return. */
+      387 	return;
+      388 
+      389 copy: entry (arg_device_type, arg_source_ptr, arg_dest_ptr, arg_ecode);
+      390 
+      391 dcl  arg_source_ptr ptr parameter;
+      392 dcl  arg_dest_ptr ptr parameter;
+      393 
+      394 dcl  source_ptr ptr;
+      395 dcl  dest_ptr ptr;
+      396 dcl  wordcount fixed bin;
+      397 
+      398 dcl  based_bits (wordcount) bit (36) aligned based;
+      399 
+      400 	device_type = arg_device_type;
+      401 	call resource_info_$get_dtypex (device_type, device_type, dtypex, ecode);
+      402 	if ecode ^= 0 then goto RETURN_ERR;
+      403 
+      404 	source_ptr = arg_source_ptr;
+      405 	dest_ptr = arg_dest_ptr;
+      406 	wordcount = device_info_size (dtypex);
+      407 	dest_ptr -> based_bits = source_ptr -> based_bits;
+      408 	arg_ecode = 0;
+      409 	return;
+      410 
+      411 /*
+      412*   *
+      413*   *	This procedure is called to determine whether or not the calling is to be
+      414*   *	considered a system process.  If it is a value of "1"b will be returned.
+      415*   *	Otherwise a value of "0"b will be returned.  In order to be considered
+      416*   *	a system process the following criteria must be satisified:
+      417*   *	     1.	The caller must want to be a system process.
+      418*   *	     2.	The caller must have access to the system RCP gate.
+      419*   *
+      420*   *	If the caller is the Initializer process in ring 1 then all is ok.
+      421*   *
+      422**/
+      423 
+      424 
+      425 GET_SYSTEM_FLAG: procedure returns (bit (1));
+      426 
+      427 
+      428 	if rcse.group_id = "Initializer.SysDaemon.z" then do;
+      429 	     am_initializer = "1"b;
+      430 	     return ("1"b);
+      431 	end;
+      432 
+      433 	if ^device_info.system_flag			/* Does caller want to be a system process? */
+      434 	then return ("0"b);				/* No. */
+      435 
+      436 	rcs_ptr = rcp_pointers_$com_seg ();		/* Yes, see if caller has the necessary access. */
+      437 	call hcs_$get_user_effmode (rcs.sys_directory, rcs.sys_acs, rcse.group_id, caller_level,
+      438 	     access, ecode);
+      439 	if ecode ^= 0				/* Any error => no access. */
+      440 	then return ("0"b);
+      441 
+      442 	if (bit (access, 5) & "00100"b) ^= "00100"b
+      443 	then return ("0"b);				/* Caller does not have "E" access. */
+      444 
+      445 	return ("1"b);
+      446 
+      447 
+      448      end GET_SYSTEM_FLAG;
+      449 
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      450 
+      451 
+  2     1 /*	Begin include file ... rcp_resource_types.incl.pl1
+  2     2*   *
+  2     3*   *	Created 3/79 by Michael R. Jordan for MR7.0R
+  2     4*   *
+  2     5*   *	This include file defines the official RCP resource types.
+  2     6*   *	The array of names is indexed by the corresponding device type.
+  2     7*   *      MOD by RAF for MCA
+  2     8**/
+  2     9 
+  2    10 
+  2    11 
+  2    12 /****^  HISTORY COMMENTS:
+  2    13*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+  2    14*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  2    15*     Support of MCA.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 dcl  DEVICE_TYPE (8) char (32)
+  2    19 	internal static options (constant)
+  2    20 	init ("tape_drive", "disk_drive", "console", "printer", "punch", "reader", "special", "mca");
+  2    21 
+  2    22 dcl  NUM_QUALIFIERS (8) fixed bin			/* Number of qualifiers for each device type. */
+  2    23 	internal static init (3, 0, 0, 2, 0, 0, 0, 0);
+  2    24 
+  2    25 dcl  VOLUME_TYPE (8) char (32)
+  2    26 	internal static options (constant)
+  2    27 	init ("tape_vol", "disk_vol", "", "", "", "", "", "");
+  2    28 
+  2    29 dcl  TAPE_DRIVE_DTYPEX fixed bin static internal options (constant) init (1);
+  2    30 dcl  DISK_DRIVE_DTYPEX fixed bin static internal options (constant) init (2);
+  2    31 dcl  CONSOLE_DTYPEX fixed bin static internal options (constant) init (3);
+  2    32 dcl  PRINTER_DTYPEX fixed bin static internal options (constant) init (4);
+  2    33 dcl  PUNCH_DTYPEX fixed bin static internal options (constant) init (5);
+  2    34 dcl  READER_DTYPEX fixed bin static internal options (constant) init (6);
+  2    35 dcl  SPECIAL_DTYPEX fixed bin static internal options (constant) init (7);
+  2    36 dcl  MCA_DTYPEX fixed bin static internal options (constant) init (8);
+  2    37 dcl  TAPE_VOL_VTYPEX fixed bin static internal options (constant) init (1);
+  2    38 dcl  DISK_VOL_VTYPEX fixed bin static internal options (constant) init (2);
+  2    39 
+  2    40 
+  2    41 /*	End include file ... rcp_resource_types.incl.pl1 */
+      452 
+      453 
+  3     1 /*  START OF:	rcp_device_info_structs.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /****^  HISTORY COMMENTS:
+  3     4*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+  3     5*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  3     6*     Support of MCA.
+  3     7*                                                   END HISTORY COMMENTS */
+  3     8 
+  3     9 /* Written 03/04/85 by Chris Jones. */
+  3    10 
+  3    11 /* This include file obsoletes the following include files:  rcp_device_info, rcp_disk_info,
+  3    12*   rcp_printer_info, and rcp_tape_info. */
+  3    13 /* Modified May 1985 by Rich Fawcett to add the 8th device MCA */
+  3    14 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3    15 
+  3    16 dcl	device_info_ptr	   ptr;
+  3    17 
+  3    18 dcl	1 device_info	   aligned based (device_info_ptr),
+  3    19 	  2 common	   like device_info_common,
+  3    20 	  2 qualifiers	   (4) fixed bin (35);	/* per device type info */
+  3    21 
+  3    22 dcl	1 device_info_common   aligned based,
+  3    23 	  2 version_num	   fixed bin,		/* Version number of this structure. */
+  3    24 	  2 usage_time	   fixed bin,		/* Number of minutes device will/may be used. */
+  3    25 	  2 wait_time	   fixed bin,		/* Number of minutes user will/must wait. */
+  3    26 	  2 system_flag	   bit (1),		/* ON => user wants to be a system process. */
+  3    27 	  2 device_name	   char (8),		/* Device name. */
+  3    28 	  2 model		   fixed bin;		/* Device model number. */
+  3    29 
+  3    30 dcl	1 tape_info	   based (device_info_ptr) aligned,
+  3    31 	  2 common	   like device_info_common,
+  3    32 	  2 tracks	   fixed bin,		/* 7 or 9 track */
+  3    33 	  2 density	   bit (36),		/* density capabilities: 200, 556, 800, 1600, 6250 */
+  3    34 	  2 speed		   bit (36),		/* speed: 75, 125, 200 */
+  3    35 	  2 pad		   bit (36),
+  3    36 	  2 volume_name	   char (32),		/* Tape reel name. */
+  3    37 	  2 write_flag	   bit (1),		/* ON => writing on tape reel. */
+  3    38 	  2 position_index	   fixed bin (35),		/* Counter used to determine tape reel position. */
+  3    39 						/* Limit of version 2 structure, info below returned if version 3 or greater */
+  3    40 	  2 volume_type	   fixed bin,		/* Use rcp_volume_formats.incl.pl1 for decodes */
+  3    41 	  2 volume_density	   fixed bin,		/* 1 - 5 = 200, 556, 800, 1600, or 6250 BPI */
+  3    42 	  2 opr_auth	   bit (1);		/* "1"b => Operator Authentication was required */
+  3    43 
+  3    44 dcl  tape_info_version_2 fixed bin internal static options (constant) init (2);
+  3    45 dcl  tape_info_version_3 fixed bin internal static options (constant) init (3);
+  3    46 
+  3    47 dcl	1 disk_info	   based (device_info_ptr) aligned,
+  3    48 	  2 common	   like device_info_common,
+  3    49 	  2 volume_name	   char (32),		/* disk volume name */
+  3    50 	  2 write_flag	   bit (1);		/* on => write_allowed */
+  3    51 
+  3    52 dcl	1 printer_info	   based (device_info_ptr) aligned,
+  3    53 	  2 common	   like device_info_common,
+  3    54 	  2 print_train	   fixed bin,		/* print train type */
+  3    55 	  2 line_length	   fixed bin;		/* line length (-1 => not specified */
+  3    56 
+  3    57 dcl device_info_size (8) fixed bin static options (constant) init
+  3    58    (24, 16, 7, 9, 7, 7, 7, 7);
+  3    59 
+  3    60 dcl	RCP_MAX_DEVICE_INFO_SIZE
+  3    61 			   fixed bin static options (constant) init (24);
+  3    62 
+  3    63 /*  END OF:	rcp_device_info_structs.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      454 
+      455 
+      456      end rcp_device_info_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.0  rcp_device_info_.pl1              >spec>install>1111>rcp_device_info_.pl1
+450          1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+452          2    03/27/86  1120.0  rcp_resource_types.incl.pl1       >ldd>include>rcp_resource_types.incl.pl1
+454          3    03/27/86  1120.0  rcp_device_info_structs.incl.pl1  >ldd>include>rcp_device_info_structs.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DEVICE_TYPE                     000140 constant        char(32)                 initial array packed unaligned dcl 2-18 set ref 162*
+                                                                                  203* 229* 240* 250* 260*
+NUM_QUALIFIERS                  000130 constant        fixed bin(17,0)          initial array dcl 2-22 ref 126
+TAPE_DRIVE_DTYPEX                      constant        fixed bin(17,0)          initial dcl 2-29 ref 335
+VOLUME_TYPE                     000030 constant        char(32)                 initial array packed unaligned dcl 2-25 set ref 195*
+                                                                                  217*
+access                          000100 automatic       fixed bin(5,0)           dcl 55 set ref 437* 442
+addr                                                   builtin function         dcl 87 ref 157
+am_initializer                  000101 automatic       bit(1)                   initial packed unaligned dcl 56 set ref 56* 307 429*
+arg_caller_level                       parameter       fixed bin(17,0)          dcl 46 ref 109 115
+arg_dest_ptr                           parameter       pointer                  dcl 392 ref 389 405
+arg_device_info_ptr                    parameter       pointer                  dcl 47 ref 109 113 329 332
+arg_device_type                        parameter       char                     packed unaligned dcl 48 ref 109 112 389 400
+arg_ecode                              parameter       fixed bin(35,0)          dcl 49 set ref 109 275* 280* 285* 290* 295* 329 369*
+                                                                                  376* 380* 389 408*
+arg_rcse_ptr                           parameter       pointer                  dcl 50 ref 109 114 329 333
+arg_source_ptr                         parameter       pointer                  dcl 391 ref 389 404
+based_bits                             based           bit(36)                  array dcl 398 set ref 407* 407
+based_rcse                             based           bit(36)                  array packed unaligned dcl 70 set ref 120*
+bit                                                    builtin function         dcl 87 ref 442
+caller_level                    000102 automatic       fixed bin(17,0)          dcl 57 in procedure "rcp_device_info_" set ref 115*
+                                                                                  131 437*
+caller_level             33            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 131*
+common                          000127 automatic       structure                level 2 in structure "local_tape_info" unaligned
+                                                                                  dcl 65 in procedure "rcp_device_info_"
+common                                 based           structure                level 2 in structure "disk_info" dcl 3-47
+                                                                                  in procedure "rcp_device_info_"
+common                                 based           structure                level 2 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_"
+common                                 based           structure                level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_"
+copy_resource_name                     parameter       char                     dcl 303 set ref 299 307* 311* 315
+density                  10            based           bit(36)                  level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 151
+density                  10     000127 automatic       bit(36)                  level 2 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 151*
+density                  10            based           bit(36)                  level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" ref 174 176
+dest_ptr                        000162 automatic       pointer                  dcl 395 set ref 405* 407
+device                   35            based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  136* 163 204 230 241 251 261
+device_info                            based           structure                level 1 dcl 3-18
+device_info_common                     based           structure                level 1 dcl 3-22
+device_info_ptr                 000172 automatic       pointer                  dcl 3-16 set ref 113* 121 125 128 134 143 145 146
+                                                                                  147 148 149 150 151 154 155 156 157* 160 160 169
+                                                                                  174 176 180 182 185 186 188 195 200 207 208 210
+                                                                                  217 226 237 247 257 267 276 332* 335 338 338 341
+                                                                                  341 343 344 345 347 353 355 356 357 360 361 362
+                                                                                  363 364 365 366 373 375 433
+device_info_size                000020 constant        fixed bin(17,0)          initial array dcl 3-57 ref 406
+device_name               3(09) 000127 automatic       char(8)                  level 3 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 148*
+device_name                            based           char(8)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 121* 162* 203* 229*
+                                                                                  240* 250* 260* 276 344
+device_name               4            based           char(8)                  level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 121 276*
+                                                                                  344*
+device_name               4            based           char(8)                  level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 148
+device_name                     000103 automatic       char(32)                 dcl 58 in procedure "rcp_device_info_" set ref 121*
+                                                                                  136 162* 165 203* 204 229* 230 240* 241 250* 251
+                                                                                  260* 261
+device_type                     000113 automatic       char(32)                 packed unaligned dcl 59 set ref 112* 117* 117* 400*
+                                                                                  401* 401*
+disk_info                              based           structure                level 1 dcl 3-47
+dtypex                          000123 automatic       fixed bin(17,0)          dcl 60 in procedure "rcp_device_info_" set ref 117*
+                                                                                  124 126 140 162 195 203 217 229 240 250 260 401*
+                                                                                  406
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 124* 335 350
+ecode                           000124 automatic       fixed bin(35,0)          dcl 61 set ref 117* 118 280 311* 312 401* 402 437*
+                                                                                  439
+error_table_$bad_arg            000010 external static fixed bin(35,0)          dcl 89 ref 290
+error_table_$resource_unknown   000012 external static fixed bin(35,0)          dcl 89 ref 285
+error_table_$unimplemented_version
+                                000014 external static fixed bin(35,0)          dcl 89 ref 295
+flags                    35            based           structure                level 2 dcl 1-55
+get_group_id_                   000016 constant        entry                    external dcl 93 ref 133
+get_process_id_                 000020 constant        entry                    external dcl 94 ref 132
+group_id                 43            based           char(32)                 level 2 dcl 1-55 set ref 133* 428 437*
+hcs_$get_user_effmode           000022 constant        entry                    external dcl 95 ref 437
+i                               000125 automatic       fixed bin(17,0)          dcl 62 set ref 127* 128 128* 346* 347 347*
+label_type               35(30)        based           fixed bin(6,0)           level 3 packed packed unsigned unaligned dcl 1-55
+                                                                                  ref 365
+local_tape_info                 000127 automatic       structure                level 1 unaligned dcl 65 set ref 157
+lock_info                              based           structure                level 1 dcl 1-46
+model                    13            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 125* 219 219* 221 221*
+                                                                                  233* 345
+model                     6     000127 automatic       fixed bin(17,0)          level 3 in structure "local_tape_info" dcl 65
+                                                                                  in procedure "rcp_device_info_" set ref 149*
+model                     6            based           fixed bin(17,0)          level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 125 345*
+model                     6            based           fixed bin(17,0)          level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 149
+need_auth                35(07)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 ref 366
+null                                                   builtin function         dcl 87 ref 135
+num_qualifiers           14            based           fixed bin(17,0)          level 2 dcl 1-55 set ref 126* 127 346
+opr_auth                 27            based           bit(1)                   level 2 dcl 3-30 set ref 366*
+pad                      12            based           bit(36)                  level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" ref 182
+pad                      12     000127 automatic       bit(36)                  level 2 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 153*
+position_index           22            based           fixed bin(35,0)          level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" set ref 156 357*
+position_index           24     000127 automatic       fixed bin(35,0)          level 2 in structure "local_tape_info" dcl 65
+                                                                                  in procedure "rcp_device_info_" set ref 156*
+position_index           24            based           fixed bin(35,0)          level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" set ref 362*
+process_id               42            based           bit(36)                  level 2 dcl 1-55 set ref 132*
+qualifiers                7            based           fixed bin(35,0)          array level 2 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 128 347*
+qualifiers               15            based           fixed bin(35,0)          array level 2 in structure "rcse" dcl 1-55
+                                                                                  in procedure "rcp_device_info_" set ref 128* 158*
+                                                                                  347
+rcp_pointers_$com_seg           000024 constant        entry                    external dcl 97 ref 436
+rcs                                    based           structure                level 1 dcl 1-30
+rcs_ptr                         000166 automatic       pointer                  dcl 1-23 set ref 436* 437 437
+rcse                                   based           structure                level 1 dcl 1-55 set ref 120
+rcse_ptr                        000170 automatic       pointer                  dcl 1-24 set ref 114* 120 120 121 123 124 125 126
+                                                                                  127 128 131 132 133 134 135 136 138 158 162 163
+                                                                                  185 188 189 190 192 193 195 203 204 207 210 211
+                                                                                  212 214 215 217 219 219 221 221 229 230 233 240
+                                                                                  241 250 251 260 261 276 333* 335 335 343 344 345
+                                                                                  346 347 350 355 356 360 361 364 365 366 373 375
+                                                                                  428 437
+resource_info_$canonicalize_name
+                                000030 constant        entry                    external dcl 303 ref 311
+resource_info_$get_dtypex       000026 constant        entry                    external dcl 98 ref 117 401
+resource_name                          parameter       char                     dcl 303 set ref 299 307 311* 315*
+resource_type                          parameter       char                     packed unaligned dcl 302 ref 299 311
+size                                                   builtin function         dcl 87 ref 120
+source_ptr                      000160 automatic       pointer                  dcl 394 set ref 404* 407
+speed                    11            based           bit(36)                  level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" ref 180
+speed                    11     000127 automatic       bit(36)                  level 2 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 152*
+string                                                 builtin function         dcl 87 set ref 120*
+substr                                                 builtin function         dcl 87 ref 165 174 176 180 204 230 241 251 261
+sys_acs                  64            based           char(32)                 level 2 dcl 1-30 set ref 437*
+sys_directory            54            based           char(32)                 level 2 dcl 1-30 set ref 437*
+system                   35(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  138* 343
+system_flag               3     000127 automatic       bit(1)                   level 3 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 147*
+system_flag               3            based           bit(1)                   level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 147
+system_flag               3            based           bit(1)                   level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 343* 433
+t_and_d                  35(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  192* 214*
+tape_info                              based           structure                level 1 dcl 3-30
+tape_info_version_2                    constant        fixed bin(17,0)          initial dcl 3-44 ref 160 338
+tape_info_version_3                    constant        fixed bin(17,0)          initial dcl 3-45 ref 160 338 363
+tracks                          000126 automatic       fixed bin(17,0)          dcl 63 in procedure "rcp_device_info_" set ref 169*
+                                                                                  170 170 170 176
+tracks                    7     000127 automatic       fixed bin(17,0)          level 2 in structure "local_tape_info" dcl 65
+                                                                                  in procedure "rcp_device_info_" set ref 150*
+tracks                    7            based           fixed bin(17,0)          level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 150
+tracks                    7            based           fixed bin(17,0)          level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" ref 169
+usage_time                1     000127 automatic       fixed bin(17,0)          level 3 in structure "local_tape_info" dcl 65
+                                                                                  in procedure "rcp_device_info_" set ref 145*
+usage_time                1            based           fixed bin(17,0)          level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 145
+usage_time                1            based           fixed bin(17,0)          level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 341*
+version_1_tape_info                    based           structure                level 1 dcl 72
+version_num                            based           fixed bin(17,0)          level 3 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" ref 143 160 160
+                                                                                  363
+version_num              54            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 134* 335
+version_num                            based           fixed bin(17,0)          level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" ref 134 226 237
+                                                                                  247 257 267 335 338 338 353
+version_num                            based           fixed bin(17,0)          level 3 in structure "disk_info" dcl 3-47
+                                                                                  in procedure "rcp_device_info_" ref 200
+volume                   35(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  189* 211*
+volume_density           26            based           fixed bin(17,0)          level 2 dcl 3-30 set ref 364*
+volume_density_index     35(27)        based           fixed bin(3,0)           level 3 packed packed unsigned unaligned dcl 1-55
+                                                                                  ref 364
+volume_name              11            based           char(32)                 level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" set ref 154 355*
+volume_name               2            based           char(32)                 level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_device_info_" set ref 123* 188* 190 193* 195*
+                                                                                  210* 212 215* 217* 355 360 373
+volume_name              13     000127 automatic       char(32)                 level 2 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 154*
+volume_name              13            based           char(32)                 level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" set ref 186 188
+                                                                                  195* 360*
+volume_name               7            based           char(32)                 level 2 in structure "disk_info" dcl 3-47
+                                                                                  in procedure "rcp_device_info_" set ref 208 210
+                                                                                  217* 373*
+volume_type              25            based           fixed bin(17,0)          level 2 dcl 3-30 set ref 365*
+wait_time                 2     000127 automatic       fixed bin(17,0)          level 3 in structure "local_tape_info" dcl 65
+                                                                                  in procedure "rcp_device_info_" set ref 146*
+wait_time                 2            based           fixed bin(17,0)          level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" ref 146
+wait_time                 2            based           fixed bin(17,0)          level 3 in structure "device_info" dcl 3-18
+                                                                                  in procedure "rcp_device_info_" set ref 341*
+wordcount                       000164 automatic       fixed bin(17,0)          dcl 396 set ref 406* 407
+workspace_ptr            62            based           pointer                  level 2 dcl 1-55 set ref 135*
+write_flag               23            based           bit(1)                   level 2 in structure "tape_info" dcl 3-30
+                                                                                  in procedure "rcp_device_info_" set ref 185 361*
+write_flag               17            based           bit(1)                   level 2 in structure "disk_info" dcl 3-47
+                                                                                  in procedure "rcp_device_info_" set ref 207 375*
+write_flag               23     000127 automatic       bit(1)                   level 2 in structure "local_tape_info" packed packed
+                                                                                  unaligned dcl 65 in procedure "rcp_device_info_"
+                                                                                  set ref 155*
+write_flag               21            based           bit(1)                   level 2 in structure "version_1_tape_info" dcl 72
+                                                                                  in procedure "rcp_device_info_" set ref 155 356*
+writing                  35(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-55 set ref
+                                                                                  185* 207* 356 361 375
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+CONSOLE_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-31
+DISK_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 2-30
+DISK_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 2-38
+MCA_DTYPEX                             internal static fixed bin(17,0)          initial dcl 2-36
+PRINTER_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-32
+PUNCH_DTYPEX                           internal static fixed bin(17,0)          initial dcl 2-33
+RCP_MAX_DEVICE_INFO_SIZE               internal static fixed bin(17,0)          initial dcl 3-60
+READER_DTYPEX                          internal static fixed bin(17,0)          initial dcl 2-34
+SPECIAL_DTYPEX                         internal static fixed bin(17,0)          initial dcl 2-35
+TAPE_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 2-37
+based_rcp_id                           based           structure                level 1 dcl 1-26
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+printer_info                           based           structure                level 1 dcl 3-52
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BAD_DEVICE                      001260 constant        label                    dcl 285 ref 165 204 230 241 251 261
+BAD_QUALIFIER                   001264 constant        label                    dcl 290 ref 170 174 176 180 182
+BAD_VERSION                     001270 constant        label                    dcl 295 ref 160 200 226 237 247 257 267 335 338
+GET_DTYPE                       000000 constant        label                    array(8) dcl 143 ref 140
+GET_SYSTEM_FLAG                 001666 constant        entry                    internal dcl 425 ref 138
+RETURN_ERR                      001255 constant        label                    dcl 280 ref 118 312 402
+RETURN_OK                       001245 constant        label                    dcl 275 ref 197 223 234 244 254 264 272
+SET_DTYPE                       000010 constant        label                    array(8) dcl 353 ref 350
+canon_name                      001556 constant        entry                    internal dcl 299 ref 162 195 203 217 229 240 250 260
+copy                            001464 constant        entry                    external dcl 389
+get                             000320 constant        entry                    external dcl 109
+rcp_device_info_                000304 constant        entry                    external dcl 21
+set                             001300 constant        entry                    external dcl 329
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2176        2230    2016        2206
+Length      2500    2016        32         234     160           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_device_info_                    220 external procedure  is an external procedure.  
+canon_name                              internal procedure  shares stack frame of external procedure rcp_device_info_.  
+GET_SYSTEM_FLAG                         internal procedure  shares stack frame of external procedure rcp_device_info_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_device_info_         000100 access                      rcp_device_info_
+                         000101 am_initializer              rcp_device_info_
+                         000102 caller_level                rcp_device_info_
+                         000103 device_name                 rcp_device_info_
+                         000113 device_type                 rcp_device_info_
+                         000123 dtypex                      rcp_device_info_
+                         000124 ecode                       rcp_device_info_
+                         000125 i                           rcp_device_info_
+                         000126 tracks                      rcp_device_info_
+                         000127 local_tape_info             rcp_device_info_
+                         000160 source_ptr                  rcp_device_info_
+                         000162 dest_ptr                    rcp_device_info_
+                         000164 wordcount                   rcp_device_info_
+                         000166 rcs_ptr                     rcp_device_info_
+                         000170 rcse_ptr                    rcp_device_info_
+                         000172 device_info_ptr             rcp_device_info_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry
+ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_group_id_                 get_process_id_               hcs_$get_user_effmode         rcp_pointers_$com_seg
+resource_info_$canonicalize_name                            resource_info_$get_dtypex
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_arg          error_table_$resource_unknown error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     56 000300        21 000303       109 000312       112 000343       113 000351       114 000354       115 000357
+    117 000361       118 000404       120 000406       121 000413       123 000424       124 000427       125 000431
+    126 000433       127 000436       128 000445       129 000452       131 000454       132 000457       133 000466
+    134 000476       135 000501       136 000503       138 000511       140 000521       143 000523       145 000526
+    146 000531       147 000533       148 000537       149 000542       150 000544       151 000546       152 000550
+    153 000551       154 000552       155 000555       156 000557       157 000561       158 000563       159 000565
+    160 000566       162 000572       163 000614       165 000620       167 000624       169 000625       170 000630
+    174 000635       176 000640       180 000645       182 000650       185 000652       186 000660       188 000664
+    189 000667       190 000671       192 000675       193 000677       194 000702       195 000703       197 000724
+    200 000725       203 000730       204 000752       207 000762       208 000770       210 000774       211 000777
+    212 001001       214 001005       215 001007       216 001012       217 001013       219 001034       221 001042
+    223 001047       226 001050       229 001053       230 001075       233 001105       234 001106       237 001107
+    240 001112       241 001134       244 001144       247 001145       250 001150       251 001172       254 001202
+    257 001203       260 001206       261 001230       264 001240       267 001241       272 001244       275 001245
+    276 001246       277 001254       280 001255       282 001257       285 001260       287 001263       290 001264
+    292 001267       295 001270       297 001273       329 001274       332 001315       333 001320       335 001323
+    338 001331       341 001336       343 001340       344 001344       345 001350       346 001352       347 001361
+    348 001366       350 001370       353 001373       355 001376       356 001402       357 001406       358 001410
+    360 001411       361 001415       362 001421       363 001423       364 001426       365 001432       366 001435
+    369 001441       370 001442       373 001443       375 001447       376 001453       377 001454       380 001455
+    387 001456       389 001457       400 001503       401 001511       402 001534       404 001536       405 001542
+    406 001545       407 001550       408 001554       409 001555       299 001556       307 001601       311 001613
+    312 001652       315 001655       316 001665       425 001666       428 001670       429 001675       430 001677
+    433 001704       436 001714       437 001723       439 001760       442 001770       445 002005
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

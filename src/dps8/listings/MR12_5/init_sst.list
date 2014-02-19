@@ -1,0 +1,1997 @@
+	COMPILATION LISTING OF SEGMENT init_sst
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0953.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,insnl,delnl */
+       14 init_sst:
+       15      procedure;
+       16 
+       17 /* This procedure is called early in initialization to set up the sst:
+       18*   the page table words, the ast entries, and the core map are initialized.
+       19*   It is assumed that bootload_loader has loaded all supervisor segments in a block
+       20*   of contiguous core beginning with the end of the physical record buffer, and has loaded
+       21*   all initialization segments in a contiguous block of core at the top of core.
+       22*   The sst is allocated as high as possible on the bootload scu, but below
+       23*   initialization segments.
+       24*
+       25*   Last Modified: (Date and Reason)
+       26*   85-03-08 Keith Loepere for the real covert event limits.
+       27*   85-02-12 Keith Loepere for another try at setting controller abs_wired.
+       28*   85-01-08 Keith Loepere to add covert channel variables.
+       29*   84-05-04 Keith Loepere for fix to setting abs_wired for memory controllers.
+       30*   84-01-05 BIM to finish below.
+       31*   831220 by E. N. Kittlitz for pc$segmove variables
+       32*   November 1983 by Keith Loepere for bce_sst_sizes.
+       33*   September 1983 by Keith Loepere for paged sst and core_map; also to 
+       34*	write_limit correctly for early initialization.
+       35*   07/20/82 BIM to redo WOS's early initialization entrypoint
+       36*   and memory clearing tricks for Bootload Multics.
+       37*   06/21/82 by E. N. Kittlitz to move core map.
+       38*   12/18/81 by J. Bongiovanni to remove pdmap, add ast hash table
+       39*   11/21/80 by J. Bongiovanni to allocate sst high on bootload scu
+       40*   2/19/79 by D. Spector to set sst.write_limit
+       41*   8/16/77 by B. Greenberg to obey mem card limits.
+       42*   2/9/76	by S. Webber for get_main and new reconfiguration stuff
+       43*   04/16/75 by BSG for SST name table on top of New Storage System
+       44*   10/03/71 by RHG to add PAGE card to config deck
+       45*   09/22/71 by RHG to set cmep->cme.contr earlier
+       46*   08/27/71 by Richard H. Gumpertz for page multi-level
+       47**/
+       48 
+       49 /* Automatic */
+       50 
+       51 dcl  base fixed bin (18);				/* base page number (1024 word block) of system controller */
+       52 dcl  cm_size fixed bin (18);				/* size of core map (words) */
+       53 dcl  cmp ptr;
+       54 dcl  coresize fixed bin (18);				/* number of pages (max) in core */
+       55 dcl  early_call bit (1) aligned;
+       56 dcl  i fixed bin;
+       57 dcl  initbase fixed bin (18);				/* base page no for init segments */
+       58 dcl  memory_address fixed bin (26);
+       59 dcl  n_astes fixed bin;				/* total number of ASTEs */
+       60 dcl  n_buckets fixed bin;				/* number of AST hast table buckets */
+       61 dcl  next_available ptr;
+       62 dcl  page_no fixed bin (18);
+       63 dcl  pool_idx fixed bin;
+       64 dcl  scu_top fixed bin (18);				/* page number of high page on bootload scu */
+       65 dcl  size_mod_1024 fixed bin (18, -10);
+       66 dcl  sizes (0:3) fixed bin (18);			/* array for AST pool sizes */
+       67 dcl  sst_size fixed bin (18);
+       68 dcl  sst_absadr fixed bin (26);
+       69 dcl  total_base fixed bin (18);			/* page number of begin of sst/cm segments */
+       70 dcl  total_pages fixed bin (18);			/* number of pages in sst & cmp */
+       71 dcl  total_size fixed bin (21);			/* number of words in sst & cmp */
+       72 dcl  total_top fixed bin (18);			/* page number of end of cmp */
+       73 dcl  suptop fixed bin (18);				/* top page number for supervisor segments */
+       74 dcl  top fixed bin (18);				/* top page number of memory module */
+       75 dcl  uid_mask bit (36) aligned;			/* mask to strip out low-order bits of uid */
+       76 
+       77 dcl  (cm_sdw, sst_sdw) fixed bin (71);
+       78 dcl  1 local_sst_card aligned like sst_card;
+       79 
+       80 /* Static */
+       81 
+       82 /* dcl  debug bit (1) aligned init ("1"b) static options (constant); /* build unpaged sst, core_map */ 
+       83 dcl  AVG_HT_DEPTH fixed bin int static options (constant) init (5);
+       84 						/* desired avg AST hash table depth */
+       85 dcl  HT_SIZES (6) fixed bin int static options (constant)	/* allowable AST hash table sizes */
+       86 	init (64, 128, 256, 512, 1024, 2048);
+       87 dcl  HT_UID_MASKS (6) bit (36) aligned int static options (constant)
+       88 						/* corresponding masks to strip out low-order uid bits */
+       89 	init ("000000000077"b3, "000000000177"b3, "000000000377"b3, "000000000777"b3, "000000001777"b3,
+       90 	"000000003777"b3);
+       91 dcl  PTS (0:3) fixed bin static init (4, 16, 64, 256) options (constant);
+       92 						/* Global constants */
+       93 
+       94 dcl  WHOAMI char (8) init ("init_sst") int static options (constant);
+       95 
+       96 /* Builtins */
+       97 
+       98 dcl  (addr, addrel, baseno, divide, hbound, lbound, max, min, bit, bin, null, size, sum, unspec) builtin;
+       99 
+      100 /* External */
+      101 
+      102 dcl  core_map$ ext bit (36) aligned;
+      103 dcl  slt$ ext bit (36) aligned;
+      104 dcl  sys_boot_info$bce_sst_sizes (0:3) fixed bin ext static;
+      105 dcl  sys_boot_info$bootload_mem_size fixed bin (26) ext static;
+      106 dcl  unpaged_page_tables$ ext static;
+      107 
+      108 /* Entries */
+      109 
+      110 dcl  absadr entry (ptr, fixed bin (35)) returns (fixed bin (26));
+      111 dcl  config_$init_card entry (char (4) aligned, ptr);
+      112 dcl  config_$add entry (ptr, ptr);
+      113 dcl  config_$find_parm entry (char (4) aligned, ptr);
+      114 dcl  freecore entry (fixed bin (18));
+      115 dcl  get_main entry (ptr, fixed bin (18), fixed bin (71));
+      116 dcl  get_main$given_address entry (ptr, fixed bin (26), fixed bin (18), fixed bin (71));
+      117 dcl  init_aste_pools entry;
+      118 dcl  pmut$swap_sdw entry (ptr, ptr);
+      119 dcl  syserr entry options (variable);
+      120 dcl  config_$find entry (char (4) aligned, ptr);
+      121 
+      122 
+      123 early:
+      124      entry;
+      125 
+      126 /* This entrypoint is called to set up an SST for the early environment, */
+      127 /* where there is only sys_boot_info$bootload_mem_size available. */
+      128 /* This may or may not turn out to be the right SST setup for the */
+      129 /* returnable to system */
+      130 
+      131 	call init_ptrs;				/* get seg ptrs to sst, core map, slt, etc. */
+      132 
+      133 	early_call = "1"b;				/* Remember why we're here */
+      134 
+      135 	sizes (*) = sys_boot_info$bce_sst_sizes (*);
+      136 
+      137 	coresize = divide (sys_boot_info$bootload_mem_size, 1024, 26, 0);
+      138 
+      139 	suptop = divide (slt.free_core_start + 1023, 1024, 18, 0);
+      140 						/* First page boundary after the wired supervisor */
+      141 	initbase = divide (slt.free_core_start + slt.free_core_size, 1024, 18, 0) - 1;
+      142 						/* first page boundary below the init segs */
+      143 	goto ALLOCATE_SST;
+      144 
+      145 
+      146 normal:
+      147      entry;
+      148 
+      149 /* This entrypoint is used for service boots. It pays attention to */
+      150 /* the config deck, rather than hoking the situation up */
+      151 
+      152 	call init_ptrs;				/* get pointers to interesting places */
+      153 
+      154 	early_call = "0"b;
+      155 
+      156 /* Get storage for SST as function of SST card. */
+      157 
+      158 	sst_cardp = null;
+      159 	call config_$find ("sst ", sst_cardp);		/* get SST card */
+      160 	if sst_cardp = null then do;
+      161 	     sst_cardp = addr (local_sst_card);		/* prepare to construct */
+      162 	     call config_$init_card (SST_CARD_WORD, sst_cardp);
+      163 
+      164 	     sst_card.no_aste (0) = 400;
+      165 	     sst_card.no_aste (1) = 150;
+      166 	     sst_card.no_aste (2) = 50;		/* These add up to nice size */
+      167 	     sst_card.no_aste (3) = 20;		/* and Olin thought this needed to be this big */
+      168 
+      169 	     do pool_idx = 1 to 4;
+      170 		sst_card.field_type (pool_idx) = CONFIG_DECIMAL_TYPE;
+      171 	     end;
+      172 
+      173 	     call config_$add (sst_cardp, null);	/* add it in */
+      174 
+      175 
+      176 	     call syserr (BEEP, "^a: No SST card in config deck. One has been added: SST^2x^4(^d.^2x^)", WHOAMI,
+      177 		sst_card.no_aste);
+      178 
+      179 	end;
+      180 
+      181 	sizes (*) = sst_card.no_aste (*);		/* Copy them locally */
+      182 
+      183 
+      184 /* Now see how much storage has to be described in the core map */
+      185 /* Note that this code will work even if the supervisor segs */
+      186 /* overflow into a second controller. */
+      187 
+      188 
+      189 	suptop = divide (slt.free_core_start + 1023, 1024, 18, 0);
+      190 						/* First page boundary after the wired supervisor */
+      191 	initbase = divide (slt.free_core_start + slt.free_core_size, 1024, 18, 0) - 1;
+      192 						/* first page boundary below the init segs */
+      193 
+      194 	scu_top = 0;
+      195 	coresize = 0;
+      196 	do i = 0 to 7;
+      197 	     if scs$controller_data (i).online | scs$controller_data (i).offline
+      198 						/* make sure controller is being used */
+      199 	     then do;
+      200 		coresize = max (coresize, scs$controller_data (i).size + scs$controller_data (i).base);
+      201 		if scs$controller_data (i).online then do;
+      202 		     base = scs$controller_data (i).base;
+      203 						/* starts at zero */
+      204 		     top = base + scs$controller_config_size (i) - 1;
+      205 						/* make zero based page number */
+      206 		     if base < suptop
+      207 		     then				/* controller abs-wired */
+      208 			if top > scu_top
+      209 			then scu_top = top;
+      210 		end;
+      211 	     end;
+      212 	end;
+      213 
+      214 
+      215 ALLOCATE_SST:					/* early and normal entrypoints join here, with coresize and other */
+      216 						/* handy variables set */
+      217 						/* Now see how big the Hash Table gets */
+      218 
+      219 	n_astes = sum (sizes);			/* builtins are good things */
+      220 
+      221 	n_buckets = divide (n_astes, AVG_HT_DEPTH, 17);
+      222 	do i = 1 to hbound (HT_SIZES, 1) while (n_buckets > HT_SIZES (i));
+      223 	end;
+      224 	if i > hbound (HT_SIZES, 1)
+      225 	then i = hbound (HT_SIZES, 1);
+      226 	n_buckets = HT_SIZES (i);
+      227 	uid_mask = HT_UID_MASKS (i);
+      228 
+      229 /* Now we know enough to get size of sst segment */
+      230 
+      231 	sst_size = size (sst) + n_buckets;
+      232 	do i = 0 to 3;				/* now include AST/PT storage */
+      233 	     sst_size = sst_size + (size (aste) + PTS (i)) * sizes (i);
+      234 	end;
+      235 
+      236 	cm_size = coresize * size (cme) + 8;		/* The 8 is for a backstop to detect invalid zero threads ! */
+      237 
+      238 	size_mod_1024 = sst_size + 1023;
+      239 	sst_size = size_mod_1024;			/* compiler bug stops obvious builtin form */
+      240 						/* i.e., fixed (fixed (foo, 18, -10), 18, 0) makes bad code */
+      241 	size_mod_1024 = cm_size + 1023;
+      242 	cm_size = size_mod_1024;
+      243 
+      244 
+      245 	if early_call				/* dont know from controllers, just shtup it someplace */
+      246 	then do;
+      247 	     call get_main (sstp, sst_size, sst_sdw);
+      248 	     call get_main (cmp, cm_size, cm_sdw);
+      249 	     call pmut$swap_sdw (sstp, addr (sst_sdw));
+      250 	     call pmut$swap_sdw (cmp, addr (cm_sdw));
+      251 /*	     if debug then call make_unpaged; */
+      252 	end;
+      253 	else do;
+      254 	     total_size = sst_size + cm_size;
+      255 	     size_mod_1024 = total_size + 1023;
+      256 	     total_pages = divide (size_mod_1024, 1024, 18, 0);
+      257 						/* and shift down */
+      258 						/* size of sst & cm in pages */
+      259 
+      260 	     total_top = min (scu_top, initbase);	/* allocate as high as possible on bootload scu */
+      261 						/* but below init segs */
+      262 	     total_base = total_top - total_pages + 1;	/* base of sst; we want to use pages total_top, total_top -1, ... total_top - (total_pages + 1) */
+      263 						/* which is total_pages pages */
+      264 
+      265 	     if total_base < suptop
+      266 	     then call syserr (CRASH, "init_sst: insufficient main storage for sst_seg and core map.");
+      267 						/* crash the system */
+      268 
+      269 	     memory_address = total_base * 1024;
+      270 	     call get_main$given_address (sstp, memory_address, sst_size, sst_sdw);
+      271 	     call pmut$swap_sdw (sstp, addr (sst_sdw));	/* and make it addressable */
+      272 
+      273 	     memory_address = (total_base * 1024) + sst_size;
+      274 	     call get_main$given_address (cmp, memory_address, cm_size, cm_sdw);
+      275 	     call pmut$swap_sdw (cmp, addr (cm_sdw));	/* and make it addressable */
+      276 /*	     if debug then call make_unpaged; */
+      277 	end;					/* non-early case */
+      278 
+      279 declare  1 CME (0:coresize - 1) aligned like cme based (cmp);
+      280 
+      281 	addr (flagbox$) -> fgbx.sst_sdw = unspec (sst_sdw);	/* tell BOS about sst area */
+      282 
+      283 /* Now we have the SST -- we can fill it in */
+      284 
+      285 	sst.astsize = size (aste);			/* Set the size of an AST entry */
+      286 	sst.cmesize = size (cme);			/* And a CM entry */
+      287 	sst_absadr = absadr (addr (sst_seg$), (0));
+      288 	addr (unpaged_page_tables$) -> upt.sst_absloc, sst.ptwbase = sst_absadr;
+      289 	addr (unpaged_page_tables$) -> upt.sst_last_loc = sst_absadr + sst_size - 1;
+      290 
+      291 	do i = 0 to 3;
+      292 	     sst.pts (i) = PTS (i);
+      293 	     sst.no_aste (i) = bit (sizes (i), 18);
+      294 	end;
+      295 
+      296 /* Now set up the core map. All core map entries to an initial "deconfigured" state */
+      297 
+      298 	begin;
+      299 declare  BACK_STOP (8) bit (36) aligned based (cmp);
+      300 	     BACK_STOP = (36)"1"b;
+      301 	end;
+      302 	cmp = addrel (cmp, 8);			/* Skip 8 words of -1's that force faults */
+      303 						/* when the tnreads are invalid */
+      304 
+      305 	sst.cmp = cmp;				/* sst pointer */
+      306 
+      307 	begin;
+      308 declare  1 TEMPLATE_CME aligned like cme;
+      309 	     unspec (TEMPLATE_CME) = ""b;
+      310 	     TEMPLATE_CME.fp, TEMPLATE_CME.bp = "777777"b3;
+      311 	     CME (*) = TEMPLATE_CME;			/* compiler is clever with these */
+      312 	end;
+      313 
+      314 /* Now set up pointers, etc., to the AST hash table */
+      315 
+      316 	next_available = addrel (sstp, size (sst));
+      317 	sst.ast_ht_ptr = next_available;
+      318 	sst.ast_ht_n_buckets = n_buckets;
+      319 	sst.ast_ht_uid_mask = uid_mask;
+      320 	next_available = addrel (next_available, n_buckets);
+      321 
+      322 	sst.astap, astep = next_available;
+      323 
+      324 /* Set up wait events */
+      325 
+      326 	sst.astl_event = "400000000000"b3;
+      327 	sst.temp_w_event = "200000000000"b3;		/* Set up temp wire lock event */
+      328 
+      329 	call init_aste_pools;			/* init all the ASTE's */
+      330 
+      331 
+      332 /* Now initialize core map entries for all the memory we know about */
+      333 /* Put completely unused pages into the free pool, leave the rest */
+      334 /* untouched, and also not threaded in */
+      335 /* Collect_free_core will set the perm_wired pages to have -1 threads, */
+      336 /* and worry about the rest. */
+      337 
+      338 	if ^early_call
+      339 	then do i = 0 to 7;				/* go through all memory controllers */
+      340 	     base = scs$controller_data (i).base;
+      341 	     top = base + scs$controller_config_size (i) - 1;
+      342 	     if scs$controller_data (i).online | scs$controller_data (i).offline
+      343 	     then begin;				/* update core map and core usage map */
+      344 declare  1 THIS_CTRL_CME (0:top - base) aligned like cme defined (CME (base));
+      345 
+      346 		scs$controller_data (i).abs_wired = (base < suptop);
+      347 						/* remember if controller is absolute wired */
+      348 
+      349 		THIS_CTRL_CME.contr = bit (bin (i, 3));
+      350 	     end;
+      351 	end;
+      352 	else do i = lbound (scs$controller_data, 1) to hbound (scs$controller_data, 1);	/* go through all memory controllers */
+      353 	     base = scs$controller_data (i).base;
+      354 	     top = base + 511;			/* only 512k used */
+      355 	     if (scs$controller_data (i).online | scs$controller_data (i).offline) & base = 0
+      356 	     then begin;				/* we found our bootload controller */
+      357 declare  1 THIS_CTRL_CME (0:top - base) aligned like cme defined (CME (base));
+      358 
+      359 		scs$controller_data (i).abs_wired = "1"b;
+      360 						/* remember if controller is absolute wired */
+      361 						/* So that freecore calls will reflect into abs_usuable */
+      362 		THIS_CTRL_CME.contr = bit (bin (i, 3));
+      363 	     end;
+      364 	end;
+      365 
+      366 	if early_call 
+      367 	then do page_no = divide (slt.free_core_start + 1023, 1024, 24, 0)
+      368 		to divide (slt.free_core_start + slt.free_core_size - 1, 1024, 24, 0) - 1;
+      369 						/* dont free first page of PVT */
+      370 	     call freecore (page_no);
+      371 	end;
+      372 	else do page_no = suptop to total_base - 1, total_top + 1 to initbase - 1;
+      373 						/* Skip the SST, low memory, and initsegs */
+      374 	     call freecore (page_no);
+      375 	end;
+      376 
+      377 	sst.space (*) = -1;				/* BACKSTOP */
+      378 
+      379 /* Set write_limit to reasonable value.  Final setting will be done at end of init_pvt. */
+      380 	sst.write_limit = slt.free_core_size / 8192;	/* 1/8th memory */
+      381 
+      382 /* setup for pc$segmove */
+      383 
+      384 	sst.segmove_lock.pid = ""b;
+      385 declare  SEGM char (4) init ("segm") int static options (constant);
+      386 	sst.segmove_lock.event = unspec (SEGM);
+      387 	sst.segmove_lock.notify = "0"b;
+      388 	sst.segmove_io_limit = 20;
+      389 	sst.segmove_found_synch = 0;
+      390 	sst.segmove_synch_disappeared = 0;
+      391 	sst.segmove_max_tries = 0;
+      392 	sst.segmove_astep, sst.segmove_old_addr_astep, sst.segmove_new_addr_astep = null;
+      393 						/* no pc segmove in progress */
+      394 	sst.segmove_pvtx, sst.segmove_vtocx = 0;
+      395 
+      396 	sst.seg_state_change_limit = 256;		/* covert channel limits */
+      397 	sst.max_seg_state_change_bw = 50;
+      398 	sst.audit_seg_state_change_bw = 5;
+      399 	return;
+      400 
+      401 
+      402 /* Procedure to get things both entrypoints want */
+      403 
+      404 init_ptrs:
+      405      procedure;
+      406 	sstp = addr (sst_seg$);
+      407 	sstnp = addr (sst_names_$);
+      408 	sltp = addr (slt$);
+      409 	cmp = addr (core_map$);
+      410      end init_ptrs;
+      411 
+      412 /* routine to make sst and core_map unapged for BOS' sake */
+      413 /* make_unpaged:
+      414*     procedure;
+      415*	call sdw_util_$dissect (addr (sst_sdw), addr (sdwi));
+      416*	sdwi.paged = "0"b;
+      417*	sdwi.address = absadr (sstp, (0));
+      418*	call sdw_util_$construct (addr (sst_sdw), addr (sdwi));
+      419*	call pmut$swap_sdw (sstp, addr (sst_sdw));
+      420*
+      421*	call sdw_util_$dissect (addr (cm_sdw), addr (sdwi));
+      422*	sdwi.paged = "0"b;
+      423*	sdwi.address = absadr (cmp, (0));
+      424*	call sdw_util_$construct (addr (cm_sdw), addr (sdwi));
+      425*	call pmut$swap_sdw (cmp, addr (cm_sdw));
+      426*	return;
+      427*     end; */
+      428 
+      429 /* format: off */
+      430 
+      431  /* BEGIN INCLUDE FILE ... flagbox.incl.pl1 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(87-02-26,Farley), approve(87-04-15,MCR7661),
+  1     6*     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+  1     7*     Added io_reconfig flag to inhibit BCE from attempting an emergency
+  1     8*     shutdown when the data in memory could be corrupted.
+  1     9*                                                   END HISTORY COMMENTS */
+  1    10 
+  1    11 
+  1    12 /* last modified 5/3/77 by Noel I. Morris	*/
+  1    13 /* Modified 8/79 by R.J.C. Kissel to add FNP blast message. */
+  1    14 /* Modified 7/82 BIM for recognizable sentinel field */
+  1    15 /* Modified for bootload Multics flagbox starting in 8/83 by Keith Loepere. */
+  1    16 
+  1    17 /* The contents of this segment are data shared by Multics and bce.
+  1    18*   This entity occupies the locations within the toehold starting at 40o
+  1    19*   (not counting the toehold_used spacer at the beginning). */
+  1    20 
+  1    21 dcl  flagbox$ ext;
+  1    22 dcl  fgbxp ptr;
+  1    23 
+  1    24 dcl 1 fgbx based (fgbxp) aligned,
+  1    25     2 toehold_used (32) bit (36) aligned,		/* flagbox seg now mapped onto all of first page of toehold -
+  1    26*						This is what was unused before. */
+  1    27     2 flags (36) bit (1) unal,			/* communications switches */
+  1    28     2 slt_segno bit (18),				/* segment # of the SLT */
+  1    29     2 pad1 fixed bin,
+  1    30     2 rtb,					/* return to bce info */
+  1    31      (3 ssenb bit (1),				/* "1"b if storage system enabled */
+  1    32       3 call_bce bit (1),				/* "1"b if bce called by operator */
+  1    33       3 shut bit (1),				/* "1"b if bce called after shutdown */
+  1    34       3 mess bit (1),				/* "1"b if message has been provided */
+  1    35       3 alert bit (1),				/* "1"b if audible alarm to be sounded */
+  1    36       3 breakpoint bit (1),				/* "1"b is breakpoint caused call to bce */
+  1    37       3 manual_crash bit (1),				/* either manual entry or execute fault */
+  1    38       3 io_reconfig bit (1),				/* "1"b if I/O reconfiguration */
+  1    39 						/* could cause memory corruption */
+  1    40       3 pad bit (21),
+  1    41       3 bce_entry fixed bin (6) uns) unal,		/* type of entry into bce
+  1    42*						   00o => Multics entry
+  1    43*						   20o => manual entry
+  1    44*						   40o => esd entry */
+  1    45     2 sentinel char (32) aligned,			/* set by bce (for now) */
+  1    46     2 sst_sdw bit (72),				/* set by init_sst */
+  1    47     2 hc_dbr bit (72),				/* set by start_cpu, idle DBR */
+  1    48     2 message char (64),				/* message for return to bce */
+  1    49     2 return_to_bce_command char (128) unal;		/* command to run upon crash/shutdown */
+  1    50 
+  1    51 declare FLAGBOX_SENTINEL char (32) init ("Flagbox & Toehold Valid") int static options (constant);
+  1    52 
+  1    53 /* END INCLUDE FILE ... flagbox.incl.pl1 */
+      431 
+      432  /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  2     2 /* Added segmove values, Benson Margulies, 84-01 */
+  2     3 
+  2     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  2     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  2     6      get_aste_null_addr init			("3770110"b3),
+  2     7      make_sdw_null_addr init			("3770120"b3),
+  2     8      put_aste_null_addr init			("3770130"b3),
+  2     9      page_bad_pd_null_addr init		("3770150"b3),
+  2    10      list_deposit_null_addr init		("3770160"b3),
+  2    11      get_file_map_null_addr init		("3770170"b3),
+  2    12      fill_page_table_null_addr init		("3770200"b3),
+  2    13      init_sst_null_addr init			("3770210"b3),
+  2    14      get_file_map_vt_null_addr init		("3770220"b3),
+  2    15      unprotected_null_addr init		("3770230"b3),
+  2    16      page_bad_null_addr init			("3770240"b3),
+  2    17      page_problem_null_addr init		("3770250"b3),
+  2    18      page_parity_null_addr init		("3770260"b3),
+  2    19      page_devparity_null_addr init		("3770270"b3),
+  2    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  2    21      segmove_new_addr_null_addr init		("3770310"b3),
+  2    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  2    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  2    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  2    25 
+  2    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  2    27      update_vtoce_null_addr init		("777776"b3),
+  2    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  2    29      truncate_vtoce_null_addr init		("777002"b3),
+  2    30      pv_salv_null_addr init			("777004"b3),
+  2    31      pv_scav_null_addr init			("777006"b3),
+  2    32      volume_reloader_null_addr init		("777774"b3),
+  2    33      volume_retriever_null_addr init		("777773"b3),
+  2    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  2    35 
+  2    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      432 
+      433  /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  3     2 /* format: style4 */
+  3     3 
+  3     4 /* Information about system controllers */
+  3     5 
+  3     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  3     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  3     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  3     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  3    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  3    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  3    12          3 mbz bit (3) unaligned,
+  3    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  3    14        2 info aligned,
+  3    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  3    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  3    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  3    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  3    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  3    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  3    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  3    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  3    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  3    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  3    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  3    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  3    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  3    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  3    29          3 mbz bit (13) unaligned,
+  3    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  3    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  3    32 
+  3    33 /* Information about CPUs */
+  3    34 
+  3    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  3    36        (
+  3    37        2 online bit (1),				/* "1"b if CPU is online */
+  3    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  3    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  3    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  3    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  3    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  3    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  3    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  3    45        2 mbz1 bit (6),
+  3    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  3    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  3    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  3    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  3    50        2 mbz2 bit (12),
+  3    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  3    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  3    53        2 controller_port fixed bin (3) unsigned
+  3    54        ) unaligned;					/* Port on controller */
+  3    55 
+  3    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  3    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  3    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  3    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  3    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  3    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  3    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  3    63        2 pad bit (12) unaligned;
+  3    64 
+  3    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  3    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  3    67        2 cow,
+  3    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  3    69          3 mbz1 bit (13) unaligned,
+  3    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  3    71          3 mbz2 bit (2) unaligned,
+  3    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  3    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  3    74          3 mbz3 bit (3) unaligned,
+  3    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  3    76 
+  3    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  3    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  3    79        2 pad bit (12) unal,
+  3    80        2 tag bit (6) unal;				/* Better be zero. */
+  3    81 
+  3    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  3    83        2 pad bit (36) aligned,
+  3    84        2 cow,					/* Connect operand word, in odd location. */
+  3    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  3    86          3 mbz1 bit (13) unaligned,
+  3    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  3    88          3 mbz2 bit (9) unaligned,
+  3    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  3    90 
+  3    91 /* MASKS and PATTERNS */
+  3    92 
+  3    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  3    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  3    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  3    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  3    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  3    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  3    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  3   100 
+  3   101 /* CAM and CACHE clear info */
+  3   102 
+  3   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  3   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  3   105 
+  3   106 /* MASKING INSTRUCTIONS & POINTERS */
+  3   107 
+  3   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  3   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  3   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  3   111 
+  3   112 /* MISCELLANEOUS */
+  3   113 
+  3   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  3   115        (
+  3   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  3   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  3   118        2 pad1 bit (4),
+  3   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  3   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  3   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  3   122        2 mask_cpu fixed bin (5)
+  3   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  3   124 
+  3   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  3   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  3   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  3   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  3   129 
+  3   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  3   131 
+  3   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  3   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  3   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  3   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  3   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  3   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  3   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  3   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  3   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  3   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  3   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  3   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  3   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  3   145 
+  3   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  3   147 
+  3   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  3   149 
+  3   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  3   151 
+  3   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  3   153 
+  3   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  3   155 						/* Which ports have expanders */
+  3   156 
+  3   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  3   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  3   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  3   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  3   161 
+  3   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  3   163 
+  3   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  3   165 						/* Controller size on config card */
+  3   166 
+  3   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  3   168 
+  3   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  3   170 						/* PTWs for SCAS pages */
+  3   171 
+  3   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  3   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  3   174 
+  3   175 
+  3   176 dcl  (
+  3   177      IOM_PORT init (1),
+  3   178      CPU_PORT init (2),
+  3   179      BULK_PORT init (3)
+  3   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  3   181 
+  3   182 
+  3   183 /* END INCLUDE FILE scs.incl.pl1 */
+      433 
+      434  /* BEGIN INCLUDE FILE ... config_sst_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  4     2 
+  4     3 dcl  sst_cardp pointer;				/* pointer to SST card */
+  4     4 
+  4     5 dcl 1 sst_card aligned based (sst_cardp),		/* SST card declaration */
+  4     6     2 word char (4),				/* "sst" */
+  4     7     2 no_aste (0:3) fixed bin,			/* Size of the four ASTE pools */
+  4     8 
+  4     9     2 pad (10) bit (36) aligned,			/* Pad to 15 fields */
+  4    10 
+  4    11     2 type_word aligned,
+  4    12       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  4    13       3 pad1 bit (4) unaligned,
+  4    14       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  4    15 
+  4    16 dcl  SST_CARD_WORD char (4) aligned internal static options (constant) init ("sst");
+  4    17 
+  4    18 /* END INCLUDE FILE ... config_sst_card.incl.pl1 */
+      434 
+  5     1 /* BEGIN INCLUDE FILE ... config_parm_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  5     2 
+  5     3 dcl parm_cardp pointer;				/* pointer to PARM card */
+  5     4 
+  5     5 dcl 1 parm_card aligned based (parm_cardp),		/* PARM card declaration */
+  5     6     2 word char (4),				/* "parm" */
+  5     7     2 options (14) char (4),				/* Parameters and their values */
+  5     8 
+  5     9     2 type_word aligned,
+  5    10       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  5    11       3 pad1 bit (4) unaligned,
+  5    12       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  5    13 
+  5    14 dcl 1 parm_card_array based (parm_cardp),		/* Overlay for counting options */
+  5    15     2 pad bit (36) aligned,
+  5    16     2 options (parm_card.n_fields) bit (36) aligned;
+  5    17 
+  5    18 
+  5    19 dcl  parm_ptr pointer;				/* For use with config$find_parm */
+  5    20 
+  5    21 dcl 1 numeric_parm aligned based (parm_ptr),		/* Overlay into middle of card for looking */
+  5    22     2 name char (4),				/* at a parameter found by config$find_parm */
+  5    23     2 value fixed bin (35);
+  5    24 
+  5    25 dcl 1 string_parm aligned based (parm_ptr),
+  5    26     2 name char (4),
+  5    27     2 value char (4);
+  5    28 
+  5    29 dcl  PARM_CARD_WORD char (4) aligned internal static options (constant) init ("parm");
+  5    30 
+  5    31 /* END INCLUDE FILE ... config_parm_card.incl.pl1 */
+      435 
+  6     1 /* BEGIN INCLUDE FILE ... config_deck.incl.pl1 ... 11/13/80, W. Olin Sibert */
+  6     2 
+  6     3 dcl (configp, cardp) pointer;
+  6     4 dcl  config_n_cards fixed bin;			/* Number of cards used in config */
+  6     5 dcl  config_max_cards fixed bin;			/* Max number of cards in config */
+  6     6 
+  6     7 dcl  config_deck$ fixed bin external static;
+  6     8 
+  6     9 dcl 1 config_deck aligned based (configp),
+  6    10     2 cards (config_n_cards) aligned like config_card,
+  6    11     2 pad_cards (config_max_cards - config_n_cards) aligned like config_card;
+  6    12 
+  6    13 dcl 1 config_card aligned based (cardp),
+  6    14     2 word char (4) aligned,
+  6    15     2 data_field (14) bit (36) aligned,
+  6    16     2 type_word aligned like config_card_type_word;
+  6    17 
+  6    18 dcl 1 config_card_type_word aligned based,
+  6    19     2 field_type (14) bit (2) unaligned,
+  6    20     2 pad1 bit (4) unaligned,
+  6    21     2 n_fields fixed bin (4) unsigned unaligned;
+  6    22 
+  6    23 dcl (CONFIG_DECIMAL_TYPE	init ("11"b),
+  6    24      CONFIG_OCTAL_TYPE	init ("00"b),
+  6    25      CONFIG_SINGLE_CHAR_TYPE	init ("01"b),
+  6    26      CONFIG_STRING_TYPE	init ("10"b)) bit (2) aligned static options (constant);
+  6    27 
+  6    28 dcl  ZERO_CARD_WORD char (4) aligned internal static options (constant) init ("    ");
+  6    29 dcl  FREE_CARD_WORD char (4) aligned internal static options (constant) init ("ÿÿÿÿ");
+  6    30 
+  6    31 dcl  VALID_CARD_WORD_CHARACTERS char (38) internal static options (constant) init
+  6    32     ("abcdefghijklmnopqrstuvwxyz0123456789_.");		/* lowercase letters, digits, period and underscore */
+  6    33 
+  6    34 dcl  EMPTY_FIELD bit (36) aligned internal static options (constant) init ("777777777777"b3);
+  6    35 
+  6    36 /* END INCLUDE FILE config_deck.incl.pl1 */
+      436 
+      437  /*   BEGIN INCLUDE FILE ... sst.incl.pl1 ... January 1971 */
+  7     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  7     3 /* Deleted paging device info and added pc segmove info, Benson Margulies 84-01-03 */
+  7     4 /* Added covert channel meters, Keith Loepere 85-01-08. */
+  7     5 
+  7     6 dcl  sst_seg$ external;
+  7     7 dcl  sstp ptr;
+  7     8 
+  7     9 dcl 1 sst based (sstp) aligned,
+  7    10     2 space (8) fixed bin,				/* empty space to watch for bugs */
+  7    11 
+  7    12 /* SST HEADER */
+  7    13 
+  7    14     2 pre_page_time fixed bin (71),			/* total time spent pre-paging */
+  7    15     2 post_purge_time fixed bin (71),			/* total time spent post-purging */
+  7    16     2 post_in_core fixed bin,				/* total pages in core (and in list) at purge time */
+  7    17     2 thrashing fixed bin,				/* meter of thrashing being done on system */
+  7    18     2 npfs_misses fixed bin,				/* meter of times npfs was on when pre-paging */
+  7    19     2 salv fixed bin,				/* flag which is ^=0 if and only if salvaging */
+  7    20 
+  7    21     2 ptl bit (36),					/* global page table loop lock */
+  7    22     2 astl bit (36),				/* global ast allocation block lock */
+  7    23     2 astl_event bit (36),				/* event used when waiting for AST lock */
+  7    24     2 astl_notify_requested bit (1) aligned,		/* flag to notify AST lock */
+  7    25     2 nused fixed bin,				/* number of pages on used list */
+  7    26     2 ptwbase fixed bin (24),				/* absolute address of page table array */
+  7    27     2 tfreep ptr,					/* pointer to first trailer on free list */
+  7    28 
+  7    29     2 astap ptr,					/* aste array pointer */
+  7    30     2 ptl_wait_ct fixed bin,				/* pxss: number is >= # of processes waiting to ptl */
+  7    31     2 astsize fixed bin,				/* size of an AST entry */
+  7    32     2 cmesize fixed bin,				/* size of a CME entry */
+  7    33     2 root_astep ptr,				/* pointer to the root AST entry */
+  7    34 
+  7    35     2 pts (0: 3) fixed bin,				/* array of page table sizes */
+  7    36     2 level (0:3),					/* per-list information about ASTE's */
+  7    37       3 (ausedp, no_aste) bit (18) unaligned,		/* used list and count of number of entries */
+  7    38 
+  7    39     2 (atempp, atempp1) bit (18) unal,			/* temp seg list pointer */
+  7    40     2 dm_enabled bit (1) aligned,			/* ON => journal seg exists */
+  7    41     2 (ainitp, ainitp1) bit (18) unal,			/* init seg list pointer */
+  7    42     2 strsize fixed bin,				/* Trailer size in words. */
+  7    43 
+  7    44 /* CORE MAP HEADER */
+  7    45 
+  7    46     2 cmp ptr,					/* pointer to start of core map */
+  7    47     2 usedp bit (18),				/* pointer to first used core block */
+  7    48     2 wtct fixed bin,				/* count of pages being written */
+  7    49 
+  7    50     2 startp bit (18),				/* pointer to solid page for lap counting (fsdct) */
+  7    51     2 removep bit (18),				/* pointer to list of pages being removed from use */
+  7    52 						/* MISC */
+  7    53 
+  7    54     2 double_write fixed bin,				/* trigger for store through scheme */
+  7    55 						/* 0 = no double writes,
+  7    56*						   1 = all non-pd pages get written,
+  7    57*						   2 = all directories get written */
+  7    58     2 temp_w_event bit (36) aligned,			/* wait event for temp wiring lock */
+  7    59     2 root_pvtx fixed bin,				/* pvtx or rpv */
+  7    60     2 nolock bit (1) aligned,				/* if on, don't lock ptl on interrupts */
+  7    61 
+  7    62     2 fc_skips_pinned fixed bin (35),			/* number of skips over pinned page in find_core */
+  7    63     2 cl_skips_pinned fixed bin (35),			/* number of skips over pinned page in claim_mod_core */
+  7    64     2 ast_ht_ptr ptr,				/* AST hast table pointer */
+  7    65     2 ast_ht_n_buckets fixed bin,			/* number of buckets in AST hash table */
+  7    66     2 ast_ht_uid_mask bit (36) aligned,			/* mask to strip out low-order bits of uid */
+  7    67     2 meter_ast_locking fixed bin,			/* non-zero enables AST lock meters */
+  7    68     2 checksum_filemap fixed bin,			/* non-zero enables filemap checksumming */
+  7    69 
+  7    70     2 page_read_errors fixed bin,			/* read errors posted to page control */
+  7    71     2 page_write_errors fixed bin,			/* write errors posted to page control */
+  7    72 
+  7    73     2 cycle_pv_allocation fixed bin,			/* flag to cycle VTOCE allocation among PVs */
+  7    74 
+  7    75     2 n_trailers fixed bin,				/* Number of trailer entries in str_seg */
+  7    76     2 synch_activations fixed bin (35),			/* Activation attempts for synchronized segs */
+  7    77     2 synch_skips fixed bin (35),			/* get_aste skips because not synchronized */
+  7    78 
+  7    79     2 lock_waits fixed bin,				/* Number of times we had to wait for a lock */
+  7    80     2 total_locks_set fixed bin,			/* Total number of block locks set */
+  7    81     2 pdir_page_faults fixed bin,			/* total page faults off >pdd */
+  7    82     2 level_1_page_faults fixed bin,			/* total page faults in sys libes */
+  7    83     2 dir_page_faults fixed bin,			/* Total page faults on directories */
+  7    84     2 ring_0_page_faults fixed bin,			/* page faults in ring 0 */
+  7    85     2 rqover fixed bin (35),				/* errcode for record quota overflow */
+  7    86     2 pc_io_waits fixed bin,				/* Number of times pc had to wait on io */
+  7    87 
+  7    88 
+  7    89 /*  The following (until pdmap) used to be the 'cnt' in cnt.incl.pl1 */
+  7    90 
+  7    91     2 steps fixed bin,				/* number of steps taken around used list */
+  7    92     2 needc fixed bin,				/* number of times core page needed */
+  7    93     2 ceiling fixed bin,				/* number of times ceiling hit */
+  7    94     2 ctwait fixed bin,				/* number of times write counter was full */
+  7    95     2 wired fixed bin,				/* number of pages wired by pc */
+  7    96     2 laps fixed bin,				/* number of times around used list */
+  7    97     2 skipw fixed bin,				/* number of pages skiped because they were wired */
+  7    98     2 skipu fixed bin,				/* because of being used */
+  7    99 
+  7   100     2 skipm fixed bin,				/* because of being modified */
+  7   101     2 skipos fixed bin,				/* because out of service */
+  7   102     2 aused fixed bin,				/* number of AST entries on used list */
+  7   103     2 damaged_ct fixed bin,				/* count of segments that system damaged */
+  7   104     2 deact_count fixed bin,				/* count of deactivations */
+  7   105     2 demand_deact_attempts fixed bin,			/* user requested deactivations */
+  7   106     2 demand_deactivations fixed bin,			/* user instigated deactivations */
+  7   107 
+  7   108     2 reads (8) fixed bin,				/* number of reads for each did */
+  7   109     2 writes (8) fixed bin,				/* number of writes for each did */
+  7   110 
+  7   111     2 short_pf_count fixed bin,			/* count of page faults on out of service pages */
+  7   112     2 loop_locks fixed bin,				/* count of times locked PTL */
+  7   113     2 loop_lock_time fixed bin (71),			/* time spent looping on PTL */
+  7   114     2 cpu_sf_time fixed bin (71),			/* cpu time spent in seg_fault */
+  7   115     2 total_sf_pf fixed bin,				/* total page faults while in seg_fault */
+  7   116     2 total_sf fixed bin,				/* total number of seg_faults */
+  7   117     2 pre_page_size fixed bin,			/* total pre-pagings expected */
+  7   118     2 post_list_size fixed bin,
+  7   119     2 post_purgings fixed bin,			/* total number of post-purgings */
+  7   120     2 post_purge_calls fixed bin,			/* total number of calls to post-purge */
+  7   121     2 pre_page_calls fixed bin,			/* total number of calls tp pre-page */
+  7   122     2 pre_page_list_size fixed bin,
+  7   123     2 pre_page_misses fixed bin,			/* total number of misses in pre-page list */
+  7   124     2 pre_pagings fixed bin,				/* total number of pre-pagings */
+  7   125 
+  7   126 /*  TEMPORARY WIRED PROCEDURE INFO  */
+  7   127 
+  7   128     2 wire_proc_data (8) fixed bin (71),		/* data for wire_proc */
+  7   129 
+  7   130 /* MAIN MEMORY USAGE INFORMATION */
+  7   131 
+  7   132     2 abs_wired_count fixed bin,			/* count of abs-wired pages */
+  7   133     2 system_type fixed bin,				/* ADP_SYSTEM or L68_SYSTEM */
+  7   134     2 wired_copies fixed bin,				/* number of times a wired page was copied */
+  7   135     2 recopies fixed bin,				/* number of times recopied because modified */
+  7   136     2 first_core_block fixed bin,			/* core map index for first block of core */
+  7   137     2 last_core_block fixed bin,			/* core map index for last block of core */
+  7   138     2 fw_retries fixed bin (35),			/* force_write retries due to ASTE move */
+  7   139     2 pvhtp ptr unaligned,				/* ptr to PV hold table for debugging */
+  7   140 
+  7   141 /*  AST METERS  */
+  7   142 
+  7   143     2 askipsize (0: 3) fixed bin,			/* array of skips because wrong AST size */
+  7   144     2 aneedsize (0: 3) fixed bin,			/* array of times needed each size */
+  7   145 
+  7   146     2 stepsa fixed bin,				/* count of steps taken looking for an AST entry */
+  7   147     2 askipsehs fixed bin,				/* count of skips because EHS was ON */
+  7   148     2 asearches fixed bin,				/* count of full searches made */
+  7   149     2 askipslevel fixed bin,				/* count of skips because pages were in core */
+  7   150     2 askipsinit fixed bin,				/* count of times turned OFF init switch */
+  7   151     2 acost fixed bin,				/* cumulative cost of deactivations */
+  7   152     2 askipslock fixed bin,				/* count of skips because couldn't lock parent */
+  7   153     2 askipdius fixed bin,				/* count of skips because DIUS was on */
+  7   154 
+  7   155     2 alaps fixed bin,				/* lap counter for AST list */
+  7   156     2 updates fixed bin,				/* calls to updateb */
+  7   157     2 setfaults_all fixed bin,			/* setfaults done to the entire SDW */
+  7   158     2 setfaults_acc fixed bin,			/* setfaults done to the access field */
+  7   159     2 total_bf fixed bin,				/* count of bound faults */
+  7   160     2 total_bf_pf fixed bin,				/* page faults during bound faults */
+  7   161     2 cpu_bf_time fixed bin (71),			/* cpu time spent in bound fault */
+  7   162 
+  7   163     2 asteps (0: 3) fixed bin,			/* per-size AST step counters */
+  7   164 
+  7   165     2 ast_locked_at_time fixed bin (71),		/* clock reading when ast last locked */
+  7   166     2 ast_locked_total_time fixed bin (71),		/* total real time the ast lock was locked */
+  7   167     2 ast_lock_wait_time fixed bin (71),		/* total real time of all waiting on ast lock */
+  7   168     2 ast_locking_count fixed bin (35),			/* number of times ast was locked */
+  7   169     2 cleanup_count fixed bin,			/* calls to pc$cleanup */
+  7   170     2 cleanup_real_time fixed bin (71),			/* total real time in pc$cleanup */
+  7   171 
+  7   172 /* PRE-PAGE METERS */
+  7   173 
+  7   174     2 tree_count (0: 63) fixed bin,			/* counters for pre-page decisions */
+  7   175 
+  7   176     2 pp_meters (0: 63) fixed bin,			/* counters for measuring pre-page success */
+  7   177 
+  7   178 
+  7   179     2 wusedp bit (18) aligned,			/* Relative cmep to next cme for writing */
+  7   180     2 write_hunts fixed bin,				/* Times claim_mod_core invoked */
+  7   181     2 claim_skip_cme fixed bin,			/* Times unacceptable cme found by c_m_c */
+  7   182     2 claim_skip_free fixed bin,			/* Times free cme passed by c_m_c */
+  7   183     2 claim_notmod fixed bin,				/* Times c_m_c passed pure page */
+  7   184     2 claim_passed_used fixed bin,			/* Times used page seen */
+  7   185     2 claim_skip_ptw fixed bin,			/* Times c_m_c saw unacceptable ptw */
+  7   186     2 claim_writes fixed bin,				/* Writes queued by c_m_c */
+  7   187     2 claim_steps fixed bin,				/* Steps passed in core claiming */
+  7   188     2 pre_seeks_failed fixed bin,			/* counter of times quick find_core_ failed */
+  7   189     2 resurrections fixed bin,			/* nulled addresses reinstated */
+  7   190     2 volmap_seg_page_faults fixed bin (35),		/* Pseudo-page faults on volmap_seg */
+  7   191     2 oopv fixed bin,				/* out-of-physical-volume page faults */
+  7   192     2 dblw_resurrections fixed bin,			/* addresses resurrected by double-writing */
+  7   193     2 sgm_time fixed bin (71),			/* Time (VCPU) in seg mover */
+  7   194     2 sgm_pf fixed bin,				/* Page faults in seg moving */
+  7   195     2 bad_sgms fixed bin,				/* Seg moves that failed */
+  7   196     2 sgm_sgft fixed bin,				/* Seg faults in seg moves */
+  7   197     2 good_sgms fixed bin,				/* Seg moves that completed */
+  7   198     2 claim_runs fixed bin,				/* Times claim_mod_core had to run */
+  7   199     2 activations fixed bin,				/* total count of activations */
+  7   200     2 dir_activations fixed bin,			/* count of directory activations */
+  7   201     2 hedge_updatevs fixed bin,			/* call-in updatevs */
+  7   202     2 hedge_writes fixed bin,				/* call in core flush writes */
+  7   203     2 evict_recover_data,				/* see evict_page.alm */
+  7   204      3 evict_ptp bit (18) unal,			/* ptp of page being moved */
+  7   205      3 evict_phmbit bit (18) unal,			/* N/Z if page was mod */
+  7   206 
+  7   207 /* Data for metering force_write facility 08/19/78 */
+  7   208 
+  7   209     2 force_swrites fixed bin,			/* Calls on segments to force write */
+  7   210     2 force_pwrites fixed bin,			/* Mod pages so written */
+  7   211     2 fw_none fixed bin,				/* Force write wrote none */
+  7   212     2 force_updatevs fixed bin,			/* Updatev's so forced */
+  7   213 
+  7   214     2 pf_unlock_ptl_time fixed bin (71),		/* Time unlocking ptln page faults */
+  7   215     2 pf_unlock_ptl_meterings fixed bin,
+  7   216 
+  7   217     2 makeknown_activations fixed bin (35),		/* activations at makeknown time */
+  7   218     2 backup_activations fixed bin (35),		/* activations for backup */
+  7   219     2 metering_flags aligned,				/* small chunks of misc. information */
+  7   220       3 activate_activated bit (1) unal,		/* ON => last call to activate entry actually activated something */
+  7   221       3 pad bit (35) unal,
+  7   222     2 seg_fault_calls fixed bin (35),			/* number calls to seg_fault for explicit activation */
+  7   223 
+  7   224 /* METERS FOR STACK TRUNCATION */
+  7   225 
+  7   226     2 (stk_truncate_should_didnt,			/* counts */
+  7   227        stk_truncate_should_did,
+  7   228        stk_truncate_shouldnt_didnt,
+  7   229        stk_truncate_shouldnt_did) fixed bin (35),
+  7   230     2 stk_pages_truncated fixed bin (35),
+  7   231     2 stk_pages_truncated_in_core fixed bin (35),
+  7   232 
+  7   233 /* SUPPORT FOR PC SEGMOVES */
+  7   234 
+  7   235     2 segmove_lock aligned,
+  7   236       3 pid bit (36) aligned,
+  7   237       3 event bit (36) aligned,
+  7   238       3 notify bit (1) aligned,
+  7   239     2 segmove_io_limit fixed bin, /* max read aheads */
+  7   240     2 segmove_found_synch fixed bin (35), /* cme.synch_held */
+  7   241     2 segmove_synch_disappeared fixed bin (35), /* page$check_synch fixed */
+  7   242     2 segmove_n_reads fixed bin (35), /* total IO's queued. */
+  7   243     2 segmove_max_tries fixed bin (35), /* max times through the read loop */
+  7   244 
+  7   245     2 segmove_astep ptr unal,				/* if non-null, addresses to be rescued from old_addr_astep */
+  7   246     2 segmove_pvtx fixed bin,				/* if segmove_astep nonnull, valid */
+  7   247     2 segmove_vtocx fixed bin,			/* ditto */
+  7   248     2 segmove_old_addr_astep ptr unaligned,		/* ditto */
+  7   249     2 segmove_new_addr_astep ptr unaligned,		/* if non-null, the addresses must be deposited. */
+  7   250 
+  7   251     2 mod_during_write fixed bin,			/* times a page was modified while it was being written */
+  7   252     2 zero_pages fixed bin,				/* count of pages truncated because all zero */
+  7   253     2 trace_sw aligned,				/* tracing control flags */
+  7   254       3 pad_trace bit (32) unaligned,
+  7   255       3 pc_trace_pf bit (1) unaligned,			/* tracing for page faults, done, etc. */
+  7   256       3 tty_trace bit (1) unaligned,
+  7   257       3 pc_trace bit (1) unaligned,			/* flag used by page control primitives */
+  7   258       3 sc_trace bit (1) unaligned,			/* flag used by segment control primitives */
+  7   259     2 new_pages fixed bin,				/* newly created pages */
+  7   260     2 ast_track bit (1) aligned,			/* "1"b => keep SST name table */
+  7   261     2 dirlock_writebehind fixed bin,			/* =1 to flush modified dir pages in lock$unlock */
+  7   262     2 write_limit fixed bin,				/* Max # of outstanding writes by page control */
+  7   263     2 crash_test_segmove bit (1) aligned,		/* crash in mid-segmove */
+  7   264     2 delayed_seg_state_chg fixed bin (35),		/* count of times a process was delayed in affecting a seg state */
+  7   265     2 audit_seg_state_chg fixed bin (35),		/* count of times a process was audited for excessive seg state changes */
+  7   266     2 seg_state_chg_delay fixed bin (52),		/* total times processes were delayed for covert channels */
+  7   267     2 seg_state_change_limit fixed bin,			/* number of events over which we determine covert channel bandwidth */
+  7   268     2 max_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we delay */
+  7   269     2 audit_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we audit */
+  7   270     2 seg_state_chg_operation bit (36) aligned,		/* access_operation_ value for excessive_seg_state_chg */
+  7   271     2 pad4 (126) bit (36) aligned;			/* padding to 512 words (1000)8 */
+  7   272 
+  7   273 /* END INCLUDE FILE sst.incl.pl1 */
+      437 
+      438  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  8     2 
+  8     3 /* Template for an AST entry. Length = 12 words. */
+  8     4 
+  8     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  8     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  8     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  8     8 
+  8     9 dcl  astep ptr;
+  8    10 
+  8    11 dcl 1 aste based (astep) aligned,
+  8    12 
+  8    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  8    14     2 bp bit (18),					/* backward used list rel pointer */
+  8    15 
+  8    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  8    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  8    18 
+  8    19     2 strp bit (18),				/* rel pointer to process trailer */
+  8    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  8    21 
+  8    22     2 uid bit (36),					/* segment unique id */
+  8    23 
+  8    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  8    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  8    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  8    27 
+  8    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  8    29     2 init bit (1),					/* used bit - insure 1 lap */
+  8    30     2 gtus bit (1),					/* global transparent usage switch */
+  8    31     2 gtms bit (1),					/* global transparent modified switch */
+  8    32     2 hc bit (1),					/* hard core segment */
+  8    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  8    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  8    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  8    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  8    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  8    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  8    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  8    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  8    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  8    42     2 pad1 bit (2),					/* OO */
+  8    43     2 dius bit (1),					/* dumper in use switch */
+  8    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  8    45     2 dmpr_pad bit (1),
+  8    46     2 ehs bit (1),					/* entry hold switch */
+  8    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  8    48     2 dirsw bit (1),				/* directory switch */
+  8    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  8    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  8    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  8    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  8    53 
+  8    54     2 dtu bit (36),					/* date and time segment last used */
+  8    55 
+  8    56     2 dtm bit (36),					/* date and time segment last modified */
+  8    57 
+  8    58 
+  8    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  8    60 
+  8    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  8    62 
+  8    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  8    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  8    65     2 fms bit (1),					/* file modified switch */
+  8    66     2 npfs bit (1),					/* no page fault switch */
+  8    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  8    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  8    69     2 per_process bit (1),				/* use master quota for this entry */
+  8    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  8    71     2 pad2 bit (2),
+  8    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  8    73     2 np bit (9),					/* number of pages in core */
+  8    74 
+  8    75 
+  8    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  8    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  8    78     2 damaged bit (1),				/* PC declared segment unusable */
+  8    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  8    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  8    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  8    82     2 ptsi bit (2),					/* page table size index */
+  8    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  8    84 
+  8    85 
+  8    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  8    87 
+  8    88 
+  8    89 dcl 1 aste_part aligned based (astep),
+  8    90 
+  8    91     2 one bit (36) unaligned,				/* fp and bp */
+  8    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  8    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  8    94 
+  8    95 
+  8    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  8    97     2 pad1 bit (8*36),
+  8    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  8    99     2 pad2 bit (3*36);
+  8   100 
+  8   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      438 
+      439  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  9     2 
+  9     3 /* Declarations for Segment Loading Table header and array.
+  9     4*
+  9     5*   Used by Initialization and MST Checker subroutines */
+  9     6 
+  9     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  9     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  9     9     namep ptr,					/* pointer to segment name list block */
+  9    10     pathp ptr,					/* pointer to segment's directory path name */
+  9    11     aclp ptr;					/* pointer to acl structure */
+  9    12 
+  9    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  9    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  9    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  9    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  9    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  9    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  9    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  9    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  9    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  9    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  9    23 
+  9    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  9    25 
+  9    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  9    27 	2 pad bit (18) unal,
+  9    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  9    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  9    30 
+  9    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  9    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  9    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  9    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  9    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  9    36 	  3 pad bit (5) unal,
+  9    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  9    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  9    39 
+  9    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  9    41 	2 size fixed bin (17),			/* length of pathname */
+  9    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  9    43 	2 acls fixed bin;				/* ACL list starts here */
+  9    44 
+  9    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  9    46 	2 count fixed bin,				/* number of entries in acl list */
+  9    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  9    48 	  3 userid char (32),			/* user specification */
+  9    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  9    50 	  3 pad bit (36) aligned,
+  9    51 	  3 code fixed bin;
+  9    52 
+  9    53 
+  9    54 /* END INCLUDE FILE slt.incl.pl1 */
+      439 
+      440  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+ 10     2 /* Declaration for Segment Loading Table Entry structure.
+ 10     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+ 10     4 /* modified 5/4/76 by Noel I. Morris	*/
+ 10     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+ 10     6 /* format: style3 */
+ 10     7 
+ 10     8 dcl	sltep		ptr;
+ 10     9 
+ 10    10 dcl	1 slte_uns	based (sltep) aligned,
+ 10    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+ 10    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+ 10    13 /**** End of word 1 */
+ 10    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+ 10    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+ 10    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+ 10    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+ 10    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+ 10    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+ 10    20 	  2 pad1		bit (3),			/* unused */
+ 10    21 	  2 wired		bit (1),			/* segment is wired if ON */
+ 10    22 	  2 paged		bit (1),			/* segment is paged if ON */
+ 10    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+ 10    24 	  2 pad3		bit (2),
+ 10    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+ 10    26 /**** End of 1st half of word 2 */
+ 10    27 	  2 pad4		bit (3),
+ 10    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+ 10    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+ 10    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+ 10    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+ 10    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+ 10    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+ 10    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+ 10    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+ 10    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+ 10    37 /***** End of word 2 */
+ 10    38 	  2 pad5		bit (6),
+ 10    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+ 10    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+ 10    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+ 10    42 /***** End of word 3 */
+ 10    43 	  2 pad7		bit (3),
+ 10    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+ 10    45 	  2 bit_count	fixed bin (24) uns
+ 10    46 	  )		unaligned;		/* bitcount of segment */
+ 10    47 
+ 10    48 dcl	1 slte		based (sltep) aligned,
+ 10    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+ 10    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+ 10    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+ 10    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+ 10    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+ 10    54 	  2 firmware_seg    bit (1),
+ 10    55 	  2 layout_seg      bit (1),
+ 10    56 	  2 breakpointable  bit (1),
+ 10    57 	  2 pad2		bit (3),
+ 10    58 	  2 wired		bit (1),			/* segment is wired if ON */
+ 10    59 	  2 paged		bit (1),			/* segment is paged if ON */
+ 10    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+ 10    61 	  2 pad3		bit (2),
+ 10    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+ 10    63 	  2 pad4		bit (3),
+ 10    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+ 10    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+ 10    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+ 10    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+ 10    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+ 10    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+ 10    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+ 10    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+ 10    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+ 10    73 	  2 pad5		bit (6),
+ 10    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+ 10    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+ 10    76 	  2 segno		bit (18),			/* text/link segment number */
+ 10    77 	  2 pad6		bit (3),
+ 10    78 	  2 max_length	bit (9),			/* maximum length for segment */
+ 10    79 	  2 bit_count	bit (24)
+ 10    80 	  )		unaligned;		/* bitcount of segment */
+ 10    81 
+ 10    82 /* END INCLUDE FILE slte.incl.pl1 */
+      440 
+      441  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+ 11     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+ 11     3 
+ 11     4 dcl  cmep ptr;					/* pointer to core map entry */
+ 11     5 
+ 11     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+ 11     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+ 11     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+ 11     9 
+ 11    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+ 11    11     2 pad5 bit (1) unaligned,
+ 11    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+ 11    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+ 11    14     2 pad2 bit (1) unaligned,
+ 11    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+ 11    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+ 11    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+ 11    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+ 11    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+ 11    20     2 pad3 bit (1) unaligned,
+ 11    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+ 11    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+ 11    23 
+ 11    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+ 11    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+ 11    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+ 11    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+ 11    28 
+ 11    29 
+ 11    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+ 11    31 
+ 11    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+ 11    33     2 pad bit (36) unaligned,
+ 11    34     2 record_no bit (18) unaligned,			/* record number of device */
+ 11    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+ 11    36     2 flags bit (14) unal,
+ 11    37     2 pad1 bit (18) unal;
+ 11    38 
+ 11    39 
+ 11    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      441 
+      442  /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+ 12     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+ 12     3 
+ 12     4 dcl  sdw_info_ptr pointer;
+ 12     5 
+ 12     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+ 12     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+ 12     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+ 12     9 
+ 12    10     2 access unaligned,				/* REWP */
+ 12    11       3 read bit (1) unaligned,
+ 12    12       3 execute bit (1) unaligned,
+ 12    13       3 write bit (1) unaligned,
+ 12    14       3 privileged bit (1) unaligned,
+ 12    15 
+ 12    16     2 pad1 bit (32) unaligned,
+ 12    17 
+ 12    18     2 rings unaligned,				/* Ring brackets */
+ 12    19       3 r1 bit (3) unaligned,
+ 12    20       3 r2 bit (3) unaligned,
+ 12    21       3 r3 bit (3) unaligned,
+ 12    22 
+ 12    23     2 pad2 bit (27) unaligned,
+ 12    24 
+ 12    25     2 flags aligned,
+ 12    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+ 12    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+ 12    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+ 12    29       3 pad3 bit (33) unaligned,
+ 12    30 
+ 12    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+ 12    32 
+ 12    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      442 
+      443  /* Begin include file sstnt.incl.pl1   */
+ 13     2 
+ 13     3 /* Created 10/03/74 by Bernard Greenberg */
+ 13     4 /* modified 08/24/79 by J. A. Bush  for easier calculation of size of sstnt */
+ 13     5 /* Modified 08/27/84 by Keith Loepere to purge BOS */
+ 13     6 
+ 13     7 dcl  sst_names_$ ext;				/* Segment containing sst name table */
+ 13     8 
+ 13     9 dcl  sstnp ptr;					/* Pointer to sst name segment */
+ 13    10 
+ 13    11 dcl 1 sstnt based (sstnp) aligned,			/* Major structure */
+ 13    12     2 valid bit (1) aligned,				/* 1 => structure filled by Multics */
+ 13    13     2 multics_or_bce char (4) aligned,			/* Origin of data in table */
+ 13    14     2 nentries fixed bin,				/* number of entries in the sstnt */
+ 13    15     2 pad1 (5) fixed bin,
+ 13    16 
+ 13    17     2 (ast_sizes,					/* Sizes of ASTE's at each level */
+ 13    18      ast_name_offsets,				/* Starting index for names at each level */
+ 13    19      ast_offsets,					/* Starting rel addr of each AST region */
+ 13    20      pad2) (0 : 3) fixed bin,
+ 13    21 
+ 13    22     2 names (0 : 0 refer (sstnt.nentries)) char (32) varying; /* Names of AST entries */
+ 13    23 
+ 13    24 dcl (sstnmx, ptsi_a) fixed bin (17);			/* Index into name table */
+ 13    25 
+ 13    26 dcl  nm_astep ptr;					/* astep to be used */
+ 13    27 
+ 13    28 /* End include file sstnt.incl.pl1 */
+      443 
+      444  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+ 14     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+ 14     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+ 14     4 
+ 14     5 /* This include file has an ALM version.  Keep 'em in sync! */
+ 14     6 
+ 14     7 dcl (
+ 14     8 
+ 14     9 /* The following constants define the message action codes.  This indicates
+ 14    10*how a message is to be handled.  */
+ 14    11 
+ 14    12      SYSERR_CRASH_SYSTEM	init (1),			
+ 14    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+ 14    14 
+ 14    15      SYSERR_TERMINATE_PROCESS	init (2),
+ 14    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+ 14    17 
+ 14    18      SYSERR_PRINT_WITH_ALARM	init (3),
+ 14    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+ 14    20 
+ 14    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+ 14    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+ 14    23 
+ 14    24      SYSERR_LOG_OR_PRINT	init (4),
+ 14    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+ 14    26 
+ 14    27      SYSERR_LOG_OR_DISCARD	init (5),
+ 14    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+ 14    29 
+ 14    30 
+ 14    31 /* The following constants are added to the normal severities to indicate
+ 14    32*different sorting classes of messages.  */
+ 14    33 
+ 14    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+ 14    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+ 14    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+ 14    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+ 14    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+ 14    39 	) fixed bin internal static options (constant);
+ 14    40 
+ 14    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      444 
+      445  /* BEGIN include file unpaged_page_tables.incl.pl1 */
+ 15     2 
+ 15     3 /* This include file describes the segments unpaged_page_tables and
+ 15     4*int_unpaged_page_tables.  These segments contain the page tables for
+ 15     5*segments that are paged and wired, those segments previously called
+ 15     6*unpaged.
+ 15     7*
+ 15     8*Written September 15, 1983 by Keith Loepere. */
+ 15     9 
+ 15    10 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 15    11 
+ 15    12 dcl  upt_ptr		        ptr;
+ 15    13 dcl  1 upt		        aligned based (upt_ptr),
+ 15    14        2 sst_absloc		        fixed bin (26),	/* for dump analyzers */
+ 15    15        2 sst_last_loc	        fixed bin (26),
+ 15    16        2 upt_absloc		        fixed bin (26),
+ 15    17        2 upt_last_loc	        fixed bin (26),
+ 15    18        2 iupt_absloc	        fixed bin (26),
+ 15    19        2 iupt_last_loc	        fixed bin (26),
+ 15    20 
+ 15    21        2 current_length	        fixed bin,		/* number of words currently used */
+ 15    22        2 max_length		        fixed bin,		/* max number of words in memory allocated */
+ 15    23        2 first_entry	        like upt_entry;
+ 15    24 
+ 15    25 dcl  upt_entry_ptr		        ptr;
+ 15    26 dcl  1 upt_entry		        aligned based (upt_entry_ptr),
+ 15    27        2 size		        fixed bin,		/* number of page table words allocated */
+ 15    28        2 segno		        fixed bin,		/* of hardcore segment */
+ 15    29        2 ptws		        (0 refer (upt_entry.size)) bit (36) aligned;
+ 15    30 
+ 15    31 /* END include file unpaged_page_tables.incl.pl1 */
+      445 
+      446 
+      447 /* BEGIN MESSAGE DOCUMENTATION
+      448*
+      449*   Message:
+      450*   init_sst: No SST card in config deck. One has been added: SST N N N N
+      451*
+      452*   S:   $beep
+      453*
+      454*   T:   $init
+      455*
+      456*   M:   No SST card was found in the config deck. ASTE pool sizes
+      457*   of N N N N have been set as defaults.
+      458*
+      459*   Message:
+      460*   init_sst: insufficient storage available for sst_seg and core map.
+      461*
+      462*   S:     $crash
+      463*
+      464*   T:	$init
+      465*
+      466*   M:	Not enough main storage was available to create the sst_seg during
+      467*   initialization.  The system tape may be bad, or the configuration
+      468*   may be too small, or the system parameters specified in the
+      469*   configuration deck may be incorrect or inconsistent with the amount
+      470*   of main storage available.
+      471*
+      472*   A:	$recover
+      473*   Check the configuration and the CONFIG deck
+      474*   $boot_tape
+      475*
+      476*   END MESSAGE DOCUMENTATION */
+      477 
+      478      end init_sst;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0815.8  init_sst.pl1                      >spec>install>1112>init_sst.pl1
+431          1    04/30/87  1513.7  flagbox.incl.pl1                  >ldd>include>flagbox.incl.pl1
+432          2    07/11/84  0937.3  null_addresses.incl.pl1           >ldd>include>null_addresses.incl.pl1
+433          3    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+434          4    05/08/81  1853.7  config_sst_card.incl.pl1          >ldd>include>config_sst_card.incl.pl1
+435          5    05/08/81  1853.7  config_parm_card.incl.pl1         >ldd>include>config_parm_card.incl.pl1
+436          6    05/08/81  1853.6  config_deck.incl.pl1              >ldd>include>config_deck.incl.pl1
+437          7    01/30/85  1523.9  sst.incl.pl1                      >ldd>include>sst.incl.pl1
+438          8    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+439          9    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+440         10    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+441         11    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+442         12    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+443         13    11/02/84  0912.2  sstnt.incl.pl1                    >ldd>include>sstnt.incl.pl1
+444         14    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+445         15    07/11/84  0937.3  unpaged_page_tables.incl.pl1      >ldd>include>unpaged_page_tables.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+AVG_HT_DEPTH                           constant        fixed bin(17,0)          initial dcl 83 ref 221
+BACK_STOP                              based           bit(36)                  array dcl 299 set ref 300*
+BEEP                            000031 constant        fixed bin(17,0)          initial dcl 14-7 set ref 176*
+CME                                    based           structure                array level 1 dcl 279 set ref 311* 349 349 362 362
+CONFIG_DECIMAL_TYPE                    constant        bit(2)                   initial dcl 6-23 ref 170
+CRASH                           000033 constant        fixed bin(17,0)          initial dcl 14-7 set ref 265*
+HT_SIZES                        000016 constant        fixed bin(17,0)          initial array dcl 85 ref 222 222 224 224 226
+HT_UID_MASKS                    000010 constant        bit(36)                  initial array dcl 87 ref 227
+PTS                             000004 constant        fixed bin(17,0)          initial array dcl 91 ref 233 292
+SEGM                            000000 constant        char(4)                  initial packed unaligned dcl 385 ref 386
+SST_CARD_WORD                   000030 constant        char(4)                  initial dcl 4-16 set ref 162*
+TEMPLATE_CME                    000211 automatic       structure                level 1 dcl 308 set ref 309* 311
+THIS_CTRL_CME                          defined         structure                array level 1 dcl 357 in begin block on line 355
+THIS_CTRL_CME                          defined         structure                array level 1 dcl 344 in begin block on line 342
+WHOAMI                          000002 constant        char(8)                  initial packed unaligned dcl 94 set ref 176*
+abs_wired                 2(21) 000050 external static bit(1)                   array level 3 packed packed unaligned dcl 3-6 set
+                                                                                  ref 346* 359*
+absadr                          000022 constant        entry                    external dcl 110 ref 287
+addr                                                   builtin function         dcl 98 ref 161 249 249 250 250 271 271 275 275 281
+                                                                                  287 287 288 289 406 407 408 409
+addrel                                                 builtin function         dcl 98 ref 302 316 320
+ast_ht_n_buckets         72            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 318*
+ast_ht_ptr               70            based           pointer                  level 2 dcl 7-9 set ref 317*
+ast_ht_uid_mask          73            based           bit(36)                  level 2 dcl 7-9 set ref 319*
+astap                    30            based           pointer                  level 2 dcl 7-9 set ref 322*
+aste                                   based           structure                level 1 dcl 8-11 ref 233 285
+astep                           000170 automatic       pointer                  dcl 8-9 set ref 233 285 322*
+astl_event               22            based           bit(36)                  level 2 dcl 7-9 set ref 326*
+astsize                  33            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 285*
+audit_seg_state_change_bw
+                        600            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 398*
+base                      0(18) 000050 external static fixed bin(17,0)          array level 2 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 3-6 in procedure
+                                                                                  "init_sst" ref 200 202 340 353
+base                            000100 automatic       fixed bin(18,0)          dcl 51 in procedure "init_sst" set ref 202* 204 206
+                                                                                  340* 341 344 346 349 353* 354 355 357 362
+bin                                                    builtin function         dcl 98 ref 349 362
+bit                                                    builtin function         dcl 98 ref 293 349 362
+cm_sdw                          000140 automatic       fixed bin(71,0)          dcl 77 set ref 248* 250 250 274* 275 275
+cm_size                         000101 automatic       fixed bin(18,0)          dcl 52 set ref 236* 241 242* 248* 254 274*
+cme                                    based           structure                level 1 dcl 11-6 ref 236 286
+cmep                                   automatic       pointer                  dcl 11-4 ref 236 286
+cmesize                  34            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 286*
+cmp                      54            based           pointer                  level 2 in structure "sst" dcl 7-9 in procedure
+                                                                                  "init_sst" set ref 305*
+cmp                             000102 automatic       pointer                  dcl 53 in procedure "init_sst" set ref 248* 250*
+                                                                                  274* 275* 300 302* 302 305 311 349 362 409*
+config_$add                     000026 constant        entry                    external dcl 112 ref 173
+config_$find                    000044 constant        entry                    external dcl 120 ref 159
+config_$init_card               000024 constant        entry                    external dcl 111 ref 162
+config_card                            based           structure                level 1 dcl 6-13
+config_card_type_word                  based           structure                level 1 dcl 6-18
+core_map$                       000010 external static bit(36)                  dcl 102 set ref 409
+coresize                        000104 automatic       fixed bin(18,0)          dcl 54 set ref 137* 195* 200* 200 236 311
+divide                                                 builtin function         dcl 98 ref 137 139 141 189 191 221 256 366 366
+early_call                      000105 automatic       bit(1)                   dcl 55 set ref 133* 154* 245 338 366
+event                   546            based           bit(36)                  level 3 dcl 7-9 set ref 386*
+fgbx                                   based           structure                level 1 dcl 1-24
+field_type               17            based           bit(2)                   array level 3 packed packed unaligned dcl 4-5 set
+                                                                                  ref 170*
+flagbox$                        000046 external static fixed bin(17,0)          dcl 1-21 set ref 281
+free_core_size            7            based           fixed bin(24,0)          level 2 dcl 9-13 ref 141 191 366 380
+free_core_start           2            based           fixed bin(24,0)          level 2 dcl 9-13 ref 139 141 189 191 366 366
+freecore                        000030 constant        entry                    external dcl 114 ref 370 374
+get_main                        000032 constant        entry                    external dcl 115 ref 247 248
+get_main$given_address          000034 constant        entry                    external dcl 116 ref 270 274
+hbound                                                 builtin function         dcl 98 ref 222 224 224 352
+i                               000106 automatic       fixed bin(17,0)          dcl 56 set ref 196* 197 197 200 200 201 202 204*
+                                                                                  222* 222* 224 224* 226 227 232* 233 233* 291* 292
+                                                                                  292 293 293* 338* 340 341 342 342* 346 349 352*
+                                                                                  353 355 355* 359 362
+info                      2     000050 external static structure                array level 2 dcl 3-6
+init_aste_pools                 000036 constant        entry                    external dcl 117 ref 329
+initbase                        000107 automatic       fixed bin(18,0)          dcl 57 set ref 141* 191* 260 372
+lbound                                                 builtin function         dcl 98 ref 352
+level                    44            based           structure                array level 2 dcl 7-9
+local_sst_card                  000144 automatic       structure                level 1 dcl 78 set ref 161
+max                                                    builtin function         dcl 98 ref 200
+max_seg_state_change_bw
+                        577            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 397*
+memory_address                  000110 automatic       fixed bin(26,0)          dcl 58 set ref 269* 270* 273* 274*
+min                                                    builtin function         dcl 98 ref 260
+n_astes                         000111 automatic       fixed bin(17,0)          dcl 59 set ref 215* 221
+n_buckets                       000112 automatic       fixed bin(17,0)          dcl 60 set ref 221* 222 226* 231 318 320
+next_available                  000114 automatic       pointer                  dcl 61 set ref 316* 317 320* 320 322
+no_aste                  44(18)        based           bit(18)                  array level 3 in structure "sst" packed packed
+                                                                                  unaligned dcl 7-9 in procedure "init_sst" set ref
+                                                                                  293*
+no_aste                   1            based           fixed bin(17,0)          array level 2 in structure "sst_card" dcl 4-5
+                                                                                  in procedure "init_sst" set ref 164* 165* 166*
+                                                                                  167* 176* 181
+notify                  547            based           bit(1)                   level 3 dcl 7-9 set ref 387*
+null                                                   builtin function         dcl 98 ref 158 160 173 173 392
+offline                   2(01) 000050 external static bit(1)                   array level 3 packed packed unaligned dcl 3-6 ref
+                                                                                  197 342 355
+online                    2     000050 external static bit(1)                   array level 3 packed packed unaligned dcl 3-6 ref
+                                                                                  197 201 342 355
+page_no                         000116 automatic       fixed bin(18,0)          dcl 62 set ref 366* 370* 372* 374*
+pid                     545            based           bit(36)                  level 3 dcl 7-9 set ref 384*
+pmut$swap_sdw                   000040 constant        entry                    external dcl 118 ref 249 250 271 275
+pool_idx                        000117 automatic       fixed bin(17,0)          dcl 63 set ref 169* 170*
+pts                      40            based           fixed bin(17,0)          array level 2 dcl 7-9 set ref 292*
+ptwbase                  25            based           fixed bin(24,0)          level 2 dcl 7-9 set ref 288*
+scs$controller_config_size      000052 external static fixed bin(14,0)          array dcl 3-164 ref 204 341
+scs$controller_data             000050 external static structure                array level 1 dcl 3-6 set ref 352 352
+scu_top                         000120 automatic       fixed bin(18,0)          dcl 64 set ref 194* 206 206* 260
+seg_state_change_limit
+                        576            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 396*
+segmove_astep           555            based           pointer                  level 2 packed packed unaligned dcl 7-9 set ref 392*
+segmove_found_synch     551            based           fixed bin(35,0)          level 2 dcl 7-9 set ref 389*
+segmove_io_limit        550            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 388*
+segmove_lock            545            based           structure                level 2 dcl 7-9
+segmove_max_tries       554            based           fixed bin(35,0)          level 2 dcl 7-9 set ref 391*
+segmove_new_addr_astep
+                        561            based           pointer                  level 2 packed packed unaligned dcl 7-9 set ref 392*
+segmove_old_addr_astep
+                        560            based           pointer                  level 2 packed packed unaligned dcl 7-9 set ref 392*
+segmove_pvtx            556            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 394*
+segmove_synch_disappeared
+                        552            based           fixed bin(35,0)          level 2 dcl 7-9 set ref 390*
+segmove_vtocx           557            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 394*
+size                            000050 external static fixed bin(17,0)          array level 2 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 3-6 in procedure
+                                                                                  "init_sst" ref 200
+size                                                   builtin function         dcl 98 in procedure "init_sst" ref 231 233 236 285
+                                                                                  286 316
+size_mod_1024                   000121 automatic       fixed bin(18,-10)        dcl 65 set ref 238* 239 241* 242 255* 256
+sizes                           000122 automatic       fixed bin(18,0)          array dcl 66 set ref 135* 181* 215 233 293
+slt                                    based           structure                level 1 dcl 9-13
+slt$                            000012 external static bit(36)                  dcl 103 set ref 408
+sltp                            000172 automatic       pointer                  dcl 9-7 set ref 139 141 141 189 191 191 366 366 366
+                                                                                  380 408*
+space                                  based           fixed bin(17,0)          array level 2 dcl 7-9 set ref 377*
+sst                                    based           structure                level 1 dcl 7-9 set ref 231 316
+sst_absadr                      000127 automatic       fixed bin(26,0)          dcl 68 set ref 287* 288 289
+sst_absloc                             based           fixed bin(26,0)          level 2 dcl 15-13 set ref 288*
+sst_card                               based           structure                level 1 dcl 4-5
+sst_cardp                       000164 automatic       pointer                  dcl 4-3 set ref 158* 159* 160 161* 162* 164 165 166
+                                                                                  167 170 173* 176 181
+sst_last_loc              1            based           fixed bin(26,0)          level 2 dcl 15-13 set ref 289*
+sst_names_$                     000056 external static fixed bin(17,0)          dcl 13-7 set ref 407
+sst_sdw                  54            based           bit(72)                  level 2 in structure "fgbx" dcl 1-24 in procedure
+                                                                                  "init_sst" set ref 281*
+sst_sdw                         000142 automatic       fixed bin(71,0)          dcl 77 in procedure "init_sst" set ref 247* 249 249
+                                                                                  270* 271 271 281
+sst_seg$                        000054 external static fixed bin(17,0)          dcl 7-6 set ref 287 287 406
+sst_size                        000126 automatic       fixed bin(18,0)          dcl 67 set ref 231* 233* 233 238 239* 247* 254 270*
+                                                                                  273 289
+sstnp                           000174 automatic       pointer                  dcl 13-9 set ref 407*
+sstp                            000166 automatic       pointer                  dcl 7-7 set ref 231 247* 249* 270* 271* 285 286 288
+                                                                                  292 293 305 316 316 317 318 319 322 326 327 377
+                                                                                  380 384 386 387 388 389 390 391 392 392 392 394
+                                                                                  394 396 397 398 406*
+sum                                                    builtin function         dcl 98 ref 215
+suptop                          000134 automatic       fixed bin(18,0)          dcl 73 set ref 139* 189* 206 265 346 372
+sys_boot_info$bce_sst_sizes     000014 external static fixed bin(17,0)          array dcl 104 ref 135
+sys_boot_info$bootload_mem_size 000016 external static fixed bin(26,0)          dcl 105 ref 137
+syserr                          000042 constant        entry                    external dcl 119 ref 176 265
+temp_w_event             63            based           bit(36)                  level 2 dcl 7-9 set ref 327*
+top                             000135 automatic       fixed bin(18,0)          dcl 74 set ref 204* 206 206 341* 344 354* 357
+total_base                      000130 automatic       fixed bin(18,0)          dcl 69 set ref 262* 265 269 273 372
+total_pages                     000131 automatic       fixed bin(18,0)          dcl 70 set ref 256* 262
+total_size                      000132 automatic       fixed bin(21,0)          dcl 71 set ref 254* 255
+total_top                       000133 automatic       fixed bin(18,0)          dcl 72 set ref 260* 262 372
+type_word                17            based           structure                level 2 dcl 4-5
+uid_mask                        000136 automatic       bit(36)                  dcl 75 set ref 227* 319
+unpaged_page_tables$            000020 external static fixed bin(17,0)          dcl 106 set ref 288 289
+unspec                                                 builtin function         dcl 98 set ref 281 309* 386
+upt                                    based           structure                level 1 dcl 15-13
+upt_entry                              based           structure                level 1 dcl 15-26
+write_limit             570            based           fixed bin(17,0)          level 2 dcl 7-9 set ref 380*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 14-7
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 3-176
+CONFIG_OCTAL_TYPE                      internal static bit(2)                   initial dcl 6-23
+CONFIG_SINGLE_CHAR_TYPE                internal static bit(2)                   initial dcl 6-23
+CONFIG_STRING_TYPE                     internal static bit(2)                   initial dcl 6-23
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 3-176
+EMPTY_FIELD                            internal static bit(36)                  initial dcl 6-34
+FLAGBOX_SENTINEL                       internal static char(32)                 initial packed unaligned dcl 1-51
+FREE_CARD_WORD                         internal static char(4)                  initial dcl 6-29
+IOM_PORT                               internal static fixed bin(17,0)          initial dcl 3-176
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 14-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 14-7
+PARM_CARD_WORD                         internal static char(4)                  initial dcl 5-29
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 14-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 14-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 14-7
+VALID_CARD_WORD_CHARACTERS             internal static char(38)                 initial packed unaligned dcl 6-31
+ZERO_CARD_WORD                         internal static char(4)                  initial dcl 6-28
+aclp                                   automatic       pointer                  dcl 9-7
+acls                                   based           structure                level 1 dcl 9-45
+append_null_addr                       internal static bit(22)                  initial dcl 2-4
+asta                                   based           bit(432)                 array dcl 8-86
+aste_part                              based           structure                level 1 dcl 8-89
+baseno                                                 builtin function         dcl 98
+cardp                                  automatic       pointer                  dcl 6-3
+cma                                    based           structure                array level 1 dcl 11-30
+config_$find_parm               000000 constant        entry                    external dcl 113
+config_deck                            based           structure                level 1 dcl 6-9
+config_deck$                           external static fixed bin(17,0)          dcl 6-7
+config_max_cards                       automatic       fixed bin(17,0)          dcl 6-5
+config_n_cards                         automatic       fixed bin(17,0)          dcl 6-4
+configp                                automatic       pointer                  dcl 6-3
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 2-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 2-26
+fgbxp                                  automatic       pointer                  dcl 1-22
+fill_page_table_null_addr              internal static bit(22)                  initial dcl 2-4
+get_aste_null_addr                     internal static bit(22)                  initial dcl 2-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 2-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 2-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 2-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 2-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 2-4
+make_sdw_null_addr                     internal static bit(22)                  initial dcl 2-4
+mcme                                   based           structure                level 1 dcl 11-32
+name_seg                               based           structure                level 1 dcl 9-26
+namep                                  automatic       pointer                  dcl 9-7
+names_ptr                              automatic       pointer                  dcl 9-7
+nm_astep                               automatic       pointer                  dcl 13-26
+numeric_parm                           based           structure                level 1 dcl 5-21
+page_bad_null_addr                     internal static bit(22)                  initial dcl 2-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 2-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 2-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 2-4
+page_problem_null_addr                 internal static bit(22)                  initial dcl 2-4
+parm_card                              based           structure                level 1 dcl 5-5
+parm_card_array                        based           structure                level 1 unaligned dcl 5-14
+parm_cardp                             automatic       pointer                  dcl 5-3
+parm_ptr                               automatic       pointer                  dcl 5-19
+path                                   based           structure                level 1 dcl 9-40
+pathp                                  automatic       pointer                  dcl 9-7
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 2-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 2-4
+ptsi_a                                 automatic       fixed bin(17,0)          dcl 13-24
+put_aste_null_addr                     internal static bit(22)                  initial dcl 2-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 2-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 2-26
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 2-26
+scs$bos_processor_tag                  external static fixed bin(3,0)           dcl 3-137
+scs$bos_restart_flags                  external static bit(8)                   dcl 3-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 3-103
+scs$cam_wait                           external static bit(8)                   dcl 3-104
+scs$cfg_data                           external static fixed bin(71,0)          array dcl 3-150
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 3-152
+scs$connect_lock                       external static bit(36)                  dcl 3-132
+scs$cow                                external static structure                array level 1 dcl 3-65
+scs$cow_ptrs                           external static structure                array level 1 dcl 3-77
+scs$cpu_test_mask                      external static bit(72)                  dcl 3-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 3-99
+scs$cycle_priority_template            external static bit(7)                   dcl 3-172
+scs$expanded_ports                     external static bit(1)                   array packed unaligned dcl 3-154
+scs$fast_cam_pending                   external static bit(36)                  array dcl 3-140
+scs$faults_initialized                 external static bit(1)                   dcl 3-138
+scs$idle_aptep                         external static pointer                  array packed unaligned dcl 3-130
+scs$interrupt_controller               external static fixed bin(3,0)           dcl 3-141
+scs$mask_ptr                           external static pointer                  array packed unaligned dcl 3-110
+scs$nprocessors                        external static fixed bin(17,0)          dcl 3-136
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 3-97
+scs$open_level                         external static bit(72)                  dcl 3-94
+scs$port_addressing_word               external static bit(3)                   array dcl 3-148
+scs$port_data                          external static structure                array level 1 dcl 3-56
+scs$processor                          external static bit(8)                   dcl 3-143
+scs$processor_data                     external static structure                array level 1 dcl 3-35
+scs$processor_data_switch_value        external static bit(36)                  dcl 3-162
+scs$processor_start_int_no             external static fixed bin(5,0)           dcl 3-142
+scs$processor_start_mask               external static bit(72)                  dcl 3-95
+scs$processor_start_pattern            external static bit(36)                  dcl 3-98
+scs$processor_start_wait               external static bit(8)                   dcl 3-144
+scs$processor_switch_compare           external static bit(36)                  array dcl 3-159
+scs$processor_switch_data              external static bit(36)                  array dcl 3-157
+scs$processor_switch_mask              external static bit(36)                  array dcl 3-160
+scs$processor_switch_template          external static bit(36)                  array dcl 3-158
+scs$processor_test_data                external static structure                level 1 dcl 3-114
+scs$read_mask                          external static bit(36)                  array dcl 3-109
+scs$reconfig_general_cow               external static structure                level 1 dcl 3-82
+scs$reconfig_lock                      external static bit(36)                  dcl 3-133
+scs$reconfig_locker_id                 external static char(32)                 dcl 3-167
+scs$scas_page_table                    external static bit(36)                  array dcl 3-169
+scs$set_cycle_switches                 external static bit(1)                   dcl 3-173
+scs$set_mask                           external static bit(36)                  array dcl 3-108
+scs$sys_level                          external static bit(72)                  dcl 3-93
+scs$sys_trouble_pending                external static bit(1)                   dcl 3-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 3-146
+scs$trouble_flags                      external static bit(8)                   dcl 3-134
+sdw_info                               based           structure                level 1 dcl 12-6
+sdw_info_ptr                           automatic       pointer                  dcl 12-4
+seg_aste                               based           structure                level 1 dcl 8-96
+segmove_new_addr_null_addr             internal static bit(22)                  initial dcl 2-4
+segmove_old_addr_null_addr             internal static bit(22)                  initial dcl 2-4
+segnam                                 based           structure                level 1 dcl 9-31
+slte                                   based           structure                level 1 dcl 10-48
+slte_uns                               based           structure                level 1 dcl 10-10
+sltep                                  automatic       pointer                  dcl 10-8
+sstnmx                                 automatic       fixed bin(17,0)          dcl 13-24
+sstnt                                  based           structure                level 1 dcl 13-11
+string_parm                            based           structure                level 1 dcl 5-25
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 2-26
+truncate_vtoce_null_addr               internal static bit(18)                  initial dcl 2-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 2-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 2-26
+upt_entry_ptr                          automatic       pointer                  dcl 15-25
+upt_ptr                                automatic       pointer                  dcl 15-12
+volume_reloader_null_addr              internal static bit(18)                  initial dcl 2-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 2-26
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ALLOCATE_SST                    000416 constant        label                    dcl 215 set ref 143
+early                           000116 constant        entry                    external dcl 123
+init_ptrs                       001562 constant        entry                    internal dcl 404 ref 131 152
+init_sst                        000107 constant        entry                    external dcl 14
+normal                          000160 constant        entry                    external dcl 146
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2042        2122    1600        2052
+Length      2624    1600        60         466     241           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_sst                            207 external procedure  is an external procedure.  
+begin block on line 298                 begin block         shares stack frame of external procedure init_sst.  
+begin block on line 307                 begin block         shares stack frame of external procedure init_sst.  
+begin block on line 342                 begin block         shares stack frame of external procedure init_sst.  
+begin block on line 355                 begin block         shares stack frame of external procedure init_sst.  
+init_ptrs                               internal procedure  shares stack frame of external procedure init_sst.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_sst                 000100 base                        init_sst
+                         000101 cm_size                     init_sst
+                         000102 cmp                         init_sst
+                         000104 coresize                    init_sst
+                         000105 early_call                  init_sst
+                         000106 i                           init_sst
+                         000107 initbase                    init_sst
+                         000110 memory_address              init_sst
+                         000111 n_astes                     init_sst
+                         000112 n_buckets                   init_sst
+                         000114 next_available              init_sst
+                         000116 page_no                     init_sst
+                         000117 pool_idx                    init_sst
+                         000120 scu_top                     init_sst
+                         000121 size_mod_1024               init_sst
+                         000122 sizes                       init_sst
+                         000126 sst_size                    init_sst
+                         000127 sst_absadr                  init_sst
+                         000130 total_base                  init_sst
+                         000131 total_pages                 init_sst
+                         000132 total_size                  init_sst
+                         000133 total_top                   init_sst
+                         000134 suptop                      init_sst
+                         000135 top                         init_sst
+                         000136 uid_mask                    init_sst
+                         000140 cm_sdw                      init_sst
+                         000142 sst_sdw                     init_sst
+                         000144 local_sst_card              init_sst
+                         000164 sst_cardp                   init_sst
+                         000166 sstp                        init_sst
+                         000170 astep                       init_sst
+                         000172 sltp                        init_sst
+                         000174 sstnp                       init_sst
+                         000211 TEMPLATE_CME                begin block on line 307
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               call_ext_out_desc   call_ext_out        return_mac          ext_entry           trunc_fx1
+trunc_fx2           divide_fx1
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        config_$add                   config_$find                  config_$init_card
+freecore                      get_main                      get_main$given_address        init_aste_pools
+pmut$swap_sdw                 syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+core_map$                     flagbox$                      scs$controller_config_size    scs$controller_data
+slt$                          sst_names_$                   sst_seg$                      sys_boot_info$bce_sst_sizes
+sys_boot_info$bootload_mem_size                             unpaged_page_tables$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000106       123 000114       131 000123       133 000124       135 000126       137 000141       139 000144
+    141 000151       143 000156       146 000157       152 000165       154 000166       158 000167       159 000171
+    160 000204       161 000210       162 000212       164 000223       165 000226       166 000230       167 000232
+    169 000234       170 000241       171 000246       173 000250       176 000263       181 000314       189 000325
+    191 000332       194 000337       195 000340       196 000341       197 000345       200 000361       201 000375
+    202 000377       204 000401       206 000405       212 000414       215 000416       221 000434       222 000436
+    223 000447       224 000451       226 000456       227 000460       231 000463       232 000465       233 000471
+    234 000477       236 000501       238 000505       239 000512       241 000514       242 000520       245 000522
+    247 000524       248 000537       249 000552       250 000565       252 000600       254 000601       255 000603
+    256 000606       260 000612       262 000617       265 000622       269 000644       270 000647       271 000665
+    273 000700       274 000703       275 000720       281 000733       285 000740       286 000743       287 000745
+    288 000762       289 000767       291 000773       292 000777       293 001003       294 001011       300 001013
+    302 001026       305 001030       309 001032       310 001035       311 001041       316 001167       317 001172
+    318 001174       319 001176       320 001200       322 001202       326 001204       327 001206       329 001210
+    338 001215       340 001223       341 001232       342 001236       344 001242       346 001245       349 001261
+    351 001316       352 001321       353 001325       354 001334       355 001336       357 001344       359 001347
+    362 001355       364 001412       366 001414       370 001435       371 001444       372 001447       374 001461
+    375 001470       377 001512       380 001524       384 001534       386 001535       387 001537       388 001540
+    389 001542       390 001543       391 001544       392 001545       394 001551       396 001553       397 001555
+    398 001557       399 001561       404 001562       406 001563       407 001566       408 001570       409 001572
+    410 001574
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

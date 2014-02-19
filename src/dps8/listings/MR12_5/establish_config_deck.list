@@ -1,0 +1,514 @@
+	COMPILATION LISTING OF SEGMENT establish_config_deck
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 establish_config_deck: proc;
+       10 
+       11 /* ESTABLISH_CONFIG_DECK -- set up segment that points over the config */
+       12 /* partition, and flush the in-memory config deck */
+       13 /* Modified April 1984 by Keith Loepere to wire config_deck */
+       14 
+       15 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       16 
+       17 dcl  config_records		        fixed bin init (4) static options (constant);
+       18 
+       19 dcl  config_deck_absadr	        fixed bin (26);
+       20 dcl  config_deck_page_num	        fixed bin;
+       21 dcl  old_intk_cardp		        ptr;
+       22 dcl  partition_sdw		        fixed bin (71) static init (0);
+       23 
+       24 dcl  config_deck$		        ext static bit (36) aligned;
+       25 dcl  disk_config_deck$	        ext static bit (36) aligned;
+       26 dcl  page_num		        fixed bin;
+       27 dcl  ptp			        ptr;
+       28 dcl  ptw_ptr		        ptr;
+       29 dcl  pvt$root_pvtx		        fixed bin external static;
+       30 dcl  sst$abs_wired_count	        fixed bin (16) external static;
+       31 dcl  sst$cmp		        ptr external static;
+       32 dcl  sys_boot_info$bce_intk_card      external static;
+       33 dcl  sys_boot_info$config_part_frec   fixed bin (20) external static;
+       34 
+       35 dcl  absadr		        entry (ptr, fixed bin (35)) returns (fixed bin (26));
+       36 dcl  config_$add		        entry (ptr, ptr);
+       37 dcl  config_$find		        entry (char (4) aligned, ptr);
+       38 dcl  freecore$thread	        entry (fixed bin);
+       39 dcl  make_sdw$no_pages	        entry (fixed bin (15), fixed bin (71), ptr, ptr);
+       40 dcl  pc_wired$write_wait	        entry (pointer, fixed bin, fixed bin);
+       41 dcl  pmut$swap_sdw		        entry (ptr, ptr);
+       42 dcl  ptw_util_$make_core	        entry (ptr, fixed bin (26));
+       43 dcl  ptw_util_$set_phm	        entry (ptr);
+       44 dcl  ptw_util_$set_wired	        entry (ptr);
+       45 
+       46 dcl  addr			        builtin;
+       47 dcl  addrel		        builtin;
+       48 dcl  bin			        builtin;
+       49 dcl  bit			        builtin;
+       50 dcl  divide		        builtin;
+       51 dcl  null			        builtin;
+       52 dcl  rel			        builtin;
+       53 dcl  segno		        builtin;
+       54 dcl  size			        builtin;
+       55 
+       56 dcl  deck			        (4096) bit (36) aligned based;
+       57 
+       58 	if sys_info$collection_1_phase = SERVICE_INITIALIZATION then do;
+       59 
+       60 /* During service, config_deck is a paged segment abs-wired onto the memory
+       61*location supplied for the config_deck during early initialization. It is not 
+       62*read again from the partition.  Writing it out is performed by config_$update, 
+       63*which does a pc_wired$write_wait. */
+       64 
+       65 	     config_deck_absadr = absadr (addr (config_deck$), (0));
+       66 	     config_deck_page_num = divide (config_deck_absadr, 1024, 17);
+       67 
+       68 /* Get an ASTE that describes config_deck (abs-seg), with a page table full 
+       69*of null addresses. */
+       70 
+       71 	     call make_sdw$no_pages (segno (addr (config_deck$)), partition_sdw, astep, ptp);
+       72 
+       73 	     aste.pvtx = pvt$root_pvtx;
+       74 	     aste.msl, aste.csl, aste.records = bit (bin (config_records, 9), 9);
+       75 
+       76 	     do page_num = 0 to config_records - 1;
+       77 		ptw_ptr = addrel (ptp, page_num);
+       78 		call ptw_util_$make_core (ptw_ptr, config_deck_absadr + 1024 * page_num); /* make abs-seg ptw indicate memory */
+       79 		call ptw_util_$set_wired (ptw_ptr);
+       80 		call ptw_util_$set_phm (ptw_ptr);	/* for force write */
+       81 
+       82 		cmep = addrel (sst$cmp, size (cme) * (config_deck_page_num + page_num)); /* make cme indicate disk */
+       83 		cmep -> mcme.record_no = bit (bin (sys_boot_info$config_part_frec + page_num, 18), 18);
+       84 		cmep -> mcme.add_type = add_type.disk;
+       85 		cmep -> cme.abs_w = "1"b;
+       86 		cmep -> cme.ptwp = rel (ptw_ptr);
+       87 		cmep -> cme.astep = rel (astep);
+       88 
+       89 		call freecore$thread (config_deck_page_num + page_num);
+       90 	     end;
+       91 	     sst$abs_wired_count = sst$abs_wired_count + config_records;
+       92 
+       93 	     call pmut$swap_sdw (addr (config_deck$), addr (partition_sdw)); /* make config_deck describe memory-disk abs-seg */
+       94 
+       95 	     call pc_wired$write_wait (astep, 0, 4);	/* update disk copy with mem copy */
+       96 	end;
+       97 
+       98 /* During bce, the config_deck is a wired segment, that describes the 
+       99*configuration used to attain a given bce command level.  The config deck 
+      100*editor actually updates disk_config_deck.  Here we must read this in for the
+      101*next pass. */
+      102 
+      103 	else do;
+      104 	     addr (config_deck$) -> deck = addr (disk_config_deck$) -> deck;
+      105 
+      106 /* Add bce's intk card (boot options) to deck */
+      107 
+      108 	     intk_cardp = addr (sys_boot_info$bce_intk_card);
+      109 	     old_intk_cardp = null;
+      110 	     call config_$find (INTK_CARD_WORD, old_intk_cardp);
+      111 	     if old_intk_cardp = null then call config_$add (intk_cardp, null);
+      112 	     else old_intk_cardp -> intk_card = intk_card;	/* replace */
+      113 	end;
+      114 	return;
+      115  
+  1     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  1     3 	/* 02/26/75 by Bernard S. Greenberg */
+  1     4 
+  1     5 	/* This file provides a structure for checking
+  1     6*		PTW/CME address type fields in PL/I */
+  1     7 
+  1     8 dcl 1 add_type unaligned static internal,
+  1     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  1    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  1    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  1    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  1    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  1    14 
+  1    15 dcl 1 badd_type unaligned based,
+  1    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  1    17 
+  1    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      115 
+      116  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  2     2 
+  2     3 /* Template for an AST entry. Length = 12 words. */
+  2     4 
+  2     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  2     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  2     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  2     8 
+  2     9 dcl  astep ptr;
+  2    10 
+  2    11 dcl 1 aste based (astep) aligned,
+  2    12 
+  2    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  2    14     2 bp bit (18),					/* backward used list rel pointer */
+  2    15 
+  2    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  2    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  2    18 
+  2    19     2 strp bit (18),				/* rel pointer to process trailer */
+  2    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  2    21 
+  2    22     2 uid bit (36),					/* segment unique id */
+  2    23 
+  2    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  2    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    27 
+  2    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  2    29     2 init bit (1),					/* used bit - insure 1 lap */
+  2    30     2 gtus bit (1),					/* global transparent usage switch */
+  2    31     2 gtms bit (1),					/* global transparent modified switch */
+  2    32     2 hc bit (1),					/* hard core segment */
+  2    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  2    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  2    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  2    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  2    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  2    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  2    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  2    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  2    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  2    42     2 pad1 bit (2),					/* OO */
+  2    43     2 dius bit (1),					/* dumper in use switch */
+  2    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  2    45     2 dmpr_pad bit (1),
+  2    46     2 ehs bit (1),					/* entry hold switch */
+  2    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    48     2 dirsw bit (1),				/* directory switch */
+  2    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  2    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  2    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  2    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  2    53 
+  2    54     2 dtu bit (36),					/* date and time segment last used */
+  2    55 
+  2    56     2 dtm bit (36),					/* date and time segment last modified */
+  2    57 
+  2    58 
+  2    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    60 
+  2    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    62 
+  2    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  2    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  2    65     2 fms bit (1),					/* file modified switch */
+  2    66     2 npfs bit (1),					/* no page fault switch */
+  2    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  2    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  2    69     2 per_process bit (1),				/* use master quota for this entry */
+  2    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  2    71     2 pad2 bit (2),
+  2    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  2    73     2 np bit (9),					/* number of pages in core */
+  2    74 
+  2    75 
+  2    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  2    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  2    78     2 damaged bit (1),				/* PC declared segment unusable */
+  2    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  2    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  2    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  2    82     2 ptsi bit (2),					/* page table size index */
+  2    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  2    84 
+  2    85 
+  2    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  2    87 
+  2    88 
+  2    89 dcl 1 aste_part aligned based (astep),
+  2    90 
+  2    91     2 one bit (36) unaligned,				/* fp and bp */
+  2    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  2    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  2    94 
+  2    95 
+  2    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  2    97     2 pad1 bit (8*36),
+  2    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    99     2 pad2 bit (3*36);
+  2   100 
+  2   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      116 
+      117  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  3     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  3     3 
+  3     4 dcl  cmep ptr;					/* pointer to core map entry */
+  3     5 
+  3     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  3     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  3     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  3     9 
+  3    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  3    11     2 pad5 bit (1) unaligned,
+  3    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  3    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  3    14     2 pad2 bit (1) unaligned,
+  3    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  3    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  3    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  3    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  3    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  3    20     2 pad3 bit (1) unaligned,
+  3    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  3    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  3    23 
+  3    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  3    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  3    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  3    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  3    28 
+  3    29 
+  3    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  3    31 
+  3    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  3    33     2 pad bit (36) unaligned,
+  3    34     2 record_no bit (18) unaligned,			/* record number of device */
+  3    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  3    36     2 flags bit (14) unal,
+  3    37     2 pad1 bit (18) unal;
+  3    38 
+  3    39 
+  3    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      117 
+      118  /* BEGIN include file collection_1_phases.incl.pl1 */
+  4     2 
+  4     3 /* Symbolic names for the various collection1 phases.
+  4     4*Keith Loepere, October 1983. */
+  4     5 
+  4     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  4     7 
+  4     8 dcl  sys_info$collection_1_phase	        fixed bin external static;
+  4     9 
+  4    10 dcl  EARLY_INITIALIZATION		        fixed bin init (1) static options (constant);  /* phase to find the config deck */
+  4    11 dcl  BOOT_INITIALIZATION		        fixed bin init (2) static options (constant);  /* phase to setup up crash handler, bce */
+  4    12 dcl  SERVICE_INITIALIZATION		        fixed bin init (3) static options (constant);  /* phase to set up for service */
+  4    13 
+  4    14 /* These first 3 (EARLY, BOOT and SERVICE) must be 1, 2, 3 in that order so
+  4    15*programs can simply tell apart the booting phases from all others (crash or
+  4    16*recovery type phases). */
+  4    17 
+  4    18 dcl  CRASH_INITIALIZATION		        fixed bin init (4) static options (constant);  /* phase to set up bce after crash/shut down */
+  4    19 dcl  RE_EARLY_INITIALIZATION		        fixed bin init (5) static options (constant);  /* retry boot initialization given safe config to a new early level */
+  4    20 dcl  BCE_CRASH_INITIALIZATION		        fixed bin init (6) static options (constant);  /* retry boot initialization to give a new boot level given a crash of bce */
+  4    21 dcl  SHUT_INITIALIZATION		        fixed bin init (7) static options (constant);  /* same as boot but don't load new disk mpcs */
+  4    22 
+  4    23 dcl  COLLECTION_1_PHASE_NAMES		        (7) char (16) unal static options (constant) init
+  4    24 				        ("early", "boot", "service", "crash", "re_early", "bce_crash", "shut");
+  4    25 
+  4    26 /* END include file collection_1_phases.incl.pl1 */
+      118 
+      119  /* BEGIN INCLUDE FILE ... config_intk_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  5     2 
+  5     3 dcl  intk_cardp pointer;				/* pointer to INTK card */
+  5     4 
+  5     5 dcl 1 intk_card aligned based (intk_cardp),		/* INTK card declaration */
+  5     6     2 word char (4),				/* "intk" */
+  5     7     2 warm_or_cold char (4),				/* Type of bootload: "warm" or "cold" */
+  5     8     2 boot_drive fixed bin,				/* Tape drive on which MST is mounted */
+  5     9     2 parms (12) char (4),				/* up to 12 arbitrary bootload parameters */
+  5    10 
+  5    11     2 type_word aligned,
+  5    12       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  5    13       3 pad1 bit (4) unaligned,
+  5    14       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  5    15 
+  5    16 dcl 1 intk_card_array aligned based (intk_cardp),		/* Overlay for counting parameters */
+  5    17     2 pad (3) bit (36) aligned,
+  5    18     2 parms (max (0, intk_card.n_fields - 2)) bit (36) aligned;
+  5    19 
+  5    20 dcl  INTK_CARD_WORD char (4) aligned internal static options (constant) init ("intk");
+  5    21 
+  5    22 /* END INCLUDE FILE ... config_intk_card.incl.pl1 */
+      119 
+      120      end establish_config_deck;
+      121 
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.4  establish_config_deck.pl1         >spec>install>1112>establish_config_deck.pl1
+115          1    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+116          2    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+117          3    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+118          4    07/11/84  0937.3  collection_1_phases.incl.pl1      >ldd>include>collection_1_phases.incl.pl1
+119          5    05/08/81  1853.6  config_intk_card.incl.pl1         >ldd>include>config_intk_card.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+INTK_CARD_WORD                  000001 constant        char(4)                  initial dcl 5-20 set ref 110*
+SERVICE_INITIALIZATION                 constant        fixed bin(17,0)          initial dcl 4-12 ref 58
+abs_w                     1(28)        based           bit(1)                   level 2 packed packed unaligned dcl 3-6 set ref 85*
+absadr                          000030 constant        entry                    external dcl 35 ref 65
+add_type                  1(18)        based           bit(4)                   level 2 in structure "mcme" packed packed unaligned
+                                                                                  dcl 3-32 in procedure "establish_config_deck" set
+                                                                                  ref 84*
+add_type                        000000 constant        structure                level 1 packed packed unaligned dcl 1-8 in procedure
+                                                                                  "establish_config_deck"
+addr                                                   builtin function         dcl 46 ref 65 65 71 71 93 93 93 93 104 104 108
+addrel                                                 builtin function         dcl 47 ref 77 82
+aste                                   based           structure                level 1 dcl 2-11
+astep                           000112 automatic       pointer                  dcl 2-9 in procedure "establish_config_deck" set ref
+                                                                                  71* 73 74 74 74 87 95*
+astep                     2(18)        based           bit(18)                  level 2 in structure "cme" packed packed unaligned
+                                                                                  dcl 3-6 in procedure "establish_config_deck" set
+                                                                                  ref 87*
+bin                                                    builtin function         dcl 48 ref 74 83
+bit                                                    builtin function         dcl 49 ref 74 83
+cme                                    based           structure                level 1 dcl 3-6 set ref 82
+cmep                            000114 automatic       pointer                  dcl 3-4 set ref 82* 82 83 84 85 86 87
+config_$add                     000032 constant        entry                    external dcl 36 ref 111
+config_$find                    000034 constant        entry                    external dcl 37 ref 110
+config_deck$                    000012 external static bit(36)                  dcl 24 set ref 65 65 71 71 93 93 104
+config_deck_absadr              000100 automatic       fixed bin(26,0)          dcl 19 set ref 65* 66 78
+config_deck_page_num            000101 automatic       fixed bin(17,0)          dcl 20 set ref 66* 82 89
+config_records                         constant        fixed bin(17,0)          initial dcl 17 ref 74 76 91
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref 74*
+deck                                   based           bit(36)                  array dcl 56 set ref 104* 104
+disk                      0(04) 000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 1-8 ref
+                                                                                  84
+disk_config_deck$               000014 external static bit(36)                  dcl 25 set ref 104
+divide                                                 builtin function         dcl 50 ref 66
+freecore$thread                 000036 constant        entry                    external dcl 38 ref 89
+intk_card                              based           structure                level 1 dcl 5-5 set ref 112* 112
+intk_cardp                      000116 automatic       pointer                  dcl 5-3 set ref 108* 111* 112
+make_sdw$no_pages               000040 constant        entry                    external dcl 39 ref 71
+mcme                                   based           structure                level 1 dcl 3-32
+msl                       4            based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref 74*
+null                                                   builtin function         dcl 51 ref 109 111 111 111
+old_intk_cardp                  000102 automatic       pointer                  dcl 21 set ref 109* 110* 111 112
+page_num                        000104 automatic       fixed bin(17,0)          dcl 26 set ref 76* 77 78 82 83 89*
+partition_sdw                   000010 internal static fixed bin(71,0)          initial dcl 22 set ref 71* 93 93
+pc_wired$write_wait             000042 constant        entry                    external dcl 40 ref 95
+pmut$swap_sdw                   000044 constant        entry                    external dcl 41 ref 93
+ptp                             000106 automatic       pointer                  dcl 27 set ref 71* 77
+ptw_ptr                         000110 automatic       pointer                  dcl 28 set ref 77* 78* 79* 80* 86
+ptw_util_$make_core             000046 constant        entry                    external dcl 42 ref 78
+ptw_util_$set_phm               000050 constant        entry                    external dcl 43 ref 80
+ptw_util_$set_wired             000052 constant        entry                    external dcl 44 ref 79
+ptwp                      2            based           bit(18)                  level 2 packed packed unaligned dcl 3-6 set ref 86*
+pvt$root_pvtx                   000016 external static fixed bin(17,0)          dcl 29 ref 73
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 2-11 set ref 73*
+record_no                 1            based           bit(18)                  level 2 packed packed unaligned dcl 3-32 set ref 83*
+records                  12(18)        based           bit(9)                   level 2 packed packed unaligned dcl 2-11 set ref 74*
+rel                                                    builtin function         dcl 52 ref 86 87
+segno                                                  builtin function         dcl 53 ref 71 71
+size                                                   builtin function         dcl 54 ref 82
+sst$abs_wired_count             000020 external static fixed bin(16,0)          dcl 30 set ref 91* 91
+sst$cmp                         000022 external static pointer                  dcl 31 ref 82
+sys_boot_info$bce_intk_card     000024 external static fixed bin(17,0)          dcl 32 set ref 108
+sys_boot_info$config_part_frec  000026 external static fixed bin(20,0)          dcl 33 ref 83
+sys_info$collection_1_phase     000054 external static fixed bin(17,0)          dcl 4-8 ref 58
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BCE_CRASH_INITIALIZATION               internal static fixed bin(17,0)          initial dcl 4-20
+BOOT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 4-11
+COLLECTION_1_PHASE_NAMES               internal static char(16)                 initial array packed unaligned dcl 4-23
+CRASH_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 4-18
+EARLY_INITIALIZATION                   internal static fixed bin(17,0)          initial dcl 4-10
+RE_EARLY_INITIALIZATION                internal static fixed bin(17,0)          initial dcl 4-19
+SHUT_INITIALIZATION                    internal static fixed bin(17,0)          initial dcl 4-21
+asta                                   based           bit(432)                 array dcl 2-86
+aste_part                              based           structure                level 1 dcl 2-89
+badd_type                              based           structure                level 1 packed packed unaligned dcl 1-15
+cma                                    based           structure                array level 1 dcl 3-30
+intk_card_array                        based           structure                level 1 dcl 5-16
+seg_aste                               based           structure                level 1 dcl 2-96
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+establish_config_deck           000007 constant        entry                    external dcl 9
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       552         630     316         562
+Length      1130     316        56         264     234           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+establish_config_deck               107 external procedure  is an external procedure.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 partition_sdw               establish_config_deck
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+establish_config_deck    000100 config_deck_absadr          establish_config_deck
+                         000101 config_deck_page_num        establish_config_deck
+                         000102 old_intk_cardp              establish_config_deck
+                         000104 page_num                    establish_config_deck
+                         000106 ptp                         establish_config_deck
+                         000110 ptw_ptr                     establish_config_deck
+                         000112 astep                       establish_config_deck
+                         000114 cmep                        establish_config_deck
+                         000116 intk_cardp                  establish_config_deck
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        config_$add                   config_$find                  freecore$thread
+make_sdw$no_pages             pc_wired$write_wait           pmut$swap_sdw                 ptw_util_$make_core
+ptw_util_$set_phm             ptw_util_$set_wired
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+config_deck$                  disk_config_deck$             pvt$root_pvtx                 sst$abs_wired_count
+sst$cmp                       sys_boot_info$bce_intk_card   sys_boot_info$config_part_frec
+sys_info$collection_1_phase
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      9 000006        58 000014        65 000017        66 000034        71 000037        73 000062        74 000067
+     76 000077        77 000105        78 000110        79 000124        80 000133        82 000142        83 000152
+     84 000161        85 000166        86 000170        87 000172        89 000175        90 000206        91 000210
+     93 000213        95 000227        96 000245       104 000246       108 000254       109 000256       110 000260
+    111 000270       112 000310       114 000315
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

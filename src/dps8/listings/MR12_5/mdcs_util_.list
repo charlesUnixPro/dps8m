@@ -1,0 +1,697 @@
+	COMPILATION LISTING OF SEGMENT mdcs_util_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1019.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* MDCS_UTIL_:  Collection of primitives for maintaining Master Directory Control Segments */
+       14 
+       15 /* Written April 1976 by Larry Johnson */
+       16 /* Modified September 1977 by Larry Johnson */
+       17 /* Modified Aug 1984 by EJ Sharpe for new param lists for delete_mdcs, rename_mdcs, and update_hvid.
+       18*            UID is passed from mdc_repair_ rather than obtained by calling hdx. */
+       19 /* Modified Sept 1984 by EJ Sharpe - change refs to "hdx" to "volume_registration_mgr_"
+       20*	change "hvid" to "lvid"
+       21*	change "hvname" to "lvname"
+       22**/
+       23 /* Modified 84-10-30 by EJ Sharpe to upgrade to new volume_registration_mgr_$get_access which returns bit (36) */
+       24 
+       25 mdcs_util_: proc;
+       26 
+       27 
+       28 /* Parameters */
+       29 
+       30 dcl  arg_code fixed bin (35);				/* A standard status code */
+       31 dcl  arg_volume char (*);				/* Logical volume name */
+       32 dcl  arg_mdcsp ptr;					/* Pointer to MDCS */
+       33 dcl  arg_uid bit (36) aligned;			/* Unique id of a volume */
+       34 dcl  arg_new_uid bit (36) aligned;			/* Unique id of a volume */
+       35 dcl  arg_access bit (36) aligned;			/* Access to logical volume */
+       36 dcl  arg_newvol char (*);				/* New volume name on rename */
+       37 dcl  arg_dir char (*);
+       38 
+       39 /* Automatic storage */
+       40 
+       41 dcl  code fixed bin (35);
+       42 dcl  rings (3) fixed bin (3);				/* Array of ring brackets */
+       43 dcl  i fixed bin;
+       44 dcl  ename char (32);				/* Entry name of segment */
+       45 dcl  volume char (32) var;
+       46 dcl  temp_vol char (32);
+       47 dcl  uid bit (36) aligned;
+       48 dcl  access bit (36) aligned;
+       49 dcl  vl fixed bin;					/* Callers validation level */
+       50 dcl  current_ring fixed bin;
+       51 dcl  old_ename char (32);
+       52 dcl  new_uid bit (36) aligned;
+       53 dcl  must_check_mdcs bit (1);
+       54 dcl  pub_bit bit (1) aligned;			/* ignored return value from volume_registration_mgr_$get_access */
+       55 
+       56 /* Entry variables */
+       57 
+       58 dcl  area_ entry (fixed bin (18), ptr);
+       59 dcl  get_ring_ entry returns (fixed bin);
+       60 dcl  clock_ entry returns (fixed bin (71));
+       61 dcl  cu_$level_set entry (fixed bin);
+       62 dcl  cu_$level_get entry (fixed bin);
+       63 dcl  admin_gate_$reclassify_sys_seg entry (char (*), char (*), bit (72) aligned, fixed bin (35));
+       64 dcl  hcs_$append_branchx entry (char (*), char (*), fixed bin (5), dim (3) fixed bin (3), char (*), fixed bin (1),
+       65      fixed bin (1), fixed bin (24), fixed bin (35));
+       66 dcl  hcs_$terminate_noname entry (ptr, fixed bin (35));
+       67 dcl  hcs_$delentry_seg entry (ptr, fixed bin (35));
+       68 dcl  hcs_$initiate entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr, fixed bin (35));
+       69 dcl  hcs_$truncate_seg entry (ptr, fixed bin (18), fixed bin (35));
+       70 dcl  hcs_$chname_seg entry (ptr, char (*), char (*), fixed bin (35));
+       71 dcl  volume_registration_mgr_$find_lvname entry (bit (36) aligned, char (*), fixed bin (35));
+       72 dcl  volume_registration_mgr_$find_lvid entry (char (*), bit (36) aligned, fixed bin (35));
+       73 dcl  volume_registration_mgr_$get_access entry (char (*), fixed bin, bit (36) aligned, bit (1) aligned, fixed bin (35));
+       74 dcl  mdc_check_mdcs_ entry (ptr, fixed bin (35));
+       75 
+       76 dcl (addr, verify, reverse, null, length, size, substr) builtin;
+       77 
+       78 dcl  sys_info$max_seg_size ext fixed bin (18);
+       79 dcl  sys_info$time_of_bootload ext fixed bin (71);
+       80 dcl  sys_info$access_class_ceiling ext bit (72) aligned;
+       81 dcl  error_table_$bad_arg ext fixed bin (35);
+       82 dcl  error_table_$namedup ext fixed bin (35);
+       83 dcl  error_table_$bad_segment ext fixed bin (35);
+       84 dcl  error_table_$mdc_mdirs_registered ext fixed bin (35);
+       85 
+       86 
+       87 
+       88 /* Constants */
+       89 
+       90 dcl  mdcsdir char (168) int static init (">lv");
+       91 dcl  mdcs_suffix char (5) int static options (constant) init (".mdcs");
+       92 
+  1     1 /* Begin include file ..... mdcs.incl.pl1 */
+  1     2 /* Modified to give quota enough precision BIM 83-12-07 */
+  1     3 
+  1     4 /* Format of a master directory control segment */
+  1     5 
+  1     6 dcl  mdcsp ptr;					/* Pointer to structure */
+  1     7 
+  1     8 dcl 1 mdcs aligned based (mdcsp),			/* A master directory control segment */
+  1     9     2 head like mdcs_head,				/* First the header */
+  1    10     2 area area (0 refer (mdcs.area_size));		/* Followed by an area for allocating data */
+  1    11 
+  1    12 dcl 1 mdcs_head aligned based,			/* The header portion of the mdcs */
+  1    13     2 version fixed bin,				/* Version of structure */
+  1    14     2 init bit (1) unal,				/* Set when mdcs created */
+  1    15     2 free_bits bit (35) unal,
+  1    16     2 time_checked fixed bin (71),			/* Time this MDCS last checked for consistency */
+  1    17     2 volume char (32),				/* Name of volume */
+  1    18     2 uid bit (36),					/* Unique id of volume */
+  1    19     2 acct_offset bit (18),				/* Offset to first account entry */
+  1    20     2 dir_offset bit (18),				/* Pointer to first directory entry */
+  1    21     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    22     2 area_size fixed bin (18),			/* Size of the area (rest of segment) */
+  1    23     2 restrict_path bit (18),				/* List of pathnames in volume restict list */
+  1    24     2 default_path bit (18),				/* List of pathnames in volume default list */
+  1    25     2 fill (43) bit (36) aligned;			/* Pad to octal 100 */
+  1    26 
+  1    27 dcl  mdcs_version fixed bin int static options (constant) init (1); /* Latest version */
+  1    28 
+  1    29 dcl  mdirp ptr;					/* Pointer to directory entry */
+  1    30 
+  1    31 dcl 1 mdirent aligned based (mdirp),
+  1    32     2 next bit (18) unal,				/* Pointer to next entry */
+  1    33     2 fill bit (18) unal,
+  1    34     2 uidpath (0:15) bit (36),			/* Uid pathname of master dir */
+  1    35     2 owner,					/* Owner of directory */
+  1    36       3 person char (22) unal,
+  1    37       3 project char (9) unal,
+  1    38     2 quota_offset bit (18),				/* Rel pointer to quota account */
+  1    39     2 quota fixed bin (18),				/* The quota */
+  1    40     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    41     2 fill2 (10) bit (36) aligned;
+  1    42 
+  1    43 dcl  acctp ptr;					/* Pointer to account entry */
+  1    44 
+  1    45 dcl 1 acctent aligned based (acctp),
+  1    46     2 next bit (18) unal,				/* Relative pointer to next entry */
+  1    47     2 fill bit (18) unal,
+  1    48     2 name,					/* Name of quota account */
+  1    49       3 person char (22) unal,
+  1    50       3 project char (9) unal,
+  1    51     2 quota fixed bin (35),				/* Total quota for account */
+  1    52     2 quota_used fixed bin (35),			/* Amount of quota assigned to master dirs */
+  1    53     2 trp fixed bin (71) unal,			/* Time record product for deleted dirs */
+  1    54     2 backup (3) fixed bin (35),			/* Backup accounting data */
+  1    55     2 restrict_path bit (18),				/* List of restricting paths for account */
+  1    56     2 fill2 (7) bit (36) aligned;
+  1    57 
+  1    58 dcl  pathp ptr;					/* Pointer to uid pathname entry */
+  1    59 
+  1    60 dcl 1 pathent aligned based (pathp),			/* Entry in a list of pathnames */
+  1    61     2 next bit (18) unal,
+  1    62     2 fill bit (18) unal,
+  1    63     2 uidpath (0:15) bit (36);
+  1    64 
+  1    65 
+  1    66 /* End include file ..... mdcs.incl.pl1 */
+       93 
+       94 
+       95 /* Entry to initialize a master directory control segment */
+       96 
+       97 create_mdcs: entry (arg_volume, arg_uid, arg_code);
+       98 
+       99 	volume = arg_volume;
+      100 	uid = arg_uid;
+      101 	call make_mdcs_name;			/* Build name of mdcs */
+      102 	if arg_code ^= 0 then return;
+      103 
+      104 	call set_validation_level;
+      105 	rings = current_ring;
+      106 	call hcs_$append_branchx (mdcsdir, ename, 01010b, rings, "*.*.*", 0, 0, 0, arg_code);
+      107 	if arg_code ^= 0 then
+      108 	     if arg_code ^= error_table_$namedup then go to reset_return; /* Namedup ok for now */
+      109 
+      110 	if arg_code = 0 then do;
+      111 	     call admin_gate_$reclassify_sys_seg (mdcsdir, ename, sys_info$access_class_ceiling, arg_code);
+      112 	     if arg_code ^= 0 then go to reset_return;
+      113 	end;
+      114 
+      115 	call hcs_$initiate (mdcsdir, ename, "", 0, 0, mdcsp, code); /* Find seg */
+      116 	if mdcsp = null then do;			/* This should work */
+      117 	     arg_code = code;
+      118 	     go to reset_return;
+      119 	end;
+      120 
+      121 	if arg_code = 0 then go to cr_ok;		/* If append worked ok, then go initialize */
+      122 						/* Otherwise, check reason for namedup */
+      123 
+      124 	if mdcs.version = 0 & ^mdcs.init then do;	/* Seems to be empty seg */
+      125 	     call hcs_$truncate_seg (mdcsp, 0, arg_code); /* Really empty now */
+      126 	     if arg_code = 0 then go to cr_ok;
+      127 	     else go to term_return;
+      128 	end;
+      129 
+      130 	call validate_header;			/* See if header is reasonable */
+      131 	if arg_code ^= 0 then go to term_return;
+      132 	call mdc_check_mdcs_ (mdcsp, arg_code);		/* Not, look at rest */
+      133 	if arg_code ^= 0 then go to term_return;
+      134 
+      135 	arg_code = error_table_$namedup;		/* This means old mdcs valid */
+      136 	go to term_return;
+      137 
+      138 cr_ok:	mdcs.version = mdcs_version;			/* Initiailize new mdcs */
+      139 	mdcs.volume = volume;
+      140 	mdcs.uid = uid;
+      141 	mdcs.area_size = sys_info$max_seg_size - size (mdcs_head); /* Rest of seg is area */
+      142 	call area_ (mdcs.area_size, addr (mdcs.area));	/* This makes empty area */
+      143 
+      144 	mdcs.init = "1"b;				/* Succeeded */
+      145 	arg_code = 0;
+      146 
+      147 term_return:
+      148 	call hcs_$terminate_noname (mdcsp, code);
+      149 reset_return:
+      150 	call reset_validation_level;
+      151 	return;
+      152 
+      153 /* Entry to find and initiate a master directory control segment */
+      154 
+      155 find_mdcs: entry (arg_volume, arg_mdcsp, arg_access, arg_code);
+      156 
+      157 	must_check_mdcs = "0"b;			/* Check of mdcs is not mandatory */
+      158 find_start:
+      159 	volume = arg_volume;
+      160 	arg_mdcsp = null;
+      161 	arg_access = "0"b;
+      162 	call set_validation_level;
+      163 	call volume_registration_mgr_$find_lvid ((volume), uid, arg_code);	/* See if registered */
+      164 	if arg_code ^= 0 then go to reset_return;
+      165 findcom:	call volume_registration_mgr_$get_access ((volume), vl, access, pub_bit, arg_code);
+      166 	if arg_code ^= 0 then go to reset_return;
+      167 
+      168 	call make_mdcs_name;
+      169 	if arg_code ^= 0 then go to reset_return;
+      170 	call hcs_$initiate (mdcsdir, ename, "", 0, 0, mdcsp, arg_code); /* Find segment */
+      171 	if mdcsp = null then go to reset_return;
+      172 	call validate_header;			/* Be sure header is reasnalbe */
+      173 	if arg_code ^= 0 then go to term_return;
+      174 
+      175 /* Now call mdc_check_mdcs_ to validate the MDCS. This is not always done, as it is too expensive. */
+      176 
+      177 	if must_check_mdcs |			/* If check requested by caller */
+      178 	mdcs.time_checked < sys_info$time_of_bootload |	/* Hasn't been check this bootload */
+      179 	mdcs.time_checked > clock_ () |		/* The time last checked seems wierd */
+      180 	(clock_ () - mdcs.time_checked > 12*3600*1000000) then do; /* Or it hasnt been checked for 12 hours */
+      181 	     call mdc_check_mdcs_ (mdcsp, arg_code);
+      182 	     if arg_code ^= 0 then go to term_return;
+      183 	end;
+      184 
+      185 	arg_mdcsp = mdcsp;				/* Ok */
+      186 	arg_access = access;
+      187 	arg_code = 0;
+      188 	go to reset_return;
+      189 
+      190 
+      191 /* This entry is the same as find_mdcs, excpet that a check of the mdcs is always performed */
+      192 
+      193 find_mdcs_and_check: entry (arg_volume, arg_mdcsp, arg_access, arg_code);
+      194 
+      195 	must_check_mdcs = "1"b;
+      196 	go to find_start;
+      197 
+      198 /* Entry to find the mdcs given a uid */
+      199 
+      200 find_mdcs_uid: entry (arg_uid, arg_mdcsp, arg_access, arg_code);
+      201 
+      202 	uid = arg_uid;
+      203 	arg_mdcsp = null;
+      204 	arg_access = "0"b;
+      205 	call set_validation_level;
+      206 	call volume_registration_mgr_$find_lvname (uid, temp_vol, arg_code);
+      207 	if arg_code ^= 0 then go to reset_return;
+      208 	volume = temp_vol;
+      209 	must_check_mdcs = "0"b;
+      210 	go to findcom;				/* Join regular path */
+      211 
+      212 
+      213 /* Entry to terminate a mdcs */
+      214 
+      215 term_mdcs: entry (arg_mdcsp);
+      216 
+      217 	mdcsp = arg_mdcsp;
+      218 	if mdcsp = null then return;
+      219 	call set_validation_level;
+      220 	arg_mdcsp = null;
+      221 	go to term_return;
+      222 
+      223 /* Entry to delete a master directory control segment by name */
+      224 
+      225 delete_mdcs: entry (arg_volume, arg_uid, arg_code);
+      226 
+      227 	volume = arg_volume;
+      228 	uid = arg_uid;
+      229 	call make_mdcs_name;			/* Get name of mdcs */
+      230 	if arg_code ^= 0 then return;
+      231 
+      232 	call set_validation_level;
+      233 
+      234 	call hcs_$initiate (mdcsdir, ename, "", 0, 0, mdcsp, arg_code);
+      235 	if mdcsp = null then go to reset_return;	/* Never was one */
+      236 
+      237 	call validate_header;
+      238 	if arg_code ^= 0 then go to term_return;
+      239 
+      240 delete_common:
+      241 	if mdcs.dir_offset ^= "0"b then do;		/* Still directories registered */
+      242 	     arg_code = error_table_$mdc_mdirs_registered;
+      243 	     go to term_return;
+      244 	end;
+      245 
+      246 	mdcs.init = "0"b;				/* Make it look empty */
+      247 	mdcs.version = 0;
+      248 
+      249 	call hcs_$delentry_seg (mdcsp, arg_code);
+      250 	go to reset_return;
+      251 
+      252 
+      253 /* Entry to delete a master directory control segment by pointer */
+      254 
+      255 delete_mdcsp: entry (arg_mdcsp, arg_code);
+      256 
+      257 	mdcsp = arg_mdcsp;
+      258 	call set_validation_level;
+      259 	go to delete_common;
+      260 
+      261 /* Entry to perform mdcs part of renaming a logical volume */
+      262 
+      263 rename_mdcs: entry (arg_volume, arg_uid, arg_newvol, arg_code);
+      264 
+      265 	volume = arg_volume;
+      266 	uid = arg_uid;
+      267 	call make_mdcs_name;			/* Make name of old mdcs */
+      268 	if arg_code ^= 0 then return;
+      269 	call set_validation_level;
+      270 
+      271 	call hcs_$initiate (mdcsdir, ename, "", 0, 0, mdcsp, arg_code);
+      272 	if mdcsp = null then go to reset_return;	/* Cant find it */
+      273 	call validate_header;			/* Among other things, this checks that the uid of
+      274*						   the new name is the same as uid for old name in mdcs */
+      275 	if arg_code ^= 0 then go to term_return;
+      276 
+      277 	old_ename = ename;				/* Save old name */
+      278 	volume = arg_newvol;			/* New name */
+      279 	call make_mdcs_name;			/* Build new mdcs name */
+      280 	if arg_code ^= 0 then go to term_return;
+      281 	call hcs_$chname_seg (mdcsp, old_ename, ename, arg_code);
+      282 	if arg_code ^= 0 then go to term_return;
+      283 	mdcs.volume = volume;			/* This must agree with new name */
+      284 	arg_code = 0;
+      285 	go to term_return;
+      286 
+      287 
+      288 /* Entry that will change the unique id of a logical volume */
+      289 /* This may be a disaster if the are master directories registered */
+      290 
+      291 update_lvid: entry (arg_volume, arg_uid, arg_new_uid, arg_code);
+      292 
+      293 	volume = arg_volume;
+      294 	uid = arg_uid;				/* This is the _o_l_d uid */
+      295 	new_uid = arg_new_uid;
+      296 	call make_mdcs_name;
+      297 	if arg_code ^= 0 then return;
+      298 
+      299 	call set_validation_level;
+      300 
+      301 	call hcs_$initiate (mdcsdir, ename, "", 0, 0, mdcsp, arg_code);
+      302 	if arg_code ^= 0 then go to reset_return;
+      303 	call validate_header;			/* This checks that old uid is ok */
+      304 	if arg_code ^= 0 then return;
+      305 
+      306 	mdcs.uid = new_uid;				/* This is the whole update */
+      307 	arg_code = 0;
+      308 	go to term_return;
+      309 
+      310 /* Debugging entry that stores name of the directory containing mdcs */
+      311 
+      312 set_mdcsdir: entry (arg_dir);
+      313 
+      314 	mdcsdir = arg_dir;
+      315 	return;
+      316 
+      317 /* Internal procedure to form name of master directory control segment */
+      318 
+      319 make_mdcs_name: proc;
+      320 
+      321 	     arg_code = 0;
+      322 	     if length (volume) = 0 then do;
+      323 bad_name:		arg_code = error_table_$bad_arg;
+      324 		return;
+      325 	     end;
+      326 
+      327 	     i = verify (reverse (volume), " ");	/* Check for trailing blanks */
+      328 	     if i = 0 then go to bad_name;
+      329 
+      330 	     i = length (volume) - i + 1;
+      331 	     if i > (length (ename) - length (mdcs_suffix)) then go to bad_name;
+      332 
+      333 	     ename = substr (volume, 1, i) || mdcs_suffix;
+      334 
+      335 	     return;
+      336 
+      337 	end make_mdcs_name;
+      338 
+      339 /* Procedure to handle validation level */
+      340 
+      341 set_validation_level: proc;
+      342 
+      343 	     call cu_$level_get (vl);
+      344 	     current_ring = get_ring_ ();
+      345 	     call cu_$level_set (current_ring);
+      346 	     return;
+      347 
+      348 	end set_validation_level;
+      349 
+      350 reset_validation_level: proc;
+      351 
+      352 	     call cu_$level_set (vl);
+      353 	     return;
+      354 
+      355 	end reset_validation_level;
+      356 
+      357 
+      358 /* Internal procedure that looks at the mdcs header */
+      359 
+      360 validate_header: proc;
+      361 
+      362 	     if mdcs.version ^= mdcs_version then go to bad_header;
+      363 	     if ^mdcs.init then go to bad_header;
+      364 	     if mdcs.volume ^= volume then go to bad_header;
+      365 	     if mdcs.uid ^= uid then go to bad_header;
+      366 	     arg_code = 0;
+      367 	     return;
+      368 
+      369 bad_header:
+      370 	     arg_code = error_table_$bad_segment;
+      371 	     return;
+      372 
+      373 	end validate_header;
+      374 
+      375      end mdcs_util_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.6  mdcs_util_.pl1                    >spec>install>1111>mdcs_util_.pl1
+93           1    11/20/84  1944.9  mdcs.incl.pl1                     >ldd>include>mdcs.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access                          000137 automatic       bit(36)                  dcl 48 set ref 165* 186
+addr                                                   builtin function         dcl 76 ref 142 142
+admin_gate_$reclassify_sys_seg  000074 constant        entry                    external dcl 63 ref 111
+area                    100            based           area                     level 2 dcl 1-8 set ref 142 142
+area_                           000062 constant        entry                    external dcl 58 ref 142
+area_size                22            based           fixed bin(18,0)          level 3 dcl 1-8 set ref 141* 142*
+arg_access                             parameter       bit(36)                  dcl 35 set ref 155 161* 186* 193 200 204*
+arg_code                               parameter       fixed bin(35,0)          dcl 30 set ref 97 102 106* 107 107 110 111* 112 117*
+                                                                                  121 125* 126 131 132* 133 135* 145* 155 163* 164
+                                                                                  165* 166 169 170* 173 181* 182 187* 193 200 206*
+                                                                                  207 225 230 234* 238 242* 249* 255 263 268 271*
+                                                                                  275 280 281* 282 284* 291 297 301* 302 304 307*
+                                                                                  321* 323* 366* 369*
+arg_dir                                parameter       char                     packed unaligned dcl 37 ref 312 314
+arg_mdcsp                              parameter       pointer                  dcl 32 set ref 155 160* 185* 193 200 203* 215 217
+                                                                                  220* 255 257
+arg_new_uid                            parameter       bit(36)                  dcl 34 ref 291 295
+arg_newvol                             parameter       char                     packed unaligned dcl 36 ref 263 278
+arg_uid                                parameter       bit(36)                  dcl 33 ref 97 100 200 202 225 228 263 266 291 294
+arg_volume                             parameter       char                     packed unaligned dcl 31 ref 97 99 155 158 193 225
+                                                                                  227 263 265 291 293
+clock_                          000066 constant        entry                    external dcl 60 ref 177 177
+code                            000100 automatic       fixed bin(35,0)          dcl 41 set ref 115* 117 147*
+cu_$level_get                   000072 constant        entry                    external dcl 62 ref 343
+cu_$level_set                   000070 constant        entry                    external dcl 61 ref 345 352
+current_ring                    000141 automatic       fixed bin(17,0)          dcl 50 set ref 105 344* 345*
+dir_offset               16            based           bit(18)                  level 3 dcl 1-8 ref 240
+ename                           000105 automatic       char(32)                 packed unaligned dcl 44 set ref 106* 111* 115* 170*
+                                                                                  234* 271* 277 281* 301* 331 333*
+error_table_$bad_arg            000130 external static fixed bin(35,0)          dcl 81 ref 323
+error_table_$bad_segment        000134 external static fixed bin(35,0)          dcl 83 ref 369
+error_table_$mdc_mdirs_registered
+                                000136 external static fixed bin(35,0)          dcl 84 ref 242
+error_table_$namedup            000132 external static fixed bin(35,0)          dcl 82 ref 107 135
+get_ring_                       000064 constant        entry                    external dcl 59 ref 344
+hcs_$append_branchx             000076 constant        entry                    external dcl 64 ref 106
+hcs_$chname_seg                 000110 constant        entry                    external dcl 70 ref 281
+hcs_$delentry_seg               000102 constant        entry                    external dcl 67 ref 249
+hcs_$initiate                   000104 constant        entry                    external dcl 68 ref 115 170 234 271 301
+hcs_$terminate_noname           000100 constant        entry                    external dcl 66 ref 147
+hcs_$truncate_seg               000106 constant        entry                    external dcl 69 ref 125
+head                                   based           structure                level 2 dcl 1-8
+i                               000104 automatic       fixed bin(17,0)          dcl 43 set ref 327* 328 330* 330 331 333
+init                      1            based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 124
+                                                                                  144* 246* 363
+length                                                 builtin function         dcl 76 ref 322 330 331 331
+mdc_check_mdcs_                 000120 constant        entry                    external dcl 74 ref 132 181
+mdcs                                   based           structure                level 1 dcl 1-8
+mdcs_head                              based           structure                level 1 dcl 1-12 ref 141
+mdcs_suffix                     000000 constant        char(5)                  initial packed unaligned dcl 91 ref 331 333
+mdcs_version                           constant        fixed bin(17,0)          initial dcl 1-27 ref 138 362
+mdcsdir                         000010 internal static char(168)                initial packed unaligned dcl 90 set ref 106* 111*
+                                                                                  115* 170* 234* 271* 301* 314*
+mdcsp                           000156 automatic       pointer                  dcl 1-6 set ref 115* 116 124 124 125* 132* 138 139
+                                                                                  140 141 142 142 142 144 147* 170* 171 177 177 177
+                                                                                  181* 185 217* 218 234* 235 240 246 247 249* 257*
+                                                                                  271* 272 281* 283 301* 306 362 363 364 365
+must_check_mdcs                 000153 automatic       bit(1)                   packed unaligned dcl 53 set ref 157* 177 195* 209*
+new_uid                         000152 automatic       bit(36)                  dcl 52 set ref 295* 306
+null                                                   builtin function         dcl 76 ref 116 160 171 203 218 220 235 272
+old_ename                       000142 automatic       char(32)                 packed unaligned dcl 51 set ref 277* 281*
+pub_bit                         000154 automatic       bit(1)                   dcl 54 set ref 165*
+reverse                                                builtin function         dcl 76 ref 327
+rings                           000101 automatic       fixed bin(3,0)           array dcl 42 set ref 105* 106*
+size                                                   builtin function         dcl 76 ref 141
+substr                                                 builtin function         dcl 76 ref 333
+sys_info$access_class_ceiling   000126 external static bit(72)                  dcl 80 set ref 111*
+sys_info$max_seg_size           000122 external static fixed bin(18,0)          dcl 78 ref 141
+sys_info$time_of_bootload       000124 external static fixed bin(71,0)          dcl 79 ref 177
+temp_vol                        000126 automatic       char(32)                 packed unaligned dcl 46 set ref 206* 208
+time_checked              2            based           fixed bin(71,0)          level 3 dcl 1-8 ref 177 177 177
+uid                             000136 automatic       bit(36)                  dcl 47 in procedure "mdcs_util_" set ref 100* 140
+                                                                                  163* 202* 206* 228* 266* 294* 365
+uid                      14            based           bit(36)                  level 3 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdcs_util_" set ref 140* 306* 365
+verify                                                 builtin function         dcl 76 ref 327
+version                                based           fixed bin(17,0)          level 3 dcl 1-8 set ref 124 138* 247* 362
+vl                              000140 automatic       fixed bin(17,0)          dcl 49 set ref 165* 343* 352*
+volume                          000115 automatic       varying char(32)         dcl 45 in procedure "mdcs_util_" set ref 99* 139
+                                                                                  158* 163 165 208* 227* 265* 278* 283 293* 322 327
+                                                                                  330 333 364
+volume                    4            based           char(32)                 level 3 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdcs_util_" set ref 139* 283* 364
+volume_registration_mgr_$find_lvid
+                                000114 constant        entry                    external dcl 72 ref 163
+volume_registration_mgr_$find_lvname
+                                000112 constant        entry                    external dcl 71 ref 206
+volume_registration_mgr_$get_access
+                                000116 constant        entry                    external dcl 73 ref 165
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+acctent                                based           structure                level 1 dcl 1-45
+acctp                                  automatic       pointer                  dcl 1-43
+mdirent                                based           structure                level 1 dcl 1-31
+mdirp                                  automatic       pointer                  dcl 1-29
+pathent                                based           structure                level 1 dcl 1-60
+pathp                                  automatic       pointer                  dcl 1-58
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_header                      001761 constant        label                    dcl 369 ref 362 363 364 365
+bad_name                        001631 constant        label                    dcl 323 ref 328 331
+cr_ok                           000361 constant        label                    dcl 138 ref 121 126
+create_mdcs                     000047 constant        entry                    external dcl 97
+delete_common                   001203 constant        label                    dcl 240 ref 259
+delete_mdcs                     001071 constant        entry                    external dcl 225
+delete_mdcsp                    001233 constant        entry                    external dcl 255
+find_mdcs                       000434 constant        entry                    external dcl 155
+find_mdcs_and_check             000734 constant        entry                    external dcl 193
+find_mdcs_uid                   000764 constant        entry                    external dcl 200
+find_start                      000455 constant        label                    dcl 158 ref 196
+findcom                         000527 constant        label                    dcl 165 ref 210
+make_mdcs_name                  001625 constant        entry                    internal dcl 319 ref 101 168 229 267 279 296
+mdcs_util_                      000035 constant        entry                    external dcl 25
+rename_mdcs                     001257 constant        entry                    external dcl 263
+reset_return                    000425 constant        label                    dcl 149 ref 107 112 118 164 166 169 171 188 207 235
+                                                                                  250 272 302
+reset_validation_level          001726 constant        entry                    internal dcl 350 ref 149
+set_mdcsdir                     001602 constant        entry                    external dcl 312
+set_validation_level            001677 constant        entry                    internal dcl 341 ref 104 162 205 219 232 258 269 299
+term_mdcs                       001044 constant        entry                    external dcl 215
+term_return                     000414 constant        label                    dcl 147 ref 127 131 133 136 173 182 221 238 243 275
+                                                                                  280 282 285 308
+update_lvid                     001460 constant        entry                    external dcl 291
+validate_header                 001737 constant        entry                    internal dcl 360 ref 130 172 237 273 303
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2366        2526    1766        2376
+Length      3000    1766       140         236     377          52
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+mdcs_util_                          200 external procedure  is an external procedure.  
+make_mdcs_name                          internal procedure  shares stack frame of external procedure mdcs_util_.  
+set_validation_level                    internal procedure  shares stack frame of external procedure mdcs_util_.  
+reset_validation_level                  internal procedure  shares stack frame of external procedure mdcs_util_.  
+validate_header                         internal procedure  shares stack frame of external procedure mdcs_util_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 mdcsdir                     mdcs_util_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+mdcs_util_               000100 code                        mdcs_util_
+                         000101 rings                       mdcs_util_
+                         000104 i                           mdcs_util_
+                         000105 ename                       mdcs_util_
+                         000115 volume                      mdcs_util_
+                         000126 temp_vol                    mdcs_util_
+                         000136 uid                         mdcs_util_
+                         000137 access                      mdcs_util_
+                         000140 vl                          mdcs_util_
+                         000141 current_ring                mdcs_util_
+                         000142 old_ename                   mdcs_util_
+                         000152 new_uid                     mdcs_util_
+                         000153 must_check_mdcs             mdcs_util_
+                         000154 pub_bit                     mdcs_util_
+                         000156 mdcsp                       mdcs_util_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               r_g_a               alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac
+shorten_stack       ext_entry           ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$reclassify_sys_seg                              area_                         clock_
+cu_$level_get                 cu_$level_set                 get_ring_                     hcs_$append_branchx
+hcs_$chname_seg               hcs_$delentry_seg             hcs_$initiate                 hcs_$terminate_noname
+hcs_$truncate_seg             mdc_check_mdcs_               volume_registration_mgr_$find_lvid
+volume_registration_mgr_$find_lvname                        volume_registration_mgr_$get_access
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_arg          error_table_$bad_segment      error_table_$mdc_mdirs_registered
+error_table_$namedup          sys_info$access_class_ceiling sys_info$max_seg_size         sys_info$time_of_bootload
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000034        97 000042        99 000067       100 000101       101 000103       102 000104       104 000106
+    105 000107       106 000121       107 000200       110 000205       111 000207       112 000234       115 000236
+    116 000301       117 000305       118 000307       121 000310       124 000312       125 000320       126 000334
+    127 000336       130 000337       131 000340       132 000342       133 000353       135 000355       136 000360
+    138 000361       139 000363       140 000370       141 000372       142 000376       144 000410       145 000413
+    147 000414       149 000425       151 000426       155 000427       157 000454       158 000455       160 000467
+    161 000471       162 000472       163 000473       164 000524       165 000527       166 000570       168 000573
+    169 000574       170 000576       171 000641       172 000645       173 000646       177 000650       181 000711
+    182 000721       185 000723       186 000725       187 000730       188 000731       193 000732       195 000754
+    196 000756       200 000757       202 001000       203 001002       204 001004       205 001006       206 001007
+    207 001030       208 001032       209 001037       210 001040       215 001041       217 001054       218 001057
+    219 001063       220 001064       221 001066       225 001067       227 001111       228 001123       229 001125
+    230 001126       232 001130       234 001131       235 001174       237 001200       238 001201       240 001203
+    242 001206       243 001211       246 001212       247 001214       249 001215       250 001226       255 001227
+    257 001245       258 001250       259 001251       263 001252       265 001304       266 001316       267 001320
+    268 001321       269 001323       271 001324       272 001367       273 001373       275 001374       277 001376
+    278 001401       279 001413       280 001414       281 001416       282 001442       283 001444       284 001451
+    285 001452       291 001453       293 001500       294 001512       295 001514       296 001516       297 001517
+    299 001521       301 001522       302 001565       303 001567       304 001570       306 001572       307 001575
+    308 001576       312 001577       314 001615       315 001624       319 001625       321 001626       322 001627
+    323 001631       324 001634       327 001635       328 001650       330 001651       331 001655       333 001660
+    335 001675       341 001677       343 001700       344 001707       345 001716       346 001725       350 001726
+    352 001727       353 001736       360 001737       362 001740       363 001743       364 001747       365 001754
+    366 001757       367 001760       369 001761       371 001764
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

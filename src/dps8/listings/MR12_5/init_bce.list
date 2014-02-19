@@ -1,0 +1,380 @@
+	COMPILATION LISTING OF SEGMENT init_bce
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1012.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* INIT_BCE.PL1 -- initialize the bootload_command_environment */
+        9 /* BIM 8/82 */
+       10 /* Modified by Keith Loepere in 83 for exec_com, file_out support */
+       11 /* Modified by Keith Loepere in March 85 to set bce cp_data_. */
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       13 
+       14 init_bce:
+       15      procedure;
+       16 
+       17 declare  1 AI			  aligned like area_info;
+       18 declare  fa1_ptr			  pointer;
+       19 
+       20 declare  bce_data$console_alert_put_chars entry variable ext;
+       21 declare  bce_data$console_get_line	  entry variable ext;
+       22 declare  bce_data$console_put_chars	  entry variable ext;
+       23 declare  bce_data$error_put_chars	  entry variable ext;
+       24 declare  bce_data$exec_com_get_line	  entry variable ext;
+       25 declare  bce_data$free_area_ptr	  pointer ext;
+       26 declare  bce_data$get_line		  entry variable ext;
+       27 declare  bce_data$put_chars		  entry variable ext;
+       28 declare  dseg$			  (0:4095) fixed bin (71) ext;
+       29 declare  free_area_1$		  ext static bit (36) aligned;
+       30 
+       31 declare  bce_console_io$get_line	  entry;
+       32 declare  bce_console_io$put_chars	  entry;
+       33 declare  bce_console_io$put_chars_alert	  entry;
+       34 declare  bce_exec_com_input		  entry;
+       35 declare  define_area_		  entry (ptr, fixed bin (35));
+       36 declare  sdw_util_$get_size		  entry (ptr, fixed bin (18));
+       37 
+       38 declare  null			  builtin;
+       39 declare  stackbaseptr		  builtin;
+       40 
+       41 wired: entry;					/* init all references to wired data */
+       42 
+       43 	unspec (AI) = ""b;
+       44 	AI.version = 1;
+       45 	AI.owner = "";
+       46 	fa1_ptr = addr (free_area_1$);
+       47 	call sdw_util_$get_size (addr (dseg$ (bin (baseno (fa1_ptr)))), AI.size);
+       48 	AI.areap = fa1_ptr;
+       49 	AI.zero_on_free = "1"b;
+       50 
+       51 	call define_area_ (addr (AI), (0));
+       52 	bce_data$free_area_ptr, stackbaseptr () -> stack_header.user_free_ptr, stackbaseptr () -> stack_header.system_free_ptr = fa1_ptr;
+       53 
+       54 	bce_data$console_get_line, bce_data$get_line = bce_console_io$get_line;
+       55 	bce_data$console_put_chars, bce_data$put_chars = bce_console_io$put_chars;
+       56 	bce_data$console_alert_put_chars = bce_console_io$put_chars_alert;
+       57 	bce_data$error_put_chars = bce_console_io$put_chars;
+       58 	return;
+       59 
+       60 paged: entry;					/* references to paged data */
+       61 
+       62 	bce_data$exec_com_get_line = bce_exec_com_input;
+       63 
+       64 	cp_data_$scratch_release_factor = 1;		/* temporary segments in BCE are a scarce resource */
+       65 	addr (cp_data_$permanent_scratch_segment_list) -> permanent_scratch_segment_list.n_scratch_segments = 1;
+       66 	return;
+       67  /* BEGIN INCLUDE FILE area_info.incl.pl1  12/75 */
+  1     2 
+  1     3 dcl  area_info_version_1 fixed bin static init (1) options (constant);
+  1     4 
+  1     5 dcl  area_infop ptr;
+  1     6 
+  1     7 dcl 1 area_info aligned based (area_infop),
+  1     8     2 version fixed bin,				/* version number for this structure is 1 */
+  1     9     2 control aligned like area_control,		/* control bits for the area */
+  1    10     2 owner char (32) unal,				/* creator of the area */
+  1    11     2 n_components fixed bin,				/* number of components in the area (returned only) */
+  1    12     2 size fixed bin (18),				/* size of the area in words */
+  1    13     2 version_of_area fixed bin,			/* version of area (returned only) */
+  1    14     2 areap ptr,					/* pointer to the area (first component on multisegment area) */
+  1    15     2 allocated_blocks fixed bin,			/* number of blocks allocated */
+  1    16     2 free_blocks fixed bin,				/* number of free blocks not in virgin */
+  1    17     2 allocated_words fixed bin (30),			/* number of words allocated in the area */
+  1    18     2 free_words fixed bin (30);			/* number of words free in area not in virgin */
+  1    19 
+  1    20 dcl 1 area_control aligned based,
+  1    21     2 extend bit (1) unal,				/* says area is extensible */
+  1    22     2 zero_on_alloc bit (1) unal,			/* says block gets zerod at allocation time */
+  1    23     2 zero_on_free bit (1) unal,			/* says block gets zerod at free time */
+  1    24     2 dont_free bit (1) unal,			/* debugging aid, turns off free requests */
+  1    25     2 no_freeing bit (1) unal,			/* for allocation method without freeing */
+  1    26     2 system bit (1) unal,				/* says area is managed by system */
+  1    27     2 pad bit (30) unal;
+  1    28 
+  1    29 /* END INCLUDE FILE area_info.incl.pl1 */
+       67 
+       68  /* BEGIN INCLUDE FILE ... cp_data_.incl.pl1 */
+  2     2 /* Created:  July 1984 by G. Palter */
+  2     3 
+  2     4 /* Constants defined by the Multics Command Processor */
+  2     5 
+  2     6 dcl  1 cp_data_$standard_language aligned external,	/* standard Multics command language definition */
+  2     7        2 character_types (0:511) fixed binary (9) unaligned unsigned;
+  2     8 
+  2     9 dcl  cp_data_$scratch_release_factor fixed binary external; /* "permanent" scratch segments are released every N uses */
+  2    10 
+  2    11 
+  2    12 /* Static data defined by the Multics Command Processor */
+  2    13 
+  2    14 dcl  cp_data_$under_lss bit (1) aligned external;		/* ON => restrict valid command names */
+  2    15 dcl  cp_data_$command_table_ptr pointer external;		/* -> the command table if in an LSS */
+  2    16 
+  2    17 dcl  cp_data_$scratch_lock_id fixed binary (35) external;	/* last unique ID assigned for scratch segment management */
+  2    18 
+  2    19 	/*** List of scratch segments held "permanently" by the command processor */
+  2    20 dcl  1 permanent_scratch_segment_list aligned based (permanent_scratch_segment_list_ptr),
+  2    21        2 n_scratch_segments fixed binary,		/* # of possible segments */
+  2    22        2 scratch_segments (0 refer (permanent_scratch_segment_list.n_scratch_segments)),
+  2    23          3 segment_ptr pointer,			/* ... -> an actual scratch segment */
+  2    24          3 lock bit (36) aligned,			/* ... unique ID of the CP instance using this segment */
+  2    25          3 usage_count fixed binary;			/* ... total # of times this segment has been used */
+  2    26 
+  2    27 dcl  cp_data_$permanent_scratch_segment_list bit (36) aligned external;
+  2    28 dcl  permanent_scratch_segment_list_ptr pointer;		/* set to addr (cp_data_$permanent_scratch_segment_list) to
+  2    29*						   allow different list sizes in BCE and Multics */
+  2    30 
+  2    31 /* END INCLUDE FILE ... cp_data_.incl.pl1 */
+       68 
+       69  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  3     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  3     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  3     4 /*	Modified April 1983 by C. Hornig for tasking */
+  3     5 
+  3     6 /****^  HISTORY COMMENTS:
+  3     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  3     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  3     9*     added the heap_header_ptr definition.
+  3    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  3    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  3    12*     Modified to support control point management.  These changes were actually
+  3    13*     made in February 1985 by G. Palter.
+  3    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  3    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  3    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  3    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  3    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  3    19*     (ITS pair).
+  3    20*                                                   END HISTORY COMMENTS */
+  3    21 
+  3    22 /* format: style2 */
+  3    23 
+  3    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  3    25 
+  3    26      dcl	   1 stack_header	      based (sb) aligned,
+  3    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  3    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  3    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  3    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  3    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  3    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  3    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  3    34 	     2 pad4	      bit (2) unal,
+  3    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  3    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  3    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  3    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  3    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  3    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  3    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  3    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  3    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  3    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  3    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  3    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  3    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  3    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  3    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  3    50 	     2 return_no_pop_op_ptr
+  3    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  3    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  3    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  3    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  3    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  3    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  3    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  3    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  3    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  3    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  3    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  3    62 	     2 trace,
+  3    63 	       3 frames,
+  3    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  3    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  3    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  3    67 	     2 pad2	      bit (36),		/*  (61) */
+  3    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  3    69 
+  3    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  3    71 
+  3    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  3    73 						/* (551) octal */
+  3    74 
+  3    75 
+  3    76 /*	The following constants are offsets within this transfer vector table.  */
+  3    77 
+  3    78      dcl	   (
+  3    79 	   call_offset	      fixed bin init (271),
+  3    80 	   push_offset	      fixed bin init (272),
+  3    81 	   return_offset	      fixed bin init (273),
+  3    82 	   return_no_pop_offset   fixed bin init (274),
+  3    83 	   entry_offset	      fixed bin init (275)
+  3    84 	   )		      internal static;
+  3    85 
+  3    86 
+  3    87 
+  3    88 
+  3    89 
+  3    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  3    91*	move the whole stack header should use this overlay.
+  3    92**/
+  3    93 
+  3    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  3    95 
+  3    96 
+  3    97 
+  3    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+       69 
+       70      end init_bce;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  init_bce.pl1                      >special_ldd>install>MR12.3-1114>init_bce.pl1
+67           1    06/11/76  1043.4  area_info.incl.pl1                >ldd>include>area_info.incl.pl1
+68           2    09/14/84  0926.8  cp_data_.incl.pl1                 >ldd>include>cp_data_.incl.pl1
+69           3    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+AI                              000100 automatic       structure                level 1 dcl 17 set ref 43* 51 51
+area_control                           based           structure                level 1 dcl 1-20
+area_info                              based           structure                level 1 dcl 1-7
+areap                    16     000100 automatic       pointer                  level 2 dcl 17 set ref 48*
+bce_console_io$get_line         000034 constant        entry                    external dcl 31 ref 54
+bce_console_io$put_chars        000036 constant        entry                    external dcl 32 ref 55 57
+bce_console_io$put_chars_alert  000040 constant        entry                    external dcl 33 ref 56
+bce_data$console_alert_put_chars
+                                000010 external static entry variable           dcl 20 set ref 56*
+bce_data$console_get_line       000012 external static entry variable           dcl 21 set ref 54*
+bce_data$console_put_chars      000014 external static entry variable           dcl 22 set ref 55*
+bce_data$error_put_chars        000016 external static entry variable           dcl 23 set ref 57*
+bce_data$exec_com_get_line      000020 external static entry variable           dcl 24 set ref 62*
+bce_data$free_area_ptr          000022 external static pointer                  dcl 25 set ref 52*
+bce_data$get_line               000024 external static entry variable           dcl 26 set ref 54*
+bce_data$put_chars              000026 external static entry variable           dcl 27 set ref 55*
+bce_exec_com_input              000042 constant        entry                    external dcl 34 ref 62
+control                   1     000100 automatic       structure                level 2 dcl 17
+cp_data_$permanent_scratch_segment_list
+                                000052 external static bit(36)                  dcl 2-27 set ref 65
+cp_data_$scratch_release_factor 000050 external static fixed bin(17,0)          dcl 2-9 set ref 64*
+define_area_                    000044 constant        entry                    external dcl 35 ref 51
+dseg$                           000030 external static fixed bin(71,0)          array dcl 28 set ref 47 47
+fa1_ptr                         000124 automatic       pointer                  dcl 18 set ref 46* 47 47 48 52
+free_area_1$                    000032 external static bit(36)                  dcl 29 set ref 46
+n_scratch_segments                     based           fixed bin(17,0)          level 2 dcl 2-20 set ref 65*
+owner                     2     000100 automatic       char(32)                 level 2 packed packed unaligned dcl 17 set ref 45*
+permanent_scratch_segment_list         based           structure                level 1 dcl 2-20
+sdw_util_$get_size              000046 constant        entry                    external dcl 36 ref 47
+size                     13     000100 automatic       fixed bin(18,0)          level 2 dcl 17 set ref 47*
+stack_header                           based           structure                level 1 dcl 3-26
+stackbaseptr                                           builtin function         dcl 39 ref 52 52
+system_free_ptr          14            based           pointer                  level 2 dcl 3-26 set ref 52*
+user_free_ptr            16            based           pointer                  level 2 dcl 3-26 set ref 52*
+version                         000100 automatic       fixed bin(17,0)          level 2 dcl 17 set ref 44*
+zero_on_free              1(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 17 set ref 49*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+area_info_version_1                    internal static fixed bin(17,0)          initial dcl 1-3
+area_infop                             automatic       pointer                  dcl 1-5
+call_offset                            internal static fixed bin(17,0)          initial dcl 3-78
+cp_data_$command_table_ptr             external static pointer                  dcl 2-15
+cp_data_$scratch_lock_id               external static fixed bin(35,0)          dcl 2-17
+cp_data_$standard_language             external static structure                level 1 dcl 2-6
+cp_data_$under_lss                     external static bit(1)                   dcl 2-14
+entry_offset                           internal static fixed bin(17,0)          initial dcl 3-78
+null                                                   builtin function         dcl 38
+permanent_scratch_segment_list_ptr     automatic       pointer                  dcl 2-28
+push_offset                            internal static fixed bin(17,0)          initial dcl 3-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 3-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 3-78
+sb                                     automatic       pointer                  dcl 3-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 3-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 3-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+init_bce                        000001 constant        entry                    external dcl 14
+paged                           000143 constant        entry                    external dcl 60
+wired                           000010 constant        entry                    external dcl 41
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 46 47 47 51 51 65
+baseno                                                 builtin function         ref 47 47
+bin                                                    builtin function         ref 47 47
+unspec                                                 builtin function         ref 43
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       434         510     164         444
+Length       752     164        54         226     247           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_bce                             95 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_bce                 000100 AI                          init_bce
+                         000124 fa1_ptr                     init_bce
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          mpfx2               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+bce_console_io$get_line       bce_console_io$put_chars      bce_console_io$put_chars_alert
+bce_exec_com_input            define_area_                  sdw_util_$get_size
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$console_alert_put_chars                            bce_data$console_get_line     bce_data$console_put_chars
+bce_data$error_put_chars      bce_data$exec_com_get_line    bce_data$free_area_ptr        bce_data$get_line
+bce_data$put_chars            cp_data_$permanent_scratch_segment_list
+cp_data_$scratch_release_factor                             dseg$                         free_area_1$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000000        41 000006        43 000015        44 000020        45 000022        46 000025        47 000027
+     48 000050        49 000052        51 000054        52 000070        54 000076        55 000114        56 000131
+     57 000135        58 000141        60 000142        62 000150        64 000156        65 000160        66 000161
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

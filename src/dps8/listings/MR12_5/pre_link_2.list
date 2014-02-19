@@ -1,0 +1,945 @@
+ASSEMBLY LISTING OF SEGMENT >dumps>old>recomp>pre_link_2.alm                  
+ASSEMBLED ON:	10/28/82  1225.3 mst Thu
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.4  April 1981    
+ASSEMBLER CREATED:	07/17/81  1819.2 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     6  " * Technology and Honeywell Information Systems, Inc.      *
+                                     7  " *                                                         *
+                                     8  " ***********************************************************
+                                     9  
+                                    10  " PRE_LINK_2 - Multics Pre-Linker.
+                                    11  
+                                    12  "	12/26/67 - Noel I. Morris
+                                    13  
+                                    14  "	Modified 6/15/72 - Craig Jensen
+                                    15  "	to convert the code for the 645 follow-on.
+                                    16  "	Modified 1/31/73 - M. Weaver to recognize type 6 links
+                                    17  "	Modified 6/1/77 - Noel I. Morris
+                                    18  "	to upgrad code for definitions hashing
+                                    19  
+                                    20  
+                                    21  "
+                                    22  
+    000000                          23  	name	pre_link_2
+                                    24  
+                        000043      25  	bool	its,43
+                        000046      26  	bool	f2,46
+                                    27  
+                                    28  	temp	err_sw,temp,tally
+                                    29  	tempd	seg_ptr,link_ptr,link_pair_ptr
+                                    30  	tempd	new_link,arglst(6),name(4)
+                                    31  	tempd	function,pointer,call_ptr
+                                    32  	tempd	seg_name_ptr,ext_name_ptr,external_ptr
+                                    33  
+                                    34  " 
+                                    35  
+                                    36  	include	stack_header
+                                   1-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   1-2  "
+                                   1-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   1-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   1-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   1-6  
+                        000004     1-7  	equ	stack_header.old_lot_ptr,4		obsolete ptr to lot
+                        000006     1-8  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                   1-9  
+                        000010    1-10  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    1-11  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    1-12  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    1-13  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    1-14  	equ	stack_header.cur_lot_size,11		number of words (entries) in lot
+                                  1-15  
+                        000014    1-16  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    1-17  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  1-18  
+                        000020    1-19  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    1-20  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    1-21  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    1-22  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  1-23  
+                        000030    1-24  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    1-25  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    1-26  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    1-27  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  1-28  
+                        000040    1-29  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    1-30  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    1-31  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    1-32  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  1-33  
+                        000050    1-34  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    1-35  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    1-36  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    1-37  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  1-38  
+                        000060    1-39  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    1-40  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    1-41  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    1-42  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                                  1-43  
+                        000100    1-44  	equ	stack_header_end,64			length of stack header
+                                  1-45  
+                                  1-46  
+                                  1-47  
+                                  1-48  
+                                  1-49  "	The  following constant is an offset within the  pl1  operators table.
+                                  1-50  "	It  references a  transfer vector table.
+                                  1-51  
+                        000551    1-52  	bool	tv_offset,551
+                                  1-53  
+                                  1-54  
+                                  1-55  "	The  following constants are offsets within this transfer vector table.
+                                  1-56  
+                        001170    1-57  	equ	call_offset,tv_offset+271
+                        001171    1-58  	equ	push_offset,tv_offset+272
+                        001172    1-59  	equ	return_offset,tv_offset+273
+                        001173    1-60  	equ	return_no_pop_offset,tv_offset+274
+                        001174    1-61  	equ	entry_offset,tv_offset+275
+                                  1-62  
+                                  1-63  
+                                  1-64  " 	END INCLUDE FILE stack_header.incl.alm
+                                    37  " 
+                                    38  	include	stack_frame
+                                   2-1  "
+                                   2-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   2-3  "
+                                   2-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   2-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   2-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   2-7  "
+                        000020     2-8  	equ	stack_frame.prev_sp,16
+                        000020     2-9  	equ	stack_frame.condition_word,16
+                        000022    2-10  	equ	stack_frame.next_sp,18
+                        000022    2-11  	equ	stack_frame.signaller_word,18
+                        000024    2-12  	equ	stack_frame.return_ptr,20
+                        000026    2-13  	equ	stack_frame.entry_ptr,22
+                        000030    2-14  	equ	stack_frame.operator_ptr,24
+                        000030    2-15  	equ	stack_frame.lp_ptr,24
+                        000032    2-16  	equ	stack_frame.arg_ptr,26
+                        000034    2-17  	equ	stack_frame.static_ptr,28
+                        000035    2-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    2-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    2-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    2-21  	equ	stack_frame.translator_id,31
+                        000040    2-22  	equ	stack_frame.regs,32
+                        000060    2-23  	equ	stack_frame.min_length,48
+                        000020    2-24  	equ	stack_frame.flag_word,16
+                        020000    2-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    2-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    2-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    2-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    2-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    2-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    2-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    2-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  2-33  
+                                  2-34  "
+                                  2-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  2-36  "
+                                    39  
+                                    40  " 
+                                    41  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    42  "
+                                    43  " FORCE_LINK:
+                                    44  "	Force a link given a pointer to the linkage pair.
+                                    45  "
+                                    46  "	Initial coding:	7/4/67 - Steve Webber & Noel Morris
+                                    47  "
+                                    48  " Calling Sequence:
+                                    49  "	call force_link (link_pair_ptr, table_manager)
+                                    50  "
+                                    51  " Where:
+                                    52  "	link_pair_ptr	= pointer to linkage pair to be snapped
+                                    53  "	table_manager	= segment and linkage pointer lookup proc
+                                    54  "
+                                    55  " The following restrictions apply (relative to ordinary linking):
+                                    56  "	1) no ITB (type 2) links are set
+                                    57  "	2) .symbol references are ignored (no action is taken)
+                                    58  "	3) No traps before linking are handled.
+                                    59  "	4) No traps before definition are handled.
+                                    60  "
+                                    61  "
+                                    62  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    63  
+                                    64  
+                                    65  	use	transfer_vector
+                                    66  
+                        000002      67  	segdef	force_link
+                                    68  
+    000000  0a   000002 7100 00     69  	tra	force_link
+                                    70  
+                                    71  	use	main
+                                    72  
+                                    73  
+                                    74  " 
+                                    75  " Set up Storage and Examine Link Pair.
+                                    76  
+    000002                          77  force_link:
+    000002  0a   000356 2270 00     78  	ldx7	push		size of stack frame in X7
+    000003  aa  7 00024 3521 20     79  	eppbp	sb|stack_header.stack_end_ptr,* bp -> new stack frame
+    000004  aa  2 00020 6521 00     80  	sprisp	bp|stack_frame.prev_sp save pointer to previous frame
+    000005  aa  2 00000 3721 00     81  	eppsp	bp|0		sp -> new frame
+    000006  aa  6 00000 3521 17     82  	eppbp	sp|0,7		bp -> next frame
+    000007  aa  6 00022 2521 00     83  	spribp	sp|stack_frame.next_sp set pointer to next frame
+    000010  aa  7 00024 2521 00     84  	spribp	sb|stack_header.stack_end_ptr  save it in stack header too
+    000011  0a   000360 2370 00     85  	ldaq	null		make operator pointer null
+    000012  aa  6 00030 7571 00     86  	staq	sp|stack_frame.operator_ptr  for call out
+                                    87  
+    000013  aa  0 00004 3521 20     88  	eppbp	ap|4,*		bp -> function pointer
+    000014  aa  6 00110 2521 00     89  	spribp	function		save pointer to function pointer
+                                    90  
+    000015  aa  6 00062 4501 00     91  	stz	new_link
+                                    92  
+    000016  aa  0 00002 3521 20     93  	eppbp	ap|2,*		set ptr to link pair
+    000017  aa  2 00000 3521 20     94  	eppbp	bp|0,*		bp -> link pair
+    000020  aa  6 00060 2521 00     95  	spribp	link_pair_ptr	save pointer to link pair
+                                    96  
+    000021  aa  2 00001 7221 00     97  	lxl2	bp|1		get "m" in x2
+    000022  aa  6 00063 4421 00     98  	sxl2	new_link+1	save the modifier in new link
+    000023  aa  2 00001 2211 00     99  	ldx1	bp|1		get "exp_ptr" in x1
+    000024  aa  2 00000 2201 00    100  	ldx0	bp|0		get back ptr to linkage header
+                                   101  
+    000025  aa  2 00000 3521 10    102  	eppbp	bp|0,0		bp -> linkage header
+    000026  aa  2 00000 3501 20    103  	eppap	bp|0,*		ap -> definitions
+    000027  aa  0 00000 7221 11    104  	lxl2	ap|0,1		get "exp" in X2
+    000030  aa  6 00063 7421 00    105  	stx2	new_link+1	save it in offset of link
+                                   106  
+    000031  aa  0 00000 2211 11    107  	ldx1	ap|0,1		get "type_ptr" in x1
+                                   108  
+                                   109  " 
+                                   110  " Interpret Linkage Type.
+                                   111  
+    000032  aa  0 00001 7231 11    112  	lxl3	ap|1,1		get "ext_ptr" in x3
+    000033  aa  0 00001 2221 11    113  	ldx2	ap|1,1		get "seg_ptr" in x2
+                                   114  
+    000034  aa  0 00000 2211 11    115  	ldx1	ap|0,1		get "type_number" in x1
+    000035  0a   000352 6000 00    116  	tze	return		if zero (unknown), then return
+    000036  0a   000036 7100 11    117  	tra	*,1		dispatch on type
+    000037  0a   000045 7100 00    118  	tra	type_1a		type 1:	*|exp,m
+    000040  0a   000352 7100 00    119  	tra	return		type 2:	base|[ext]+exp,m	(not implemented)
+    000041  0a   000057 7100 00    120  	tra	type_3a		type 3:	<seg>|exp,m
+    000042  0a   000057 7100 00    121  	tra	type_4a		type 4:	<seg>|[ext]+exp,m
+    000043  0a   000045 7100 00    122  	tra	type_5a		type 5:	*|[ext]+exp,m
+    000044  0a   000052 7100 00    123  	tra	type_6a		type 6:	type 3 or type 4: create if not found
+                                   124  
+    000045                         125  type_1a:
+    000045                         126  type_5a:
+    000045  aa  2 00007 2261 00    127  	ldx6	bp|7		text segment number in X6
+    000046  aa   000000 3310 16    128  	easplp	0,6		lp -> text segment
+    000047  aa  6 00054 6505 00    129  	spbplp	seg_ptr		set pointer to target text segment
+    000050  aa  6 00056 2521 00    130  	spribp	link_ptr		set pointer to target linkage segment
+                                   131  
+    000051  0a   000113 7100 00    132  	tra	rest		now finish up
+                                   133  
+    000052                         134  type_6a:
+    000052  aa   000003 2210 03    135  	ldx1	=3,du		assume this case corresponds to type 3
+    000053  aa  0 00000 2251 13    136  	ldx5	ap|0,3		get beginning of ext_name
+    000054  aa   777000 3050 03    137  	canx5	=o777000,du	examine character count
+    000055  0a   000057 6000 00    138  	tze	type_3a		if null ACC, it is like type 3
+    000056  aa   000004 2210 03    139  	ldx1	=4,du		otherwise, it is like type 4
+                                   140  
+    000057                         141  type_3a:
+    000057                         142  type_4a:
+                                   143  
+                                   144  " 
+                                   145  "	The following code generates pointers to an external segment
+                                   146  "	and its linkage section.  It is entered only for evaluating a type 3
+                                   147  "	or type 4 link.
+                                   148  
+    000057  aa  0 00000 3701 12    149  	epplp	ap|0,2		lp -> segment name (in acc format)
+    000060  aa  6 00116 6501 00    150  	sprilp	seg_name_ptr	save ptr to name for def search
+    000061  aa  4 00000 2361 00    151  	ldq	lp|0		pick up first word (has length)
+    000062  aa   000033 7720 00    152  	qrl	27		right-justify length of name
+    000063  aa  0 40100 1005 40    153  	mlr	(pr,rl),(pr),fill(040)  copy segment name
+    000064  aa   400000 200006     154  	desc9a	lp|0(1),ql
+    000065  aa   600100 000040     155  	desc9a	name,32
+                                   156  
+    000066  aa  6 00100 3701 00    157  	epplp	name		lp -> segment name
+    000067  aa  6 00066 6501 00    158  	sprilp	arglst+2		..
+    000070  aa  6 00054 3701 00    159  	epplp	seg_ptr		lp -> return location for segment number
+    000071  aa  6 00070 6501 00    160  	sprilp	arglst+4		..
+    000072  aa  6 00056 3701 00    161  	epplp	link_ptr		lp -> return location for linkage segment number
+    000073  aa  6 00072 6501 00    162  	sprilp	arglst+6		..
+    000074  aa  6 00050 3701 00    163  	epplp	err_sw		lp -> error return err_sw
+    000075  aa  6 00074 6501 00    164  	sprilp	arglst+8		..
+    000076  aa  6 00110 3701 20    165  	epplp	function,*	lp -> function pointer
+    000077  aa   020000 4310 07    166  	fld	=4b24,dl		4 arguments
+    000100  aa   000004 2750 07    167  	ora	=o4,dl		pl1 type call
+    000101  aa  6 00064 7571 00    168  	staq	arglst		..
+                                   169  
+                                   170  
+                                   171  " CALL sequence.
+                                   172  
+    000102  aa  6 00000 2541 00    173  	spri	sp|0		save prs
+    000103  aa  6 00040 7531 00    174  	sreg	sp|stack_frame.regs and regs
+    000104  aa  6 00064 3501 00    175  	eppap	arglst		ap -> argument list
+    000105  aa  6 00024 3571 00    176  	stcd	sp|stack_frame.return_ptr  save return
+    000106  aa  4 00000 7101 20    177  	tra	lp|0,*		call out to look up segment number
+    000107  aa  6 00000 1731 00    178  	lpri	sp|0		restore the prs
+    000110  aa  6 00040 0731 00    179  	lreg	sp|stack_frame.regs and the regs
+                                   180  
+    000111  aa  6 00050 2341 00    181  	szn	err_sw		test for error
+    000112  0a   000352 6010 00    182  	tnz	return		if error, return
+                                   183  
+                                   184  " 
+                                   185  " Evaluate the Expression Value.
+                                   186  
+    000113                         187  rest:
+    000113  0a   000113 7100 11    188  	tra	*,1		dispatch on type again
+    000114  0a   000121 7100 00    189  	tra	type_1b		..
+    000115  0a   000352 7100 00    190  	tra	return		..
+    000116  0a   000125 7100 00    191  	tra	type_3b		..
+    000117  0a   000126 7100 00    192  	tra	type_4b		..
+    000120  0a   000126 7100 00    193  	tra	type_5b		..
+                                   194  
+    000121                         195  type_1b:
+    000121  0a   000122 7100 12    196  	tra	*+1,2		dispatch on "seg"
+    000122  0a   000345 7100 00    197  	tra	text_		0:	<*text>
+    000123  0a   000340 7100 00    198  	tra	link_		1:	<*link>
+    000124  0a   000352 7100 00    199  	tra	return		2:	<*symbol> (not implemented)
+                                   200  
+    000125                         201  type_3b:
+    000125  0a   000345 7100 00    202  	tra	text_		set link to point to text segment
+                                   203  
+    000126                         204  type_4b:
+    000126                         205  type_5b:
+    000126  aa  0 00000 3501 13    206  	eppap	ap|0,3		save pointer to external name
+    000127  aa  6 00120 2501 00    207  	spriap	ext_name_ptr	save it
+                                   208  
+                                   209  " 
+                                   210  
+                                   211  "	The following code searches in the external segment's
+                                   212  "	definition section for an offset designated by an external symbol.
+                                   213  "	It does this in one or two passes.  For the new object format (new
+                                   214  "	format bit on), a pass is made over the definitions for the
+                                   215  "	designated segment name, and, if it is found, a search is made in its
+                                   216  "	definition block for the designated external symbol.  If either of
+                                   217  "	segment name or the external symbol name is not found, then in a
+                                   218  "	second pass, a search is made of all external symbols in the
+                                   219  "	definition section for the designated external symbol.
+                                   220  "	This external symbol name mustt be unique.
+                                   221  "
+                                   222  "
+                                   223  "	The following register assignments are used:
+                                   224  "
+                                   225  "	ab	points to the extname or segname.
+                                   226  "	lp	points to the current definition we are looking at.
+                                   227  "	bp	points to the definitions header.
+                                   228  "	bb	points to a definitions hash table.
+                                   229  "	lb	is a temporary used for string copies and compares.
+                                   230  "	lp	points to the definition.
+                                   231  "
+                                   232  "	X0	holds count and first char of extname or segname.
+                                   233  "	X1	is loop counter.
+                                   234  "	X2	is used to save def ptr.
+                                   235  "	X3	has the length of the extname or segname.
+                                   236  "	X4	has the offset of the next definition.
+                                   237  "	X5	is definitions thread offset index.
+                                   238  "	X6	is 0 for new format defs, 2 for old.
+                                   239  "	X7	is used for internal calls.
+                                   240  "
+                                   241  
+                                   242  " 
+                                   243  
+    000130  aa  6 00056 3521 20    244  	eppbp	link_ptr,*	bp -> target linkage section
+    000131  aa  2 00000 3521 20    245  	eppbp	bp|0,*		bp -> target definitions
+                                   246  
+    000132  aa   000000 6260 00    247  	eax6	0		turn off old format flag
+    000133  aa  2 00001 7201 00    248  	lxl0	bp|1		old or new format?
+    000134  0a   000223 6050 00    249  	tpl	old_format	TRA if old format
+    000135  aa   200000 3000 03    250  	canx0	=o200000,du	first def an ignore def?
+    000136  0a   000224 6000 00    251  	tze	no_hash		if not, cannot have hash table
+                                   252  
+    000137  aa  2 00001 2201 00    253  	ldx0	bp|1		get addr of symbol hash table
+    000140  0a   000224 6000 00    254  	tze	no_hash		if zero, no hash table
+                                   255  
+                                   256  " Look for symbol in hash table.
+                                   257  
+    000141  aa  2 00000 3535 10    258  	eppbb	bp|0,0		bb -> sym hash table
+                                   259  
+    000142  aa  6 00120 3515 20    260  	eppab	ext_name_ptr,*	ab -> symbol name
+    000143  0a   000320 7070 00    261  	tsx7	acc_setup		get pointer and length
+                                   262  
+    000144  0a   000173 7070 00    263  	tsx7	hash_search	search for symbol
+    000145  0a   000352 7100 00    264  	tra	return		if not found, return error
+                                   265  
+    000146  aa   000000 6220 16    266  	eax2	0,6		was name unique?
+    000147  0a   000325 6000 00    267  	tze	found		if so, found definition
+                                   268  
+                                   269  " Look for segment name in hash table.
+                                   270  
+    000150  aa  3 00000 7201 00    271  	lxl0	bb|0		get size of sym hash table
+    000151  aa  3 00001 3535 10    272  	eppbb	bb|1,0		bb -> segment name hash table
+                                   273  
+    000152  aa  6 00116 3515 20    274  	eppab	seg_name_ptr,*	ab -> segment name
+    000153  0a   000320 7070 00    275  	tsx7	acc_setup		get pointer and length
+                                   276  
+    000154  0a   000173 7070 00    277  	tsx7	hash_search	search for segment name
+    000155  0a   000352 7100 00    278  	tra	return		if not found, ambiguous name
+                                   279  
+                                   280  " Look for definition matching segment name.
+                                   281  
+    000156  aa  3 00001 2351 05    282  	lda	bb|1,al		head segname def pointer in AL
+    000157  aa  2 00000 3535 12    283  	eppbb	bp|0,2		bb -> list of duplicate symbol defs
+    000160  aa  3 00000 2361 00    284  	ldq	bb|0		get count of duplicates in Q
+    000161  aa   000034 7360 00    285  	qls	36-8		shift to position for RPT
+    000162  aa   000100 6200 02    286  	eax0	64,qu		place in X0 with TZE bit
+                                   287  
+    000163  aa   777777 2360 03    288  	ldq	=o777777,du	comparison mask in Q
+    000164  aa   000001 6260 00    289  	eax6	1		initialize index
+    000165  aa   000000 5202 01    290  	rptx	0,1		search list
+    000166  aa  3 00000 2111 16    291  	cmk	bb|0,6		..
+    000167  0a   000352 6064 00    292  	ttn	return		if not found, give return
+                                   293  
+    000170  aa  3 77777 2241 16    294  	ldx4	bb|-1,6		get def pointer in X4
+    000171  aa  2 00000 3701 14    295  	epplp	bp|0,4		lp -> definition
+    000172  0a   000325 7100 00    296  	tra	found		got it
+                                   297  
+                                   298  " 
+                                   299  
+                                   300  "	The following internal subroutine is called to search
+                                   301  "	a symbol definition or segment name definition hash table.
+                                   302  "	It is used as follows:
+                                   303  "
+                                   304  "	eppbb	hash_table_head
+                                   305  "	tsx7	hash_search
+                                   306  "	tra	notfound
+                                   307  "
+                                   308  
+    000173                         309  hash_search:
+    000173  aa  1 00000 2361 00    310  	ldq	ab|0		first word of symbol in Q
+    000174  aa  3 00000 5061 00    311  	div	bb|0		compute hash code in A
+                                   312  
+    000175                         313  hash_loop:
+    000175  aa  3 00001 2241 05    314  	ldx4	bb|1,al		pick up hash table entry
+    000176  aa   000000 6000 17    315  	tze	0,7		if zero, name not found
+                                   316  
+    000177  aa  2 00000 2261 14    317  	ldx6	bp|0,4		look at definition forward pointer
+    000200  0a   000203 6000 00    318  	tze	dup_hash		if zero, we have duplicate names
+    000201  aa   000000 6260 00    319  	eax6	0		if unique name, clear X6
+    000202  0a   000205 7100 00    320  	tra	no_dup_hash	and continue
+    000203                         321  dup_hash:
+    000203  aa   000000 6260 14    322  	eax6	0,4		save offset of duplicate table
+    000204  aa  2 00001 2241 14    323  	ldx4	bp|1,4		use first duplicate name def
+    000205                         324  no_dup_hash:
+    000205  aa  2 00000 3701 14    325  	epplp	bp|0,4		lp -> definition
+                                   326  
+    000206  aa  4 00002 2361 00    327  	ldq	lp|2		get name ptr from definition
+    000207  aa  2 00000 3715 02    328  	epplb	bp|0,qu		lb -> name
+    000210  aa  5 00000 1001 00    329  	cmpx0	lb|0		quicky compare of first word
+    000211  0a   000216 6010 00    330  	tnz	hash_next		if not equal, try another
+    000212  aa  0 00140 1065 40    331  	cmpc	(pr,rl),(pr,rl)	now do full compare
+    000213  aa   100000 000013     332  	desc9a	ab|0,x3
+    000214  aa   500000 000013     333  	desc9a	lb|0,x3
+    000215  aa   000001 6000 17    334  	tze	1,7		if equal, success
+                                   335  
+    000216                         336  hash_next:
+    000216  aa   000001 0750 07    337  	ada	1,dl		bump hash index
+    000217  aa  3 00000 1151 00    338  	cmpa	bb|0		check for end of table
+    000220  0a   000175 6040 00    339  	tmi	hash_loop		if not, continue search
+    000221  aa   000000 2350 07    340  	lda	0,dl		go back to top of table
+    000222  0a   000175 7100 00    341  	tra	hash_loop		..
+                                   342  
+                                   343  " 
+                                   344  
+                                   345  " Look for first class 3 def.
+                                   346  
+    000223                         347  old_format:
+    000223  aa   000002 6260 00    348  	eax6	2		old format, set index
+    000224                         349  no_hash:
+    000224  aa   000000 6240 00    350  	eax4	0		start at beginning of defs
+    000225  aa   000000 6250 00    351  	eax5	0		follow thread at lp|0
+    000226  0a   000266 7070 00    352  	tsx7	searchd		look for first class 3 def
+    000227  0a   000250 7100 00    353  	tra	pass_2		if none, do second pass
+    000230  0a   000231 7100 00    354  	tra	*+1		wrest control from subroutine
+    000231  0a   000270 6010 00    355  	tnz	nextd		if not class 3, keep looking
+                                   356  
+                                   357  " Now look for segment name.
+                                   358  
+    000232  aa  6 00116 3515 20    359  	eppab	seg_name_ptr,*	ab -> segment name
+    000233  0a   000320 7070 00    360  	tsx7	acc_setup		get pointer and length
+                                   361  
+    000234  aa   000001 6250 00    362  	eax5	1		follow thread at lp|1
+    000235  0a   000304 7070 00    363  	tsx7	searchd3		follow thread of class 3 defs
+    000236  0a   000250 7100 00    364  	tra	pass_2		at end of thread, do second pass
+    000237  0a   000250 6010 00    365  	tnz	pass_2		if non class 3 encountered, do second pass
+                                   366  
+                                   367  " Segment name found.  Search for symbol.
+                                   368  
+    000240  aa  6 00120 3515 20    369  	eppab	ext_name_ptr,*	ab -> external symbol
+    000241  0a   000320 7070 00    370  	tsx7	acc_setup		make ab -> external name
+                                   371  
+    000242  aa  4 00002 7241 00    372  	lxl4	lp|2		get pointer to defs for this seg
+    000243  aa   000000 6250 00    373  	eax5	0		follow thread at lp|0
+    000244  0a   000266 7070 00    374  	tsx7	searchd		search them
+    000245  0a   000250 7100 00    375  	tra	pass_2		if not found, do second pass
+    000246  0a   000250 6000 00    376  	tze	pass_2		if another class 3 found, do second pass
+                                   377  
+    000247  0a   000325 7100 00    378  	tra	found		gotcha!
+                                   379  
+                                   380  " Do second pass over definitions.
+                                   381  
+    000250  aa  6 00120 3515 20    382  pass_2:	eppab	ext_name_ptr,*	ab -> external symbol
+    000251  0a   000320 7070 00    383  	tsx7	acc_setup		make ap -> external name
+                                   384  
+    000252  aa   000000 6240 00    385  	eax4	0		start at beginning of defs
+    000253  aa   000000 6250 00    386  	eax5	0		follow thread at lp|0
+    000254  0a   000266 7070 00    387  	tsx7	searchd		and search all of them
+    000255  0a   000352 7100 00    388  	tra	return		to the end of the thread
+    000256  0a   000270 6000 00    389  	tze	nextd		ignore class 3 defs
+                                   390  
+    000257  aa   000000 6220 14    391  	eax2	0,4		save def ptr in X2
+    000260  0a   000270 7070 00    392  	tsx7	nextd		continue search to check for dup
+    000261  0a   000264 7100 00    393  	tra	unique		success, if never found again
+    000262  0a   000270 6000 00    394  	tze	nextd		ignore class 3 defs
+    000263  0a   000352 7100 00    395  	tra	return		if found, we have a name conflict
+                                   396  
+    000264  aa  2 00000 3701 12    397  unique:	epplp	bp|0,2		lp -> unique definition
+    000265  0a   000325 7100 00    398  	tra	found		definition found
+                                   399  
+                                   400  " 
+                                   401  
+                                   402  "	The following internal subroutine is called to follow a definitions
+                                   403  "	thread.  It is used as follows:
+                                   404  "
+                                   405  "	eppab	name		pointer to segname or extname
+                                   406  "	lxl3	length		length of segname or extname
+                                   407  "	eax4	defoffset		offset from base of defs to start search
+                                   408  "	tsx7	searchd
+                                   409  "	tra	endofthread	return here at end of thread
+                                   410  "	...			execute this if class 3 def
+                                   411  "	...			name found, normal return
+                                   412  "
+                                   413  
+    000266  aa   020000 6210 00    414  searchd:	eax1	8192		initialize infinite loop counter
+    000267  0a   000273 7100 00    415  	tra	nextd1		enter loop
+                                   416  
+    000270  aa  4 00000 2241 15    417  nextd:	ldx4	lp|0,5		step to next def
+    000271  aa   777777 6210 11    418  	eax1	-1,1		check for infinite loop
+    000272  0a   000352 6044 00    419  	tmoz	return		..
+                                   420  
+    000273  aa  2 00000 3701 14    421  nextd1:	epplp	bp|0,4		lp -> next def
+    000274  aa  4 00000 2341 00    422  	szn	lp|0		at end of thread?
+    000275  aa   000000 6000 17    423  	tze	0,7		take return if so
+                                   424  
+    000276  aa  4 00001 2351 00    425  	lda	lp|1		look at class
+    000277  aa   200000 3150 07    426  	cana	=o200000,dl	ignore bit on?
+    000300  0a   000270 6010 00    427  	tnz	nextd		if so, try next def
+    000301  aa   000007 3750 07    428  	ana	=o7,dl		mask the class
+    000302  aa   000003 1150 07    429  	cmpa	3,dl		class 3?
+    000303  aa   000001 7160 17    430  	xec	1,7		take appropriate action
+                                   431  
+    000304  0a   000314 7170 16    432  searchd3:	xed	point_to_name,6	make lb point to name
+    000305  aa  5 00000 1001 00    433  	cmpx0	lb|0		quicky compare first
+    000306  0a   000270 6010 00    434  	tnz	nextd		..
+    000307  aa  0 40140 1065 40    435  	cmpc	(pr,rl),(pr,rl),fill(040)  compare names
+    000310  aa   100000 000013     436  	desc9a	ab|0,x3
+    000311  aa   500000 000013     437  	desc9a	lb|0,x3
+    000312  0a   000270 6010 00    438  	tnz	nextd		not found, keep looking
+    000313  aa   000002 7100 17    439  	tra	2,7		name found, return
+                                   440  
+                                   441  
+                                   442  
+                                   443  	even
+    000314                         444  point_to_name:
+    000314  aa  4 00002 2361 00    445  	ldq	lp|2		new format, use pointer
+    000315  aa  2 00000 3715 02    446  	epplb	bp|0,qu
+                                   447  
+    000316  aa  4 00002 3715 00    448  	epplb	lp|2		old format, name follows def
+    000317  aa   000000 0110 03    449  	nop	0,du
+                                   450  
+                                   451  " 
+                                   452  
+    000320                         453  acc_setup:
+    000320  aa  1 00000 2351 00    454  	lda	ab|0		first word in A
+    000321  aa   000000 6200 01    455  	eax0	0,au		count and first char retained in X0
+    000322  aa   000033 7710 00    456  	arl	27		extract character count
+    000323  aa   000001 6230 05    457  	eax3	1,al		in X3
+    000324  aa   000000 7100 17    458  	tra	0,7		return to caller
+                                   459  
+                                   460  " 
+                                   461  
+    000325  aa  4 00001 2261 00    462  found:	ldx6	lp|1		"value" in X6
+    000326  aa  6 00063 0261 00    463  	adlx6	new_link+1	add to offset of link
+    000327  aa  6 00063 7461 00    464  	stx6	new_link+1	and store in new link
+                                   465  
+    000330  aa  4 00001 7271 00    466  	lxl7	lp|1		"class" in X7
+    000331  aa   200007 3670 03    467  	anx7	=o200007,du	mask class and bit for -1 class
+    000332  aa   000003 1070 03    468  	cmpx7	3,du		check for less than class 3
+    000333  0a   000335 6040 17    469  	tmi	class_table,7	dispatch on class
+    000334  0a   000352 7100 00    470  	tra	return		class >=3 or -1 then error
+                                   471  
+    000335                         472  class_table:
+    000335  0a   000345 7100 00    473  	tra	text_		class = 0	definition points to text
+    000336  0a   000340 7100 00    474  	tra	link_		class = 1	definition points to linkage
+    000337  0a   000352 7100 00    475  	tra	return		class = 2	definition points to symbol (not implemented)
+                                   476  
+                                   477  
+                                   478  
+                                   479  " Make the Link and Return.
+                                   480  
+    000340  aa  6 00057 2221 00    481  link_:	ldx2	link_ptr+1	add offset of linkage pointer
+    000341  aa  6 00063 0221 00    482  	adlx2	new_link+1	.. to offset of new link
+    000342  aa  6 00063 7421 00    483  	stx2	new_link+1	..
+    000343  aa  6 00056 2211 00    484  	ldx1	link_ptr		linkage segment number in X1
+    000344  0a   000346 7100 00    485  	tra	*+2		and finish up
+                                   486  
+    000345  aa  6 00054 2211 00    487  text_:	ldx1	seg_ptr		text segment number in X1
+    000346  aa  6 00062 7411 00    488  	stx1	new_link		store segment number in new link
+                                   489  
+                                   490  
+    000347  aa  6 00062 2371 00    491  	ldaq	new_link		pick up the new link
+    000350  aa   000043 2750 07    492  	ora	its,dl		add its modifier
+    000351  aa  6 00060 7571 20    493  	staq	link_pair_ptr,*	store in linkage section
+                                   494  
+                                   495  
+                                   496  " RETURN Sequence.
+                                   497  
+    000352                         498  return:
+    000352  aa  7 00024 6521 00    499  	sprisp	sb|stack_header.stack_end_ptr  pop end pointer back down
+    000353  aa  6 00020 3721 20    500  	eppsp	sp|stack_frame.prev_sp,*  sp -> previous stack frame
+    000354  aa  6 00030 3501 20    501  	eppap	sp|stack_frame.operator_ptr,* restore ptr to operators
+    000355  aa  6 00024 6101 00    502  	rtcd	sp|stack_frame.return_ptr  return to caller
+                                   503  
+                                   504  
+                                   505  " 
+                                   506  
+                                   507  
+    000356  aa   000140 6270 00    508  push:	push	"Used to get size of stack frame.
+    000357  aa  7 00040 2721 20
+                                   509  
+                                   510  
+                                   511  	even
+    000360  aa   077777 000043     512  null:	its	-1,1
+    000361  aa   000001 000000 
+                                   513  
+                                   514  
+                                   515  
+                                   516  	end	pre_link_2
+
+NO LITERALS
+
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000362  5a   000003 000000 
+    000363  5a   000026 600000 
+    000364  aa   000000 000000 
+    000365  55   000011 000002 
+    000366  5a   000002 400003 
+    000367  55   000006 000011 
+    000370  aa  012 160 162 145
+    000371  aa  137 154 151 156
+    000372  aa  153 137 062 000
+    000373  55   000017 000003 
+    000374  0a   000002 400000 
+    000375  55   000014 000003 
+    000376  aa  012 146 157 162         force_link
+    000377  aa  143 145 137 154
+    000400  aa  151 156 153 000
+    000401  55   000002 000011 
+    000402  6a   000000 400002 
+    000403  55   000022 000003 
+    000404  aa  014 163 171 155         symbol_table
+    000405  aa  142 157 154 137
+    000406  aa  164 141 142 154
+    000407  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000410  aa   000000 000015 
+    000411  aa   000000 000000 
+    000412  aa   000000 000000 
+    000413  aa   000000 000000 
+    000414  aa   000000 000000 
+    000415  aa   000000 000000 
+    000416  aa   000000 000000 
+    000417  5a   000017 000000 
+    000420  aa   000000 000000 
+    000421  aa   000000 000000 
+    000422  aa   000000 000000 
+    000423  5a   000011 000000 
+    000424  aa   000000 000000 
+    000425  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000426  aa   000001 000000 
+    000427  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+
+    000000  aa   000000 000000 
+    000001  0a   000362 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+
+SYMBOL TABLE HEADER
+
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 110172 
+    000005  aa   711315 365225 
+    000006  aa   000000 111306 
+    000007  aa   774721 264756 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000177 
+    000020  aa   000000 000134 
+    000021  aa   000000 000164 
+    000022  aa   000167 000134 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056064 
+    000030  aa   040040 101160 
+    000031  aa   162151 154040 
+    000032  aa   061071 070061 
+    000033  aa   040040 040040 
+    000034  aa   110157 154155 
+    000035  aa   163164 145144 
+    000036  aa   164056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056155 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000040 
+    000067  aa   113022 165145 
+    000070  aa   000000 111305 
+    000071  aa   541317 000000 
+    000072  aa   000112 000042 
+    000073  aa   052721 247135 
+    000074  aa   000000 105272 
+    000075  aa   317220 200000 
+    000076  aa   000123 000041 
+    000077  aa   052721 247134 
+    000100  aa   000000 105272 
+    000101  aa   317215 400000 
+    000102  aa   076144 165155          >dumps>old>recomp>pre_link_2.alm
+    000103  aa   160163 076157 
+    000104  aa   154144 076162 
+    000105  aa   145143 157155 
+    000106  aa   160076 160162 
+    000107  aa   145137 154151 
+    000110  aa   156153 137062 
+    000111  aa   056141 154155 
+    000112  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000113  aa   076151 156143 
+    000114  aa   154165 144145 
+    000115  aa   076163 164141 
+    000116  aa   143153 137150 
+    000117  aa   145141 144145 
+    000120  aa   162056 151156 
+    000121  aa   143154 056141 
+    000122  aa   154155 040040 
+    000123  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000124  aa   076151 156143 
+    000125  aa   154165 144145 
+    000126  aa   076163 164141 
+    000127  aa   143153 137146 
+    000130  aa   162141 155145 
+    000131  aa   056151 156143 
+    000132  aa   154056 141154 
+    000133  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         320    acc_setup                pre_link_2:   261,  275,  360,  370,  383,  453.
+          64    arglst                   pre_link_2:    30,  158,  160,  162,  164,  168,  175.
+        1170    call_offset              stack_header:        57.
+         114    call_ptr                 pre_link_2:    31.
+         335    class_table              pre_link_2:   469,  472.
+         203    dup_hash                 pre_link_2:   318,  321.
+        1174    entry_offset             stack_header:        61.
+          50    err_sw                   pre_link_2:    28,  163,  181.
+         122    external_ptr             pre_link_2:    32.
+         120    ext_name_ptr             pre_link_2:    32,  207,  260,  369,  382.
+          46    f2                       pre_link_2:    26.
+           2    force_link               pre_link_2:    67,   69,   77.
+         325    found                    pre_link_2:   267,  296,  378,  398,  462.
+         110    function                 pre_link_2:    31,   89,  165.
+         175    hash_loop                pre_link_2:   313,  339,  341.
+         216    hash_next                pre_link_2:   330,  336.
+         173    hash_search              pre_link_2:   263,  277,  309.
+          43    its                      pre_link_2:    25,  492.
+         340    link_                    pre_link_2:   198,  474,  481.
+          60    link_pair_ptr            pre_link_2:    29,   95,  493.
+          56    link_ptr                 pre_link_2:    29,  130,  161,  244,  481,  484.
+           2    main                     pre_link_2:    71.
+         100    name                     pre_link_2:    30,  155,  157.
+          62    new_link                 pre_link_2:    30,   91,   98,  105,  463,  464,  482,  483,  488,  491.
+         270    nextd                    pre_link_2:   355,  389,  392,  394,  417,  427,  434,  438.
+         273    nextd1                   pre_link_2:   415,  421.
+         205    no_dup_hash              pre_link_2:   320,  324.
+         224    no_hash                  pre_link_2:   251,  254,  349.
+         360    null                     pre_link_2:    85,  512.
+         223    old_format               pre_link_2:   249,  347.
+         250    pass_2                   pre_link_2:   353,  364,  365,  375,  376,  382.
+         112    pointer                  pre_link_2:    31.
+         314    point_to_name            pre_link_2:   432,  444.
+         356    push                     pre_link_2:    78,  508.
+        1171    push_offset              stack_header:        58.
+         113    rest                     pre_link_2:   132,  187.
+         352    return                   pre_link_2:   116,  119,  182,  190,  199,  264,  278,  292,  388,  395,  419,  470,
+                                                       475,  498.
+        1173    return_no_pop_offset     stack_header:        60.
+        1172    return_offset            stack_header:        59.
+         266    searchd                  pre_link_2:   352,  374,  387,  414.
+         304    searchd3                 pre_link_2:   363,  432.
+         116    seg_name_ptr             pre_link_2:    32,  150,  274,  359.
+          54    seg_ptr                  pre_link_2:    29,  129,  159,  487.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      pre_link_2:    83,
+                                         stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       pre_link_2:    86,  501,
+                                               stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      pre_link_2:    80,  500,
+                                         stack_frame:    8.
+          40    stack_frame.regs         pre_link_2:   174,  179,
+                                         stack_frame:   22.
+          24    stack_frame.return_ptr   pre_link_2:   176,  502,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        42.
+          32    stack_header.bar_mode_sp       stack_header:        25.
+          36    stack_header.call_op_ptr       stack_header:        27.
+          10    stack_header.clr_ptr     stack_header:        10.
+           6    stack_header.combined_stat_ptr       stack_header:         8.
+          13    stack_header.cur_lot_size      stack_header:        14.
+          64    stack_header.ect_ptr     stack_header:        41.
+          46    stack_header.entry_op_ptr      stack_header:        32.
+          52    stack_header.isot_ptr    stack_header:        35.
+          26    stack_header.lot_ptr     stack_header:        22.
+          12    stack_header.main_proc_invoked       stack_header:        12.
+          12    stack_header.max_lot_size      stack_header:        11.
+           4    stack_header.old_lot_ptr       stack_header:         7.
+          20    stack_header.parent_ptr  stack_header:        19.
+          34    stack_header.pl1_operators_ptr       stack_header:        26.
+          40    stack_header.push_op_ptr       stack_header:        29.
+          42    stack_header.return_op_ptr     stack_header:        30.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        31.
+          62    stack_header.rnt_ptr     stack_header:        40.
+          12    stack_header.run_unit_depth    stack_header:        13.
+          54    stack_header.sct_ptr     stack_header:        36.
+          30    stack_header.signal_ptr  stack_header:        24.
+          22    stack_header.stack_begin_ptr   stack_header:        20.
+          24    stack_header.stack_end_ptr     pre_link_2:    79,   84,  499,
+                                               stack_header:        21.
+          14    stack_header.system_free_ptr   stack_header:        16.
+          60    stack_header.sys_link_info_ptr       stack_header:        39.
+          50    stack_header.trans_op_tv_ptr   stack_header:        34.
+          56    stack_header.unwinder_ptr      stack_header:        37.
+          16    stack_header.user_free_ptr     stack_header:        17.
+         100    stack_header_end         stack_header:        44.
+          52    tally                    pre_link_2:    28.
+          51    temp                     pre_link_2:    28.
+         345    text_                    pre_link_2:   197,  202,  473,  487.
+           0    transfer_vector          pre_link_2:    65.
+         551    tv_offset                stack_header:        52,   57,   58,   59,   60,   61.
+          45    type_1a                  pre_link_2:   118,  125.
+         121    type_1b                  pre_link_2:   189,  195.
+          57    type_3a                  pre_link_2:   120,  138,  141.
+         125    type_3b                  pre_link_2:   191,  201.
+          57    type_4a                  pre_link_2:   121,  142.
+         126    type_4b                  pre_link_2:   192,  204.
+          45    type_5a                  pre_link_2:   122,  126.
+         126    type_5b                  pre_link_2:   193,  205.
+          52    type_6a                  pre_link_2:   123,  134.
+         264    unique                   pre_link_2:   393,  397.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

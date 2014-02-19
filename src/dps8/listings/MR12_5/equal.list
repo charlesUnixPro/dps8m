@@ -1,0 +1,468 @@
+	COMPILATION LISTING OF SEGMENT equal
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1013.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 equal: proc;
+       14 
+       15 /* Comparison and boolean active functions.
+       16*
+       17*   The following functions compare arbitrary strings by collating sequence:
+       18*
+       19*	equal A B		"true" if A = B, "false" otherwise.
+       20*	less A B		"true" if A < B, "false" otherwise.
+       21*	greater A B	"true" if A > B, "false" otherwise.
+       22*
+       23*   The following compare numbers; an error is reported if both arguments are
+       24*   not character string representations of valid PL/I real constants.
+       25*   Comparisons are done using float dec (59) arithmetic.
+       26*
+       27*	nequal A B	"true" if A = B, "false" otherwise.
+       28*	nless A B		"true" if A < B, "false" otherwise.
+       29*	ngreater A B	"true" if A > B, "false" otherwise.
+       30*
+       31*   The following perform logical operations on arguments having the
+       32*   values true and false:
+       33*
+       34*	not A		"true" if A = "false", "false" if A = "true".
+       35*	and A1 A2 ... An	"true" if all Ai are "true", "false" otherwise.
+       36*	or A1 A2 ... An	"true" if any Ai is "true", "false" otherwise.
+       37*
+       38*   All of these active functions print their result when called as commands.
+       39*
+       40* Initial version 3/4/74 by Barry L. Wolman */
+       41 /* Time comparison functions added 11/28/78 by Jim Homan */
+       42 /* Rewritten 01/18/80 by S. Herbst */
+       43 /* Bug fixed in time comparisons 04/14/80 S. Herbst */
+       44 /* Changed and, or to accept 0 args or 1 arg 09/16/82 S. Herbst */
+       45 /* Added -date to date_time comparison commands 10/26/82 S. Herbst */
+       46 /* Fixed dteq and friends to not reject negative times 11/23/82 S. Herbst */
+       47 /* Added the date_time_valid function 11/23/82 J. A. Bush */
+       48 /* removed a portion, creating date_time_equal.pl1 02/07/84 J A Falksen */
+       49 
+       50 	dcl     arg1		 char (arg_len (1)) based (arg_ptr (1));
+       51 	dcl     arg2		 char (arg_len (2)) based (arg_ptr (2));
+       52 
+       53 	dcl     return_arg		 char (return_len) varying based (return_ptr);
+       54 
+       55 	dcl     (bad_arg, usage)	 char (168);
+       56 	dcl     myname		 char (32);
+       57 
+       58 	dcl     arg_ptr		 (2) ptr;
+       59 	dcl     return_ptr		 ptr;
+       60 
+       61 	dcl     (af_sw, bool_value)	 bit (1);
+       62 
+       63 	dcl     (number1, number2)	 float dec (59);
+       64 
+       65 	dcl     arg_len		 (2) fixed bin;
+       66 	dcl     (arg_count, i, return_len) fixed bin;
+       67 	dcl     code		 fixed bin (35);
+       68 
+       69 	dcl     error_table_$not_act_fnc fixed bin (35) ext;
+       70 
+       71 	dcl     get_arg		 entry (fixed bin, ptr, fixed bin, fixed bin (35))automatic;
+       72 	dcl     complain		 entry variable options (variable);
+       73 
+       74 	dcl     (active_fnc_err_, active_fnc_err_$suppress_name) entry options (variable);
+       75 	dcl     (com_err_, com_err_$suppress_name) entry options (variable);
+       76 	dcl     cu_$af_return_arg	 entry (fixed bin, ptr, fixed bin, fixed bin (35));
+       77 	dcl     cu_$arg_ptr		 entry (fixed bin, ptr, fixed bin, fixed bin (35));
+       78 	dcl     cu_$af_arg_ptr	 entry (fixed bin, ptr, fixed bin, fixed bin (35));
+       79 	dcl     ioa_		 entry options (variable);
+       80 
+       81 	dcl     convert		 builtin;
+       82 
+       83 	dcl     conversion		 condition;
+       84 						/**/
+       85 	myname = "equal";
+       86 	usage = "string1 string2";
+       87 
+       88 	call get_args;
+       89 
+       90 	if arg1 = arg2 then go to TRUE;
+       91 	else go to FALSE;
+       92 
+       93 
+       94 TRUE:	if af_sw then return_arg = "true";
+       95 	else call ioa_ ("true");
+       96 	return;
+       97 
+       98 FALSE:	if af_sw then return_arg = "false";
+       99 	else call ioa_ ("false");
+      100 	return;
+      101 
+      102 USAGE:	if af_sw then call active_fnc_err_$suppress_name (0, myname, "Usage:  ^a ^a", myname, usage);
+      103 	else call com_err_$suppress_name (0, myname, "Usage:  ^a ^a", myname, usage);
+      104 
+      105 RETURN:	return;
+      106 
+      107 
+      108 less: entry;
+      109 
+      110 	myname = "less";
+      111 	usage = "string1 string2";
+      112 
+      113 	call get_args;
+      114 
+      115 	if arg1 < arg2 then go to TRUE;
+      116 	else go to FALSE;
+      117 
+      118 
+      119 greater: entry;
+      120 
+      121 	myname = "greater";
+      122 	usage = "string1 string2";
+      123 
+      124 	call get_args;
+      125 
+      126 	if arg1 > arg2 then go to TRUE;
+      127 	else go to FALSE;
+      128 
+      129 
+      130 nequal: entry;
+      131 
+      132 	myname = "nequal";
+      133 	usage = "num1 num2";
+      134 
+      135 	call get_args;
+      136 	call convert_numbers;
+      137 
+      138 	if number1 = number2 then go to TRUE;
+      139 	else go to FALSE;
+      140 
+      141 
+      142 nless: entry;
+      143 
+      144 	myname = "nless";
+      145 	usage = "num1 num2";
+      146 
+      147 	call get_args;
+      148 	call convert_numbers;
+      149 
+      150 	if number1 < number2 then go to TRUE;
+      151 	else go to FALSE;
+      152 
+      153 
+      154 ngreater: entry;
+      155 
+      156 	myname = "ngreater";
+      157 	usage = "num1 num2";
+      158 
+      159 	call get_args;
+      160 	call convert_numbers;
+      161 
+      162 	if number1 > number2 then go to TRUE;
+      163 	else go to FALSE;
+      164 
+      165 and: entry;
+      166 
+      167 	myname = "and";
+      168 	usage = "true_false_args";
+      169 
+      170 	call get_count;
+      171 	if arg_count = 0 then bool_value = "1"b;	/* and-identity */
+      172 	else bool_value = get_boolean (1);
+      173 	do i = 2 to arg_count;
+      174 	     bool_value = bool_value & get_boolean (i);
+      175 	end;
+      176 
+      177 	if bool_value then go to TRUE;
+      178 	else go to FALSE;
+      179 
+      180 
+      181 or:  entry;
+      182 
+      183 	myname = "or";
+      184 	usage = "true_false_args";
+      185 
+      186 	call get_count;
+      187 	if arg_count = 0 then bool_value = "0"b;	/* or-identity */
+      188 	else bool_value = get_boolean (1);
+      189 	do i = 2 to arg_count;
+      190 	     bool_value = bool_value | get_boolean (i);
+      191 	end;
+      192 
+      193 	if bool_value then go to TRUE;
+      194 	else go to FALSE;
+      195 
+      196 
+      197 not: entry;
+      198 
+      199 	myname = "not";
+      200 	usage = "true_or_false";
+      201 
+      202 	call get_count;
+      203 	if arg_count ^= 1 then go to USAGE;
+      204 	if get_boolean (1) then go to FALSE;
+      205 	else go to TRUE;
+      206 						/**/
+      207 get_count: proc;
+      208 
+      209 /* This internal procedure tests for af invocation and gets argument count. */
+      210 
+      211 	call cu_$af_return_arg (arg_count, return_ptr, return_len, code);
+      212 
+      213 	if code = error_table_$not_act_fnc then do;
+      214 		af_sw = "0"b;
+      215 		complain = com_err_;
+      216 		get_arg = cu_$arg_ptr;
+      217 	     end;
+      218 	else do;
+      219 		af_sw = "1"b;
+      220 		complain = active_fnc_err_;
+      221 		get_arg = cu_$af_arg_ptr;
+      222 	     end;
+      223 
+      224      end get_count;
+      225 
+      226 
+      227 
+      228 get_args: proc;
+      229 
+      230 /* This internal procedure gets two arguments. */
+      231 
+      232 	dcl     j			 fixed bin;
+      233 
+      234 	call get_count;
+      235 
+      236 	j = 0;
+      237 
+      238 	if arg_count ^= 2 then go to USAGE;
+      239 	call get_arg (1, arg_ptr (1), arg_len (1), code);
+      240 	call get_arg (2, arg_ptr (2), arg_len (2), code);
+      241 
+      242      end get_args;
+      243 
+      244 
+      245 
+      246 get_boolean: proc (arg_index) returns (bit (1) aligned);
+      247 
+      248 /* This internal procedure gets a single true or false argument. */
+      249 
+      250 	dcl  arg_index		 fixed bin;
+      251 
+      252 	call get_arg (arg_index, arg_ptr (1), arg_len (1), code);
+      253 
+      254 	if arg1 = "true" then return ("1"b);
+      255 	else if arg1 = "false" then return ("0"b);
+      256 	else do;
+      257 		call complain (0, myname, "Must be true or false, not ""^a""", arg1);
+      258 		go to RETURN;
+      259 	     end;
+      260 
+      261      end get_boolean;
+      262 						/**/
+      263 convert_numbers: proc;
+      264 
+      265 /* This internal procedure converts both arguments to real numbers. */
+      266 
+      267 	on conversion begin;
+      268 		bad_arg = arg1;
+      269 		go to BAD;
+      270 	     end;
+      271 	number1 = convert (number1, arg1);
+      272 	revert conversion;
+      273 
+      274 	on conversion begin;
+      275 		bad_arg = arg2;
+      276 		go to BAD;
+      277 	     end;
+      278 	number2 = convert (number2, arg2);
+      279 	revert conversion;
+      280 
+      281 	return;
+      282 
+      283 BAD:	call complain (0, myname, "Invalid number ^a", bad_arg);
+      284 	go to RETURN;
+      285 
+      286      end convert_numbers;
+      287 
+      288 
+      289 
+      290      end equal;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.7  equal.pl1                         >spec>install>1111>equal.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+active_fnc_err_                 000012 constant        entry                    external dcl 74 ref 220
+active_fnc_err_$suppress_name   000014 constant        entry                    external dcl 74 ref 102
+af_sw                           000242 automatic       bit(1)                   packed unaligned dcl 61 set ref 94 98 102 214* 219*
+arg1                                   based           char                     packed unaligned dcl 50 set ref 90 115 126 254 255
+                                                                                  257* 268 271
+arg2                                   based           char                     packed unaligned dcl 51 ref 90 115 126 275 278
+arg_count                       000306 automatic       fixed bin(17,0)          dcl 66 set ref 171 173 187 189 203 211* 238
+arg_index                              parameter       fixed bin(17,0)          dcl 250 set ref 246 252*
+arg_len                         000304 automatic       fixed bin(17,0)          array dcl 65 set ref 90 90 115 115 126 126 239* 240*
+                                                                                  252* 254 255 257 257 268 271 275 278
+arg_ptr                         000234 automatic       pointer                  array dcl 58 set ref 90 90 115 115 126 126 239* 240*
+                                                                                  252* 254 255 257 268 271 275 278
+bad_arg                         000100 automatic       char(168)                packed unaligned dcl 55 set ref 268* 275* 283*
+bool_value                      000243 automatic       bit(1)                   packed unaligned dcl 61 set ref 171* 172* 174* 174
+                                                                                  177 187* 188* 190* 190 193
+code                            000311 automatic       fixed bin(35,0)          dcl 67 set ref 211* 213 239* 240* 252*
+com_err_                        000016 constant        entry                    external dcl 75 ref 215
+com_err_$suppress_name          000020 constant        entry                    external dcl 75 ref 103
+complain                        000316 automatic       entry variable           dcl 72 set ref 215* 220* 257 283
+conversion                      000000 stack reference condition                dcl 83 ref 267 272 274 279
+convert                                                builtin function         dcl 81 ref 271 278
+cu_$af_arg_ptr                  000026 constant        entry                    external dcl 78 ref 221
+cu_$af_return_arg               000022 constant        entry                    external dcl 76 ref 211
+cu_$arg_ptr                     000024 constant        entry                    external dcl 77 ref 216
+error_table_$not_act_fnc        000010 external static fixed bin(35,0)          dcl 69 ref 213
+get_arg                         000312 automatic       entry variable           dcl 71 set ref 216* 221* 239 240 252
+i                               000307 automatic       fixed bin(17,0)          dcl 66 set ref 173* 174* 189* 190*
+ioa_                            000030 constant        entry                    external dcl 79 ref 95 99
+j                               000340 automatic       fixed bin(17,0)          dcl 232 set ref 236*
+myname                          000224 automatic       char(32)                 packed unaligned dcl 56 set ref 85* 102* 102* 103*
+                                                                                  103* 110* 121* 132* 144* 156* 167* 183* 199* 257*
+                                                                                  283*
+number1                         000244 automatic       float dec(59)            dcl 63 set ref 138 150 162 271* 271
+number2                         000264 automatic       float dec(59)            dcl 63 set ref 138 150 162 278* 278
+return_arg                             based           varying char             dcl 53 set ref 94* 98*
+return_len                      000310 automatic       fixed bin(17,0)          dcl 66 set ref 94 98 211*
+return_ptr                      000240 automatic       pointer                  dcl 59 set ref 94 98 211*
+usage                           000152 automatic       char(168)                packed unaligned dcl 55 set ref 86* 102* 103* 111*
+                                                                                  122* 133* 145* 157* 168* 184* 200*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BAD                             001157 constant        label                    dcl 283 ref 269 276
+FALSE                           000163 constant        label                    dcl 98 ref 91 116 127 139 151 163 178 194 204
+RETURN                          000310 constant        label                    dcl 105 ref 258 284
+TRUE                            000133 constant        label                    dcl 94 ref 90 115 126 138 150 162 177 193 205
+USAGE                           000213 constant        label                    dcl 102 ref 203 238
+and                             000471 constant        entry                    external dcl 165
+convert_numbers                 001051 constant        entry                    internal dcl 263 ref 136 148 160
+equal                           000106 constant        entry                    external dcl 13
+get_args                        000712 constant        entry                    internal dcl 228 ref 88 113 124 135 147 159
+get_boolean                     000755 constant        entry                    internal dcl 246 ref 172 174 188 190 204
+get_count                       000645 constant        entry                    internal dcl 207 ref 170 186 202 234
+greater                         000340 constant        entry                    external dcl 119
+less                            000312 constant        entry                    external dcl 108
+nequal                          000367 constant        entry                    external dcl 130
+ngreater                        000443 constant        entry                    external dcl 154
+nless                           000415 constant        entry                    external dcl 142
+not                             000616 constant        entry                    external dcl 197
+or                              000544 constant        entry                    external dcl 181
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1460        1512    1251        1470
+Length      1704    1251        32         155     207           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+equal                               322 external procedure  is an external procedure.  
+get_count                               internal procedure  shares stack frame of external procedure equal.  
+get_args                                internal procedure  shares stack frame of external procedure equal.  
+get_boolean                             internal procedure  shares stack frame of external procedure equal.  
+convert_numbers                     250 internal procedure  enables or reverts conditions.  
+on unit on line 267                  64 on unit               
+on unit on line 274                  64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+equal                    000100 bad_arg                     equal
+                         000152 usage                       equal
+                         000224 myname                      equal
+                         000234 arg_ptr                     equal
+                         000240 return_ptr                  equal
+                         000242 af_sw                       equal
+                         000243 bool_value                  equal
+                         000244 number1                     equal
+                         000264 number2                     equal
+                         000304 arg_len                     equal
+                         000306 arg_count                   equal
+                         000307 i                           equal
+                         000310 return_len                  equal
+                         000311 code                        equal
+                         000312 get_arg                     equal
+                         000316 complain                    equal
+                         000340 j                           get_args
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var_desc   call_ent_var        call_ext_out_desc   call_ext_out        call_int_this       return_mac
+tra_ext_1           enable_op           ext_entry           int_entry           any_to_any_round_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+active_fnc_err_               active_fnc_err_$suppress_name com_err_                      com_err_$suppress_name
+cu_$af_arg_ptr                cu_$af_return_arg             cu_$arg_ptr                   ioa_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$not_act_fnc
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000105        85 000113        86 000116        88 000121        90 000122        91 000132        94 000133
+     95 000147        96 000162        98 000163        99 000177       100 000212       102 000213       103 000253
+    105 000310       108 000311       110 000317       111 000322       113 000325       115 000326       116 000336
+    119 000337       121 000345       122 000350       124 000353       126 000354       127 000365       130 000366
+    132 000374       133 000377       135 000402       136 000403       138 000407       139 000413       142 000414
+    144 000422       145 000425       147 000430       148 000431       150 000435       151 000441       154 000442
+    156 000450       157 000453       159 000456       160 000457       162 000463       163 000467       165 000470
+    167 000476       168 000501       170 000504       171 000505       172 000512       173 000521       174 000531
+    175 000536       177 000540       178 000542       181 000543       183 000551       184 000554       186 000557
+    187 000560       188 000564       189 000573       190 000603       191 000610       193 000612       194 000614
+    197 000615       199 000623       200 000626       202 000631       203 000632       204 000635       205 000644
+    207 000645       211 000646       213 000663       214 000667       215 000670       216 000674       217 000677
+    219 000700       220 000702       221 000706       224 000711       228 000712       234 000713       236 000714
+    238 000715       239 000720       240 000736       242 000754       246 000755       252 000757       254 000773
+    255 001005       257 001014       258 001047       263 001050       267 001056       268 001072       269 001101
+    271 001104       272 001115       274 001116       275 001132       276 001141       278 001144       279 001155
+    281 001156       283 001157       284 001213
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

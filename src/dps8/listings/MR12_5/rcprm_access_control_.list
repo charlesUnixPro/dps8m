@@ -1,0 +1,2141 @@
+	COMPILATION LISTING OF SEGMENT rcprm_access_control_
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 07/02/84  1340.1 mst Mon
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 rcprm_access_control_: proc; return;
+       12 
+       13 /* This module makes all access control decisions for the RCP Resource Management Subsystem. */
+       14 
+       15 /* Written 06/29/78 by C. D. Tavares */
+       16 
+       17 /* automatic */
+       18 
+       19 dcl  acs_pathname char (168),
+       20      acs_ptr pointer,
+       21      assignment_auth bit (72) aligned,
+       22      assigned bit (1) aligned,
+       23      assigned_by_another bit (1) aligned,
+       24      bin_mode fixed bin (5),
+       25      bl fixed bin (21),
+       26      bp pointer,
+       27      owner_name char (32) varying,
+       28      temp_range (2) bit (72) aligned,
+       29      user_auth bit (72) aligned,
+       30      user_name char (32) varying;
+       31 
+       32 /* static */
+       33 
+       34 dcl  my_name char (32) varying initial ("") static;
+       35 
+       36 /* constants */
+       37 
+       38 dcl  info_ptr pointer initial (null) static options (constant);
+       39 
+       40 /* external static */
+       41 
+       42 dcl (error_table_$ai_invalid_range,
+       43      error_table_$ai_out_range,
+       44      error_table_$ai_restricted,
+       45      error_table_$moderr,
+       46      error_table_$no_dir,
+       47      error_table_$noentry,
+       48      error_table_$resource_bad_access) fixed bin (35) ext static;
+       49 
+       50 /* builtins */
+       51 
+       52 dcl (addr, substr, null, rtrim, bit, binary, string, length, unspec) builtin;
+       53 
+       54 dcl  cleanup condition;
+       55 
+       56 /* based */
+       57 
+       58 dcl  based_bits bit (bl * 9) aligned based (bp),
+       59      based_charstring char (bl) aligned based (bp);
+       60 
+       61 /* entries */
+       62 
+       63 dcl (aim_check_$greater_or_equal,
+       64      read_allowed_,
+       65      write_allowed_) ext entry (bit (72) aligned, bit (72) aligned) returns (bit (1) aligned),
+       66      convert_authorization_$from_string ext entry (bit (72) aligned, char (*), fixed bin (35)),
+       67     (cu_$level_get, cu_$level_set) ext entry (fixed bin),
+       68      get_group_id_ ext entry returns (char (32) aligned),
+       69      hcs_$get_authorization ext entry (bit (72) aligned, bit (72) aligned),
+       70      hcs_$get_user_effmode ext entry (char (*), char (*), char (*), fixed bin, fixed bin (5), fixed bin (35)),
+       71      hcs_$initiate ext entry (char (*), char (*), char (*), fixed bin, fixed bin, pointer, fixed bin (35)),
+       72      hcs_$terminate_noname ext entry (pointer, fixed bin (35)),
+       73      rcp_resource_info_$current_access_class ext entry
+       74     (char (*), char (*), bit (1) aligned, bit (1) aligned, bit (72) aligned, fixed bin (35));
+       75 
+       76 /* include files */
+       77 
+       78 
+  1     1 /* --------------- BEGIN include file rcp_registry.incl.pl1 --------------- */
+  1     2 
+  1     3 /* Written 05/04/78 by C. D. Tavares */
+  1     4 
+  1     5 dcl 1 registry_record aligned based (record_ptr),
+  1     6     2 dynamic_info aligned,
+  1     7       3 attributes (2) bit (72) aligned,
+  1     8       3 (location_desc,
+  1     9          comment_desc,
+  1    10          pad (2)) fixed bin (35) aligned,
+  1    11     2 acquisition_info aligned,
+  1    12       3 (owner_desc,
+  1    13          acs_path_desc,
+  1    14          aim_range_desc) fixed bin (35) aligned,
+  1    15       3 flags unaligned,
+  1    16         4 (usage_lock,
+  1    17 	 release_lock,
+  1    18 	 awaiting_clear,
+  1    19 	 user_alloc,
+  1    20 	 system,
+  1    21 	 free) bit (1) unaligned,
+  1    22         4 pad bit (12) unaligned,
+  1    23       3 reserver_chain bit (18) unaligned,
+  1    24       3 pad (2) fixed bin (35) aligned,
+  1    25     2 registration_info aligned,
+  1    26       3 uid bit (36) aligned,
+  1    27       3 (potential_attributes_desc,
+  1    28          potential_aim_range_desc,
+  1    29          charge_type_desc,
+  1    30          pad (2)) fixed bin (35) aligned,
+  1    31       3 name unaligned,
+  1    32         4 n fixed bin (8) unaligned,
+  1    33         4 string char (rr_strl refer (registry_record.name.n)) unaligned;
+  1    34 
+  1    35 dcl 1 registry_header aligned based (header_ptr),
+  1    36     2 rtde_size fixed bin (18),
+  1    37     2 rtde_copy (RTDE_SIZE refer (registry_header.rtde_size)) bit (36) aligned,
+  1    38     2 other aligned,
+  1    39       3 last_transaction_time fixed bin (71),
+  1    40       3 pad (18) bit (36) aligned;
+  1    41 
+  1    42 dcl RTDE_SIZE fixed bin (18);
+  1    43 
+  2     1 /* --------------- BEGIN include file rtdt.incl.pl1 --------------- */
+  2     2 
+  2     3 dcl 1 rtdt aligned based (rtdtp),			/* resource type description table */
+  3     1 /* BEGIN INCLUDE FILE author.incl.pl1 */
+  3     2 
+  3     3 /* the "author" items must always be the first ones in the table. The
+  3     4*   module which moves the converted table to the System Control process
+  3     5*   fills in these data items and assumes them to be at the head of the segment
+  3     6*   regardless of the specific table's actual declaration. The variables
+  3     7*   "lock" and "last_install_time" used to be "process_id" and "ev_channel"
+  3     8*    respectively. For tables installed in multiple processes, these
+  3     9*    are to be used to lock out multiple installations. */
+  3    10 
+  3    11 /*  Lock should be used as a modification lock. Since, in general,
+  3    12*    entries may not be moved in system tables, even by installations,
+  3    13*    it is sufficient for only installers and programs that change threads
+  3    14*    to set or respect the lock. Simply updating data in an entry
+  3    15*    requires no such protection.
+  3    16*
+  3    17*    Last_install_time is used by readers of system tables to detect
+  3    18*    installations or other serious modifications. By checking it before
+  3    19*    and after copying a block of data, they can be protected against
+  3    20*    modifications.
+  3    21*
+  3    22*    Modules that set the lock should save proc_group_id, and then
+  3    23*    put their group id there for the time they hold the lock.
+  3    24*    if they do not actually install the, they should restore the group id.
+  3    25**/
+  3    26 
+  3    27     2 author aligned,				/* validation data about table's author */
+  3    28       3 proc_group_id char (32),			/* process-group-id  (personid.projectid.tag) */
+  3    29       3 lock bit (36),				/* installation lock */
+  3    30       3 update_attributes bit (1) unal,			/* update/add/delete attributes */
+  3    31       3 update_authorization bit (1) unal,		/* update only authorizations */
+  3    32       3 deferral_notified bit (1) unal,			/* installer notified of deferral of installation */
+  3    33       3 pad bit (33) unaligned,
+  3    34       3 last_install_time fixed bin (71),
+  3    35       3 table char (4),				/* name of table, e.g., SAT MGT TTT RTDT PDT etc. */
+  3    36       3 w_dir char (64),				/* author's working directory */
+  3    37 
+  3    38 /* END INCLUDE FILE author.incl.pl1 */
+  2     4 
+  2     5     2 version fixed bin,				/* version number */
+  2     6     2 installed_under_resource_mgt bit (1) aligned,	/* resource mgt. was ON when this was installed */
+  2     7     2 charge_type_table_ptr offset,			/* points to charge_type_table */
+  2     8     2 first_resource offset,				/* chain for RTDE's */
+  2     9     2 rtdt_area area (RTDT_area_len);			/* all following items allocated here */
+  2    10 
+  2    11 dcl 1 charge_type_table aligned based (cttp),		/* describes charges for resource types */
+  2    12     2 n_charge_types fixed bin,			/* number of distinct charge types */
+  2    13     2 charge_types (N_CHARGE_TYPES refer (charge_type_table.n_charge_types)) aligned char (32),
+  2    14     2 flagword fixed bin (35) aligned;			/* this word simply help us set bitcount properly */
+  2    15 
+  2    16 dcl 1 rtde aligned based (rtdep),			/* describes one resource type */
+  2    17     2 fixed_info aligned,
+  2    18       3 next_resource offset,				/* chains to next type, or nullo */
+  2    19       3 name char (32),				/* name of resource type, e.g. "tape_drive" */
+  2    20       3 syn_to char (32),				/* if is_synonym this is master syn */
+  2    21       3 precanon_proc char (64),			/* name of routine to standardize resource name */
+  2    22       3 pad_1 (16) fixed bin (35),
+  2    23       3 flags unaligned,
+  2    24         4 (valid,					/* resource type hasn't been deleted */
+  2    25      is_volume,					/* specifies volume or device type */
+  2    26      manual_clear,					/* volumes of this type to be "degaussed" between owners */
+  2    27      addition_pending,				/* bookkeeping bit for upd_rtdt_ */
+  2    28      deletion_pending,
+  2    29      is_synonym) bit (1) unaligned,			/* ditto */
+  2    30         4 pad bit (12) unaligned,
+  2    31       3 (process_limit,				/* how many can you assign at one time */
+  2    32      default_time,					/* implicit reservations are for how many minutes */
+  2    33      max_time,					/* how long can you reserve it for */
+  2    34      advance_notice_time,				/* warn operator to prepare mount ahead of time */
+  2    35      pad2,
+  2    36      n_exclusion_specs,				/* number of distinct "name=" fields in attributes */
+  2    37      n_mates,					/* number of mating devs/vols for this vol/dev */
+  2    38      n_subtypes,					/* number of registration subtypes */
+  2    39      n_defined_attributes) fixed bin (17) unaligned,	/* number of defined attributes */
+  2    40       3 pad_2 (8) fixed bin (35),
+  2    41       3 attributes_valid bit (72) aligned,		/* "1"b if corresp. attribute undeleted */
+  2    42       3 attributes_to_match bit (72) aligned,		/* potential mate must possess these attributes */
+  2    43       3 attribute_names (72) char (12) aligned,		/* all possible attributes for this resource */
+  2    44       3 exclusion_specs (36) bit (72) aligned,		/* each masks all attrributes of the form "key=val" */
+  2    45       3 pad_3 (32) fixed bin (35),
+  2    46       3 registration_defaults aligned,			/* applied at reg. time if none given */
+  2    47         4 default_flags aligned,
+  2    48 	5 (potential_attributes_given,		/* "1"b = there are default potential_attributes */
+  2    49      attributes_given,				/* and similarly, etc. */
+  2    50      aim_range_given,
+  2    51      charge_type_given) bit (1) unaligned,
+  2    52 	5 pad bit (31) unaligned,
+  2    53         4 potential_attributes bit (72) aligned,		/* for registration, if given */
+  2    54         4 attributes bit (72) aligned,			/* for registration and also for runtime "I-don't-care" */
+  2    55         4 aim_range (2) bit (72) aligned,		/* and similarly, etc. */
+  2    56         4 charge_type fixed bin,
+  2    57         4 pad_4 (8) fixed bin (35) aligned,
+  2    58     2 mates (N_MATES refer (rtde.n_mates)) char (32) aligned,
+  2    59 						/* the volume type that mounts on this device, or vice versa */
+  2    60     2 subtypes (N_SUBTYPES refer (rtde.n_subtypes)) aligned, /* named registration default groups */
+  2    61       3 subtype_name char (32),			/* name of the group */
+  2    62       3 subtype_defaults like rtde.registration_defaults aligned;
+  2    63 
+  2    64 dcl  RTDT_version_3 fixed bin static options (constant) initial (3),
+  2    65      RTDT_version_2 fixed bin static options (constant) initial (2),
+  2    66 						/* same format, but without precanon_proc */
+  2    67     (N_MATES, N_SUBTYPES, N_CHARGE_TYPES) fixed bin,
+  2    68      RTDT_area_len fixed bin (18);
+  2    69 
+  2    70 dcl (rtdep, rtdtp, cttp) pointer;
+  2    71 
+  2    72 /* ---------------- END include file rtdt.incl.pl1 ---------------- */
+  1    44 
+  1    45 
+  1    46 dcl (record_ptr, header_ptr) pointer,
+  1    47      rr_strl fixed bin;
+  1    48 
+  1    49 /* ---------------- END include file rcp_registry.incl.pl1 ---------------- */
+       79 
+       80 
+  4     1 /* BEGIN INCLUDE FILE aim_template.incl.pl1 */
+  4     2 
+  4     3 /* Created 740723 by PG */
+  4     4 /* Modified 06/28/78 by C. D. Tavares to add rcp privilege */
+  4     5 /* Modified 83-05-10 by E. N. Kitltitz to add communications privilege */
+  4     6 
+  4     7 /* This structure defines the components of both an access
+  4     8*   class and an access authorization as interpreted by the
+  4     9*   Access Isolation Mechanism. */
+  4    10 
+  4    11 
+  4    12 dcl  1 aim_template aligned based,			/* authorization/access class template */
+  4    13        2 categories bit (36),				/* access categories */
+  4    14        2 level fixed bin (17) unaligned,		/* sensitivity level */
+  4    15        2 privileges unaligned,			/* special access privileges (in authorization only) */
+  4    16         (3 ipc,					/* interprocess communication privilege */
+  4    17          3 dir,					/* directory privilege */
+  4    18          3 seg,					/* segment privilege */
+  4    19          3 soos,					/* security out-of-service privilege */
+  4    20          3 ring1,					/* ring 1 access privilege */
+  4    21          3 rcp,					/* RCP resource access privilege */
+  4    22          3 comm) bit (1),				/* communications cross-AIM privilege */
+  4    23          3 pad bit (11);
+  4    24 
+  4    25 
+  4    26 /* END INCLUDE FILE aim_template.incl.pl1 */
+       81 
+       82 
+  5     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  5     2 
+  5     3 /* Written 05/04/78 by C. D. Tavares */
+  5     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  5     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  5     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  5     7 
+  5     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  5     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  5    10      iox_$close entry (pointer, fixed bin (35)),
+  5    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  5    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  5    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  5    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  5    15      iox_$err_not_attached entry options (variable),
+  5    16      iox_$err_not_closed entry options (variable),
+  5    17      iox_$err_no_operation entry options (variable),
+  5    18      iox_$err_not_open entry options (variable),
+  5    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  5    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  5    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  5    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  5    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  5    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  5    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  5    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  5    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  5    28      iox_$propagate entry (pointer),
+  5    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  5    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  5    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  5    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  5    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  5    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  5    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  5    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  5    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  5    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  5    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  5    40 
+  5    41 dcl (iox_$user_output,
+  5    42      iox_$user_input,
+  5    43      iox_$user_io,
+  5    44      iox_$error_output) external static pointer;
+  5    45 
+  5    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+       83 
+       84 
+  6     1 /* include file for info structure used with record_status control order
+  6     2*   created by M. Asherman 1/6/76 */
+  6     3 /* modified 6/15/77 to support stationary type records */
+  6     4 
+  6     5      dcl	   rs_info_ptr	      ptr;
+  6     6      dcl	   1 rs_info	      based (rs_info_ptr) aligned,
+  6     7 	     2 version	      fixed,		/* must be set to 1 or 2 (Input) */
+  6     8 	     2 flags	      aligned,
+  6     9 	       3 lock_sw	      bit (1) unal,		/* Input -- if ="1"b  try to lock record */
+  6    10 	       3 unlock_sw	      bit (1) unal,		/* Input -- if ="1"b try to unlock record */
+  6    11 	       3 create_sw	      bit (1) unal,		/* Input--if set creat new record */
+  6    12 	       3 locate_sw	      bit (1) unal,		/* Input--if set causes current rec to be
+  6    13*						   located outside the index by descrip, or created without key */
+  6    14 	       3 inc_ref_count    bit (1) unal,		/* Input--bump reference count of record, if stationary */
+  6    15 	       3 dec_ref_count    bit (1) unal,		/* Input--decrement ref count if this flag set and record stationary */
+  6    16 	       3 locate_pos_sw    bit (1) unal,		/* Input--if set the record_length is taken
+  6    17*						   as an input argument specifying the absolute logical record positioni	  to which both the current and next positions will be set */
+  6    18 	       3 mbz1	      bit (29) unal,	/* must be set to "0"b, reserved for future use */
+  6    19 	     2 record_length      fixed (21),		/* length in bytes, Input if create_sw set */
+  6    20 	     2 max_rec_len	      fixed (21),		/* max length of contained record
+  6    21*						   Input if create_sw is set--overrides min_block_size in effect */
+  6    22 	     2 record_ptr	      ptr,		/* points to first byte of record--will be word aligned */
+  6    23 	     2 descriptor	      fixed (35),		/* Input if locate_sw set and create_sw="0"b */
+  6    24 	     2 ref_count	      fixed (34),		/* Output--should match number of keys on this record-- = -1 if non-stationary record */
+  6    25 	     2 time_last_modified fixed (71),		/* Output */
+  6    26 	     2 modifier	      fixed (35),		/* Output--also Input when locking */
+  6    27 	     2 block_ptr	      ptr unal,		/* Output */
+  6    28 	     2 last_image_modifier
+  6    29 			      fixed (35),
+  6    30 	     2 mbz2	      fixed;
+  6    31 
+  6    32      dcl	   1 rs_desc	      based (addr (rs_info.descriptor)),
+  6    33 						/* record block descriptor structure */
+  6    34 	     2 comp_num	      fixed (17) unal,	/* msf component number */
+  6    35 	     2 offset	      bit (18) unal;	/* word offset of record block */
+  6    36 
+  6    37      dcl	   1 seq_desc	      based (addr (rs_info.descriptor)),
+  6    38 						/* for sequential files */
+  6    39 	     2 bitno	      bit (6) unal,
+  6    40 	     2 comp_num	      fixed (11) unal,	/* msf component number */
+  6    41 	     2 wordno	      bit (18) unal;	/* word offset */
+  6    42 
+  6    43      dcl	   rs_info_version_1      static internal fixed init (1);
+  6    44      dcl	   rs_info_version_2      static internal fixed init (2);
+  6    45 
+       85 
+       86 
+       87 compute_access: entry (sw_ptr, record_ptr, resource_type, ringno, priv, rew, current_rew, code);
+       88 
+       89 dcl  sw_ptr pointer parameter,
+       90      resource_type char (*) parameter,
+       91      ringno fixed bin parameter,
+       92      priv bit (1) aligned,
+       93     (rew, current_rew) bit (3) unaligned,
+       94      code fixed bin (35) parameter;
+       95 
+       96 dcl  as_if_owner bit (1) aligned,
+       97      proxy_call bit (1) aligned;
+       98 
+       99 	as_if_owner = ""b;
+      100 	proxy_call = ""b;
+      101 	goto compute_access_common;
+      102 	
+      103 compute_access_as_if_owner: entry (sw_ptr, record_ptr, resource_type, ringno, priv, rew, current_rew, code);
+      104 
+      105 	as_if_owner = "1"b;
+      106 	proxy_call = ""b;
+      107 	goto compute_access_common;
+      108 	
+      109 compute_access_for_proxy:
+      110 	entry (sw_ptr, record_ptr, resource_type, ringno, priv, proxy_group_id, proxy_auth, rew, current_rew, code);
+      111 
+      112 dcl  proxy_group_id char (*) parameter,
+      113      proxy_auth bit (72) aligned parameter;
+      114 
+      115 	as_if_owner = ""b;
+      116 	proxy_call = "1"b;
+      117 	goto compute_access_common;
+      118 	
+      119 compute_access_common:
+      120 	code = 0;
+      121 	rew, current_rew = ""b;			/* for now, will set later */
+      122 
+      123 	if my_name = "" then do;
+      124 	     my_name = get_group_id_ ();
+      125 	     my_name = rtrim (my_name, " ");
+      126 	end;
+      127 
+      128 	if proxy_call then do;
+      129 	     user_name = rtrim (proxy_group_id, " ");
+      130 	     user_auth = proxy_auth;
+      131 	end;
+      132 
+      133 	else do;
+      134 	     user_name = my_name;
+      135 	     call hcs_$get_authorization (user_auth, ""b);
+      136 	end;
+      137 	
+      138 
+      139 /* Find out who owns this resource.  This may prove valuable later on. */
+      140 
+      141 	call chase (registry_record.owner_desc, bp, bl);
+      142 	owner_name = based_charstring;
+      143 
+      144 /* See if this resource is currently assigned by anyone.  This can make a difference in a later step. */
+      145 
+      146 	call rcp_resource_info_$current_access_class (resource_type, registry_record.name.string,
+      147 	     assigned, assigned_by_another, assignment_auth, code);
+      148 	if code ^= 0 then return;			/* aarggh. */
+      149 	
+      150 
+      151 /* Compute access.  Start with ACL and ring brackets on ACS segment. */
+      152 
+      153 	if priv then rew = "111"b;			/* make as if I have "rew" on ACS */
+      154 
+      155 	else do;					/* First, locate the ACS for this resource */
+      156 
+      157 	     rew = ""b;
+      158 
+      159 	     if registry_record.acs_path_desc ^= 0 then do; /* get its pathname */
+      160 		call chase (registry_record.acs_path_desc, bp, bl);
+      161 		acs_pathname = based_charstring;
+      162 
+      163 		call hcs_$get_user_effmode (acs_pathname, "", (user_name), ringno, bin_mode, code);
+      164 						/* fs_get_mode would factor in AIM anyway */
+      165 
+      166 		if code ^= 0 then do;
+      167 		     if code = error_table_$noentry then acs_pathname = "";
+      168 						/* drop thru code and check whether user is acct. owner */
+      169 		     else if code = error_table_$no_dir then acs_pathname = "";
+      170 						/* ditto */
+      171 		     else do;			/* moderr, perhaps others */
+      172 			code = error_table_$resource_bad_access;
+      173 			return;
+      174 		     end;
+      175 		end;
+      176 
+      177 		else rew = substr (bit (binary (bin_mode, 5), 5), 2, 3);
+      178 						/* code = 0, get mode */
+      179 	     end;
+      180 
+      181 	     else acs_pathname = "";
+      182 
+      183 
+      184 	     if acs_pathname = "" then do;		/* none specified, or none found */
+      185 		if registry_record.flags.system then rew = "101"b;
+      186 		else if registry_record.flags.free then
+      187 		     if as_if_owner then rew = "101"b;	/* looking to acquire it, wants to know max possible access */
+      188 		     else rew = "000"b;		/* you can't do anything with a free resource except acquire it */
+      189 		else if substr (user_name, 1, length (user_name) - 2) = owner_name then
+      190 		     rew = "111"b;			/* he's the owner */
+      191 	     end;
+      192 	end;
+      193 
+      194 	current_rew = rew;
+      195 	
+      196 
+      197 /* Now we have the raw mode.  Does AIM have anything to add? */
+      198 
+      199 	if rew = "000"b then return;			/* forget it, can't get any worse! */
+      200 
+      201 	if addr (user_auth) -> aim_template.privileges.rcp = "0"b then do;
+      202 
+      203 /* OK, this guy is susceptible to AIM-- see what AIM has to say about this. */
+      204 
+      205 /* First, treat any privileged characters as if they were system high.  This
+      206*   ensures that any volume they mount to write will be a system_high volume
+      207*   because these fellows have unchecked access to system_high information. */
+      208 
+      209 	     if string (addr (user_auth) -> aim_template.privileges) ^= ""b then do;
+      210 		call convert_authorization_$from_string (user_auth, "system_high", code);
+      211 		if code ^= 0 then return;
+      212 	     end;
+      213 
+      214 	     if registry_record.free then call chase (registry_record.potential_aim_range_desc, bp, bl);
+      215 	     else call chase (registry_record.aim_range_desc, bp, bl);
+      216 	     addr (temp_range) -> based_bits = based_bits;
+      217 
+      218 /* If the low end of the AIM range is higher than us, the resource is of a higher access class than we can touch. */
+      219 
+      220 	     if ^ read_allowed_ (user_auth, temp_range (1)) then rew = "000"b;
+      221 
+      222 /* If the high end of the AIM range is lower or disjoint from us then we can read it but we can't write into it. */
+      223 
+      224 	     if ^write_allowed_ (user_auth, temp_range (2)) then rew = rew & "100"b;
+      225 
+      226 
+      227 /* Now to prevent write-down, we restrict the resource further depending
+      228*   on whether or not it is being used and by whom.  Since these are somewhat
+      229*   artificial and time-dependent restrictions, we will NOT reflect them in
+      230*   the "rew" field.  (This would confuse a user who only wanted, for example,
+      231*   to ask what his access was to a resource; and found it kept changing as
+      232*   it was assigned and unassigned!)  Instead we modify the "current_rew"
+      233*   field, which will be used for the internal purposes of rcprm_find_resource_
+      234*   and will not be reflected back to the user. */
+      235 
+      236 	     current_rew = rew;
+      237 
+      238 /* First, if someone has it assigned he could pass information from his
+      239*   authorization level down to someone lower (but still within the range of
+      240*   the resource) by putting it in the comment field or similar.  So we take
+      241*   away read (and therefore all) access to the resource from anyone lower
+      242*   than the current attachment authorization level. */
+      243 
+      244 	     if assigned then
+      245 		if assigned_by_another then
+      246 		     if ^ read_allowed_ (user_auth, assignment_auth) then
+      247 			current_rew = "000"b;
+      248 
+      249 /* Now if it is not assigned and I am not the owner, I should not be able to
+      250*   write things into its registry fields either, because someone below me
+      251*   (but within the bracket) could pick them up.  Of course, at the low bound
+      252*   of the bracket I can, since there can be no one under me to read it. */
+      253 
+      254 	     if ^assigned then
+      255 		if substr (user_name, 1, length (user_name) - 2) ^= owner_name then
+      256 		     if ^ write_allowed_ (user_auth, temp_range (1)) then
+      257 			current_rew = current_rew & "100"b;
+      258 	end;
+      259 	
+      260 
+      261 /* There is one more temporary restriction that is not AIM-related:
+      262*   If someone else has the resource assigned, we will take away your
+      263*   access to change registry items out from under him while he's working. */
+      264 
+      265 
+      266 	if assigned then
+      267 	     if assigned_by_another then
+      268 		current_rew = current_rew & "100"b;
+      269 
+      270 return_hard:
+      271 	return;
+      272 	
+      273 chase:	proc (descriptor, bp, bl);
+      274 
+      275 dcl (descriptor fixed bin (35),
+      276      bp pointer,
+      277      bl fixed bin (21)) parameter;
+      278 
+      279 dcl 1 rs like rs_info aligned automatic;
+      280 
+      281 	     if descriptor = 0 then do;
+      282 		bp = addr (bp);			/* gotta point somewhere */
+      283 		bl = 0;
+      284 		return;
+      285 	     end;
+      286 
+      287 	     unspec (rs) = ""b;
+      288 	     rs.version = rs_info_version_2;
+      289 	     rs.locate_sw = "1"b;
+      290 	     rs.descriptor = descriptor;
+      291 
+      292 	     call iox_$control (sw_ptr, "record_status", addr (rs), code);
+      293 	     if code ^= 0 then goto return_hard;
+      294 
+      295 	     bl = rs.record_length;
+      296 	     bp = rs.record_ptr;
+      297 
+      298 	     return;
+      299 	end chase;
+      300 
+      301 permissible_aim: entry (max_range, aim_range, code);
+      302 
+      303 /* This entry takes a pair of AIM access classes and determines
+      304*   whether the user should be allowed_ to place these
+      305*   AIM range on some RCP resource. */
+      306 
+      307 dcl (aim_range, max_range) (2) bit (72) aligned parameter;
+      308 
+      309 dcl  rcp_priv bit (1) aligned;
+      310 
+      311 	call hcs_$get_authorization (user_auth, ""b);
+      312 
+      313 	rcp_priv = addr (user_auth) -> aim_template.privileges.rcp;
+      314 
+      315 /* First treat any privileged characters as system_high, as explained above */
+      316 
+      317 	if ^rcp_priv then
+      318 	     if string (addr (user_auth) -> aim_template.privileges) ^= ""b then do;
+      319 		call convert_authorization_$from_string (user_auth, "system_high", code);
+      320 		if code ^= 0 then return;
+      321 	     end;
+      322 
+      323 /* First and simplest check-- the high bounds must be >= the low bounds. */
+      324 
+      325 	if ^ aim_check_$greater_or_equal (max_range (2), max_range (1)) then do;
+      326 	     code = error_table_$ai_invalid_range;
+      327 	     return;
+      328 	end;
+      329 
+      330 	if ^ aim_check_$greater_or_equal (aim_range (2), aim_range (1)) then do;
+      331 	     code = error_table_$ai_invalid_range;
+      332 	     return;
+      333 	end;
+      334 
+      335 /* Now check that the desired range "fits within" the max bounds. */
+      336 
+      337 	if ^ aim_check_$greater_or_equal (aim_range (1), max_range (1))
+      338 	| ^ aim_check_$greater_or_equal (max_range (2), aim_range (2)) then do;
+      339 	     code = error_table_$ai_out_range;
+      340 	     return;
+      341 	end;
+      342 
+      343 /* Now we know that the ranges are self-consistent. */
+      344 
+      345 	code = 0;
+      346 
+      347 /* Now check to see whether this user has the ability to set these ranges. */
+      348 
+      349 	if rcp_priv then return;
+      350 
+      351 /* Make sure a user at a high authorization is not making a resource "suddenly
+      352*   appear" to someone at a lower authorization. */
+      353 
+      354 	if ^ write_allowed_ (user_auth, aim_range (1)) then do;
+      355 	     code = error_table_$ai_restricted;
+      356 	     return;
+      357 	end;
+      358 
+      359 /* We don't check upper bound.  Like creating directories, you can register a
+      360*   resource with an upper bound higher than you-- just don't expect to do
+      361*   anything else with it afterwards! */
+      362 
+      363 	return;
+      364 
+      365      end rcprm_access_control_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    07/02/84  1130.2  rcprm_access_control_.pl1         >dumps>old_dumps>hardcore>rcprm_access_control_.pl1
+79           1    11/20/79  2015.5  rcp_registry.incl.pl1             >ldd>include>rcp_registry.incl.pl1
+1-44         2    11/20/79  2015.6  rtdt.incl.pl1                     >ldd>include>rtdt.incl.pl1
+2-4          3    04/21/82  1211.8  author.incl.pl1                   >ldd>include>author.incl.pl1
+81           4    09/07/83  1610.6  aim_template.incl.pl1             >ldd>include>aim_template.incl.pl1
+83           5    05/23/83  0916.6  iox_dcls.incl.pl1                 >ldd>include>iox_dcls.incl.pl1
+85           6    07/19/79  1547.0  rs_info.incl.pl1                  >ldd>include>rs_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+acquisition_info         10            based           structure                level 2 dcl 1-5
+acs_path_desc            11            based           fixed bin(35,0)          level 3 dcl 1-5 set ref 159 160*
+acs_pathname                    000100 automatic       char(168)                unaligned dcl 19 set ref 161* 163* 167* 169* 181*
+                                                                                  184
+addr                                                   builtin function         dcl 52 ref 201 209 216 282 292 292 313 317
+aim_check_$greater_or_equal     000036 constant        entry                    external dcl 63 ref 325 330 337 337
+aim_range                              parameter       bit(72)                  array dcl 307 set ref 301 330* 330* 337* 337* 354*
+aim_range_desc           12            based           fixed bin(35,0)          level 3 dcl 1-5 set ref 215*
+aim_template                           based           structure                level 1 dcl 4-12
+as_if_owner                     000213 automatic       bit(1)                   dcl 96 set ref 99* 105* 115* 186
+assigned                        000154 automatic       bit(1)                   dcl 19 set ref 146* 244 254 266
+assigned_by_another             000155 automatic       bit(1)                   dcl 19 set ref 146* 244 266
+assignment_auth                 000152 automatic       bit(72)                  dcl 19 set ref 146* 244*
+based_bits                             based           bit                      dcl 58 set ref 216* 216
+based_charstring                       based           char                     dcl 58 ref 142 161
+bin_mode                        000156 automatic       fixed bin(5,0)           dcl 19 set ref 163* 177
+binary                                                 builtin function         dcl 52 ref 177
+bit                                                    builtin function         dcl 52 ref 177
+bl                              000157 automatic       fixed bin(21,0)          dcl 19 in procedure "rcprm_access_control_" set ref
+                                                                                  141* 142 160* 161 214* 215* 216 216
+bl                                     parameter       fixed bin(21,0)          dcl 275 in procedure "chase" set ref 273 283* 295*
+bp                                     parameter       pointer                  dcl 275 in procedure "chase" set ref 273 282* 282
+                                                                                  296*
+bp                              000160 automatic       pointer                  dcl 19 in procedure "rcprm_access_control_" set ref
+                                                                                  141* 142 160* 161 214* 215* 216
+code                                   parameter       fixed bin(35,0)          dcl 89 set ref 87 103 109 119* 146* 148 163* 166 167
+                                                                                  169 172* 210* 211 292* 293 301 319* 320 326* 331*
+                                                                                  339* 345* 355*
+convert_authorization_$from_string
+                                000044 constant        entry                    external dcl 63 ref 210 319
+current_rew                            parameter       bit(3)                   unaligned dcl 89 set ref 87 103 109 121* 194* 236*
+                                                                                  244* 254* 254 266* 266
+descriptor                6     000232 automatic       fixed bin(35,0)          level 2 in structure "rs" dcl 279 in procedure
+                                                                                  "chase" set ref 290*
+descriptor                             parameter       fixed bin(35,0)          dcl 275 in procedure "chase" ref 273 281 290
+error_table_$ai_invalid_range   000022 external static fixed bin(35,0)          dcl 42 ref 326 331
+error_table_$ai_out_range       000024 external static fixed bin(35,0)          dcl 42 ref 339
+error_table_$ai_restricted      000026 external static fixed bin(35,0)          dcl 42 ref 355
+error_table_$no_dir             000030 external static fixed bin(35,0)          dcl 42 ref 169
+error_table_$noentry            000032 external static fixed bin(35,0)          dcl 42 ref 167
+error_table_$resource_bad_access
+                                000034 external static fixed bin(35,0)          dcl 42 ref 172
+fixed_info                             based           structure                level 2 dcl 2-16
+flags                    13            based           structure                level 3 in structure "registry_record" packed
+                                                                                  unaligned dcl 1-5 in procedure
+                                                                                  "rcprm_access_control_"
+flags                     1     000232 automatic       structure                level 2 in structure "rs" dcl 279 in procedure
+                                                                                  "chase"
+free                     13(05)        based           bit(1)                   level 4 packed unaligned dcl 1-5 ref 186 214
+get_group_id_                   000046 constant        entry                    external dcl 63 ref 124
+hcs_$get_authorization          000050 constant        entry                    external dcl 63 ref 135 311
+hcs_$get_user_effmode           000052 constant        entry                    external dcl 63 ref 163
+iox_$control                    000056 constant        entry                    external dcl 5-8 ref 292
+length                                                 builtin function         dcl 52 ref 189 254
+locate_sw                 1(03) 000232 automatic       bit(1)                   level 3 packed unaligned dcl 279 set ref 289*
+max_range                              parameter       bit(72)                  array dcl 307 set ref 301 325* 325* 337* 337*
+my_name                         000010 internal static varying char(32)         initial dcl 34 set ref 123 124* 125* 125 134
+n                        24            based           fixed bin(8,0)           level 4 packed unaligned dcl 1-5 ref 146 146
+name                     24            based           structure                level 3 packed unaligned dcl 1-5
+owner_desc               10            based           fixed bin(35,0)          level 3 dcl 1-5 set ref 141*
+owner_name                      000162 automatic       varying char(32)         dcl 19 set ref 142* 189 254
+potential_aim_range_desc
+                         20            based           fixed bin(35,0)          level 3 dcl 1-5 set ref 214*
+priv                                   parameter       bit(1)                   dcl 89 ref 87 103 109 153
+privileges                1(18)        based           structure                level 2 packed unaligned dcl 4-12 ref 209 317
+proxy_auth                             parameter       bit(72)                  dcl 112 ref 109 130
+proxy_call                      000214 automatic       bit(1)                   dcl 96 set ref 100* 106* 116* 128
+proxy_group_id                         parameter       char                     unaligned dcl 112 ref 109 129
+rcp                       1(23)        based           bit(1)                   level 3 packed unaligned dcl 4-12 ref 201 313
+rcp_priv                        000215 automatic       bit(1)                   dcl 309 set ref 313* 317 349
+rcp_resource_info_$current_access_class
+                                000054 constant        entry                    external dcl 63 ref 146
+read_allowed_                   000040 constant        entry                    external dcl 63 ref 220 244
+record_length             2     000232 automatic       fixed bin(21,0)          level 2 dcl 279 set ref 295
+record_ptr                             parameter       pointer                  dcl 1-46 in procedure "rcprm_access_control_" ref 87
+                                                                                  103 109 141 146 159 160 185 186 214 214 215
+record_ptr                4     000232 automatic       pointer                  level 2 in structure "rs" dcl 279 in procedure
+                                                                                  "chase" set ref 296
+registration_defaults
+                        602            based           structure                level 3 dcl 2-16
+registration_info        16            based           structure                level 2 dcl 1-5
+registry_record                        based           structure                level 1 dcl 1-5
+resource_type                          parameter       char                     unaligned dcl 89 set ref 87 103 109 146*
+rew                                    parameter       bit(3)                   unaligned dcl 89 set ref 87 103 109 121* 153* 157*
+                                                                                  177* 185* 186* 188* 189* 194 199 220* 224* 224 236
+ringno                                 parameter       fixed bin(17,0)          dcl 89 set ref 87 103 109 163*
+rs                              000232 automatic       structure                level 1 dcl 279 set ref 287* 292 292
+rs_info                                based           structure                level 1 dcl 6-6
+rs_info_version_2                      constant        fixed bin(17,0)          initial dcl 6-44 ref 288
+rtde                                   based           structure                level 1 dcl 2-16
+rtrim                                                  builtin function         dcl 52 ref 125 129
+string                                                 builtin function         dcl 52 in procedure "rcprm_access_control_" ref 209
+                                                                                  317
+string                   24(09)        based           char                     level 4 in structure "registry_record" packed
+                                                                                  unaligned dcl 1-5 in procedure
+                                                                                  "rcprm_access_control_" set ref 146*
+substr                                                 builtin function         dcl 52 ref 177 189 254
+sw_ptr                                 parameter       pointer                  dcl 89 set ref 87 103 109 292*
+system                   13(04)        based           bit(1)                   level 4 packed unaligned dcl 1-5 ref 185
+temp_range                      000173 automatic       bit(72)                  array dcl 19 set ref 216 220* 224* 254*
+unspec                                                 builtin function         dcl 52 set ref 287*
+user_auth                       000200 automatic       bit(72)                  dcl 19 set ref 130* 135* 201 209 210* 220* 224* 244*
+                                                                                  254* 311* 313 317 319* 354*
+user_name                       000202 automatic       varying char(32)         dcl 19 set ref 129* 134* 163 189 189 254 254
+version                         000232 automatic       fixed bin(17,0)          level 2 dcl 279 set ref 288*
+write_allowed_                  000042 constant        entry                    external dcl 63 ref 224 254 354
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+N_CHARGE_TYPES                         automatic       fixed bin(17,0)          dcl 2-64
+N_MATES                                automatic       fixed bin(17,0)          dcl 2-64
+N_SUBTYPES                             automatic       fixed bin(17,0)          dcl 2-64
+RTDE_SIZE                              automatic       fixed bin(18,0)          dcl 1-42
+RTDT_area_len                          automatic       fixed bin(18,0)          dcl 2-64
+RTDT_version_2                         internal static fixed bin(17,0)          initial dcl 2-64
+RTDT_version_3                         internal static fixed bin(17,0)          initial dcl 2-64
+acs_ptr                                automatic       pointer                  dcl 19
+charge_type_table                      based           structure                level 1 dcl 2-11
+cleanup                         000000 stack reference condition                dcl 54
+cttp                                   automatic       pointer                  dcl 2-70
+cu_$level_get                   000000 constant        entry                    external dcl 63
+cu_$level_set                   000000 constant        entry                    external dcl 63
+error_table_$moderr                    external static fixed bin(35,0)          dcl 42
+hcs_$initiate                   000000 constant        entry                    external dcl 63
+hcs_$terminate_noname           000000 constant        entry                    external dcl 63
+header_ptr                             automatic       pointer                  dcl 1-46
+info_ptr                               internal static pointer                  initial dcl 38
+iox_$attach_loud                000000 constant        entry                    external dcl 5-8
+iox_$attach_name                000000 constant        entry                    external dcl 5-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 5-8
+iox_$close                      000000 constant        entry                    external dcl 5-8
+iox_$close_file                 000000 constant        entry                    external dcl 5-8
+iox_$delete_record              000000 constant        entry                    external dcl 5-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 5-8
+iox_$detach                     000000 constant        entry                    external dcl 5-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 5-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 5-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 5-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 5-8
+iox_$err_not_open               000000 constant        entry                    external dcl 5-8
+iox_$error_output                      external static pointer                  dcl 5-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 5-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 5-8
+iox_$get_chars                  000000 constant        entry                    external dcl 5-8
+iox_$get_line                   000000 constant        entry                    external dcl 5-8
+iox_$look_iocb                  000000 constant        entry                    external dcl 5-8
+iox_$modes                      000000 constant        entry                    external dcl 5-8
+iox_$move_attach                000000 constant        entry                    external dcl 5-8
+iox_$open                       000000 constant        entry                    external dcl 5-8
+iox_$open_file                  000000 constant        entry                    external dcl 5-8
+iox_$position                   000000 constant        entry                    external dcl 5-8
+iox_$propagate                  000000 constant        entry                    external dcl 5-8
+iox_$put_chars                  000000 constant        entry                    external dcl 5-8
+iox_$read_key                   000000 constant        entry                    external dcl 5-8
+iox_$read_length                000000 constant        entry                    external dcl 5-8
+iox_$read_record                000000 constant        entry                    external dcl 5-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 5-8
+iox_$seek_key                   000000 constant        entry                    external dcl 5-8
+iox_$user_input                        external static pointer                  dcl 5-41
+iox_$user_io                           external static pointer                  dcl 5-41
+iox_$user_output                       external static pointer                  dcl 5-41
+iox_$write_record               000000 constant        entry                    external dcl 5-8
+null                                                   builtin function         dcl 52
+registry_header                        based           structure                level 1 dcl 1-35
+rr_strl                                automatic       fixed bin(17,0)          dcl 1-46
+rs_desc                                based           structure                level 1 packed unaligned dcl 6-32
+rs_info_ptr                            automatic       pointer                  dcl 6-5
+rs_info_version_1                      internal static fixed bin(17,0)          initial dcl 6-43
+rtdep                                  automatic       pointer                  dcl 2-70
+rtdt                                   based           structure                level 1 dcl 2-3
+rtdtp                                  automatic       pointer                  dcl 2-70
+seq_desc                               based           structure                level 1 packed unaligned dcl 6-37
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+chase                           001373 constant        entry                    internal dcl 273 ref 141 160 214 215
+compute_access                  000055 constant        entry                    external dcl 87
+compute_access_as_if_owner      000104 constant        entry                    external dcl 103
+compute_access_common           000175 constant        label                    dcl 119 ref 101 107 117
+compute_access_for_proxy        000142 constant        entry                    external dcl 109
+permissible_aim                 001143 constant        entry                    external dcl 301
+rcprm_access_control_           000040 constant        entry                    external dcl 11
+return_hard                     001136 constant        label                    dcl 270 ref 293
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1752        2032    1462        1762
+Length      2364    1462        60         316     270          12
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcprm_access_control_               246 external procedure  is an external procedure.  
+chase                                   internal procedure  shares stack frame of external procedure rcprm_access_control_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 my_name                     rcprm_access_control_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcprm_access_control_    000100 acs_pathname                rcprm_access_control_
+                         000152 assignment_auth             rcprm_access_control_
+                         000154 assigned                    rcprm_access_control_
+                         000155 assigned_by_another         rcprm_access_control_
+                         000156 bin_mode                    rcprm_access_control_
+                         000157 bl                          rcprm_access_control_
+                         000160 bp                          rcprm_access_control_
+                         000162 owner_name                  rcprm_access_control_
+                         000173 temp_range                  rcprm_access_control_
+                         000200 user_auth                   rcprm_access_control_
+                         000202 user_name                   rcprm_access_control_
+                         000213 as_if_owner                 rcprm_access_control_
+                         000214 proxy_call                  rcprm_access_control_
+                         000215 rcp_priv                    rcprm_access_control_
+                         000232 rs                          chase
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_cs            call_ext_out_desc   call_ext_out        return              shorten_stack       ext_entry
+ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+aim_check_$greater_or_equal   convert_authorization_$from_string                          get_group_id_
+hcs_$get_authorization        hcs_$get_user_effmode         iox_$control
+rcp_resource_info_$current_access_class                     read_allowed_                 write_allowed_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$ai_invalid_range error_table_$ai_out_range     error_table_$ai_restricted    error_table_$no_dir
+error_table_$noentry          error_table_$resource_bad_access
+
+
+CONSTANTS
+
+000000  aa     524000000015
+
+000001  aa     404000000025
+
+000002  aa     524000000013
+
+001461  aa     500000000000
+
+000003  aa     404000000005
+
+000004  aa     524000000000
+
+000005  aa     526000000250
+
+000006  aa     526000000000
+
+000007  aa     514000000110
+
+000010  aa     404000000043
+
+000011  aa     516000000003
+
+000012  aa     404000000021
+
+000013  aa     526077777777
+
+000014  aa     464000000000
+
+000015  aa     524000000040
+
+000016  aa     514000000001
+
+000020  aa     000000000000
+000021  aa     000000000000
+
+000022  aa  143 154 145 141	clea
+000023  aa  156 165 160 000	nup
+
+000024  aa  163 171 163 164	syst
+000025  aa  145 155 137 150	em_h
+000026  aa  151 147 150 000	igh
+
+000027  aa  162 145 143 157	reco
+000030  aa  162 144 137 163	rd_s
+000031  aa  164 141 164 165	tatu
+000032  aa  163 000 000 000	s
+
+000033  aa     514100000110
+000034  aa     000000000001
+000035  aa     000000000002
+000036  aa     000000000002
+
+BEGIN PROCEDURE rcprm_access_control_
+ENTRY TO rcprm_access_control_                              STATEMENT 1 ON LINE 11
+rcprm_access_control_: proc;
+
+000037  da     000222200000
+000040  aa   000400 6270 00	eax7 	256
+000041  aa  7 00034 3521 20	epp2 	pr7|28,*
+000042  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000043  aa     000000000000
+000044  aa     000000000000
+						STATEMENT 2 ON LINE 11
+ return;
+
+000045  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO compute_access                                     STATEMENT 1 ON LINE 87
+compute_access: entry (sw_ptr, record_ptr, resource_type, ringno, priv, rew, current_rew, code);
+
+000046  at     000010000014
+000047  tt     000014000013
+000050  tt     000012000016
+000051  tt     000011000011
+000052  ta     000010000000
+000053  ta     000046000000
+000054  da     000231300000
+000055  aa   000400 6270 00	eax7 	256
+000056  aa  7 00034 3521 20	epp2 	pr7|28,*
+000057  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000060  aa     000020000000
+000061  aa     000000000000
+000062  aa  6 00042 3735 20	epp7 	pr6|34,*
+000063  aa  7 00004 2361 20	ldq  	pr7|4,*
+000064  aa   000002 6040 04	tmi  	2,ic		000066
+000065  aa   777777 3760 07	anq  	262143,dl
+000066  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000067  aa  6 00250 7561 00	stq  	pr6|168
+000070  aa  6 00032 3715 20	epp5 	pr6|26,*
+000071  aa  5 00014 3535 20	epp3 	pr5|12,*
+000072  aa  6 00216 2535 00	spri3	pr6|142
+000073  aa  5 00016 3515 20	epp1 	pr5|14,*
+000074  aa  6 00220 2515 00	spri1	pr6|144
+000075  aa  5 00020 3735 20	epp7 	pr5|16,*
+000076  aa  6 00222 6535 00	spri7	pr6|146
+						STATEMENT 1 ON LINE 99
+	as_if_owner = ""b;
+
+000077  aa  6 00213 4501 00	stz  	pr6|139		as_if_owner
+						STATEMENT 1 ON LINE 100
+	proxy_call = ""b;
+
+000100  aa  6 00214 4501 00	stz  	pr6|140		proxy_call
+						STATEMENT 1 ON LINE 101
+	goto compute_access_common;
+
+000101  aa   000074 7100 04	tra  	60,ic		000175
+ENTRY TO compute_access_as_if_owner                         STATEMENT 1 ON LINE 103
+compute_access_as_if_owner: entry (sw_ptr, record_ptr, resource_type, ringno, priv, rew, current_rew, code);
+
+000102  ta     000046000000
+000103  da     000243300000
+000104  aa   000400 6270 00	eax7 	256
+000105  aa  7 00034 3521 20	epp2 	pr7|28,*
+000106  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000107  aa     000020000000
+000110  aa     000000000000
+000111  aa  6 00042 3735 20	epp7 	pr6|34,*
+000112  aa  7 00004 2361 20	ldq  	pr7|4,*
+000113  aa   000002 6040 04	tmi  	2,ic		000115
+000114  aa   777777 3760 07	anq  	262143,dl
+000115  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000116  aa  6 00250 7561 00	stq  	pr6|168
+000117  aa  6 00032 3715 20	epp5 	pr6|26,*
+000120  aa  5 00014 3535 20	epp3 	pr5|12,*
+000121  aa  6 00216 2535 00	spri3	pr6|142
+000122  aa  5 00016 3515 20	epp1 	pr5|14,*
+000123  aa  6 00220 2515 00	spri1	pr6|144
+000124  aa  5 00020 3735 20	epp7 	pr5|16,*
+000125  aa  6 00222 6535 00	spri7	pr6|146
+						STATEMENT 1 ON LINE 105
+	as_if_owner = "1"b;
+
+000126  aa   400000 2350 03	lda  	131072,du
+000127  aa  6 00213 7551 00	sta  	pr6|139		as_if_owner
+						STATEMENT 1 ON LINE 106
+	proxy_call = ""b;
+
+000130  aa  6 00214 4501 00	stz  	pr6|140		proxy_call
+						STATEMENT 1 ON LINE 107
+	goto compute_access_common;
+
+000131  aa   000044 7100 04	tra  	36,ic		000175
+ENTRY TO compute_access_for_proxy                           STATEMENT 1 ON LINE 109
+compute_access_for_proxy:
+	entry (sw_ptr, record_ptr, resource_type, ringno, priv, proxy_group_id, proxy_auth, rew, current_rew, code);
+
+000132  at     000012000014
+000133  tt     000014000013
+000134  tt     000012000016
+000135  tt     000013000007
+000136  tt     000011000011
+000137  ta     000010000000
+000140  ta     000132000000
+000141  da     000255300000
+000142  aa   000400 6270 00	eax7 	256
+000143  aa  7 00034 3521 20	epp2 	pr7|28,*
+000144  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000145  aa     000024000000
+000146  aa     000000000000
+000147  aa  6 00042 3735 20	epp7 	pr6|34,*
+000150  aa  7 00004 2361 20	ldq  	pr7|4,*
+000151  aa   000002 6040 04	tmi  	2,ic		000153
+000152  aa   777777 3760 07	anq  	262143,dl
+000153  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000154  aa  6 00250 7561 00	stq  	pr6|168
+000155  aa  7 00012 2361 20	ldq  	pr7|10,*
+000156  aa   000002 6040 04	tmi  	2,ic		000160
+000157  aa   777777 3760 07	anq  	262143,dl
+000160  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000161  aa  6 00251 7561 00	stq  	pr6|169
+000162  aa  6 00032 3715 20	epp5 	pr6|26,*
+000163  aa  5 00020 3535 20	epp3 	pr5|16,*
+000164  aa  6 00216 2535 00	spri3	pr6|142
+000165  aa  5 00022 3515 20	epp1 	pr5|18,*
+000166  aa  6 00220 2515 00	spri1	pr6|144
+000167  aa  5 00024 3735 20	epp7 	pr5|20,*
+000170  aa  6 00222 6535 00	spri7	pr6|146
+						STATEMENT 1 ON LINE 115
+	as_if_owner = ""b;
+
+000171  aa  6 00213 4501 00	stz  	pr6|139		as_if_owner
+						STATEMENT 1 ON LINE 116
+	proxy_call = "1"b;
+
+000172  aa   400000 2350 03	lda  	131072,du
+000173  aa  6 00214 7551 00	sta  	pr6|140		proxy_call
+						STATEMENT 1 ON LINE 117
+	goto compute_access_common;
+
+000174  aa   000001 7100 04	tra  	1,ic		000175
+						STATEMENT 1 ON LINE 119
+compute_access_common:
+	code = 0;
+
+000175  aa  6 00222 4501 20	stz  	pr6|146,*		code
+						STATEMENT 1 ON LINE 121
+	rew, current_rew = ""b;
+
+000176  aa  6 00216 3735 20	epp7 	pr6|142,*
+000177  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000200  aa   000000 00 0000	descb	0,0
+000201  aa  7 00000 00 0003	descb	pr7|0,3		rew
+000202  aa  6 00220 3715 20	epp5 	pr6|144,*
+000203  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000204  aa   000000 00 0000	descb	0,0
+000205  aa  5 00000 00 0003	descb	pr5|0,3		current_rew
+						STATEMENT 1 ON LINE 123
+	if my_name = "" then do;
+
+000206  aa  6 00044 3701 20	epp4 	pr6|36,*
+000207  ia  4 00010 7271 00	lxl7 	pr4|8		my_name
+000210  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+000211  ia  4 00011 00 0017	desc9a	pr4|9,x7		my_name
+000212  aa   001251 00 0000	desc9a	681,0		001461 = 500000000000
+000213  aa   000033 6010 04	tnz  	27,ic		000246
+						STATEMENT 1 ON LINE 124
+	     my_name = get_group_id_ ();
+
+000214  aa  6 00252 3521 00	epp2 	pr6|170
+000215  aa  6 00264 2521 00	spri2	pr6|180
+000216  aa  6 00262 6211 00	eax1 	pr6|178
+000217  aa   004000 4310 07	fld  	2048,dl
+000220  la  4 00046 3521 20	epp2 	pr4|38,*		get_group_id_
+000221  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000222  aa   000040 2360 07	ldq  	32,dl
+000223  aa  6 00044 3701 20	epp4 	pr6|36,*
+000224  ia  4 00010 7561 00	stq  	pr4|8		my_name
+000225  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000226  aa  6 00252 00 0006	desc9a	pr6|170,ql
+000227  ia  4 00011 00 0006	desc9a	pr4|9,ql		my_name
+						STATEMENT 1 ON LINE 125
+	     my_name = rtrim (my_name, " ");
+
+000230  ia  4 00010 7271 00	lxl7 	pr4|8		my_name
+000231  aa  000 000 165 540	tctr 	(pr,rl)
+000232  ia  4 00011 00 0017	desc9a	pr4|9,x7		my_name
+000233  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000234  aa  6 00056 0001 00	arg  	pr6|46
+000235  aa  6 00056 2361 00	ldq  	pr6|46
+000236  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000237  aa  6 00266 7561 00	stq  	pr6|182
+000240  ia  4 00010 2361 00	ldq  	pr4|8		my_name
+000241  aa  6 00266 1761 00	sbq  	pr6|182
+000242  aa   000040 1160 07	cmpq 	32,dl
+000243  aa   000002 6040 04	tmi  	2,ic		000245
+000244  aa   000040 2360 07	ldq  	32,dl
+000245  ia  4 00010 7561 00	stq  	pr4|8		my_name
+						STATEMENT 1 ON LINE 126
+	end;
+
+						STATEMENT 1 ON LINE 128
+	if proxy_call then do;
+
+000246  aa  6 00214 2351 00	lda  	pr6|140		proxy_call
+000247  aa   000031 6000 04	tze  	25,ic		000300
+						STATEMENT 1 ON LINE 129
+	     user_name = rtrim (proxy_group_id, " ");
+
+000250  aa  6 00032 3735 20	epp7 	pr6|26,*
+000251  aa  7 00014 3715 20	epp5 	pr7|12,*
+000252  aa  6 00251 2361 00	ldq  	pr6|169
+000253  aa  000 000 165 540	tctr 	(pr,rl)
+000254  aa  5 00000 00 0006	desc9a	pr5|0,ql		proxy_group_id
+000255  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000256  aa  6 00056 0001 00	arg  	pr6|46
+000257  aa  6 00056 2361 00	ldq  	pr6|46
+000260  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000261  aa  6 00266 7561 00	stq  	pr6|182
+000262  aa  6 00251 2361 00	ldq  	pr6|169
+000263  aa  6 00266 1761 00	sbq  	pr6|182
+000264  aa   000040 1160 07	cmpq 	32,dl
+000265  aa   000002 6040 04	tmi  	2,ic		000267
+000266  aa   000040 2360 07	ldq  	32,dl
+000267  aa  6 00202 7561 00	stq  	pr6|130		user_name
+000270  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000271  aa  5 00000 00 0006	desc9a	pr5|0,ql		proxy_group_id
+000272  aa  6 00203 00 0006	desc9a	pr6|131,ql	user_name
+						STATEMENT 1 ON LINE 130
+	     user_auth = proxy_auth;
+
+000273  aa  7 00016 3535 20	epp3 	pr7|14,*
+000274  aa  3 00000 2351 00	lda  	pr3|0		proxy_auth
+000275  aa  3 00001 2361 00	ldq  	pr3|1		proxy_auth
+000276  aa  6 00200 7571 00	staq 	pr6|128		user_auth
+						STATEMENT 1 ON LINE 131
+	end;
+
+000277  aa   000020 7100 04	tra  	16,ic		000317
+						STATEMENT 1 ON LINE 133
+	else do;
+
+						STATEMENT 1 ON LINE 134
+	     user_name = my_name;
+
+000300  ia  4 00010 2361 00	ldq  	pr4|8		my_name
+000301  aa  6 00202 7561 00	stq  	pr6|130		user_name
+000302  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000303  ia  4 00011 00 0006	desc9a	pr4|9,ql		my_name
+000304  aa  6 00203 00 0006	desc9a	pr6|131,ql	user_name
+						STATEMENT 1 ON LINE 135
+	     call hcs_$get_authorization (user_auth, ""b);
+
+000305  aa   777513 2370 04	ldaq 	-181,ic		000020 = 000000000000 000000000000
+000306  aa  6 00270 7571 00	staq 	pr6|184
+000307  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+000310  aa  6 00254 2521 00	spri2	pr6|172
+000311  aa  6 00270 3521 00	epp2 	pr6|184
+000312  aa  6 00256 2521 00	spri2	pr6|174
+000313  aa  6 00252 6211 00	eax1 	pr6|170
+000314  aa   010000 4310 07	fld  	4096,dl
+000315  la  4 00050 3521 20	epp2 	pr4|40,*		hcs_$get_authorization
+000316  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 136
+	end;
+
+						STATEMENT 1 ON LINE 141
+	call chase (registry_record.owner_desc, bp, bl);
+
+000317  aa  6 00032 3735 20	epp7 	pr6|26,*
+000320  aa  7 00004 3715 20	epp5 	pr7|4,*		record_ptr
+000321  aa  5 00000 3715 20	epp5 	pr5|0,*		record_ptr
+000322  aa  5 00010 3521 00	epp2 	pr5|8		registry_record.owner_desc
+000323  aa  6 00274 2521 00	spri2	pr6|188
+000324  aa  6 00160 3521 00	epp2 	pr6|112		bp
+000325  aa  6 00276 2521 00	spri2	pr6|190
+000326  aa  6 00157 3521 00	epp2 	pr6|111		bl
+000327  aa  6 00300 2521 00	spri2	pr6|192
+000330  aa  6 00272 3521 00	epp2 	pr6|186
+000331  aa   014000 4310 07	fld  	6144,dl
+000332  aa  2 00000 7571 00	staq 	pr2|0
+000333  aa   001040 6700 04	tsp4 	544,ic		001373
+						STATEMENT 1 ON LINE 142
+	owner_name = based_charstring;
+
+000334  aa  6 00157 2361 00	ldq  	pr6|111		bl
+000335  aa   000040 1160 07	cmpq 	32,dl
+000336  aa   000002 6040 04	tmi  	2,ic		000340
+000337  aa   000040 2360 07	ldq  	32,dl
+000340  aa  6 00162 7561 00	stq  	pr6|114		owner_name
+000341  aa  6 00160 3735 20	epp7 	pr6|112,*		bp
+000342  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000343  aa  7 00000 00 0006	desc9a	pr7|0,ql		based_charstring
+000344  aa  6 00163 00 0006	desc9a	pr6|115,ql	owner_name
+						STATEMENT 1 ON LINE 146
+	call rcp_resource_info_$current_access_class (resource_type, registry_record.name.string,
+	     assigned, assigned_by_another, assignment_auth, code);
+
+000345  aa  6 00032 3715 20	epp5 	pr6|26,*
+000346  aa  5 00004 3535 20	epp3 	pr5|4,*		record_ptr
+000347  aa  3 00000 3535 20	epp3 	pr3|0,*		record_ptr
+000350  aa  3 00024 2351 00	lda  	pr3|20		registry_record.n
+000351  aa   000077 7330 00	lrs  	63
+000352  aa  6 00266 7561 00	stq  	pr6|182
+000353  aa   526000 2760 03	orq  	175104,du
+000354  aa  6 00267 7561 00	stq  	pr6|183
+000355  aa  5 00006 3521 20	epp2 	pr5|6,*		resource_type
+000356  aa  6 00306 2521 00	spri2	pr6|198
+000357  aa   000001 7270 07	lxl7 	1,dl
+000360  aa  3 00024 3521 00	epp2 	pr3|20		registry_record.string
+000361  aa  2 00000 5005 17	a9bd 	pr2|0,7
+000362  aa  6 00310 2521 00	spri2	pr6|200
+000363  aa  6 00154 3521 00	epp2 	pr6|108		assigned
+000364  aa  6 00312 2521 00	spri2	pr6|202
+000365  aa  6 00155 3521 00	epp2 	pr6|109		assigned_by_another
+000366  aa  6 00314 2521 00	spri2	pr6|204
+000367  aa  6 00152 3521 00	epp2 	pr6|106		assignment_auth
+000370  aa  6 00316 2521 00	spri2	pr6|206
+000371  aa  6 00222 3521 20	epp2 	pr6|146,*		code
+000372  aa  6 00320 2521 00	spri2	pr6|208
+000373  aa  6 00042 3515 20	epp1 	pr6|34,*
+000374  aa  1 00004 3521 20	epp2 	pr1|4,*
+000375  aa  6 00322 2521 00	spri2	pr6|210
+000376  aa  6 00267 3521 00	epp2 	pr6|183
+000377  aa  6 00324 2521 00	spri2	pr6|212
+000400  aa   777416 3520 04	epp2 	-242,ic		000016 = 514000000001
+000401  aa  6 00326 2521 00	spri2	pr6|214
+000402  aa  6 00330 2521 00	spri2	pr6|216
+000403  aa   777404 3520 04	epp2 	-252,ic		000007 = 514000000110
+000404  aa  6 00332 2521 00	spri2	pr6|218
+000405  aa   777403 3520 04	epp2 	-253,ic		000010 = 404000000043
+000406  aa  6 00334 2521 00	spri2	pr6|220
+000407  aa  6 00304 6211 00	eax1 	pr6|196
+000410  aa   030000 4310 07	fld  	12288,dl
+000411  aa  6 00044 3701 20	epp4 	pr6|36,*
+000412  la  4 00054 3521 20	epp2 	pr4|44,*		rcp_resource_info_$current_access_class
+000413  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 148
+	if code ^= 0 then return;
+
+000414  aa  6 00222 2361 20	ldq  	pr6|146,*		code
+000415  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 153
+	if priv then rew = "111"b;
+
+000416  aa  6 00032 3735 20	epp7 	pr6|26,*
+000417  aa  7 00012 2351 20	lda  	pr7|10,*		priv
+000420  aa   400000 3150 03	cana 	131072,du
+000421  aa   000006 6000 04	tze  	6,ic		000427
+000422  aa  6 00216 3715 20	epp5 	pr6|142,*
+000423  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000424  aa   000000 00 0000	descb	0,0
+000425  aa  5 00000 00 0003	descb	pr5|0,3		rew
+000426  aa   000210 7100 04	tra  	136,ic		000636
+						STATEMENT 1 ON LINE 155
+	else do;
+
+						STATEMENT 1 ON LINE 157
+	     rew = ""b;
+
+000427  aa  6 00216 3715 20	epp5 	pr6|142,*
+000430  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000431  aa   000000 00 0000	descb	0,0
+000432  aa  5 00000 00 0003	descb	pr5|0,3		rew
+						STATEMENT 1 ON LINE 159
+	     if registry_record.acs_path_desc ^= 0 then do;
+
+000433  aa  7 00004 3535 20	epp3 	pr7|4,*		record_ptr
+000434  aa  3 00000 3535 20	epp3 	pr3|0,*		record_ptr
+000435  aa  3 00011 2361 00	ldq  	pr3|9		registry_record.acs_path_desc
+000436  aa   000124 6000 04	tze  	84,ic		000562
+						STATEMENT 1 ON LINE 160
+		call chase (registry_record.acs_path_desc, bp, bl);
+
+000437  aa  3 00011 3521 00	epp2 	pr3|9		registry_record.acs_path_desc
+000440  aa  6 00274 2521 00	spri2	pr6|188
+000441  aa  6 00160 3521 00	epp2 	pr6|112		bp
+000442  aa  6 00276 2521 00	spri2	pr6|190
+000443  aa  6 00157 3521 00	epp2 	pr6|111		bl
+000444  aa  6 00300 2521 00	spri2	pr6|192
+000445  aa  6 00272 3521 00	epp2 	pr6|186
+000446  aa   014000 4310 07	fld  	6144,dl
+000447  aa  2 00000 7571 00	staq 	pr2|0
+000450  aa   000723 6700 04	tsp4 	467,ic		001373
+						STATEMENT 1 ON LINE 161
+		acs_pathname = based_charstring;
+
+000451  aa  6 00160 3735 20	epp7 	pr6|112,*		bp
+000452  aa  6 00157 2351 00	lda  	pr6|111		bl
+000453  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000454  aa  7 00000 00 0005	desc9a	pr7|0,al		based_charstring
+000455  aa  6 00100 00 0250	desc9a	pr6|64,168	acs_pathname
+						STATEMENT 1 ON LINE 163
+		call hcs_$get_user_effmode (acs_pathname, "", (user_name), ringno, bin_mode, code);
+
+000456  aa  6 00202 2361 00	ldq  	pr6|130		user_name
+000457  aa   524000 2760 03	orq  	174080,du
+000460  aa  6 00267 7561 00	stq  	pr6|183
+000461  aa  6 00202 2361 00	ldq  	pr6|130		user_name
+000462  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_cs
+000463  aa  6 00312 2521 00	spri2	pr6|202
+000464  aa  6 00202 7271 00	lxl7 	pr6|130		user_name
+000465  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000466  aa  6 00203 00 0017	desc9a	pr6|131,x7	user_name
+000467  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000470  aa  6 00100 3521 00	epp2 	pr6|64		acs_pathname
+000471  aa  6 00306 2521 00	spri2	pr6|198
+000472  aa  6 00266 3521 00	epp2 	pr6|182
+000473  aa  6 00310 2521 00	spri2	pr6|200
+000474  aa  6 00032 3715 20	epp5 	pr6|26,*
+000475  aa  5 00010 3521 20	epp2 	pr5|8,*		ringno
+000476  aa  6 00314 2521 00	spri2	pr6|204
+000477  aa  6 00156 3521 00	epp2 	pr6|110		bin_mode
+000500  aa  6 00316 2521 00	spri2	pr6|206
+000501  aa  6 00222 3521 20	epp2 	pr6|146,*		code
+000502  aa  6 00320 2521 00	spri2	pr6|208
+000503  aa   777302 3520 04	epp2 	-318,ic		000005 = 526000000250
+000504  aa  6 00322 2521 00	spri2	pr6|210
+000505  aa   777277 3520 04	epp2 	-321,ic		000004 = 524000000000
+000506  aa  6 00324 2521 00	spri2	pr6|212
+000507  aa  6 00267 3521 00	epp2 	pr6|183
+000510  aa  6 00326 2521 00	spri2	pr6|214
+000511  aa   777301 3520 04	epp2 	-319,ic		000012 = 404000000021
+000512  aa  6 00330 2521 00	spri2	pr6|216
+000513  aa   777270 3520 04	epp2 	-328,ic		000003 = 404000000005
+000514  aa  6 00332 2521 00	spri2	pr6|218
+000515  aa   777273 3520 04	epp2 	-325,ic		000010 = 404000000043
+000516  aa  6 00334 2521 00	spri2	pr6|220
+000517  aa  6 00304 6211 00	eax1 	pr6|196
+000520  aa   030000 4310 07	fld  	12288,dl
+000521  aa  6 00044 3701 20	epp4 	pr6|36,*
+000522  la  4 00052 3521 20	epp2 	pr4|42,*		hcs_$get_user_effmode
+000523  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 166
+		if code ^= 0 then do;
+
+000524  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000525  aa  6 00222 2361 20	ldq  	pr6|146,*		code
+000526  aa   000022 6000 04	tze  	18,ic		000550
+						STATEMENT 1 ON LINE 167
+		     if code = error_table_$noentry then acs_pathname = "";
+
+000527  aa  6 00044 3701 20	epp4 	pr6|36,*
+000530  la  4 00032 1161 20	cmpq 	pr4|26,*		error_table_$noentry
+000531  aa   000005 6010 04	tnz  	5,ic		000536
+000532  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000533  aa   000000 00 0000	desc9a	0,0
+000534  aa  6 00100 00 0250	desc9a	pr6|64,168	acs_pathname
+000535  aa   000030 7100 04	tra  	24,ic		000565
+						STATEMENT 1 ON LINE 169
+		     else if code = error_table_$no_dir then acs_pathname = "";
+
+000536  la  4 00030 1161 20	cmpq 	pr4|24,*		error_table_$no_dir
+000537  aa   000005 6010 04	tnz  	5,ic		000544
+000540  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000541  aa   000000 00 0000	desc9a	0,0
+000542  aa  6 00100 00 0250	desc9a	pr6|64,168	acs_pathname
+000543  aa   000022 7100 04	tra  	18,ic		000565
+						STATEMENT 1 ON LINE 171
+		     else do;
+
+						STATEMENT 1 ON LINE 172
+			code = error_table_$resource_bad_access;
+
+000544  la  4 00034 2361 20	ldq  	pr4|28,*		error_table_$resource_bad_access
+000545  aa  6 00222 7561 20	stq  	pr6|146,*		code
+						STATEMENT 1 ON LINE 173
+			return;
+
+000546  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 174
+		     end;
+
+						STATEMENT 1 ON LINE 175
+		end;
+
+000547  aa   000016 7100 04	tra  	14,ic		000565
+						STATEMENT 1 ON LINE 177
+		else rew = substr (bit (binary (bin_mode, 5), 5), 2, 3);
+
+000550  aa  6 00156 2351 00	lda  	pr6|110		bin_mode
+000551  aa   000002 6050 04	tpl  	2,ic		000553
+000552  aa   000000 5310 00	neg  	0
+000553  aa   000037 7350 00	als  	31
+000554  aa  6 00267 7551 00	sta  	pr6|183
+000555  aa  6 00216 3735 20	epp7 	pr6|142,*
+000556  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000557  aa  6 00267 01 0003	descb	pr6|183(1),3
+000560  aa  7 00000 00 0003	descb	pr7|0,3		rew
+						STATEMENT 1 ON LINE 179
+	     end;
+
+000561  aa   000004 7100 04	tra  	4,ic		000565
+						STATEMENT 1 ON LINE 181
+	     else acs_pathname = "";
+
+000562  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000563  aa   000000 00 0000	desc9a	0,0
+000564  aa  6 00100 00 0250	desc9a	pr6|64,168	acs_pathname
+						STATEMENT 1 ON LINE 184
+	     if acs_pathname = "" then do;
+
+000565  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000566  aa  6 00100 00 0250	desc9a	pr6|64,168	acs_pathname
+000567  aa   000674 00 0000	desc9a	444,0		001461 = 500000000000
+000570  aa   000046 6010 04	tnz  	38,ic		000636
+						STATEMENT 1 ON LINE 185
+		if registry_record.flags.system then rew = "101"b;
+
+000571  aa  6 00032 3735 20	epp7 	pr6|26,*
+000572  aa  7 00004 3715 20	epp5 	pr7|4,*		record_ptr
+000573  aa  5 00000 3715 20	epp5 	pr5|0,*		record_ptr
+000574  aa  5 00013 2351 00	lda  	pr5|11		registry_record.system
+000575  aa   020000 3150 03	cana 	8192,du
+000576  aa   000006 6000 04	tze  	6,ic		000604
+000577  aa  6 00216 3535 20	epp3 	pr6|142,*
+000600  aa  003 100 060 404	csl  	(ic),(pr),fill(0),bool(move)
+000601  aa   000661 00 0003	descb	433,3		001461 = 500000000000
+000602  aa  3 00000 00 0003	descb	pr3|0,3		rew
+000603  aa   000033 7100 04	tra  	27,ic		000636
+						STATEMENT 1 ON LINE 186
+		else if registry_record.flags.free then
+		     if as_if_owner then rew = "101"b;
+
+000604  aa  5 00013 2351 00	lda  	pr5|11		registry_record.free
+000605  aa   010000 3150 03	cana 	4096,du
+000606  aa   000015 6000 04	tze  	13,ic		000623
+000607  aa  6 00213 2351 00	lda  	pr6|139		as_if_owner
+000610  aa   000006 6000 04	tze  	6,ic		000616
+000611  aa  6 00216 3535 20	epp3 	pr6|142,*
+000612  aa  003 100 060 404	csl  	(ic),(pr),fill(0),bool(move)
+000613  aa   000647 00 0003	descb	423,3		001461 = 500000000000
+000614  aa  3 00000 00 0003	descb	pr3|0,3		rew
+000615  aa   000021 7100 04	tra  	17,ic		000636
+						STATEMENT 1 ON LINE 188
+		     else rew = "000"b;
+
+000616  aa  6 00216 3535 20	epp3 	pr6|142,*
+000617  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000620  aa   000000 00 0000	descb	0,0
+000621  aa  3 00000 00 0003	descb	pr3|0,3		rew
+000622  aa   000014 7100 04	tra  	12,ic		000636
+						STATEMENT 1 ON LINE 189
+		else if substr (user_name, 1, length (user_name) - 2) = owner_name then
+		     rew = "111"b;
+
+000623  aa  6 00202 2361 00	ldq  	pr6|130		user_name
+000624  aa   000002 1760 07	sbq  	2,dl
+000625  aa  6 00162 7271 00	lxl7 	pr6|114		owner_name
+000626  aa  040 140 106 540	cmpc 	(pr,rl),(pr,rl),fill(040)
+000627  aa  6 00203 00 0006	desc9a	pr6|131,ql	user_name
+000630  aa  6 00163 00 0017	desc9a	pr6|115,x7	owner_name
+000631  aa   000005 6010 04	tnz  	5,ic		000636
+000632  aa  6 00216 3535 20	epp3 	pr6|142,*
+000633  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000634  aa   000000 00 0000	descb	0,0
+000635  aa  3 00000 00 0003	descb	pr3|0,3		rew
+						STATEMENT 1 ON LINE 191
+	     end;
+
+						STATEMENT 1 ON LINE 192
+	end;
+
+						STATEMENT 1 ON LINE 194
+	current_rew = rew;
+
+000636  aa  6 00220 3735 20	epp7 	pr6|144,*
+000637  aa  6 00216 3715 20	epp5 	pr6|142,*
+000640  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000641  aa  5 00000 00 0003	descb	pr5|0,3		rew
+000642  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+						STATEMENT 1 ON LINE 199
+	if rew = "000"b then return;
+
+000643  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+000644  aa  5 00000 00 0003	descb	pr5|0,3		rew
+000645  aa   000000 00 0000	descb	0,0
+000646  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 201
+	if addr (user_auth) -> aim_template.privileges.rcp = "0"b then do;
+
+000647  aa  6 00201 2351 00	lda  	pr6|129		aim_template.rcp
+000650  aa   010000 3150 07	cana 	4096,dl
+000651  aa   000245 6010 04	tnz  	165,ic		001116
+						STATEMENT 1 ON LINE 209
+	     if string (addr (user_auth) -> aim_template.privileges) ^= ""b then do;
+
+000652  aa  6 00201 2351 00	lda  	pr6|129
+000653  aa   777777 3150 07	cana 	262143,dl
+000654  aa   000030 6000 04	tze  	24,ic		000704
+						STATEMENT 1 ON LINE 210
+		call convert_authorization_$from_string (user_auth, "system_high", code);
+
+000655  aa   777147 2370 04	ldaq 	-409,ic		000024 = 163171163164 145155137150
+000656  aa  6 00262 7571 00	staq 	pr6|178
+000657  aa   777147 2350 04	lda  	-409,ic		000026 = 151147150000
+000660  aa  6 00264 7551 00	sta  	pr6|180
+000661  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+000662  aa  6 00306 2521 00	spri2	pr6|198
+000663  aa  6 00262 3521 00	epp2 	pr6|178
+000664  aa  6 00310 2521 00	spri2	pr6|200
+000665  aa  6 00222 3521 20	epp2 	pr6|146,*		code
+000666  aa  6 00312 2521 00	spri2	pr6|202
+000667  aa   777120 3520 04	epp2 	-432,ic		000007 = 514000000110
+000670  aa  6 00314 2521 00	spri2	pr6|204
+000671  aa   777111 3520 04	epp2 	-439,ic		000002 = 524000000013
+000672  aa  6 00316 2521 00	spri2	pr6|206
+000673  aa   777115 3520 04	epp2 	-435,ic		000010 = 404000000043
+000674  aa  6 00320 2521 00	spri2	pr6|208
+000675  aa  6 00304 6211 00	eax1 	pr6|196
+000676  aa   014000 4310 07	fld  	6144,dl
+000677  aa  6 00044 3701 20	epp4 	pr6|36,*
+000700  la  4 00044 3521 20	epp2 	pr4|36,*		convert_authorization_$from_string
+000701  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 211
+		if code ^= 0 then return;
+
+000702  aa  6 00222 2361 20	ldq  	pr6|146,*		code
+000703  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 212
+	     end;
+
+						STATEMENT 1 ON LINE 214
+	     if registry_record.free then call chase (registry_record.potential_aim_range_desc, bp, bl);
+
+000704  aa  6 00032 3735 20	epp7 	pr6|26,*
+000705  aa  7 00004 3715 20	epp5 	pr7|4,*		record_ptr
+000706  aa  5 00000 3715 20	epp5 	pr5|0,*		record_ptr
+000707  aa  5 00013 2351 00	lda  	pr5|11		registry_record.free
+000710  aa   010000 3150 03	cana 	4096,du
+000711  aa   000014 6000 04	tze  	12,ic		000725
+000712  aa  5 00020 3521 00	epp2 	pr5|16		registry_record.potential_aim_range_desc
+000713  aa  6 00274 2521 00	spri2	pr6|188
+000714  aa  6 00160 3521 00	epp2 	pr6|112		bp
+000715  aa  6 00276 2521 00	spri2	pr6|190
+000716  aa  6 00157 3521 00	epp2 	pr6|111		bl
+000717  aa  6 00300 2521 00	spri2	pr6|192
+000720  aa  6 00272 3521 00	epp2 	pr6|186
+000721  aa   014000 4310 07	fld  	6144,dl
+000722  aa  2 00000 7571 00	staq 	pr2|0
+000723  aa   000450 6700 04	tsp4 	296,ic		001373
+000724  aa   000013 7100 04	tra  	11,ic		000737
+						STATEMENT 1 ON LINE 215
+	     else call chase (registry_record.aim_range_desc, bp, bl);
+
+000725  aa  5 00012 3521 00	epp2 	pr5|10		registry_record.aim_range_desc
+000726  aa  6 00274 2521 00	spri2	pr6|188
+000727  aa  6 00160 3521 00	epp2 	pr6|112		bp
+000730  aa  6 00276 2521 00	spri2	pr6|190
+000731  aa  6 00157 3521 00	epp2 	pr6|111		bl
+000732  aa  6 00300 2521 00	spri2	pr6|192
+000733  aa  6 00272 3521 00	epp2 	pr6|186
+000734  aa   014000 4310 07	fld  	6144,dl
+000735  aa  2 00000 7571 00	staq 	pr2|0
+000736  aa   000435 6700 04	tsp4 	285,ic		001373
+						STATEMENT 1 ON LINE 216
+	     addr (temp_range) -> based_bits = based_bits;
+
+000737  aa  6 00157 2361 00	ldq  	pr6|111		bl
+000740  aa   000011 4020 07	mpy  	9,dl
+000741  aa  6 00160 3735 20	epp7 	pr6|112,*		bp
+000742  aa  003 140 060 540	csl  	(pr,rl),(pr,rl),fill(0),bool(move)
+000743  aa  7 00000 00 0006	descb	pr7|0,ql		based_bits
+000744  aa  6 00173 00 0006	descb	pr6|123,ql	based_bits
+						STATEMENT 1 ON LINE 220
+	     if ^ read_allowed_ (user_auth, temp_range (1)) then rew = "000"b;
+
+000745  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+000746  aa  6 00254 2521 00	spri2	pr6|172
+000747  aa  6 00173 3521 00	epp2 	pr6|123		temp_range
+000750  aa  6 00256 2521 00	spri2	pr6|174
+000751  aa  6 00267 3521 00	epp2 	pr6|183
+000752  aa  6 00260 2521 00	spri2	pr6|176
+000753  aa  6 00252 6211 00	eax1 	pr6|170
+000754  aa   014000 4310 07	fld  	6144,dl
+000755  aa  6 00044 3701 20	epp4 	pr6|36,*
+000756  la  4 00040 3521 20	epp2 	pr4|32,*		read_allowed_
+000757  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000760  aa  6 00267 2351 00	lda  	pr6|183
+000761  aa   400000 3150 03	cana 	131072,du
+000762  aa   000005 6010 04	tnz  	5,ic		000767
+000763  aa  6 00216 3735 20	epp7 	pr6|142,*
+000764  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000765  aa   000000 00 0000	descb	0,0
+000766  aa  7 00000 00 0003	descb	pr7|0,3		rew
+						STATEMENT 1 ON LINE 224
+	     if ^write_allowed_ (user_auth, temp_range (2)) then rew = rew & "100"b;
+
+000767  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+000770  aa  6 00254 2521 00	spri2	pr6|172
+000771  aa  6 00175 3521 00	epp2 	pr6|125		temp_range
+000772  aa  6 00256 2521 00	spri2	pr6|174
+000773  aa  6 00267 3521 00	epp2 	pr6|183
+000774  aa  6 00260 2521 00	spri2	pr6|176
+000775  aa  6 00252 6211 00	eax1 	pr6|170
+000776  aa   014000 4310 07	fld  	6144,dl
+000777  aa  6 00044 3701 20	epp4 	pr6|36,*
+001000  la  4 00042 3521 20	epp2 	pr4|34,*		write_allowed_
+001001  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001002  aa  6 00267 2351 00	lda  	pr6|183
+001003  aa   400000 3150 03	cana 	131072,du
+001004  aa   000013 6010 04	tnz  	11,ic		001017
+001005  aa  6 00216 3735 20	epp7 	pr6|142,*
+001006  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001007  aa  7 00000 00 0003	descb	pr7|0,3		rew
+001010  aa  6 00056 00 0044	descb	pr6|46,36
+001011  aa  6 00056 2351 00	lda  	pr6|46
+001012  aa   400000 3750 03	ana  	131072,du
+001013  aa  6 00056 7551 00	sta  	pr6|46
+001014  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001015  aa  6 00056 00 0003	descb	pr6|46,3
+001016  aa  7 00000 00 0003	descb	pr7|0,3		rew
+						STATEMENT 1 ON LINE 236
+	     current_rew = rew;
+
+001017  aa  6 00220 3735 20	epp7 	pr6|144,*
+001020  aa  6 00216 3715 20	epp5 	pr6|142,*
+001021  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001022  aa  5 00000 00 0003	descb	pr5|0,3		rew
+001023  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+						STATEMENT 1 ON LINE 244
+	     if assigned then
+		if assigned_by_another then
+		     if ^ read_allowed_ (user_auth, assignment_auth) then
+			current_rew = "000"b;
+
+001024  aa  6 00154 2351 00	lda  	pr6|108		assigned
+001025  aa   400000 3150 03	cana 	131072,du
+001026  aa   000026 6000 04	tze  	22,ic		001054
+001027  aa  6 00155 2351 00	lda  	pr6|109		assigned_by_another
+001030  aa   400000 3150 03	cana 	131072,du
+001031  aa   000023 6000 04	tze  	19,ic		001054
+001032  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+001033  aa  6 00254 2521 00	spri2	pr6|172
+001034  aa  6 00152 3521 00	epp2 	pr6|106		assignment_auth
+001035  aa  6 00256 2521 00	spri2	pr6|174
+001036  aa  6 00267 3521 00	epp2 	pr6|183
+001037  aa  6 00260 2521 00	spri2	pr6|176
+001040  aa  6 00252 6211 00	eax1 	pr6|170
+001041  aa   014000 4310 07	fld  	6144,dl
+001042  aa  6 00044 3701 20	epp4 	pr6|36,*
+001043  la  4 00040 3521 20	epp2 	pr4|32,*		read_allowed_
+001044  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001045  aa  6 00267 2351 00	lda  	pr6|183
+001046  aa   400000 3150 03	cana 	131072,du
+001047  aa   000005 6010 04	tnz  	5,ic		001054
+001050  aa  6 00220 3735 20	epp7 	pr6|144,*
+001051  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+001052  aa   000000 00 0000	descb	0,0
+001053  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+						STATEMENT 1 ON LINE 254
+	     if ^assigned then
+		if substr (user_name, 1, length (user_name) - 2) ^= owner_name then
+		     if ^ write_allowed_ (user_auth, temp_range (1)) then
+			current_rew = current_rew & "100"b;
+
+001054  aa  6 00154 2351 00	lda  	pr6|108		assigned
+001055  aa   400000 3150 03	cana 	131072,du
+001056  aa   000040 6010 04	tnz  	32,ic		001116
+001057  aa  6 00202 2361 00	ldq  	pr6|130		user_name
+001060  aa   000002 1760 07	sbq  	2,dl
+001061  aa  6 00162 7271 00	lxl7 	pr6|114		owner_name
+001062  aa  040 140 106 540	cmpc 	(pr,rl),(pr,rl),fill(040)
+001063  aa  6 00203 00 0006	desc9a	pr6|131,ql	user_name
+001064  aa  6 00163 00 0017	desc9a	pr6|115,x7	owner_name
+001065  aa   000031 6000 04	tze  	25,ic		001116
+001066  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+001067  aa  6 00254 2521 00	spri2	pr6|172
+001070  aa  6 00173 3521 00	epp2 	pr6|123		temp_range
+001071  aa  6 00256 2521 00	spri2	pr6|174
+001072  aa  6 00267 3521 00	epp2 	pr6|183
+001073  aa  6 00260 2521 00	spri2	pr6|176
+001074  aa  6 00252 6211 00	eax1 	pr6|170
+001075  aa   014000 4310 07	fld  	6144,dl
+001076  aa  6 00044 3701 20	epp4 	pr6|36,*
+001077  la  4 00042 3521 20	epp2 	pr4|34,*		write_allowed_
+001100  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001101  aa  6 00267 2351 00	lda  	pr6|183
+001102  aa   400000 3150 03	cana 	131072,du
+001103  aa   000013 6010 04	tnz  	11,ic		001116
+001104  aa  6 00220 3735 20	epp7 	pr6|144,*
+001105  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001106  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+001107  aa  6 00056 00 0044	descb	pr6|46,36
+001110  aa  6 00056 2351 00	lda  	pr6|46
+001111  aa   400000 3750 03	ana  	131072,du
+001112  aa  6 00056 7551 00	sta  	pr6|46
+001113  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001114  aa  6 00056 00 0003	descb	pr6|46,3
+001115  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+						STATEMENT 1 ON LINE 258
+	end;
+
+						STATEMENT 1 ON LINE 266
+	if assigned then
+	     if assigned_by_another then
+		current_rew = current_rew & "100"b;
+
+001116  aa  6 00154 2351 00	lda  	pr6|108		assigned
+001117  aa   400000 3150 03	cana 	131072,du
+001120  aa   000016 6000 04	tze  	14,ic		001136
+001121  aa  6 00155 2351 00	lda  	pr6|109		assigned_by_another
+001122  aa   400000 3150 03	cana 	131072,du
+001123  aa   000013 6000 04	tze  	11,ic		001136
+001124  aa  6 00220 3735 20	epp7 	pr6|144,*
+001125  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001126  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+001127  aa  6 00056 00 0044	descb	pr6|46,36
+001130  aa  6 00056 2351 00	lda  	pr6|46
+001131  aa   400000 3750 03	ana  	131072,du
+001132  aa  6 00056 7551 00	sta  	pr6|46
+001133  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001134  aa  6 00056 00 0003	descb	pr6|46,3
+001135  aa  7 00000 00 0003	descb	pr7|0,3		current_rew
+						STATEMENT 1 ON LINE 270
+return_hard:
+	return;
+
+001136  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO permissible_aim                                    STATEMENT 1 ON LINE 301
+permissible_aim: entry (max_range, aim_range, code);
+
+001137  at     000003000033
+001140  tt     000033000010
+001141  ta     001137000000
+001142  da     000264300000
+001143  aa   000400 6270 00	eax7 	256
+001144  aa  7 00034 3521 20	epp2 	pr7|28,*
+001145  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001146  aa     000006000000
+001147  aa     000000000000
+001150  aa  6 00032 3735 20	epp7 	pr6|26,*
+001151  aa  7 00006 3715 20	epp5 	pr7|6,*
+001152  aa  6 00222 6515 00	spri5	pr6|146
+						STATEMENT 1 ON LINE 311
+	call hcs_$get_authorization (user_auth, ""b);
+
+001153  aa   776645 2370 04	ldaq 	-603,ic		000020 = 000000000000 000000000000
+001154  aa  6 00270 7571 00	staq 	pr6|184
+001155  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+001156  aa  6 00254 2521 00	spri2	pr6|172
+001157  aa  6 00270 3521 00	epp2 	pr6|184
+001160  aa  6 00256 2521 00	spri2	pr6|174
+001161  aa  6 00252 6211 00	eax1 	pr6|170
+001162  aa   010000 4310 07	fld  	4096,dl
+001163  aa  6 00044 3701 20	epp4 	pr6|36,*
+001164  la  4 00050 3521 20	epp2 	pr4|40,*		hcs_$get_authorization
+001165  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 313
+	rcp_priv = addr (user_auth) -> aim_template.privileges.rcp;
+
+001166  aa  6 00201 2351 00	lda  	pr6|129		aim_template.rcp
+001167  aa   000027 7350 00	als  	23
+001170  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+001171  aa  6 00215 7551 00	sta  	pr6|141		rcp_priv
+						STATEMENT 1 ON LINE 317
+	if ^rcp_priv then
+	     if string (addr (user_auth) -> aim_template.privileges) ^= ""b then do;
+
+001172  aa   000033 6010 04	tnz  	27,ic		001225
+001173  aa  6 00201 2351 00	lda  	pr6|129
+001174  aa   777777 3150 07	cana 	262143,dl
+001175  aa   000030 6000 04	tze  	24,ic		001225
+						STATEMENT 1 ON LINE 319
+		call convert_authorization_$from_string (user_auth, "system_high", code);
+
+001176  aa   776626 2370 04	ldaq 	-618,ic		000024 = 163171163164 145155137150
+001177  aa  6 00262 7571 00	staq 	pr6|178
+001200  aa   776626 2350 04	lda  	-618,ic		000026 = 151147150000
+001201  aa  6 00264 7551 00	sta  	pr6|180
+001202  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+001203  aa  6 00306 2521 00	spri2	pr6|198
+001204  aa  6 00262 3521 00	epp2 	pr6|178
+001205  aa  6 00310 2521 00	spri2	pr6|200
+001206  aa  6 00222 3521 20	epp2 	pr6|146,*		code
+001207  aa  6 00312 2521 00	spri2	pr6|202
+001210  aa   776577 3520 04	epp2 	-641,ic		000007 = 514000000110
+001211  aa  6 00314 2521 00	spri2	pr6|204
+001212  aa   776570 3520 04	epp2 	-648,ic		000002 = 524000000013
+001213  aa  6 00316 2521 00	spri2	pr6|206
+001214  aa   776574 3520 04	epp2 	-644,ic		000010 = 404000000043
+001215  aa  6 00320 2521 00	spri2	pr6|208
+001216  aa  6 00304 6211 00	eax1 	pr6|196
+001217  aa   014000 4310 07	fld  	6144,dl
+001220  aa  6 00044 3701 20	epp4 	pr6|36,*
+001221  la  4 00044 3521 20	epp2 	pr4|36,*		convert_authorization_$from_string
+001222  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 320
+		if code ^= 0 then return;
+
+001223  aa  6 00222 2361 20	ldq  	pr6|146,*		code
+001224  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 321
+	     end;
+
+						STATEMENT 1 ON LINE 325
+	if ^ aim_check_$greater_or_equal (max_range (2), max_range (1)) then do;
+
+001225  aa  6 00032 3735 20	epp7 	pr6|26,*
+001226  aa  7 00002 3715 20	epp5 	pr7|2,*
+001227  aa  5 00002 3521 00	epp2 	pr5|2		max_range
+001230  aa  6 00254 2521 00	spri2	pr6|172
+001231  aa  7 00002 3521 20	epp2 	pr7|2,*		max_range
+001232  aa  6 00256 2521 00	spri2	pr6|174
+001233  aa  6 00267 3521 00	epp2 	pr6|183
+001234  aa  6 00260 2521 00	spri2	pr6|176
+001235  aa  6 00252 6211 00	eax1 	pr6|170
+001236  aa   014000 4310 07	fld  	6144,dl
+001237  aa  6 00044 3701 20	epp4 	pr6|36,*
+001240  la  4 00036 3521 20	epp2 	pr4|30,*		aim_check_$greater_or_equal
+001241  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001242  aa  6 00267 2351 00	lda  	pr6|183
+001243  aa   400000 3150 03	cana 	131072,du
+001244  aa   000005 6010 04	tnz  	5,ic		001251
+						STATEMENT 1 ON LINE 326
+	     code = error_table_$ai_invalid_range;
+
+001245  aa  6 00044 3701 20	epp4 	pr6|36,*
+001246  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$ai_invalid_range
+001247  aa  6 00222 7561 20	stq  	pr6|146,*		code
+						STATEMENT 1 ON LINE 327
+	     return;
+
+001250  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 328
+	end;
+
+						STATEMENT 1 ON LINE 330
+	if ^ aim_check_$greater_or_equal (aim_range (2), aim_range (1)) then do;
+
+001251  aa  6 00032 3735 20	epp7 	pr6|26,*
+001252  aa  7 00004 3715 20	epp5 	pr7|4,*
+001253  aa  5 00002 3521 00	epp2 	pr5|2		aim_range
+001254  aa  6 00254 2521 00	spri2	pr6|172
+001255  aa  7 00004 3521 20	epp2 	pr7|4,*		aim_range
+001256  aa  6 00256 2521 00	spri2	pr6|174
+001257  aa  6 00267 3521 00	epp2 	pr6|183
+001260  aa  6 00260 2521 00	spri2	pr6|176
+001261  aa  6 00252 6211 00	eax1 	pr6|170
+001262  aa   014000 4310 07	fld  	6144,dl
+001263  aa  6 00044 3701 20	epp4 	pr6|36,*
+001264  la  4 00036 3521 20	epp2 	pr4|30,*		aim_check_$greater_or_equal
+001265  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001266  aa  6 00267 2351 00	lda  	pr6|183
+001267  aa   400000 3150 03	cana 	131072,du
+001270  aa   000005 6010 04	tnz  	5,ic		001275
+						STATEMENT 1 ON LINE 331
+	     code = error_table_$ai_invalid_range;
+
+001271  aa  6 00044 3701 20	epp4 	pr6|36,*
+001272  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$ai_invalid_range
+001273  aa  6 00222 7561 20	stq  	pr6|146,*		code
+						STATEMENT 1 ON LINE 332
+	     return;
+
+001274  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 333
+	end;
+
+						STATEMENT 1 ON LINE 337
+	if ^ aim_check_$greater_or_equal (aim_range (1), max_range (1))
+	| ^ aim_check_$greater_or_equal (max_range (2), aim_range (2)) then do;
+
+001275  aa  6 00032 3735 20	epp7 	pr6|26,*
+001276  aa  7 00002 3715 20	epp5 	pr7|2,*
+001277  aa  5 00002 3521 00	epp2 	pr5|2		max_range
+001300  aa  6 00254 2521 00	spri2	pr6|172
+001301  aa  7 00004 3535 20	epp3 	pr7|4,*
+001302  aa  3 00002 3521 00	epp2 	pr3|2		aim_range
+001303  aa  6 00256 2521 00	spri2	pr6|174
+001304  aa  6 00267 3521 00	epp2 	pr6|183
+001305  aa  6 00260 2521 00	spri2	pr6|176
+001306  aa  6 00252 6211 00	eax1 	pr6|170
+001307  aa   014000 4310 07	fld  	6144,dl
+001310  aa  6 00044 3701 20	epp4 	pr6|36,*
+001311  la  4 00036 3521 20	epp2 	pr4|30,*		aim_check_$greater_or_equal
+001312  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001313  aa  6 00267 2351 00	lda  	pr6|183
+001314  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+001315  aa  0 00002 6751 00	era  	pr0|2		= 400000000000
+001316  aa  6 00267 7551 00	sta  	pr6|183
+001317  aa  6 00032 3735 20	epp7 	pr6|26,*
+001320  aa  7 00004 3521 20	epp2 	pr7|4,*		aim_range
+001321  aa  6 00254 2521 00	spri2	pr6|172
+001322  aa  7 00002 3521 20	epp2 	pr7|2,*		max_range
+001323  aa  6 00256 2521 00	spri2	pr6|174
+001324  aa  6 00266 3521 00	epp2 	pr6|182
+001325  aa  6 00260 2521 00	spri2	pr6|176
+001326  aa  6 00252 6211 00	eax1 	pr6|170
+001327  aa   014000 4310 07	fld  	6144,dl
+001330  aa  6 00044 3701 20	epp4 	pr6|36,*
+001331  la  4 00036 3521 20	epp2 	pr4|30,*		aim_check_$greater_or_equal
+001332  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001333  aa  6 00266 2351 00	lda  	pr6|182
+001334  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+001335  aa  0 00002 6751 00	era  	pr0|2		= 400000000000
+001336  aa  6 00267 2751 00	ora  	pr6|183
+001337  aa   000005 6000 04	tze  	5,ic		001344
+						STATEMENT 1 ON LINE 339
+	     code = error_table_$ai_out_range;
+
+001340  aa  6 00044 3701 20	epp4 	pr6|36,*
+001341  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$ai_out_range
+001342  aa  6 00222 7561 20	stq  	pr6|146,*		code
+						STATEMENT 1 ON LINE 340
+	     return;
+
+001343  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 341
+	end;
+
+						STATEMENT 1 ON LINE 345
+	code = 0;
+
+001344  aa  6 00222 4501 20	stz  	pr6|146,*		code
+						STATEMENT 1 ON LINE 349
+	if rcp_priv then return;
+
+001345  aa  6 00215 2351 00	lda  	pr6|141		rcp_priv
+001346  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 354
+	if ^ write_allowed_ (user_auth, aim_range (1)) then do;
+
+001347  aa  6 00200 3521 00	epp2 	pr6|128		user_auth
+001350  aa  6 00254 2521 00	spri2	pr6|172
+001351  aa  6 00032 3735 20	epp7 	pr6|26,*
+001352  aa  7 00004 3521 20	epp2 	pr7|4,*		aim_range
+001353  aa  6 00256 2521 00	spri2	pr6|174
+001354  aa  6 00267 3521 00	epp2 	pr6|183
+001355  aa  6 00260 2521 00	spri2	pr6|176
+001356  aa  6 00252 6211 00	eax1 	pr6|170
+001357  aa   014000 4310 07	fld  	6144,dl
+001360  aa  6 00044 3701 20	epp4 	pr6|36,*
+001361  la  4 00042 3521 20	epp2 	pr4|34,*		write_allowed_
+001362  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001363  aa  6 00267 2351 00	lda  	pr6|183
+001364  aa   400000 3150 03	cana 	131072,du
+001365  aa   000005 6010 04	tnz  	5,ic		001372
+						STATEMENT 1 ON LINE 355
+	     code = error_table_$ai_restricted;
+
+001366  aa  6 00044 3701 20	epp4 	pr6|36,*
+001367  la  4 00026 2361 20	ldq  	pr4|22,*		error_table_$ai_restricted
+001370  aa  6 00222 7561 20	stq  	pr6|146,*		code
+						STATEMENT 1 ON LINE 356
+	     return;
+
+001371  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 357
+	end;
+
+						STATEMENT 1 ON LINE 363
+	return;
+
+001372  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 365
+     end rcprm_access_control_;
+
+BEGIN PROCEDURE chase
+ENTRY TO chase                                              STATEMENT 1 ON LINE 273
+chase:	proc (descriptor, bp, bl);
+
+001373  aa  6 00224 6501 00	spri4	pr6|148
+001374  aa  6 00226 2521 00	spri2	pr6|150
+						STATEMENT 1 ON LINE 281
+	     if descriptor = 0 then do;
+
+001375  aa  2 00002 2361 20	ldq  	pr2|2,*		descriptor
+001376  aa   000005 6010 04	tnz  	5,ic		001403
+						STATEMENT 1 ON LINE 282
+		bp = addr (bp);
+
+001377  aa  2 00004 3735 20	epp7 	pr2|4,*		bp
+001400  aa  2 00004 6535 20	spri7	pr2|4,*		bp
+						STATEMENT 1 ON LINE 283
+		bl = 0;
+
+001401  aa  2 00006 4501 20	stz  	pr2|6,*		bl
+						STATEMENT 1 ON LINE 284
+		return;
+
+001402  aa  6 00224 6101 00	rtcd 	pr6|148
+						STATEMENT 1 ON LINE 285
+	     end;
+
+						STATEMENT 1 ON LINE 287
+	     unspec (rs) = ""b;
+
+001403  aa  000 100 100 400	mlr  	(),(pr),fill(000)
+001404  aa   000000 00 0000	desc9a	0,0
+001405  aa  6 00232 00 0070	desc9a	pr6|154,56
+						STATEMENT 1 ON LINE 288
+	     rs.version = rs_info_version_2;
+
+001406  aa   000002 2360 07	ldq  	2,dl
+001407  aa  6 00232 7561 00	stq  	pr6|154		rs.version
+						STATEMENT 1 ON LINE 289
+	     rs.locate_sw = "1"b;
+
+001410  aa   040000 2350 03	lda  	16384,du
+001411  aa  6 00233 2551 00	orsa 	pr6|155		rs.locate_sw
+						STATEMENT 1 ON LINE 290
+	     rs.descriptor = descriptor;
+
+001412  aa  2 00002 2361 20	ldq  	pr2|2,*		descriptor
+001413  aa  6 00240 7561 00	stq  	pr6|160		rs.descriptor
+						STATEMENT 1 ON LINE 292
+	     call iox_$control (sw_ptr, "record_status", addr (rs), code);
+
+001414  aa   776413 2350 04	lda  	-757,ic		000027 = 162145143157
+001415  aa   776413 2360 04	ldq  	-757,ic		000030 = 162144137163
+001416  aa  6 00336 7571 00	staq 	pr6|222
+001417  aa   776412 2350 04	lda  	-758,ic		000031 = 164141164165
+001420  aa   163000 2360 03	ldq  	58880,du
+001421  aa  6 00340 7571 00	staq 	pr6|224
+001422  aa  6 00232 3735 00	epp7 	pr6|154		rs
+001423  aa  6 00342 6535 00	spri7	pr6|226
+001424  aa  6 00032 3715 20	epp5 	pr6|26,*
+001425  aa  5 00002 3521 20	epp2 	pr5|2,*		sw_ptr
+001426  aa  6 00346 2521 00	spri2	pr6|230
+001427  aa  6 00336 3521 00	epp2 	pr6|222
+001430  aa  6 00350 2521 00	spri2	pr6|232
+001431  aa  6 00342 3521 00	epp2 	pr6|226
+001432  aa  6 00352 2521 00	spri2	pr6|234
+001433  aa  6 00222 3521 20	epp2 	pr6|146,*		code
+001434  aa  6 00354 2521 00	spri2	pr6|236
+001435  aa   776357 3520 04	epp2 	-785,ic		000014 = 464000000000
+001436  aa  6 00356 2521 00	spri2	pr6|238
+001437  aa  6 00362 2521 00	spri2	pr6|242
+001440  aa   776340 3520 04	epp2 	-800,ic		000000 = 524000000015
+001441  aa  6 00360 2521 00	spri2	pr6|240
+001442  aa   776346 3520 04	epp2 	-794,ic		000010 = 404000000043
+001443  aa  6 00364 2521 00	spri2	pr6|244
+001444  aa  6 00344 6211 00	eax1 	pr6|228
+001445  aa   020000 4310 07	fld  	8192,dl
+001446  aa  6 00044 3701 20	epp4 	pr6|36,*
+001447  la  4 00056 3521 20	epp2 	pr4|46,*		iox_$control
+001450  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 293
+	     if code ^= 0 then goto return_hard;
+
+001451  aa  6 00222 2361 20	ldq  	pr6|146,*		code
+001452  aa   777464 6010 04	tnz  	-204,ic		001136
+						STATEMENT 1 ON LINE 295
+	     bl = rs.record_length;
+
+001453  aa  6 00234 2361 00	ldq  	pr6|156		rs.record_length
+001454  aa  6 00226 3735 20	epp7 	pr6|150,*
+001455  aa  7 00006 7561 20	stq  	pr7|6,*		bl
+						STATEMENT 1 ON LINE 296
+	     bp = rs.record_ptr;
+
+001456  aa  6 00236 3715 20	epp5 	pr6|158,*		rs.record_ptr
+001457  aa  7 00004 6515 20	spri5	pr7|4,*		bp
+						STATEMENT 1 ON LINE 298
+	     return;
+
+001460  aa  6 00224 6101 00	rtcd 	pr6|148
+						STATEMENT 1 ON LINE 299
+	end chase;
+
+  END PROCEDURE chase
+  END PROCEDURE rcprm_access_control_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

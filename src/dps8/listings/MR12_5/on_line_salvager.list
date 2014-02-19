@@ -1,0 +1,1871 @@
+	COMPILATION LISTING OF SEGMENT on_line_salvager
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1716.31_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,ifthenstmt,ifthen,indnoniterend,indend,^indproc */
+       14 /* format: off */
+       15 on_line_salvager:
+       16      proc (a_dp, a_code);
+       17 
+       18 /* Modified by Kobziar on 12-6-73 to delete only user from acl in dump */
+       19 /* Modified by Kobizar on 12-3-74 to give all users access under AI */
+       20 /* Modified by R. Bratt on 06/03/76 to call find_$finished */
+       21 /* Last modified by Greenberg 07/26/76 to terminate processes cleanly, also cleaned up AST length getting */
+       22 /* Modified by S. Barr 9/76 to use new hash table format. */
+       23 /* Modified by Greenberg 11/18/76 for setting AIM out of service. */
+       24 /* Modified by S. Barr 4/77 to force rebuild. */
+       25 /* Rewritten by S. Barr 7/77 to fix bugs and to call the new salvager primatives. */
+       26 /* Rewritten 7/77 by S. Barr for multiprocess salvaging. */
+       27 /* Modified 6/79 by Mike Grady for stack 0 sharing */
+       28 /* Modified 10 Aug 1981, W. Olin Sibert, to handle errors while creating dump copies */
+       29 /* Modified 25 February 1985, Keith Loepere, to use the real internal get_pathname_. */
+       30 
+       31 dcl  a_dp pointer parameter;
+       32 dcl  a_code fixed bin (35) parameter;
+       33 
+       34 dcl  dir_name char (168);
+       35 dcl  ename char (32);
+       36 dcl  path_name char (168) var;
+       37 dcl  set_sw fixed bin (35);
+       38 dcl  (i, l) fixed bin;
+       39 dcl  (root, old_modify) bit (1);
+       40 dcl  entry_time char (24);
+       41 dcl  (dir_name_len, save_level) fixed bin (17);
+       42 dcl  code fixed bin (35);
+       43 dcl  salvlp ptr;					/* ptr to salv_data$lock. */
+       44 
+       45 dcl  unlock_parent bit (1) aligned;
+       46 dcl  rb (3) fixed bin (6) init (7, 7, 7);
+       47 
+       48 dcl  1 args aligned like salv_args;
+       49 
+       50 dcl  pds$process_group_id char (32) aligned external static;
+       51 dcl  pds$process_dir_name char (32) aligned external static;
+       52 dcl  pds$ fixed bin external static;
+       53 dcl  pds$processid bit (36) aligned external static;
+       54 dcl  pds$stack_0_ptr pointer external static;
+       55 
+       56 dcl  error_table_$argerr fixed bin (35) external static;
+       57 dcl  error_table_$mylock fixed bin (35) external static;
+       58 dcl  error_table_$root fixed bin (35) external static;
+       59 dcl  error_table_$salv_pdir_procterm fixed bin (35) external static;
+       60 
+       61 dcl  date_time_ entry (fixed bin (71), char (*));
+       62 dcl  get_pathname_			entry (fixed bin (17), char (*) varying, fixed bin (35));
+       63 dcl  level$get entry (fixed bin);
+       64 dcl  level$set entry (fixed bin);
+       65 dcl  lock$dir_unlock entry (pointer);
+       66 dcl  lock$unlock_fast entry (ptr);
+       67 dcl  lock$lock_fast entry (ptr);
+       68 dcl  salvager$online entry (ptr);
+       69 dcl  salv_directory$online_salvage entry (ptr, ptr, ptr, fixed bin (35));
+       70 dcl  salv_dump_copy entry (pointer, fixed bin, char (*));
+       71 dcl  salv_err_msg entry options (variable);
+       72 dcl  set_privileges$dir_priv_off entry (fixed bin (35));
+       73 dcl  set_privileges$dir_priv_on entry (fixed bin (35));
+       74 dcl  sum$getbranch_root_my entry (pointer, bit (36) aligned, pointer, fixed bin (35));
+       75 dcl  syserr entry options (variable);
+       76 dcl  syserr$error_code entry options (variable);
+       77 dcl  vtoc_attributes$get_info entry (bit (36) aligned, bit (36) aligned, fixed bin, ptr, fixed bin (35));
+       78 
+       79 dcl  typelock bit (36) aligned options (constant) static init ("1"b);
+       80 
+       81 dcl  WHOAMI char (32) internal static options (constant) init ("on_line_salvager");
+       82 
+       83 dcl  cleanup condition;
+       84 
+       85 dcl  (addr, clock, index, length, max, ptr, rel, reverse, segno, substr) builtin;
+       86 
+       87 
+       88 
+       89 	a_code = 0;
+       90 	dp = a_dp;
+       91 	if rel (dp) ^= "0"b then do;
+       92 	     a_code = error_table_$argerr;
+       93 	     return;
+       94 	     end;
+       95 
+       96 	root, unlock_parent = "0"b;
+       97 
+       98 /* salv_data lock prevents two processes from online salvaging at the same time.  (Output would be mixed up.) */
+       99 
+      100 	call level$get (save_level);
+      101 	set_sw = 1;
+      102 
+      103 	salvlp = addr (salv_data$lock);
+      104 	on cleanup
+      105 	     begin;
+      106 		if salvlp -> lock.pid = pds$processid then call lock$unlock_fast (salvlp);
+      107 		call level$set (save_level);
+      108 		if set_sw = 0 then call set_privileges$dir_priv_off ((0));
+      109 		if unlock_parent then call lock$dir_unlock (ptr (ep, 0));
+      110 		end;
+      111 
+      112 	call lock$lock_fast (salvlp);
+      113 
+      114 /* Get ptr to branch and lock parent directory. */
+      115 
+      116 	root = "0"b;
+      117 	call sum$getbranch_root_my (dp, typelock, ep, code);
+      118 	if code = 0 then unlock_parent = "1"b;
+      119 	else if code = error_table_$root then root = "1"b;
+      120 	else if code ^= error_table_$mylock then
+      121 	     call syserr$error_code (CRASH, code, "^a: error from sum on ^p", WHOAMI, dp);
+      122 
+      123 /* Get pathname and print salvage message. */
+      124 
+      125 	path_name, dir_name, ename = "";
+      126 	call get_pathname_ (segno (dp), path_name, code);
+      127 	if code ^= 0 then call syserr$error_code (CRASH, code, "^a: Getting pathname of ^p", WHOAMI, dp);
+      128 
+      129 	i = index (reverse (path_name), ">");
+      130 	l = length (path_name);
+      131 	dir_name_len = max (l - i, 1);
+      132 	if dir_name_len = 1 then dir_name_len = 0;
+      133 	dir_name = substr (path_name, 1, dir_name_len);
+      134 	ename = substr (path_name, l + 2 - i, i - 1);
+      135 
+      136 	call date_time_ (clock (), entry_time);
+      137 
+      138 	args.pathname = path_name;
+      139 	call salvager$online (addr (args));
+      140 	call syserr (ANNOUNCE, "^a: Begin salvaging of directory ^a for ^a", WHOAMI, args.pathname,
+      141 	     pds$process_group_id);
+      142 
+      143 /* Put out the first message */
+      144 
+      145 	call salv_err_msg (SALV_JUST_LOG, "^a:Begin salvaging of directory ^a for ^a", entry_time, args.pathname,
+      146 	     pds$process_group_id);
+      147 
+      148 	call get_dumps;
+      149 	old_modify = (dir.modify ^= "0"b);
+      150 	dir.modify = "0"b;
+      151 
+      152 	call salv_directory$online_salvage (addr (args), ep, dp, a_code);
+      153 
+      154 	if unlock_parent then call lock$dir_unlock (ptr (ep, 0));
+      155 	call salv_err_msg (SALV_ANNOUNCE, "on_line_salvager: salvaging completed.");
+      156 
+      157 	call lock$unlock_fast (salvlp);
+      158 
+      159 /* Terminate user's process if the process directory was salvaged. */
+      160 
+      161 	if old_modify & (substr (args.pathname, 1, 16) = ">process_dir_dir" | substr (args.pathname, 1, 4) = ">pdd")
+      162 	then if ename = substr (pds$process_dir_name, 18, 15) then do;
+      163 		call salv_err_msg (SALV_LOG, "on_line_salvager: user process ^a terminated because of bad process directory",
+      164 		     pds$process_group_id);
+      165 		a_code = error_table_$salv_pdir_procterm;
+      166 						/* Cause verify lock to terminate the process */
+      167 		end;
+      168 
+      169 	return;
+      170 
+      171 
+      172 
+      173 /* * Copy the stack and the directory into segments in >dumps.  The validation level is temporarily set to zero for
+      174*   * these copies.  No dump is made for a bad root directory, since it would have to be used in order to find >dump.
+      175*   * No dump is made for level 1 directories, since the root is locked.
+      176*   * No dump is made for the directory dumps itself or for any directories in its subtree.
+      177*   *	stack		<date/time>stack
+      178*   *	directory		<date/time>name
+      179**/
+      180 
+      181 get_dumps:
+      182      proc;
+      183 
+      184 dcl  cname_prefix char (11);
+      185 
+      186 /* The root and level 1 directories get a null dir_name from fs_get$path_name */
+      187 
+      188 	if dir_name = "" | substr (args.pathname, 1, 6) = ">dumps" then return;
+      189 
+      190 	call level$set (0);				/* to copy dir */
+      191 	call set_privileges$dir_priv_on (set_sw);	/* allow access to copy data into >dumps */
+      192 
+      193 	cname_prefix =
+      194 	     substr (entry_time, 1, 2) || substr (entry_time, 4, 2) || substr (entry_time, 7, 2) || "."
+      195 	     || substr (entry_time, 11, 6) || ".";
+      196 
+      197 	call vtoc_attributes$get_info ((entry.uid), (entry.pvid), (entry.vtocx), addr (sc_info), code);
+      198 	if code ^= 0 then
+      199 	     call syserr$error_code (LOG, code, "^a: cannot get activation info on ^p", WHOAMI, dp);
+      200 	else call salv_dump_copy (dp, sc_info.csl, cname_prefix || ename);
+      201 
+      202 	call salv_dump_copy (pds$stack_0_ptr, 16384, cname_prefix || "stack");
+      203 	call salv_dump_copy (addr (pds$), 4096, cname_prefix || "pds");
+      204 
+      205 	call level$set (save_level);
+      206 	if set_sw = 0 then call set_privileges$dir_priv_off ((0));
+      207 
+      208 	return;
+      209      end get_dumps;
+      210 
+      211 /* format: style2 */
+      212 
+  1     1 /* BEGIN INCLUDE FILE ... quota_cell.incl.pl1 ... February 1982 */
+  1     2 
+  1     3 dcl 1 quota_cell based (qcp) aligned,			/* Argument used by vtoc_attributes$(get set)_quota */
+  1     4     2 quota fixed bin (35),				/* Record quota */
+  1     5     2 used fixed bin (35),				/* Current use */
+  1     6     2 received fixed bin (35),			/* Quota moved down */
+  1     7     2 tup bit (36),					/* Clock time of update */
+  1     8     2 trp fixed bin (71),				/* Time-page-product, in page-seconds */
+  1     9     2 pad fixed bin,
+  1    10     2 terminal_quota_sw bit (1);			/* TRUE if terminal quota */
+  1    11 
+  1    12 dcl  qcp ptr;
+  1    13 
+  1    14 /* END INCLUDE FILE ... quota_cell */
+      213 
+      214 
+  2     1 /* BEGIN INCLUDE FILE . . . salv_args */
+  2     2 /* Keith Loepere made pathname unal November 1984. */
+  2     3 
+  2     4 dcl 1 salv_args aligned based,
+  2     5     2 temp1_ptr ptr,				/* ptr to temp segment */
+  2     6     2 temp2_ptr ptr,				/* ptr to temp segment */
+  2     7     2 salv_time bit (36) aligned,			/* Highest valid date/time  */
+  2     8     2 options aligned,
+  2     9       3 force_rebuild bit (1) unal,			/* ON, if should rebuild directory */
+  2    10       3 print_trace bit (1) unal,			/* ON, if debugging trace information should be printed. */
+  2    11       3 correct_oosw bit (1) unal,			/* ON, if directory's out-of-service switch should be reset */
+  2    12       3 check_vtoce bit (1) unal,			/* ON, if VTOC entries of all branches should be checked. */
+  2    13       3 dump bit (1) unal,				/* ON, if should dump directory on error condition */
+  2    14       3 compact bit (1) unal,				/* ON, to force rebuild if one pages can be recovered. */
+  2    15       3 delete_connection_failure bit (1) unal,		/* ON, to delete branches that have no VTOC entries */
+  2    16       3 pad bit (29),
+  2    17     2 branch_ptr ptr,				/* ptr to branch for directory */
+  2    18     2 current_length fixed bin,			/* number of pages in directory */
+  2    19     2 pathname char (168) unal,			/* pathname of directory being salvaged */
+  2    20     2 master_dir_uid bit (36) aligned,			/* master UID for this directory */
+  2    21     2 tree_depth fixed bin;				/* number of levels from root for this directory */
+  2    22 
+  2    23 /* END INCLUDE FILE . . . salv_args */
+      215 
+      216 
+  3     1 /* Begin include file salvager_severities.incl.pl1 BIM 831118 */
+  3     2 /* format: style3 */
+  3     3 
+  3     4 declare	(
+  3     5 	SALV_CRASH	init (1),			/** Something salvager-detected is life threatening. Should never happen */
+  3     6 	SALV_ANNOUNCE	init (2),			/** Worthy of the console if online */
+  3     7 	SALV_LOG		init (4),			/** worthy of the syserr log */
+  3     8 	SALV_DEBUG	init (5),			/** just like 4, but dump the dir */
+  3     9 	SALV_JUST_LOG	init (6)			/** barely worthy of the syserr log */
+  3    10 	)		fixed bin int static options (constant);
+  3    11 
+  3    12 /* End include file salvager_severities.incl.pl1 */
+      217 
+      218 
+  4     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  4     2 /* Modified 8/74 for NSS */
+  4     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  4     4 /* Modified 3/82 BIM for change pclock */
+  4     5 /* format: style3 */
+  4     6 
+  4     7 /* Template for the directory header. Length = 64 words. */
+  4     8 
+  4     9 dcl  dp ptr;
+  4    10 
+  4    11 dcl 1 dir based (dp) aligned,
+  4    12 
+  4    13    2 modify bit (36),				/* Process ID of last modifier */
+  4    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  4    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  4    16     2 dtc (3),					/* date-time checked by salvager array */
+  4    17       3 date bit (36),				/* the date */
+  4    18       3 error bit (36),				/* what errors were discovered */
+  4    19 
+  4    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  4    21 
+  4    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  4    23 
+  4    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  4    25 
+  4    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  4    27 
+  4    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  4    29     2 version_number fixed bin (17),			/* version number of header */
+  4    30 
+  4    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  4    32     2 pad2 bit (18),
+  4    33 
+  4    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  4    35     2 pad3 bit (18),
+  4    36 
+  4    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  4    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  4    39 
+  4    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  4    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  4    42 
+  4    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  4    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  4    45 
+  4    46     2 lcount fixed bin (17),				/* number of links */
+  4    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  4    48 
+  4    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  4    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  4    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  4    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  4    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  4    54     2 pad4 bit (14),
+  4    55 
+  4    56     2 iacl_count (0:7),
+  4    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  4    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  4    59 
+  4    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  4    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  4    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  4    63 
+  4    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  4    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  4    66 
+  4    67     2 htsize fixed bin (17),				/* size of hash table */
+  4    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  4    69 
+  4    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  4    71     2 pad6 fixed bin (17),
+  4    72 
+  4    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  4    74     2 pad7 bit (18)) unaligned,
+  4    75 
+  4    76     2 dts bit (36),					/* date-time directory last salvaged */
+  4    77 
+  4    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  4    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  4    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  4    81     2 checksum bit (36),				/* checksummed from uid on */
+  4    82     2 owner bit (36);				/* uid of parent dir */
+  4    83 
+  4    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  4    85 
+  4    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      219 
+      220 
+  5     1 /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  5     2 
+  5     3 
+  5     4 /* Template for an entry. Length = 38 words */
+  5     5 
+  5     6 dcl  ep ptr;
+  5     7 
+  5     8 dcl 1 entry based (ep) aligned,
+  5     9 
+  5    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  5    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  5    12 
+  5    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  5    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  5    15 
+  5    16     2 uid bit (36),					/* unique id of entry */
+  5    17 
+  5    18     2 dtem bit (36),				/* date-time entry modified */
+  5    19 
+  5    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  5    21     2 pad0 bit (17),
+  5    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  5    23 
+  5    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  5    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  5    26 
+  5    27     2 author,					/* user who created branch */
+  5    28       3 pers_rp bit (18),				/* name of user who created branch */
+  5    29       3 proj_rp bit (18),				/* project of user who created branch */
+  5    30 
+  5    31       3 tag char (1),				/* tag of user who created branch */
+  5    32       3 pad1 char (3),
+  5    33 
+  5    34     2 primary_name bit (504),				/* first name on name list */
+  5    35 
+  5    36     2 dtd bit (36),					/* date time dumped */
+  5    37 
+  5    38     2 pad2 bit (36),
+  5    39 
+  5    40 
+  5    41 /* the declarations below are for branch only */
+  5    42 
+  5    43 
+  5    44     2 pvid bit (36),				/* physical volume id */
+  5    45 
+  5    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  5    47     2 pad3 bit (18),
+  5    48 
+  5    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  5    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  5    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  5    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  5    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  5    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  5    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  5    56     2 security_oosw bit (1),				/* security out of service switch */
+  5    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  5    58     2 master_dir bit (1),				/* TRUE for master directory */
+  5    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  5    60     2 pad4 bit (11),
+  5    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  5    62 
+  5    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  5    64 
+  5    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  5    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  5    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  5    68 
+  5    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  5    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  5    71 
+  5    72     2 bc_author,					/* user who last set the bit count */
+  5    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  5    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  5    75 
+  5    76       3 tag char (1),				/* tag of user who set the bit count */
+  5    77       3 pad5 bit (2),
+  5    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  5    79 
+  5    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  5    81 
+  5    82     2 pad6 bit (36),
+  5    83 
+  5    84     2 checksum bit (36),				/* checksum from dtd */
+  5    85 
+  5    86     2 owner bit (36);				/* uid of containing directory */
+  5    87 
+  5    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      221 
+      222 
+  6     1 /*     BEGIN INCLUDE FILE ... salv_data.incl.pl1 ... last modified July 1982 */
+  6     2 
+  6     3 dcl  salv_data$debug bit (1) aligned external;		/* ON, For additional debugging messages. */
+  6     4 dcl  salv_data$dump bit (1) aligned external;		/* ON, to dump bad directories and VTOC entries. */
+  6     5 dcl  salv_data$lock bit (36) external aligned;		/* lock to prevent more than one process from using salv_data. */
+  6     6 dcl  salv_data$on_line bit (1) aligned external;		/* ON, for online salvage. */
+  6     7 dcl  salv_data$print_path bit (1) aligned external;	/* ON, if pathname of each directory should be printed. */
+  6     8 dcl  salv_data$printer_delay fixed bin aligned external;	/* Number of minutes to wait for a not ready printer. */
+  6     9 dcl  salv_data$rpv bit (1) aligned external;		/* ON, for root physical volume salvage. */
+  6    10 dcl  salv_data$vol_read_ahead fixed bin external;
+  6    11 
+  6    12 
+  6    13 /*     END INCLUDE FILE ... salv_data.incl.pl1 ... */
+      223 
+      224 
+  7     1 
+  7     2 /* Begin include file ...  sc_info.incl.pl1  */
+  7     3 /* format: style3 */
+  7     4 /* quota_cell.incl.pl1 MUST be included with this file. */
+  7     5 
+  7     6 /* This file defines a structure used for communicating vtoc-resident
+  7     7*   information between status accessing and setting primitives in
+  7     8*   segment control */
+  7     9 
+  7    10 dcl	scip		ptr;
+  7    11 
+  7    12 dcl	1 based_sc_info	aligned based (scip),
+  7    13 	  2 dtu		bit (36),			/* Date-time used */
+  7    14 	  2 dtm		bit (36),			/* Date-time modified */
+  7    15 	  2 records	fixed bin,		/* # records of storage used */
+  7    16 	  2 msl		fixed bin,		/* Maximum segment length, words */
+  7    17 	  2 csl		fixed bin,		/* Current segment length, words */
+  7    18 	  2 flags,
+  7    19 	    3 dnzp	bit (1) unal,
+  7    20 	    3 pad_gtpd	bit (1) unal,		/* obsolete PML */
+  7    21 	    3 damaged	bit (1) unal,
+  7    22 	    3 nid		bit (1) unal,		/* no incremental volume dump switch */
+  7    23 	    3 ncd		bit (1) unal,		/* no complete dump switch */
+  7    24 	    3 synchronized  bit (1) unal,
+  7    25 	    3 pad		bit (30) unal,
+  7    26 	  2 pf_count	fixed bin (35),		/* page fault counter. may wrap */
+  7    27 	  2 qcell (0:1)	aligned like quota_cell,
+  7    28 	  2 vol_dtd	bit (36),			/* volume date-time-dumped */
+  7    29 	  2 volid		(3) bit (36) aligned;	/* these belong to the dumper */
+  7    30 
+  7    31 
+  7    32 dcl	1 sc_info		like based_sc_info aligned;
+  7    33 
+  7    34 /* End include file ...  sc_info.incl.pl1 */
+      225 
+      226 
+  8     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  8     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  8     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  8     4 
+  8     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  8     6 
+  8     7 dcl (
+  8     8 
+  8     9 /* The following constants define the message action codes.  This indicates
+  8    10*how a message is to be handled.  */
+  8    11 
+  8    12      SYSERR_CRASH_SYSTEM	init (1),			
+  8    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  8    14 
+  8    15      SYSERR_TERMINATE_PROCESS	init (2),
+  8    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  8    17 
+  8    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  8    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  8    20 
+  8    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  8    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  8    23 
+  8    24      SYSERR_LOG_OR_PRINT	init (4),
+  8    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  8    26 
+  8    27      SYSERR_LOG_OR_DISCARD	init (5),
+  8    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  8    29 
+  8    30 
+  8    31 /* The following constants are added to the normal severities to indicate
+  8    32*different sorting classes of messages.  */
+  8    33 
+  8    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  8    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  8    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  8    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  8    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  8    39 	) fixed bin internal static options (constant);
+  8    40 
+  8    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      227 
+      228 
+  9     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  9     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  9     3*   encourages name conflicts.
+  9     4*   USE HC_FAST_LOCK INSTEAD!
+  9     5**/
+  9     6 
+  9     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  9     8 
+  9     9 /* format: style3 */
+  9    10 
+  9    11 declare	lock_ptr		pointer;
+  9    12 declare	1 lock		aligned based (lock_ptr),
+  9    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  9    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  9    15 	  2 flags		aligned,
+  9    16 	    3 notify_sw	bit (1) unaligned,
+  9    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  9    18 
+  9    19 /* End include file hc_lock.incl.pl1 */
+      229 
+      230 
+      231 /**/
+      232 
+      233 /* BEGIN MESSAGE DOCUMENTATION
+      234*
+      235*   Message:
+      236*   on_line_salvager: lock error ERROMESSAGE
+      237*
+      238*   S: $crash
+      239*
+      240*   T: $run
+      241*
+      242*   M: The on line salvager could not lock its data base.
+      243*   $err
+      244*
+      245*   A: $inform
+      246*   $recover
+      247*   Be sure that a dump is taken.
+      248*
+      249*   Message:
+      250*   on_line_salvager: error from sum on PPPPP ERRORMESSAGE
+      251*
+      252*   S: $crash
+      253*
+      254*   T: $run
+      255*
+      256*   M: The on line salvager could not access the branch for a sdirectory
+      257*   to be salvaged.
+      258*   $err
+      259*
+      260*   A: $inform
+      261*   $recover
+      262*
+      263*   Message:
+      264*   on_line_salvager: cannot get activation info on PPPPP ERRORMESSAGE
+      265*
+      266*   S: $info
+      267*
+      268*   T: $run
+      269*
+      270*   M: The on line salvager could not determine the length of a directory to be
+      271*   salvaged. A truncated copy will be made in >dumps.
+      272*
+      273*   A: $inform
+      274*
+      275*   Message:
+      276*   on_line_salvager: Getting pathname of PPPPP
+      277*
+      278*   S: $crash
+      279*
+      280*   T: $run
+      281*
+      282*   M: The on line  salvager cannot obtain the pathname of a directory to be
+      283*   salvaged.
+      284*   $err
+      285*
+      286*   A: Take a dump.
+      287*   $inform
+      288*   $recover
+      289*
+      290*   END MESSAGE DOCUMENTATION */
+      291      end on_line_salvager;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1716.3  on_line_salvager.pl1              >udd>sm>ds>w>ml>on_line_salvager.pl1
+213          1    05/27/82  1625.9  quota_cell.incl.pl1               >ldd>incl>quota_cell.incl.pl1
+215          2    01/30/85  1623.9  salv_args.incl.pl1                >ldd>incl>salv_args.incl.pl1
+217          3    11/29/83  1029.9  salvager_severities.incl.pl1      >ldd>incl>salvager_severities.incl.pl1
+219          4    05/24/82  1105.0  dir_header.incl.pl1               >ldd>incl>dir_header.incl.pl1
+221          5    04/29/76  1200.6  dir_entry.incl.pl1                >ldd>incl>dir_entry.incl.pl1
+223          6    10/25/82  1115.6  salv_data.incl.pl1                >ldd>incl>salv_data.incl.pl1
+225          7    11/22/82  1055.7  sc_info.incl.pl1                  >ldd>incl>sc_info.incl.pl1
+227          8    05/17/85  0715.7  syserr_constants.incl.pl1         >ldd>incl>syserr_constants.incl.pl1
+229          9    01/06/85  1522.1  hc_lock.incl.pl1                  >ldd>incl>hc_lock.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000036 constant        fixed bin(17,0)          initial dcl 8-7 set ref 140*
+CRASH                           000041 constant        fixed bin(17,0)          initial dcl 8-7 set ref 120* 127*
+LOG                             000020 constant        fixed bin(17,0)          initial dcl 8-7 set ref 198*
+SALV_ANNOUNCE                   000037 constant        fixed bin(17,0)          initial dcl 3-4 set ref 155*
+SALV_JUST_LOG                   000015 constant        fixed bin(17,0)          initial dcl 3-4 set ref 145*
+SALV_LOG                        000020 constant        fixed bin(17,0)          initial dcl 3-4 set ref 163*
+WHOAMI                          000000 constant        char(32)                 initial packed unaligned dcl 81 set ref 120* 127*
+                                                                                  140* 198*
+a_code                                 parameter       fixed bin(35,0)          dcl 32 set ref 15 89* 92* 152* 165*
+a_dp                                   parameter       pointer                  dcl 31 ref 15 90
+addr                                                   builtin function         dcl 85 ref 103 139 139 152 152 197 197 203 203
+args                            000262 automatic       structure                level 1 dcl 48 set ref 139 139 152 152
+based_sc_info                          based           structure                level 1 dcl 7-12
+cleanup                         000352 stack reference condition                dcl 83 ref 104
+clock                                                  builtin function         dcl 85 ref 136 136
+cname_prefix                    000430 automatic       char(11)                 packed unaligned dcl 184 set ref 193* 200 202 203
+code                            000252 automatic       fixed bin(35,0)          dcl 42 set ref 117* 118 119 120 120* 126* 127 127*
+                                                                                  197* 198 198*
+csl                       4     000364 automatic       fixed bin(17,0)          level 2 dcl 7-32 set ref 200*
+date_time_                      000032 constant        entry                    external dcl 61 ref 136
+dir                                    based           structure                level 1 dcl 4-11
+dir_name                        000100 automatic       char(168)                packed unaligned dcl 34 set ref 125* 133* 188
+dir_name_len                    000250 automatic       fixed bin(17,0)          dcl 41 set ref 131* 132 132* 133
+dp                              000360 automatic       pointer                  dcl 4-9 set ref 90* 91 117* 120* 126 126 127* 149
+                                                                                  150 152* 198* 200*
+ename                           000152 automatic       char(32)                 packed unaligned dcl 35 set ref 125* 134* 161 200
+entry                                  based           structure                level 1 dcl 5-8
+entry_time                      000242 automatic       char(24)                 packed unaligned dcl 40 set ref 136* 145* 193 193
+                                                                                  193 193
+ep                              000362 automatic       pointer                  dcl 5-6 set ref 109 109 117* 152* 154 154 197 197
+                                                                                  197
+error_table_$argerr             000022 external static fixed bin(35,0)          dcl 56 ref 92
+error_table_$mylock             000024 external static fixed bin(35,0)          dcl 57 ref 120
+error_table_$root               000026 external static fixed bin(35,0)          dcl 58 ref 119
+error_table_$salv_pdir_procterm 000030 external static fixed bin(35,0)          dcl 59 ref 165
+get_pathname_                   000034 constant        entry                    external dcl 62 ref 126
+i                               000236 automatic       fixed bin(17,0)          dcl 38 set ref 129* 131 134 134
+index                                                  builtin function         dcl 85 ref 129
+l                               000237 automatic       fixed bin(17,0)          dcl 38 set ref 130* 131 134
+length                                                 builtin function         dcl 85 ref 130
+level$get                       000036 constant        entry                    external dcl 63 ref 100
+level$set                       000040 constant        entry                    external dcl 64 ref 107 190 205
+lock                                   based           structure                level 1 dcl 9-12
+lock$dir_unlock                 000042 constant        entry                    external dcl 65 ref 109 154
+lock$lock_fast                  000046 constant        entry                    external dcl 67 ref 112
+lock$unlock_fast                000044 constant        entry                    external dcl 66 ref 106 157
+max                                                    builtin function         dcl 85 ref 131
+modify                                 based           bit(36)                  level 2 dcl 4-11 set ref 149 150*
+old_modify                      000241 automatic       bit(1)                   packed unaligned dcl 39 set ref 149* 161
+path_name                       000162 automatic       varying char(168)        dcl 36 set ref 125* 126* 129 130 133 134 138
+pathname                 13     000262 automatic       char(168)                level 2 packed packed unaligned dcl 48 set ref 138*
+                                                                                  140* 145* 161 161 188
+pds$                            000014 external static fixed bin(17,0)          dcl 52 set ref 203 203
+pds$process_dir_name            000012 external static char(32)                 dcl 51 ref 161
+pds$process_group_id            000010 external static char(32)                 dcl 50 set ref 140* 145* 163*
+pds$processid                   000016 external static bit(36)                  dcl 53 ref 106
+pds$stack_0_ptr                 000020 external static pointer                  dcl 54 set ref 202*
+pid                                    based           bit(36)                  level 2 dcl 9-12 ref 106
+ptr                                                    builtin function         dcl 85 ref 109 109 154 154
+pvid                     30            based           bit(36)                  level 2 packed packed unaligned dcl 5-8 ref 197
+quota_cell                             based           structure                level 1 dcl 1-3
+rb                              000257 automatic       fixed bin(6,0)           initial array dcl 46 set ref 46* 46* 46*
+rel                                                    builtin function         dcl 85 ref 91
+reverse                                                builtin function         dcl 85 ref 129
+root                            000240 automatic       bit(1)                   packed unaligned dcl 39 set ref 96* 116* 119*
+salv_args                              based           structure                level 1 dcl 2-4
+salv_data$lock                  000074 external static bit(36)                  dcl 6-5 set ref 103
+salv_directory$online_salvage   000052 constant        entry                    external dcl 69 ref 152
+salv_dump_copy                  000054 constant        entry                    external dcl 70 ref 200 202 203
+salv_err_msg                    000056 constant        entry                    external dcl 71 ref 145 155 163
+salvager$online                 000050 constant        entry                    external dcl 68 ref 139
+salvlp                          000254 automatic       pointer                  dcl 43 set ref 103* 106 106* 112* 157*
+save_level                      000251 automatic       fixed bin(17,0)          dcl 41 set ref 100* 107* 205*
+sc_info                         000364 automatic       structure                level 1 dcl 7-32 set ref 197 197
+segno                                                  builtin function         dcl 85 ref 126 126
+set_privileges$dir_priv_off     000060 constant        entry                    external dcl 72 ref 108 206
+set_privileges$dir_priv_on      000062 constant        entry                    external dcl 73 ref 191
+set_sw                          000235 automatic       fixed bin(35,0)          dcl 37 set ref 101* 108 191* 206
+substr                                                 builtin function         dcl 85 ref 133 134 161 161 161 188 193 193 193 193
+sum$getbranch_root_my           000064 constant        entry                    external dcl 74 ref 117
+syserr                          000066 constant        entry                    external dcl 75 ref 140
+syserr$error_code               000070 constant        entry                    external dcl 76 ref 120 127 198
+typelock                        000035 constant        bit(36)                  initial dcl 79 set ref 117*
+uid                       2            based           bit(36)                  level 2 dcl 5-8 ref 197
+unlock_parent                   000256 automatic       bit(1)                   dcl 45 set ref 96* 109 118* 154
+vtoc_attributes$get_info        000072 constant        entry                    external dcl 77 ref 197
+vtocx                    31            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 5-8 ref 197
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 8-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 8-7
+SALV_CRASH                             internal static fixed bin(17,0)          initial dcl 3-4
+SALV_DEBUG                             internal static fixed bin(17,0)          initial dcl 3-4
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 8-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 8-7
+lock_ptr                               automatic       pointer                  dcl 9-11
+qcp                                    automatic       pointer                  dcl 1-12
+salv_data$debug                        external static bit(1)                   dcl 6-3
+salv_data$dump                         external static bit(1)                   dcl 6-4
+salv_data$on_line                      external static bit(1)                   dcl 6-6
+salv_data$print_path                   external static bit(1)                   dcl 6-7
+salv_data$printer_delay                external static fixed bin(17,0)          dcl 6-8
+salv_data$rpv                          external static bit(1)                   dcl 6-9
+salv_data$vol_read_ahead               external static fixed bin(17,0)          dcl 6-10
+scip                                   automatic       pointer                  dcl 7-10
+version_number_2                       internal static fixed bin(17,0)          initial dcl 4-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+get_dumps                       001046 constant        entry                    internal dcl 181 ref 148
+on_line_salvager                000174 constant        entry                    external dcl 15
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1724        2022    1373        1734
+Length      2422    1373        76         363     330           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+on_line_salvager                    388 external procedure  is an external procedure.  
+on unit on line 104                  72 on unit               
+get_dumps                               internal procedure  shares stack frame of external procedure on_line_salvager.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+on_line_salvager         000100 dir_name                    on_line_salvager
+                         000152 ename                       on_line_salvager
+                         000162 path_name                   on_line_salvager
+                         000235 set_sw                      on_line_salvager
+                         000236 i                           on_line_salvager
+                         000237 l                           on_line_salvager
+                         000240 root                        on_line_salvager
+                         000241 old_modify                  on_line_salvager
+                         000242 entry_time                  on_line_salvager
+                         000250 dir_name_len                on_line_salvager
+                         000251 save_level                  on_line_salvager
+                         000252 code                        on_line_salvager
+                         000254 salvlp                      on_line_salvager
+                         000256 unlock_parent               on_line_salvager
+                         000257 rb                          on_line_salvager
+                         000262 args                        on_line_salvager
+                         000360 dp                          on_line_salvager
+                         000362 ep                          on_line_salvager
+                         000364 sc_info                     on_line_salvager
+                         000430 cname_prefix                get_dumps
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac
+enable_op           shorten_stack       ext_entry           int_entry           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+date_time_                    get_pathname_                 level$get                     level$set
+lock$dir_unlock               lock$lock_fast                lock$unlock_fast              salv_directory$online_salvage
+salv_dump_copy                salv_err_msg                  salvager$online               set_privileges$dir_priv_off
+set_privileges$dir_priv_on    sum$getbranch_root_my         syserr                        syserr$error_code
+vtoc_attributes$get_info
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr           error_table_$mylock           error_table_$root
+error_table_$salv_pdir_procterm                             pds$                          pds$process_dir_name
+pds$process_group_id          pds$processid                 pds$stack_0_ptr               salv_data$lock
+
+
+CONSTANTS
+000000  aa  157 156 137 154	on_l
+000001  aa  151 156 145 137	ine_
+000002  aa  163 141 154 166	salv
+000003  aa  141 147 145 162	ager
+000004  aa  040 040 040 040	    
+000005  aa  040 040 040 040	    
+000006  aa  040 040 040 040	    
+000007  aa  040 040 040 040	    
+
+
+000010  aa     524000000016
+
+000011  aa  160 144 163 000	pds
+
+000012  aa     524000000020
+
+000013  aa     524000000053
+
+000014  aa     524000000044
+
+001372  aa  056 000 000 000	.
+
+000015  aa     000000000006
+
+000016  aa     524000000115
+
+000017  aa  076 160 144 144	>pdd
+
+000020  aa     000000000004
+
+000021  aa     524000000046
+
+000022  aa     524000000051
+
+000023  aa     524000000040
+
+000024  aa     526000000250
+
+000025  aa     524000000052
+
+000026  aa     526000000030
+
+000027  aa     410000000107
+
+000030  aa     524000000032
+
+000031  aa     530000000250
+
+000032  aa     526000000040
+
+000033  aa     524000000030
+
+000034  aa     404000000021
+
+000035  aa     400000000000
+
+000036  aa     000000000000
+
+000037  aa     000000000002
+
+000040  aa     404000000043
+
+000041  aa     000000000001
+
+000042  aa     464000000000
+
+000044  aa  163 164 141 143	stac
+000045  aa  153 000 000 000	k
+
+000046  aa  076 144 165 155	>dum
+000047  aa  160 163 000 000	ps
+
+000050  aa  143 154 145 141	clea
+000051  aa  156 165 160 000	nup
+
+000052  aa  076 160 162 157	>pro
+000053  aa  143 145 163 163	cess
+000054  aa  137 144 151 162	_dir
+000055  aa  137 144 151 162	_dir
+
+000056  aa  136 141 072 040	^a: 
+000057  aa  145 162 162 157	erro
+000060  aa  162 040 146 162	r fr
+000061  aa  157 155 040 163	om s
+000062  aa  165 155 040 157	um o
+000063  aa  156 040 136 160	n ^p
+
+000064  aa  136 141 072 040	^a: 
+000065  aa  107 145 164 164	Gett
+000066  aa  151 156 147 040	ing 
+000067  aa  160 141 164 150	path
+000070  aa  156 141 155 145	name
+000071  aa  040 157 146 040	 of 
+000072  aa  136 160 000 000	^p
+
+000073  aa  136 141 072 040	^a: 
+000074  aa  143 141 156 156	cann
+000075  aa  157 164 040 147	ot g
+000076  aa  145 164 040 141	et a
+000077  aa  143 164 151 166	ctiv
+000100  aa  141 164 151 157	atio
+000101  aa  156 040 151 156	n in
+000102  aa  146 157 040 157	fo o
+000103  aa  156 040 136 160	n ^p
+
+000104  aa  157 156 137 154	on_l
+000105  aa  151 156 145 137	ine_
+000106  aa  163 141 154 166	salv
+000107  aa  141 147 145 162	ager
+000110  aa  072 040 163 141	: sa
+000111  aa  154 166 141 147	lvag
+000112  aa  151 156 147 040	ing 
+000113  aa  143 157 155 160	comp
+000114  aa  154 145 164 145	lete
+000115  aa  144 056 000 000	d.
+
+000116  aa  136 141 072 102	^a:B
+000117  aa  145 147 151 156	egin
+000120  aa  040 163 141 154	 sal
+000121  aa  166 141 147 151	vagi
+000122  aa  156 147 040 157	ng o
+000123  aa  146 040 144 151	f di
+000124  aa  162 145 143 164	rect
+000125  aa  157 162 171 040	ory 
+000126  aa  136 141 040 146	^a f
+000127  aa  157 162 040 136	or ^
+000130  aa  141 000 000 000	a
+
+000131  aa  136 141 072 040	^a: 
+000132  aa  102 145 147 151	Begi
+000133  aa  156 040 163 141	n sa
+000134  aa  154 166 141 147	lvag
+000135  aa  151 156 147 040	ing 
+000136  aa  157 146 040 144	of d
+000137  aa  151 162 145 143	irec
+000140  aa  164 157 162 171	tory
+000141  aa  040 136 141 040	 ^a 
+000142  aa  146 157 162 040	for 
+000143  aa  136 141 000 000	^a
+
+000144  aa  157 156 137 154	on_l
+000145  aa  151 156 145 137	ine_
+000146  aa  163 141 154 166	salv
+000147  aa  141 147 145 162	ager
+000150  aa  072 040 165 163	: us
+000151  aa  145 162 040 160	er p
+000152  aa  162 157 143 145	roce
+000153  aa  163 163 040 136	ss ^
+000154  aa  141 040 164 145	a te
+000155  aa  162 155 151 156	rmin
+000156  aa  141 164 145 144	ated
+000157  aa  040 142 145 143	 bec
+000160  aa  141 165 163 145	ause
+000161  aa  040 157 146 040	 of 
+000162  aa  142 141 144 040	bad 
+000163  aa  160 162 157 143	proc
+000164  aa  145 163 163 040	ess 
+000165  aa  144 151 162 145	dire
+000166  aa  143 164 157 162	ctor
+000167  aa  171 000 000 000	y
+
+BEGIN PROCEDURE on_line_salvager
+ENTRY TO on_line_salvager                                   STATEMENT 1 ON LINE 15
+on_line_salvager:
+     proc (a_dp, a_code);
+
+000170  at     000002000042
+000171  ta     000040000000
+000172  ta     000170000000
+000173  da     000316300000
+000174  aa   000620 6270 00	eax7 	400
+000175  aa  7 00034 3521 20	epp2 	pr7|28,*
+000176  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000177  aa     000004000000
+000200  aa     000000000000
+						STATEMENT 1 ON LINE 46
+000201  aa  6 00420 4501 00	stz  	pr6|272
+000202  aa  6 00420 0541 00	aos  	pr6|272
+000203  aa   000007 2360 07	ldq  	7,dl
+000204  aa  6 00420 7271 00	lxl7 	pr6|272
+000205  aa  6 00256 7561 17	stq  	pr6|174,7		rb
+000206  aa  6 00420 0541 00	aos  	pr6|272
+000207  aa  6 00420 7271 00	lxl7 	pr6|272
+000210  aa  6 00256 7561 17	stq  	pr6|174,7		rb
+000211  aa  6 00420 0541 00	aos  	pr6|272
+000212  aa  6 00420 7271 00	lxl7 	pr6|272
+000213  aa  6 00256 7561 17	stq  	pr6|174,7		rb
+						STATEMENT 1 ON LINE 89
+	a_code = 0;
+
+000214  aa  6 00032 3735 20	epp7 	pr6|26,*
+000215  aa  7 00004 4501 20	stz  	pr7|4,*		a_code
+						STATEMENT 1 ON LINE 90
+	dp = a_dp;
+
+000216  aa  7 00002 3715 20	epp5 	pr7|2,*		a_dp
+000217  aa  5 00000 3715 20	epp5 	pr5|0,*		a_dp
+000220  aa  6 00360 6515 00	spri5	pr6|240		dp
+						STATEMENT 1 ON LINE 91
+	if rel (dp) ^= "0"b then do;
+
+000221  aa  5 00000 6351 00	eaa  	pr5|0		dp
+000222  aa   000004 6000 04	tze  	4,ic		000226
+						STATEMENT 1 ON LINE 92
+	     a_code = error_table_$argerr;
+
+000223  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$argerr
+000224  aa  7 00004 7561 20	stq  	pr7|4,*		a_code
+						STATEMENT 1 ON LINE 93
+	     return;
+
+000225  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 94
+	     end;
+
+						STATEMENT 1 ON LINE 96
+	root, unlock_parent = "0"b;
+
+000226  aa  6 00240 4501 00	stz  	pr6|160		root
+000227  aa  6 00256 4501 00	stz  	pr6|174		unlock_parent
+						STATEMENT 1 ON LINE 100
+	call level$get (save_level);
+
+000230  aa  6 00251 3521 00	epp2 	pr6|169		save_level
+000231  aa  6 00436 2521 00	spri2	pr6|286
+000232  aa  6 00434 6211 00	eax1 	pr6|284
+000233  aa   004000 4310 07	fld  	2048,dl
+000234  la  4 00036 3521 20	epp2 	pr4|30,*		level$get
+000235  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 101
+	set_sw = 1;
+
+000236  aa   000001 2360 07	ldq  	1,dl
+000237  aa  6 00235 7561 00	stq  	pr6|157		set_sw
+						STATEMENT 1 ON LINE 103
+	salvlp = addr (salv_data$lock);
+
+000240  aa  6 00044 3701 20	epp4 	pr6|36,*
+000241  la  4 00074 3735 20	epp7 	pr4|60,*		salv_data$lock
+000242  aa  6 00254 6535 00	spri7	pr6|172		salvlp
+						STATEMENT 1 ON LINE 104
+	on cleanup
+	     begin;
+
+000243  aa   000007 7260 07	lxl6 	7,dl
+000244  aa   777604 3520 04	epp2 	-124,ic		000050 = 143154145141
+000245  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000246  aa   000004 7100 04	tra  	4,ic		000252
+000247  aa     000352000000
+000250  aa   000061 7100 04	tra  	49,ic		000331
+BEGIN CONDITION cleanup.1
+ENTRY TO cleanup.1                                          STATEMENT 1 ON LINE 104
+	on cleanup
+	     begin;
+
+000251  da     000324200000
+000252  aa   000120 6270 00	eax7 	80
+000253  aa  7 00034 3521 20	epp2 	pr7|28,*
+000254  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000255  aa     000000000000
+000256  aa     000000000000
+						STATEMENT 1 ON LINE 106
+		if salvlp -> lock.pid = pds$processid then call lock$unlock_fast (salvlp);
+
+000257  aa  6 00040 3735 20	epp7 	pr6|32,*
+000260  aa  7 00254 2351 20	lda  	pr7|172,*		lock.pid
+000261  la  4 00016 1151 20	cmpa 	pr4|14,*		pds$processid
+000262  aa   000007 6010 04	tnz  	7,ic		000271
+000263  aa  7 00254 3521 00	epp2 	pr7|172		salvlp
+000264  aa  6 00102 2521 00	spri2	pr6|66
+000265  aa  6 00100 6211 00	eax1 	pr6|64
+000266  aa   004000 4310 07	fld  	2048,dl
+000267  la  4 00044 3521 20	epp2 	pr4|36,*		lock$unlock_fast
+000270  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 107
+		call level$set (save_level);
+
+000271  aa  6 00040 3735 20	epp7 	pr6|32,*
+000272  aa  7 00251 3521 00	epp2 	pr7|169		save_level
+000273  aa  6 00102 2521 00	spri2	pr6|66
+000274  aa  6 00100 6211 00	eax1 	pr6|64
+000275  aa   004000 4310 07	fld  	2048,dl
+000276  aa  6 00044 3701 20	epp4 	pr6|36,*
+000277  la  4 00040 3521 20	epp2 	pr4|32,*		level$set
+000300  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 108
+		if set_sw = 0 then call set_privileges$dir_priv_off ((0));
+
+000301  aa  6 00040 3735 20	epp7 	pr6|32,*
+000302  aa  7 00235 2361 00	ldq  	pr7|157		set_sw
+000303  aa   000011 6010 04	tnz  	9,ic		000314
+000304  aa  6 00104 4501 00	stz  	pr6|68
+000305  aa  6 00104 3521 00	epp2 	pr6|68
+000306  aa  6 00102 2521 00	spri2	pr6|66
+000307  aa  6 00100 6211 00	eax1 	pr6|64
+000310  aa   004000 4310 07	fld  	2048,dl
+000311  aa  6 00044 3701 20	epp4 	pr6|36,*
+000312  la  4 00060 3521 20	epp2 	pr4|48,*		set_privileges$dir_priv_off
+000313  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 109
+		if unlock_parent then call lock$dir_unlock (ptr (ep, 0));
+
+000314  aa  6 00040 3735 20	epp7 	pr6|32,*
+000315  aa  7 00256 2351 00	lda  	pr7|174		unlock_parent
+000316  aa   000012 6000 04	tze  	10,ic		000330
+000317  aa  7 00362 3525 20	epbp2	pr7|242,*		ep
+000320  aa  6 00106 2521 00	spri2	pr6|70
+000321  aa  6 00106 3521 00	epp2 	pr6|70
+000322  aa  6 00102 2521 00	spri2	pr6|66
+000323  aa  6 00100 6211 00	eax1 	pr6|64
+000324  aa   004000 4310 07	fld  	2048,dl
+000325  aa  6 00044 3701 20	epp4 	pr6|36,*
+000326  la  4 00042 3521 20	epp2 	pr4|34,*		lock$dir_unlock
+000327  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 110
+		end;
+
+000330  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END CONDITION cleanup.1
+						STATEMENT 1 ON LINE 112
+	call lock$lock_fast (salvlp);
+
+000331  aa  6 00254 3521 00	epp2 	pr6|172		salvlp
+000332  aa  6 00436 2521 00	spri2	pr6|286
+000333  aa  6 00434 6211 00	eax1 	pr6|284
+000334  aa   004000 4310 07	fld  	2048,dl
+000335  aa  6 00044 3701 20	epp4 	pr6|36,*
+000336  la  4 00046 3521 20	epp2 	pr4|38,*		lock$lock_fast
+000337  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 116
+	root = "0"b;
+
+000340  aa  6 00240 4501 00	stz  	pr6|160		root
+						STATEMENT 1 ON LINE 117
+	call sum$getbranch_root_my (dp, typelock, ep, code);
+
+000341  aa  6 00360 3521 00	epp2 	pr6|240		dp
+000342  aa  6 00442 2521 00	spri2	pr6|290
+000343  aa   777472 3520 04	epp2 	-198,ic		000035 = 400000000000
+000344  aa  6 00444 2521 00	spri2	pr6|292
+000345  aa  6 00362 3521 00	epp2 	pr6|242		ep
+000346  aa  6 00446 2521 00	spri2	pr6|294
+000347  aa  6 00252 3521 00	epp2 	pr6|170		code
+000350  aa  6 00450 2521 00	spri2	pr6|296
+000351  aa  6 00440 6211 00	eax1 	pr6|288
+000352  aa   020000 4310 07	fld  	8192,dl
+000353  aa  6 00044 3701 20	epp4 	pr6|36,*
+000354  la  4 00064 3521 20	epp2 	pr4|52,*		sum$getbranch_root_my
+000355  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 118
+	if code = 0 then unlock_parent = "1"b;
+
+000356  aa  6 00252 2361 00	ldq  	pr6|170		code
+000357  aa   000004 6010 04	tnz  	4,ic		000363
+000360  aa   400000 2350 03	lda  	131072,du
+000361  aa  6 00256 7551 00	sta  	pr6|174		unlock_parent
+000362  aa   000047 7100 04	tra  	39,ic		000431
+						STATEMENT 1 ON LINE 119
+	else if code = error_table_$root then root = "1"b;
+
+000363  aa  6 00044 3701 20	epp4 	pr6|36,*
+000364  la  4 00026 1161 20	cmpq 	pr4|22,*		error_table_$root
+000365  aa   000004 6010 04	tnz  	4,ic		000371
+000366  aa   400000 2350 03	lda  	131072,du
+000367  aa  6 00240 7551 00	sta  	pr6|160		root
+000370  aa   000041 7100 04	tra  	33,ic		000431
+						STATEMENT 1 ON LINE 120
+	else if code ^= error_table_$mylock then
+	     call syserr$error_code (CRASH, code, "^a: error from sum on ^p", WHOAMI, dp);
+
+000371  la  4 00024 1161 20	cmpq 	pr4|20,*		error_table_$mylock
+000372  aa   000037 6000 04	tze  	31,ic		000431
+000373  aa   777463 2370 04	ldaq 	-205,ic		000056 = 136141072040 145162162157
+000374  aa  6 00440 7571 00	staq 	pr6|288
+000375  aa   777463 2370 04	ldaq 	-205,ic		000060 = 162040146162 157155040163
+000376  aa  6 00442 7571 00	staq 	pr6|290
+000377  aa   777463 2370 04	ldaq 	-205,ic		000062 = 165155040157 156040136160
+000400  aa  6 00444 7571 00	staq 	pr6|292
+000401  aa   777440 3520 04	epp2 	-224,ic		000041 = 000000000001
+000402  aa  6 00454 2521 00	spri2	pr6|300
+000403  aa  6 00252 3521 00	epp2 	pr6|170		code
+000404  aa  6 00456 2521 00	spri2	pr6|302
+000405  aa  6 00440 3521 00	epp2 	pr6|288
+000406  aa  6 00460 2521 00	spri2	pr6|304
+000407  aa   777371 3520 04	epp2 	-263,ic		000000 = 157156137154
+000410  aa  6 00462 2521 00	spri2	pr6|306
+000411  aa  6 00360 3521 00	epp2 	pr6|240		dp
+000412  aa  6 00464 2521 00	spri2	pr6|308
+000413  aa   777421 3520 04	epp2 	-239,ic		000034 = 404000000021
+000414  aa  6 00466 2521 00	spri2	pr6|310
+000415  aa   777423 3520 04	epp2 	-237,ic		000040 = 404000000043
+000416  aa  6 00470 2521 00	spri2	pr6|312
+000417  aa   777414 3520 04	epp2 	-244,ic		000033 = 524000000030
+000420  aa  6 00472 2521 00	spri2	pr6|314
+000421  aa   777411 3520 04	epp2 	-247,ic		000032 = 526000000040
+000422  aa  6 00474 2521 00	spri2	pr6|316
+000423  aa   777417 3520 04	epp2 	-241,ic		000042 = 464000000000
+000424  aa  6 00476 2521 00	spri2	pr6|318
+000425  aa  6 00452 6211 00	eax1 	pr6|298
+000426  aa   024000 4310 07	fld  	10240,dl
+000427  la  4 00070 3521 20	epp2 	pr4|56,*		syserr$error_code
+000430  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 125
+	path_name, dir_name, ename = "";
+
+000431  aa  6 00162 4501 00	stz  	pr6|114		path_name
+000432  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000433  aa   000000 00 0000	desc9a	0,0
+000434  aa  6 00100 00 0250	desc9a	pr6|64,168	dir_name
+000435  aa  040 100 100 400	mlr  	(),(pr),fill(040)
+000436  aa   000000 00 0000	desc9a	0,0
+000437  aa  6 00152 00 0040	desc9a	pr6|106,32	ename
+						STATEMENT 1 ON LINE 126
+	call get_pathname_ (segno (dp), path_name, code);
+
+000440  aa  6 00360 2131 20	epaq 	pr6|240,*		dp
+000441  aa   000022 7770 00	llr  	18
+000442  aa   077777 3760 07	anq  	32767,dl
+000443  aa  6 00433 7561 00	stq  	pr6|283
+000444  aa  6 00433 3521 00	epp2 	pr6|283
+000445  aa  6 00454 2521 00	spri2	pr6|300
+000446  aa  6 00163 3521 00	epp2 	pr6|115		path_name
+000447  aa  6 00456 2521 00	spri2	pr6|302
+000450  aa  6 00252 3521 00	epp2 	pr6|170		code
+000451  aa  6 00460 2521 00	spri2	pr6|304
+000452  aa   777362 3520 04	epp2 	-270,ic		000034 = 404000000021
+000453  aa  6 00462 2521 00	spri2	pr6|306
+000454  aa   777355 3520 04	epp2 	-275,ic		000031 = 530000000250
+000455  aa  6 00464 2521 00	spri2	pr6|308
+000456  aa   777362 3520 04	epp2 	-270,ic		000040 = 404000000043
+000457  aa  6 00466 2521 00	spri2	pr6|310
+000460  aa  6 00452 6211 00	eax1 	pr6|298
+000461  aa   014000 4310 07	fld  	6144,dl
+000462  aa  6 00044 3701 20	epp4 	pr6|36,*
+000463  la  4 00034 3521 20	epp2 	pr4|28,*		get_pathname_
+000464  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 127
+	if code ^= 0 then call syserr$error_code (CRASH, code, "^a: Getting pathname of ^p", WHOAMI, dp);
+
+000465  aa  6 00252 2361 00	ldq  	pr6|170		code
+000466  aa   000035 6000 04	tze  	29,ic		000523
+000467  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000470  aa   777375 00 0034	desc9a	-259,28		000064 = 136141072040
+000471  aa  6 00440 00 0034	desc9a	pr6|288,28
+000472  aa   777347 3520 04	epp2 	-281,ic		000041 = 000000000001
+000473  aa  6 00454 2521 00	spri2	pr6|300
+000474  aa  6 00252 3521 00	epp2 	pr6|170		code
+000475  aa  6 00456 2521 00	spri2	pr6|302
+000476  aa  6 00440 3521 00	epp2 	pr6|288
+000477  aa  6 00460 2521 00	spri2	pr6|304
+000500  aa   777300 3520 04	epp2 	-320,ic		000000 = 157156137154
+000501  aa  6 00462 2521 00	spri2	pr6|306
+000502  aa  6 00360 3521 00	epp2 	pr6|240		dp
+000503  aa  6 00464 2521 00	spri2	pr6|308
+000504  aa   777330 3520 04	epp2 	-296,ic		000034 = 404000000021
+000505  aa  6 00466 2521 00	spri2	pr6|310
+000506  aa   777332 3520 04	epp2 	-294,ic		000040 = 404000000043
+000507  aa  6 00470 2521 00	spri2	pr6|312
+000510  aa   777320 3520 04	epp2 	-304,ic		000030 = 524000000032
+000511  aa  6 00472 2521 00	spri2	pr6|314
+000512  aa   777320 3520 04	epp2 	-304,ic		000032 = 526000000040
+000513  aa  6 00474 2521 00	spri2	pr6|316
+000514  aa   777326 3520 04	epp2 	-298,ic		000042 = 464000000000
+000515  aa  6 00476 2521 00	spri2	pr6|318
+000516  aa  6 00452 6211 00	eax1 	pr6|298
+000517  aa   024000 4310 07	fld  	10240,dl
+000520  aa  6 00044 3701 20	epp4 	pr6|36,*
+000521  la  4 00070 3521 20	epp2 	pr4|56,*		syserr$error_code
+000522  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 129
+	i = index (reverse (path_name), ">");
+
+000523  aa  6 00162 7271 00	lxl7 	pr6|114		path_name
+000524  aa  000 003 125 540	scmr 	(pr,rl),(du),mask(000)
+000525  aa  6 00163 00 0017	desc9a	pr6|115,x7	path_name
+000526  aa   076000 00 0001	desc9a	31744,1
+000527  aa  6 00056 0001 00	arg  	pr6|46
+000530  aa  6 00056 2361 00	ldq  	pr6|46
+000531  aa   000002 6070 04	ttf  	2,ic		000533
+000532  aa   000001 3360 07	lcq  	1,dl
+000533  aa   000001 0760 07	adq  	1,dl
+000534  aa  6 00236 7561 00	stq  	pr6|158		i
+						STATEMENT 1 ON LINE 130
+	l = length (path_name);
+
+000535  aa  6 00162 2361 00	ldq  	pr6|114		path_name
+000536  aa  6 00237 7561 00	stq  	pr6|159		l
+						STATEMENT 1 ON LINE 131
+	dir_name_len = max (l - i, 1);
+
+000537  aa  6 00236 1761 00	sbq  	pr6|158		i
+000540  aa   000001 1160 07	cmpq 	1,dl
+000541  aa   000002 6050 04	tpl  	2,ic		000543
+000542  aa   000001 2360 07	ldq  	1,dl
+000543  aa  6 00250 7561 00	stq  	pr6|168		dir_name_len
+						STATEMENT 1 ON LINE 132
+	if dir_name_len = 1 then dir_name_len = 0;
+
+000544  aa   000001 1160 07	cmpq 	1,dl
+000545  aa   000002 6010 04	tnz  	2,ic		000547
+000546  aa  6 00250 4501 00	stz  	pr6|168		dir_name_len
+						STATEMENT 1 ON LINE 133
+	dir_name = substr (path_name, 1, dir_name_len);
+
+000547  aa  6 00250 7271 00	lxl7 	pr6|168		dir_name_len
+000550  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000551  aa  6 00163 00 0017	desc9a	pr6|115,x7	path_name
+000552  aa  6 00100 00 0250	desc9a	pr6|64,168	dir_name
+						STATEMENT 1 ON LINE 134
+	ename = substr (path_name, l + 2 - i, i - 1);
+
+000553  aa  6 00236 2361 00	ldq  	pr6|158		i
+000554  aa   000001 1760 07	sbq  	1,dl
+000555  aa   000000 6260 06	eax6 	0,ql
+000556  aa  6 00237 2361 00	ldq  	pr6|159		l
+000557  aa   000002 0760 07	adq  	2,dl
+000560  aa  6 00236 1761 00	sbq  	pr6|158		i
+000561  aa  040 100 100 546	mlr  	(pr,rl,ql),(pr),fill(040)
+000562  aa  6 00162 60 0016	desc9a	pr6|114(3),x6	path_name
+000563  aa  6 00152 00 0040	desc9a	pr6|106,32	ename
+						STATEMENT 1 ON LINE 136
+	call date_time_ (clock (), entry_time);
+
+000564  aa  0 01435 7001 00	tsx0 	pr0|797		clock_mac
+000565  aa  6 00500 7571 00	staq 	pr6|320
+000566  aa  6 00500 3521 00	epp2 	pr6|320
+000567  aa  6 00442 2521 00	spri2	pr6|290
+000570  aa  6 00242 3521 00	epp2 	pr6|162		entry_time
+000571  aa  6 00444 2521 00	spri2	pr6|292
+000572  aa   777235 3520 04	epp2 	-355,ic		000027 = 410000000107
+000573  aa  6 00446 2521 00	spri2	pr6|294
+000574  aa   777232 3520 04	epp2 	-358,ic		000026 = 526000000030
+000575  aa  6 00450 2521 00	spri2	pr6|296
+000576  aa  6 00440 6211 00	eax1 	pr6|288
+000577  aa   010000 4310 07	fld  	4096,dl
+000600  aa  6 00044 3701 20	epp4 	pr6|36,*
+000601  la  4 00032 3521 20	epp2 	pr4|26,*		date_time_
+000602  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 138
+	args.pathname = path_name;
+
+000603  aa  6 00162 7271 00	lxl7 	pr6|114		path_name
+000604  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000605  aa  6 00163 00 0017	desc9a	pr6|115,x7	path_name
+000606  aa  6 00275 00 0250	desc9a	pr6|189,168	args.pathname
+						STATEMENT 1 ON LINE 139
+	call salvager$online (addr (args));
+
+000607  aa  6 00262 3735 00	epp7 	pr6|178		args
+000610  aa  6 00500 6535 00	spri7	pr6|320
+000611  aa  6 00500 3521 00	epp2 	pr6|320
+000612  aa  6 00436 2521 00	spri2	pr6|286
+000613  aa  6 00434 6211 00	eax1 	pr6|284
+000614  aa   004000 4310 07	fld  	2048,dl
+000615  aa  6 00044 3701 20	epp4 	pr6|36,*
+000616  la  4 00050 3521 20	epp2 	pr4|40,*		salvager$online
+000617  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 140
+	call syserr (ANNOUNCE, "^a: Begin salvaging of directory ^a for ^a", WHOAMI, args.pathname,
+	     pds$process_group_id);
+
+000620  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000621  aa   777311 00 0054	desc9a	-311,44		000131 = 136141072040
+000622  aa  6 00452 00 0054	desc9a	pr6|298,44
+000623  aa   777213 3520 04	epp2 	-373,ic		000036 = 000000000000
+000624  aa  6 00504 2521 00	spri2	pr6|324
+000625  aa  6 00452 3521 00	epp2 	pr6|298
+000626  aa  6 00506 2521 00	spri2	pr6|326
+000627  aa   777151 3520 04	epp2 	-407,ic		000000 = 157156137154
+000630  aa  6 00510 2521 00	spri2	pr6|328
+000631  aa  6 00275 3521 00	epp2 	pr6|189		args.pathname
+000632  aa  6 00512 2521 00	spri2	pr6|330
+000633  aa  6 00044 3701 20	epp4 	pr6|36,*
+000634  la  4 00010 3521 20	epp2 	pr4|8,*		pds$process_group_id
+000635  aa  6 00514 2521 00	spri2	pr6|332
+000636  aa   777176 3520 04	epp2 	-386,ic		000034 = 404000000021
+000637  aa  6 00516 2521 00	spri2	pr6|334
+000640  aa   777165 3520 04	epp2 	-395,ic		000025 = 524000000052
+000641  aa  6 00520 2521 00	spri2	pr6|336
+000642  aa   777170 3520 04	epp2 	-392,ic		000032 = 526000000040
+000643  aa  6 00522 2521 00	spri2	pr6|338
+000644  aa   777160 3520 04	epp2 	-400,ic		000024 = 526000000250
+000645  aa  6 00524 2521 00	spri2	pr6|340
+000646  aa   777155 3520 04	epp2 	-403,ic		000023 = 524000000040
+000647  aa  6 00526 2521 00	spri2	pr6|342
+000650  aa  6 00502 6211 00	eax1 	pr6|322
+000651  aa   024000 4310 07	fld  	10240,dl
+000652  la  4 00066 3521 20	epp2 	pr4|54,*		syserr
+000653  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 145
+	call salv_err_msg (SALV_JUST_LOG, "^a:Begin salvaging of directory ^a for ^a", entry_time, args.pathname,
+	     pds$process_group_id);
+
+000654  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000655  aa   777242 00 0054	desc9a	-350,44		000116 = 136141072102
+000656  aa  6 00502 00 0054	desc9a	pr6|322,44
+000657  aa   777136 3520 04	epp2 	-418,ic		000015 = 000000000006
+000660  aa  6 00454 2521 00	spri2	pr6|300
+000661  aa  6 00502 3521 00	epp2 	pr6|322
+000662  aa  6 00456 2521 00	spri2	pr6|302
+000663  aa  6 00242 3521 00	epp2 	pr6|162		entry_time
+000664  aa  6 00460 2521 00	spri2	pr6|304
+000665  aa  6 00275 3521 00	epp2 	pr6|189		args.pathname
+000666  aa  6 00462 2521 00	spri2	pr6|306
+000667  aa  6 00044 3701 20	epp4 	pr6|36,*
+000670  la  4 00010 3521 20	epp2 	pr4|8,*		pds$process_group_id
+000671  aa  6 00464 2521 00	spri2	pr6|308
+000672  aa   777142 3520 04	epp2 	-414,ic		000034 = 404000000021
+000673  aa  6 00466 2521 00	spri2	pr6|310
+000674  aa   777126 3520 04	epp2 	-426,ic		000022 = 524000000051
+000675  aa  6 00470 2521 00	spri2	pr6|312
+000676  aa   777130 3520 04	epp2 	-424,ic		000026 = 526000000030
+000677  aa  6 00472 2521 00	spri2	pr6|314
+000700  aa   777124 3520 04	epp2 	-428,ic		000024 = 526000000250
+000701  aa  6 00474 2521 00	spri2	pr6|316
+000702  aa   777121 3520 04	epp2 	-431,ic		000023 = 524000000040
+000703  aa  6 00476 2521 00	spri2	pr6|318
+000704  aa  6 00452 6211 00	eax1 	pr6|298
+000705  aa   024000 4310 07	fld  	10240,dl
+000706  la  4 00056 3521 20	epp2 	pr4|46,*		salv_err_msg
+000707  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 148
+	call get_dumps;
+
+000710  aa   000136 6700 04	tsp4 	94,ic		001046
+						STATEMENT 1 ON LINE 149
+	old_modify = (dir.modify ^= "0"b);
+
+000711  aa  6 00360 2351 20	lda  	pr6|240,*		dir.modify
+000712  aa  0 00515 7001 00	tsx0 	pr0|333		r_ne_as
+000713  aa  6 00241 7551 00	sta  	pr6|161		old_modify
+						STATEMENT 1 ON LINE 150
+	dir.modify = "0"b;
+
+000714  aa  6 00360 4501 20	stz  	pr6|240,*		dir.modify
+						STATEMENT 1 ON LINE 152
+	call salv_directory$online_salvage (addr (args), ep, dp, a_code);
+
+000715  aa  6 00262 3735 00	epp7 	pr6|178		args
+000716  aa  6 00500 6535 00	spri7	pr6|320
+000717  aa  6 00500 3521 00	epp2 	pr6|320
+000720  aa  6 00442 2521 00	spri2	pr6|290
+000721  aa  6 00362 3521 00	epp2 	pr6|242		ep
+000722  aa  6 00444 2521 00	spri2	pr6|292
+000723  aa  6 00360 3521 00	epp2 	pr6|240		dp
+000724  aa  6 00446 2521 00	spri2	pr6|294
+000725  aa  6 00032 3715 20	epp5 	pr6|26,*
+000726  aa  5 00004 3521 20	epp2 	pr5|4,*		a_code
+000727  aa  6 00450 2521 00	spri2	pr6|296
+000730  aa  6 00440 6211 00	eax1 	pr6|288
+000731  aa   020000 4310 07	fld  	8192,dl
+000732  aa  6 00044 3701 20	epp4 	pr6|36,*
+000733  la  4 00052 3521 20	epp2 	pr4|42,*		salv_directory$online_salvage
+000734  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 154
+	if unlock_parent then call lock$dir_unlock (ptr (ep, 0));
+
+000735  aa  6 00256 2351 00	lda  	pr6|174		unlock_parent
+000736  aa   000012 6000 04	tze  	10,ic		000750
+000737  aa  6 00362 3525 20	epbp2	pr6|242,*		ep
+000740  aa  6 00500 2521 00	spri2	pr6|320
+000741  aa  6 00500 3521 00	epp2 	pr6|320
+000742  aa  6 00436 2521 00	spri2	pr6|286
+000743  aa  6 00434 6211 00	eax1 	pr6|284
+000744  aa   004000 4310 07	fld  	2048,dl
+000745  aa  6 00044 3701 20	epp4 	pr6|36,*
+000746  la  4 00042 3521 20	epp2 	pr4|34,*		lock$dir_unlock
+000747  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 155
+	call salv_err_msg (SALV_ANNOUNCE, "on_line_salvager: salvaging completed.");
+
+000750  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000751  aa   777134 00 0050	desc9a	-420,40		000104 = 157156137154
+000752  aa  6 00440 00 0050	desc9a	pr6|288,40
+000753  aa   777064 3520 04	epp2 	-460,ic		000037 = 000000000002
+000754  aa  6 00454 2521 00	spri2	pr6|300
+000755  aa  6 00440 3521 00	epp2 	pr6|288
+000756  aa  6 00456 2521 00	spri2	pr6|302
+000757  aa   777055 3520 04	epp2 	-467,ic		000034 = 404000000021
+000760  aa  6 00460 2521 00	spri2	pr6|304
+000761  aa   777040 3520 04	epp2 	-480,ic		000021 = 524000000046
+000762  aa  6 00462 2521 00	spri2	pr6|306
+000763  aa  6 00452 6211 00	eax1 	pr6|298
+000764  aa   010000 4310 07	fld  	4096,dl
+000765  aa  6 00044 3701 20	epp4 	pr6|36,*
+000766  la  4 00056 3521 20	epp2 	pr4|46,*		salv_err_msg
+000767  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 157
+	call lock$unlock_fast (salvlp);
+
+000770  aa  6 00254 3521 00	epp2 	pr6|172		salvlp
+000771  aa  6 00436 2521 00	spri2	pr6|286
+000772  aa  6 00434 6211 00	eax1 	pr6|284
+000773  aa   004000 4310 07	fld  	2048,dl
+000774  aa  6 00044 3701 20	epp4 	pr6|36,*
+000775  la  4 00044 3521 20	epp2 	pr4|36,*		lock$unlock_fast
+000776  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 161
+	if old_modify & (substr (args.pathname, 1, 16) = ">process_dir_dir" | substr (args.pathname, 1, 4) = ">pdd")
+	then if ename = substr (pds$process_dir_name, 18, 15) then do;
+
+000777  aa  6 00241 2351 00	lda  	pr6|161		old_modify
+001000  aa   000045 6000 04	tze  	37,ic		001045
+001001  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001002  aa  6 00275 00 0020	desc9a	pr6|189,16	args.pathname
+001003  aa   777051 00 0020	desc9a	-471,16		000052 = 076160162157
+001004  aa   000004 6000 04	tze  	4,ic		001010
+001005  aa  6 00275 2351 00	lda  	pr6|189		args.pathname
+001006  aa   777011 1150 04	cmpa 	-503,ic		000017 = 076160144144
+001007  aa   000036 6010 04	tnz  	30,ic		001045
+001010  aa  6 00044 3701 20	epp4 	pr6|36,*
+001011  la  4 00012 3735 20	epp7 	pr4|10,*
+001012  aa  040 100 106 500	cmpc 	(pr),(pr),fill(040)
+001013  aa  6 00152 00 0040	desc9a	pr6|106,32	ename
+001014  aa  7 00004 20 0017	desc9a	pr7|4(1),15	pds$process_dir_name
+001015  aa   000030 6010 04	tnz  	24,ic		001045
+						STATEMENT 1 ON LINE 163
+		call salv_err_msg (SALV_LOG, "on_line_salvager: user process ^a terminated because of bad process directory",
+		     pds$process_group_id);
+
+001016  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001017  aa   777126 00 0120	desc9a	-426,80		000144 = 157156137154
+001020  aa  6 00502 00 0120	desc9a	pr6|322,80
+001021  aa   776777 3520 04	epp2 	-513,ic		000020 = 000000000004
+001022  aa  6 00454 2521 00	spri2	pr6|300
+001023  aa  6 00502 3521 00	epp2 	pr6|322
+001024  aa  6 00456 2521 00	spri2	pr6|302
+001025  la  4 00010 3521 20	epp2 	pr4|8,*		pds$process_group_id
+001026  aa  6 00460 2521 00	spri2	pr6|304
+001027  aa   777005 3520 04	epp2 	-507,ic		000034 = 404000000021
+001030  aa  6 00462 2521 00	spri2	pr6|306
+001031  aa   776765 3520 04	epp2 	-523,ic		000016 = 524000000115
+001032  aa  6 00464 2521 00	spri2	pr6|308
+001033  aa   776770 3520 04	epp2 	-520,ic		000023 = 524000000040
+001034  aa  6 00466 2521 00	spri2	pr6|310
+001035  aa  6 00452 6211 00	eax1 	pr6|298
+001036  aa   014000 4310 07	fld  	6144,dl
+001037  la  4 00056 3521 20	epp2 	pr4|46,*		salv_err_msg
+001040  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 165
+		a_code = error_table_$salv_pdir_procterm;
+
+001041  aa  6 00044 3701 20	epp4 	pr6|36,*
+001042  la  4 00030 2361 20	ldq  	pr4|24,*		error_table_$salv_pdir_procterm
+001043  aa  6 00032 3735 20	epp7 	pr6|26,*
+001044  aa  7 00004 7561 20	stq  	pr7|4,*		a_code
+						STATEMENT 1 ON LINE 167
+		end;
+
+						STATEMENT 1 ON LINE 169
+	return;
+
+001045  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 291
+     end on_line_salvager;
+
+BEGIN PROCEDURE get_dumps
+ENTRY TO get_dumps                                          STATEMENT 1 ON LINE 181
+get_dumps:
+     proc;
+
+001046  aa  6 00422 6501 00	spri4	pr6|274
+						STATEMENT 1 ON LINE 188
+	if dir_name = "" | substr (args.pathname, 1, 6) = ">dumps" then return;
+
+001047  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001050  aa  6 00100 00 0250	desc9a	pr6|64,168	dir_name
+001051  aa   000323 00 0000	desc9a	211,0		001372 = 056000000000
+001052  aa   000006 6000 04	tze  	6,ic		001060
+001053  aa  6 00275 2351 00	lda  	pr6|189		args.pathname
+001054  aa  6 00276 2361 00	ldq  	pr6|190		args.pathname
+001055  aa  0 00154 3771 00	anaq 	pr0|108		= 777777777777 777777000000
+001056  aa   776770 1170 04	cmpaq	-520,ic		000046 = 076144165155 160163000000
+001057  aa   000002 6010 04	tnz  	2,ic		001061
+001060  aa  6 00422 6101 00	rtcd 	pr6|274
+						STATEMENT 1 ON LINE 190
+	call level$set (0);
+
+001061  aa  6 00530 4501 00	stz  	pr6|344
+001062  aa  6 00530 3521 00	epp2 	pr6|344
+001063  aa  6 00534 2521 00	spri2	pr6|348
+001064  aa  6 00532 6211 00	eax1 	pr6|346
+001065  aa   004000 4310 07	fld  	2048,dl
+001066  aa  6 00044 3701 20	epp4 	pr6|36,*
+001067  la  4 00040 3521 20	epp2 	pr4|32,*		level$set
+001070  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 191
+	call set_privileges$dir_priv_on (set_sw);
+
+001071  aa  6 00235 3521 00	epp2 	pr6|157		set_sw
+001072  aa  6 00534 2521 00	spri2	pr6|348
+001073  aa  6 00532 6211 00	eax1 	pr6|346
+001074  aa   004000 4310 07	fld  	2048,dl
+001075  aa  6 00044 3701 20	epp4 	pr6|36,*
+001076  la  4 00062 3521 20	epp2 	pr4|50,*		set_privileges$dir_priv_on
+001077  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 193
+	cname_prefix =
+	     substr (entry_time, 1, 2) || substr (entry_time, 4, 2) || substr (entry_time, 7, 2) || "."
+	     || substr (entry_time, 11, 6) || ".";
+
+001100  aa  6 00242 2351 00	lda  	pr6|162		entry_time
+001101  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001102  aa  6 00530 7551 00	sta  	pr6|344		entry_time
+001103  aa  6 00242 2371 00	ldaq 	pr6|162		entry_time
+001104  aa   000033 7370 00	lls  	27
+001105  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+001106  aa   000022 7710 00	arl  	18
+001107  aa  6 00530 2751 00	ora  	pr6|344		entry_time
+001110  aa  6 00530 7551 00	sta  	pr6|344
+001111  aa  6 00243 2351 00	lda  	pr6|163		entry_time
+001112  aa   000022 7350 00	als  	18
+001113  aa   000044 7730 00	lrl  	36
+001114  aa  6 00530 2751 00	ora  	pr6|344
+001115  aa  6 00536 7571 00	staq 	pr6|350
+001116  aa   056000 2350 03	lda  	23552,du
+001117  aa  0 00110 3771 00	anaq 	pr0|72		= 777777777777 000000000000
+001120  aa   000066 7730 00	lrl  	54
+001121  aa  6 00536 2771 00	oraq 	pr6|350
+001122  aa  6 00536 7571 00	staq 	pr6|350
+001123  aa   000015 2360 07	ldq  	13,dl
+001124  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+001125  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001126  aa  6 00536 00 0007	desc9a	pr6|350,7
+001127  aa  2 00000 00 0007	desc9a	pr2|0,7
+001130  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001131  aa  6 00244 40 0006	desc9a	pr6|164(2),6	entry_time
+001132  aa  2 00001 60 0006	desc9a	pr2|1(3),6
+001133  aa   000016 2360 07	ldq  	14,dl
+001134  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+001135  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001136  aa   000235 00 0001	desc9a	157,1		001372 = 056000000000
+001137  aa  2 00003 20 0001	desc9a	pr2|3(1),1
+001140  aa  2 00000 2371 00	ldaq 	pr2|0
+001141  aa  6 00430 7571 00	staq 	pr6|280		cname_prefix
+001142  aa  2 00002 2351 00	lda  	pr2|2
+001143  aa  6 00432 7551 00	sta  	pr6|282		cname_prefix
+						STATEMENT 1 ON LINE 197
+	call vtoc_attributes$get_info ((entry.uid), (entry.pvid), (entry.vtocx), addr (sc_info), code);
+
+001144  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+001145  aa  6 00362 3735 20	epp7 	pr6|242,*		ep
+001146  aa  7 00002 2351 00	lda  	pr7|2		entry.uid
+001147  aa  6 00530 7551 00	sta  	pr6|344
+001150  aa  7 00030 2351 00	lda  	pr7|24		entry.pvid
+001151  aa  6 00531 7551 00	sta  	pr6|345
+001152  aa  7 00031 2351 00	lda  	pr7|25		entry.vtocx
+001153  aa   000066 7330 00	lrs  	54
+001154  aa  6 00540 7561 00	stq  	pr6|352
+001155  aa  6 00364 3715 00	epp5 	pr6|244		sc_info
+001156  aa  6 00536 6515 00	spri5	pr6|350
+001157  aa  6 00530 3521 00	epp2 	pr6|344
+001160  aa  6 00544 2521 00	spri2	pr6|356
+001161  aa  6 00531 3521 00	epp2 	pr6|345
+001162  aa  6 00546 2521 00	spri2	pr6|358
+001163  aa  6 00540 3521 00	epp2 	pr6|352
+001164  aa  6 00550 2521 00	spri2	pr6|360
+001165  aa  6 00536 3521 00	epp2 	pr6|350
+001166  aa  6 00552 2521 00	spri2	pr6|362
+001167  aa  6 00252 3521 00	epp2 	pr6|170		code
+001170  aa  6 00554 2521 00	spri2	pr6|364
+001171  aa  6 00542 6211 00	eax1 	pr6|354
+001172  aa   024000 4310 07	fld  	10240,dl
+001173  aa  6 00044 3701 20	epp4 	pr6|36,*
+001174  la  4 00072 3521 20	epp2 	pr4|58,*		vtoc_attributes$get_info
+001175  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 198
+	if code ^= 0 then
+	     call syserr$error_code (LOG, code, "^a: cannot get activation info on ^p", WHOAMI, dp);
+
+001176  aa  6 00252 2361 00	ldq  	pr6|170		code
+001177  aa   000036 6000 04	tze  	30,ic		001235
+001200  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001201  aa   776673 00 0044	desc9a	-581,36		000073 = 136141072040
+001202  aa  6 00542 00 0044	desc9a	pr6|354,36
+001203  aa   776615 3520 04	epp2 	-627,ic		000020 = 000000000004
+001204  aa  6 00560 2521 00	spri2	pr6|368
+001205  aa  6 00252 3521 00	epp2 	pr6|170		code
+001206  aa  6 00562 2521 00	spri2	pr6|370
+001207  aa  6 00542 3521 00	epp2 	pr6|354
+001210  aa  6 00564 2521 00	spri2	pr6|372
+001211  aa   776567 3520 04	epp2 	-649,ic		000000 = 157156137154
+001212  aa  6 00566 2521 00	spri2	pr6|374
+001213  aa  6 00360 3521 00	epp2 	pr6|240		dp
+001214  aa  6 00570 2521 00	spri2	pr6|376
+001215  aa   776617 3520 04	epp2 	-625,ic		000034 = 404000000021
+001216  aa  6 00572 2521 00	spri2	pr6|378
+001217  aa   776621 3520 04	epp2 	-623,ic		000040 = 404000000043
+001220  aa  6 00574 2521 00	spri2	pr6|380
+001221  aa   776573 3520 04	epp2 	-645,ic		000014 = 524000000044
+001222  aa  6 00576 2521 00	spri2	pr6|382
+001223  aa   776607 3520 04	epp2 	-633,ic		000032 = 526000000040
+001224  aa  6 00600 2521 00	spri2	pr6|384
+001225  aa   776615 3520 04	epp2 	-627,ic		000042 = 464000000000
+001226  aa  6 00602 2521 00	spri2	pr6|386
+001227  aa  6 00556 6211 00	eax1 	pr6|366
+001230  aa   024000 4310 07	fld  	10240,dl
+001231  aa  6 00044 3701 20	epp4 	pr6|36,*
+001232  la  4 00070 3521 20	epp2 	pr4|56,*		syserr$error_code
+001233  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001234  aa   000030 7100 04	tra  	24,ic		001264
+						STATEMENT 1 ON LINE 200
+	else call salv_dump_copy (dp, sc_info.csl, cname_prefix || ename);
+
+001235  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001236  aa  6 00430 00 0013	desc9a	pr6|280,11	cname_prefix
+001237  aa  6 00542 00 0013	desc9a	pr6|354,11
+001240  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001241  aa  6 00152 00 0040	desc9a	pr6|106,32	ename
+001242  aa  6 00544 60 0040	desc9a	pr6|356(3),32
+001243  aa  6 00360 3521 00	epp2 	pr6|240		dp
+001244  aa  6 00560 2521 00	spri2	pr6|368
+001245  aa  6 00370 3521 00	epp2 	pr6|248		sc_info.csl
+001246  aa  6 00562 2521 00	spri2	pr6|370
+001247  aa  6 00542 3521 00	epp2 	pr6|354
+001250  aa  6 00564 2521 00	spri2	pr6|372
+001251  aa   776571 3520 04	epp2 	-647,ic		000042 = 464000000000
+001252  aa  6 00566 2521 00	spri2	pr6|374
+001253  aa   776561 3520 04	epp2 	-655,ic		000034 = 404000000021
+001254  aa  6 00570 2521 00	spri2	pr6|376
+001255  aa   776536 3520 04	epp2 	-674,ic		000013 = 524000000053
+001256  aa  6 00572 2521 00	spri2	pr6|378
+001257  aa  6 00556 6211 00	eax1 	pr6|366
+001260  aa   014000 4310 07	fld  	6144,dl
+001261  aa  6 00044 3701 20	epp4 	pr6|36,*
+001262  la  4 00054 3521 20	epp2 	pr4|44,*		salv_dump_copy
+001263  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 202
+	call salv_dump_copy (pds$stack_0_ptr, 16384, cname_prefix || "stack");
+
+001264  aa   040000 2360 07	ldq  	16384,dl
+001265  aa  6 00540 7561 00	stq  	pr6|352
+001266  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001267  aa  6 00430 00 0013	desc9a	pr6|280,11	cname_prefix
+001270  aa  6 00532 00 0013	desc9a	pr6|346,11
+001271  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001272  aa   776553 00 0005	desc9a	-661,5		000044 = 163164141143
+001273  aa  6 00534 60 0005	desc9a	pr6|348(3),5
+001274  aa  6 00044 3701 20	epp4 	pr6|36,*
+001275  la  4 00020 3521 20	epp2 	pr4|16,*		pds$stack_0_ptr
+001276  aa  6 00560 2521 00	spri2	pr6|368
+001277  aa  6 00540 3521 00	epp2 	pr6|352
+001300  aa  6 00562 2521 00	spri2	pr6|370
+001301  aa  6 00532 3521 00	epp2 	pr6|346
+001302  aa  6 00564 2521 00	spri2	pr6|372
+001303  aa   776537 3520 04	epp2 	-673,ic		000042 = 464000000000
+001304  aa  6 00566 2521 00	spri2	pr6|374
+001305  aa   776527 3520 04	epp2 	-681,ic		000034 = 404000000021
+001306  aa  6 00570 2521 00	spri2	pr6|376
+001307  aa   776503 3520 04	epp2 	-701,ic		000012 = 524000000020
+001310  aa  6 00572 2521 00	spri2	pr6|378
+001311  aa  6 00556 6211 00	eax1 	pr6|366
+001312  aa   014000 4310 07	fld  	6144,dl
+001313  la  4 00054 3521 20	epp2 	pr4|44,*		salv_dump_copy
+001314  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 203
+	call salv_dump_copy (addr (pds$), 4096, cname_prefix || "pds");
+
+001315  aa  6 00044 3701 20	epp4 	pr6|36,*
+001316  la  4 00014 3735 20	epp7 	pr4|12,*		pds$
+001317  aa  6 00536 6535 00	spri7	pr6|350
+001320  aa   010000 2360 07	ldq  	4096,dl
+001321  aa  6 00540 7561 00	stq  	pr6|352
+001322  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001323  aa  6 00430 00 0013	desc9a	pr6|280,11	cname_prefix
+001324  aa  6 00532 00 0013	desc9a	pr6|346,11
+001325  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001326  aa   776464 00 0003	desc9a	-716,3		000011 = 160144163000
+001327  aa  6 00534 60 0003	desc9a	pr6|348(3),3
+001330  aa  6 00536 3521 00	epp2 	pr6|350
+001331  aa  6 00560 2521 00	spri2	pr6|368
+001332  aa  6 00540 3521 00	epp2 	pr6|352
+001333  aa  6 00562 2521 00	spri2	pr6|370
+001334  aa  6 00532 3521 00	epp2 	pr6|346
+001335  aa  6 00564 2521 00	spri2	pr6|372
+001336  aa   776504 3520 04	epp2 	-700,ic		000042 = 464000000000
+001337  aa  6 00566 2521 00	spri2	pr6|374
+001340  aa   776474 3520 04	epp2 	-708,ic		000034 = 404000000021
+001341  aa  6 00570 2521 00	spri2	pr6|376
+001342  aa   776446 3520 04	epp2 	-730,ic		000010 = 524000000016
+001343  aa  6 00572 2521 00	spri2	pr6|378
+001344  aa  6 00556 6211 00	eax1 	pr6|366
+001345  aa   014000 4310 07	fld  	6144,dl
+001346  la  4 00054 3521 20	epp2 	pr4|44,*		salv_dump_copy
+001347  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 205
+	call level$set (save_level);
+
+001350  aa  6 00251 3521 00	epp2 	pr6|169		save_level
+001351  aa  6 00534 2521 00	spri2	pr6|348
+001352  aa  6 00532 6211 00	eax1 	pr6|346
+001353  aa   004000 4310 07	fld  	2048,dl
+001354  aa  6 00044 3701 20	epp4 	pr6|36,*
+001355  la  4 00040 3521 20	epp2 	pr4|32,*		level$set
+001356  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 206
+	if set_sw = 0 then call set_privileges$dir_priv_off ((0));
+
+001357  aa  6 00235 2361 00	ldq  	pr6|157		set_sw
+001360  aa   000011 6010 04	tnz  	9,ic		001371
+001361  aa  6 00540 4501 00	stz  	pr6|352
+001362  aa  6 00540 3521 00	epp2 	pr6|352
+001363  aa  6 00534 2521 00	spri2	pr6|348
+001364  aa  6 00532 6211 00	eax1 	pr6|346
+001365  aa   004000 4310 07	fld  	2048,dl
+001366  aa  6 00044 3701 20	epp4 	pr6|36,*
+001367  la  4 00060 3521 20	epp2 	pr4|48,*		set_privileges$dir_priv_off
+001370  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 208
+	return;
+
+001371  aa  6 00422 6101 00	rtcd 	pr6|274
+						STATEMENT 1 ON LINE 209
+     end get_dumps;
+
+  END PROCEDURE get_dumps
+  END PROCEDURE on_line_salvager
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

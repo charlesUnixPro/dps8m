@@ -1,0 +1,153 @@
+	COMPILATION LISTING OF SEGMENT proc_info
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1044.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* 	Procedure to return certain per-process info previously in process_info */
+       14 /*	Initially coded by R. J. Feiertag, Dec. 10,1969 */
+       15 /* 	Last modified by Kobziar July 74 to add authorization entry */
+       16 
+       17 proc_info:	proc(process_id,process_group_id,process_dir_name,lock_id_);
+       18 
+       19 	declare process_id bit(36) aligned,
+       20 		process_group_id char(32) aligned,
+       21 		process_dir_name char(32) aligned,
+       22 		lock_id_ bit(36) aligned,
+       23 		((pds$processid, pds$lock_id, tc_data$initializer_id) bit(36),
+       24 		 (pds$process_group_id, pds$process_dir_name) char(32)) aligned ext;
+       25 
+       26 
+       27 	process_id = pds$processid;		/* pick up process id */
+       28 	lock_id_ = pds$lock_id;		/* pick up lock id */
+       29 	process_group_id = pds$process_group_id;
+       30 	process_dir_name = pds$process_dir_name;
+       31 	return;
+       32 
+       33 get_initial_ring: entry(iring);
+       34 
+       35 dcl (pds$initial_ring ext, iring) fixed bin;
+       36 
+       37 	iring = pds$initial_ring;
+       38 
+       39 	return;			/* That was rather difficult! */
+       40 
+       41 set_mask_ring: entry;			/* hphcs_ entry */
+       42 
+       43 	if pds$processid = tc_data$initializer_id
+       44 	then pds$initial_ring = 4;		/* Initializer now wants to be masked in lower rings */
+       45 	return;
+       46 
+       47 authorization: entry(auth, max_auth);
+       48 
+       49 	declare (auth, max_auth) bit(72) aligned,
+       50 		(pds$access_authorization, pds$max_access_authorization) ext static aligned bit(72);
+       51 
+       52 	auth = pds$access_authorization;
+       53 	max_auth = pds$max_access_authorization;
+       54 	return;
+       55 
+       56 end proc_info;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.6  proc_info.pl1                     >spec>install>1110>proc_info.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+auth                                   parameter       bit(72)                  dcl 49 set ref 47 52*
+iring                                  parameter       fixed bin(17,0)          dcl 35 set ref 33 37*
+lock_id_                               parameter       bit(36)                  dcl 19 set ref 17 28*
+max_auth                               parameter       bit(72)                  dcl 49 set ref 47 53*
+pds$access_authorization        000024 external static bit(72)                  dcl 49 ref 52
+pds$initial_ring                000022 external static fixed bin(17,0)          dcl 35 set ref 37 43*
+pds$lock_id                     000012 external static bit(36)                  dcl 19 ref 28
+pds$max_access_authorization    000026 external static bit(72)                  dcl 49 ref 53
+pds$process_dir_name            000020 external static char(32)                 dcl 19 ref 30
+pds$process_group_id            000016 external static char(32)                 dcl 19 ref 29
+pds$processid                   000010 external static bit(36)                  dcl 19 ref 27 43
+process_dir_name                       parameter       char(32)                 dcl 19 set ref 17 30*
+process_group_id                       parameter       char(32)                 dcl 19 set ref 17 29*
+process_id                             parameter       bit(36)                  dcl 19 set ref 17 27*
+tc_data$initializer_id          000014 external static bit(36)                  dcl 19 ref 43
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+authorization                   000074 constant        entry                    external dcl 47
+get_initial_ring                000041 constant        entry                    external dcl 33
+proc_info                       000011 constant        entry                    external dcl 17
+set_mask_ring                   000054 constant        entry                    external dcl 41
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       272         322     120         302
+Length       502     120        30         144     151           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+proc_info                            64 external procedure  is an external procedure.  
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$access_authorization      pds$initial_ring              pds$lock_id                   pds$max_access_authorization
+pds$process_dir_name          pds$process_group_id          pds$processid                 tc_data$initializer_id
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000004        27 000016        28 000021        29 000023        30 000030        31 000035        33 000036
+     37 000046        39 000052        41 000053        43 000061        45 000067        47 000070        52 000101
+     53 000111        54 000117
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1022 @@
+	COMPILATION LISTING OF SEGMENT deactivate_for_demount
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1023.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       12*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       13*     Correct error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 deactivate_for_demount$shutdown: proc (Code);
+       18 
+       19 /*  deactivate_for_demount
+       20*
+       21*    Program to do a bottom-up tree-walk of the AST and deactivate segments
+       22*    prior to volume demounting.
+       23*
+       24*    Entries:
+       25*
+       26*    lv       - deactivates all segments belonging to a specified logical
+       27*	     volume, using segment control deactivation.
+       28*
+       29*    shutdown - deactivates all segments by hand and converts deciduous
+       30*	     segments into hardcore segments, freeing VTOCEs in the
+       31*	     process. This can be called only during system shutdown.
+       32*	     Segment control will not function after this is called.
+       33*
+       34*    Written June 1982 by J. Bongiovanni
+       35*    Modified September 1982, J. Bongiovanni, to for device inop in shutdown
+       36**/
+       37 
+       38 /*  Parameter  */
+       39 
+       40 	dcl     Code		 fixed bin (35) parameter; /* Return Code */
+       41 	dcl     Lvid		 bit (36) aligned;	/* Logical Volume ID */
+       42 
+       43 /*  Automatic  */
+       44 
+       45 	dcl     1 aste_val		 (0:3) aligned,	/* Used to validate aste-ptrs */
+       46 		2 begin_addr	 fixed bin (19),	/* Begin of ASTEs this page table size */
+       47 		2 end_addr	 fixed bin (19),	/* End of ASTEs this page table size */
+       48 		2 modulus		 fixed bin;	/* Size of ASTE + Page Table */
+       49 	dcl     astep_stack		 (16) ptr;	/* Stack for tree-walk */
+       50 	dcl     code		 fixed bin (35);	/* Error code */
+       51 	dcl     lvid		 bit (36) aligned;	/* Logical volume ID */
+       52 	dcl     p99		 pic "99";
+       53 	dcl     shut		 bit (1) aligned;	/* ON => shutdown called */
+       54 	dcl     sstp		 ptr;
+       55 	dcl     stack_level		 fixed bin;	/* Current level in stack */
+       56 
+       57 /*  Static  */
+       58 
+       59 	dcl     VALID_MARKER	 bit (6) internal static options (constant) init ("02"b3);
+       60 
+       61 /*  External  */
+       62 
+       63 	dcl     error_table_$inconsistent_sst fixed bin (35) external;
+       64 	dcl     error_table_$vtoc_io_err fixed bin (35) external;
+       65 	dcl     pvt$esd_state	 fixed bin external;
+       66 	dcl     pvt$n_entries	 fixed bin external;
+       67 	dcl     sst$		 external;
+       68 	dcl     sst$astap		 ptr external;
+       69 	dcl     1 sst$level		 (0:3) aligned external,
+       70 		2 ausedp		 bit (18) unal,
+       71 		2 no_aste		 fixed bin (18) uns unal;
+       72 	dcl     sst$pts		 (0:3) fixed bin external;
+       73 	dcl     sst$root_astep	 ptr external;
+       74 
+       75 /*  Entry  */
+       76 
+       77 	dcl     deactivate		 entry (ptr, fixed bin (35));
+       78 	dcl     lock$lock_ast	 entry;
+       79 	dcl     lock$unlock_ast	 entry;
+       80 	dcl     pc$cleanup		 entry (ptr);
+       81 	dcl     syserr$error_code	 entry options (variable);
+       82 	dcl     update_vtoce$deact	 entry (ptr, fixed bin (35));
+       83 	dcl     vtoc_man$free_vtoce	 entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+       84 
+       85 /* Builtin */
+       86 
+       87           dcl     addr                   builtin;
+       88 	dcl     bin		 builtin;
+       89 	dcl     convert		 builtin;
+       90 	dcl     hbound		 builtin;
+       91 	dcl     mod		 builtin;
+       92 	dcl     ptr		 builtin;
+       93 	dcl     rel		 builtin;
+       94 	dcl     size		 builtin;
+       95 
+       96 /* Condition */
+       97 
+       98 	dcl     any_other		 condition;
+       99 
+      100 	shut = "1"b;
+      101 
+      102 	if pvt$esd_state ^= 0
+      103 	then on any_other goto BAD_SST;
+      104 
+      105 	goto COMMON;
+      106 
+      107 lv:
+      108      entry (Lvid, Code);
+      109 
+      110 	lvid = Lvid;
+      111 	shut = "0"b;
+      112 
+      113 COMMON:
+      114 
+      115 	Code = 0;
+      116 	pvt_arrayp = addr (pvt$array);
+      117 
+      118 	call lock$lock_ast;
+      119 
+      120 	call INIT_FOR_SST;
+      121 
+      122 	stack_level = 1;
+      123 	astep_stack (1) = sst$root_astep;
+      124 	call VALIDATE_ASTE (astep_stack (1));
+      125 	call PUSH_CHILD (astep_stack (1));
+      126 
+      127 	do while (stack_level > 0);
+      128 	     astep = astep_stack (stack_level);
+      129 	     call POP_PUSH_BROTHER (astep);
+      130 	     call CHECK_DEACTIVATE (astep);
+      131 	end;
+      132 
+      133 UNLOCK_RETURN:
+      134 
+      135 	call lock$unlock_ast;
+      136 
+      137 	return;
+      138 
+      139 
+      140 BAD_SST:
+      141 	Code = error_table_$inconsistent_sst;
+      142 	call lock$unlock_ast;
+      143 	return;
+      144 
+      145 
+      146 /*  Internal Procedure to check whether this ASTE should be deactivated,
+      147*    and to do it.
+      148**/
+      149 
+      150 CHECK_DEACTIVATE:
+      151      proc (Astep);
+      152 
+      153 	dcl     Astep		 ptr;
+      154 
+      155 	dcl     1 Aste		 aligned like aste based (Astep);
+      156 
+      157 	if Aste.uid = ""b then return;
+      158 	pvtep = addr (pvt_array (Aste.pvtx));
+      159 
+      160 	if shut then do;				/* Called for shutdown */
+      161 	          if pvte.device_inoperative then return;
+      162 
+      163 		Aste.fmchanged = Aste.fmchanged | Aste.fmchanged1;
+      164 		Aste.ddnp = "0"b;
+      165 		if Aste.hc_sdw			/* Deciduous segment */
+      166 		then call REVERT_DECIDUOUS (Astep);	/* Change to hardcore segment */
+      167 		else call DEACTIVATE_FOR_SHUTDOWN (Astep);
+      168 	     end;
+      169 	else do;					/* Called for Logical Volume */
+      170 		if pvte.lvid = lvid then do;
+      171 			Aste.fmchanged = Aste.fmchanged | Aste.fmchanged1;
+      172 			Aste.ddnp = "0"b;
+      173 			call deactivate (Astep, code);
+      174 			if code ^= 0
+      175 			then do;
+      176 				Code = code;
+      177 				goto UNLOCK_RETURN;
+      178 			     end;
+      179 		     end;
+      180 	     end;
+      181 
+      182 
+      183      end CHECK_DEACTIVATE;
+      184 
+      185 /* Internal Procedure to deactivate by hand for shutdown. The segment
+      186*   is updated to disk (pages and VTOCE), but ASTE threads are left as-is.
+      187**/
+      188 DEACTIVATE_FOR_SHUTDOWN:
+      189      proc (Astep);
+      190 
+      191 	dcl     Astep		 ptr;
+      192 
+      193 	dcl     1 Aste		 aligned like aste based (Astep);
+      194 
+      195 	if ^Aste.ehs then call pc$cleanup (Astep);
+      196 
+      197 	call update_vtoce$deact (Astep, code);
+      198 	if code ^= 0
+      199 	then if code ^= error_table_$vtoc_io_err
+      200 	     then do;
+      201 		     Code = code;
+      202 		     goto UNLOCK_RETURN;
+      203 		end;
+      204 
+      205 	Aste.uid = ""b;
+      206 
+      207      end DEACTIVATE_FOR_SHUTDOWN;
+      208 
+      209 
+      210 
+      211 /* Internal Procedure to advance to the brother of the supplied ASTE.
+      212*   If the brother exists, descendants are pushed onto the stack, as
+      213*   far as possible. If no brother exists, the stack is popped by one.
+      214*
+      215*   This procedure is the brains of the bottum-up-left-right tree-walk
+      216**/
+      217 
+      218 POP_PUSH_BROTHER:
+      219      proc (Astep);
+      220 
+      221 	dcl     Astep		 ptr;
+      222 
+      223 	dcl     bastep		 ptr;
+      224 	dcl     castep		 ptr;
+      225 	dcl     pastep		 ptr;
+      226 
+      227 	dcl     1 Aste		 aligned like aste based (Astep);
+      228 	dcl     1 baste		 aligned like aste based (bastep);
+      229 	dcl     1 caste		 aligned like aste based (castep);
+      230 	dcl     1 paste		 aligned like aste based (pastep);
+      231 
+      232 
+      233 	castep = Astep;
+      234 	pastep = ptr (sstp, caste.par_astep);
+      235 
+      236 	if caste.infl = ""b
+      237 	then stack_level = stack_level - 1;
+      238 	else do;
+      239 		bastep = ptr (sstp, caste.infl);
+      240 		call VALIDATE_ASTE (bastep);
+      241 		call VALIDATE_PARENT_CHILD (pastep, bastep);
+      242 		astep_stack (stack_level) = bastep;
+      243 		call PUSH_CHILD (bastep);
+      244 	     end;
+      245 
+      246      end POP_PUSH_BROTHER;
+      247 
+      248 /*  Internal Procedure to push as many descendants of the supplied ASTE
+      249*    as possible onto the stack. Only the first descendant is examined at each level.
+      250**/
+      251 
+      252 PUSH_CHILD:
+      253      proc (Astep);
+      254 
+      255 	dcl     Astep		 ptr;
+      256 
+      257 	dcl     castep		 ptr;
+      258 	dcl     pastep		 ptr;
+      259 
+      260 
+      261 	dcl     1 caste		 aligned like aste based (castep);
+      262 	dcl     1 paste		 aligned like aste based (pastep);
+      263 
+      264 	pastep = Astep;
+      265 
+      266 	do while (paste.infp ^= ""b);
+      267 	     castep = ptr (sstp, paste.infp);
+      268 	     call VALIDATE_ASTE (castep);
+      269 	     call VALIDATE_PARENT_CHILD (pastep, castep);
+      270 	     stack_level = stack_level + 1;
+      271 	     if stack_level > hbound (astep_stack, 1)
+      272 	     then goto BAD_SST;
+      273 	     astep_stack (stack_level) = castep;
+      274 	     pastep = castep;
+      275 	end;
+      276 
+      277      end PUSH_CHILD;
+      278 
+      279 /* Internal Procedure to convert a deciduous segment to a hardcore segment
+      280*   and free its VTOCE.
+      281**/
+      282 
+      283 REVERT_DECIDUOUS:
+      284      proc (Astep);
+      285 
+      286 	dcl     Astep		 ptr;
+      287 
+      288 	dcl     last		 bit (18) aligned;
+      289 	dcl     pastep		 ptr;
+      290 	dcl     relp		 bit (18) aligned;
+      291 	dcl     vtocx		 fixed bin;
+      292 
+      293 	dcl     1 Aste		 aligned like aste based (Astep);
+      294 	dcl     1 paste		 aligned like aste based (pastep);
+      295 
+      296 /* Unthread the ASTE */
+      297 
+      298 	pastep = ptr (sstp, Aste.par_astep);
+      299 	last = ""b;
+      300 	relp = paste.infp;
+      301 
+      302 	do while (relp ^= rel (Astep));
+      303 	     last = relp;
+      304 	     relp = ptr (sstp, relp) -> aste.infl;
+      305 	end;
+      306 
+      307 	if last = ""b
+      308 	then paste.infp = Aste.infl;
+      309 	else ptr (sstp, last) -> aste.infl = Aste.infl;
+      310 
+      311 /* Free the VTOCE */
+      312 
+      313 	if Aste.pvtx > 0 & Aste.vtocx >= 0 then do;
+      314 		vtocx = Aste.vtocx;
+      315 		Aste.vtocx = -1;
+      316 		pvtep = addr (pvt_array (aste.pvtx));
+      317 		call vtoc_man$free_vtoce ((pvte.pvid), (Aste.pvtx), vtocx, code);
+      318 		if code ^= 0
+      319 		then call syserr$error_code (LOG, "deactivate_for_demount: Error freeing vtocx ^o on ^a_^a for ^w",
+      320 			vtocx, pvte.devname, convert (p99, pvte.logical_area_number));
+      321 	     end;
+      322 
+      323      end REVERT_DECIDUOUS;
+      324 
+      325 
+      326 
+      327 /*  Internal Procedure to validate an ASTE */
+      328 
+      329 VALIDATE_ASTE:
+      330      proc (Astep);
+      331 
+      332 	dcl     Astep		 ptr;
+      333 
+      334 	dcl     aste_addr		 fixed bin (19);
+      335 	dcl     pts		 fixed bin;
+      336 
+      337 	dcl     1 Aste		 aligned like aste based (Astep);
+      338 
+      339 	if Aste.marker ^= VALID_MARKER
+      340 	then goto BAD_SST;
+      341 
+      342 	if Aste.uid = ""b & ^shut
+      343 	then goto BAD_SST;
+      344 
+      345 	if bin (Aste.msl, 9) > 256
+      346 	     | bin (Aste.csl, 9) > 256
+      347 	     | bin (Aste.records, 9) > 256
+      348 	then goto BAD_SST;
+      349 
+      350 	if Aste.pvtx <= 0
+      351 	     | Aste.pvtx > pvt$n_entries
+      352 	then goto BAD_SST;
+      353 
+      354 	pts = bin (Aste.ptsi, 2);
+      355 	aste_addr = bin (rel (Astep));
+      356 	if aste_addr < aste_val (pts).begin_addr
+      357 	     | aste_addr >= aste_val (pts).end_addr
+      358 	then goto BAD_SST;
+      359 	if mod (aste_addr - aste_val (pts).begin_addr, aste_val (pts).modulus) ^= 0
+      360 	then goto BAD_SST;
+      361 
+      362      end VALIDATE_ASTE;
+      363 
+      364 
+      365 /*  Internal Procedure to validate that two ASTEs are related as
+      366*    parent/child.
+      367**/
+      368 
+      369 VALIDATE_PARENT_CHILD:
+      370      proc (Pastep, Castep);
+      371 
+      372 	dcl     Pastep		 ptr;
+      373 	dcl     Castep		 ptr;
+      374 
+      375 	dcl     1 Caste		 aligned like aste based (Castep);
+      376 
+      377 
+      378 	if Caste.par_astep ^= rel (Pastep)
+      379 	then goto BAD_SST;
+      380 
+      381 
+      382      end VALIDATE_PARENT_CHILD;
+      383 
+      384 
+      385 /*  Internal Procedure to initialize  */
+      386 
+      387 INIT_FOR_SST:
+      388      proc;
+      389 
+      390 	dcl     array_addr		 fixed bin (19);
+      391 	dcl     pts		 fixed bin;
+      392 
+      393 	sstp = addr (sst$);
+      394 
+      395 	array_addr = bin (rel (sst$astap));
+      396 	do pts = 0 to 3;
+      397 	     aste_val (pts).begin_addr = array_addr;
+      398 	     aste_val (pts).end_addr = array_addr + bin (sst$level (pts).no_aste) * (size (aste) + sst$pts (pts));
+      399 	     aste_val (pts).modulus = size (aste) + sst$pts (pts);
+      400 	     array_addr = aste_val (pts).end_addr;
+      401 	end;
+      402 
+      403      end INIT_FOR_SST;
+      404 
+  1     1 /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      405 
+      406 
+  2     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  2     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2     8*     Add the support for subvolumes
+  2     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  2    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  2    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2    14*     Added inconsistent_dbm bit for determining the status of volume
+  2    15*     dumper bit maps.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18      dcl	   pvt$array	      aligned external;
+  2    19      dcl	   pvt$max_n_entries      fixed bin external;
+  2    20 
+  2    21      dcl	   pvt_arrayp	      ptr;
+  2    22      dcl	   pvtep		      ptr;
+  2    23 
+  2    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  2    25 
+  2    26      dcl	   1 pvte		      based (pvtep) aligned,
+  2    27 
+  2    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  2    29 
+  2    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  2    31 
+  2    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  2    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  2    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  2    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  2    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  2    37 	     2 pad3	      bit (2) unaligned,
+  2    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  2    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  2    40 
+  2    41 
+  2    42 
+  2    43 	     2 devname	      char (4),		/* device name */
+  2    44 
+  2    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  2    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  2    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  2    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  2    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  2    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  2    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  2    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  2    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  2    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  2    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  2    56 	     2 scav_check_address
+  2    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  2    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  2    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  2    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  2    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  2    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  2    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  2    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  2    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  2    66 
+  2    67 
+  2    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  2    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  2    70 
+  2    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  2    72 
+  2    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  2    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  2    75 
+  2    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  2    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  2    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  2    79 	     2 records_per_cyl    fixed bin,
+  2    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  2    81 	     2 sv_name            char (2) aligned,
+  2    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  2    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  2    84 
+  2    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  2    86 	     2 pad2	      bit (18) unaligned,
+  2    87 
+  2    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  2    89 
+  2    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  2    91 
+  2    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  2    93 
+  2    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  2    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  2    96 
+  2    97 
+  2    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  2    99 
+  2   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  2   101 
+  2   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  2   103 
+  2   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  2   105 
+  2   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  2   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  2   108 
+  2   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  2   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  2   111 
+  2   112 
+  2   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  2   114 	   VOLMAP_ASYNC_READ      init (1),
+  2   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  2   116 
+  2   117 
+  2   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      407 
+      408 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      409 
+      410 
+      411 /* BEGIN MESSAGE DOCUMENTATION
+      412*
+      413*Message:
+      414*deactivate_for_demount: Error freeing vtocx OOOO on dskX_NN for UID. ERRORMESSAGE.
+      415*
+      416*S:     $log
+      417*
+      418*T:     During system shutdown.
+      419*
+      420*M:     The VTOCE for a deciduous segment could not be freed for the
+      421*reason indicated. The VTOCE will be freed by the next volume salvage
+      422*or by delete_old_pdds.
+      423*
+      424*A:     $ignore
+      425*
+      426*END MESSAGE DOCUMENTATION */
+      427 
+      428      end deactivate_for_demount$shutdown;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.0  deactivate_for_demount.pl1        >spec>install>1112>deactivate_for_demount.pl1
+405          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+407          2    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+409          3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Aste                                   based           structure                level 1 dcl 293 in procedure "REVERT_DECIDUOUS"
+Aste                                   based           structure                level 1 dcl 337 in procedure "VALIDATE_ASTE"
+Aste                                   based           structure                level 1 dcl 155 in procedure "CHECK_DEACTIVATE"
+Aste                                   based           structure                level 1 dcl 193 in procedure
+                                                                                  "DEACTIVATE_FOR_SHUTDOWN"
+Astep                                  parameter       pointer                  dcl 255 in procedure "PUSH_CHILD" ref 252 264
+Astep                                  parameter       pointer                  dcl 286 in procedure "REVERT_DECIDUOUS" ref 283 298
+                                                                                  302 307 309 313 313 314 315 317
+Astep                                  parameter       pointer                  dcl 191 in procedure "DEACTIVATE_FOR_SHUTDOWN" set
+                                                                                  ref 188 195 195* 197* 205
+Astep                                  parameter       pointer                  dcl 221 in procedure "POP_PUSH_BROTHER" ref 218 233
+Astep                                  parameter       pointer                  dcl 153 in procedure "CHECK_DEACTIVATE" set ref 150
+                                                                                  157 158 163 163 163 164 165 165* 167* 171 171 171
+                                                                                  172 173*
+Astep                                  parameter       pointer                  dcl 332 in procedure "VALIDATE_ASTE" ref 329 339 342
+                                                                                  345 345 345 350 350 354 355
+Caste                                  based           structure                level 1 dcl 375
+Castep                                 parameter       pointer                  dcl 373 ref 369 378
+Code                                   parameter       fixed bin(35,0)          dcl 40 set ref 17 107 113* 140* 176* 201*
+LOG                             000000 constant        fixed bin(17,0)          initial dcl 3-7 set ref 318*
+Lvid                                   parameter       bit(36)                  dcl 41 ref 107 110
+Pastep                                 parameter       pointer                  dcl 372 ref 369 378
+VALID_MARKER                           constant        bit(6)                   initial packed unaligned dcl 59 ref 339
+addr                                                   builtin function         dcl 87 ref 116 158 316 393
+any_other                       000164 stack reference condition                dcl 98 ref 102
+array_addr                      000304 automatic       fixed bin(19,0)          dcl 390 set ref 395* 397 398 400*
+aste                                   based           structure                level 1 dcl 1-11 set ref 398 399
+aste_addr                       000266 automatic       fixed bin(19,0)          dcl 334 set ref 355* 356 356 359
+aste_val                        000100 automatic       structure                array level 1 dcl 45
+astep                           000172 automatic       pointer                  dcl 1-9 set ref 128* 129* 130* 316 398 399
+astep_stack                     000114 automatic       pointer                  array dcl 49 set ref 123* 124* 125* 128 242* 271
+                                                                                  273*
+bastep                          000224 automatic       pointer                  dcl 223 set ref 239* 240* 241* 242 243*
+begin_addr                      000100 automatic       fixed bin(19,0)          array level 2 dcl 45 set ref 356 359 397*
+bin                                                    builtin function         dcl 88 ref 345 345 345 354 355 395 398
+caste                                  based           structure                level 1 dcl 229
+castep                          000226 automatic       pointer                  dcl 224 in procedure "POP_PUSH_BROTHER" set ref 233*
+                                                                                  234 236 239
+castep                          000240 automatic       pointer                  dcl 257 in procedure "PUSH_CHILD" set ref 267* 268*
+                                                                                  269* 273 274
+code                            000154 automatic       fixed bin(35,0)          dcl 50 set ref 173* 174 176 197* 198 198 201 317*
+                                                                                  318
+convert                                                builtin function         dcl 89 ref 318 318
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 337 ref 345
+ddnp                     12(15)        based           bit(1)                   level 2 packed packed unaligned dcl 155 set ref 164*
+                                                                                  172*
+deactivate                      000032 constant        entry                    external dcl 77 ref 173
+device_inoperative        4(25)        based           bit(1)                   level 2 packed packed unaligned dcl 2-26 ref 161
+devname                   3            based           char(4)                  level 2 dcl 2-26 set ref 318*
+ehs                       5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 193 ref 195
+end_addr                  1     000100 automatic       fixed bin(19,0)          array level 2 dcl 45 set ref 356 398* 400
+error_table_$inconsistent_sst   000010 external static fixed bin(35,0)          dcl 63 ref 140
+error_table_$vtoc_io_err        000012 external static fixed bin(35,0)          dcl 64 ref 198
+fmchanged                12(09)        based           bit(1)                   level 2 packed packed unaligned dcl 155 set ref 163*
+                                                                                  163 171* 171
+fmchanged1               13(18)        based           bit(1)                   level 2 packed packed unaligned dcl 155 ref 163 171
+hbound                                                 builtin function         dcl 90 ref 271
+hc_sdw                    5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 155 ref 165
+infl                      1            based           bit(18)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure
+                                                                                  "deactivate_for_demount$shutdown" set ref 304 309*
+infl                      1            based           bit(18)                  level 2 in structure "caste" packed packed unaligned
+                                                                                  dcl 229 in procedure "POP_PUSH_BROTHER" ref 236
+                                                                                  239
+infl                      1            based           bit(18)                  level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 293 in procedure "REVERT_DECIDUOUS" ref 307
+                                                                                  309
+infp                      1(18)        based           bit(18)                  level 2 in structure "paste" packed packed unaligned
+                                                                                  dcl 262 in procedure "PUSH_CHILD" ref 266 267
+infp                      1(18)        based           bit(18)                  level 2 in structure "paste" packed packed unaligned
+                                                                                  dcl 294 in procedure "REVERT_DECIDUOUS" set ref
+                                                                                  300 307*
+last                            000252 automatic       bit(18)                  dcl 288 set ref 299* 303* 307 309
+lock$lock_ast                   000034 constant        entry                    external dcl 78 ref 118
+lock$unlock_ast                 000036 constant        entry                    external dcl 79 ref 133 142
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 2-26 ref 318 318
+lvid                            000155 automatic       bit(36)                  dcl 51 in procedure
+                                                                                  "deactivate_for_demount$shutdown" set ref 110* 170
+lvid                      1            based           bit(36)                  level 2 in structure "pvte" dcl 2-26 in procedure
+                                                                                  "deactivate_for_demount$shutdown" ref 170
+marker                   13(30)        based           bit(6)                   level 2 packed packed unaligned dcl 337 ref 339
+mod                                                    builtin function         dcl 91 ref 359
+modulus                   2     000100 automatic       fixed bin(17,0)          array level 2 dcl 45 set ref 359 399*
+msl                       4            based           bit(9)                   level 2 packed packed unaligned dcl 337 ref 345
+no_aste                   0(18) 000024 external static fixed bin(18,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 69 ref 398
+p99                                    automatic       picture(2)               packed unaligned dcl 52 ref 318 318
+par_astep                 2(18)        based           bit(18)                  level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 293 in procedure "REVERT_DECIDUOUS" ref 298
+par_astep                 2(18)        based           bit(18)                  level 2 in structure "caste" packed packed unaligned
+                                                                                  dcl 229 in procedure "POP_PUSH_BROTHER" ref 234
+par_astep                 2(18)        based           bit(18)                  level 2 in structure "Caste" packed packed unaligned
+                                                                                  dcl 375 in procedure "VALIDATE_PARENT_CHILD" ref
+                                                                                  378
+paste                                  based           structure                level 1 dcl 294 in procedure "REVERT_DECIDUOUS"
+paste                                  based           structure                level 1 dcl 262 in procedure "PUSH_CHILD"
+pastep                          000230 automatic       pointer                  dcl 225 in procedure "POP_PUSH_BROTHER" set ref 234*
+                                                                                  241*
+pastep                          000242 automatic       pointer                  dcl 258 in procedure "PUSH_CHILD" set ref 264* 266
+                                                                                  267 269* 274*
+pastep                          000254 automatic       pointer                  dcl 289 in procedure "REVERT_DECIDUOUS" set ref 298*
+                                                                                  300 307
+pc$cleanup                      000040 constant        entry                    external dcl 80 ref 195
+ptr                                                    builtin function         dcl 92 ref 234 239 267 298 304 309
+pts                             000267 automatic       fixed bin(17,0)          dcl 335 in procedure "VALIDATE_ASTE" set ref 354*
+                                                                                  356 356 359 359
+pts                             000305 automatic       fixed bin(17,0)          dcl 391 in procedure "INIT_FOR_SST" set ref 396* 397
+                                                                                  398 398 398 399 399 400*
+ptsi                     13(28)        based           bit(2)                   level 2 packed packed unaligned dcl 337 ref 354
+pvid                                   based           bit(36)                  level 2 dcl 2-26 ref 317
+pvt$array                       000050 external static fixed bin(17,0)          dcl 2-18 set ref 116
+pvt$esd_state                   000014 external static fixed bin(17,0)          dcl 65 ref 102
+pvt$n_entries                   000016 external static fixed bin(17,0)          dcl 66 ref 350
+pvt_array                              based           structure                array level 1 dcl 2-24 set ref 158 316
+pvt_arrayp                      000174 automatic       pointer                  dcl 2-21 set ref 116* 158 316
+pvte                                   based           structure                level 1 dcl 2-26
+pvtep                           000176 automatic       pointer                  dcl 2-22 set ref 158* 161 170 316* 317 318 318 318
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 155 in procedure "CHECK_DEACTIVATE" ref 158
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 337 in procedure "VALIDATE_ASTE" ref 350 350
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 293 in procedure "REVERT_DECIDUOUS" ref 313
+                                                                                  317
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure
+                                                                                  "deactivate_for_demount$shutdown" ref 316
+records                  12(18)        based           bit(9)                   level 2 packed packed unaligned dcl 337 ref 345
+rel                                                    builtin function         dcl 93 ref 302 355 378 395
+relp                            000256 automatic       bit(18)                  dcl 290 set ref 300* 302 303 304* 304
+shut                            000156 automatic       bit(1)                   dcl 53 set ref 100* 111* 160 342
+size                                                   builtin function         dcl 94 ref 398 399
+sst$                            000020 external static fixed bin(17,0)          dcl 67 set ref 393
+sst$astap                       000022 external static pointer                  dcl 68 ref 395
+sst$level                       000024 external static structure                array level 1 dcl 69
+sst$pts                         000026 external static fixed bin(17,0)          array dcl 72 ref 398 399
+sst$root_astep                  000030 external static pointer                  dcl 73 ref 123
+sstp                            000160 automatic       pointer                  dcl 54 set ref 234 239 267 298 304 309 393*
+stack_level                     000162 automatic       fixed bin(17,0)          dcl 55 set ref 122* 127 128 236* 236 242 270* 270
+                                                                                  271 273
+syserr$error_code               000042 constant        entry                    external dcl 81 ref 318
+uid                       3            based           bit(36)                  level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 337 in procedure "VALIDATE_ASTE" ref 342
+uid                       3            based           bit(36)                  level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 155 in procedure "CHECK_DEACTIVATE" ref 157
+uid                       3            based           bit(36)                  level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 193 in procedure "DEACTIVATE_FOR_SHUTDOWN" set
+                                                                                  ref 205*
+update_vtoce$deact              000044 constant        entry                    external dcl 82 ref 197
+vtoc_man$free_vtoce             000046 constant        entry                    external dcl 83 ref 317
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 in structure "Aste" packed packed unaligned
+                                                                                  dcl 293 in procedure "REVERT_DECIDUOUS" set ref
+                                                                                  313 314 315*
+vtocx                           000257 automatic       fixed bin(17,0)          dcl 291 in procedure "REVERT_DECIDUOUS" set ref 314*
+                                                                                  317* 318*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 3-7
+Aste                                   based           structure                level 1 dcl 227
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 3-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 2-113
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+baste                                  based           structure                level 1 dcl 228
+caste                                  based           structure                level 1 dcl 261
+paste                                  based           structure                level 1 dcl 230
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 2-19
+seg_aste                               based           structure                level 1 dcl 1-96
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BAD_SST                         000156 constant        label                    dcl 140 ref 102 271 339 342 345 350 356 359 378
+CHECK_DEACTIVATE                000166 constant        entry                    internal dcl 150 ref 130
+COMMON                          000112 constant        label                    dcl 113 ref 105
+DEACTIVATE_FOR_SHUTDOWN         000272 constant        entry                    internal dcl 188 ref 167
+INIT_FOR_SST                    000722 constant        entry                    internal dcl 387 ref 120
+POP_PUSH_BROTHER                000336 constant        entry                    internal dcl 218 ref 129
+PUSH_CHILD                      000375 constant        entry                    internal dcl 252 ref 125 243
+REVERT_DECIDUOUS                000430 constant        entry                    internal dcl 283 ref 165
+UNLOCK_RETURN                   000150 constant        label                    dcl 133 ref 177 202
+VALIDATE_ASTE                   000621 constant        entry                    internal dcl 329 ref 124 240 268
+VALIDATE_PARENT_CHILD           000705 constant        entry                    internal dcl 369 ref 241 269
+deactivate_for_demount$shutdown 000036 constant        entry                    external dcl 17
+lv                              000076 constant        entry                    external dcl 107
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1264        1336    1024        1274
+Length      1606    1024        52         234     237           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+deactivate_for_demount$shutdown
+                                    271 external procedure  is an external procedure.  
+on unit on line 102                  64 on unit               
+CHECK_DEACTIVATE                        internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+DEACTIVATE_FOR_SHUTDOWN                 internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+POP_PUSH_BROTHER                        internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+PUSH_CHILD                              internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+REVERT_DECIDUOUS                        internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+VALIDATE_ASTE                           internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+VALIDATE_PARENT_CHILD                   internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+INIT_FOR_SST                            internal procedure  shares stack frame of external procedure deactivate_for_demount$shutdo    
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+deactivate_for_demount$shutdown
+                         000100 aste_val                    deactivate_for_demount$shutdown
+                         000114 astep_stack                 deactivate_for_demount$shutdown
+                         000154 code                        deactivate_for_demount$shutdown
+                         000155 lvid                        deactivate_for_demount$shutdown
+                         000156 shut                        deactivate_for_demount$shutdown
+                         000160 sstp                        deactivate_for_demount$shutdown
+                         000162 stack_level                 deactivate_for_demount$shutdown
+                         000172 astep                       deactivate_for_demount$shutdown
+                         000174 pvt_arrayp                  deactivate_for_demount$shutdown
+                         000176 pvtep                       deactivate_for_demount$shutdown
+                         000224 bastep                      POP_PUSH_BROTHER
+                         000226 castep                      POP_PUSH_BROTHER
+                         000230 pastep                      POP_PUSH_BROTHER
+                         000240 castep                      PUSH_CHILD
+                         000242 pastep                      PUSH_CHILD
+                         000252 last                        REVERT_DECIDUOUS
+                         000254 pastep                      REVERT_DECIDUOUS
+                         000256 relp                        REVERT_DECIDUOUS
+                         000257 vtocx                       REVERT_DECIDUOUS
+                         000266 aste_addr                   VALIDATE_ASTE
+                         000267 pts                         VALIDATE_ASTE
+                         000304 array_addr                  INIT_FOR_SST
+                         000305 pts                         INIT_FOR_SST
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           mdfx1               enable_op
+ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+deactivate                    lock$lock_ast                 lock$unlock_ast               pc$cleanup
+syserr$error_code             update_vtoce$deact            vtoc_man$free_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$inconsistent_sst error_table_$vtoc_io_err      pvt$array                     pvt$esd_state
+pvt$n_entries                 sst$                          sst$astap                     sst$level
+sst$pts                       sst$root_astep
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000033       100 000046       102 000050       105 000071       107 000072       110 000106       111 000111
+    113 000112       116 000113       118 000116       120 000122       122 000123       123 000125       124 000131
+    125 000133       127 000135       128 000140       129 000143       130 000145       131 000147       133 000150
+    137 000155       140 000156       142 000161       143 000165       150 000166       157 000170       158 000175
+    160 000204       161 000206       163 000212       164 000217       165 000221       167 000233       168 000241
+    170 000242       171 000245       172 000252       173 000254       174 000265       176 000267       177 000270
+    183 000271       188 000272       195 000274       197 000310       198 000322       201 000327       202 000330
+    205 000331       207 000335       218 000336       233 000340       234 000343       236 000350       239 000357
+    240 000362       241 000364       242 000366       243 000372       246 000374       252 000375       264 000377
+    266 000402       267 000407       268 000412       269 000414       270 000416       271 000417       273 000422
+    274 000425       275 000426       277 000427       283 000430       298 000432       299 000441       300 000442
+    302 000445       303 000454       304 000456       305 000463       307 000464       309 000473       313 000477
+    314 000512       315 000513       316 000515       317 000525       318 000546       323 000620       329 000621
+    339 000623       342 000631       345 000635       350 000652       354 000661       355 000665       356 000670
+    359 000700       362 000704       369 000705       378 000707       382 000721       387 000722       393 000723
+    395 000726       396 000733       397 000737       398 000743       399 000755       400 000760       401 000762
+    403 000764
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

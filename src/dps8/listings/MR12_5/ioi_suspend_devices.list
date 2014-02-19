@@ -1,0 +1,696 @@
+	COMPILATION LISTING OF SEGMENT ioi_suspend_devices
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1016.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* ioi_suspend_devices - suspend and restore I/O activity on devices */
+        9 /* Rewritten May 1983 by Chris Jones */
+       10 /* Modified March 1984 by Chris Jones for IOM reconfiguration. */
+       11 /* Modified March 1985 by Keith Loepere to properly copy arguments. */
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(86-09-05,Farley), approve(86-07-18,MCR7439),
+       16*     audit(86-09-24,Fawcett), install(86-10-20,MR12.0-1189):
+       17*     Changed to execute in the BCE environment.
+       18*                                                   END HISTORY COMMENTS */
+       19 
+       20 
+       21 /* This procedure is called by a T&D user to suspend or restore I/O on all other devices sharing the same MPC. */
+       22 
+       23 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       24 ioi_suspend_devices:
+       25      proc (p_devx, p_code);
+       26 
+       27 dcl	p_code		   fixed bin (35) parameter;	/* (O) error code */
+       28 dcl	p_devx		   fixed bin parameter;	/* (I) device table entry pointer */
+       29 
+       30 dcl	code		   fixed bin (35);
+       31 dcl	devx		   fixed bin;
+       32 dcl	locked		   bit (1) aligned;		/* set if we've got the dte locked */
+       33 dcl	mcp		   ptr;			/* pointer to MPC configuration card */
+       34 
+       35 dcl	ioi_config$find_controller_card
+       36 			   entry (char (8) aligned) returns (ptr);
+       37 dcl	ioi_device$get_dtep	   entry (fixed bin, ptr, fixed bin (35));
+       38 dcl	ioi_device$unlock	   entry (ptr);
+       39 dcl	ioi_masked$getwork_channel
+       40 			   entry (ptr);
+       41 dcl	ioi_masked$quiesce_channel
+       42 			   entry (ptr);
+       43 dcl	ioi_usurp_channels$suspend
+       44 			   entry (ptr, ptr, fixed bin (35));
+       45 dcl	ioi_usurp_channels$unassign
+       46 			   entry (ptr, fixed bin (35));
+       47 dcl	lock$lock_fast	   entry (ptr);
+       48 dcl	lock$unlock_fast	   entry (ptr);
+       49 
+       50 dcl	error_table_$no_operation
+       51 			   fixed bin (35) ext;
+       52 
+       53 dcl	sys_info$service_system
+       54 			   bit (1) aligned external static;
+       55 
+       56 dcl	(addr, null, ptr, rel) builtin;
+       57 
+       58 	call setup;				/* lock device to us */
+       59 	if code ^= 0 then
+       60 	     goto EXIT;				/* get out if error */
+       61 
+       62 	if gte.disk_data_subsystem_idx ^= 0 then	/* If suspending disk controller ... */
+       63 	     if (dte.channel_required = "") |		/* Must already have channel required. */
+       64 		^gte.dual_controller then do;		/* Must be dual controller configuration. */
+       65 		code = error_table_$no_operation;	/* Otherwise, error. */
+       66 		goto EXIT;
+       67 	     end;
+       68 
+       69 	call get_channel;
+       70 	if code ^= 0 then
+       71 	     goto EXIT;
+       72 
+       73 	call walk_channels (stop_channel);		/* Find all channels on MPC. */
+       74 
+       75 	call walk_channels (wait_channel);		/* Wait for all devices to come to a halt. */
+       76 
+       77 	dte.suspended = "0"b;			/* Leave our device usable. */
+       78 EXIT:
+       79 	if locked then
+       80 	     call ioi_device$unlock (dtep);
+       81 
+       82 	p_code = code;
+       83 	return;					/* That's all. */
+       84 
+       85 suspend_error:					/* Arrive here by non local goto. */
+       86 	call walk_channels (start_channel);		/* Start up all channels again. */
+       87 	goto EXIT;
+       88 
+       89 ioi_release_devices:
+       90      entry (p_devx, p_code);
+       91 
+       92 	call setup;				/* Validate call and set up. */
+       93 	if code ^= 0 then
+       94 	     goto EXIT;
+       95 
+       96 	call get_channel;				/* find channel id */
+       97 	if code ^= 0 then
+       98 	     goto EXIT;
+       99 
+      100 	call walk_channels (start_channel);		/* Restart all channels on this controller. */
+      101 	goto EXIT;				/* And exit. */
+      102 
+      103 
+      104 setup:
+      105      proc;
+      106 
+      107 	p_code, code = 0;
+      108 	devx = p_devx;
+      109 	locked = "0"b;
+      110 	call ioi_device$get_dtep (devx, dtep, code);
+      111 	if code ^= 0 then
+      112 	     return;
+      113 	locked = "1"b;
+      114 
+      115 	idp = addr (ioi_data$);			/* Get pointer to base of IOI data segment. */
+      116 	gtep = ptr (idp, dte.gtep);			/* Get pointer to group table entry for this device. */
+      117 
+      118 	if ^dte.priv | ^gte.psia then			/* Error if not privileged and a PSIA channel. */
+      119 	     code = error_table_$no_operation;
+      120 
+      121      end setup;
+      122 
+      123 get_channel:
+      124      proc;
+      125 
+      126 dcl	chanid		   char (8) aligned;	/* name of channel */
+      127 
+      128 	chanid = "";				/* initialize channel name */
+      129 	if dte.channel_required ^= "" then		/* If device requires a channel ... */
+      130 	     chanid = dte.channel_required;		/* ...that's the MPC we're interested in. */
+      131 	else do ctep = ptr (gtep, gte.ctep) repeat ptr (ctep, cte.next_ctep)
+      132 		while ((rel (ctep) ^= "0"b) & (chanid = ""));
+      133 	     if cte.ioi_use then			/* If we found a channel ... */
+      134 		chanid = cte.chanid;		/* Use that channel */
+      135 	end;
+      136 
+      137 	mcp = ioi_config$find_controller_card (chanid);
+      138 	if mcp = null () then			/* Pointer should never be null. */
+      139 	     code = error_table_$no_operation;
+      140 
+      141      end get_channel;
+      142 
+      143 
+      144 walk_channels:
+      145      proc (do_cte);
+      146 
+      147 dcl	do_cte		   entry parameter;
+      148 
+      149 dcl	ctx		   fixed bin;
+      150 
+      151 	do ctx = 1 to ioi_data.nct;			/* Iterate through all channels. */
+      152 
+      153 	     ctep = addr (ioi_data.ct (ctx));		/* Get pointer to channel table entry. */
+      154 	     gtep = ptr (idp, cte.gtep);		/* Get pointer to corresponding group table entry. */
+      155 
+      156 	     if ioi_config$find_controller_card (cte.chanid) = mcp then
+      157 						/* If this channel is on this controller ... */
+      158 		call do_cte;			/* Go perform action on this channel. */
+      159 	end;
+      160 
+      161 
+      162      end walk_channels;
+      163 
+      164 
+      165 
+      166 walk_devices:
+      167      proc (suspended_sw);
+      168 
+      169 dcl	suspended_sw	   bit (1) aligned parameter;
+      170 
+      171 dcl	done		   bit (1) aligned;
+      172 dcl	list_head		   bit (18);
+      173 dcl	saved_dtep	   ptr;
+      174 
+      175 	saved_dtep = dtep;
+      176 	done = "0"b;
+      177 	list_head = gte.dtep;
+      178 	do dtep = ptr (idp, list_head) repeat ptr (idp, dte.next_dtep) while (^done);
+      179 	     if ^sys_info$service_system then
+      180 		dte.suspended = suspended_sw;		/* No lock worries at BCE */
+      181 	     else do;
+      182 		if dtep ^= saved_dtep then
+      183 		     call lock$lock_fast (addr (dte.lock));
+      184 						/* lock it to ensure this bit gets updated right */
+      185 		dte.suspended = suspended_sw;
+      186 		if dtep ^= saved_dtep then
+      187 		     call lock$unlock_fast (addr (dte.lock));
+      188 	     end;
+      189 	     done = dte.next_dtep = list_head;
+      190 	end;
+      191 	dtep = saved_dtep;
+      192 
+      193      end walk_devices;
+      194 
+      195 stop_channel:
+      196      proc;
+      197 
+      198 	if ^gte.suspend_devices then do;		/* If this group has not yet been suspended ... */
+      199 	     if gte.disk_data_subsystem_idx ^= 0 then do; /* If disk, get all channels on controller. */
+      200 		call ioi_usurp_channels$suspend (dtep, gtep, code);
+      201 		if code ^= 0 then
+      202 		     go to suspend_error;
+      203 	     end;
+      204 
+      205 	     gte.suspend_devices = "1"b;		/* Suspend all devices in this group. */
+      206 	     call walk_devices ("1"b);		/* Walk through list and stop each one. */
+      207 	end;
+      208 
+      209 	return;
+      210 
+      211 
+      212 
+      213 wait_channel:
+      214      entry;
+      215 
+      216 	call ioi_masked$quiesce_channel (ctep);
+      217 	do while (cte.connected | cte.quiescing);	/* Wait for channel to stop. */
+      218 	end;
+      219 
+      220 	return;
+      221 
+      222 
+      223 
+      224 start_channel:
+      225      entry;
+      226 
+      227 	if gte.suspend_devices then do;		/* If this group is still suspended ... */
+      228 	     gte.suspend_devices = "0"b;		/* Allow devices to run again. */
+      229 	     if gte.disk_data_subsystem_idx ^= 0 then	/* If disk, get rid of any excess channels. */
+      230 		call ioi_usurp_channels$unassign (gtep, code);
+      231 
+      232 	     call walk_devices ("0"b);		/* Walk through list and restore each device. */
+      233 	end;
+      234 
+      235 	if cte.ioi_use then				/* start it if it's one of ours */
+      236 	     call ioi_masked$getwork_channel (ctep);
+      237 
+      238      end stop_channel;
+      239 
+  1     1 /* Begin include file ...... ioi_data.incl.pl1 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1     6*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1     7*     Support for FIPS and
+  1     8*     IMU.
+  1     9*  2) change(86-05-16,Kissel), approve(86-07-30,MCR7461), audit(86-07-31,Coren),
+  1    10*     install(86-08-19,MR12.0-1120):
+  1    11*     Changed the value of IOI_DEFAULT_MAX_BOUND from 4096 to 1024.  This
+  1    12*     corrects a problem when RCP tries to set the maximum workspace size if it
+  1    13*     is less than 4096.  Since ioi_ (actually grab_aste) touched all the pages
+  1    14*     at assignment time, the current length is 4, and trying to set the max
+  1    15*     length to less than 4 (e.g. because the max unprivileged workspace size in
+  1    16*     RCP for a special device is 1) returns an error.
+  1    17*                                                   END HISTORY COMMENTS */
+  1    18 
+  1    19 /* Rewritten May 1982 by C. Hornig for new ioi_ */
+  1    20 /* Rewrite finished March 1983 by Chris Jones */
+  1    21 /* Extended for reconfiguration April 1983 by Chris Jones. */
+  1    22 /* Modified November 1983 by Chris Jones to separate items in the dte protected by different locks. */
+  1    23 /* Modified January 1984 by Chris Jones to add ite's. */
+  1    24 /* Modified Feb 1984 by Rich Fawcett to add ipc and fips */
+  1    25 /* Modified Sept 1985 by Paul Farley to add controller flag to dte. */
+  1    26 
+  1    27 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    28 
+  1    29 dcl	idp		   ptr;			/* pointer to IOI data structure */
+  1    30 dcl	gtep		   ptr;			/* pointer to channel/device group entry */
+  1    31 dcl	ctep		   ptr;			/* pointer to channel table entry */
+  1    32 dcl	dtep		   ptr;			/* pointer to wired device table entry */
+  1    33 dcl	itep		   ptr;			/* pointer to I/O multiplexer entry */
+  1    34 
+  1    35 dcl	(ioi_subsystems, ioi_devices, ioi_channels, ioi_multiplexers)
+  1    36 			   fixed bin;
+  1    37 dcl	ioi_data$		   external;		/* IOI data segment */
+  1    38 
+  1    39 
+  1    40 dcl	1 ioi_data	   based (idp) aligned,	/* I/O Interfacer data structure */
+  1    41 	  2 ngt		   fixed bin,		/* number of groups */
+  1    42 	  2 nct		   fixed bin,		/* number of channels */
+  1    43 	  2 ndt		   fixed bin,		/* number of devices */
+  1    44 	  2 nit		   fixed bin,		/* number of IOMs */
+  1    45 	  2 spurious_interrupts
+  1    46 			   fixed bin (35),		/* interrupts with no status */
+  1    47 	  2 reconfig_lock	   like lock,		/* lock for reconfiguring devices, channels, etc. */
+  1    48 	  2 flags,
+  1    49 	    3 setup	   bit (1) unal,		/* "1"b => ioi_init has run */
+  1    50 	    3 pad1	   bit (35) unal,
+  1    51 	  2 rss_idcw	   bit (36),		/* reset status IDCW */
+  1    52 	  2 pad2		   (6) fixed bin (35),	/* pad to 16 words */
+  1    53 	  2 dt		   (ioi_devices refer (ioi_data.ndt)) like dte aligned,
+  1    54 						/* device table */
+  1    55 	  2 gt		   (ioi_subsystems refer (ioi_data.ngt)) like gte aligned,
+  1    56 						/* channel/device group table */
+  1    57 	  2 ct		   (ioi_channels refer (ioi_data.nct)) like cte aligned,
+  1    58 						/* channel table */
+  1    59 	  2 it		   (ioi_multiplexers refer (ioi_data.nit)) like ite aligned;
+  1    60 						/* multiplexer table */
+  2     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  2     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  2     3*   encourages name conflicts.
+  2     4*   USE HC_FAST_LOCK INSTEAD!
+  2     5**/
+  2     6 
+  2     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  2     8 
+  2     9 /* format: style3 */
+  2    10 
+  2    11 declare	lock_ptr		pointer;
+  2    12 declare	1 lock		aligned based (lock_ptr),
+  2    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  2    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  2    15 	  2 flags		aligned,
+  2    16 	    3 notify_sw	bit (1) unaligned,
+  2    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  2    18 
+  2    19 /* End include file hc_lock.incl.pl1 */
+  1    61 
+  1    62 
+  1    63 dcl	1 ite		   based (itep) aligned,	/* I/O multiplexer table entry */
+  1    64 	  2 model		   char (4),		/* which flavor we are */
+  1    65 	  2 flags,
+  1    66 	  ( 3 deleting	   bit (1),
+  1    67 	    3 deleted	   bit (1)
+  1    68 	    )		   unaligned,
+  1    69 	  2 pad1		   bit (16) unaligned,
+  1    70 	  2 iom_table_idx	   fixed bin (17) unaligned,
+  1    71 	  2 tag		   fixed bin (3),
+  1    72 	  2 pad2		   (5) bit (36);
+  1    73 
+  1    74 dcl	1 gte		   based (gtep) aligned,	/* channel/device group table entry */
+  1    75 	  2 lock		   bit (36),		/* (0) loop lock */
+  1    76 	  2 name		   char (4),		/* (1) subsystem name */
+  1    77 	  2 dtep		   bit (18) unaligned,	/* (2) rel ptr to device just serviced */
+  1    78 	  2 ctep		   bit (18) unaligned,	/* (2) rel ptr to thread of channel table entries */
+  1    79 	  2 detailed_status_cmd
+  1    80 			   bit (6) unal,		/* (3) idcw command to read detailed status */
+  1    81 	  2 flags		   unaligned,		/* (3) */
+  1    82 	    3 psia	   bit (1),		/* "1"b if channel is PSIA */
+  1    83 	    3 suspend_devices  bit (1),		/* "1"b if device I/O suspended */
+  1    84 	    3 dual_controller  bit (1),		/* "1"b if dual controller subsystem (disk only) */
+  1    85 	    3 ascii_dtst	   bit (1),		/* "1"b if detailed status sent in ASCII mode */
+  1    86 	    3 mplex	   bit (1),		/* "1"b if channels are multiplexed among devices */
+  1    87 	    3 ipc		   bit (1),		/* "1"b if devices are on an IMU */
+  1    88 	    3 fips	   bit (1),		/* "1"b if devices start at zero */
+  1    89 	    3 pad		   bit (23),
+  1    90 	  2 n_devices	   fixed bin,		/* (4) number of devices in device table thread */
+  1    91 	  2 pending_connects   fixed bin,		/* (5) count of pending connect requests */
+  1    92 	  2 io_log_info_index  fixed bin,		/* (6) index into io_log_status_info table */
+  1    93 	  2 disk_data_subsystem_idx
+  1    94 			   fixed bin;		/* (7) index into disk_data.array for disks */
+  1    95 
+  1    96 dcl	1 cte		   based (ctep) aligned,	/* channel table entry */
+  1    97 	  2 next_ctep	   bit (18) unaligned,	/* (0) rel ptr to next channel table entry */
+  1    98 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1    99 	  2 flags1	   unaligned,		/* (1) */
+  1   100 	    3 ioi_use	   bit (1),		/* "1"b if channel currently being used */
+  1   101 	    3 connected	   bit (1),		/* "1"b if channel is connected */
+  1   102 	    3 toss_status	   bit (1),		/* "1"b if status is to be ignored */
+  1   103 	    3 quiescing	   bit (1),		/* "1"b if the channel is just finishing what it's doing */
+  1   104 	    3 direct	   bit (1),		/* "1"b if this is a direct channel */
+  1   105 	    3 pad1	   bit (4),
+  1   106 	  2 disktab_ctx	   fixed bin (9) uns unal,	/* (1) index into disktab.chantab for this channel */
+  1   107 	  2 cur_dtep	   bit (18) unaligned,	/* (1) current device table entry */
+  1   108 	  2 chanid	   char (8),		/* (2) io_manager's name for channel */
+  1   109 	  2 statusp	   ptr unal,		/* (4) pointer to first word of status */
+  1   110 	  2 chx		   fixed bin (35),		/* (5) channel index for io_manager */
+  1   111 	  2 time_limit	   fixed bin (71),		/* (6) connect time limit */
+  1   112 	  2 saved_status	   unaligned,		/* (8) status repository while reading detailed status */
+  1   113 	    3 word1	   bit (36),
+  1   114 	    3 word2	   bit (36),
+  1   115 	    3 word4	   bit (36),
+  1   116 	    3 next_lpw_offset  bit (18),
+  1   117 	    3 command	   bit (6),
+  1   118 	  2 pad3		   bit (12) unaligned,	/* (11) */
+  1   119 	  2 base_ctep	   bit (18) unaligned,	/* (12) rel ptr to base logical chan. of physical chan. */
+  1   120 	  2 itep		   bit (18) unaligned,	/* (12) rel ptr to itep */
+  1   121 	  2 flags2	   unaligned,		/* (13) */
+  1   122 	    3 deleting	   bit (1),		/* "1"b if attempting to delete this channel */
+  1   123 	    3 deleted	   bit (1),		/* "1"b if channel deleted */
+  1   124 	  2 pad4		   bit (16) unaligned,	/* (13) */
+  1   125 	  2 channel_table_idx  fixed bin (17) unaligned,
+  1   126 	  2 pad5		   (2) bit (36);		/* (14) pad to 8 word boundary */
+  1   127 
+  1   128 dcl	1 dte		   based (dtep) aligned,	/* wired device table entry */
+  1   129 	  2 next_dtep	   bit (18) unaligned,	/* (0) rel ptr to next entry in thread */
+  1   130 	  2 gtep		   bit (18) unaligned,	/* (0) rel ptr to channel/device group table entry */
+  1   131 	  2 cur_ctep	   bit (18) unaligned,	/* (1) rel ptr to channel in use */
+  1   132 	  2 flags1	   unaligned,		/* (1) flags protected by gte lock */
+  1   133 	    3 connected	   bit (1),		/* "1"b if device has a channel */
+  1   134 	    3 log_status_cnt   bit (1),		/* "1"b if count in log_status is valid */
+  1   135 	    3 reading_detailed_status
+  1   136 			   bit (1),		/* "1"b if read of detailed device status in progress */
+  1   137 	    3 pad1	   bit (15),
+  1   138 	  2 channel_required   char (8),		/* (2) channel name of required channel */
+  1   139 	  2 ev_chn	   fixed bin (71),		/* (4) event ID for status wakeups */
+  1   140 	  2 workspace_ptr	   ptr,			/* (6) workspace pointer */
+  1   141 	  2 workspace_astep	   ptr,			/* (8) workspace ASTE ptr */
+  1   142 	  2 workspace_sdw	   fixed bin (71),		/* (10) SDW of workspace segment */
+  1   143 	  2 ptp		   ptr,			/* (12) device page table */
+  1   144 	  2 max_bound	   fixed bin (19),		/* (14) largest allowable bound of workspace segment */
+  1   145 	  2 bound		   fixed bin (19),		/* (15) bound of workspace */
+  1   146 	  2 process_id	   bit (36),		/* (16) ID of process owning device */
+  1   147 	  2 ring		   fixed bin (3),		/* (17) highest ring allowed to access device */
+  1   148 	  2 device	   bit (6) unal,		/* (18) device code */
+  1   149 	  2 flags2	   unal,			/* (18) constant or protected by dte lock */
+  1   150 	    3 priv	   bit (1),		/* "1"b if privileged user */
+  1   151 	    3 in_use	   bit (1),		/* "1"b if device is to be used */
+  1   152 	    3 deleting	   bit (1),		/* "1"b if trying to delete this device */
+  1   153 	    3 deleted	   bit (1),		/* "1"b if this device is deleted */
+  1   154 	    3 suspended	   bit (1),		/* "1"b if device isn't to be used temporarily */
+  1   155 	    3 workspace_wired  bit (1),		/* "1"b if workspace is wired */
+  1   156               3 direct           bit (1),                   /* "1"b if device is connected to a direct channel */
+  1   157 	    3 controller	   bit (1),		/* "1"b if dte for the devices controller */
+  1   158 	    3 pad2	   bit (4),
+  1   159 	  2 device_table_idx   fixed bin (17) unaligned,
+  1   160 	  2 listx		   uns fixed bin (18) unal,	/* (19) DCW list index for connect */
+  1   161 	  2 idcw_listx	   uns fixed bin (18) unal,	/* (19) DCW list index of IDCW */
+  1   162 	  2 timeout	   fixed bin (35),		/* (20) time limit for I/O completion (usec) */
+  1   163 	  2 max_timeout	   fixed bin (35),		/* (21) maximum allowable timeout grace time (usec) */
+  1   164 	  2 unwire_time	   fixed bin (71),		/* (22) when to unwire the workspace */
+  1   165 	  2 pcw		   bit (36),		/* (24) peripheral control word (PCW) */
+  1   166 	  2 status_control,				/* (25) */
+  1   167 	    3 status_offset	   fixed bin (18) unsigned unaligned,
+  1   168 						/* offset of status queue in user workspace */
+  1   169 	    3 status_entries   fixed bin (9) unsigned unaligned,
+  1   170 						/* number of entries in status queue */
+  1   171 	    3 status_entry_idx fixed bin (9) unsigned unaligned,
+  1   172 						/* next entry to be used */
+  1   173 	  2 idcw		   bit (36),		/* (26) instruction DCW (KEEP ON EVEN WORD BOUNDARY) */
+  1   174 	  2 tdcw		   bit (36),		/* (27) transfer DCW to remainder of list */
+  1   175 	  2 special_status	   bit (36),		/* (28) special interrupt status */
+  1   176 	  2 lock		   like lock,		/* (29) wait lock */
+  1   177 	  2 log_status,				/* (32) */
+  1   178 	  ( 3 level	   fixed bin (3) unsigned,
+  1   179 	    3 time_out	   bit (1),
+  1   180 	    3 type	   bit (2),
+  1   181 	    3 command	   bit (6),
+  1   182 	    3 count	   fixed bin (6) unsigned,
+  1   183 	    3 channel	   bit (18),
+  1   184 	    3 status	   bit (36)
+  1   185 	    )		   unaligned,
+  1   186 	  2 ptx		   fixed bin,		/* (34) index of page table */
+  1   187 	  2 active	   bit (1),		/* (35) "1"b if device running or to run */
+  1   188 	  2 special_interrupt  bit (1),		/* (36) "1"b if special interrupt received */
+  1   189 	  2 detailed_status_valid
+  1   190 			   bit (1),		/* (37) "1"b if detailed status read sucessfully */
+  1   191 	  2 last_log_time	   fixed bin (71),		/* (38) when status was last logged */
+  1   192 	  2 detailed_status	   (8) bit (36),		/* (40) (buffer for reading most recent detailed status */
+  1   193 	  2 log_detailed_status
+  1   194 			   (8) bit (36);		/* (48) copy of last detailed status logged */
+  1   195 
+  1   196 /**** Defaults for various I/O parameters */
+  1   197 
+  1   198 dcl	IOI_DEFAULT_MAX_BOUND  fixed bin (19) static options (constant) init (1024);
+  1   199 dcl	IOI_DEFAULT_MAX_TIMEOUT
+  1   200 			   fixed bin (35) static options (constant) init (30000000);
+  1   201 dcl	IOI_DEFAULT_TIMEOUT	   fixed bin (35) static options (constant) init (30000000);
+  1   202 
+  1   203 dcl	IO_STATUS_ERROR_MASK   bit (36) static options (constant) init ("370000770000"b3);
+  1   204 
+  1   205 dcl	IO_CHANNEL_LOCK_TEMPLATE
+  1   206 			   char (2) int static options (constant) init ("ch");
+  1   207 dcl	IOI_DEVICE_LOCK_EVENT_TEMPLATE
+  1   208 			   char (2) static options (constant) init ("dv");
+  1   209 
+  1   210 /* End of include file ...... ioi_data.incl.pl1 */
+      240 
+      241 
+      242      end ioi_suspend_devices;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.3  ioi_suspend_devices.pl1           >spec>install>1110>ioi_suspend_devices.pl1
+240          1    09/02/86  1552.9  ioi_data.incl.pl1                 >ldd>include>ioi_data.incl.pl1
+1-61         2    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 56 ref 115 153 182 182 186 186
+chanid                          000132 automatic       char(8)                  dcl 126 in procedure "get_channel" set ref 128* 129*
+                                                                                  131 133* 137*
+chanid                    2            based           char(8)                  level 2 in structure "cte" dcl 1-96 in procedure
+                                                                                  "ioi_suspend_devices" set ref 133 156*
+channel_required          2            based           char(8)                  level 2 dcl 1-128 ref 62 129 129
+code                            000100 automatic       fixed bin(35,0)          dcl 30 set ref 59 65* 70 82 93 97 107* 110* 111 118*
+                                                                                  138* 200* 201 229*
+connected                 1(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-96 ref 217
+ct                                     based           structure                array level 2 dcl 1-40 set ref 153
+cte                                    based           structure                level 1 dcl 1-96
+ctep                            000112 automatic       pointer                  dcl 1-31 in procedure "ioi_suspend_devices" set ref
+                                                                                  131* 131* 133 133* 135 135 153* 154 156 216* 217
+                                                                                  217 235 235*
+ctep                      2(18)        based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 1-74 in procedure "ioi_suspend_devices" ref
+                                                                                  131
+ctx                             000142 automatic       fixed bin(17,0)          dcl 149 set ref 151* 153*
+devx                            000101 automatic       fixed bin(17,0)          dcl 31 set ref 108* 110*
+disk_data_subsystem_idx
+                          7            based           fixed bin(17,0)          level 2 dcl 1-74 ref 62 199 229
+do_cte                                 parameter       entry variable           dcl 147 ref 144 156
+done                            000106 automatic       bit(1)                   dcl 171 set ref 176* 178 189*
+dte                                    based           structure                level 1 dcl 1-128
+dtep                      2            based           bit(18)                  level 2 in structure "gte" packed packed unaligned
+                                                                                  dcl 1-74 in procedure "ioi_suspend_devices" ref
+                                                                                  177
+dtep                            000114 automatic       pointer                  dcl 1-32 in procedure "ioi_suspend_devices" set ref
+                                                                                  62 77 78* 110* 116 118 129 129 175 178* 179 182
+                                                                                  182 182 185 186 186 186 189* 190* 191* 200*
+dual_controller           3(08)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 ref 62
+error_table_$no_operation       000032 external static fixed bin(35,0)          dcl 50 ref 65 118 138
+flags                     3(06)        based           structure                level 2 packed packed unaligned dcl 1-74
+flags1                    1            based           structure                level 2 packed packed unaligned dcl 1-96
+flags2                   22(06)        based           structure                level 2 packed packed unaligned dcl 1-128
+gte                                    based           structure                level 1 dcl 1-74
+gtep                      0(18)        based           bit(18)                  level 2 in structure "dte" packed packed unaligned
+                                                                                  dcl 1-128 in procedure "ioi_suspend_devices" ref
+                                                                                  116
+gtep                            000110 automatic       pointer                  dcl 1-30 in procedure "ioi_suspend_devices" set ref
+                                                                                  62 62 116* 118 131 131 154* 177 198 199 200* 205
+                                                                                  227 228 229 229*
+gtep                      0(18)        based           bit(18)                  level 2 in structure "cte" packed packed unaligned
+                                                                                  dcl 1-96 in procedure "ioi_suspend_devices" ref
+                                                                                  154
+idp                             000106 automatic       pointer                  dcl 1-29 set ref 115* 116 151 153 154 178 190
+ioi_config$find_controller_card 000010 constant        entry                    external dcl 35 ref 137 156
+ioi_data                               based           structure                level 1 dcl 1-40
+ioi_data$                       000036 external static fixed bin(17,0)          dcl 1-37 set ref 115
+ioi_device$get_dtep             000012 constant        entry                    external dcl 37 ref 110
+ioi_device$unlock               000014 constant        entry                    external dcl 38 ref 78
+ioi_masked$getwork_channel      000016 constant        entry                    external dcl 39 ref 235
+ioi_masked$quiesce_channel      000020 constant        entry                    external dcl 41 ref 216
+ioi_use                   1            based           bit(1)                   level 3 packed packed unaligned dcl 1-96 ref 133 235
+ioi_usurp_channels$suspend      000022 constant        entry                    external dcl 43 ref 200
+ioi_usurp_channels$unassign     000024 constant        entry                    external dcl 45 ref 229
+ite                                    based           structure                level 1 dcl 1-63
+list_head                       000107 automatic       bit(18)                  packed unaligned dcl 172 set ref 177* 178 189
+lock                                   based           structure                level 1 dcl 2-12 in procedure "ioi_suspend_devices"
+lock                     35            based           structure                level 2 in structure "dte" dcl 1-128 in procedure
+                                                                                  "ioi_suspend_devices" set ref 182 182 186 186
+lock$lock_fast                  000026 constant        entry                    external dcl 47 ref 182
+lock$unlock_fast                000030 constant        entry                    external dcl 48 ref 186
+locked                          000102 automatic       bit(1)                   dcl 32 set ref 78 109* 113*
+mcp                             000104 automatic       pointer                  dcl 33 set ref 137* 138 156
+nct                       1            based           fixed bin(17,0)          level 2 dcl 1-40 ref 151
+ndt                       2            based           fixed bin(17,0)          level 2 dcl 1-40 ref 153
+next_ctep                              based           bit(18)                  level 2 packed packed unaligned dcl 1-96 ref 135
+next_dtep                              based           bit(18)                  level 2 packed packed unaligned dcl 1-128 ref 189
+                                                                                  190
+ngt                                    based           fixed bin(17,0)          level 2 dcl 1-40 ref 153
+null                                                   builtin function         dcl 56 ref 138
+p_code                                 parameter       fixed bin(35,0)          dcl 27 set ref 24 82* 89 107*
+p_devx                                 parameter       fixed bin(17,0)          dcl 28 ref 24 89 108
+priv                     22(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-128 ref 118
+psia                      3(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 ref 118
+ptr                                                    builtin function         dcl 56 ref 116 131 135 154 178 190
+quiescing                 1(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-96 ref 217
+rel                                                    builtin function         dcl 56 ref 131
+saved_dtep                      000110 automatic       pointer                  dcl 173 set ref 175* 182 186 191
+suspend_devices           3(07)        based           bit(1)                   level 3 packed packed unaligned dcl 1-74 set ref 198
+                                                                                  205* 227 228*
+suspended                22(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-128 set ref
+                                                                                  77* 179* 185*
+suspended_sw                           parameter       bit(1)                   dcl 169 ref 166 179 185
+sys_info$service_system         000034 external static bit(1)                   dcl 53 ref 179
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+IOI_DEFAULT_MAX_BOUND                  internal static fixed bin(19,0)          initial dcl 1-198
+IOI_DEFAULT_MAX_TIMEOUT                internal static fixed bin(35,0)          initial dcl 1-199
+IOI_DEFAULT_TIMEOUT                    internal static fixed bin(35,0)          initial dcl 1-201
+IOI_DEVICE_LOCK_EVENT_TEMPLATE         internal static char(2)                  initial packed unaligned dcl 1-207
+IO_CHANNEL_LOCK_TEMPLATE               internal static char(2)                  initial packed unaligned dcl 1-205
+IO_STATUS_ERROR_MASK                   internal static bit(36)                  initial packed unaligned dcl 1-203
+ioi_channels                           automatic       fixed bin(17,0)          dcl 1-35
+ioi_devices                            automatic       fixed bin(17,0)          dcl 1-35
+ioi_multiplexers                       automatic       fixed bin(17,0)          dcl 1-35
+ioi_subsystems                         automatic       fixed bin(17,0)          dcl 1-35
+itep                                   automatic       pointer                  dcl 1-33
+lock_ptr                               automatic       pointer                  dcl 2-11
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+EXIT                            000067 constant        label                    dcl 78 ref 59 66 70 87 93 97 101
+get_channel                     000206 constant        entry                    internal dcl 123 ref 69 96
+ioi_release_devices             000114 constant        entry                    external dcl 89
+ioi_suspend_devices             000016 constant        entry                    external dcl 24
+setup                           000135 constant        entry                    internal dcl 104 ref 58 92
+start_channel                   000576 constant        entry                    internal dcl 224 ref 85 85 100 100
+stop_channel                    000502 constant        entry                    internal dcl 195 ref 73 73
+suspend_error                   000104 constant        label                    dcl 85 ref 201
+wait_channel                    000550 constant        entry                    internal dcl 213 ref 75 75
+walk_channels                   000275 constant        entry                    internal dcl 144 ref 73 75 85 100
+walk_devices                    000361 constant        entry                    internal dcl 166 ref 206 232
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1112        1152     662        1122
+Length      1402     662        40         213     227           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ioi_suspend_devices                 128 external procedure  is an external procedure.  
+setup                                   internal procedure  shares stack frame of external procedure ioi_suspend_devices.  
+get_channel                             internal procedure  shares stack frame of external procedure ioi_suspend_devices.  
+walk_channels                           internal procedure  shares stack frame of external procedure ioi_suspend_devices.  
+walk_devices                            internal procedure  shares stack frame of internal procedure stop_channel.  
+stop_channel                         90 internal procedure  is assigned to an entry variable.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ioi_suspend_devices      000100 code                        ioi_suspend_devices
+                         000101 devx                        ioi_suspend_devices
+                         000102 locked                      ioi_suspend_devices
+                         000104 mcp                         ioi_suspend_devices
+                         000106 idp                         ioi_suspend_devices
+                         000110 gtep                        ioi_suspend_devices
+                         000112 ctep                        ioi_suspend_devices
+                         000114 dtep                        ioi_suspend_devices
+                         000132 chanid                      get_channel
+                         000142 ctx                         walk_channels
+stop_channel             000106 done                        walk_devices
+                         000107 list_head                   walk_devices
+                         000110 saved_dtep                  walk_devices
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ent_var        call_ext_out        return_mac          tra_ext_1           ext_entry
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ioi_config$find_controller_card                             ioi_device$get_dtep           ioi_device$unlock
+ioi_masked$getwork_channel    ioi_masked$quiesce_channel    ioi_usurp_channels$suspend    ioi_usurp_channels$unassign
+lock$lock_fast                lock$unlock_fast
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$no_operation     ioi_data$                     sys_info$service_system
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     24 000012        58 000023        59 000024        62 000026        65 000043        66 000046        69 000047
+     70 000050        73 000052        75 000057        77 000064        78 000067        82 000100        83 000103
+     85 000104        87 000111        89 000112        92 000121        93 000122        96 000124        97 000125
+    100 000127       101 000134       104 000135       107 000136       108 000141       109 000143       110 000144
+    111 000157       113 000162       115 000164       116 000167       118 000174       121 000205       123 000206
+    128 000207       129 000211       131 000224       133 000240       135 000247       137 000254       138 000265
+    141 000274       144 000275       151 000277       153 000307       154 000326       156 000333       159 000356
+    162 000360       166 000361       175 000363       176 000366       177 000367       178 000374       179 000402
+    182 000416       185 000434       186 000444       189 000461       190 000470       191 000475       193 000500
+    195 000501       198 000507       199 000514       200 000516       201 000530       205 000536       206 000542
+    209 000546       213 000547       216 000555       217 000565       218 000573       220 000574       224 000575
+    227 000603       228 000610       229 000612       232 000625       235 000631       238 000645
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

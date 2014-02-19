@@ -1,0 +1,229 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXpJNNQmF
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1128.1 mst Sat
+	    Options: table map
+
+        1 /* ******************************************************
+        2*   *                                                    *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*   *                                                    *
+        5*   * Copyright (c) 1987 by Massachusetts Institute of   *
+        6*   * Technology and Honeywell Information Systems, Inc. *
+        7*   *                                                    *
+        8*   * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*   * Technology and Honeywell Information Systems, Inc. *
+       10*   *                                                    *
+       11*   ****************************************************** */
+       12 
+       13 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       14 x25_mpx_data:
+       15      procedure;
+       16 
+       17 /* translation tables for X.25 multiplexer */
+       18 /* Written by C. Hornig, March 1981 */
+       19 
+       20 dcl  mvt_$make_translation_table entry (char (*), char (*), char (512) aligned);
+       21 
+       22 dcl  code fixed bin (35);
+       23 dcl  tt char (512) aligned;
+       24 dcl  1 cdsa aligned like cds_args;
+       25 
+       26 dcl  com_err_ entry options (variable);
+       27 dcl  create_data_segment_ entry (ptr, fixed bin (35));
+       28 
+       29 dcl  1 x25_mpx_data aligned,
+       30        2 eight_bit char (512),
+       31        2 trans_no_parity char (256),
+       32        2 trans_no_parity_lfecho char (256),
+       33        2 trans_parity_lfecho char (256);
+       34 
+       35 /* * * * * * * * * * * * * * * * * * * */
+       36 
+       37 	call mvt_$make_translation_table (substr (collate9 (), 1, 256), substr (collate9 (), 257, 256),
+       38 	     x25_mpx_data.eight_bit);
+       39 
+       40 	call mvt_$make_translation_table (substr (collate9 (), 1, 128), substr (collate9 (), 129, 128), tt);
+       41 	x25_mpx_data.trans_no_parity = substr (tt, 1, 256);
+       42 
+       43 	call mvt_$make_translation_table (byte (10) || substr (collate9 (), 1, 13) || byte (10)
+       44 	     || substr (collate9 (), 15, 114), byte (13) || substr (collate9 (), 129, 128), tt);
+       45 	x25_mpx_data.trans_no_parity_lfecho = substr (tt, 1, 256);
+       46 
+       47 	call mvt_$make_translation_table (byte (10), byte (13), tt);
+       48 	x25_mpx_data.trans_parity_lfecho = substr (tt, 1, 256);
+       49 
+       50 	unspec (cdsa) = ""b;
+       51 	cdsa.sections (1).p = addr (x25_mpx_data);
+       52 	cdsa.sections (1).len = size (x25_mpx_data);
+       53 	cdsa.sections (1).struct_name = "x25_mpx_data";
+       54 
+       55 	cdsa.seg_name = "x25_mpx_data";
+       56 	cdsa.switches.have_text = "1"b;
+       57 
+       58 	call create_data_segment_ (addr (cdsa), code);
+       59 	if code ^= 0 then call com_err_ (code, "x25_mpx_data");
+       60 	return;
+       61 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       62 
+       63 
+       64      end x25_mpx_data;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0852.4  !BBBJZjXpJNNQmF.pl1               >spec>install>1115>x25_mpx_data.cds
+62           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000302 automatic       structure                level 1 dcl 24 set ref 50* 58 58
+code                            000100 automatic       fixed bin(35,0)          dcl 22 set ref 58* 59 59*
+com_err_                        000014 constant        entry                    external dcl 26 ref 59
+create_data_segment_            000016 constant        entry                    external dcl 27 ref 58
+eight_bit                       000347 automatic       char(512)                level 2 dcl 29 set ref 37*
+have_text                44(02) 000302 automatic       bit(1)                   level 3 packed packed unaligned dcl 24 set ref 56*
+len                       2     000302 automatic       fixed bin(18,0)          array level 3 dcl 24 set ref 52*
+mvt_$make_translation_table     000012 constant        entry                    external dcl 20 ref 37 40 43 47
+p                               000302 automatic       pointer                  array level 3 dcl 24 set ref 51*
+sections                        000302 automatic       structure                array level 2 dcl 24
+seg_name                 30     000302 automatic       char(32)                 level 2 dcl 24 set ref 55*
+struct_name               3     000302 automatic       char(32)                 array level 3 dcl 24 set ref 53*
+switches                 44     000302 automatic       structure                level 2 dcl 24
+trans_no_parity         200     000347 automatic       char(256)                level 2 dcl 29 set ref 41*
+trans_no_parity_lfecho
+                        300     000347 automatic       char(256)                level 2 dcl 29 set ref 45*
+trans_parity_lfecho     400     000347 automatic       char(256)                level 2 dcl 29 set ref 48*
+tt                              000101 automatic       char(512)                dcl 23 set ref 40* 41 43* 45 47* 48
+x25_mpx_data                    000347 automatic       structure                level 1 dcl 29 set ref 51 52
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+x25_mpx_data                    000213 constant        entry                    external dcl 14
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 51 58 58
+byte                                                   builtin function         ref 43 43 43 47 47 47 47
+collate9                                               builtin function         ref 37 37 37 37 40 40 40 40 43 43 43
+size                                                   builtin function         ref 52
+substr                                                 builtin function         ref 37 37 37 37 40 40 40 40 41 43 43 43 45 48
+unspec                                                 builtin function         ref 50
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       562         602     474         572
+Length      1576     474        20         757      66           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+x25_mpx_data                        698 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+x25_mpx_data             000100 code                        x25_mpx_data
+                         000101 tt                          x25_mpx_data
+                         000302 cdsa                        x25_mpx_data
+                         000347 x25_mpx_data                x25_mpx_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac          shorten_stack
+ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          mvt_$make_translation_table
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000212        37 000220        40 000245        41 000273        43 000276        45 000360        47 000364
+     48 000412        50 000415        51 000420        52 000422        53 000424        55 000427        56 000432
+     58 000434        59 000447        60 000473
+
+
+Object Segment >spec>install>1115>x25_mpx_data
+Created on 11/11/89  1128.3 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0     500     560     570     570
+Length     760     500      60      10     154       0
+
+
+6 Definitions:
+
+
+segname:    x25_mpx_data
+
+text|0          eight_bit
+symb|0          symbol_table
+text|200        trans_no_parity
+text|300        trans_no_parity_lfecho
+text|400        trans_parity_lfecho
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

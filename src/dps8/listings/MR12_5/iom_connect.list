@@ -1,0 +1,1490 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>iom_connect.alm                                                                                                                                      
+ASSEMBLED ON:	11/11/89  0951.2 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " HISTORY COMMENTS:
+                                    13  "  1) change(85-06-24,Farley), approve(85-08-30,MCR7299),
+                                    14  "     audit(85-08-30,CLJones), install(85-08-30,MR12.0-1001):
+                                    15  "     Changed
+                                    16  "      connect_abs to check for a special pcw that will tell it
+                                    17  "      to set the PGE & ^PTP in the second word of the PCW. This will cause
+                                    18  "      a system-fault if the channel trys to do a data-transfer. The default
+                                    19  "      pcw will be used for the first word of the of the PCW.
+                                    20  "  2) change(85-10-08,Farley), approve(85-10-08,MCR6979),
+                                    21  "     audit(85-12-02,CLJones), install(86-03-21,MR12.0-1033):
+                                    22  "     Add support for
+                                    23  "      IMU.
+                                    24  "  3) change(87-02-26,Farley), approve(87-04-15,MCR7661),
+                                    25  "     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+                                    26  "     Relocated the setting of iom_data.imw_lock and the checking of
+                                    27  "     iom_data.n_intr_procs prior to the setting of the iom_data.per_iom.lock
+                                    28  "     in the connect_and_identify entry.  This was done to correct a deadly
+                                    29  "     embrace that was occuring on these locks.
+                                    30  "  4) change(88-05-18,Farley), approve(88-06-30,MCR7912),
+                                    31  "     audit(88-06-30,Beattie), install(88-07-15,MR12.2-1057):
+                                    32  "     Added clearing of second per_device.status word at connect time.
+                                    33  "     Depending on the type of I/O, the word will either be overwritten at
+                                    34  "     status time or not set at all.  This will guarantee a "known" setting.
+                                    35  "                                                      END HISTORY COMMENTS
+                                    36  
+                                    37  
+                                    38  " iom_connect.alm:  Routines to perform connects to IOM.
+                                    39  " Taken from iom_manager November 1980 by C. Hornig
+                                    40  " Modified by C. Hornig for paged IOM November 1980
+                                    41  " Modified November 1981 by C. Hornig for MR10 interface changes.
+                                    42  " Modified May 1982 by C. Hornig for idcw.ext_ctl write-around.
+                                    43  " Modified 07/19/82 by Chris Jones to fix DCW address residue reporting
+                                    44  "	(in expand_status) when on non-paged IOMs
+                                    45  " Modified 1984-07-27 BIM to set REL bit for paged direct channel connects.
+                                    46  "	and to reliably mask the right channel.
+                                    47  " Modified August 1984 by Chris Jones to decommit support for non-paged IOMs
+                                    48  " Modified November 1984 by M. Pandolf to add connect_and_identify
+                                    49  " Modified January 1985 by M. Pandolf to add IMW polling protocol
+                                    50  " Modified March 1985 by Chris Jones to forgo heroic measures when a connect
+                                    51  "	is lost
+                                    52  " Modified MAY 1985 by R. A. Fawcett to clear detail status
+                                    53  " Modified Sept 1985 by Paul Farley to fix connect_and_identify for IMUs.
+                                    54  " Modified Oct 1985 by Paul Farley to give IMUs extra time to answer connects.
+                                    55  
+    000000                          56  	name	iom_connect
+                                    57  
+                        000036      58  	entry	connect
+                        000005      59  	entry	connect_abs
+                        000051      60  	entry	connect_direct
+                        000124      61  	entry	connect_and_identify
+                        000063      62  	entry	mask
+                        000320      63  	entry	get_status
+                        000340      64  	entry	data_tdcw
+                        000351      65  	entry	workspace_tdcw
+                                    66  
+                                    67  " Index register conventions:
+                                    68  
+                                    69  "	X0 - internal subroutine calls.
+                                    70  "	X1 - index into per_device
+                                    71  "	X2 - index into channel_mailbox
+                                    72  "	X3 - index into per_iom
+                                    73  "	X7 - temporary data
+                                    74  
+                                    75  " Pointer Register Conventions:
+                                    76  
+                                    77  "	AP -> argument list
+                                    78  "	AB address temporary
+                                    79  "	BP -> <iom_data>|0
+                                    80  "	BB -> mailbox for this IOM.
+                                    81  "	LB -> io_manager_arg
+                                    82  "	SB -> iom_data.per_device for this device
+                                    83  
+                                    84  " Macros for coding ease
+                                    85  
+                                    86  	macro	loca		" Load One's Compliment into A
+                              1     87  	lca	1,dl
+                              2     88  	era	&F1
+                              3     89  	&end
+                                    90  
+                                    91  	macro	locq		" Load One's Compliment into Q
+                              1     92  	lcq	1,dl
+                              2     93  	erq	&F1
+                              3     94  	&end
+                                    95  
+    000000                          96  common_pcw:
+    000000  aa   400000 720201      97  	oct	400000720201	" read status and continue
+    000001                          98  direct_pcw:
+    000001  aa   000000 700000      99  	oct	000000700000	" for direct channels
+    000002                         100  mask_pcw:
+    000002  aa   000000 740000     101  	oct	000000740000	" mask and reset channel
+    000003                         102  rss_idcw:
+    000003  aa   400000 700201     103  	oct	400000700201	" for checking only
+    000004                         104  ptp_mask:
+    000004  aa   777777 777377     105  	oct	777777777377	" for masking out PTP flag
+                                   106  " 
+                                   107  "  call iom_connect$connect_abs (io_manager_arg);
+                                   108  
+                                   109  " This entry is called each time the channel is started.
+                                   110  
+    000005                         111  connect_abs:
+    000005  0a   000361 7000 00    112  	tsx0	setup
+    000006  0a   000407 7000 00    113  	tsx0	setup_pt
+                                   114  
+    000007  aa  5 00002 2361 00    115  	ldq	lb|io_manager_arg.pcw
+                                   116  				" get user's PCW
+    000010  0a   000023 6000 00    117  	tze	load_common	" none given, use default
+    000011  aa   777777 1160 07    118  	cmpq	=o777777,dl	" check for special type
+    000012  0a   000024 6010 00    119  	tnz	save_pcw		" not special type, must be pcw
+                                   120  
+    000013  aa  5 00006 3515 20    121  	eppab	lb|io_manager_arg.listp,*
+    000014  aa  1 00000 2361 00    122  	ldq	ab|0		" is idcw a reset-status type
+    000015  0a   000003 1160 00    123  	cmpq	rss_idcw
+    000016  0a   000023 6010 00    124  	tnz	load_common	" not reset-status
+                                   125  
+    000017  aa  7 00031 2361 00    126  	ldq	sb|per_device.pcw+1
+    000020  0a   000004 3760 00    127  	anq	ptp_mask		" turn off PTP flag
+    000021  aa   000200 2760 07    128  	orq	=o200,dl		" turn on PGE flag
+    000022  aa  7 00031 7561 00    129  	stq	sb|per_device.pcw+1
+                                   130  
+    000023                         131  load_common:
+    000023  0a   000000 2360 00    132  	ldq	common_pcw	" default PCW
+    000024                         133  save_pcw:
+    000024  aa  7 00030 7561 00    134  	stq	sb|per_device.pcw
+                                   135  
+    000025  aa  5 00006 2271 00    136  	ldx7	lb|io_manager_arg.listp
+                                   137  				" check for null DCW list
+    000026  aa   077777 1070 03    138  	cmpx7	=o77777,du
+    000027  0a   000071 6000 00    139  	tze	connect_join	" no list
+    000030  aa  5 00006 2121 20    140  	absa	lb|io_manager_arg.listp,*
+                                   141  				" get address of DCW list
+    000031  aa   000014 7710 00    142  	arl	12		" stash it away
+    000032  aa  7 00030 7511 10    143  	stca	sb|per_device.pcw,10" high bits in PCW
+    000033  aa   000022 7350 00    144  	als	18
+    000034  aa  7 00032 7551 00    145  	sta	sb|per_device.lpw	" low bits in LPW
+    000035  0a   000071 7100 00    146  	tra	connect_join
+                                   147  
+                                   148  
+                                   149  "  call iom_connect$connect (io_manager_arg);
+                                   150  
+                                   151  " This entry is called to start the channel in paged mode.
+                                   152  
+    000036                         153  connect:
+    000036  0a   000361 7000 00    154  	tsx0	setup
+    000037  0a   000407 7000 00    155  	tsx0	setup_pt
+                                   156  
+    000040  aa  5 00002 2361 00    157  	ldq	lb|io_manager_arg.pcw
+                                   158  				" get user's PCW
+    000041  aa   000002 6010 04    159  	tnz	2,ic
+    000042  0a   000000 2360 00    160  	ldq	common_pcw	" default PCW
+    000043  aa  7 00030 7561 00    161  	stq	sb|per_device.pcw
+                                   162  
+    000044  aa   110000 2350 07    163  	lda	=o110000,dl	" get AE and REL bits in LPW
+    000045  aa  7 00032 7551 00    164  	sta	sb|per_device.lpw
+                                   165  
+    000046  aa  5 00003 7271 00    166  	lxl7	lb|io_manager_arg.listx
+    000047  aa  7 00032 7471 00    167  	stx7	sb|per_device.lpw
+    000050  0a   000071 7100 00    168  	tra	connect_join
+                                   169  
+                                   170  
+                                   171  "  call iom_connect$connect_direct (io_manager_arg);
+                                   172  
+                                   173  " This entry is used to connect to a direct channel.
+                                   174  
+    000051                         175  connect_direct:
+    000051  0a   000361 7000 00    176  	tsx0	setup
+    000052  0a   000407 7000 00    177  	tsx0	setup_pt
+                                   178  
+    000053  0a   000001 2350 00    179  	lda	direct_pcw
+    000054  aa  7 00030 7551 00    180  	sta	sb|per_device.pcw
+    000055  aa  5 00004 2271 00    181  	ldx7	lb|io_manager_arg.ptp
+    000056  aa   777777 1070 03    182  	cmpx7     =o777777,du		paged connect?
+    000057  0a   000071 6010 00    183  	tnz	connect_join		nope
+    000060  aa   100000 2350 07    184  	lda	=o100000,dl		get the AE bit
+    000061  aa  7 00032 2551 00    185  	orsa	sb|per_device.lpw		and turn it on.
+    000062  0a   000071 7100 00    186  	tra	connect_join
+                                   187  
+                                   188  
+                                   189  "  call iom_connect$mask (chx);
+                                   190  
+                                   191  " This entry is used to mask a channel.
+                                   192  
+    000063                         193  mask:
+    000063  0a   000361 7000 00    194  	tsx0	setup
+                                   195  
+    000064  0a   000002 2350 00    196  	lda	mask_pcw		" mask the channel
+    000065  aa  7 00030 7551 00    197  	sta	sb|per_device.pcw
+    000066  aa  7 00021 2351 00    198  	lda	sb|per_device.channel
+    000067  aa   000033 7350 00    199  	als	27
+    000070  aa  7 00031 7551 00    200            sta	sb|per_device.pcw+1 " there might be crap from previous
+                                   201  				" connects.
+                                   202  
+    000071                         203  connect_join:
+    000071  aa   377777 2270 03    204  	ldx7	=o377777,du	" mark the status word
+    000072  aa  7 00000 7471 00    205  	stx7	sb|per_device.status" fill in channel mailbox
+    000073  aa  7 00001 4501 00    206  	stz	sb|per_device.status+1 " clear second status word
+    000074  aa   000100 1004 00    207  	mlr	(),(pr),fill(0)	" clear the extended status
+    000075  aa   000000 000000     208  	desc9a	0,0
+    000076  aa   700010 000040     209  	desc9a	sb|per_device.ext_status,4*8
+    000077  aa  7 00032 2371 00    210  	ldaq	sb|per_device.lpw
+    000100  aa  3 00000 7571 12    211  	staq	bb|channel_mailbox.lpw,x2
+    000101  aa  7 00034 2351 00    212  	lda	sb|per_device.scw
+    000102  aa  3 00002 7551 12    213  	sta	bb|channel_mailbox.scw,x2
+                                   214  
+                                   215  " Now lock the connect channel mailbox.
+                                   216  
+    000103  0a   000435 7000 00    217  	tsx0	lock_and_clear_mbx
+                                   218  
+    000104                         219  	inhibit	on		" <+><+><+><+><+><+><+><+><+><+><+><+>
+                                   220  
+    000104  aa  2 00046 2363 13    221  	ldq	bp|iom_data.per_iom+per_iom.connect_lpw,x3
+    000105  aa  3 00010 7563 00    222  	stq	bb|connect.lpw	" set up connect LPW
+    000106  aa  7 00030 2373 00    223  	ldaq	sb|per_device.pcw	" move PCW
+    000107  aa  3 00012 7573 00    224  	staq	bb|connect.pcw	" Store in correct place.
+    000110  aa  2 00047 0153 13    225  	cioc	bp|iom_data.per_iom+per_iom.cow,x3
+                                   226  				" DO IT!
+    000111  4a  4 00010 2363 20    227  	ldq	pds$process_id	" unlock the lock
+    000112  aa   000000 2352 03    228  	lda	0,du
+    000113  aa  2 00040 6543 13    229  	stacq	bp|iom_data.per_iom+per_iom.lock,x3
+    000114                         230  	inhibit	off		" <-><-><-><-><-><-><-><-><-><->
+                                   231  
+    000114  4a  4 00012 6331 20    232  	rccl	sys_info$clock_,*	" stash time away
+    000115  aa  2 00044 7571 13    233  	staq	bp|iom_data.per_iom+per_iom.connect_time,x3
+    000116  aa  7 00040 7571 00    234  	staq	sb|per_device.connect_time
+                                   235  
+    000117  aa  7 00042 2371 00    236  	ldaq	sb|per_device.connects
+    000120  aa   000001 0330 07    237  	adl	=1,dl
+    000121  aa  7 00042 7571 00    238  	staq	sb|per_device.connects
+                                   239  
+    000122  aa  6 00000 3731 00    240  	epbpsb	sp|0		" restore stack base ptr
+    000123  aa  7 00044 7101 20    241  	short_return
+                                   242  " 
+                                   243  
+                                   244  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   245  "
+                                   246  "	connect_and_identify
+                                   247  "
+                                   248  "	call iom_connect$connect_and_identify (iom_number, code)
+                                   249  "
+                                   250  "
+                                   251  "	connect_and_identify is used to determine if an iom is who
+                                   252  "	its switches says it is.  it first locks all IOMs and waits
+                                   253  "	for their connects to clear.  it then stores an invalid (zero)
+                                   254  "	LPW in the connect mailbox and connects the IOM requested by
+                                   255  "	its only parameter.  after connecting, it loops checking
+                                   256  "	the sys_fault mailboxes for all the IOMs seeing which one
+                                   257  "	posts the fault.  it returns the number of the IOM mailbox
+                                   258  "	which contains the fault status.  note that only one IOM is
+                                   259  "	to be connected, and the status ought to appear in its mailbox.
+                                   260  "	if the status appears in another mailbox, this indicates to
+                                   261  "	the caller that the IOM has at least its mailbox switches set
+                                   262  "	incorrectly.  if we can't find any trace of connect action, we
+                                   263  "	return 0 as the iom number, wishing the caller luck, because
+                                   264  "	*somewhere* in memory are several stray bits...
+                                   265  "
+                                   266  "	In a multiprocessor system, a race condition can occur where
+                                   267  "	one of the other CPUs has received an interrupt and begins
+                                   268  "	processing it just as we store the invalid LPW.  There is a
+                                   269  "	good chance that it will swipe the system fault interrupt bit
+                                   270  "	from us, causing us to think the IOMs aren't responding and
+                                   271  "	thereby crash the system.  To prevent this, a lock has been
+                                   272  "	added in iom_data to delay IMW reading at interrupt time.
+                                   273  "	Named iom_data$imw_lock, it may be found in one of three states
+                                   274  "	at any given time, with 1 meaning OK to read IMW, -1 meaning
+                                   275  "	don't begin reading an IMW, and 0 meaning lock in transition.
+                                   276  "	This program alone can change the value of imw_lock to -1 or 1.
+                                   277  "	The other program to reference the lock, iom_interrupt, can only
+                                   278  "	set it to zero as it checks its value, and set it back to the
+                                   279  "	original value.  While holding the lock to 0, iom_interrupt can
+                                   280  "	increment iom_data$n_intr_procs to indicate that its agent
+                                   281  "	(a CPU) is running is processing an IMW.
+                                   282  "	As long as n_intr_procs is non-zero, connect_and_identify will
+                                   283  "	not proceed with the connect.  Given that iom_connect first sets
+                                   284  "	iom_data$imw_lock to -1 (stay out, everyone) and then loops
+                                   285  "	on n_intr_procs, and that processing an IMW by the other CPUs
+                                   286  "	will take a finite time, we are guarenteed to be able to set the
+                                   287  "	LPW without interference from other processors in the foreseeable
+                                   288  "	future.
+                                   289  "
+                                   290  "
+                                   291  "	Register usage is somewhat different than for the other entries:
+                                   292  "
+                                   293  "	X0 - internal subroutine call return ptr
+                                   294  "	X3 - index into per_iom
+                                   295  "	X4 - index into system_fault_status circular buffer
+                                   296  "	X5 - timeout loop counter
+                                   297  "	X6 - iom_number for various loops
+                                   298  "	X7 - number that IOM thinks it is
+                                   299  "
+                                   300  "	AP -> argument list
+                                   301  "	BP -> <iom_data>|0
+                                   302  "	BB -> various places in <iom_mailbox>
+                                   303  "	LB -> iom_number in argument list
+                                   304  "
+                                   305  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   306  
+    000124                         307  connect_and_identify:
+    000124  4a  4 00014 3521 20    308  	eppbp	iom_data$		" do our own setup here
+    000125  aa  0 00002 3715 20    309  	epplb	ap|2,*		" lb -> iom_number
+    000126  aa  0 00004 4501 20    310  	stz	ap|4,*		" initialize return code
+    000127  aa  5 00000 7271 00    311  	lxl7	lb|0		" initialize IOM identity
+                                   312  
+    000130  aa   000001 2350 07    313  	lda	1,dl		" lower limit of iom_number
+    000131  aa   000004 2360 07    314  	ldq	4,dl		" upper limit of iom_number
+    000132  aa  5 00000 1111 00    315  	cwl	lb|0		" is arg within limits?
+    000133  0a   000307 6010 00    316  	tnz	inv_iom_range
+                                   317  
+    000134  aa   000000 0110 03    318  	odd
+    000135  aa  2 00004 0341 00    319  	ldac	bp|iom_data.imw_lock
+    000136  aa   777777 6000 04    320  	tze	-1,ic		" loop while lock is in transition
+    000137  0a   000313 6040 00    321  	tmi	imw_already_locked	" we are supposed to be the only ones here!
+    000140  aa   000000 5310 00    322  	neg			" lock was 1, store -1
+    000141  aa  2 00004 7551 00    323  	sta	bp|iom_data.imw_lock
+    000142  aa   000000 0110 03    324  	odd
+    000143  aa  2 00005 2351 00    325  	lda	bp|iom_data.n_intr_procs
+    000144  aa   777777 6010 04    326  	tnz	-1,ic		" loop until all CPUs out of handler
+                                   327  
+    000145  aa   000004 2260 03    328  	ldx6	4,du		" do iom_number = 4 to 1 by -1
+    000146                         329  lock_an_iom:
+    000146  aa   000000 6360 16    330  	eaq	0,x6		" qu = iom_number
+    000147  aa   000022 7720 00    331  	qrl	18		" q = iom_number
+    000150  aa   000040 4020 07    332  	mpy	per_iom_size,dl
+    000151  aa   777740 6230 06    333  	eax3	-per_iom_size,ql	" x3 = index into iom_data.per_iom
+                                   334  
+    000152  aa   000000 6360 16    335  	eaq	0,x6		" qu = iom_number
+    000153  aa   000022 7720 00    336  	qrl	18		" q = iom_number
+    000154  aa   000400 4020 07    337  	mpy	iom_mailbox_size,dl
+    000155  4a  4 00016 3535 20    338  	eppbb	iom_mailbox$+iom_mailbox_seg.iom_mailbox-iom_mailbox_size,ql
+                                   339  
+    000156  0a   000435 7000 00    340  	tsx0	lock_and_clear_mbx	" we don't inhibit here because we
+                                   341  				" are interested in locking all IOMs,
+                                   342  				" and this may take a lot of time.
+                                   343  
+    000157  aa  3 00010 4501 00    344  	stz	bb|connect.lpw	" store LPW which will cause IOM fault
+                                   345  
+                                   346  				" zero out interrupt bit for this
+                                   347  				" channel so we can see if the connect
+                                   348  				" took.  we will conditionally turn
+                                   349  				" it back on before returning
+                                   350  
+    000160  4a  4 00020 3535 20    351  	eppbb	iom_mailbox$+iom_mailbox_seg.imw_array_word
+                                   352  	loca	sys_fault_channel_mask,du
+    000161  aa   000001 3350 07         	lca	1,dl
+    000162  aa   200000 6750 03         	era	sys_fault_channel_mask,du
+    000163  aa  3 00003 3551 16    353  	ansa	bb|level_1_interrupt-1,x6
+                                   354  
+    000164  aa   777777 6260 16    355  	eax6	-1,x6		" iom_number = iom_number - 1
+    000165  0a   000146 6054 00    356  	tpnz	lock_an_iom
+                                   357  
+    000166                         358  connect_for_fault:
+    000166  aa  5 00000 2361 00    359  	ldq	lb|0		" q = iom_number to be faulted
+    000167  aa   000040 4020 07    360  	mpy	per_iom_size,dl
+    000170  aa   777740 6230 06    361  	eax3	-per_iom_size,ql	" x3 = index into iom_data.per_iom
+                                   362  
+    000171  aa  2 00047 0151 13    363  	cioc	bp|iom_data.per_iom+per_iom.cow,x3
+                                   364  
+    000172  4a  4 00020 3535 20    365  	eppbb	iom_mailbox$+iom_mailbox_seg.imw_array_word
+                                   366  
+    000173  aa   000062 2250 03    367  	ldx5	50,du		" do wait_loop = 50 to 1 by -1;
+    000174                         368  check_ioms:
+    000174  aa   000004 2260 03    369  	ldx6	4,du		" do iom_number = 4 to 1 by -1
+    000175                         370  check_an_iom:
+    000175  aa  3 00003 2351 16    371  	lda	bb|level_1_interrupt-1,x6  " if INTERRUPT_BIT_ON
+    000176  aa   200000 3750 03    372  	ana	sys_fault_channel_mask,du  " then goto connect_took
+    000177  0a   000210 6010 00    373  	tnz	connect_took
+                                   374  
+    000200  aa   777777 6260 16    375  	eax6	-1,x6		" end check_ioms;
+    000201  0a   000175 6054 00    376  	tpnz	check_an_iom
+                                   377  
+    000202  aa   777777 6250 15    378  	eax5	-1,x5		" end do_wait_loop;
+    000203  0a   000174 6010 00    379  	tnz	check_ioms
+                                   380  
+    000204                         381  ioms_dont_respond:
+    000204  aa   000000 2270 03    382  	ldx7	0,du		" looks like connect was not recognized
+    000205  4a  4 00022 2351 20    383  	lda	error_table_$iom_connect_fatal
+    000206  aa  0 00004 7551 20    384  	sta	ap|4,*
+    000207  0a   000251 7100 00    385  	tra	unlock_ioms
+                                   386  
+    000210                         387  connect_took:
+    000210  aa   000000 6350 16    388  	eaa	0,x6		" was this the requested IOM number?
+    000211  aa   000022 7710 00    389  	arl	18
+    000212  aa  5 00000 6751 00    390  	era	lb|0
+    000213  0a   000217 6000 00    391  	tze	find_status	" IOM number is OK
+    000214  4a  4 00024 2351 20    392  	lda	error_table_$iom_wrong_number
+    000215  aa  0 00004 7551 20    393  	sta	ap|4,*		" IOM number NOT OK
+    000216  aa   000000 6270 16    394  	eax7	0,x6		" remember what IOM thinks it is
+                                   395  
+    000217                         396  find_status:
+    000217  aa   000004 2260 03    397  	ldx6	4,du		" do iom_number = 4 to 1 by -1;
+    000220                         398  status_this_iom:
+    000220  aa   000000 6360 16    399  	eaq	0,x6
+    000221  aa   000022 7720 00    400  	qrl	18
+    000222  aa   000014 4020 07    401  	mpy	sys_fault_list_size,dl
+    000223  4a  4 00026 3535 20    402  	eppbb	iom_mailbox$+iom_mailbox_seg.system_fault-sys_fault_list_size,ql
+                                   403  
+    000224  aa   000013 2240 03    404  	ldx4	11,du		" do circ_buff_word = 11 to 0 by -1;
+    000225                         405  check_fault_status_code:
+    000225  aa  3 00000 2351 14    406  	lda	bb|0,x4		" if system_fault (iom_number, circ_buff_word) =
+                                   407  	locq	fault_code_mask,dl
+    000226  aa   000001 3360 07         	lcq	1,dl
+    000227  aa   000077 6760 07         	erq	fault_code_mask,dl
+    000230  aa   000013 2110 07    408  	cmk	ill_tly_cont_mask,dl "    illegal_tally_contents
+    000231  0a   000241 6000 00    409  	tze	found_fault_status	" then goto found_fault_status
+                                   410  
+    000232  aa   000005 2110 07    411  	cmk	zero_tly_mask,dl	"    zero_tally (IMU)
+    000233  0a   000241 6000 00    412  	tze	found_fault_status	" then goto found_fault_status
+                                   413  
+    000234  aa   777777 6240 14    414  	eax4	-1,x4		" end do_circ_buff_word;
+    000235  0a   000225 6050 00    415  	tpl	check_fault_status_code
+                                   416  
+    000236  aa   777777 6260 16    417  	eax6	-1,x6		" end find_status;
+    000237  0a   000220 6054 00    418  	tpnz	status_this_iom
+    000240  0a   000242 7100 00    419  	tra	*+2		" can't find mbx: skip next instruction
+                                   420  
+    000241                         421  found_fault_status:
+    000241  aa  3 00000 4501 14    422  	stz	bb|0,x4		" don't bother anyone with the status
+    000242  aa   000000 6350 16    423  	eaa	0,x6
+    000243  aa   000022 7710 00    424  	arl	18
+    000244  aa  5 00000 6751 00    425  	era	lb|0		" did mailbox correspond to IOM number?
+    000245  0a   000251 6000 00    426  	tze	unlock_ioms	" yes - take no special action
+                                   427  
+    000246  4a  4 00030 2351 20    428  	lda	error_table_$iom_wrong_mailbox
+    000247  aa  0 00004 7551 20    429  	sta	ap|4,*
+    000250  aa   000000 6270 16    430  	eax7	0,x6		" otherwise tell caller of error
+                                   431  
+    000251                         432  unlock_ioms:
+                                   433  	odd
+    000251  aa  2 00004 2141 00    434  	sznc	bp|iom_data.imw_lock
+    000252  aa   777777 6000 04    435  	tze	-1,ic		" loop until lock untouched
+    000253  aa  2 00004 0541 00    436  	aos	bp|iom_data.imw_lock" was zero from sznc, is now 1
+    000254  aa   000004 2260 03    437  	ldx6	4,du		" do iom_number = 4 to 1 by -1;
+    000255                         438  unlock_an_iom:
+    000255  aa   000000 6360 16    439  	eaq	0,x6		" qu = iom_number
+    000256  aa   000022 7720 00    440  	qrl	18		" q = iom_number
+    000257  aa   000040 4020 07    441  	mpy	per_iom_size,dl
+    000260  aa   777740 6230 06    442  	eax3	-per_iom_size,ql	" x3 = index into iom_data.per_iom
+                                   443  
+    000261  4a  4 00010 2361 20    444  	ldq	pds$process_id	" unlock the lock
+    000262  aa   000000 2350 03    445  	lda	0,du
+    000263  aa  2 00040 6541 13    446  	stacq	bp|iom_data.per_iom+per_iom.lock,x3
+                                   447  
+    000264  aa   000000 6360 16    448  	eaq	0,x6
+    000265  aa   000022 7720 00    449  	qrl	18
+    000266  aa   000014 4020 07    450  	mpy	sys_fault_list_size,dl
+    000267  4a  4 00026 3535 20    451  	eppbb	iom_mailbox$+iom_mailbox_seg.system_fault-sys_fault_list_size,ql
+                                   452  
+    000270  aa   000013 2240 03    453  	ldx4	11,du		" do circ_buffer_word = 11 to 0 by -1;
+    000271                         454  check_for_fault:
+    000271  aa  3 00000 2341 14    455  	szn	bb|0,x4		"      if system_fault (iom_number, circ_buffer_word) ^= 0
+    000272  0a   000276 6010 00    456  	tnz	set_imw_bit	"      then SET_IMW_BIT (iom)
+    000273  aa   777777 6240 14    457  	eax4	-1,x4		" end do_circ_buffer_word;
+    000274  0a   000271 6050 00    458  	tpl	check_for_fault
+    000275  0a   000301 7100 00    459  	tra	next_iom
+    000276                         460  set_imw_bit:
+    000276  4a  4 00020 3535 20    461  	eppbb	iom_mailbox$+iom_mailbox_seg.imw_array_word
+    000277  aa   200000 2350 03    462  	lda	sys_fault_channel_mask,du
+    000300  aa  3 00003 2551 16    463  	orsa	bb|level_1_interrupt-1,x6
+    000301                         464  next_iom:
+    000301  aa   777777 6260 16    465  	eax6	-1,x6		" end unlock_ioms;
+    000302  0a   000255 6054 00    466  	tpnz	unlock_an_iom
+                                   467  
+    000303  aa  0 00004 2341 20    468  	szn	ap|4,*		" if we return a nonzero status,
+    000304  0a   000306 6000 00    469  	tze	*+2		" tell the caller what the IOM
+    000305  aa  5 00000 4471 00    470  	sxl7	lb|0		" thought it was.
+                                   471  
+    000306  aa  7 00044 7101 20    472  	short_return
+                                   473  
+    000307                         474  inv_iom_range:			" iom number was not between 1 and 4
+    000307  aa  5 00000 4501 00    475  	stz	lb|0
+    000310  4a  4 00032 2351 20    476  	lda	error_table_$bad_arg
+    000311  aa  0 00004 7551 20    477  	sta	ap|4,*
+                                   478  
+    000312  aa  7 00044 7101 20    479  	short_return
+                                   480  
+    000313                         481  imw_already_locked:			" imw_lock found to be -1
+    000313  aa  2 00004 7551 00    482  	sta	bp|iom_data.imw_lock
+    000314  aa  5 00000 4501 00    483  	stz	lb|0
+    000315  4a  4 00034 2351 20    484  	lda	error_table_$mylock
+    000316  aa  0 00004 7551 20    485  	sta ap|4,*
+                                   486  
+    000317  aa  7 00044 7101 20    487  	short_return
+                                   488  
+                                   489  " 
+                                   490  " Copy out long status information.
+                                   491  "
+                                   492  " call iom_connect$get_status (chx, sqep);
+                                   493  
+    000320                         494  get_status:
+    000320  0a   000361 7000 00    495  	tsx0	setup
+                                   496  
+    000321  aa  0 00004 3715 20    497  	epplb	ap|4,*		" get queue entry ptr
+    000322  aa  5 00000 3715 20    498  	epplb	lb|0,*
+                                   499  
+    000323  aa  0 00100 1015 00    500  	mrl	(pr),(pr),fill(000) " clear the queue entry
+    000324  aa   700010 000040     501  	desc9a	sb|per_device.ext_status,4*8
+    000325  aa   500000 000100     502  	desc9a	lb|0,4*16		" and copy the extended status
+                                   503  
+    000326  aa  7 00000 0341 00    504  	ldac	sb|per_device.status
+    000327  aa  7 00001 2361 00    505  	ldq	sb|per_device.status+1
+    000330  aa  5 00000 7551 00    506  	sta	lb|0		" word 1
+    000331  aa  5 00003 7561 00    507  	stq	lb|3		" word 4
+                                   508  
+    000332  aa  3 00003 2351 12    509  	lda	bb|channel_mailbox.dcw,x2
+    000333  aa  5 00004 7551 00    510  	sta	lb|4
+                                   511  
+    000334  aa  3 00000 2351 12    512  	lda	bb|channel_mailbox.lpw,x2
+    000335  aa  5 00001 7551 00    513  	sta	lb|1		" word 2
+                                   514  
+    000336  aa  6 00000 3731 00    515  	epbpsb	sp|0		" restore stack base ptr
+    000337  aa  7 00044 7101 20    516  	short_return
+                                   517  "
+                                   518  "
+                                   519  " call iom_connect$data_tdcw (io_manager_arg);
+                                   520  "
+    000340                         521  data_tdcw:
+    000340  0a   000361 7000 00    522  	tsx0	setup
+    000341  0a   000425 7000 00    523  	tsx0	tdcw
+                                   524  
+    000342  aa  5 00006 2121 20    525  	absa	lb|io_manager_arg.listp,*
+    000343  aa   000014 7710 00    526  	arl	12		" get absolute address
+    000344  aa  1 00000 7511 10    527  	stca	ab|0,10		" store high bits
+    000345  aa   000022 7350 00    528  	als	18
+    000346  aa  1 00001 7511 70    529  	stca	ab|1,70		" and low bits
+                                   530  
+    000347  aa  6 00000 3731 00    531  	epbpsb	sp|0		" restore stack base ptr
+    000350  aa  7 00044 7101 20    532  	short_return
+                                   533  "
+                                   534  "
+                                   535  " call iom_connect$workspace_tdcw (io_manager_arg);
+                                   536  "
+    000351                         537  workspace_tdcw:
+    000351  0a   000361 7000 00    538  	tsx0	setup
+    000352  0a   000425 7000 00    539  	tsx0	tdcw
+    000353  aa   000004 2350 07    540  	lda	4,dl		" set tdcw.ec
+    000354  aa  1 00001 2551 00    541  	orsa	ab|1
+                                   542  
+    000355  aa  5 00003 7271 00    543  	lxl7	lb|io_manager_arg.listx
+    000356  aa  1 00001 7471 00    544  	stx7	ab|1
+                                   545  
+    000357  aa  6 00000 3731 00    546  	epbpsb	sp|0		" restore stack base ptr
+    000360  aa  7 00044 7101 20    547  	short_return
+                                   548  " 
+                                   549  "
+                                   550  "	SUPPORT SUBROUTINES
+                                   551  "
+                                   552  
+                                   553  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   554  "
+                                   555  "	setup
+                                   556  "
+                                   557  "	INPUT:	ap|2 - pointer to index into iom_data.per_device
+                                   558  "		x0   - return address
+                                   559  "	OUTPUT:	bp   - pointer to iom_data
+                                   560  "		bb   - pointer to iom_mailbox for referenced IOM
+                                   561  "		lb   - pointer to io_manager_arg
+                                   562  "		sb   - pointer to iom_data.per_device
+                                   563  "		x2   - logical channel offset in IOM's mailbox
+                                   564  "		x3   - index into iom_data.per_iom
+                                   565  "
+                                   566  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   567  
+    000361                         568  setup:
+    000361  4a  4 00014 3521 20    569  	eppbp	iom_data$		" establish addressability
+    000362  aa  0 00002 3715 20    570  	epplb	ap|2,*		" LB -> io_manager_arg
+                                   571  
+    000363  aa  5 00000 2361 00    572  	ldq	lb|io_manager_arg.chx
+    000364  0a   000467 6044 00    573  	tmoz	chx_err		" check it
+    000365  aa  2 00000 1161 00    574  	cmpq	bp|iom_data.n_devices
+    000366  0a   000467 6054 00    575  	tpnz	chx_err
+    000367  aa   000050 4020 07    576  	mpy	per_device_size,dl	" chx index into per_device
+    000370  aa   777730 6210 06    577  	eax1	-per_device_size,ql	" into X1 and SB
+    000371  aa  2 00240 3735 11    578  	eppsb	bp|iom_data.per_device,x1
+                                   579  
+    000372  aa  7 00026 2361 00    580  	ldq	sb|per_device.flags	" is it assigned?
+    000373  aa   400000 3160 03    581  	canq	per_device.in_use,du
+    000374  0a   000467 6000 00    582  	tze	chx_err		" no
+                                   583  
+    000375  aa  7 00021 2361 00    584  	ldq	sb|per_device.channel
+                                   585  				" get channel number from per_device
+    000376  aa   000002 7360 00    586  	qls	2		" channel * 4 index into mailbox
+    000377  aa   000000 6220 06    587  	eax2	0,ql		" into X2
+                                   588  
+    000400  aa  7 00020 2361 00    589  	ldq	sb|per_device.iom	" get IOM number (1 - 4)
+    000401  aa   000040 4020 07    590  	mpy	per_iom_size,dl	" IOM index into per_iom
+    000402  aa   777740 6230 06    591  	eax3	-per_iom_size,ql	" into X3
+                                   592  
+    000403  aa  7 00020 2361 00    593  	ldq	sb|per_device.iom	" get IOM number (1 - 4)
+    000404  aa   000400 4020 07    594  	mpy	iom_mailbox_size,dl	" IOM index into iom_mailbox
+    000405  4a  4 00016 3535 20    595  	eppbb	iom_mailbox$+iom_mailbox_seg.iom_mailbox-iom_mailbox_size,ql
+                                   596  				" bb -> IOM mailbox
+    000406  aa   000000 7100 10    597  	tra	0,x0		" return
+                                   598  "
+                                   599  " " " " " " " " " " " " " " " " " " " " " " "
+                                   600  "
+                                   601  "		setup_pt
+                                   602  "
+    000407                         603  setup_pt:
+    000407  aa  7 00033 4501 00    604  	stz	sb|per_device.lpw+1
+    000410  aa  7 00021 2351 00    605  	lda	sb|per_device.channel
+    000411  aa   000033 7350 00    606  	als	27
+    000412  aa  7 00031 7551 00    607  	sta	sb|per_device.pcw+1
+                                   608  
+    000413  aa  5 00004 2271 00    609  	ldx7	lb|io_manager_arg.ptp
+    000414  aa   077777 1070 03    610  	cmpx7	=o77777,du	" check for null ptr
+    000415  aa   000000 6000 10    611  	tze	0,x0		" no page table
+                                   612  
+    000416  aa  5 00004 2121 20    613  	absa	lb|io_manager_arg.ptp,*
+                                   614  				" get address of page table
+    000417  aa   000011 7710 00    615  	arl	9		" in middle two bytes
+    000420  aa   000600 2750 07    616  	ora	=o600,dl		" set PTP & PGE
+    000421  aa  7 00031 5511 34    617  	stba	sb|per_device.pcw+1,34
+                                   618  
+    000422  aa  5 00001 2351 00    619  	lda	lb|io_manager_arg.bound
+                                   620  				" get bound
+    000423  aa  7 00033 7551 00    621  	sta	sb|per_device.lpw+1	" in LPWX
+    000424  aa   000000 7100 10    622  	tra	0,x0
+                                   623  
+                                   624  
+    000425                         625  tdcw:
+    000425  aa  5 00010 3515 20    626  	eppab	lb|io_manager_arg.dcw_pair_ptr,*
+    000426  aa  1 00000 2341 00    627  	szn	ab|0		" AB -> dcw_pair
+    000427  0a   000432 6010 00    628  	tnz	idcw_given	" IDCW is there
+    000430  0a   000000 2350 00    629  	lda	common_pcw	" give him the default
+    000431  aa  1 00000 7551 00    630  	sta	ab|0
+    000432                         631  idcw_given:
+                                   632  "
+                                   633  " At this point we would normally set idcw.ext_ctl.  This would allow IOM's
+                                   634  " to transfer to DCW lists which do not reside in the low 256K.
+                                   635  " Unfortunately, the PSIA does not handle this bit properly.
+                                   636  " As a result, we do not set the bit and put a kludge in pc_abs so that
+                                   637  " contiguous I/O buffers are always in the low 256K.
+                                   638  "
+                                   639  "	lda	=o040000,dl	" set extension control in IDCW
+                                   640  "	orsa	ab|0
+                                   641  "
+    000432  aa   020001 2350 07    642  	lda	=o020001,dl	" set default TDCW
+    000433  aa  1 00001 7551 00    643  	sta	ab|1
+    000434  aa   000000 7100 10    644  	tra	0,x0		" return
+                                   645  
+                                   646  
+                                   647  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   648  "
+                                   649  "	lock_and_clear_mbx
+                                   650  "
+                                   651  "	INPUT:	bp - pointer to iom_data
+                                   652  "		bb - pointer to iom_mailbox
+                                   653  "		x3 - index into iom_data.per_iom
+                                   654  "	OUTPUT:	per_iom.lock = our process_id
+                                   655  "		IOM - all previous connects have completed
+                                   656  "
+                                   657  "		THE INTERRUPT INHIBITED CODE SHOULD BE CONTINUED
+                                   658  "		BY THE CALLER UNTIL THE IOM LOCK IS UNLOCKED
+                                   659  "
+                                   660  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                   661  
+                                   662  
+    000435                         663  lock_and_clear_mbx:
+    000435  aa   000000 2360 07    664  	ldq	0,dl		" show this is the first try
+                                   665  
+                                   666  " Note, if we fall into this code (i.e. we haven't tried to reconnect), the
+                                   667  " q register is zero.  If we come here after reconnecting, the q register is
+                                   668  " non-zero, and we use this distinction to determine whether or not to
+                                   669  " reconnect (we'll only retry once). We let someone upstairs handle any
+                                   670  " connects that are lost this way.  This allows ESD to succeed even in the case
+                                   671  " when an IOM completely stops responding as long as there are alternate paths.
+                                   672  
+    000436  aa   000000 0110 03    673  	odd			" to cause fetching of two Y-pairs during
+                                   674  				" this tight loop so we won't lock-up
+    000437                         675  lock_mailbox:
+    000437  aa  2 00040 2341 13    676  	szn	bp|iom_data.per_iom+per_iom.lock,x3
+    000440  aa   777777 6010 04    677  	tnz	-1,ic		" loop until mailbox is free
+                                   678  
+    000441                         679  	inhibit	on		" <+><+><+><+><+><+><+><+><+><+>
+                                   680  
+    000441  4a  4 00010 2353 20    681  	lda	pds$process_id
+    000442  aa  2 00040 3543 13    682  	stac	bp|iom_data.per_iom+per_iom.lock,x3
+    000443  0a   000437 6012 00    683  	tnz	lock_mailbox	" someone beat us to the lock
+                                   684  
+    000444                         685  check_for_connect:
+                                   686  
+    000444  aa  2 00046 2353 13    687  	lda	bp|iom_data.per_iom+per_iom.connect_lpw,x3
+    000445  aa  3 00010 1153 00    688  	cmpa	bb|connect.lpw	" if the same, then there is a connect
+    000446  0a   000466 6012 00    689  	tnz	locked_and_cleared  " pending from the process before us.
+                                   690  
+    000447  aa   000310 2272 03    691  	ldx7	200,du		" we will wait until it completes
+                                   692  				" and possibly restart it
+    000450                         693  wait_for_connect:
+    000450  aa  3 00010 1153 00    694  	cmpa	bb|connect.lpw
+    000451  0a   000466 6012 00    695  	tnz	locked_and_cleared	" ah, the IOM finished the connect
+    000452  aa   777777 0672 03    696  	adx7	-1,du		" decrement loop counter
+    000453  0a   000450 6052 00    697  	tpl	wait_for_connect	" and continue looping until negative
+                                   698  
+    000454  aa   000000 1162 07    699  	cmpq	0,dl		" is q clear?
+    000455  0a   000460 6002 00    700  	tze	reconnect		" yes, give it one shot.
+                                   701  				" no, forget it
+    000456  aa  2 00056 0543 13    702  	aos	bp|iom_data.per_iom+per_iom.abandoned_connects,x3
+    000457  0a   000466 7102 00    703  	tra	locked_and_cleared
+                                   704  
+    000460                         705  reconnect:
+    000460  aa  2 00047 0153 13    706  	cioc	bp|iom_data.per_iom+per_iom.cow,x3
+                                   707  				" iom seems to have forgotten about
+                                   708  				"  the connect, so reissue it
+    000461  aa  2 00057 0543 13    709  	aos	bp|iom_data.per_iom+per_iom.reconnects,x3 " meter
+    000462  4a  4 00010 2363 20    710  	ldq	pds$process_id	" Note, this is the non-zero q value
+    000463  aa   000000 2352 03    711  	lda	0,du		"  that prevents us from trying again
+    000464  aa  2 00040 6543 13    712  	stacq	bp|iom_data.per_iom+per_iom.lock,x3 " start this over again
+    000465  0a   000437 7102 00    713  	tra	lock_mailbox
+                                   714  
+    000466                         715  locked_and_cleared:
+    000466  aa   000000 7102 10    716  	tra	0,x0
+                                   717  
+    000467                         718  	inhibit	off		" <-><-><-><-><-><-><-><-><-><->
+                                   719  
+                                   720  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   721  "
+                                   722  "	chx_err, addr_err
+                                   723  "
+                                   724  " " " " " " " " " " " " " " "	" " " " " " " " " " " " " " " " " " " " "
+                                   725  
+    000467                         726  chx_err:
+    000467  aa  6 00000 3731 00    727  	epbpsb	sp|0		" restore stack base ptr
+    000470  aa   000060 6270 00    728  	push			" bad channel index
+    000471  aa  7 00040 2721 20
+    000472  4a  4 00036 3521 20    729  	short_call io_error$bad_chx	" report it
+    000473  aa  7 00036 6701 20
+    000474  aa  6 00030 3701 20
+    000475  aa  7 00042 7101 20    730  	return
+                                   731  
+    000476                         732  addr_err:
+    000476  aa  6 00000 3731 00    733  	epbpsb	sp|0		" restore stack base ptr
+    000477  aa   000060 6270 00    734  	push
+    000500  aa  7 00040 2721 20
+    000501  4a  4 00040 3521 20    735  	short_call io_error$bad_addr
+    000502  aa  7 00036 6701 20
+    000503  aa  6 00030 3701 20
+    000504  aa  7 00042 7101 20    736  	return
+                                   737  " 
+                                   738  	include	io_manager_dcls;
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE io_manager_dcls.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 04/08/82  1122.9 est Thu by convert_include_file,
+                                   1-7  	"   Version of 12/01/81  1540.3 est Tue.
+                                   1-8  
+                                   1-9  	"Made from >nbdd>Multics>Hornig>install>io>io_manager_dcls.incl.pl1,
+                                  1-10  	"   modified 03/24/82  1401.5 est Wed
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure io_manager_arg
+                                  1-14  "
+                        000012    1-15  	equ	io_manager_arg_size,10
+                                  1-16  
+                                  1-17  
+                        000000    1-18  	equ	io_manager_arg.chx,0
+                        000001    1-19  	equ	io_manager_arg.bound,1
+                        000002    1-20  	equ	io_manager_arg.pcw,2
+                        000003    1-21  	equ	io_manager_arg.listx,3
+                        000004    1-22  	equ	io_manager_arg.ptp,4
+                        000006    1-23  	equ	io_manager_arg.listp,6
+                        000010    1-24  	equ	io_manager_arg.dcw_pair_ptr,8
+                                  1-25  
+                                  1-26       "END INCLUDE FILE io_manager_dcls.incl.alm
+                                   739  	include	iom_data
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE iom_data.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 03/22/85  1256.2 est Fri by convert_include_file,
+                                   2-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   2-8  
+                                   2-9  	"Made from >pool>m>CLJones>d>rcf>iom_data.incl.pl1,
+                                  2-10  	"   modified 03/22/85  1256.1 est Fri
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure iom_data
+                                  2-14  "
+                                  2-15  
+                        000000    2-16  	equ	iom_data.n_devices,0
+                        000001    2-17  	equ	iom_data.stop_lpw,1
+                        000002    2-18  	equ	iom_data.stop_dcw,2
+                        000003    2-19  	equ	iom_data.stop_scw,3
+                        000004    2-20  	equ	iom_data.imw_lock,4
+                        000005    2-21  	equ	iom_data.n_intr_procs,5
+                        000010    2-22  	equ	iom_data.stop_status,8	" DOUBLE
+                        000012    2-23  	equ	iom_data.rfh1,10
+                        000020    2-24  	equ	iom_data.stop_ext_status,16	" DOUBLE
+                        000035    2-25  	equ	iom_data.invalid_interrupts,29
+                        000036    2-26  	equ	iom_data.null_interrupts,30
+                        000037    2-27  	equ	iom_data.multiple_interrupts,31
+                        000040    2-28  	equ	iom_data.per_iom,32		" LEVEL 2
+                                  2-29  
+                        000240    2-30  	equ	iom_data.per_device,160	" LEVEL 2
+                                  2-31  
+                                  2-32  
+                                  2-33  "
+                                  2-34  "	Structure per_iom
+                                  2-35  "
+                        000040    2-36  	equ	per_iom_size,32
+                                  2-37  
+                        000000    2-38  	equ	per_iom.lock,0
+                        000001    2-39  	equ	per_iom.flags,1		" LEVEL 2
+                                  2-40  
+                        400000    2-41  	bool	per_iom.configured,400000	" DU
+                        200000    2-42  	bool	per_iom.on_line,200000	" DU
+                                  2-43  
+                        000002    2-44  	equ	per_iom.model,2
+                        000003    2-45  	equ	per_iom.port,3
+                        000004    2-46  	equ	per_iom.connect_time,4	" DOUBLE
+                        000006    2-47  	equ	per_iom.connect_lpw,6
+                        000007    2-48  	equ	per_iom.cow,7
+                        000010    2-49  	equ	per_iom.special_chx,8
+                        000011    2-50  	equ	per_iom.fault_chx,9
+                        000016    2-51  	equ	per_iom.abandoned_connects,14
+                        000017    2-52  	equ	per_iom.reconnects,15
+                                  2-53  
+                        000020    2-54  	equ	per_iom.chantab_word,16
+                        000033    2-55  	equ	per_iom.chantab_shift,27
+                        000777    2-56  	bool	per_iom.chantab_mask,000777
+                                  2-57  
+                                  2-58  "
+                                  2-59  "	Structure per_device
+                                  2-60  "
+                        000050    2-61  	equ	per_device_size,40
+                                  2-62  
+                                  2-63  
+                        000000    2-64  	equ	per_device.status,0		" DOUBLE
+                        000002    2-65  	equ	per_device.rfh1,2
+                        000010    2-66  	equ	per_device.ext_status,8	" DOUBLE
+                        000020    2-67  	equ	per_device.iom,16
+                        000021    2-68  	equ	per_device.channel,17
+                        000022    2-69  	equ	per_device.handler,18
+                        000026    2-70  	equ	per_device.flags,22		" LEVEL 2
+                                  2-71  
+                        400000    2-72  	bool	per_device.in_use,400000	" DU
+                        200000    2-73  	bool	per_device.queue_status,200000 " DU
+                        100000    2-74  	bool	per_device.on_line,100000	" DU
+                                  2-75  
+                        000027    2-76  	equ	per_device.index,23
+                        000030    2-77  	equ	per_device.pcw,24		" DOUBLE
+                        000032    2-78  	equ	per_device.lpw,26		" DOUBLE
+                        000034    2-79  	equ	per_device.scw,28
+                        000036    2-80  	equ	per_device.status_queue_ptr,30
+                        000040    2-81  	equ	per_device.connect_time,32	" DOUBLE
+                        000042    2-82  	equ	per_device.connects,34	" DOUBLE
+                        000044    2-83  	equ	per_device.interrupts,36	" DOUBLE
+                        000046    2-84  	equ	per_device.interrupt_time,38	" DOUBLE
+                                  2-85  
+                                  2-86  "
+                                  2-87  "	Structure iom_mailbox_seg
+                                  2-88  "
+                        002200    2-89  	equ	iom_mailbox_seg_size,1152
+                                  2-90  
+                        000000    2-91  	equ	iom_mailbox_seg.imw_array_word,0
+                        000004    2-92  	equ	iom_mailbox_seg.imw_array_shift,4
+                                  2-93  
+                        000040    2-94  	equ	iom_mailbox_seg.system_fault,32 " LEVEL 2
+                                  2-95  
+                        000120    2-96  	equ	iom_mailbox_seg.special_status,80 " LEVEL 2
+                                  2-97  
+                        000200    2-98  	equ	iom_mailbox_seg.iom_mailbox,128 " LEVEL 2
+                                  2-99  
+                                 2-100  
+                                 2-101  "
+                                 2-102  "	Structure status_queue
+                                 2-103  "
+                        000014   2-104  	equ	status_queue_size,12
+                                 2-105  
+                        000000   2-106  	equ	status_queue.status,0
+                                 2-107  
+                                 2-108  "
+                                 2-109  "	Structure iom_mailbox
+                                 2-110  "
+                        000400   2-111  	equ	iom_mailbox_size,256
+                                 2-112  
+                        000000   2-113  	equ	iom_mailbox.channel_mailbox,0	" LEVEL 2
+                                 2-114  
+                                 2-115  
+                                 2-116  "
+                                 2-117  "	Structure channel_mailbox
+                                 2-118  "
+                        000004   2-119  	equ	channel_mailbox_size,4
+                                 2-120  
+                        000000   2-121  	equ	channel_mailbox.lpw,0	" DOUBLE
+                        000002   2-122  	equ	channel_mailbox.scw,2
+                        000003   2-123  	equ	channel_mailbox.dcw,3
+                                 2-124  
+                        000001   2-125  	equ	system_fault_channel,1	" MANIFEST
+                        000002   2-126  	equ	connect_channel,2		" MANIFEST
+                        000006   2-127  	equ	special_status_channel,6	" MANIFEST
+                                 2-128  
+                                 2-129       "END INCLUDE FILE iom_data.incl.alm
+                                   740  
+                        000012     741  	equ	connect.pcw,connect_channel*channel_mailbox_size+channel_mailbox.scw
+                        000010     742  	equ	connect.lpw,connect_channel*channel_mailbox_size+channel_mailbox.lpw
+                        000004     743  	equ	sys_fault.lpw,system_fault_channel*channel_mailbox_size+channel_mailbox.lpw
+                        000004     744  	equ	level_1_interrupt,4
+                        000014     745  	equ	sys_fault_list_size,12
+                        200000     746  	bool	sys_fault_channel_mask,200000
+                        000013     747  	bool	ill_tly_cont_mask,000013
+                        000005     748  	bool	zero_tly_mask,000005
+                        000077     749  	bool	fault_code_mask,000077
+                                   750  
+                                   751  	end
+ENTRY SEQUENCES
+     
+    000505  5a   000067 0000 00
+    000506  aa  7 00046 2721 20
+    000507  0a   000036 7100 00
+    000510  5a   000061 0000 00
+    000511  aa  7 00046 2721 20
+    000512  0a   000005 7100 00
+    000513  5a   000052 0000 00
+    000514  aa  7 00046 2721 20
+    000515  0a   000051 7100 00
+    000516  5a   000041 0000 00
+    000517  aa  7 00046 2721 20
+    000520  0a   000124 7100 00
+    000521  5a   000034 0000 00
+    000522  aa  7 00046 2721 20
+    000523  0a   000063 7100 00
+    000524  5a   000026 0000 00
+    000525  aa  7 00046 2721 20
+    000526  0a   000320 7100 00
+    000527  5a   000020 0000 00
+    000530  aa  7 00046 2721 20
+    000531  0a   000340 7100 00
+    000532  5a   000011 0000 00
+    000533  aa  7 00046 2721 20
+    000534  0a   000351 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000536  5a   000003 000000 
+    000537  5a   000103 600000 
+    000540  aa   000000 000000 
+    000541  55   000011 000002 
+    000542  5a   000002 400003 
+    000543  55   000006 000011 
+    000544  aa  013 151 157 155
+    000545  aa  137 143 157 156
+    000546  aa  156 145 143 164
+    000547  55   000020 000003 
+    000550  0a   000533 500000 
+    000551  55   000014 000003 
+    000552  aa  016 167 157 162         workspace_tdcw
+    000553  aa  153 163 160 141
+    000554  aa  143 145 137 164
+    000555  aa  144 143 167 000
+    000556  55   000026 000011 
+    000557  0a   000530 500000 
+    000560  55   000023 000003 
+    000561  aa  011 144 141 164         data_tdcw
+    000562  aa  141 137 164 144
+    000563  aa  143 167 000 000
+    000564  55   000034 000020 
+    000565  0a   000525 500000 
+    000566  55   000031 000003 
+    000567  aa  012 147 145 164         get_status
+    000570  aa  137 163 164 141
+    000571  aa  164 165 163 000
+    000572  55   000041 000026 
+    000573  0a   000522 500000 
+    000574  55   000037 000003 
+    000575  aa  004 155 141 163         mask
+    000576  aa  153 000 000 000
+    000577  55   000052 000034 
+    000600  0a   000517 500000 
+    000601  55   000044 000003 
+    000602  aa  024 143 157 156         connect_and_identify
+    000603  aa  156 145 143 164
+    000604  aa  137 141 156 144
+    000605  aa  137 151 144 145
+    000606  aa  156 164 151 146
+    000607  aa  171 000 000 000
+    000610  55   000061 000041 
+    000611  0a   000514 500000 
+    000612  55   000055 000003 
+    000613  aa  016 143 157 156         connect_direct
+    000614  aa  156 145 143 164
+    000615  aa  137 144 151 162
+    000616  aa  145 143 164 000
+    000617  55   000067 000052 
+    000620  0a   000511 500000 
+    000621  55   000064 000003 
+    000622  aa  013 143 157 156         connect_abs
+    000623  aa  156 145 143 164
+    000624  aa  137 141 142 163
+    000625  55   000074 000061 
+    000626  0a   000506 500000 
+    000627  55   000072 000003 
+    000630  aa  007 143 157 156         connect
+    000631  aa  156 145 143 164
+    000632  55   000002 000067 
+    000633  6a   000000 400002 
+    000634  55   000077 000003 
+    000635  aa  014 163 171 155         symbol_table
+    000636  aa  142 157 154 137
+    000637  aa  164 141 142 154
+    000640  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000641  aa   000000 000015 
+    000642  5a   000026 000000 
+    000643  5a   000020 000000 
+    000644  5a   000052 000000 
+    000645  5a   000034 000000 
+    000646  5a   000061 000000 
+    000647  5a   000067 000000 
+    000650  5a   000074 000000 
+    000651  aa   000000 000000 
+    000652  aa   000000 000000 
+    000653  aa   000000 000000 
+    000654  aa   000000 000000 
+    000655  5a   000041 000000 
+    000656  5a   000011 000000 
+
+EXTERNAL NAMES
+
+    000657  aa  010 142 141 144         bad_addr
+    000660  aa  137 141 144 144
+    000661  aa  162 000 000 000
+    000662  aa  007 142 141 144         bad_chx
+    000663  aa  137 143 150 170
+    000664  aa  010 151 157 137         io_error
+    000665  aa  145 162 162 157
+    000666  aa  162 000 000 000
+    000667  aa  006 155 171 154         mylock
+    000670  aa  157 143 153 000
+    000671  aa  007 142 141 144         bad_arg
+    000672  aa  137 141 162 147
+    000673  aa  021 151 157 155         iom_wrong_mailbox
+    000674  aa  137 167 162 157
+    000675  aa  156 147 137 155
+    000676  aa  141 151 154 142
+    000677  aa  157 170 000 000
+    000700  aa  020 151 157 155         iom_wrong_number
+    000701  aa  137 167 162 157
+    000702  aa  156 147 137 156
+    000703  aa  165 155 142 145
+    000704  aa  162 000 000 000
+    000705  aa  021 151 157 155         iom_connect_fatal
+    000706  aa  137 143 157 156
+    000707  aa  156 145 143 164
+    000710  aa  137 146 141 164
+    000711  aa  141 154 000 000
+    000712  aa  014 145 162 162         error_table_
+    000713  aa  157 162 137 164
+    000714  aa  141 142 154 145
+    000715  aa  137 000 000 000
+    000716  aa  013 151 157 155         iom_mailbox
+    000717  aa  137 155 141 151
+    000720  aa  154 142 157 170
+    000721  aa  010 151 157 155         iom_data
+    000722  aa  137 144 141 164
+    000723  aa  141 000 000 000
+    000724  aa  006 143 154 157         clock_
+    000725  aa  143 153 137 000
+    000726  aa  010 163 171 163         sys_info
+    000727  aa  137 151 156 146
+    000730  aa  157 000 000 000
+    000731  aa  012 160 162 157         process_id
+    000732  aa  143 145 163 163
+    000733  aa  137 151 144 000
+    000734  aa  003 160 144 163         pds
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000735  aa   000004 000000 
+    000736  55   000126 000121 
+    000737  aa   000004 000000 
+    000740  55   000126 000124 
+    000741  aa   000004 000000 
+    000742  55   000154 000131 
+    000743  aa   000004 000000 
+    000744  55   000154 000133 
+    000745  aa   000004 000000 
+    000746  55   000154 000135 
+    000747  aa   000004 000000 
+    000750  55   000154 000142 
+    000751  aa   000004 000000 
+    000752  55   000154 000147 
+    000753  aa   000003 000000 
+    000754  5a   000160 000000 
+    000755  aa   000003 000000 
+    000756  5a   000163 000000 
+    000757  aa   000004 000000 
+    000760  55   000170 000166 
+    000761  aa   000004 000000 
+    000762  55   000176 000173 
+    000763  aa   000001 000000 
+    000764  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000765  5a   000177 000000 
+    000766  5a   000201 000000 
+    000767  5a   000203 000000 
+    000770  5a   000205 000000 
+    000771  5a   000207 000000 
+    000772  5a   000215 000024 
+    000773  5a   000211 000000 
+    000774  5a   000213 000000 
+    000775  5a   000215 000000 
+    000776  5a   000215 777600 
+    000777  5a   000217 000000 
+    001000  5a   000221 000000 
+    001001  5a   000223 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000536 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000042 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pds|process_id
+    000011  5a   000243 0000 00
+    000012  9a   777766 0000 46         sys_info|clock_
+    000013  5a   000242 0000 20
+    000014  9a   777764 0000 46         iom_data|       
+    000015  5a   000241 0000 00
+    000016  9a   777762 0000 46         iom_mailbox|       
+    000017  5a   000240 0000 06
+    000020  9a   777760 0000 46         iom_mailbox|       
+    000021  5a   000237 0000 00
+    000022  9a   777756 0000 46         error_table_|iom_connect_fatal
+    000023  5a   000236 0000 00
+    000024  9a   777754 0000 46         error_table_|iom_wrong_number
+    000025  5a   000235 0000 00
+    000026  9a   777752 0000 46         iom_mailbox|       
+    000027  5a   000234 0000 06
+    000030  9a   777750 0000 46         error_table_|iom_wrong_mailbox
+    000031  5a   000233 0000 00
+    000032  9a   777746 0000 46         error_table_|bad_arg
+    000033  5a   000232 0000 00
+    000034  9a   777744 0000 46         error_table_|mylock
+    000035  5a   000231 0000 00
+    000036  9a   777742 0000 46         io_error|bad_chx
+    000037  5a   000230 0000 00
+    000040  9a   777740 0000 46         io_error|bad_addr
+    000041  5a   000227 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   256214 306261 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000244 
+    000020  aa   000000 000135 
+    000021  aa   000206 000176 
+    000022  aa   000234 000135 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000042 
+    000067  aa   175453 017442 
+    000070  aa   000000 117547 
+    000071  aa   174416 600000 
+    000072  aa   000113 000045 
+    000073  aa   107630 351272 
+    000074  aa   000000 110763 
+    000075  aa   676013 600000 
+    000076  aa   000125 000036 
+    000077  aa   134547 161111 
+    000100  aa   000000 113455 
+    000101  aa   515111 200000 
+    000102  aa   076163 160145          >spec>install>1110>iom_connect.alm
+    000103  aa   143076 151156 
+    000104  aa   163164 141154 
+    000105  aa   154076 061061 
+    000106  aa   061060 076151 
+    000107  aa   157155 137143 
+    000110  aa   157156 156145 
+    000111  aa   143164 056141 
+    000112  aa   154155 040040 
+    000113  aa   076154 144144          >ldd>include>io_manager_dcls.incl.alm
+    000114  aa   076151 156143 
+    000115  aa   154165 144145 
+    000116  aa   076151 157137 
+    000117  aa   155141 156141 
+    000120  aa   147145 162137 
+    000121  aa   144143 154163 
+    000122  aa   056151 156143 
+    000123  aa   154056 141154 
+    000124  aa   155040 040040 
+    000125  aa   076154 144144          >ldd>include>iom_data.incl.alm
+    000126  aa   076151 156143 
+    000127  aa   154165 144145 
+    000130  aa   076151 157155 
+    000131  aa   137144 141164 
+    000132  aa   141056 151156 
+    000133  aa   143154 056141 
+    000134  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         476    addr_err                 iom_connect:  732.
+                bad_addr                 iom_connect:  735.
+                bad_arg                  iom_connect:  476.
+                bad_chx                  iom_connect:  729.
+           3    channel_mailbox.dcw      iom_connect:  509,
+                                         iom_data:     123.
+           0    channel_mailbox.lpw      iom_connect:  211,  512,  742,  743,
+                                         iom_data:     121.
+           2    channel_mailbox.scw      iom_connect:  213,  741,
+                                         iom_data:     122.
+           4    channel_mailbox_size     iom_connect:  741,  742,  743,
+                                         iom_data:     119.
+         175    check_an_iom             iom_connect:  370,  376.
+         225    check_fault_status_code  iom_connect:  405,  415.
+         444    check_for_connect        iom_connect:  685.
+         271    check_for_fault          iom_connect:  454,  458.
+         174    check_ioms               iom_connect:  368,  379.
+         467    chx_err                  iom_connect:  573,  575,  582,  726.
+                clock_                   iom_connect:  232.
+           0    common_pcw               iom_connect:   96,  132,  160,  629.
+          36    connect                  iom_connect:   58,  153.
+          10    connect.lpw              iom_connect:  222,  344,  688,  694,  742.
+          12    connect.pcw              iom_connect:  224,  741.
+           5    connect_abs              iom_connect:   59,  111.
+         124    connect_and_identify     iom_connect:   61,  307.
+           2    connect_channel          iom_connect:  741,  742,
+                                         iom_data:     126.
+          51    connect_direct           iom_connect:   60,  175.
+         166    connect_for_fault        iom_connect:  358.
+          71    connect_join             iom_connect:  139,  146,  168,  183,  186,  203.
+         210    connect_took             iom_connect:  373,  387.
+         340    data_tdcw                iom_connect:   64,  521.
+           1    direct_pcw               iom_connect:   98,  179.
+                error_table_             iom_connect:  383,  392,  428,  476,  484.
+          77    fault_code_mask          iom_connect:  407,  749.
+         217    find_status              iom_connect:  391,  396.
+         241    found_fault_status       iom_connect:  409,  412,  421.
+         320    get_status               iom_connect:   63,  494.
+         432    idcw_given               iom_connect:  628,  631.
+          13    ill_tly_cont_mask        iom_connect:  408,  747.
+         313    imw_already_locked       iom_connect:  321,  481.
+         307    inv_iom_range            iom_connect:  316,  474.
+         204    ioms_dont_respond        iom_connect:  381.
+                iom_connect_fatal        iom_connect:  383.
+                iom_data                 iom_connect:  308,  569.
+           4    iom_data.imw_lock        iom_connect:  319,  323,  434,  436,  482,
+                                         iom_data:      20.
+          35    iom_data.invalid_interrupts    iom_data:      25.
+          37    iom_data.multiple_interrupts   iom_data:      27.
+          36    iom_data.null_interrupts       iom_data:      26.
+           0    iom_data.n_devices       iom_connect:  574,
+                                         iom_data:      16.
+           5    iom_data.n_intr_procs    iom_connect:  325,
+                                         iom_data:      21.
+         240    iom_data.per_device      iom_connect:  578,
+                                         iom_data:      30.
+          40    iom_data.per_iom         iom_connect:  221,  225,  229,  233,  363,  446,  676,  682,  687,  702,  706,  709,
+                                                       712,
+                                         iom_data:      28.
+          12    iom_data.rfh1            iom_data:      23.
+           2    iom_data.stop_dcw        iom_data:      18.
+          20    iom_data.stop_ext_status       iom_data:      24.
+           1    iom_data.stop_lpw        iom_data:      17.
+           3    iom_data.stop_scw        iom_data:      19.
+          10    iom_data.stop_status     iom_data:      22.
+                iom_mailbox              iom_connect:  338,  351,  365,  402,  451,  461,  595.
+           0    iom_mailbox.channel_mailbox    iom_data:     113.
+           4    iom_mailbox_seg.imw_array_shift      iom_data:      92.
+           0    iom_mailbox_seg.imw_array_word       iom_connect:  351,  365,  461,
+                                                     iom_data:      91.
+         200    iom_mailbox_seg.iom_mailbox    iom_connect:  338,  595,
+                                               iom_data:      98.
+         120    iom_mailbox_seg.special_status       iom_data:      96.
+          40    iom_mailbox_seg.system_fault   iom_connect:  402,  451,
+                                               iom_data:      94.
+        2200    iom_mailbox_seg_size     iom_data:      89.
+         400    iom_mailbox_size         iom_connect:  337,  338,  594,  595,
+                                         iom_data:     111.
+                iom_wrong_mailbox        iom_connect:  428.
+                iom_wrong_number         iom_connect:  392.
+                io_error                 iom_connect:  729,  735.
+           1    io_manager_arg.bound     iom_connect:  619,
+                                         io_manager_dcls:     19.
+           0    io_manager_arg.chx       iom_connect:  572,
+                                         io_manager_dcls:     18.
+          10    io_manager_arg.dcw_pair_ptr    iom_connect:  626,
+                                               io_manager_dcls:     24.
+           6    io_manager_arg.listp     iom_connect:  121,  136,  140,  525,
+                                         io_manager_dcls:     23.
+           3    io_manager_arg.listx     iom_connect:  166,  543,
+                                         io_manager_dcls:     21.
+           2    io_manager_arg.pcw       iom_connect:  115,  157,
+                                         io_manager_dcls:     20.
+           4    io_manager_arg.ptp       iom_connect:  181,  609,  613,
+                                         io_manager_dcls:     22.
+          12    io_manager_arg_size      io_manager_dcls:     15.
+           4    level_1_interrupt        iom_connect:  353,  371,  463,  744.
+          23    load_common              iom_connect:  117,  124,  131.
+         466    locked_and_cleared       iom_connect:  689,  695,  703,  715.
+         435    lock_and_clear_mbx       iom_connect:  217,  340,  663.
+         146    lock_an_iom              iom_connect:  329,  356.
+         437    lock_mailbox             iom_connect:  675,  683,  713.
+          63    mask                     iom_connect:   62,  193.
+           2    mask_pcw                 iom_connect:  100,  196.
+                mylock                   iom_connect:  484.
+         301    next_iom                 iom_connect:  459,  464.
+                pds                      iom_connect:  227,  444,  681,  710.
+          21    per_device.channel       iom_connect:  198,  584,  605,
+                                         iom_data:      68.
+          42    per_device.connects      iom_connect:  236,  238,
+                                         iom_data:      82.
+          40    per_device.connect_time  iom_connect:  234,
+                                         iom_data:      81.
+          10    per_device.ext_status    iom_connect:  209,  501,
+                                         iom_data:      66.
+          26    per_device.flags         iom_connect:  580,
+                                         iom_data:      70.
+          22    per_device.handler       iom_data:      69.
+          27    per_device.index         iom_data:      76.
+          44    per_device.interrupts    iom_data:      83.
+          46    per_device.interrupt_time      iom_data:      84.
+      400000    per_device.in_use        iom_connect:  581,
+                                         iom_data:      72.
+          20    per_device.iom           iom_connect:  589,  593,
+                                         iom_data:      67.
+          32    per_device.lpw           iom_connect:  145,  164,  167,  185,  210,  604,  621,
+                                         iom_data:      78.
+      100000    per_device.on_line       iom_data:      74.
+          30    per_device.pcw           iom_connect:  126,  129,  134,  143,  161,  180,  197,  200,  223,  607,  617,
+                                         iom_data:      77.
+      200000    per_device.queue_status  iom_data:      73.
+           2    per_device.rfh1          iom_data:      65.
+          34    per_device.scw           iom_connect:  212,
+                                         iom_data:      79.
+           0    per_device.status        iom_connect:  205,  206,  504,  505,
+                                         iom_data:      64.
+          36    per_device.status_queue_ptr    iom_data:      80.
+          50    per_device_size          iom_connect:  576,  577,
+                                         iom_data:      61.
+          16    per_iom.abandoned_connects     iom_connect:  702,
+                                               iom_data:      51.
+         777    per_iom.chantab_mask     iom_data:      56.
+          33    per_iom.chantab_shift    iom_data:      55.
+          20    per_iom.chantab_word     iom_data:      54.
+      400000    per_iom.configured       iom_data:      41.
+           6    per_iom.connect_lpw      iom_connect:  221,  687,
+                                         iom_data:      47.
+           4    per_iom.connect_time     iom_connect:  233,
+                                         iom_data:      46.
+           7    per_iom.cow              iom_connect:  225,  363,  706,
+                                         iom_data:      48.
+          11    per_iom.fault_chx        iom_data:      50.
+           1    per_iom.flags            iom_data:      39.
+           0    per_iom.lock             iom_connect:  229,  446,  676,  682,  712,
+                                         iom_data:      38.
+           2    per_iom.model            iom_data:      44.
+      200000    per_iom.on_line          iom_data:      42.
+           3    per_iom.port             iom_data:      45.
+          17    per_iom.reconnects       iom_connect:  709,
+                                         iom_data:      52.
+          10    per_iom.special_chx      iom_data:      49.
+          40    per_iom_size             iom_connect:  332,  333,  360,  361,  441,  442,  590,  591,
+                                         iom_data:      36.
+                process_id               iom_connect:  227,  444,  681,  710.
+           4    ptp_mask                 iom_connect:  104,  127.
+         460    reconnect                iom_connect:  700,  705.
+           3    rss_idcw                 iom_connect:  102,  123.
+          24    save_pcw                 iom_connect:  119,  133.
+         361    setup                    iom_connect:  112,  154,  176,  194,  495,  522,  538,  568.
+         407    setup_pt                 iom_connect:  113,  155,  177,  603.
+         276    set_imw_bit              iom_connect:  456,  460.
+           6    special_status_channel   iom_data:     127.
+           0    status_queue.status      iom_data:     106.
+          14    status_queue_size        iom_data:     104.
+         220    status_this_iom          iom_connect:  398,  418.
+           1    system_fault_channel     iom_connect:  743,
+                                         iom_data:     125.
+           4    sys_fault.lpw            iom_connect:  743.
+      200000    sys_fault_channel_mask   iom_connect:  352,  372,  462,  746.
+          14    sys_fault_list_size      iom_connect:  401,  402,  450,  451,  745.
+                sys_info                 iom_connect:  232.
+         425    tdcw                     iom_connect:  523,  539,  625.
+         255    unlock_an_iom            iom_connect:  438,  466.
+         251    unlock_ioms              iom_connect:  385,  426,  432.
+         450    wait_for_connect         iom_connect:  693,  697.
+         351    workspace_tdcw           iom_connect:   65,  537.
+           5    zero_tly_mask            iom_connect:  411,  748.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

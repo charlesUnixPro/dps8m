@@ -1,0 +1,2713 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>put_format_.alm                                                                                                                                      
+ASSEMBLED ON:	11/11/89  0940.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "	Operator  for doing format-driven conversions
+                                    13  "
+                                    14  "	Written by R.Schoeman 1975-6 to implement operators to do put-edit
+                                    15  "	requests in the operators, for improved performance.
+                                    16  "
+                                    17  "	Modified Oct 1976 by R.H.Schoeman to put in radix factor constants
+                                    18  "	Modified Mar 29, 1978 by R.A.Barnes to fix bug 1719
+                                    19  "	Modified August 14, 1978 by PCK to fix bug 1745
+                                    20  "	Modified September 1, 1978 by RAB to fix bug 1781
+                                    21  "
+                                    22  	include stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                    23  	include stack_header
+                                   2-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   2-2  "
+                                   2-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   2-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   2-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   2-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   2-7  
+                                   2-8  " HISTORY COMMENTS:
+                                   2-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  2-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  2-11  "     added the heap_header_ptr definition
+                                  2-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  2-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  2-14  "     Modified to support control point management.  These changes were
+                                  2-15  "     actually made in February 1985 by G. Palter.
+                                  2-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  2-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  2-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  2-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  2-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  2-21  "     cpm_data_ptr (ITS pair).
+                                  2-22  "                                                      END HISTORY COMMENTS
+                                  2-23  
+                        000004    2-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    2-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  2-26  
+                        000010    2-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    2-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    2-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    2-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    2-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    2-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    2-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    2-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  2-35  
+                        000020    2-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    2-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    2-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    2-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  2-40  
+                        000030    2-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    2-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    2-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    2-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  2-45  
+                        000040    2-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    2-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    2-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    2-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  2-50  
+                        000050    2-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    2-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    2-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    2-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  2-55  
+                        000060    2-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    2-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    2-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    2-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    2-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    2-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    2-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    2-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    2-64  	equ	stack_header_end,64			length of stack header
+                                  2-65  
+                                  2-66  
+                                  2-67  
+                                  2-68  
+                        000000    2-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    2-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  2-71  
+                                  2-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  2-73  "	It  references a  transfer vector table.
+                                  2-74  
+                        000551    2-75  	bool	tv_offset,551
+                                  2-76  
+                                  2-77  
+                                  2-78  "	The  following constants are offsets within this transfer vector table.
+                                  2-79  
+                        001170    2-80  	equ	call_offset,tv_offset+271
+                        001171    2-81  	equ	push_offset,tv_offset+272
+                        001172    2-82  	equ	return_offset,tv_offset+273
+                        001173    2-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    2-84  	equ	entry_offset,tv_offset+275
+                                  2-85  
+                                  2-86  
+                                  2-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                    24  	include eis_bits
+                        000100     3-1  	bool	ar,100
+                        000040     3-2  	bool	rl,40
+                        000020     3-3  	bool	id,20
+                                   3-4  "
+                        000001     3-5  	bool	au,01
+                        000002     3-6  	bool	qu,02
+                        000003     3-7  	bool	du,03
+                        000004     3-8  	bool	ic,04
+                        000005     3-9  	bool	a,05
+                        000005    3-10  	bool	al,05
+                        000006    3-11  	bool	q,06
+                        000006    3-12  	bool	ql,06
+                        000010    3-13  	bool	x0,10
+                        000011    3-14  	bool	x1,11
+                        000012    3-15  	bool	x2,12
+                        000013    3-16  	bool	x3,13
+                        000014    3-17  	bool	x4,14
+                        000015    3-18  	bool	x5,15
+                        000016    3-19  	bool	x6,16
+                        000017    3-20  	bool	x7,17
+                                  3-21  "
+                        000003    3-22  	bool	move,03
+                        000001    3-23  	bool	and,01
+                        000007    3-24  	bool	or,07
+                        000016    3-25  	bool	nand,16
+                        000006    3-26  	bool	xor,6
+                        000000    3-27  	bool	clear,0
+                        000014    3-28  	bool	invert,14
+                                  3-29  "
+                        000001    3-30  	equ	round,1
+                        000001    3-31  	equ	truncate,1
+                                    25  "
+                                    26  "	The following include file describes a region of storage which is used
+                                    27  "	exclusively by put_format_, for internal manipulation.  It's primary
+                                    28  "	purpose is to hold the evaluated fields of the format constants
+                                    29  "	produced by the compiler(evaluated by stu_), but is also used
+                                    30  "	for most other storage needed by the format list processing
+                                    31  "	and format conversions. The program plio2_fl_ uses the same storage region,
+                                    32  "	there called sb, similiarly but not identically. plio_sb is 136 words long,
+                                    33  "	and was provided by the compiled code, and the ptr to it was placed in the ps, at
+                                    34  "	ps.format_area_p.
+                                    35  "
+                                    36  	include plio_sb
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE plio_sb.incl.alm
+                                   4-4  
+                                   4-5  	"Created 10/18/76  1455.4 edt Mon by convert_include_file,
+                                   4-6  	"   Version of 04/30/76  1308.1 edt Fri.
+                                   4-7  
+                                   4-8  	"Made from >user_dir_dir>Multics>Schoeman>plio_sb.incl.pl1,
+                                   4-9  	"   modified 10/18/76  1455.4 edt Mon
+                                  4-10  
+                                  4-11  "
+                                  4-12  "	Structure plio_sb
+                                  4-13  "
+                        000210    4-14  	equ	plio_sb_size,136
+                                  4-15  
+                                  4-16  
+                        000000    4-17  	equ	plio_sb.fe,0		"LEVEL 2
+                                  4-18  
+                        000000    4-19  	equ	plio_sb.type,0
+                        000001    4-20  	equ	plio_sb.nval,1
+                        000002    4-21  	equ	plio_sb.val,2		"LEVEL 3
+                                  4-22  
+                        000002    4-23  	equ	plio_sb.val_1,2
+                        000003    4-24  	equ	plio_sb.val_2,3
+                        000004    4-25  	equ	plio_sb.val_3,4
+                        000017    4-26  	equ	plio_sb.cur_rep,15
+                        000020    4-27  	equ	plio_sb.cur_sfp,16
+                        000022    4-28  	equ	plio_sb.cur_fep,18
+                        000024    4-29  	equ	plio_sb.format_len,20
+                        000025    4-30  	equ	plio_sb.saved_x0,21
+                        000026    4-31  	equ	plio_sb.stk_index,22
+                        000030    4-32  	equ	plio_sb.space_ptr,24
+                        000032    4-33  	equ	plio_sb.real_parts_len,26
+                        000033    4-34  	equ	plio_sb.cplx_flags,27
+                        000034    4-35  	equ	plio_sb.pef_finish,28
+                        000036    4-36  	equ	plio_sb.extra_temp,30
+                        000037    4-37  	equ	plio_sb.extra,31		"LEVEL 2
+                                  4-38  
+                        000037    4-39  	equ	plio_sb.extra_word,31
+                        000044    4-40  	equ	plio_sb.frame,36		"LEVEL 2
+                                  4-41  
+                        000044    4-42  	equ	plio_sb.sf1p,36
+                        000046    4-43  	equ	plio_sb.sf2p,38
+                        000050    4-44  	equ	plio_sb.fe1p,40
+                        000052    4-45  	equ	plio_sb.fe2p,42
+                        000054    4-46  	equ	plio_sb.rep,44
+                                  4-47  
+                                  4-48       "END INCLUDE FILE plio_sb.incl.alm
+                                    37  "
+                                    38  "	The following include file describes the format constants produced
+                                    39  "	by the compiler. A format con contain from zero (as in a put edit(foo)(a) statement)
+                                    40  "	to three values (as in put edit(foo)(e(11,5,2))), hence 3 value fields
+                                    41  "	are provided along with nval, to show how many are used. offset is the
+                                    42  "	relative offset to the next format constant.
+                                    43  "
+                                    44  	include plio_fb
+                                   5-1  
+                                   5-2  
+                                   5-3       "BEGIN INCLUDE FILE plio_fb.incl.alm
+                                   5-4  
+                                   5-5  	"Created 05/03/76  1152.6 edt Mon by convert_include_file,
+                                   5-6  	"   Version of 04/30/76  1308.1 edt Fri.
+                                   5-7  
+                                   5-8  	"Made from >udd>m>Schoeman>plio_fb.incl.pl1,
+                                   5-9  	"   modified 05/03/76  1152.6 edt Mon
+                                  5-10  
+                                  5-11  "
+                                  5-12  "	Structure plio_fb
+                                  5-13  "
+                        000005    5-14  	equ	plio_fb_size,5
+                                  5-15  
+                                  5-16  
+                        000000    5-17  	equ	plio_fb.bits,0		"LEVEL 2
+                                  5-18  
+                        000033    5-19  	equ	plio_fb.code_shift,27
+                        000777    5-20  	bool	plio_fb.code_mask,000777
+                        000022    5-21  	equ	plio_fb.nval_shift,18
+                        000777    5-22  	bool	plio_fb.nval_mask,000777
+                        000000    5-23  	equ	plio_fb.offset,0		"LOWER
+                                  5-24  
+                        000001    5-25  	equ	plio_fb.rep,1
+                        000002    5-26  	equ	plio_fb.val,2		"LEVEL 2
+                                  5-27  
+                        000002    5-28  	equ	plio_fb.val_1,2
+                        000003    5-29  	equ	plio_fb.val_2,3
+                        000004    5-30  	equ	plio_fb.val_3,4
+                                  5-31  
+                                  5-32       "END INCLUDE FILE plio_fb.incl.alm
+                                    45  	include pic_image
+                        000777     6-1  	bool	pic_image.mask,000777
+                        000033     6-2  	equ	pic_image.type_shift,27
+                        000022     6-3  	equ	pic_image.prec_shift,18
+                        000011     6-4  	equ	pic_image.scale_shift,9
+                        000000     6-5  	equ	pic_image.piclength_shift,0
+                        000033     6-6  	equ	pic_image.varlength_shift,27
+                        000022     6-7  	equ	pic_image.scalefactor_shift,18
+                        000011     6-8  	equ	pic_image.explength_shift,9
+                                    46  	include plio2_ps
+                                   7-1  
+                                   7-2  
+                                   7-3       "BEGIN INCLUDE FILE plio2_ps.incl.alm
+                                   7-4  
+                                   7-5  	"Created 07/08/77  1352.7 edt Fri by convert_include_file,
+                                   7-6  	"   Version of 03/21/77  1355.7 edt Mon.
+                                   7-7  
+                                   7-8  	"Made from >exl>include>plio2_ps.incl.pl1,
+                                   7-9  	"   modified 07/08/77  1352.7 edt Fri
+                                  7-10  
+                                  7-11  "
+                                  7-12  "	Structure ps
+                                  7-13  "
+                        000060    7-14  	equ	ps_size,48
+                                  7-15  
+                                  7-16  
+                        000000    7-17  	equ	ps.stack_frame_p,0
+                        000002    7-18  	equ	ps.ST_top_p,2
+                        000004    7-19  	equ	ps.ST_block_p,4
+                        000006    7-20  	equ	ps.format_area_p,6
+                        000010    7-21  	equ	ps.ss_list_p,8
+                        000012    7-22  	equ	ps.ab_return,10		"LEVEL 2
+                                  7-23  
+                        000012    7-24  	equ	ps.abret,10
+                        000020    7-25  	equ	ps.source_p,16
+                        000022    7-26  	equ	ps.special_list_p,18
+                        000024    7-27  	equ	ps.copy_file_p,20
+                        000026    7-28  	equ	ps.job,22			"LEVEL 2
+                                  7-29  
+                        400000    7-30  	bool	ps.explicit_file,400000	"DU
+                        200000    7-31  	bool	ps.string,200000		"DU
+                        100000    7-32  	bool	ps.varying_string,100000	"DU
+                        040000    7-33  	bool	ps.data,040000		"DU
+                        020000    7-34  	bool	ps.edit,020000		"DU
+                        010000    7-35  	bool	ps.list,010000		"DU
+                        004000    7-36  	bool	ps.get,004000		"DU
+                        002000    7-37  	bool	ps.put,002000		"DU
+                        001000    7-38  	bool	ps.page,001000		"DU
+                        000400    7-39  	bool	ps.line,000400		"DU
+                        000200    7-40  	bool	ps.skip,000200		"DU
+                        000100    7-41  	bool	ps.copy,000100		"DU
+                        000040    7-42  	bool	ps.p1p2,000040		"DU
+                        000020    7-43  	bool	ps.bit_string,000020	"DU
+                        000010    7-44  	bool	ps.char_string,000010	"DU
+                        000004    7-45  	bool	ps.read,000004		"DU
+                        000002    7-46  	bool	ps.write,000002		"DU
+                        000001    7-47  	bool	ps.rewrite,000001		"DU
+                        400000    7-48  	bool	ps.delete,400000		"DL
+                        200000    7-49  	bool	ps.locate,200000		"DL
+                        100000    7-50  	bool	ps.key,100000		"DL
+                        040000    7-51  	bool	ps.keyto,040000		"DL
+                        020000    7-52  	bool	ps.keyfrom,020000		"DL
+                        010000    7-53  	bool	ps.set,010000		"DL
+                        004000    7-54  	bool	ps.into,004000		"DL
+                        002000    7-55  	bool	ps.ignore,002000		"DL
+                        001000    7-56  	bool	ps.from,001000		"DL
+                        000003    7-57  	equ	ps.version_shift,3
+                        000077    7-58  	bool	ps.version_mask,000077
+                        000004    7-59  	bool	ps.not_byte_buffer,000004	"DL
+                        000001    7-60  	bool	ps.packed_ptr,000001	"DL
+                                  7-61  
+                        000027    7-62  	equ	ps.number,23
+                        000030    7-63  	equ	ps.value_p,24
+                        000032    7-64  	equ	ps.descriptor,26
+                        000033    7-65  	equ	ps.length,27
+                                  7-66  
+                        000034    7-67  	equ	ps.top_half,28		"UPPER
+                        000034    7-68  	equ	ps.offset,28		"LOWER
+                                  7-69  
+                        000035    7-70  	equ	ps.prep,29
+                        000036    7-71  	equ	ps.new_format,30
+                        000037    7-72  	equ	ps.switch,31		"LEVEL 2
+                                  7-73  
+                        400000    7-74  	bool	ps.first_field,400000	"DU
+                        200000    7-75  	bool	ps.file,200000		"DU
+                        100000    7-76  	bool	ps.transmit_error,100000	"DU
+                        040000    7-77  	bool	ps.semi_sep,040000		"DU
+                                  7-78  
+                        000040    7-79  	equ	ps.file_p,32
+                        000042    7-80  	equ	ps.fsbp,34
+                        000044    7-81  	equ	ps.auxp,36
+                        000046    7-82  	equ	ps.fabp,38
+                        000050    7-83  	equ	ps.fab2p,40
+                        000052    7-84  	equ	ps.vp,42
+                        000054    7-85  	equ	ps.descr,44
+                        000055    7-86  	equ	ps.start_copy,45
+                        000056    7-87  	equ	ps.quick_stream_storage,46	"LEVEL 2
+                                  7-88  
+                        000056    7-89  	equ	ps.a_stored,46
+                        000057    7-90  	equ	ps.q_stored,47
+                                  7-91  "	The following declaration was not created by cif:
+                        007700    7-92  	bool	ps.version_mask_inplace,0007700	"don't shift with this mask
+                                  7-93  
+                                  7-94       "END INCLUDE FILE plio2_ps.incl.alm
+                                    47  	include plio_format_codes
+                                   8-1  
+                                   8-2  
+                                   8-3       "BEGIN INCLUDE FILE plio_format_codes.incl.alm
+                                   8-4  
+                                   8-5  	"Created 12/16/75  1457.0 mst Tue by convert_include_file,
+                                   8-6  	"   Version of 12/12/75  1241.8 mst Fri.
+                                   8-7  
+                                   8-8  	"Made from >user_dir_dir>Multics>Schoeman>put_format>plio_format_codes.incl.pl1,
+                                   8-9  	"   modified 12/16/75  1456.6 mst Tue
+                                  8-10  
+                                  8-11  
+                        000000    8-12  	equ	r_paren,0			"MANIFEST
+                        000001    8-13  	equ	l_paren,1			"MANIFEST
+                        000002    8-14  	equ	r_format,2		"MANIFEST
+                        000003    8-15  	equ	c_format,3		"MANIFEST
+                        000004    8-16  	equ	f_format,4		"MANIFEST
+                        000005    8-17  	equ	e_format,5		"MANIFEST
+                        000006    8-18  	equ	b_format,6		"MANIFEST
+                        000007    8-19  	equ	a_format,7		"MANIFEST
+                        000010    8-20  	equ	x_format,8		"MANIFEST
+                        000011    8-21  	equ	skip_format,9		"MANIFEST
+                        000012    8-22  	equ	column_format,10		"MANIFEST
+                        000013    8-23  	equ	page_format,11		"MANIFEST
+                        000014    8-24  	equ	line_format,12		"MANIFEST
+                        000015    8-25  	equ	picture_format,13		"MANIFEST
+                        000016    8-26  	equ	bn_format,14		"MANIFEST
+                                  8-27  
+                                  8-28       "END INCLUDE FILE plio_format_codes.incl.alm
+                                    48  	include desc_types
+                                   9-1  
+                                   9-2  
+                                   9-3       "BEGIN INCLUDE FILE desc_types.incl.alm
+                                   9-4  
+                                   9-5  	"Created 12/18/75  1458.1 mst Thu by convert_include_file,
+                                   9-6  	"   Version of 12/12/75  1241.8 mst Fri.
+                                   9-7  
+                                   9-8  	"Made from >udd>m>rhs>put_format>desc_types.incl.pl1,
+                                   9-9  	"   modified 12/18/75  1423.4 mst Thu
+                                  9-10  
+                                  9-11  
+                        000002    9-12  	equ	s_fixed_real_desc,2		"MANIFEST
+                        000004    9-13  	equ	d_fixed_real_desc,4		"MANIFEST
+                        000006    9-14  	equ	s_float_real_desc,6		"MANIFEST
+                        000010    9-15  	equ	d_float_real_desc,8		"MANIFEST
+                        000012    9-16  	equ	s_fixed_cplx_desc,10	"MANIFEST
+                        000014    9-17  	equ	d_fixed_cplx_desc,12	"MANIFEST
+                        000016    9-18  	equ	s_float_cplx_desc,14	"MANIFEST
+                        000020    9-19  	equ	d_float_cplx_desc,16	"MANIFEST
+                        000022    9-20  	equ	D_fixed_real_desc,18	"MANIFEST
+                        000024    9-21  	equ	D_float_real_desc,20	"MANIFEST
+                        000026    9-22  	equ	D_fixed_cplx_desc,22	"MANIFEST
+                        000030    9-23  	equ	D_float_cplx_desc,24	"MANIFEST
+                        000032    9-24  	equ	pointer_desc,26		"MANIFEST
+                        000034    9-25  	equ	offset_desc,28		"MANIFEST
+                        000036    9-26  	equ	label_desc,30		"MANIFEST
+                        000040    9-27  	equ	entry_desc,32		"MANIFEST
+                        000042    9-28  	equ	structure_desc,34		"MANIFEST
+                        000044    9-29  	equ	area_desc,36		"MANIFEST
+                        000046    9-30  	equ	bit_desc,38		"MANIFEST
+                        000050    9-31  	equ	v_bit_desc,40		"MANIFEST
+                        000052    9-32  	equ	char_desc,42		"MANIFEST
+                        000054    9-33  	equ	v_char_desc,44		"MANIFEST
+                        000056    9-34  	equ	file_desc,46		"MANIFEST
+                                  9-35  
+                                  9-36       "END INCLUDE FILE desc_types.incl.alm
+                        000060      49  	equ	new_stack_size,48
+                        000073      50  	equ	max_dec_precision,59	this is system defined constant
+                        000057      51  	equ	w_temp,47		this temp is field width for e_format maniputlation
+                        000057      52  	equ	radix_fac_bits,47	this temp used in bn_format to hold bits to be index in hex_table
+                        000054      53  	equ	nval_temp,44
+                        000054      54  	equ	radix_factor,44
+                        000066      55  	equ	d_temp,54		num of decimal places for e_formats
+                        000060      56  	equ	k_temp,48
+                        000060      57  	equ	extra_bits,48
+                        000060      58  	equ	sd_temp,48
+                        000061      59  	equ	storage_taken,49
+                        000064      60  	equ	double_temp,52
+                        000076      61  	equ	temp,62
+                        000052      62  	equ	ps_ptr,42
+                        000054      63  	equ	source_val_type,44
+                        000055      64  	equ	source_val_scaleprec,45
+                        000055      65  	equ	b_temp,45
+                        000056      66  	equ	x7_stored,46	upper half of word only
+                        000066      67  	equ	int_val_type,54
+                        000057      68  	equ	int_val_scaleprec,47
+                                    69  "				qs_arg_list will clobber many variables if ever used from
+                                    70  "				pr6|, and it NEVER should be. It is to be used within the
+                                    71  "				region allocated as temporary workspace.
+                        000060      72  	equ	qs_arg_list,48
+                        000046      73  	equ	tbp,38
+                        000013      74  	segdef	put_edit_eis
+                        000013      75  	segdef	get_edit_eis
+                        001736      76  	segdef	put_terminate
+                        000001      77  	segdef	stream_prep
+    000000                          78  formats_mask:
+    000000  aa   000000 000017      79  	oct	000000000017
+                                    80  "
+                                    81  "	operator to prepare for an I/O operator (stream)
+                                    82  "
+                                    83  " stream_prep is executed once per put request, and as such should not
+                                    84  " be confused with "get_prep"
+                                    85  "  stream_prep sets several fields in the ps, which
+                                    86  " is the storage block associated with an io request, including "ps.prep",
+                                    87  " which when non-zero tells get_or put_ prep to do other preparatory  functions.
+                                    88  "
+    000001                          89  stream_prep:
+    000001  aa  6 00052 3501 20     90  	eppap	sp|ps_ptr,*	get ptr to ps
+    000002  aa  0 00012 2521 00     91  	spribp	ap|ps.abret	save label
+    000003  aa  0 00014 6521 00     92  	sprisp	ap|ps.abret+2
+    000004  aa  0 00026 7551 00     93  	sta	ap|ps.job		set job to do
+    000005  aa  0 00035 5541 00     94  	stc1	ap|ps.prep	set prep switch non-zero
+    000006  aa   000012 6260 00     95  	eax6	10		assume this is get prep
+    000007  aa   002000 3150 03     96  	cana	=o002000,du	check for put bit
+    000010  4a  4 00010 6001 20     97  	tze	<pl1_operators_>|[plio4]	go make call to get_prep_ if bit off
+    000011  aa   000013 6260 00     98  	eax6	11		this means its a put_prep call
+    000012  4a  4 00010 7101 20     99  	tra	<pl1_operators_>|[plio4]	and away we go
+                                   100  "
+                                   101  "	operator for get edit entered with ptr to datum in bp,
+                                   102  "	offset in x7, descriptor in q
+                                   103  "
+    000013                         104  get_edit_eis:
+                                   105  "	epp4	sp|ps_ptr,*	pr4 will point to ps throughout
+                                   106  "	sxl7	sp|ps.offset
+                                   107  "	tra	put_and_get_merge
+                                   108  "
+                                   109  " 	Operator to do put edits, entered with descriptor in q and pointer to value
+                                   110  "	in the bp, and the offset, for pictures, in the a.
+                                   111  "
+                                   112  "	The first  section of code, up to the transfer vector called
+                                   113  "	"action", walks the format list, evaluates any variables
+                                   114  "	found, and creates a secondary, pre-processed format list,
+                                   115  "	which is then used by the code which does the
+                                   116  "	format-driven conversions. The original format list is
+                                   117  "	pointed to by ps.special_list_p, and the structure of
+                                   118  "	the format items on it is described by plio_fb. The fully
+                                   119  "	processed format list is pointed to by pr5, and its structure
+                                   120  "	is plio_sb. fb is mnemonic for format block, and sb is for
+                                   121  "	storage block. This format list processing is used by both
+                                   122  "	output, in which case the format conversions are done by the
+                                   123  "	latter part of put_format_, and by input, in which case the
+                                   124  "	conversion part is done by plio2_qge_ (which stands for
+                                   125  "	quick_get_edit_).
+    000013                         126  put_edit_eis:
+    000013  aa  6 00052 3701 20    127  	epp4	sp|ps_ptr,*	pr4 will point to the ps throughout this code
+    000014  aa  4 00034 7551 00    128  	sta	pr4|ps.offset	since the a has the offset for the picture
+    000015                         129  put_and_get_merge:
+    000015  aa  4 00054 7561 00    130  	stq	pr4|ps.descr	since the q has the descriptor
+    000016  aa  4 00057 7561 00    131  	stq	pr4|ps.q_stored	we also must save it here, for final restoration after put_field_
+    000017  aa  4 00056 7551 00    132  	sta	pr4|ps.a_stored	same here.
+    000020  aa  6 00056 7471 00    133  	stx7	sp|x7_stored	we cannot clobber any regs but a,q,bases,x0, and x1
+    000021  aa  4 00030 2521 00    134  	spri2	pr4|ps.value_p	we were entered with ptr->value in bp
+    000022  aa  4 00006 3715 20    135  	epp5	pr4|ps.format_area_p,*	pr5 points to the original format thruout
+    000023  aa  6 00037 4401 00    136  	sxl0	sp|stack_frame.operator_ret_ptr	this needed to return from any_to_any
+    000024  aa   000360 2360 07    137  	ldq	240,dl
+    000025  4a  4 00012 7011 20    138  	tsx1	<pl1_operators_>|[alloc]
+    000026  aa  5 00030 2521 00    139  	spribp	pr5|plio_sb.space_ptr		this is temporary work space
+    000027  aa  4 00036 2351 00    140  	lda	pr4|ps.new_format	this flag,if not 0,means we are handling a new format list 
+    000030  0a   000044 6000 00    141  	tze	test_currep	not the first so  dont initialize,else
+                                   142  "				set up the sb format "model" from scratch, and initialize some stuff
+    000031                         143  init_format:
+    000031  aa  5 00026 4501 00    144  	stz	pr5|plio_sb.stk_index	init to zero,though plio2_fl_.pl1 inits to 1
+    000032  aa  5 00017 4501 00    145  	stz	pr5|plio_sb.cur_rep	init to zero
+    000033  aa  4 00036 4501 00    146  	stz	pr4|ps.new_format	no longer a new format since were initializing it
+    000034  0a   001742 3534 20    147  	epp3	null_loc,*
+    000035  aa  5 00044 2535 00    148  	spri3	pr5|plio_sb.sf1p
+    000036  aa  5 00050 2535 00    149  	spri3	pr5|plio_sb.fe1p
+    000037  aa  5 00046 6521 00    150  	spri6	pr5|plio_sb.sf2p
+    000040  aa  4 00022 3535 20    151  	epp3	pr4|ps.special_list_p,*	this is set to the beginning of the formats
+    000041  aa  5 00022 2535 00    152  	spri3	pr5|plio_sb.cur_fep	so it is the first format_ptr
+    000042  aa  3 00001 3535 00    153  	epp3	pr3|1		the 1st word is zeros to identify this as the start of a format list
+    000043  aa  5 00052 2535 00    154  	spri3	pr5|plio_sb.fe2p	so for real use set the ptr one ahead
+                                   155  "			if the current rep factor>0,use the current format in the sb
+    000044                         156  test_currep:
+    000044  aa  5 00022 3735 20    157  	epp7	pr5|plio_sb.cur_fep,*	else follow the ptr in the last format to the next one & load the sb
+    000045  aa  5 00017 2351 00    158  	lda	pr5|plio_sb.cur_rep	However,if this is the 1st,we get the initial values from xx2p's, set
+    000046  0a   000072 6000 00    159  	tze	test_offset	in init_format.
+                                   160  "
+                                   161  "	this is the format to do since the currep is > 0
+                                   162  "
+    000047  aa   000001 1750 07    163  	sba	1,dl		1st decrement currep, since we're finally using fep's fields
+    000050  aa  5 00017 7551 00    164  	sta	pr5|plio_sb.cur_rep
+    000051  aa  5 00000 2351 00    165  	lda	pr5|plio_sb.type
+    000052  aa   000003 1150 07    166  	cmpa	c_format,dl	if c_format we must set the real & imag formats in plio_sb.val(2) and plio_sb.val(3),
+    000053  0a   000176 6000 00    167  	tze	exec_c_format	else we only eval current fep's arguments and set plio_sb.val(1)'s values to them
+    000054  aa   000015 1150 07    168  	cmpa	picture_format,dl	and we're done. p_format's, however,get evaluated differently.
+    000055  0a   000165 6010 00    169  	tnz	format_decoded
+    000056  aa   000000 2360 07    170  	ldq	0,dl
+    000057  0a   000355 6200 00    171  	eax0	got_format	after decode_format,we want to go staight to got_format
+                                   172  "
+    000060                         173  decode_pic_format:
+    000060  aa  7 00002 2351 00    174  	lda	pr7|plio_fb.val	the picture image is at format's addr up the 1st value
+    000061  aa  7 00000 3535 05    175  	epp3	pr7|0,al		so now pr3 points to it
+    000062  aa   000005 4020 07    176  	mpy	5,dl		each set-of-values frame in the plio_fb structure is 5 wds long
+    000063  aa   000002 2350 07    177  	lda	2,dl		so skip to the frame index which was in q on entry
+    000064  aa  5 00001 7551 06    178  	sta	pr5|plio_sb.nval,ql	set fframe's nval to 3
+    000065  aa  3 00001 2351 00    179  	lda	pr3|1		pic_image.varlength is up one,leftmost f.bin.(8)
+    000066  aa   000033 7710 00    180  	arl	27		get pure pic_image.varlength
+    000067  aa  5 00002 7551 06    181  	sta	pr5|plio_sb.val_1,ql	which is to be the 1st  value
+    000070  aa  5 00003 5431 06    182  	sprp3	pr5|plio_sb.val_2,ql	store as val_2 a ptr to the picture_image
+    000071  aa   000000 7100 10    183  	tra	0,0		and return through x0, since we were tsx0'd here
+                                   184  "
+                                   185  "			Try to get the next format from the ptr in the last one. If its 0,we are
+    000072                         186  test_offset:
+    000072  aa  7 00000 7211 00    187  	lxl1	pr7|plio_fb.offset	at the end of a format list and must be in 1 of 3 cases--a)About to do
+    000073  0a   000142 6000 00    188  	tze	test_stk_index	the 1st format,initialized in init_format b)in a non-mainstream format list
+    000074  aa  7 00000 3735 11    189  	epp7	pr7|0,1		reached thru a r_format c)at the end of the list & should start over from top.
+    000075  aa  5 00022 6535 00    190  	spri7	pr5|plio_sb.cur_fep	we just set the format-ptr to plio_fb.offset
+                                   191  "				since we have a new format,eval rep factor & set currep to it
+    000076                         192  eval_rep:
+    000076  aa  7 00001 2361 00    193  	ldq	pr7|plio_fb.rep
+    000077  aa   000002 6050 04    194  	tpl	2,ic		if it is >0, it is a constant and needn't be evaluated
+    000100  0a   000402 7060 00    195  	tsx6	decode_q		else we must call stu_
+    000101  aa  5 00017 7561 00    196  	stq	pr5|plio_sb.cur_rep
+    000102  aa  7 00000 2351 00    197  	lda	pr7|0		get the num of values in the format
+    000103  aa   000022 7710 00    198  	arl	plio_fb.nval_shift
+    000104  aa   000777 3750 07    199  	ana	plio_fb.nval_mask,dl
+    000105  aa  5 00001 7551 00    200  	sta	pr5|plio_sb.nval	sb hold our present values. It stands for storage_block.
+    000106  aa  7 00000 2351 00    201  	lda	pr7|0		now get the type code of the format
+    000107  aa   000033 7710 00    202  	arl	plio_fb.code_shift	since we're shifting 27 we needn't mask the remaining 9 bits
+    000110  aa  5 00000 7551 00    203  	sta	pr5|plio_sb.type
+    000111  aa   000003 1150 07    204  	cmpa	c_format,dl	if >c_format, is a simple type.. if <, us r_format or l_paren,etc.
+    000112  0a   000044 6054 00    205  	tpnz	test_currep	if a_,b_,e_,f_,p_format, off we go
+    000113  aa   000001 1160 07    206  	cmpq	1,dl		q still has currep, if 0 we want next format
+    000114  0a   000072 6040 00    207  	tmi	test_offset
+    000115  aa   000003 1150 07    208  	cmpa	c_format,dl	if c_format there two sets of values to fill
+    000116  0a   000260 6000 00    209  	tze	c_format_to_sb
+    000117  aa  5 00026 0541 00    210  	aos	pr5|plio_sb.stk_index	must be a case which requires another stack frame in the sb
+    000120  aa  5 00026 2361 00    211  	ldq	pr5|plio_sb.stk_index	i.e. either r_format or l_paren
+    000121  aa   000011 1160 07    212  	cmpq	9,dl		check that max nesting depth is not exceeded
+    000122  aa   000003 6044 04    213  	tmoz	3,ic
+    000123  aa   000014 2350 07    214  	lda	12,dl
+    000124  4a  4 00014 7101 20    215  	tra	<put_field_>|[any_qs_error_no_ret]
+    000125  aa   000012 4020 07    216  	mpy	10,dl		each stack frame takes up 9 words, so this gets the offset
+    000126  aa  5 00020 3515 20    217  	epp1	pr5|plio_sb.cur_sfp,*	now set the new frame's values to the current format
+    000127  aa  5 00044 2515 06    218  	spri1	pr5|plio_sb.sf1p,ql
+    000130  aa  5 00050 6535 06    219  	spri7	pr5|plio_sb.fe1p,ql	pr7,now as always,points to the format item
+    000131  aa  5 00017 2351 00    220  	lda	pr5|plio_sb.cur_rep	we clobbered the q during multiplication,so it isn't currep like usual
+    000132  aa  5 00054 7551 06    221  	sta	pr5|plio_sb.rep,ql	set the frame's rep factor
+    000133  aa  5 00000 2351 00    222  	lda	pr5|plio_sb.type	and it's type
+    000134  aa   000002 1150 07    223  	cmpa	r_format,dl	r_format's values need stu_ to get them, while l_paren's are easier
+    000135  0a   000313 6000 00    224  	tze	r_format_to_sb
+    000136  aa  5 00046 2515 06    225  	spri1	pr5|plio_sb.sf2p,ql	this is l_paren,set sf2p to the current sfp--stack_frame_ptr
+    000137  aa  7 00002 2351 00    226  	lda	pr7|plio_fb.val	and set the fe2p to current format_ptr up its own val(1)
+    000140  aa  7 00000 3535 05    227  	epp3	pr7|0,al
+    000141  aa  5 00052 2535 06    228  	spri3	pr5|plio_sb.fe2p,ql	we used pr3 cause we didn't want to clobber pr7, which always is the fep
+                                   229  "			test stack index, if=1 we're at the bottom of the stack & should continue
+    000142                         230  test_stk_index:
+    000142  aa  5 00026 2361 00    231  	ldq	pr5|plio_sb.stk_index	with the xx2p ptrs, else if the frame's rep factor>0 use it over
+    000143  aa   000012 4020 07    232  	mpy	10,dl
+    000144  0a   000151 6000 00    233  	tze	use_2s		again & decrement the rep factor, else use the xx1p ptrs and decrement
+    000145  aa  5 00054 2351 06    234  	lda	pr5|plio_sb.rep,ql	the stack index
+    000146  0a   000156 6000 00    235  	tze	use_1s
+    000147  aa   000001 1750 07    236  	sba	1,dl
+    000150  aa  5 00054 7551 06    237  	sta	pr5|plio_sb.rep,ql
+                                   238  "				this means use the xx2p ptrs and reenter the mainstream
+    000151                         239  use_2s:
+    000151  aa  5 00052 3735 26    240  	epp7	pr5|plio_sb.fe2p,ql*	pr7 will be the format ptr, fep
+    000152  aa  5 00022 6535 00    241  	spri7	pr5|plio_sb.cur_fep	and store it
+    000153  aa  5 00046 3535 26    242  	epp3	pr5|plio_sb.sf2p,ql*
+    000154  aa  5 00020 2535 00    243  	spri3	pr5|plio_sb.cur_sfp	cur_sfp will be taken from plio_sb.sf2p
+    000155  0a   000076 7100 00    244  	tra	eval_rep
+                                   245  "
+                                   246  "				set the sfp, fep from the frame's xx1p's and decrement stack frame index
+    000156                         247  use_1s:
+    000156  aa  5 00044 3535 26    248  	epp3	pr5|plio_sb.sf1p,ql*
+    000157  aa  5 00020 2535 00    249  	spri3	pr5|plio_sb.cur_sfp
+    000160  aa  5 00050 3735 26    250  	epp7	pr5|plio_sb.fe1p,ql*
+    000161  aa  5 00022 6535 00    251  	spri7	pr5|plio_sb.cur_fep	q had the stck index times 10 to yield the offset, remember
+    000162  aa   000001 3360 07    252  	lcq	1,dl
+    000163  aa  5 00026 0561 00    253  	asq	pr5|plio_sb.stk_index
+    000164  0a   000072 7100 00    254  	tra	test_offset	and rejoin the mainstream
+                                   255  "
+                                   256  "
+                                   257  "			this is the only way to get out of this routine
+                                   258  "
+    000165                         259  format_decoded:
+    000165  aa   000000 2350 03    260  	lda	0,du		this means the format has been decoded,so start the evaluation loop
+    000166                         261  eval_loop:
+    000166  aa  5 00001 1151 00    262  	cmpa	pr5|plio_sb.nval	have we eval'd as many args as there are?
+    000167  0a   000355 6000 00    263  	tze	got_format	if so, the format list walk is over
+    000170  aa  7 00002 2361 05    264  	ldq	pr7|plio_fb.val,al	otherwise, load the format's value
+    000171  aa   000002 6050 04    265  	tpl	2,ic		if non-negative, its a constant so no stu_ call
+    000172  0a   000402 7060 00    266  	tsx6	decode_q		if negative, call stu_ to decode it
+    000173  aa  5 00002 7561 05    267  	stq	pr5|plio_sb.val,al	store it in the sb storage block
+    000174  aa   000001 0750 07    268  	ada	1,dl		add one to the value count
+    000175  0a   000166 7100 00    269  	tra	eval_loop		and loop over again
+                                   270  "
+    000176                         271  exec_c_format:
+    000176  aa  5 00007 4501 00    272  	stz	pr5|7		zero out the real, imag value fields
+    000177  aa  5 00010 4501 00    273  	stz	pr5|8
+    000200  aa  5 00011 4501 00    274  	stz	pr5|9
+    000201  aa  5 00014 4501 00    275  	stz	pr5|12
+    000202  aa  5 00015 4501 00    276  	stz	pr5|13
+    000203  aa  5 00016 4501 00    277  	stz	pr5|14
+    000204  0a   001732 7060 00    278  	tsx6	check_for_param	if there are no parameters it is an error
+    000205  aa  6 00054 7561 00    279  	stq	sp|nval_temp	check_for_param checks that plio_sb.nval>0 and leaves it in the q
+    000206  aa  5 00002 2351 00    280  	lda	pr5|plio_sb.val	the ptr to the real format is addrel(cur_fep,val_1)
+    000207  aa  5 00022 3735 65    281  	epp7	pr5|plio_sb.cur_fep,*al	so figure out ptr to the real format
+    000210  aa  5 00005 2361 00    282  	ldq	pr5|5		plio_sb.type(2),i.e. real format parts
+    000211  aa   000015 1160 07    283  	cmpq	picture_format,dl	if  its a picture format we must decode
+    000212  aa   000004 6010 04    284  	tnz	4,ic		otherwise we dont have to
+                                   285  "
+    000213  0a   000227 6200 00    286  	eax0	real_part_ok	after decoding the pis format we want to go here
+    000214  aa   000001 2360 07    287  	ldq	1,dl		since it is the second value frame in the sb for the results
+    000215  0a   000060 7100 00    288  	tra	decode_pic_format
+                                   289  "
+    000216  aa   000000 2350 07    290  	lda	0,dl		now eval each of the values in the format block's real part
+    000217                         291  real_loop:
+    000217  aa  5 00006 1151 00    292  	cmpa	pr5|6		plio_sb.nval(2), real part
+    000220  0a   000227 6050 00    293  	tpl	real_part_ok	this means they are all eval'd
+    000221  aa  7 00002 2361 05    294  	ldq	pr7|plio_fb.val,al	else get the next one
+    000222  aa   000002 6050 04    295  	tpl	2,ic		if its negative we must call stu_ to decode it
+    000223  0a   000402 7060 00    296  	tsx6	decode_q
+    000224  aa  5 00007 7561 05    297  	stq	pr5|7,al		2nd formats values start at 7
+    000225  aa   000001 0750 07    298  	ada	1,dl		and reloop evaluating the next value
+    000226  0a   000217 7100 00    299  	tra	real_loop
+    000227                         300  real_part_ok:
+    000227  aa  6 00054 2361 00    301  	ldq	sp|nval_temp
+    000230  aa   000002 1160 07    302  	cmpq	2,dl		if there's only 1 then only one format given for both imag & real
+    000231  0a   000254 6040 00    303  	tmi	imag_like_real
+    000232  aa  5 00022 3735 20    304  	epp7	pr5|plio_sb.cur_fep,*	else we must figure out imag format
+    000233  aa  5 00003 2351 00    305  	lda	pr5|plio_sb.val_2	this is offset for imag format's format item
+    000234  aa  7 00000 3735 05    306  	epp7	pr7|0,al		set up a correct ptr to it in pr7
+    000235  aa  5 00012 2361 00    307  	ldq	pr5|10		this is the format-type of imag format
+    000236  aa   000015 1160 07    308  	cmpq	picture_format,dl
+    000237  aa   000004 6010 04    309  	tnz	4,ic		if its not picture do not call decode_pic
+    000240  aa   000002 2360 07    310  	ldq	2,dl		this tells decode_pic which format-frame to store results in
+    000241  0a   000355 6200 00    311  	eax0	got_format	this is where to return to after decode_pic is done
+    000242  0a   000060 7100 00    312  	tra	decode_pic_format	and off we go
+    000243  aa   000000 2350 07    313  	lda	0,dl		now evaluate format block's values one by one
+    000244                         314  imag_loop:
+    000244  aa  5 00013 1151 00    315  	cmpa	pr5|11		this is imag format's nval,if = we've eval'd them all
+    000245  0a   000355 6050 00    316  	tpl	got_format	if we've eval'd them all we've finished the format-list walk!
+    000246  aa  7 00002 2361 05    317  	ldq	pr7|plio_fb.val,al	otherwise eval the next  one
+    000247  aa   000002 6050 04    318  	tpl	2,ic
+    000250  0a   000402 7060 00    319  	tsx6	decode_q
+    000251  aa  5 00014 7561 05    320  	stq	pr5|12,al		and store it into the sb block
+    000252  aa   000001 0750 07    321  	ada	1,dl		add one to our count
+    000253  0a   000244 7100 00    322  	tra	imag_loop		and continue
+                                   323  "
+    000254                         324  imag_like_real:
+    000254  aa  0 00100 1005 00    325  	mlr	(pr),(pr)		we're here if only one format given within c_format,so
+    000255  aa   500007 000014     326  	desc9a	pr5|7,12		just move all the sb's real values to the sb imag-values
+    000256  aa   500014 000014     327  	desc9a	pr5|12,12		section and we're done
+    000257  0a   000355 7100 00    328  	tra	got_format
+                                   329  "
+    000260                         330  c_format_to_sb:
+    000260  aa  0 00100 1005 00    331  	mlr	(pr),(pr)		move fields from format block to sb
+    000261  aa   700002 000014     332  	desc9a	pr7|plio_fb.val,12
+    000262  aa   500002 000014     333  	desc9a	pr5|plio_sb.val,12
+    000263  0a   001732 7060 00    334  	tsx6	check_for_param	if nval<1 there is an error
+    000264  aa  5 00022 3735 20    335  	epp7	pr5|plio_sb.cur_fep,*	get ptr to the first value in format block
+    000265  aa  7 00002 7201 00    336  	lxl0	pr7|plio_fb.val_1	use it as offset to the real format's block--real vs.cplx
+    000266  aa  7 00000 2351 10    337  	lda	pr7|0,x0
+    000267  aa   000033 7710 00    338  	arl	plio_fb.code_shift	get the real part of the format's type code
+    000270  aa   000777 3750 07    339  	ana	plio_fb.code_mask,dl
+                                   340  
+    000271  aa  5 00005 7551 00    341  	sta	pr5|5		and store it in storage block's fields for the real part
+    000272  aa  7 00000 2361 10    342  	ldq	pr7|0,x0		now go after the real part's nval
+    000273  aa   000022 7720 00    343  	qrl	plio_fb.nval_shift
+    000274  aa   000777 3760 07    344  	anq	plio_fb.nval_mask,dl
+    000275  aa  5 00006 7561 00    345  	stq	pr5|6		and store it in plio_sb.real-part's nval
+    000276  aa  5 00001 7261 00    346  	lxl6	pr5|plio_sb.nval	now see if a separate imag format was even specified
+    000277  aa   000002 1060 03    347  	cmpx6	2,du		if it was nval>1,  and extract & store the imag part's type &nval
+    000300  0a   000303 6050 00    348  	tpl	set_imag		which is done in set_imag
+    000301                         349  store_imag:
+    000301  aa  5 00012 7571 00    350  	staq	pr5|10		else just repeat the real part's values for plio_sb.imag's type, nval
+    000302  0a   000044 7100 00    351  	tra	test_currep	and were finished setting the cplx format's real,imag type, nval
+                                   352  "
+    000303                         353  set_imag:
+    000303  aa  7 00003 7201 00    354  	lxl0	pr7|plio_fb.val_2	get offset to imag part of complex format
+    000304  aa  7 00000 2351 10    355  	lda	pr7|0,x0		load the first word, which contains the type code
+    000305  aa   000033 7710 00    356  	arl	plio_fb.code_shift	extract it
+    000306  aa   000777 3750 07    357  	ana	plio_fb.code_mask,dl
+    000307  aa  7 00000 2361 10    358  	ldq	pr7|0,x0		extrace the nval,too--number of values
+    000310  aa   000022 7720 00    359  	qrl	plio_fb.nval_shift
+    000311  aa   000777 3760 07    360  	anq	plio_fb.nval_mask,dl
+    000312  0a   000301 7100 00    361  	tra	store_imag	and store them in plio_sb.imag part's type,nval
+                                   362  "
+    000313                         363  r_format_to_sb:
+    000313  aa  5 00030 3501 20    364  	epp0	pr5|plio_sb.space_ptr,*	to evaluate remote format we must 1st call stu$remote_format
+    000314  aa  7 00002 3701 00    365  	epp4	pr7|plio_fb.val	1st arg is plio_fb.val_1, which gets eval'd to the rmote format
+    000315  aa  0 00002 6501 00    366  	spri4	pr0|2		store it in arg list
+    000316  aa  5 00020 3701 00    367  	epp4	pr5|plio_sb.cur_sfp	2nd arg is stack_frame ptr to frame of format, not necessarily ours!
+    000317  aa  0 00004 6501 00    368  	spri4	pr0|4
+    000320  0a   001742 3700 00    369  	epp4 	null_loc		3rd arg is null
+    000321  aa  0 00006 6501 00    370  	spri4	pr0|6
+    000322  aa  0 00024 3701 00    371  	epp4	pr0|20		4th arg is a label(4 wds) in which to store loc of value of remote format
+    000323  aa  0 00010 6501 00    372  	spri4	pr0|8
+    000324  aa  0 00030 3701 00    373  	epp4	pr0|24		last arg is return value, which is error code
+    000325  aa  0 00012 6501 00    374  	spri4	pr0|10
+    000326  aa  6 00010 7531 00    375  	sreg	sp|8		and now do the call
+    000327  aa   024000 4310 07    376  	fld	5*2048,dl		5 args in all
+    000330  aa  0 00000 7571 00    377  	staq	pr0|0
+    000331  4a  4 00016 7011 20    378  	tsx1	<pl1_operators_>|[get_our_lp]
+    000332  aa  6 00024 3571 00    379  	stcd	sp|stack_frame.return_ptr
+    000333  4a  4 00020 7131 20    380  	callsp	<stu_>|[remote_format]
+    000334  aa  6 00010 0731 00    381  	lreg	sp|8
+    000335  aa  6 00052 3701 20    382  	epp4	sp|ps_ptr,*	restore ptr registers
+    000336  aa  4 00006 3715 20    383  	epp5	pr4|ps.format_area_p,*
+    000337  aa  5 00022 3735 20    384  	epp7	pr5|plio_sb.cur_fep,*
+    000340  aa  5 00030 3535 20    385  	epp3	pr5|plio_sb.space_ptr,*
+    000341  aa  3 00030 2361 00    386  	ldq	pr3|24		check error code
+    000342  aa   000003 6000 04    387  	tze	3,ic		if zero there's no problem
+    000343  aa   000013 2350 07    388  	lda	11,dl		else raise an error
+    000344  4a  4 00014 7101 20    389  	tra	<put_field_>|[any_qs_error_no_ret]
+    000345  aa  3 00026 3521 20    390  	epp2	pr3|22,*		get the format value's stack frame ptr
+    000346  aa  5 00026 2361 00    391  	ldq	pr5|plio_sb.stk_index
+    000347  aa   000012 4020 07    392  	mpy	10,dl		store each of the 2 ptrs making  up the label figured out by stu_
+    000350  aa  5 00046 2521 06    393  	spri2	pr5|plio_sb.sf2p,ql	into the right fields in the sb
+    000351  aa  3 00024 3521 20    394  	epp2	pr3|20,*		get fe pointer
+    000352  aa  2 00001 3521 00    395  	epp2	pr2|1		since the 1st word is a flag word of all zero's
+    000353  aa  5 00052 2521 06    396  	spri2	pr5|plio_sb.fe2p,ql
+    000354  0a   000142 7100 00    397  	tra	test_stk_index	and we're done
+                                   398  "
+    000355                         399  got_format:
+    000355  aa  5 00000 2351 00    400  	lda	pr5|plio_sb.type	transfer through a table to the right type-specific action
+    000356  aa  4 00026 2361 00    401  	ldq	pr4|ps.job
+    000357  aa   002000 3160 03    402  	canq	=o002000,du	check the put bit
+    000360  0a   000440 6010 05    403  	tnz	action-3,al	the name of the table is action
+    000361  0a   000454 7160 05    404  	xec	get_code-3,al	sp|temp will be 0 for data's, non-zero for stls
+    000362  aa  5 00030 3735 20    405  	epp7	pr5|plio_sb.space_ptr,*
+    000363  aa  6 00052 3701 00    406  	epp4	sp|ps_ptr		else set up the call to plio2_$quick_get_edit
+    000364  aa  7 00062 6501 00    407  	spri4	pr7|qs_arg_list+2	1st arg is ps ptr
+    000365  aa  6 00010 7531 00    408  	sreg	sp|8
+    000366  aa   004000 4310 07    409  	fld	1*2048,dl
+    000367  aa  7 00060 7571 00    410  	staq	pr7|qs_arg_list
+    000370  aa  7 00060 3501 00    411  	eppap	pr7|qs_arg_list	the qge stands for quick_get_edit, naturellement
+    000371  4a  4 00016 7011 20    412  	tsx1	<pl1_operators_>|[get_our_lp]
+    000372  aa  6 00024 3571 00    413  	stcd	sp|stack_frame.return_ptr
+    000373  4a  4 00022 7131 20    414  	callsp	<plio2_>|[quick_get_edit_]
+    000374  aa  6 00010 0731 00    415  	lreg	sp|8
+    000375  aa  6 00076 2361 00    416  	ldq	sp|temp
+    000376  0a   000523 6010 00    417  	tnz	ret_from_control
+    000377  aa  6 00037 7201 00    418  	lxl0	sp|stack_frame.operator_ret_ptr
+    000400  aa  6 00037 4501 00    419  	stz	sp|stack_frame.operator_ret_ptr
+    000401  4a  4 00024 7101 20    420  	tra	<put_field_>|[restore_regs_and_frame_and_ret]
+                                   421  "
+    000402                         422  decode_q:
+    000402  aa  6 00064 6535 00    423  	spri7	sp|double_temp	this code calls stu_$decode_runtime_value to decode the value
+    000403  aa  5 00030 3501 20    424  	epp0	pr5|plio_sb.space_ptr,*	which is in q on entry, and leaves the decoded value in q whin it
+    000404  aa  0 00024 7561 00    425  	stq	pr0|20		returns to the location in the operator which is in x6
+    000405  aa  0 00026 3701 00    426  	epp4	pr0|22		arg8 will be return value, which will be at pr0|22
+    000406  aa  0 00020 6501 00    427  	spri4	pr0|16		so put ptr to it in arg list as arg 8
+    000407  aa  0 00024 3701 00    428  	epp4	pr0|20
+    000410  aa  0 00002 6501 00    429  	spri4	pr0|2		arg1 is the value to eval
+    000411  aa  5 00020 3701 00    430  	epp4	pr5|plio_sb.cur_sfp
+    000412  aa  0 00006 6501 00    431  	spri4	pr0|6		arg3 is the stack_frame_p for the stack frame in which the value is
+    000413  aa  0 00025 3701 00    432  	epp4 	pr0|21
+    000414  aa  0 00016 6501 00    433  	spri4	pr0|14		arg7 is the returned error code
+    000415  0a   001742 3700 00    434  	epp4 	null_loc
+    000416  aa  0 00004 6501 00    435  	spri4	pr0|4		arg2 is null
+    000417  aa  0 00010 6501 00    436  	spri4	pr0|8		as is arg4
+    000420  aa  0 00012 6501 00    437  	spri4	pr0|10		arg5 is also null
+    000421  aa  0 00014 6501 00    438  	spri4	pr0|12		arg6 is also null
+    000422  aa  6 00010 7531 00    439  	sreg	sp|8		now do the call
+    000423  aa   040000 4310 07    440  	fld	8*2048,dl		there were 8 args including the return value which is the decoded value
+    000424  aa  0 00000 7571 00    441  	staq	pr0|0
+    000425  4a  4 00016 7011 20    442  	tsx1	<pl1_operators_>|[get_our_lp]
+    000426  aa  6 00024 3571 00    443  	stcd	sp|stack_frame.return_ptr
+    000427  4a  4 00026 7131 20    444  	callsp	<stu_>|[decode_runtime_value]
+    000430  aa  6 00010 0731 00    445  	lreg	sp|8
+    000431  aa  6 00052 3701 20    446  	epp4	sp|ps_ptr,*	restore ptr registers
+    000432  aa  4 00006 3715 20    447  	epp5	pr4|ps.format_area_p,*
+    000433  aa  6 00064 3735 20    448  	epp7	sp|double_temp,*	we saved pr7 in double_temp for the duration of this call
+    000434  aa  5 00030 3535 20    449  	epp3	pr5|plio_sb.space_ptr,*
+    000435  aa  3 00025 2361 00    450  	ldq	pr3|21		check returned error code, if non-zero raise error
+    000436  aa   000003 6000 04    451  	tze	3,ic
+    000437  aa   000013 2350 07    452  	lda	11,dl
+    000440  4a  4 00014 7101 20    453  	tra	<put_field_>|[any_qs_error_no_ret]
+    000441  aa  3 00026 2361 00    454  	ldq	pr3|22		return value is here, put it in q
+    000442  aa   000000 7100 16    455  	tra	0,6		and return to caller with evaluated value in q
+                                   456  "
+                                   457  "	what follows is the transfer table to the format-specific action
+                                   458  "	dictated by the format type,See include file  plio_format_codes for
+                                   459  "	numeric values of the differet format types
+    000443                         460  action:
+    000443  0a   001043 7100 00    461  	tra	do_c_format
+    000444  0a   001372 7100 00    462  	tra	do_f_format
+    000445  0a   001111 7100 00    463  	tra	do_e_format
+    000446  0a   000645 7100 00    464  	tra	do_b_format
+    000447  0a   000530 7100 00    465  	tra	do_a_format
+    000450  0a   000473 7100 00    466  	tra	do_x_format
+    000451  0a   000516 7100 00    467  	tra	do_skip_format
+    000452  0a   000502 7100 00    468  	tra	do_col_format
+    000453  0a   000500 7100 00    469  	tra	do_page_format
+    000454  0a   000510 7100 00    470  	tra	do_line_format
+    000455  0a   001547 7100 00    471  	tra	do_pic_format
+    000456  0a   000743 7100 00    472  	tra	do_bn_format
+                                   473  "
+    000457                         474  get_code:
+    000457  aa  6 00076 4501 00    475  	stz	sp|temp
+    000460  aa  6 00076 4501 00    476  	stz	sp|temp
+    000461  aa  6 00076 4501 00    477  	stz	sp|temp
+    000462  aa  6 00076 4501 00    478  	stz	sp|temp
+    000463  aa  6 00076 4501 00    479  	stz	sp|temp
+    000464  aa  6 00076 3571 00    480  	stcd	sp|temp
+    000465  aa  6 00076 3571 00    481  	stcd	sp|temp
+    000466  aa  6 00076 3571 00    482  	stcd	sp|temp
+    000467  aa  6 00076 3571 00    483  	stcd	sp|temp
+    000470  aa  6 00076 3571 00    484  	stcd	sp|temp
+    000471  aa  6 00076 4501 00    485  	stz	sp|temp
+    000472  aa  6 00076 4501 00    486  	stz	sp|temp
+                                   487  "
+    000473                         488  do_x_format:
+    000473  0a   001732 7060 00    489  	tsx6	check_for_param	x_format requires a parameter, else it is an error
+    000474  aa   000005 6260 00    490  	eax6	5		this is the code understood by put_field_$put_control for x format
+    000475  aa  5 00002 2361 00    491  	ldq	pr5|plio_sb.val_1	this is the parameter, or number of spaces to skip
+    000476  0a   000044 6000 00    492  	tze	test_currep	if its zero, ignore the format completely
+    000477  0a   000522 7100 00    493  	tra	do_control	else do the control
+    000500                         494  do_page_format:
+    000500  aa   000003 6260 00    495  	eax6	3		this is the code for page format which takes no parameter!
+    000501  0a   000522 7100 00    496  	tra	do_control
+                                   497  "
+    000502                         498  do_col_format:
+    000502  0a   001732 7060 00    499  	tsx6	check_for_param	this format requires a parameter
+    000503  aa   000002 6260 00    500  	eax6	2
+    000504  aa  5 00002 2361 00    501  	ldq	pr5|plio_sb.val_1	x6 has the format's code for put_control, q has the parameter itself
+    000505  0a   000522 6054 00    502  	tpnz	do_control
+    000506  aa   000001 2360 07    503  	ldq	1,dl		if the param was 0,make it 1 instead
+    000507  0a   000522 7100 00    504  	tra	do_control
+                                   505  "
+    000510                         506  do_line_format:
+    000510  0a   001732 7060 00    507  	tsx6	check_for_param
+    000511  aa   000004 6260 00    508  	eax6	4
+    000512  aa  5 00002 2361 00    509  	ldq	pr5|plio_sb.val_1
+    000513  0a   000522 6054 00    510  	tpnz	do_control
+    000514  aa   000011 2350 07    511  	lda	9,dl
+    000515  4a  4 00014 7101 20    512  	tra	<put_field_>|[any_qs_error_no_ret]
+                                   513  "
+    000516                         514  do_skip_format:
+    000516  aa   000001 6260 00    515  	eax6	1
+    000517  aa  5 00001 2361 00    516  	ldq	pr5|plio_sb.nval
+    000520  0a   000526 6000 00    517  	tze	no_skip_arg
+                                   518  "
+    000521                         519  do_most_controls:
+    000521  aa  5 00002 2361 00    520  	ldq	pr5|plio_sb.val_1
+    000522                         521  do_control:
+    000522  4a  4 00030 2711 20    522  	tsp1	<put_field_>|[put_control_from_format]
+    000523                         523  ret_from_control:
+    000523  aa  6 00052 3701 20    524  	epp4	sp|ps_ptr,*,
+    000524  aa  4 00006 3715 20    525  	epp5	pr4|ps.format_area_p,*	restore ptrs and continue with format-list walk
+    000525  0a   000044 7100 00    526  	tra	test_currep
+    000526                         527  no_skip_arg:
+    000526  aa   000001 2360 07    528  	ldq	1,dl
+    000527  0a   000522 7100 00    529  	tra	do_control
+                                   530  "
+                                   531  "	now for the data formats
+                                   532  "
+    000530                         533  do_a_format:
+    000530  aa  5 00030 3515 20    534  	epp1	pr5|plio_sb.space_ptr,*	it is my convention that pr1 points to the newly-alloc'd space
+    000531  aa  4 00054 2351 00    535  	lda	pr4|ps.descr	descr=0 means its a picture
+    000532  0a   000640 6000 00    536  	tze	a_f_pic_source
+    000533  0a   001744 3750 00    537  	ana	=o374000000000	otherwise,extract the source type from the descr
+    000534  aa   000034 7710 00    538  	arl	28
+    000535  aa   000052 1150 07    539  	cmpa	char_desc,dl	a is now the source type,lets filter out superquick conversons
+    000536  0a   000622 6000 00    540  	tze	char_to_char	character to char conversion can be superquick
+    000537  aa   000054 1150 07    541  	cmpa	v_char_desc,dl	as can varying_char to char
+    000540  0a   000611 6000 00    542  	tze	vchar_to_char
+    000541  0a   001334 7000 00    543  	tsx0	set_source_wa	any other situation is guaranteed to need an any_to_any conv.
+    000542                         544  a_f_source_ok:
+    000542  aa  5 00001 2351 00    545  	lda	pr5|plio_sb.nval	set_source_wa set the source regs used by a_to_a
+    000543  0a   000554 6000 00    546  	tze	no_len_given	if nval=0 no length given in a format
+    000544  aa  5 00002 2351 00    547  	lda	pr5|plio_sb.val_1	otherwise use it as the target length in a_to_a
+    000545  0a   000551 6010 00    548  	tnz	not_zero_targ		if a(0), must be pulled out,else assumed var str
+    000546                         549  ab_null_string:
+    000546  aa   000000 2360 07    550  	ldq	0,dl
+    000547  aa   000000 3520 00    551  	epp2	0			just to be safe
+    000550  0a   000606 7100 00    552  	tra	superquick_return
+                                   553  "
+    000551                         554  not_zero_targ:
+    000551  aa  5 00024 7551 00    555  	sta	pr5|plio_sb.format_len	we need it after the a_to_a call so save it
+    000552  aa   000052 6260 00    556  	eax6	char_desc		this is the target descriptor for a_to_a
+    000553  0a   000557 7100 00    557  	tra	source_been_set	and off to any_to_any and then put_field
+                                   558  "
+    000554                         559  no_len_given:
+    000554  aa  5 00024 4501 00    560  	stz	pr5|plio_sb.format_len	if no len given,make the target a varying char
+    000555  aa   000400 2350 07    561  	lda	256,dl		of max length 256 and store a 0 in format_len as a flag
+    000556  aa   000054 6260 00    562  	eax6	v_char_desc
+                                   563  "
+    000557                         564  source_been_set:
+    000557  aa  1 00102 3715 00    565  	epp5	pr1|66		pr5 points to work area of 156 words,starting at space|66
+                                   566  "	code to push a stack,needed for any_to_any call
+    000560  aa  6 00000 3731 00    567  	epbp7	pr6|0		point to stack header
+    000561  aa  6 00022 3521 20    568  	epp2	pr6|stack_frame.next_sp,*	point to next frame
+    000562  aa  2 00020 6521 00    569  	spri6	pr2|stack_frame.prev_sp	link next frame
+    000563  aa  2 00000 3721 00    570  	epp6	pr2|0
+    000564  aa  2 00060 3521 00    571  	epp2	pr2|new_stack_size
+    000565  aa  7 00024 2521 00    572  	spri2	pr7|stack_header.stack_end_ptr	store ptr to end of frame
+    000566  aa  6 00022 2521 00    573  	spri2	pr6|stack_frame.next_sp
+    000567  aa  6 00020 7201 00    574  	lxl0	pr6|stack_frame.flag_word	turn support bit on
+    000570  aa   000200 2600 03    575  	orx0	stack_frame.support_bit,du
+    000571  aa  6 00020 4401 00    576  	sxl0	pr6|stack_frame.flag_word
+    000572  0a   000572 3520 00    577  	epp2	*
+    000573  aa  6 00046 2525 00    578  	spbp2	pr6|tbp		set text_base_ptr
+    000574                         579  ata_call:
+    000574  4a  4 00032 7001 20    580  	tsx0	<any_to_any_>|[any_to_any_]	separate entry point for error signalling differences
+                                   581  "	code to pop my stack
+    000575                         582  after_ata_call:
+    000575  aa  6 00000 3731 00    583  	epbp7	pr6|0		point to stack header
+    000576                         584  	inhibit	on
+    000576  aa  7 00024 6523 00    585  	spri6	pr7|stack_header.stack_end_ptr
+    000577  aa  6 00020 3723 20    586  	epp6	pr6|stack_frame.prev_sp,*
+    000600                         587  	inhibit	off
+                                   588  "
+    000600  aa  6 00052 3501 20    589  	epp0	sp|ps_ptr,*	restore pointers
+    000601  aa  0 00006 3715 20    590  	epp5	pr0|ps.format_area_p,*
+    000602  aa  5 00030 3521 20    591  	epp2	pr5|plio_sb.space_ptr,*
+    000603                         592  af_return:
+    000603  aa  5 00024 2361 00    593  	ldq	pr5|plio_sb.format_len	put_field expects the output string's length in q
+    000604  aa   000002 6010 04    594  	tnz	2,ic		if it was zero, that means target was a varying string
+    000605  aa  2 77777 2361 00    595  	ldq	pr2|-1		so get the length from the length word at addr|-1
+    000606                         596  superquick_return:
+    000606  aa  6 00037 7201 00    597  	lxl0	sp|stack_frame.operator_ret_ptr	restore x0 to its value on entry to put_format
+    000607  aa  6 00037 4501 00    598  	stz	sp|stack_frame.operator_ret_ptr
+    000610  4a  4 00034 7101 20    599  	tra	<put_field_>|[put_field_from_format]	and off we go
+                                   600  "
+    000611                         601  vchar_to_char:
+    000611  aa  5 00001 2361 00    602  	ldq	pr5|plio_sb.nval	if no length specified no move is needed
+    000612  0a   000617 6000 00    603  	tze	vc_no_len		use source string as output
+    000613  aa  4 00030 3535 20    604  	epp3	pr4|ps.value_p,*	else move the string with padding/truncation
+    000614  aa  3 77777 2351 00    605  	lda	pr3|-1
+    000615  aa  5 00002 2361 00    606  	ldq	pr5|plio_sb.val_1	get the target len
+    000616  0a   000630 7100 00    607  	tra	superquick_af_2	and merge with the move, but pr3 already set
+                                   608  "
+    000617                         609  vc_no_len:
+    000617  aa  4 00030 3521 20    610  	epp2	pr4|ps.value_p,*
+    000620  aa  2 77777 2361 00    611  	ldq	pr2|-1		length of output string will be len of orig source var string
+    000621  0a   000606 7100 00    612  	tra	superquick_return	and were done
+                                   613  "
+    000622                         614  char_to_char:
+    000622  aa  4 00054 2351 00    615  	lda	pr4|ps.descr	get the length from descriptor's 2nd 1/2
+    000623  0a   001745 3750 00    616  	ana	=o000077777777
+    000624                         617  char_to_char_len:
+    000624  aa  5 00001 2361 00    618  	ldq	pr5|plio_sb.nval	if no length specified,use source string's len & no conversion
+    000625  0a   000635 6000 00    619  	tze	no_move		if no target len given, no move needed,use orig string as output
+    000626  aa  5 00002 2361 00    620  	ldq	pr5|plio_sb.val_1	
+    000627                         621  superquick_af:
+    000627  aa  4 00030 3535 20    622  	epp3	pr4|ps.value_p,*
+    000630                         623  superquick_af_2:
+    000630  aa  1 00000 3521 00    624  	epp2	pr1|0
+    000631  aa  0 40540 1005 40    625  	mlr	(pr,rl),(pr,rl),fill(040),enablefault
+    000632  aa   300000 000005     626  	desc9a	pr3|0,al
+    000633  aa   200000 000006     627  	desc9a	pr2|0,ql
+    000634  0a   000606 7100 00    628  	tra	superquick_return
+                                   629  "
+    000635                         630  no_move:
+    000635  aa  4 00030 3521 20    631  	epp2	pr4|ps.value_p,*
+    000636  aa   000044 7330 00    632  	lrs	36
+    000637  0a   000606 7100 00    633  	tra	superquick_return
+                                   634  "
+    000640                         635  a_f_pic_source:
+    000640  aa  4 00034 2201 00    636  	ldx0	pr4|ps.top_half	top_half is offset for the picture image
+    000641  aa  6 00046 3735 70    637  	epp7	sp|tbp,*x0	get a ptr  to it
+    000642  aa  7 00001 2351 00    638  	lda	pr7|1		extract its length & leave it in the a
+    000643  aa   000033 7710 00    639  	arl	27		length is top 9 bits of the word
+    000644  0a   000624 7100 00    640  	tra	char_to_char_len	since it must be a character picture merge with char_to_char
+                                   641  "
+    000645                         642  do_b_format:
+    000645  aa  5 00030 3515 20    643  	epp1	pr5|plio_sb.space_ptr,*	pr1 should point to the newly alloc'd space
+    000646  0a   001334 7000 00    644  	tsx0	set_source_wa	set the source registers for a_to_a
+    000647  aa  5 00001 2351 00    645  	lda	pr5|plio_sb.nval	save the param for the len of the final string,not this one
+    000650  aa   000002 6000 04    646  	tze	2,ic		if no format param given,let lang rules determine final length
+    000651  aa  5 00002 2351 00    647  	lda	pr5|plio_sb.val_1	
+    000652                         648  merge_b_bn:
+    000652  aa  5 00024 7551 00    649  	sta	pr5|plio_sb.format_len
+    000653  aa   000400 2350 07    650  	lda	256,dl		b format needs 2 conversions-1st to bit string, then to character
+    000654  aa   000050 6260 00    651  	eax6	v_bit_desc	for bit string, make it varying bit string with only max len given
+    000655  aa  1 00000 3715 00    652  	epp5	pr1|0		pr5 points to the work space
+    000656  aa  1 00336 3515 00    653  	epp1	pr1|222		pr1 points to where to put the result of conversion
+                                   654  "	code to push a stack,needed for any_to_any call
+    000657  aa  6 00000 3731 00    655  	epbp7	pr6|0		point to stack header
+    000660  aa  6 00022 3521 20    656  	epp2	pr6|stack_frame.next_sp,*	point to next frame
+    000661  aa  2 00020 6521 00    657  	spri6	pr2|stack_frame.prev_sp	link next frame
+    000662  aa  2 00000 3721 00    658  	epp6	pr2|0
+    000663  aa  2 00060 3521 00    659  	epp2	pr2|new_stack_size
+    000664  aa  7 00024 2521 00    660  	spri2	pr7|stack_header.stack_end_ptr	store ptr to end of frame
+    000665  aa  6 00022 2521 00    661  	spri2	pr6|stack_frame.next_sp
+    000666  aa  6 00020 7201 00    662  	lxl0	pr6|stack_frame.flag_word	turn support bit on
+    000667  aa   000200 2600 03    663  	orx0	stack_frame.support_bit,du
+    000670  aa  6 00020 4401 00    664  	sxl0	pr6|stack_frame.flag_word
+    000671  aa  6 00052 6501 00    665  	spri4	sp|ps_ptr
+    000672  0a   000672 3520 00    666  	epp2	*
+    000673  aa  6 00046 2525 00    667  	spbp2	pr6|tbp		set text_base_ptr
+    000674  4a  4 00032 7001 20    668  	tsx0	<any_to_any_>|[any_to_any_]
+    000675  aa  6 00052 3701 20    669  	epp4	sp|ps_ptr,*	restore pointers
+    000676  aa  4 00006 3715 20    670  	epp5	pr4|ps.format_area_p,*
+    000677  aa  5 00030 3515 20    671  	epp1	pr5|plio_sb.space_ptr,*
+    000700  aa  1 00336 3535 00    672  	epp3	pr1|222		source for final conversion=target of preliminary one
+    000701  aa  5 00000 2351 00    673  	lda	pr5|plio_sb.type	if its bn format 2nd half of conversion is different
+    000702  aa   000016 1150 07    674  	cmpa	bn_format,dl
+    000703  0a   000754 6000 00    675  	tze	final_conv_for_bn	this is who does the 2nd half for bn_format
+    000704  aa  3 77777 2361 00    676  	ldq	pr3|-1		length of bit string is at addr|-1
+    000705  aa  5 00024 2351 00    677  	lda	pr5|plio_sb.format_len	we saved length of final character string here
+    000706  aa   000002 6010 04    678  	tnz	2,ic		but  if no length given in b_format, use length of intermediate bit string
+    000707  aa  3 77777 2351 00    679  	lda	pr3|-1
+    000710  aa  5 00024 7551 00    680  	sta	pr5|plio_sb.format_len	in any case remember the length for later use
+    000711  aa   000052 6260 00    681  	eax6	char_desc		and convert to a character string
+    000712  aa   000050 6270 00    682  	eax7	v_bit_desc	from a varying bit string
+    000713  aa  1 00102 3715 00    683  	epp5	pr1|66		this is the 156 word work space for a_to_a
+    000714  0a   000574 7100 00    684  	tra	ata_call		do the second conversion & go straight to put_field
+                                   685  "
+    000715                         686  ata_call_and_ret:
+    000715  aa  6 00076 7401 00    687  	stx0	sp|temp		we will return here later
+                                   688  "	code to push a stack,needed for any_to_any call
+    000716  aa  6 00000 3731 00    689  	epbp7	pr6|0		point to stack header
+    000717  aa  6 00022 3521 20    690  	epp2	pr6|stack_frame.next_sp,*	point to next frame
+    000720  aa  2 00020 6521 00    691  	spri6	pr2|stack_frame.prev_sp	link next frame
+    000721  aa  2 00000 3721 00    692  	epp6	pr2|0
+    000722  aa  2 00060 3521 00    693  	epp2	pr2|new_stack_size
+    000723  aa  7 00024 2521 00    694  	spri2	pr7|stack_header.stack_end_ptr	store ptr to end of frame
+    000724  aa  6 00022 2521 00    695  	spri2	pr6|stack_frame.next_sp
+    000725  aa  6 00020 7201 00    696  	lxl0	pr6|stack_frame.flag_word	turn support bit on
+    000726  aa   000200 2600 03    697  	orx0	stack_frame.support_bit,du
+    000727  aa  6 00020 4401 00    698  	sxl0	pr6|stack_frame.flag_word
+    000730  0a   000730 3520 00    699  	epp2	*
+    000731  aa  6 00046 2525 00    700  	spbp2	pr6|tbp		set text_base_ptr
+    000732  aa   000000 7000 11    701  	tsx0	0,1		call the a_to_a entry point in index reg 1
+                                   702  "	code to pop my stack
+    000733  aa  6 00000 3731 00    703  	epbp7	pr6|0		point to stack header
+    000734                         704  	inhibit	on
+    000734  aa  7 00024 6523 00    705  	spri6	pr7|stack_header.stack_end_ptr
+    000735  aa  6 00020 3723 20    706  	epp6	pr6|stack_frame.prev_sp,*
+    000736                         707  	inhibit	off
+                                   708  "
+    000736  aa  6 00052 3701 20    709  	epp4	sp|ps_ptr,*	restore pointers
+    000737  aa  4 00006 3715 20    710  	epp5	pr4|ps.format_area_p,*
+    000740  aa  5 00030 3515 20    711  	epp1	pr5|plio_sb.space_ptr,*
+    000741  aa  6 00076 2201 00    712  	ldx0	sp|temp		restore index reg 0  and return through it
+    000742  aa   000000 7100 10    713  	tra	0,0
+                                   714  "
+    000743                         715  do_bn_format:
+    000743  aa  5 00030 3515 20    716  	epp1	pr5|plio_sb.space_ptr,*	pr1 should point to the newly alloc'd space
+    000744  0a   001334 7000 00    717  	tsx0	set_source_wa	set the source registers for a_to_a
+    000745  aa  5 00001 2351 00    718  	lda	pr5|plio_sb.nval	save the param for the len of the final string,not this one
+    000746  aa   000002 1150 07    719  	cmpa	2,dl
+    000747  0a   000752 6000 00    720  	tze	bn_with_len	if an explicit length was given we must put it in a register
+    000750  aa   000000 6350 00    721  	eaa	0		otherwise a length of 0 means no length was given
+    000751  0a   000652 7100 00    722  	tra	merge_b_bn	join flow of vanilla b_format
+    000752                         723  bn_with_len:
+    000752  aa  5 00003 2351 00    724  	lda	pr5|plio_sb.val_2	load the output length in a
+    000753  0a   000652 7100 00    725  	tra	merge_b_bn	and join b_format flow
+                                   726  "
+    000754                         727  final_conv_for_bn:
+    000754  aa  3 77777 2361 00    728  	ldq	pr3|-1		get length of source bit string,now converted
+    000755  aa  5 00002 5061 00    729  	div	pr5|plio_sb.val_1	now divide by the radix_factor to find out how many output-chars needed
+    000756  aa  6 00060 7551 00    730  	sta	sp|extra_bits	and save the remainder for later
+    000757  aa   000000 1150 07    731  	cmpa	0,dl		if there was a remainder, the # of output chars will be 1 greater
+    000760  aa   000002 6000 04    732  	tze	2,ic		to hold the left-overs,padded on the left with 0's
+    000761  aa   000001 0760 07    733  	adq	1,dl
+    000762  aa  5 00036 7561 00    734  	stq	pr5|plio_sb.extra_temp	now save this "real_len", or number of chars needed to hold value
+                                   735  "
+    000763  aa   000000 6270 00    736  	eax7	0		x7 is the count of how many output chars we have put out so far
+    000764  aa  5 00001 2351 00    737  	lda	pr5|plio_sb.nval	now find out if an explicit length was given
+    000765  aa   000001 1150 07    738  	cmpa	1,dl		if nval=1, there was only a radix-factor, no length
+    000766  0a   000771 6010 00    739  	tnz	bn_len_given	else goto to this label
+    000767  aa  5 00024 7561 00    740  	stq	pr5|plio_sb.format_len	final format len will be this length, not 0, which is
+    000770  0a   001001 7100 00    741  	tra	use_real_len	what is in plio_sb.format_len now ,for formats with no explicit length
+    000771                         742  bn_len_given:
+    000771  aa  5 00003 2351 00    743  	lda	pr5|plio_sb.val_2	get the given format length
+    000772  0a   000546 6000 00    744  	tze	ab_null_string	if its zero, put out a null string without raising stringsize
+    000773  aa  5 00003 1161 00    745  	cmpq	pr5|plio_sb.val_2	is the required num of char>format len?
+    000774  0a   001037 6054 00    746  	tpnz	raise_stringsize	if so, we must raise stringsize
+    000775  0a   001001 6000 00    747  	tze	use_real_len	if they are equal, no padding is needed
+                                   748  "
+    000776  aa   040140 1004 00    749  	mlr	(),(pr,rl),fill(040)	move in the blanks
+    000777  aa   000000 000000     750  	zero	0
+    001000  aa   100000 000005     751  	desc9a	pr1|0,al		pr1 points to output string
+                                   752  "
+    001001                         753  use_real_len:
+    001001  aa  5 00036 7201 00    754  	lxl0	pr5|plio_sb.extra_temp	move value to upper half of word, for later cmpxning
+    001002  aa  5 00036 7401 00    755  	stx0	pr5|plio_sb.extra_temp
+    001003  aa  5 00002 7211 00    756  	lxl1	pr5|plio_sb.val_1	x1 needs radix-factor , to know how long a string to csl
+    001004  aa  6 00054 7411 00    757  	stx1	sp|radix_factor	we need radix-factor in upper half of a word for adxning
+    001005  aa  3 77777 2361 00    758  	ldq	pr3|-1
+    001006  aa  6 00060 2351 00    759  	lda	sp|extra_bits
+    001007  aa   000000 6200 00    760  	eax0	0
+    001010  aa   000146 0604 00    761  	csl	(),(pr,rl,ql),bool(clear)
+    001011  aa   000000 000000     762  	zero
+    001012  aa   300000 000005     763  	descb	pr3|0,al
+    001013  aa   000044 2360 07    764  	ldq	36,dl		now handle the first  digit by hand,which we must cause we must
+    001014  aa  5 00002 1761 00    765  	sbq	pr5|plio_sb.val_1	assume leading 0's.We will load it and then shift it right 36-extra_bits bits.
+    001015  aa   000000 6260 06    766  	eax6	0,ql		x6 is how much to right-shift all other digits,=36-radix_factor
+                                   767  "
+    001016                         768  bn_loop:
+    001016  aa  0 03100 0605 50    769  	csl	(pr,rl,x0),(pr),bool(move)	move x1--radix-factor--bits from pr3 up x0--offset--
+    001017  aa   300000 000011     770  	descb	pr3|0,x1		to sp|rad_fac_bits
+    001020  aa   600057 000011     771  	descb	sp|radix_fac_bits,x1
+                                   772  "
+    001021  aa  6 00057 2351 00    773  	lda	sp|radix_fac_bits	now load those bits in a and shift them right enough to
+    001022  aa   000000 7710 16    774  	arl	0,x6		leave only one digit's worth
+    001023  aa  6 00054 0601 00    775  	adx0	sp|radix_factor	increment offset in source bits for next csl. Offset is in x0.
+                                   776  "
+    001024                         777  first_radix_factor_bits:
+    001024  aa   000117 1004 05    778  	mlr	(al),(pr,x7)	now use the digit in a-reg as index into hex_table to get correct character,
+    001025  0a   001033 000001     779  	desc9a	hex_table,1	and move that char to output string at offset x7
+    001026  aa   100000 000001     780  	desc9a	pr1|0,1
+                                   781  "
+    001027  aa   000001 0670 03    782  	adx7	1,du		increment output offset
+    001030  aa  5 00036 1071 00    783  	cmpx7	pr5|plio_sb.extra_temp	did we reach end of output string?
+    001031  0a   001016 6040 00    784  	tmi	bn_loop		if not, loop back and do the next digit
+    001032  0a   000575 7100 00    785  	tra	after_ata_call	at this point were done, so go here to pop stack, restore regs,
+                                   786  "				and go off to put field with the newly-created string.
+                                   787  "
+    001033                         788  hex_table:
+    001033  aa  060 061 062 063    789  	aci	"0123456789abcdef"
+    001034  aa  064 065 066 067
+    001035  aa  070 071 141 142
+    001036  aa  143 144 145 146
+                                   790  "
+    001037                         791  raise_stringsize:
+    001037  aa  0 00500 1005 00    792  	mlr	(pr),(pr),enablefault	this is a fake move whose only purpose in life is to raise
+    001040  aa   300000 000001     793  	desc9a	pr3|0,1		a stringsize condition if a truncation was implied by the output
+    001041  aa   100000 000000     794  	desc9a	pr1|0,0		request.
+    001042  0a   001001 7100 00    795  	tra	use_real_len	return to main body after the stringsize was raised
+                                   796  "
+    001043                         797  do_c_format:
+    001043  aa  5 00033 4501 00    798  	stz	pr5|plio_sb.cplx_flags	this is 2 flags-1st  half wd is real,2nd halfword is imag
+    001044  0a   001062 3514 00    799  	epp1	real_part_done	pef formats return to this label variable
+    001045  aa   000100 2360 07    800  	ldq	64,dl		we need more storage for complex final output string
+    001046  4a  4 00012 7011 20    801  	tsx1	<pl1_operators_>|[alloc]	dont change stor_taken cause put_term uses sp|5 to reset stack
+    001047  aa   000460 6360 00    802  	eaq	304
+    001050  aa  6 00061 7561 00    803  	stq	sp|storage_taken
+    001051  aa  0 00100 1005 00    804  	mlr	(pr),(pr)
+    001052  aa   500005 000024     805  	desc9a	pr5|5,20
+    001053  aa   500000 000024     806  	desc9a	pr5|0,20
+                                   807  "				space_ptr|240  will be the loc of the final string
+    001054                         808  handle_pef:
+    001054  aa  5 00034 2515 00    809  	spri1	pr5|plio_sb.pef_finish	pef format returns through here
+    001055  aa  5 00000 2351 00    810  	lda	pr5|plio_sb.type	find out format type
+    001056  aa   000005 1150 07    811  	cmpa	e_format,dl	can be e,f,or p format--f_format=4,e=5,pic=13
+    001057  0a   001114 6000 00    812  	tze	e_format_from_cplx
+    001060  0a   001375 6040 00    813  	tmi	f_format_from_cplx
+    001061  0a   001552 7100 00    814  	tra	p_format_from_cplx
+                                   815  "
+    001062                         816  real_part_done:
+    001062  aa  5 00030 3735 20    817  	epp7	pr5|plio_sb.space_ptr,*	we'll move the output str for the real part here
+    001063  aa  7 00360 3735 00    818  	epp7	pr7|240
+    001064  aa  0 00140 1005 40    819  	mlr	(pr,rl),(pr,rl)
+    001065  aa   200000 000006     820  	desc9a	pr2|0,ql
+    001066  aa   700000 000006     821  	desc9a	pr7|0,ql
+    001067  aa  5 00032 7561 00    822  	stq	pr5|plio_sb.real_parts_len	we need this to know where to put imag part &how long final string is
+    001070  aa   000002 6210 00    823  	eax1	2		imag_flag is 2 to be added to prec of dec float num to give len in bytes
+    001071  aa  5 00033 4411 00    824  	sxl1	pr5|plio_sb.cplx_flags
+    001072  0a   001077 3514 00    825  	epp1	imag_part_done
+    001073  aa  0 00100 1005 00    826  	mlr	(pr),(pr)
+    001074  aa   500012 000024     827  	desc9a	pr5|10,20
+    001075  aa   500000 000024     828  	desc9a	pr5|0,20
+    001076  0a   001054 7100 00    829  	tra	handle_pef	this will call pef format after storing return loc & setting format ptr in sb
+                                   830  "
+    001077                         831  imag_part_done:
+    001077  aa  5 00032 2351 00    832  	lda	pr5|plio_sb.real_parts_len	so we know where to put imag part of output string
+    001100  aa  5 00030 3735 20    833  	epp7	pr5|plio_sb.space_ptr,*
+    001101  aa  7 00360 5005 05    834  	a9bd	pr7|240,al
+    001102  aa  0 00140 1005 40    835  	mlr	(pr,rl),(pr,rl)
+    001103  aa   200000 000006     836  	desc9a	pr2|0,ql		q is len of imag part, pr2 points to it
+    001104  aa   700000 000006     837  	desc9a	pr7|0,ql		pr7 points to cplx_output up real_part_len
+    001105  aa  5 00032 0761 00    838  	adq	pr5|plio_sb.real_parts_len	so q has the length of the final complex string
+    001106  aa  5 00030 3521 20    839  	epp2	pr5|plio_sb.space_ptr,*	pr2 must point to string to be put
+    001107  aa  2 00360 3521 00    840  	epp2	pr2|240
+    001110  0a   001331 7100 00    841  	tra	end_of_pef
+                                   842  "
+                                   843  "
+    001111                         844  do_e_format:
+    001111  aa  5 00033 4501 00    845  	stz	pr5|plio_sb.cplx_flags
+    001112  0a   001331 3514 00    846  	epp1	end_of_pef
+    001113  aa  5 00034 2515 00    847  	spri1	pr5|plio_sb.pef_finish	pr5|plio_sb.pef_finish will be where to go on completion--in this case to put_field_
+    001114                         848  e_format_from_cplx:
+    001114  aa  5 00001 2351 00    849  	lda	pr5|plio_sb.nval	if coming in this entry, pef_finish will be a location in the complx handling
+                                   850  "				stuff. Now get the number of args to e_format- 1,2,3, corresponding to
+                                   851  "				e(w[,d[,s]]).. w is field width, d is num of decimal locations, s is num sig
+    001115  aa   000002 1150 07    852  	cmpa	2,dl		digits.
+    001116  0a   001135 6040 00    853  	tmi	e_one_op		one op is w, d=w-8, s=d+1
+    001117  0a   001126 6000 00    854  	tze	e_two_ops		two  ops are w,d..s=d+1
+                                   855  "				must have 3 ops
+    001120  aa  5 00004 2351 00    856  	lda	pr5|plio_sb.val_3	get the third one
+    001121  aa  5 00003 2361 00    857  	ldq	pr5|plio_sb.val_2	get  the 2nd one and put it in the q
+    001122  aa  6 00066 7561 00    858  	stq	sp|d_temp		since the 2nd arg is d, store it in d_temp
+    001123  aa  6 00066 1151 00    859  	cmpa	sp|d_temp		we must check that s is not < d, BUGFIX!
+    001124  0a   001131 6050 00    860  	tpl	e_merge_for_w	where we will extract the 1st val, or "w", and continue		
+    001125  0a   001526 7100 00    861  	tra	raise_size
+                                   862  "
+    001126                         863  e_two_ops:
+                                   864  "				get the 2nd arg, or "d"--num of decimal digits
+    001126  aa  5 00003 2351 00    865  	lda	pr5|plio_sb.val_2
+    001127  aa  6 00066 7551 00    866  	sta	sp|d_temp		and store it
+    001130  aa   000001 0750 07    867  	ada	1,dl		if s is not explicit, it =d+1, so now calc it
+    001131                         868  e_merge_for_w:
+    001131  aa  5 00002 2361 00    869  	ldq	pr5|plio_sb.val_1	get the 1st val, or "w"
+    001132  0a   001367 6000 00    870  	tze	ef_null_string
+    001133  aa  6 00057 7561 00    871  	stq	sp|w_temp		and store it
+    001134  0a   001143 7100 00    872  	tra	e_merge		e_merge assumes "s" is in a reg
+                                   873  "
+    001135                         874  e_one_op:
+    001135  aa  5 00002 2351 00    875  	lda	pr5|plio_sb.val_1	get "w"
+    001136  0a   001367 6000 00    876  	tze	ef_null_string
+    001137  aa  6 00057 7551 00    877  	sta	sp|w_temp		otherwise, w_temp never gets set, this is a BUGFIX!
+    001140  aa   000010 1750 07    878  	sba	8,dl		s=w-7
+    001141  aa  6 00066 7551 00    879  	sta	sp|d_temp		d=w-8
+    001142  aa   000001 0750 07    880  	ada	1,dl		and leave "s" in the a_reg
+    001143                         881  e_merge:
+    001143  aa  5 00024 7551 00    882  	sta	pr5|plio_sb.format_len	a has "s", or prec of fl dec intermed val
+    001144  aa  5 00030 3515 20    883  	epp1	pr5|plio_sb.space_ptr,*	pr1 always should point to our work space
+    001145  0a   001334 7000 00    884  	tsx0	set_source_wa		set the source regs for a_to_a call
+    001146  aa  5 00024 2351 00    885  	lda	pr5|plio_sb.format_len	load a with the precision of the float dec target
+    001147  aa  5 00033 7261 00    886  	lxl6	pr5|plio_sb.cplx_flags	we want  to see if its the imag part of a c_format
+    001150  0a   001162 6000 00    887  	tze	not_e_imag	if it is,we must force intermed value to cplx
+    001151  aa   000030 6260 00    888  	eax6	D_float_cplx_desc
+    001152  0a   001163 7100 00    889  	tra	not_e_imag+1
+    001153                         890  zero_value:
+    001153  aa   000100 1004 00    891  	mlr	(),(pr),fill(000)	AG94 says if the value is zero the exponent is printed as "000"
+    001154  aa   000000 000000     892  	zero	0		even though it isn't really, so move a 0 to exponent byte of value
+    001155  aa   100000 000001     893  	desc9a	pr1|0,1		at this point pr1 points to exponent byte of float dec number
+    001156  aa  5 00024 2351 00    894  	lda	pr5|plio_sb.format_len	now set a to the number of pre-decimal digits--all zeros
+    001157  aa  6 00066 1751 00    895  	sba	sp|d_temp		d_temp is the number of post-decimal digits
+    001160  aa  1 00000 5205 05    896  	s9bd	pr1|0,al		move pr1 backwards to encompass the requisite number of ascii "0"'s
+    001161  0a   001216 7100 00    897  	tra	zero_merge	and merge with main flow
+    001162                         898  not_e_imag:
+    001162  aa   000024 6260 00    899  	eax6	D_float_real_desc	this is the type of the intermed value to  convert to
+    001163  aa  5 00030 3515 20    900  	epp1	pr5|plio_sb.space_ptr,*	set up pr's for a_to_a call
+    001164  aa  1 00102 3715 00    901  	epp5	pr1|66		pr5 points to a_to_a's workspace
+    001165  4a  4 00036 6211 20    902  	eax1	<any_to_any_>|[any_to_any_round_]	lang rules say we must round,not truncate
+    001166  0a   000715 7000 00    903  	tsx0	ata_call_and_ret	and do conversion to float decimal
+                                   904  "
+    001167  aa  5 00024 2361 00    905  	ldq	pr5|plio_sb.format_len	put precision of float dec value in q
+    001170  aa  1 00102 3735 00    906  	epp7	pr1|66		pr7 is where we'll put result of our hand-conversion
+    001171  aa  7 00000 3521 00    907  	epp2	pr7|0		put_field expects pr2 to point to output string,so set it here
+    001172  aa  5 00033 7201 00    908  	lxl0	pr5|plio_sb.cplx_flags	we must throw away real part of cplx result if imag part of c_format
+    001173  0a   001176 6000 00    909  	tze	e_imag_merge	otherwise skip the next 2 instructions
+    001174  aa  1 00000 5005 06    910  	a9bd	pr1|0,ql		the real part of the complex value is of len prec+2
+    001175  aa  1 00000 5005 10    911  	a9bd	pr1|0,x0		and cplx_flag has a value of 2
+    001176                         912  e_imag_merge:
+    001176  aa   000001 6200 00    913  	eax0	1		we will frequently need a register with a 1 in it
+    001177  aa  0 00100 1005 00    914  	mlr	(pr),(pr),fill(000)	squirrel the sign char away for later use, in x1
+    001200  aa   100000 000001     915  	desc9a	pr1|0,1		we'll have to use sp|temp as a conduit
+    001201  aa   600076 000004     916  	desc9a	sp|temp,4		zeroing the rest of sp|temp
+    001202  aa  6 00076 2211 00    917  	ldx1	sp|temp		now x1 has the sign char,as desired
+    001203  aa  1 00000 5005 10    918  	a9bd	pr1|0,x0		x0 has a 1 in it, this is to skip sign char in source
+    001204  aa  0 00000 1645 40    919  	tct	(pr,rl)		find the 1st non-zero char in the float dec value
+    001205  aa   100000 000006     920  	desc9a	pr1|0,ql		this skips leading ascii zeros
+    001206  0a   001231 0000 00    921  	arg	table
+    001207  aa  6 00076 0001 00    922  	arg	sp|temp		offset of 1st non-zero will appear in sp|temp
+    001210  aa  6 00076 2351 00    923  	lda	sp|temp
+    001211  0a   001746 3750 00    924  	ana	=o000777777777	zero out the 1st byte of it, which is the char found
+    001212  aa  1 00000 5005 05    925  	a9bd	pr1|0,al		advance the source ptr over the leading zeros
+    001213  0a   001153 6064 00    926  	ttn	zero_value	if they are all zero, value is zero & we must change exponent's value
+    001214  aa   000000 5310 00    927  	neg	0
+    001215  aa  5 00024 0751 00    928  	ada	pr5|plio_sb.format_len	otherwise let a be the number of remaining digits after the 0's
+    001216                         929  zero_merge:
+    001216  aa  5 00036 7551 00    930  	sta	pr5|plio_sb.extra_temp		extra_temp is  the number of post-leading 0's digits
+    001217  aa  6 00057 2361 00    931  	ldq	sp|w_temp		w_temp is the total output field length
+    001220  aa   040140 1004 00    932  	mlr	(),(pr,rl),fill(040)	blank out entire target area
+    001221  aa   000000 000000     933  	zero	0
+    001222  aa   700000 000006     934  	desc9a	pr7|0,ql		pr7 points to target area
+    001223  aa  6 00066 2351 00    935  	lda	sp|d_temp		if d=0, no decimal point printed hence an extra leading blank
+    001224  aa   000002 6010 04    936  	tnz	2,ic
+    001225  aa  7 00000 5005 10    937  	a9bd	pr7|0,x0		this is the extra leading blank taking the place of the "."
+    001226  aa  5 00024 1761 00    938  	sbq	pr5|plio_sb.format_len	skip field-width-prec-6 leading blanks
+    001227  aa   000006 1760 07    939  	sbq	6,dl
+    001230  aa  7 77777 5005 06    940  	a9bd	pr7|-1,ql		for a while pr7 points to one word before where we are in output string
+    001231  aa  5 00024 1151 00    941  	cmpa	pr5|plio_sb.format_len	if s=d we must insert a pre-"." zero to look nice
+    001232  0a   001250 6000 00    942  	tze	s_is_d_move
+    001233  aa   000003 6260 00    943  	eax6	3		x6 is offset off of pr7 to put a "-" if needed
+    001234  aa   000004 6270 00    944  	eax7	4		x7 is offset off pr7 to move the pre-"." string
+    001235  aa  5 00024 2351 00    945  	lda	pr5|plio_sb.format_len	calculate the number of pre-"." digits
+    001236  aa  6 00066 1751 00    946  	sba	sp|d_temp		which is s-d, or num of sig digits - num of decimal digits
+    001237  aa  6 00060 7551 00    947  	sta	sp|sd_temp	sd_temp saves the value s-d
+    001240  aa  6 00060 2361 00    948  	ldq	sp|sd_temp	q is the number of pre-"." digits to move into
+    001241  aa  5 00036 1151 00    949  	cmpa	pr5|plio_sb.extra_temp		a is the num of pre-"." digits to move from, or min(s-d,extra_temp)
+    001242  0a   001255 6044 00    950  	tmoz	e_move
+    001243  aa  5 00036 2351 00    951  	lda	pr5|plio_sb.extra_temp
+    001244  0a   001255 7100 00    952  	tra	e_move		and now perform the move
+                                   953  "
+                        001231     954  	equ	table,*-12
+    001245  aa   000777 777777     955  	oct	000777777777
+    001246  aa   777777 777777     956  	oct	777777777777
+    001247  aa   777777 000000     957  	oct	777777000000
+                                   958  "
+    001250                         959  s_is_d_move:
+    001250  aa   000002 6260 00    960  	eax6	2		set the offsets & lengths for the case where s=d
+    001251  aa   000000 2350 07    961  	lda	0,dl		a = num of pre-"." digits to move from, or 0
+    001252  aa   000001 2360 07    962  	ldq	1,dl		q is the num of pre-"." digits to move to, or 1 "0"
+    001253  aa   000003 6270 00    963  	eax7	3		x7 is the offset for the pre-"." string of digits
+    001254  aa  6 00060 4501 00    964  	stz	sp|sd_temp	s-d is obviously 0
+    001255                         965  e_move:
+    001255  aa  6 00055 7551 00    966  	sta	sp|b_temp		the num of digits we're using from the float dec string will be needed later
+    001256  aa  0 60157 1005 40    967  	mlr	(pr,rl),(pr,rl,x7),fill(060)	fill is "0"
+    001257  aa   100000 000005     968  	desc9a	pr1|0,al		pr1 points to source string
+    001260  aa   700000 000006     969  	desc9a	pr7|0,ql		pr7 is our hand-converted result string
+    001261  0a   001740 1010 00    970  	cmpx1	minus_char	if float dec was <0 we must move in a "-"
+    001262  0a   001266 6010 00    971  	tnz	not_minus
+    001263  aa   055116 1004 00    972  	mlr	(),(pr,x6),fill(055)	fill is "-"
+    001264  aa   000000 000000     973  	zero	0
+    001265  aa   700000 000001     974  	desc9a	pr7|0,1		we set x6 previously to the offset for the "-" if needed
+    001266                         975  not_minus:
+    001266  aa  6 00060 2361 00    976  	ldq	sp|sd_temp	advance the source & targ ptrs past the chars we just moved
+    001267  aa  7 00001 5005 06    977  	a9bd	pr7|1,ql		we can now make pr7 point to targ string, not targ string-1word
+    001270  aa  1 00000 5005 06    978  	a9bd	pr1|0,ql		which was done cause negative offsets in strings not allowed
+    001271  aa  6 00066 2361 00    979  	ldq	sp|d_temp		now move the "." 
+    001272  0a   001277 6000 00    980  	tze	no_dec		if there are any decimal digits
+    001273  aa   056100 1004 00    981  	mlr	(),(pr),fill(056)	fill char is "."
+    001274  aa   000000 000000     982  	zero	0
+    001275  aa   700000 000001     983  	desc9a	pr7|0,1		so move the "." to the target string
+    001276  aa  7 00000 5005 10    984  	a9bd	pr7|0,x0		and advance the target ptr past it, x0 having a 1 in it
+    001277                         985  no_dec:
+    001277  aa  5 00036 2351 00    986  	lda	pr5|plio_sb.extra_temp		now move the post-"." digits
+    001300  aa  6 00055 1751 00    987  	sba	sp|b_temp		taking m-b digits from the source string,b being num previously moved
+    001301  aa  6 00066 2361 00    988  	ldq	sp|d_temp		and moving them into d digits, filling with "0"'s
+    001302  aa  0 60140 1005 40    989  	mlr	(pr,rl),(pr,rl),fill(060)	fill char is "0"
+    001303  aa   100000 000005     990  	desc9a	pr1|0,al		a has num of post-leading 0's digits minus num previously moved
+    001304  aa   700000 000006     991  	desc9a	pr7|0,ql		q has d, or num of  decimal digits specified by e format
+    001305  aa  7 00000 5005 06    992  	a9bd	pr7|0,ql		advance target ptr past just-moved digits
+    001306  aa  1 00000 5005 05    993  	a9bd	pr1|0,al		and source ptr,too
+    001307  aa   145100 1004 00    994  	mlr	(),(pr),fill(145)	move in the "e" which precedes the exponent's value
+    001310  aa   000000 000000     995  	zero	0
+    001311  aa   700000 000001     996  	desc9a	pr7|0,1
+    001312  aa  7 00000 5005 10    997  	a9bd	pr7|0,x0		advance targ ptr 1 char past the "e" we just moved in
+    001313  aa  0 00100 1005 00    998  	mlr	(pr),(pr)		now move the value of the exponent into sp|temp
+    001314  aa   100000 000001     999  	desc9a	pr1|0,1		pr1 now points to the exponent's value in the source string
+    001315  aa   600076 000001    1000  	desc9a	sp|temp,1
+    001316  aa  6 00076 2351 00   1001  	lda	sp|temp		load the exponent's value
+    001317  aa   000001 7350 00   1002  	als	1		and make it into a normal number(it was 8 bits before)
+    001320  aa   000034 7310 00   1003  	ars	28
+    001321  aa  5 00036 0751 00   1004  	ada	pr5|plio_sb.extra_temp		final exponent=exp+m-s+d,where m=num of non-leading-0 digits
+    001322  aa  6 00060 1751 00   1005  	sba	sp|sd_temp
+    001323  aa  6 00076 7551 00   1006  	sta	sp|temp		store the final exponent's  value since btd is storage-to-storage
+    001324  aa  0 00100 3015 00   1007  	btd	(pr),(pr)		and convert it to decimal form
+    001325  aa   600076 000004    1008  	desc9a	sp|temp,4		putting it directly into the output string with a sign
+    001326  aa   700000 010004    1009  	desc9ls	pr7|0,4		and three digits
+    001327  aa  6 00057 2361 00   1010  	ldq	sp|w_temp		put_field want's field's length in q
+    001330  aa  5 00034 7101 20   1011  	tra	pr5|plio_sb.pef_finish,*	and were finished with this conversion
+                                  1012  "
+    001331                        1013  end_of_pef:
+    001331  aa  6 00037 7201 00   1014  	lxl0	sp|stack_frame.operator_ret_ptr	and we must restore x0, which we clobbered
+    001332  aa  6 00037 4501 00   1015  	stz	sp|stack_frame.operator_ret_ptr
+    001333  4a  4 00034 7101 20   1016  	tra	<put_field_>|[put_field_from_format]	and off we go
+                                  1017  "
+                                  1018  "	this routine sets up the registers describing the source to be converted
+                                  1019  "	by any_to_any_. It is tsx0'd to
+    001334                        1020  set_source_wa:
+    001334  aa  4 00054 2361 00   1021  	ldq	pr4|ps.descr	picture sources,which have descr=0, must be handled differently
+    001335  0a   001562 6000 00   1022  	tze	general_pic_source
+    001336  0a   001747 3760 00   1023  	anq	=o376000000000	extract the source type from the descriptor
+    001337  aa   000012 7720 00   1024  	qrl	10
+    001340  aa  4 00030 3535 20   1025  	epp3	pr4|ps.value_p,*	pr3 must point to the source to be converted
+    001341  aa   000000 6270 02   1026  	eax7	0,qu		x7 must have the source's type
+    001342  aa   000054 1070 03   1027  	cmpx7	v_char_desc,du	fixed or varying strings must be handled differently
+    001343  0a   001365 6000 00   1028  	tze	fix_len		since there descriptor has a len field rather than scale-prec
+    001344  aa   000050 1070 03   1029  	cmpx7	v_bit_desc,du
+    001345  0a   001365 6000 00   1030  	tze	fix_len
+    001346  aa   000052 1070 03   1031  	cmpx7	char_desc,du
+    001347  0a   001362 6000 00   1032  	tze	string_desc
+    001350  aa   000046 1070 03   1033  	cmpx7	bit_desc,du
+    001351  0a   001362 6000 00   1034  	tze	string_desc
+    001352  aa  6 00076 7551 00   1035  	sta	sp|temp		we know it is an arithmetic source, so extract scale-prec from descr
+    001353  aa  4 00054 2351 00   1036  	lda	pr4|ps.descr
+    001354  0a   001745 3750 00   1037  	ana	=o000077777777
+    001355  aa   000014 7730 00   1038  	lrl	12
+    001356  aa   000006 7720 00   1039  	qrl	6
+    001357  aa   000022 7730 00   1040  	lrl	18
+    001360  aa  6 00076 2351 00   1041  	lda	sp|temp		now q has scale in top 1/2, prec in lower, and a has been restored
+    001361  aa   000000 7100 10   1042  	tra	0,0		so were done
+    001362                        1043  string_desc:
+    001362  aa  4 00054 2361 00   1044  	ldq	pr4|ps.descr	strings have to have only the length extracted, which is lower 2/3 of descr
+    001363  0a   001745 3760 00   1045  	anq	=o000077777777
+    001364  aa   000000 7100 10   1046  	tra	0,0		and return, since x7 has already been correctly set
+    001365                        1047  fix_len:
+    001365  aa  3 77777 2361 00   1048  	ldq	pr3|-1		for varying strings we must extract the len of the source from addr|-1
+    001366  aa   000000 7100 10   1049  	tra	0,0		and return. The a has not  been clobbered,x7 has been set
+                                  1050  "
+    001367                        1051  ef_null_string:
+    001367  aa   000000 2360 07   1052  	ldq	0,dl		if e_format or f_format field width =0, AG94 says output
+    001370  aa  5 00030 3521 20   1053  	epp2	pr5|plio_sb.space_ptr,*	is just a null string, so set it up
+    001371  aa  5 00034 7101 20   1054  	tra	pr5|plio_sb.pef_finish,*	and we're finished with the entire ccnversion.
+                                  1055  "
+    001372                        1056  do_f_format:
+    001372  aa  5 00033 4501 00   1057  	stz	pr5|plio_sb.cplx_flags	we are not in the middle of a complex format, so zero this flag
+    001373  0a   001331 3514 00   1058  	epp1	end_of_pef	we want to go here when done with the conversion
+    001374  aa  5 00034 2515 00   1059  	spri1	pr5|plio_sb.pef_finish
+    001375                        1060  f_format_from_cplx:
+    001375  aa  5 00001 2351 00   1061  	lda	pr5|plio_sb.nval	get num of values to f(...) from processed format block
+    001376  aa  6 00060 4501 00   1062  	stz	sp|k_temp		k=scaling factor, usually zero so set it now, can be reset later if one found
+    001377  aa  5 00002 2361 00   1063  	ldq	pr5|plio_sb.val_1	get 1st value, or w (field width).This MUST be there
+    001400  0a   001367 6000 00   1064  	tze	ef_null_string	e,f formats are defined as null strings if w=0
+    001401  aa  6 00057 7561 00   1065  	stq	sp|w_temp
+    001402  aa   000002 1150 07   1066  	cmpa	2,dl		reg. a still has num of args to f_format
+    001403  0a   001412 6040 00   1067  	tmi	f_one_op
+    001404  0a   001407 6000 00   1068  	tze	f_two_ops
+    001405  aa  5 00004 2361 00   1069  	ldq	pr5|plio_sb.val_3
+    001406  aa  6 00060 7561 00   1070  	stq	sp|k_temp
+    001407                        1071  f_two_ops:
+                                  1072  "				now get 2nd arg,or num of dec positions (d)
+    001407  aa  5 00003 2361 00   1073  	ldq	pr5|plio_sb.val_2
+    001410  aa  6 00066 7561 00   1074  	stq	sp|d_temp
+    001411  0a   001413 7100 00   1075  	tra	f_merge		to skip next instruction
+    001412                        1076  f_one_op:
+    001412  aa  6 00066 4501 00   1077  	stz	sp|d_temp		by definition, d=0 if not given
+    001413                        1078  f_merge:
+    001413  aa  5 00030 3515 20   1079  	epp1	pr5|plio_sb.space_ptr,*
+    001414  0a   001334 7000 00   1080  	tsx0	set_source_wa
+    001415  aa  6 00076 7561 00   1081  	stq	sp|temp
+    001416  aa  6 00057 2361 00   1082  	ldq	sp|w_temp
+    001417  aa  6 00066 2351 00   1083  	lda	sp|d_temp
+    001420  aa   000002 6000 04   1084  	tze	2,ic		if d=0,prec=min(max_dec_precision,w), else prec=min(max_dec_precision,w-1).
+    001421  aa   000001 1760 07   1085  	sbq	1,dl		this gives room for decimal point
+    001422  aa   000073 1160 07   1086  	cmpq	max_dec_precision,dl
+    001423  aa   000002 6044 04   1087  	tmoz	2,ic
+    001424  aa   000073 2360 07   1088  	ldq	max_dec_precision,dl	if here, max_dec_precision<other width
+    001425  aa  5 00036 7561 00   1089  	stq	pr5|plio_sb.extra_temp		you want to remember prec for 2nd half of conversion process
+    001426  aa  6 00060 0751 00   1090  	ada	sp|k_temp		scale of fix dec num to convert to is d+k,d is already in q
+    001427  aa   000022 7360 00   1091  	qls	18		should have prec in lower half, scale in upper, of a reg
+    001430  aa   000022 7370 00   1092  	lls	18		prec was in al, now in au and scale in al
+    001431  aa  5 00033 7201 00   1093  	lxl0	pr5|plio_sb.cplx_flags
+    001432  aa   000003 6000 04   1094  	tze	3,ic
+    001433  aa   000026 6260 00   1095  	eax6	D_fixed_cplx_desc
+    001434  0a   001436 7100 00   1096  	tra	f_call
+    001435  aa   000022 6260 00   1097  	eax6	D_fixed_real_desc	this is target type for a_to_a
+    001436                        1098  f_call:
+    001436  aa  6 00076 2361 00   1099  	ldq	sp|temp
+    001437  aa  1 00102 3715 00   1100  	epp5	pr1|66
+    001440  4a  4 00036 6211 20   1101  	eax1	<any_to_any_>|[any_to_any_round_]
+    001441  0a   000715 7000 00   1102  	tsx0	ata_call_and_ret
+                                  1103  "
+    001442  aa  5 00036 2361 00   1104  	ldq	pr5|plio_sb.extra_temp		1st task is to blank out target string,for possible leading blanks
+    001443  aa   000001 6260 00   1105  	eax6	1
+    001444  aa  0 00100 1005 00   1106  	mlr	(pr),(pr),fill(000)	pr1 now pts to fix dec number
+    001445  aa   100000 000001    1107  	desc9a	pr1|0,1		squirrel away sign char in x0
+    001446  aa   600076 000004    1108  	desc9a	sp|temp,4
+    001447  aa  6 00076 2201 00   1109  	ldx0	sp|temp
+    001450  aa  1 00000 3535 00   1110  	epp3	pr1|0		pr3 is source_ptr
+    001451  aa  5 00033 7271 00   1111  	lxl7	pr5|plio_sb.cplx_flags
+    001452  aa   000003 6000 04   1112  	tze	3,ic
+    001453  aa  3 00000 5005 06   1113  	a9bd	pr3|0,ql
+    001454  aa  3 00000 5005 16   1114  	a9bd	pr3|0,x6
+    001455  aa  1 00102 3735 00   1115  	epp7	pr1|66		pr7 will be loc of final output string
+    001456  aa  7 00000 3521 00   1116  	epp2	pr7|0
+    001457  aa   040140 1004 00   1117  	mlr	(),(pr,rl),fill(040)
+    001460  aa   000000 000000    1118  	zero
+    001461  aa   700000 000006    1119  	desc9a	pr7|0,ql		we just provided the leading, as well as more,blanks
+    001462  aa  3 00000 5005 16   1120  	a9bd	pr3|0,x6		to skip sign in source
+    001463  aa  6 00066 1761 00   1121  	sbq	sp|d_temp		q still has field width in it.We want to extract pre-decimal pt.
+    001464  aa   000001 1760 07   1122  	sbq	1,dl		digits from the f.dec number,skipping leading zeros.
+    001465  aa  0 00000 1645 40   1123  	tct	(pr,rl)
+    001466  aa   300000 000006    1124  	desc9a	pr3|0,ql
+    001467  0a   001231 0000 00   1125  	arg	table
+    001470  aa  6 00060 0001 00   1126  	arg	sp|k_temp		p-q-1 is max possible num of leading zeros.
+                                  1127  "
+    001471  aa  6 00060 2361 00   1128  	ldq	sp|k_temp		k_temp has number of leading zeros
+    001472  0a   001746 3760 00   1129  	anq	=o000777777777
+    001473  aa  6 00060 7561 00   1130  	stq	sp|k_temp
+    001474  aa  3 00000 5005 06   1131  	a9bd	pr3|0,ql		skip them by advancing source_p past them
+    001475  aa  7 00000 5005 06   1132  	a9bd	pr7|0,ql		advance targ_ptr to leave the leading blanks virgin
+                                  1133  "
+    001476  aa  5 00036 2351 00   1134  	lda	pr5|plio_sb.extra_temp		the num of pre-"." digits is prec-num of skipped zeros-scale,so calc it
+    001477  aa  6 00060 1751 00   1135  	sba	sp|k_temp		k_temp being num of skipped zeros
+    001500  aa  6 00066 1751 00   1136  	sba	sp|d_temp		and d_temp being scale,s
+    001501  0a   001526 6044 00   1137  	tmoz	raise_size	there must be at least one digit before "." BUGFIX
+    001502  0a   001740 1000 00   1138  	cmpx0	minus_char	look at sign_p->char1 to see if orig value was <0,if so insert "-"
+    001503  0a   001524 6000 00   1139  	tze	source_lt_zero	since sign_p->"-",insert a "-"
+                                  1140  "
+    001504                        1141  sign_set:
+    001504  aa  0 00140 1005 40   1142  	mlr	(pr,rl),(pr,rl)	now move the pre-"." digits
+    001505  aa   300000 000005    1143  	desc9a	pr3|0,al
+    001506  aa   700000 000005    1144  	desc9a	pr7|0,al		remember pr7 is target ptr
+    001507  aa  3 00000 5005 05   1145  	a9bd	pr3|0,al		advance source_p past digits we just moved
+    001510  aa  7 00000 5005 05   1146  	a9bd	pr7|0,al		do the same for targ_ptr
+    001511  aa  6 00066 2361 00   1147  	ldq	sp|d_temp		if scale=0,there is nothing but the pre-"." stuff so were finished
+    001512  0a   001522 6000 00   1148  	tze	f_done
+                                  1149  "
+    001513  aa   056100 1004 00   1150  	mlr	(),(pr),fill(056)
+    001514  aa   000000 000000    1151  	zero	0		move in the "." to the target	
+    001515  aa   700000 000001    1152  	desc9a	pr7|0,1		which is pr7
+    001516  aa  7 00000 5005 16   1153  	a9bd	pr7|0,x6		and up the targ ptr
+    001517  aa  0 00140 1005 40   1154  	mlr	(pr,rl),(pr,rl)	now move in the last post-"." digits
+    001520  aa   300000 000006    1155  	desc9a	pr3|0,ql		q still has q, which serves as the numbber
+    001521  aa   700000 000006    1156  	desc9a	pr7|0,ql		of digits after the dec point
+                                  1157  "			if you didnt notice, were finished!
+    001522                        1158  f_done:
+    001522  aa  6 00057 2361 00   1159  	ldq	sp|w_temp		q should be length of output string
+    001523  aa  5 00034 7101 20   1160  	tra	pr5|plio_sb.pef_finish,*
+                                  1161  "
+    001524                        1162  source_lt_zero:
+    001524  aa   000000 1160 07   1163  	cmpq	0,dl		if no zeros were skipped,no room for "-"	
+    001525  0a   001543 6054 00   1164  	tpnz	dont_raise_size	if any 0's were skipped we have room
+    001526                        1165  raise_size:
+    001526  aa  5 00030 3735 20   1166  	epp7	pr5|plio_sb.space_ptr,*
+    001527  aa  6 00052 3701 00   1167  	epp4	sp|ps_ptr		else set up the size-condition raising call
+    001530  aa  7 00062 6501 00   1168  	spri4	pr7|qs_arg_list+2	1st arg is ps ptr
+    001531  aa  6 00010 7531 00   1169  	sreg	sp|8
+    001532  aa  6 00037 7201 00   1170  	lxl0	sp|stack_frame.operator_ret_ptr
+    001533  aa   004000 4310 07   1171  	fld	1*2048,dl
+    001534  aa  7 00060 7571 00   1172  	staq	pr7|qs_arg_list
+    001535  aa  7 00060 3501 00   1173  	eppap	pr7|qs_arg_list
+    001536  4a  4 00016 7011 20   1174  	tsx1	<pl1_operators_>|[get_our_lp]
+    001537  aa  6 00024 3571 00   1175  	stcd	sp|stack_frame.return_ptr
+    001540  4a  4 00040 7131 20   1176  	callsp	<plio2_>|[pve_error]
+    001541  aa  6 00010 0731 00   1177  	lreg	sp|8
+    001542  4a  4 00042 7101 20   1178  	tra	<put_field_>|[set_no_ret_error]
+    001543                        1179  dont_raise_size:
+    001543  aa   055100 1004 00   1180  	mlr	(),(pr),fill(055)	fill char is a "-", this moves it into output string
+    001544  aa   000000 000000    1181  	zero	0
+    001545  aa   777777 600001    1182  	desc9a	pr7|-1(3),1	pr7 points to output string
+    001546  0a   001504 7100 00   1183  	tra	sign_set		and remerge with mainstream code, sign having been inserted
+                                  1184  "
+    001547                        1185  do_pic_format:
+    001547  aa  5 00033 4501 00   1186  	stz	pr5|plio_sb.cplx_flags	snce were not doing imag  part of cplx format
+    001550  0a   001331 3514 00   1187  	epp1	end_of_pef	where to go when finished
+    001551  aa  5 00034 2515 00   1188  	spri1	pr5|plio_sb.pef_finish
+    001552                        1189  p_format_from_cplx:
+    001552  aa  5 00003 7611 00   1190  	lprp1	pr5|plio_sb.val_2	get a ptr to the format's picture_image in pr1
+    001553  aa  6 00064 2515 00   1191  	spri1	sp|double_temp	and save it in  double_temp
+    001554  0a   001706 7010 00   1192  	tsx1	decode_pic_desc	now decode the picture pointed to  by pr1
+    001555  aa  6 00057 7551 00   1193  	sta	sp|int_val_scaleprec	a has the scale-prec specified by the picture
+    001556  aa  6 00066 7461 00   1194  	stx6	sp|int_val_type	x6 has the type to convert through specified by the picture
+    001557  aa  4 00054 2351 00   1195  	lda	pr4|ps.descr	find out if the source is pic,if so must unpack picture
+    001560  0a   001621 6010 00   1196  	tnz	not_pic_source	if it isn't a picture skip call to unpack_pic
+    001561  0a   001634 6200 00   1197  	eax0	ass_pic_source_to_intermed	this is where to go after unpacking the picture
+                                  1198  "
+                                  1199  "	This routine is dropped through to in the case of p_formats, and is tsx0'd to
+                                  1200  "	from the other formats in the case in which the source value is a picture. The
+                                  1201  "	routine calls unpack_pic and transfers to the location  in x0.
+                                  1202  "
+    001562                        1203  general_pic_source:
+    001562  aa  4 00034 2211 00   1204  	ldx1	pr4|ps.top_half
+    001563  aa  6 00046 3515 71   1205  	epp1	sp|tbp,*x1	1st build  a ptr  to the picture description,*x1at base|ps.top_half
+    001564  0a   001706 7010 00   1206  	tsx1	decode_pic_desc	this routine assumes the ptr to the pic is in pr1
+    001565  aa  6 00055 7551 00   1207  	sta	sp|source_val_scaleprec	store the returned scale-prec
+    001566  aa  6 00054 4461 00   1208  	sxl6	sp|source_val_type	store the returned type
+    001567  aa  5 00030 3735 20   1209  	epp7	pr5|plio_sb.space_ptr,*	we need space for the result of the unpacking
+    001570  aa  7 00234 3735 00   1210  	epp7	pr7|156
+    001571  aa  4 00030 3535 20   1211  	epp3	pr4|ps.value_p,*
+    001572  aa  7 00062 6535 00   1212  	spri7	pr7|qs_arg_list+2	1st arg is buffer in which to  place result
+    001573  aa  7 00066 2535 00   1213  	spri3	pr7|qs_arg_list+6	3rd arg is ptr  to source value
+    001574  aa  7 00064 2515 00   1214  	spri1	pr7|qs_arg_list+4	2nd arg is ptr to  picture description
+    001575  aa  6 00010 7531 00   1215  	sreg	sp|8		and make the call
+    001576  aa   014000 4310 07   1216  	fld	3*2048,dl
+    001577  aa  7 00060 7571 00   1217  	staq	pr7|qs_arg_list
+    001600  aa  7 00060 3501 00   1218  	eppap	pr7|qs_arg_list
+    001601  4a  4 00016 7011 20   1219  	tsx1	<pl1_operators_>|[get_our_lp]
+    001602  aa  6 00024 3571 00   1220  	stcd	sp|stack_frame.return_ptr
+    001603  4a  4 00044 7131 20   1221  	callsp	<unpack_picture_>|[unpack_picture_]
+    001604  aa  6 00010 0731 00   1222  	lreg	sp|8
+    001605  aa  6 00052 3701 20   1223  	epp4	sp|ps_ptr,*	restore ptr registers
+    001606  aa  4 00006 3715 20   1224  	epp5	pr4|ps.format_area_p,*
+    001607  aa  5 00030 3515 20   1225  	epp1	pr5|plio_sb.space_ptr,*
+    001610  aa  1 00234 3535 00   1226  	epp3	pr1|156		let pr3->result of unpacking,which a_to_a will use as source ptr
+    001611  aa  6 00055 2361 00   1227  	ldq	sp|source_val_scaleprec	scale-prec of source in q, for a_to_a call
+    001612  aa  6 00054 7271 00   1228  	lxl7	sp|source_val_type	also for  a_to_a call
+    001613  aa   000000 7100 10   1229  	tra	0,0		and return to sender
+                                  1230  "
+    001614                        1231  decode_pic_type:
+    001614  aa   000000 000052    1232  	dec	42	char
+    001615  aa   000000 000022    1233  	dec	18	real fix dec
+    001616  aa   000000 000026    1234  	dec	22	cmplx fix dec
+    001617  aa   000000 000024    1235  	dec	20	real fl dec
+    001620  aa   000000 000030    1236  	dec	24	cmplx fl dec
+    001621                        1237  not_pic_source:
+    001621  aa   000014 7730 00   1238  	lrl	12		at this point a has the descr & we must extract scale-prec
+    001622  aa   000006 7720 00   1239  	qrl	6		scale  is in 2nd 3rd of word, prec in 3rd 3rd
+    001623  aa   000014 7730 00   1240  	lrl	12
+    001624  aa   000006 7720 00   1241  	qrl	6
+    001625  aa  6 00055 7561 00   1242  	stq	sp|source_val_scaleprec	scale is now in top 1/2 of q,prec in lower 1/2
+    001626  aa   000031 7350 00   1243  	als	25		now extract the type field, adding to it the "packed" bit
+    001627  aa   000035 7710 00   1244  	arl	29
+    001630  aa  6 00054 7551 00   1245  	sta	sp|source_val_type	pr3 ->source val, all  nice for a_to_a
+    001631  aa  4 00030 3535 20   1246  	epp3	pr4|ps.value_p,*
+    001632                        1247  ass_source_to_intermed:
+    001632  aa  6 00055 2361 00   1248  	ldq	sp|source_val_scaleprec	whether or not source is original or unpacked, now we convert it
+    001633  aa  6 00054 7271 00   1249  	lxl7	sp|source_val_type	to the intermediate value specified by the  picture format
+    001634                        1250  ass_pic_source_to_intermed:
+    001634  aa  5 00030 3515 20   1251  	epp1	pr5|plio_sb.space_ptr,*	if we come from unpack_pic, q & x7 were already set
+    001635  aa  1 00060 3735 00   1252  	epp7	pr1|48		set up the rest of the registers for a_to_a
+    001636  aa  1 00020 3515 00   1253  	epp1	pr1|16
+    001637  aa  6 00057 2351 00   1254  	lda	sp|int_val_scaleprec
+    001640  aa  6 00066 2261 00   1255  	ldx6	sp|int_val_type	these are the conversion's target's scale-prec & type
+    001641  aa  5 00033 7211 00   1256  	lxl1	pr5|plio_sb.cplx_flags
+    001642  aa   000002 6000 04   1257  	tze	2,ic
+    001643  aa   000004 0660 03   1258  	adx6	4,du		if imag part of c_format,force interm val to cplx
+    001644  aa  7 00000 3715 00   1259  	epp5	pr7|0		this is ptr to work area
+    001645  4a  4 00032 6211 20   1260  	eax1	<any_to_any_>|[any_to_any_]	this is proper entry to call
+    001646  0a   000715 7000 00   1261  	tsx0	ata_call_and_ret	and do the conversion
+                                  1262  "
+    001647  aa  1 00020 3521 00   1263  	epp2	pr1|16		set pr2->output of conversion
+    001650  aa  5 00033 2351 00   1264  	lda	pr5|plio_sb.cplx_flags	if imag part of cplx we must skip real part
+    001651  0a   001662 6000 00   1265  	tze	image_pic_merge
+    001652  aa   000001 6200 00   1266  	eax0	1		we will  skip 1 char for the exponent byte if dec float
+    001653  aa  6 00066 2261 00   1267  	ldx6	sp|int_val_type	find out type
+    001654  aa   000024 1060 00   1268  	cmpx6	D_float_real_desc	decimal float?
+    001655  aa   000002 6010 04   1269  	tnz	2,ic		if not, just skip 1 extra byte for sign char, must be fixed decimal
+    001656  aa  2 00000 5005 10   1270  	a9bd	pr2|0,x0		skip exponent  byte
+    001657  aa  2 00000 5005 10   1271  	a9bd	pr2|0,x0		skip sign byte
+    001660  aa  6 00057 2351 00   1272  	lda	sp|int_val_scaleprec	skip body of real value now
+    001661  aa  2 00000 5005 05   1273  	a9bd	pr2|0,al		no mask needed to elim scale cause al takes only lower
+    001662                        1274  image_pic_merge:
+                                  1275  "				now call pack_picture for the final cconversion
+    001662  aa  1 00062 2515 00   1276  	spri1	pr1|qs_arg_list+2	arg1 is ptr to where to put resulting output string
+    001663  aa  6 00064 3735 20   1277  	epp7	sp|double_temp,*	double temp has ptr to picture description of p_format, remember
+    001664  aa  1 00064 6535 00   1278  	spri7	pr1|qs_arg_list+4	which is arg2
+    001665  aa  1 00066 2521 00   1279  	spri2	pr1|qs_arg_list+6	arg3 is ptr  ot source to be packed
+    001666  aa  6 00010 7531 00   1280  	sreg	sp|8		set up the 3 argument call
+    001667  aa   014000 4310 07   1281  	fld	3*2048,dl
+    001670  aa  1 00060 7571 00   1282  	staq	pr1|qs_arg_list
+    001671  aa  1 00060 3501 00   1283  	eppap	pr1|qs_arg_list
+    001672  4a  4 00016 7011 20   1284  	tsx1	<pl1_operators_>|[get_our_lp]
+    001673  aa  6 00024 3571 00   1285  	stcd	sp|stack_frame.return_ptr
+    001674  4a  4 00046 7131 20   1286  	callsp	<unpack_picture_>|[pack_picture_]
+    001675  aa  6 00010 0731 00   1287  	lreg	sp|8		restore registers and pointer regs
+    001676  aa  6 00052 3701 20   1288  	epp4	sp|ps_ptr,*
+    001677  aa  4 00006 3715 20   1289  	epp5	pr4|ps.format_area_p,*
+    001700  aa  5 00030 3535 20   1290  	epp3	pr5|plio_sb.space_ptr,*
+    001701  aa  3 00000 3521 00   1291  	epp2	pr3|0		pr2 should point to output string to be put out
+    001702  aa  6 00064 3735 20   1292  	epp7	sp|double_temp,*	now calculate length of output for put_field
+    001703  aa  7 00001 2361 00   1293  	ldq	pr7|1		which is found in pic_image.varlength
+    001704  aa   000033 7720 00   1294  	qrl	pic_image.varlength_shift
+    001705  aa  5 00034 7101 20   1295  	tra	pr5|plio_sb.pef_finish,*	and we're done with this exercise in the sublime
+                                  1296  "	subroutine to decode a picture's descriptor,entered with pr1->picutre's
+                                  1297  "	image and exited with the scale-prec in a and type in x6
+                                  1298  "
+    001706                        1299  decode_pic_desc:
+    001706  aa  1 00000 2361 00   1300  	ldq	pr1|0		get  the pic_image type & decode it with use of the "decode_pic_type" table
+    001707  aa   000033 7720 00   1301  	qrl	pic_image.type_shift
+    001710  0a   001564 7260 06   1302  	lxl6	decode_pic_type-24,ql
+    001711  aa   000052 1060 03   1303  	cmpx6	char_desc,du	now  the decoded type is in x6, so extract the scale-prec
+    001712  0a   001727 6000 00   1304  	tze	char_desc_decode	if its a char type there is only a length, no scale-prec
+    001713  aa  1 00000 2351 00   1305  	lda	pr1|0		else extract the scale-prec
+    001714  aa   000011 7710 00   1306  	arl	pic_image.scale_shift
+    001715  0a   001750 3750 00   1307  	ana	=o000000000777
+    001716  aa  1 00001 2361 00   1308  	ldq	pr1|1		now scale is in lowest byte  of a,get prec in  q & merge them
+    001717  aa   000022 7720 00   1309  	qrl	pic_image.scalefactor_shift	but first must handle the scalefactor, just in case there is one
+    001720  aa   000777 3760 07   1310  	anq	pic_image.mask,dl
+    001721  aa  6 00076 7561 00   1311  	stq	sp|temp		store the scalefactor in sp|temp
+    001722  aa  6 00076 1751 00   1312  	sba	sp|temp		and subtract it from the scale
+    001723  aa  1 00000 2361 00   1313  	ldq	pr1|0		now get the precision, at last
+    001724  aa   000777 3760 03   1314  	anq	=o000777,du	and move it to the a with scale in  top 1/2 of a
+    001725  aa   000022 7370 00   1315  	lls	18
+    001726  aa   000000 7100 11   1316  	tra	0,1		and we're done & return to he who tsx1'd  to us
+    001727                        1317  char_desc_decode:
+    001727  aa  1 00001 2351 00   1318  	lda	pr1|1		get the length from the pic image, leave it in the a
+    001730  aa   000033 7710 00   1319  	arl	27
+    001731  aa   000000 7100 11   1320  	tra	0,1		and return
+                                  1321  "
+                                  1322  "	This subroutine checks that plio_sb.nval>0, if not it raises an error, if it
+                                  1323  "	is it leaves the value of it in the q. It is tsx6'd to, and clobbers only the q.
+                                  1324  "
+    001732                        1325  check_for_param:
+    001732  aa  5 00001 2361 00   1326  	ldq	pr5|plio_sb.nval
+    001733  aa   000000 6054 16   1327  	tpnz	0,6
+    001734  aa   000012 2350 07   1328  	lda	10,dl
+    001735  4a  4 00014 7101 20   1329  	tra	<put_field_>|[any_qs_error_no_ret]
+                                  1330  "
+                                  1331  "	operator to terminate a put
+                                  1332  "
+    001736                        1333  put_terminate:
+    001736  aa   000001 6260 00   1334  	eax6	1		set proc to call
+    001737  4a  4 00010 7101 20   1335  	tra	<pl1_operators_>|[plio4]
+                                  1336  "
+    001740                        1337  minus_char:
+    001740  aa   055000 000000    1338  	oct	055000000000
+                                  1339  "
+    001741  aa   000000 0110 03   1340  	even
+    001742  aa   077777 000043    1341  null_loc:	its	-1,1,n		this is where we get "null" for argument ptrs  which should be null
+    001743  aa   000001 000000 
+                                  1342  	end
+LITERALS
+     
+    001744  aa   374000 000000 
+    001745  aa   000077 777777 
+    001746  aa   000777 777777 
+    001747  aa   376000 000000 
+    001750  aa   000000 000777 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    001751  5a   000003 000000 
+    001752  5a   000053 600000 
+    001753  aa   000000 000000 
+    001754  55   000011 000002 
+    001755  5a   000002 400003 
+    001756  55   000006 000011 
+    001757  aa  013 160 165 164
+    001760  aa  137 146 157 162
+    001761  aa  155 141 164 137
+    001762  55   000017 000003 
+    001763  0a   000001 400000 
+    001764  55   000014 000003 
+    001765  aa  013 163 164 162         stream_prep
+    001766  aa  145 141 155 137
+    001767  aa  160 162 145 160
+    001770  55   000026 000011 
+    001771  0a   001736 400000 
+    001772  55   000022 000003 
+    001773  aa  015 160 165 164         put_terminate
+    001774  aa  137 164 145 162
+    001775  aa  155 151 156 141
+    001776  aa  164 145 000 000
+    001777  55   000035 000017 
+    002000  0a   000013 400000 
+    002001  55   000031 000003 
+    002002  aa  014 147 145 164         get_edit_eis
+    002003  aa  137 145 144 151
+    002004  aa  164 137 145 151
+    002005  aa  163 000 000 000
+    002006  55   000044 000026 
+    002007  0a   000013 400000 
+    002010  55   000040 000003 
+    002011  aa  014 160 165 164         put_edit_eis
+    002012  aa  137 145 144 151
+    002013  aa  164 137 145 151
+    002014  aa  163 000 000 000
+    002015  55   000002 000035 
+    002016  6a   000000 400002 
+    002017  55   000047 000003 
+    002020  aa  014 163 171 155         symbol_table
+    002021  aa  142 157 154 137
+    002022  aa  164 141 142 154
+    002023  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    002024  aa   000000 000015 
+    002025  aa   000000 000000 
+    002026  aa   000000 000000 
+    002027  aa   000000 000000 
+    002030  5a   000026 000000 
+    002031  5a   000011 000000 
+    002032  5a   000017 000000 
+    002033  5a   000044 000000 
+    002034  aa   000000 000000 
+    002035  aa   000000 000000 
+    002036  5a   000035 000000 
+    002037  aa   000000 000000 
+    002040  aa   000000 000000 
+    002041  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    002042  aa  015 160 141 143         pack_picture_
+    002043  aa  153 137 160 151
+    002044  aa  143 164 165 162
+    002045  aa  145 137 000 000
+    002046  aa  017 165 156 160         unpack_picture_
+    002047  aa  141 143 153 137
+    002050  aa  160 151 143 164
+    002051  aa  165 162 145 137
+    002052  aa  020 163 145 164         set_no_ret_error
+    002053  aa  137 156 157 137
+    002054  aa  162 145 164 137
+    002055  aa  145 162 162 157
+    002056  aa  162 000 000 000
+    002057  aa  011 160 166 145         pve_error
+    002060  aa  137 145 162 162
+    002061  aa  157 162 000 000
+    002062  aa  021 141 156 171         any_to_any_round_
+    002063  aa  137 164 157 137
+    002064  aa  141 156 171 137
+    002065  aa  162 157 165 156
+    002066  aa  144 137 000 000
+    002067  aa  025 160 165 164         put_field_from_format
+    002070  aa  137 146 151 145
+    002071  aa  154 144 137 146
+    002072  aa  162 157 155 137
+    002073  aa  146 157 162 155
+    002074  aa  141 164 000 000
+    002075  aa  013 141 156 171         any_to_any_
+    002076  aa  137 164 157 137
+    002077  aa  141 156 171 137
+    002100  aa  027 160 165 164         put_control_from_format
+    002101  aa  137 143 157 156
+    002102  aa  164 162 157 154
+    002103  aa  137 146 162 157
+    002104  aa  155 137 146 157
+    002105  aa  162 155 141 164
+    002106  aa  024 144 145 143         decode_runtime_value
+    002107  aa  157 144 145 137
+    002110  aa  162 165 156 164
+    002111  aa  151 155 145 137
+    002112  aa  166 141 154 165
+    002113  aa  145 000 000 000
+    002114  aa  036 162 145 163         restore_regs_and_frame_and_ret
+    002115  aa  164 157 162 145
+    002116  aa  137 162 145 147
+    002117  aa  163 137 141 156
+    002120  aa  144 137 146 162
+    002121  aa  141 155 145 137
+    002122  aa  141 156 144 137
+    002123  aa  162 145 164 000
+    002124  aa  017 161 165 151         quick_get_edit_
+    002125  aa  143 153 137 147
+    002126  aa  145 164 137 145
+    002127  aa  144 151 164 137
+    002130  aa  006 160 154 151         plio2_
+    002131  aa  157 062 137 000
+    002132  aa  015 162 145 155         remote_format
+    002133  aa  157 164 145 137
+    002134  aa  146 157 162 155
+    002135  aa  141 164 000 000
+    002136  aa  004 163 164 165         stu_
+    002137  aa  137 000 000 000
+    002140  aa  012 147 145 164         get_our_lp
+    002141  aa  137 157 165 162
+    002142  aa  137 154 160 000
+    002143  aa  023 141 156 171         any_qs_error_no_ret
+    002144  aa  137 161 163 137
+    002145  aa  145 162 162 157
+    002146  aa  162 137 156 157
+    002147  aa  137 162 145 164
+    002150  aa  012 160 165 164         put_field_
+    002151  aa  137 146 151 145
+    002152  aa  154 144 137 000
+    002153  aa  005 141 154 154         alloc
+    002154  aa  157 143 000 000
+    002155  aa  005 160 154 151         plio4
+    002156  aa  157 064 000 000
+    002157  aa  016 160 154 061         pl1_operators_
+    002160  aa  137 157 160 145
+    002161  aa  162 141 164 157
+    002162  aa  162 163 137 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    002163  aa   000004 000000 
+    002164  55   000075 000071 
+    002165  aa   000004 000000 
+    002166  55   000075 000075 
+    002167  aa   000004 000000 
+    002170  55   000177 000101 
+    002171  aa   000004 000000 
+    002172  55   000157 000106 
+    002173  aa   000004 000000 
+    002174  55   000124 000111 
+    002175  aa   000004 000000 
+    002176  55   000177 000116 
+    002177  aa   000004 000000 
+    002200  55   000124 000124 
+    002201  aa   000004 000000 
+    002202  55   000177 000127 
+    002203  aa   000004 000000 
+    002204  55   000165 000135 
+    002205  aa   000004 000000 
+    002206  55   000177 000143 
+    002207  aa   000004 000000 
+    002210  55   000157 000153 
+    002211  aa   000004 000000 
+    002212  55   000165 000161 
+    002213  aa   000004 000000 
+    002214  55   000206 000167 
+    002215  aa   000004 000000 
+    002216  55   000177 000172 
+    002217  aa   000004 000000 
+    002220  55   000206 000202 
+    002221  aa   000004 000000 
+    002222  55   000206 000204 
+    002223  aa   000001 000000 
+    002224  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    002225  5a   000212 000000 
+    002226  5a   000214 000000 
+    002227  5a   000216 000000 
+    002230  5a   000220 000000 
+    002231  5a   000222 000000 
+    002232  5a   000224 000000 
+    002233  5a   000226 000000 
+    002234  5a   000230 000000 
+    002235  5a   000232 000000 
+    002236  5a   000234 000000 
+    002237  5a   000236 000000 
+    002240  5a   000240 000000 
+    002241  5a   000242 000000 
+    002242  5a   000244 000000 
+    002243  5a   000246 000000 
+    002244  5a   000250 000000 
+    002245  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   001751 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000050 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pl1_operators_|plio4
+    000011  5a   000273 0000 00
+    000012  9a   777766 0000 46         pl1_operators_|alloc
+    000013  5a   000272 0000 00
+    000014  9a   777764 0000 46         put_field_|any_qs_error_no_ret
+    000015  5a   000271 0000 00
+    000016  9a   777762 0000 46         pl1_operators_|get_our_lp
+    000017  5a   000270 0000 00
+    000020  9a   777760 0000 46         stu_|remote_format
+    000021  5a   000267 0000 00
+    000022  9a   777756 0000 46         plio2_|quick_get_edit_
+    000023  5a   000266 0000 00
+    000024  9a   777754 0000 46         put_field_|restore_regs_and_frame_and_ret
+    000025  5a   000265 0000 00
+    000026  9a   777752 0000 46         stu_|decode_runtime_value
+    000027  5a   000264 0000 00
+    000030  9a   777750 0000 46         put_field_|put_control_from_format
+    000031  5a   000263 0000 00
+    000032  9a   777746 0000 46         any_to_any_|any_to_any_
+    000033  5a   000262 0000 00
+    000034  9a   777744 0000 46         put_field_|put_field_from_format
+    000035  5a   000261 0000 00
+    000036  9a   777742 0000 46         any_to_any_|any_to_any_round_
+    000037  5a   000260 0000 00
+    000040  9a   777740 0000 46         plio2_|pve_error
+    000041  5a   000257 0000 00
+    000042  9a   777736 0000 46         put_field_|set_no_ret_error
+    000043  5a   000256 0000 00
+    000044  9a   777734 0000 46         unpack_picture_|unpack_picture_
+    000045  5a   000255 0000 00
+    000046  9a   777732 0000 46         unpack_picture_|pack_picture_
+    000047  5a   000254 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   251422 614550 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000456 
+    000020  aa   000000 000263 
+    000021  aa   000414 000403 
+    000022  aa   000442 000263 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000012 
+    000066  aa   000136 000042 
+    000067  aa   175453 020016 
+    000070  aa   000000 117547 
+    000071  aa   177027 000000 
+    000072  aa   000147 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   000160 000042 
+    000077  aa   147777 464111 
+    000100  aa   000000 115000 
+    000101  aa   507463 000000 
+    000102  aa   000171 000036 
+    000103  aa   043243 127522 
+    000104  aa   000000 101621 
+    000105  aa   351621 000000 
+    000106  aa   000201 000035 
+    000107  aa   043243 130305 
+    000110  aa   000000 104067 
+    000111  aa   575715 000000 
+    000112  aa   000211 000035 
+    000113  aa   045741 161024 
+    000114  aa   000000 104574 
+    000115  aa   401031 400000 
+    000116  aa   000221 000037 
+    000117  aa   043243 130250 
+    000120  aa   000000 103525 
+    000121  aa   334146 400000 
+    000122  aa   000231 000036 
+    000123  aa   045741 160635 
+    000124  aa   000000 104574 
+    000125  aa   400471 200000 
+    000126  aa   000241 000047 
+    000127  aa   043243 130303 
+    000130  aa   000000 104067 
+    000131  aa   575551 600000 
+    000132  aa   000253 000040 
+    000133  aa   043243 127430 
+    000134  aa   000000 103525 
+    000135  aa   334047 000000 
+    000136  aa   076163 160145          >spec>install>1110>put_format_.alm
+    000137  aa   143076 151156 
+    000140  aa   163164 141154 
+    000141  aa   154076 061061 
+    000142  aa   061060 076160 
+    000143  aa   165164 137146 
+    000144  aa   157162 155141 
+    000145  aa   164137 056141 
+    000146  aa   154155 040040 
+    000147  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000150  aa   076151 156143 
+    000151  aa   154165 144145 
+    000152  aa   076163 164141 
+    000153  aa   143153 137146 
+    000154  aa   162141 155145 
+    000155  aa   056151 156143 
+    000156  aa   154056 141154 
+    000157  aa   155040 040040 
+    000160  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000161  aa   076151 156143 
+    000162  aa   154165 144145 
+    000163  aa   076163 164141 
+    000164  aa   143153 137150 
+    000165  aa   145141 144145 
+    000166  aa   162056 151156 
+    000167  aa   143154 056141 
+    000170  aa   154155 040040 
+    000171  aa   076154 144144          >ldd>include>eis_bits.incl.alm
+    000172  aa   076151 156143 
+    000173  aa   154165 144145 
+    000174  aa   076145 151163 
+    000175  aa   137142 151164 
+    000176  aa   163056 151156 
+    000177  aa   143154 056141 
+    000200  aa   154155 040040 
+    000201  aa   076154 144144          >ldd>include>plio_sb.incl.alm
+    000202  aa   076151 156143 
+    000203  aa   154165 144145 
+    000204  aa   076160 154151 
+    000205  aa   157137 163142 
+    000206  aa   056151 156143 
+    000207  aa   154056 141154 
+    000210  aa   155040 040040 
+    000211  aa   076154 144144          >ldd>include>plio_fb.incl.alm
+    000212  aa   076151 156143 
+    000213  aa   154165 144145 
+    000214  aa   076160 154151 
+    000215  aa   157137 146142 
+    000216  aa   056151 156143 
+    000217  aa   154056 141154 
+    000220  aa   155040 040040 
+    000221  aa   076154 144144          >ldd>include>pic_image.incl.alm
+    000222  aa   076151 156143 
+    000223  aa   154165 144145 
+    000224  aa   076160 151143 
+    000225  aa   137151 155141 
+    000226  aa   147145 056151 
+    000227  aa   156143 154056 
+    000230  aa   141154 155040 
+    000231  aa   076154 144144          >ldd>include>plio2_ps.incl.alm
+    000232  aa   076151 156143 
+    000233  aa   154165 144145 
+    000234  aa   076160 154151 
+    000235  aa   157062 137160 
+    000236  aa   163056 151156 
+    000237  aa   143154 056141 
+    000240  aa   154155 040040 
+    000241  aa   076154 144144          >ldd>include>plio_format_codes.incl.alm
+    000242  aa   076151 156143 
+    000243  aa   154165 144145 
+    000244  aa   076160 154151 
+    000245  aa   157137 146157 
+    000246  aa   162155 141164 
+    000247  aa   137143 157144 
+    000250  aa   145163 056151 
+    000251  aa   156143 154056 
+    000252  aa   141154 155040 
+    000253  aa   076154 144144          >ldd>include>desc_types.incl.alm
+    000254  aa   076151 156143 
+    000255  aa   154165 144145 
+    000256  aa   076144 145163 
+    000257  aa   143137 164171 
+    000260  aa   160145 163056 
+    000261  aa   151156 143154 
+    000262  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           5    a                        eis_bits:       9.
+         546    ab_null_string           put_format_:  549,  744.
+         443    action                   put_format_:  403,  460.
+         575    after_ata_call           put_format_:  582,  785.
+         603    af_return                put_format_:  592.
+           5    al                       eis_bits:      10.
+                alloc                    put_format_:  138,  801.
+           1    and                      eis_bits:      23.
+                any_qs_error_no_ret      put_format_:  215,  389,  453,  512, 1329.
+                any_to_any_              put_format_:  580,  668,  902, 1101, 1260.
+                any_to_any_round_        put_format_:  902, 1101.
+         100    ar                       eis_bits:       1.
+          44    area_desc                desc_types:    29.
+        1634    ass_pic_source_to_intermed     put_format_: 1197, 1250.
+        1632    ass_source_to_intermed   put_format_: 1247.
+         574    ata_call                 put_format_:  579,  684.
+         715    ata_call_and_ret         put_format_:  686,  903, 1102, 1261.
+           1    au                       eis_bits:       5.
+           7    a_format                 plio_format_codes:   19.
+         640    a_f_pic_source           put_format_:  536,  635.
+         542    a_f_source_ok            put_format_:  544.
+          46    bit_desc                 put_format_: 1033,
+                                         desc_types:    30.
+          16    bn_format                put_format_:  674,
+                                         plio_format_codes:   26.
+         771    bn_len_given             put_format_:  739,  742.
+        1016    bn_loop                  put_format_:  768,  784.
+         752    bn_with_len              put_format_:  720,  723.
+           6    b_format                 plio_format_codes:   18.
+          55    b_temp                   put_format_:   65,  966,  987.
+        1170    call_offset              stack_header:        80.
+          52    char_desc                put_format_:  539,  556,  681, 1031, 1303,
+                                         desc_types:    32.
+        1727    char_desc_decode         put_format_: 1304, 1317.
+         622    char_to_char             put_format_:  540,  614.
+         624    char_to_char_len         put_format_:  617,  640.
+        1732    check_for_param          put_format_:  278,  334,  489,  499,  507, 1325.
+           0    clear                    put_format_:  761,
+                                         eis_bits:      27.
+          12    column_format            plio_format_codes:   22.
+           3    c_format                 put_format_:  166,  204,  208,
+                                         plio_format_codes:   15.
+         260    c_format_to_sb           put_format_:  209,  330.
+        1706    decode_pic_desc          put_format_: 1192, 1206, 1299.
+          60    decode_pic_format        put_format_:  173,  288,  312.
+        1614    decode_pic_type          put_format_: 1231, 1302.
+         402    decode_q                 put_format_:  195,  266,  296,  319,  422.
+                decode_runtime_value     put_format_:  444.
+        1543    dont_raise_size          put_format_: 1164, 1179.
+          64    double_temp              put_format_:   60,  423,  448, 1191, 1277, 1292.
+         530    do_a_format              put_format_:  465,  533.
+         743    do_bn_format             put_format_:  472,  715.
+         645    do_b_format              put_format_:  464,  642.
+         502    do_col_format            put_format_:  468,  498.
+         522    do_control               put_format_:  493,  496,  502,  504,  510,  521,  529.
+        1043    do_c_format              put_format_:  461,  797.
+        1111    do_e_format              put_format_:  463,  844.
+        1372    do_f_format              put_format_:  462, 1056.
+         510    do_line_format           put_format_:  470,  506.
+         521    do_most_controls         put_format_:  519.
+         500    do_page_format           put_format_:  469,  494.
+        1547    do_pic_format            put_format_:  471, 1185.
+         516    do_skip_format           put_format_:  467,  514.
+         473    do_x_format              put_format_:  466,  488.
+           3    du                       eis_bits:       7.
+          26    D_fixed_cplx_desc        put_format_: 1095,
+                                         desc_types:    22.
+          14    d_fixed_cplx_desc        desc_types:    17.
+          22    D_fixed_real_desc        put_format_: 1097,
+                                         desc_types:    20.
+           4    d_fixed_real_desc        desc_types:    13.
+          30    D_float_cplx_desc        put_format_:  888,
+                                         desc_types:    23.
+          20    d_float_cplx_desc        desc_types:    19.
+          24    D_float_real_desc        put_format_:  899, 1268,
+                                         desc_types:    21.
+          10    d_float_real_desc        desc_types:    15.
+          66    d_temp                   put_format_:   55,  858,  859,  866,  879,  895,  935,  946,  979,  988, 1074, 1077,
+                                                      1083, 1121, 1136, 1147.
+        1367    ef_null_string           put_format_:  870,  876, 1051, 1064.
+        1331    end_of_pef               put_format_:  841,  846, 1013, 1058, 1187.
+          40    entry_desc               desc_types:    27.
+        1174    entry_offset             stack_header:        84.
+         166    eval_loop                put_format_:  261,  269.
+          76    eval_rep                 put_format_:  192,  244.
+         176    exec_c_format            put_format_:  167,  271.
+          60    extra_bits               put_format_:   57,  730,  759.
+           5    e_format                 put_format_:  811,
+                                         plio_format_codes:   17.
+        1114    e_format_from_cplx       put_format_:  812,  848.
+        1176    e_imag_merge             put_format_:  909,  912.
+        1143    e_merge                  put_format_:  872,  881.
+        1131    e_merge_for_w            put_format_:  860,  868.
+        1255    e_move                   put_format_:  950,  952,  965.
+        1135    e_one_op                 put_format_:  853,  874.
+        1126    e_two_ops                put_format_:  854,  863.
+          56    file_desc                desc_types:    34.
+         754    final_conv_for_bn        put_format_:  675,  727.
+        1024    first_radix_factor_bits  put_format_:  777.
+        1365    fix_len                  put_format_: 1028, 1030, 1047.
+           0    formats_mask             put_format_:   78.
+         165    format_decoded           put_format_:  169,  259.
+        1436    f_call                   put_format_: 1096, 1098.
+        1522    f_done                   put_format_: 1148, 1158.
+           4    f_format                 plio_format_codes:   16.
+        1375    f_format_from_cplx       put_format_:  813, 1060.
+        1413    f_merge                  put_format_: 1075, 1078.
+        1412    f_one_op                 put_format_: 1067, 1076.
+        1407    f_two_ops                put_format_: 1068, 1071.
+        1562    general_pic_source       put_format_: 1022, 1203.
+         457    get_code                 put_format_:  404,  474.
+          13    get_edit_eis             put_format_:   75,  104.
+                get_our_lp               put_format_:  378,  412,  442, 1174, 1219, 1284.
+         355    got_format               put_format_:  171,  263,  311,  316,  328,  399.
+        1054    handle_pef               put_format_:  808,  829.
+        1033    hex_table                put_format_:  779,  788.
+           4    ic                       eis_bits:       8.
+          20    id                       eis_bits:       3.
+        1662    image_pic_merge          put_format_: 1265, 1274.
+         254    imag_like_real           put_format_:  303,  324.
+         244    imag_loop                put_format_:  314,  322.
+        1077    imag_part_done           put_format_:  825,  831.
+          31    init_format              put_format_:  143.
+          57    int_val_scaleprec        put_format_:   68, 1193, 1254, 1272.
+          66    int_val_type             put_format_:   67, 1194, 1255, 1267.
+          14    invert                   eis_bits:      28.
+          60    k_temp                   put_format_:   56, 1062, 1070, 1090, 1126, 1128, 1130, 1135.
+          36    label_desc               desc_types:    26.
+          14    line_format              plio_format_codes:   24.
+           1    l_paren                  plio_format_codes:   13.
+          73    max_dec_precision        put_format_:   50, 1086, 1088.
+         652    merge_b_bn               put_format_:  648,  722,  725.
+        1740    minus_char               put_format_:  970, 1138, 1337.
+           3    move                     put_format_:  769,
+                                         eis_bits:      22.
+          16    nand                     eis_bits:      25.
+          60    new_stack_size           put_format_:   49,  571,  659,  693.
+        1162    not_e_imag               put_format_:  887,  889,  898.
+        1266    not_minus                put_format_:  971,  975.
+        1621    not_pic_source           put_format_: 1196, 1237.
+         551    not_zero_targ            put_format_:  548,  554.
+        1277    no_dec                   put_format_:  980,  985.
+         554    no_len_given             put_format_:  546,  559.
+         635    no_move                  put_format_:  619,  630.
+         526    no_skip_arg              put_format_:  517,  527.
+        1742    null_loc                 put_format_:  147,  369,  434, 1341.
+          54    nval_temp                put_format_:   53,  279,  301.
+          34    offset_desc              desc_types:    25.
+           7    or                       eis_bits:      24.
+                pack_picture_            put_format_: 1286.
+          13    page_format              plio_format_codes:   23.
+          15    picture_format           put_format_:  168,  283,  308,
+                                         plio_format_codes:   25.
+          11    pic_image.explength_shift      pic_image:      8.
+         777    pic_image.mask           put_format_: 1310,
+                                         pic_image:      1.
+           0    pic_image.piclength_shift      pic_image:      5.
+          22    pic_image.prec_shift     pic_image:      3.
+          22    pic_image.scalefactor_shift    put_format_: 1309,
+                                               pic_image:      7.
+          11    pic_image.scale_shift    put_format_: 1306,
+                                         pic_image:      4.
+          33    pic_image.type_shift     put_format_: 1301,
+                                         pic_image:      2.
+          33    pic_image.varlength_shift      put_format_: 1294,
+                                               pic_image:      6.
+                pl1_operators_           put_format_:   97,   99,  138,  378,  412,  442,  801, 1174, 1219, 1284, 1335.
+                plio2_                   put_format_:  414, 1176.
+                plio4                    put_format_:   97,   99, 1335.
+           0    plio_fb.bits             plio_fb:       17.
+         777    plio_fb.code_mask        put_format_:  339,  357,
+                                         plio_fb:       20.
+          33    plio_fb.code_shift       put_format_:  202,  338,  356,
+                                         plio_fb:       19.
+         777    plio_fb.nval_mask        put_format_:  199,  344,  360,
+                                         plio_fb:       22.
+          22    plio_fb.nval_shift       put_format_:  198,  343,  359,
+                                         plio_fb:       21.
+           0    plio_fb.offset           put_format_:  187,
+                                         plio_fb:       23.
+           1    plio_fb.rep              put_format_:  193,
+                                         plio_fb:       25.
+           2    plio_fb.val              put_format_:  174,  226,  264,  294,  317,  332,  365,
+                                         plio_fb:       26.
+           2    plio_fb.val_1            put_format_:  336,
+                                         plio_fb:       28.
+           3    plio_fb.val_2            put_format_:  354,
+                                         plio_fb:       29.
+           4    plio_fb.val_3            plio_fb:       30.
+           5    plio_fb_size             plio_fb:       14.
+          33    plio_sb.cplx_flags       put_format_:  798,  824,  845,  886,  908, 1057, 1093, 1111, 1186, 1256, 1264,
+                                         plio_sb:       34.
+          22    plio_sb.cur_fep          put_format_:  152,  157,  190,  241,  251,  281,  304,  335,  384,
+                                         plio_sb:       28.
+          17    plio_sb.cur_rep          put_format_:  145,  158,  164,  196,  220,
+                                         plio_sb:       26.
+          20    plio_sb.cur_sfp          put_format_:  217,  243,  249,  367,  430,
+                                         plio_sb:       27.
+          37    plio_sb.extra            plio_sb:       37.
+          36    plio_sb.extra_temp       put_format_:  734,  754,  755,  783,  930,  949,  951,  986, 1004, 1089, 1104, 1134,
+                                         plio_sb:       36.
+          37    plio_sb.extra_word       plio_sb:       39.
+           0    plio_sb.fe               plio_sb:       17.
+          50    plio_sb.fe1p             put_format_:  149,  219,  250,
+                                         plio_sb:       44.
+          52    plio_sb.fe2p             put_format_:  154,  228,  240,  396,
+                                         plio_sb:       45.
+          24    plio_sb.format_len       put_format_:  555,  560,  593,  649,  677,  680,  740,  882,  885,  894,  905,  928,
+                                                       938,  941,  945,
+                                         plio_sb:       29.
+          44    plio_sb.frame            plio_sb:       40.
+           1    plio_sb.nval             put_format_:  178,  200,  262,  346,  516,  545,  602,  618,  645,  718,  737,  849,
+                                                      1061, 1326,
+                                         plio_sb:       20.
+          34    plio_sb.pef_finish       put_format_:  809,  847, 1011, 1054, 1059, 1160, 1188, 1295,
+                                         plio_sb:       35.
+          32    plio_sb.real_parts_len   put_format_:  822,  832,  838,
+                                         plio_sb:       33.
+          54    plio_sb.rep              put_format_:  221,  234,  237,
+                                         plio_sb:       46.
+          25    plio_sb.saved_x0         plio_sb:       30.
+          44    plio_sb.sf1p             put_format_:  148,  218,  248,
+                                         plio_sb:       42.
+          46    plio_sb.sf2p             put_format_:  150,  225,  242,  393,
+                                         plio_sb:       43.
+          30    plio_sb.space_ptr        put_format_:  139,  364,  385,  405,  424,  449,  534,  591,  643,  671,  711,  716,
+                                                       817,  833,  839,  883,  900, 1053, 1079, 1166, 1209, 1225, 1251, 1290,
+                                         plio_sb:       32.
+          26    plio_sb.stk_index        put_format_:  144,  210,  211,  231,  253,  391,
+                                         plio_sb:       31.
+           0    plio_sb.type             put_format_:  165,  203,  222,  400,  673,  810,
+                                         plio_sb:       19.
+           2    plio_sb.val              put_format_:  267,  280,  333,
+                                         plio_sb:       21.
+           2    plio_sb.val_1            put_format_:  181,  491,  501,  509,  520,  547,  606,  620,  647,  729,  756,  765,
+                                                       869,  875, 1063,
+                                         plio_sb:       23.
+           3    plio_sb.val_2            put_format_:  182,  305,  724,  743,  745,  857,  865, 1073, 1190,
+                                         plio_sb:       24.
+           4    plio_sb.val_3            put_format_:  856, 1069,
+                                         plio_sb:       25.
+         210    plio_sb_size             plio_sb:       14.
+          32    pointer_desc             desc_types:    24.
+          12    ps.abret                 put_format_:   91,   92,
+                                         plio2_ps:      24.
+          12    ps.ab_return             plio2_ps:      22.
+          44    ps.auxp                  plio2_ps:      81.
+          56    ps.a_stored              put_format_:  132,
+                                         plio2_ps:      89.
+          20    ps.bit_string            plio2_ps:      43.
+          10    ps.char_string           plio2_ps:      44.
+         100    ps.copy                  plio2_ps:      41.
+          24    ps.copy_file_p           plio2_ps:      27.
+       40000    ps.data                  plio2_ps:      33.
+      400000    ps.delete                plio2_ps:      48.
+          54    ps.descr                 put_format_:  130,  535,  615, 1021, 1036, 1044, 1195,
+                                         plio2_ps:      85.
+          32    ps.descriptor            plio2_ps:      64.
+       20000    ps.edit                  plio2_ps:      34.
+      400000    ps.explicit_file         plio2_ps:      30.
+          50    ps.fab2p                 plio2_ps:      83.
+          46    ps.fabp                  plio2_ps:      82.
+      200000    ps.file                  plio2_ps:      75.
+          40    ps.file_p                plio2_ps:      79.
+      400000    ps.first_field           plio2_ps:      74.
+           6    ps.format_area_p         put_format_:  135,  383,  447,  525,  590,  670,  710, 1224, 1289,
+                                         plio2_ps:      20.
+        1000    ps.from                  plio2_ps:      56.
+          42    ps.fsbp                  plio2_ps:      80.
+        4000    ps.get                   plio2_ps:      36.
+        2000    ps.ignore                plio2_ps:      55.
+        4000    ps.into                  plio2_ps:      54.
+          26    ps.job                   put_format_:   93,  401,
+                                         plio2_ps:      28.
+      100000    ps.key                   plio2_ps:      50.
+       20000    ps.keyfrom               plio2_ps:      52.
+       40000    ps.keyto                 plio2_ps:      51.
+          33    ps.length                plio2_ps:      65.
+         400    ps.line                  plio2_ps:      39.
+       10000    ps.list                  plio2_ps:      35.
+      200000    ps.locate                plio2_ps:      49.
+          36    ps.new_format            put_format_:  140,  146,
+                                         plio2_ps:      71.
+           4    ps.not_byte_buffer       plio2_ps:      59.
+          27    ps.number                plio2_ps:      62.
+          34    ps.offset                put_format_:  128,
+                                         plio2_ps:      68.
+          40    ps.p1p2                  plio2_ps:      42.
+           1    ps.packed_ptr            plio2_ps:      60.
+        1000    ps.page                  plio2_ps:      38.
+          35    ps.prep                  put_format_:   94,
+                                         plio2_ps:      70.
+        2000    ps.put                   plio2_ps:      37.
+          56    ps.quick_stream_storage  plio2_ps:      87.
+          57    ps.q_stored              put_format_:  131,
+                                         plio2_ps:      90.
+           4    ps.read                  plio2_ps:      45.
+           1    ps.rewrite               plio2_ps:      47.
+       40000    ps.semi_sep              plio2_ps:      77.
+       10000    ps.set                   plio2_ps:      53.
+         200    ps.skip                  plio2_ps:      40.
+          20    ps.source_p              plio2_ps:      25.
+          22    ps.special_list_p        put_format_:  151,
+                                         plio2_ps:      26.
+          10    ps.ss_list_p             plio2_ps:      21.
+           0    ps.stack_frame_p         plio2_ps:      17.
+          55    ps.start_copy            plio2_ps:      86.
+      200000    ps.string                plio2_ps:      31.
+           4    ps.ST_block_p            plio2_ps:      19.
+           2    ps.ST_top_p              plio2_ps:      18.
+          37    ps.switch                plio2_ps:      72.
+          34    ps.top_half              put_format_:  636, 1204,
+                                         plio2_ps:      67.
+      100000    ps.transmit_error        plio2_ps:      76.
+          30    ps.value_p               put_format_:  134,  604,  610,  622,  631, 1025, 1211, 1246,
+                                         plio2_ps:      63.
+      100000    ps.varying_string        plio2_ps:      32.
+          77    ps.version_mask          plio2_ps:      58.
+        7700    ps.version_mask_inplace  plio2_ps:      92.
+           3    ps.version_shift         plio2_ps:      57.
+          52    ps.vp                    plio2_ps:      84.
+           2    ps.write                 plio2_ps:      46.
+          52    ps_ptr                   put_format_:   62,   90,  127,  382,  406,  446,  524,  589,  665,  669,  709, 1167,
+                                                      1223, 1288.
+          60    ps_size                  plio2_ps:      14.
+        1171    push_offset              stack_header:        81.
+          15    put_and_get_merge        put_format_:  129.
+                put_control_from_format  put_format_:  522.
+          13    put_edit_eis             put_format_:   74,  126.
+                put_field_               put_format_:  215,  389,  420,  453,  512,  522,  599, 1016, 1178, 1329.
+                put_field_from_format    put_format_:  599, 1016.
+        1736    put_terminate            put_format_:   76, 1333.
+                pve_error                put_format_: 1176.
+        1552    p_format_from_cplx       put_format_:  814, 1189.
+           6    q                        eis_bits:      11.
+           6    ql                       eis_bits:      12.
+          60    qs_arg_list              put_format_:   72,  407,  410,  411, 1168, 1172, 1173, 1212, 1213, 1214, 1217, 1218,
+                                                      1276, 1278, 1279, 1282, 1283.
+           2    qu                       eis_bits:       6.
+                quick_get_edit_          put_format_:  414.
+          54    radix_factor             put_format_:   54,  757,  775.
+          57    radix_fac_bits           put_format_:   52,  771,  773.
+        1526    raise_size               put_format_:  861, 1137, 1165.
+        1037    raise_stringsize         put_format_:  746,  791.
+         217    real_loop                put_format_:  291,  299.
+        1062    real_part_done           put_format_:  799,  816.
+         227    real_part_ok             put_format_:  286,  293,  300.
+                remote_format            put_format_:  380.
+                restore_regs_and_frame_and_ret       put_format_:  420.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+         523    ret_from_control         put_format_:  417,  523.
+          40    rl                       eis_bits:       2.
+           1    round                    eis_bits:      30.
+           2    r_format                 put_format_:  223,
+                                         plio_format_codes:   14.
+         313    r_format_to_sb           put_format_:  224,  363.
+           0    r_paren                  plio_format_codes:   12.
+          60    sd_temp                  put_format_:   58,  947,  948,  964,  976, 1005.
+         303    set_imag                 put_format_:  348,  353.
+                set_no_ret_error         put_format_: 1178.
+        1334    set_source_wa            put_format_:  543,  644,  717,  884, 1020, 1080.
+        1504    sign_set                 put_format_: 1141, 1183.
+          11    skip_format              plio_format_codes:   21.
+         557    source_been_set          put_format_:  557,  564.
+        1524    source_lt_zero           put_format_: 1139, 1162.
+          55    source_val_scaleprec     put_format_:   64, 1207, 1227, 1242, 1248.
+          54    source_val_type          put_format_:   63, 1208, 1228, 1245, 1249.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    put_format_:  574,  576,  662,  664,  696,  698,
+                                         stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      put_format_:  568,  573,  656,  661,  690,  695,
+                                         stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   put_format_:  136,  418,  419,  597,  598, 1014, 1015, 1170,
+                                               stack_frame:   20.
+          20    stack_frame.prev_sp      put_format_:  569,  586,  657,  691,  706,
+                                         stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   put_format_:  379,  413,  443, 1175, 1220, 1285,
+                                         stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  put_format_:  575,  663,  697,
+                                         stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   stack_header:        37.
+          24    stack_header.stack_end_ptr     put_format_:  572,  585,  660,  694,  705,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+          61    storage_taken            put_format_:   59,  803.
+         301    store_imag               put_format_:  349,  361.
+           1    stream_prep              put_format_:   77,   89.
+        1362    string_desc              put_format_: 1032, 1034, 1043.
+          42    structure_desc           desc_types:    28.
+                stu_                     put_format_:  380,  444.
+         627    superquick_af            put_format_:  621.
+         630    superquick_af_2          put_format_:  607,  623.
+         606    superquick_return        put_format_:  552,  596,  612,  628,  633.
+          12    s_fixed_cplx_desc        desc_types:    16.
+           2    s_fixed_real_desc        desc_types:    12.
+          16    s_float_cplx_desc        desc_types:    18.
+           6    s_float_real_desc        desc_types:    14.
+        1250    s_is_d_move              put_format_:  942,  959.
+        1231    table                    put_format_:  921,  954, 1125.
+          46    tbp                      put_format_:   73,  578,  637,  667,  700, 1205.
+          76    temp                     put_format_:   61,  416,  475,  476,  477,  478,  479,  480,  481,  482,  483,  484,
+                                                       485,  486,  687,  712,  916,  917,  922,  923, 1000, 1001, 1006, 1008,
+                                                      1035, 1041, 1081, 1099, 1108, 1109, 1311, 1312.
+          44    test_currep              put_format_:  141,  156,  205,  351,  492,  526.
+          72    test_offset              put_format_:  159,  186,  207,  254.
+         142    test_stk_index           put_format_:  188,  230,  397.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+           1    truncate                 eis_bits:      31.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+                unpack_picture_          put_format_: 1221, 1286.
+         156    use_1s                   put_format_:  235,  247.
+         151    use_2s                   put_format_:  233,  239.
+        1001    use_real_len             put_format_:  741,  747,  753,  795.
+         611    vchar_to_char            put_format_:  542,  601.
+         617    vc_no_len                put_format_:  603,  609.
+          50    v_bit_desc               put_format_:  651,  682, 1029,
+                                         desc_types:    31.
+          54    v_char_desc              put_format_:  541,  562, 1027,
+                                         desc_types:    33.
+          57    w_temp                   put_format_:   51,  871,  877,  931, 1010, 1065, 1082, 1159.
+          10    x0                       eis_bits:      13.
+          11    x1                       eis_bits:      14.
+          12    x2                       eis_bits:      15.
+          13    x3                       eis_bits:      16.
+          14    x4                       eis_bits:      17.
+          15    x5                       eis_bits:      18.
+          16    x6                       eis_bits:      19.
+          17    x7                       eis_bits:      20.
+          56    x7_stored                put_format_:   66,  133.
+           6    xor                      eis_bits:      26.
+          10    x_format                 plio_format_codes:   20.
+        1216    zero_merge               put_format_:  897,  929.
+        1153    zero_value               put_format_:  890,  926.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

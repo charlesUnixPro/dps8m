@@ -1,0 +1,806 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>install>MR12.3-1114>bootload_linker.alm                                                                                                                    
+ASSEMBLED ON:	11/11/89  0936.0 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+    000000                           8  	name	bootload_linker
+                                     9  
+                                    10  " Prelinker for collection 1.
+                                    11  " Stolen from pre_link_(1 2), November 1982, by C. Hornig
+                                    12  
+                                    13  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified by almost everyone, it seems.
+                                   1-4  " Last modified for MR11 bootload Multics addresses starting in 1983 by
+                                   1-5  "     Keith Loepere.
+                                   1-6  "
+                                   1-7  " This include file describes various things used by the programs in
+                                   1-8  " bound_bootload_0.
+                                   1-9  
+                                  1-10  " Default pointer register usage:
+                                  1-11  
+                        000000    1-12  	equ	ds,0		" Descriptor segment
+                        000001    1-13  	equ	seg2,1		" Another temporary
+                        000002    1-14  	equ	mb,2		" IOM mailbox
+                        000003    1-15  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-16  	equ	nt,4		" Name_table
+                        000005    1-17  	equ	prb,5		" Physical_record_buffer
+                        000006    1-18  	equ	seg,6		" Temporary
+                        000007    1-19  	equ	fv,7		" Interrupt and fault vectors
+                                  1-20  
+                                  1-21  " Macros
+                                  1-22  
+                                  1-23  	macro	equ_o
+                              1   1-24  	maclist	off,save
+                              2   1-25  	bool	&U,&2
+                              3   1-26  	equ	&1,&U
+                              4   1-27  	maclist	restore
+                              5   1-28  &end
+                                  1-29  
+                                  1-30  	macro	set_o
+                              1   1-31  	maclist	off,save
+                              2   1-32  	bool	&U,&2
+                              3   1-33  	set	&1,&U
+                              4   1-34  	maclist	restore
+                              5   1-35  &end
+                                  1-36  
+                                  1-37  	macro	include_nolist
+                              1   1-38  	maclist	off,save
+                              2   1-39  	include	&1
+                              3   1-40  	maclist	restore
+                              4   1-41  &end
+                                  1-42  
+                                  1-43  	macro	Bpush
+                              1   1-44  	stx2	bootload_0$entry_stack_ptr,id
+                              2   1-45  	ttn	bootload_error$out_of_stack
+                              3   1-46  &end
+                                  1-47  
+                                  1-48  " 	Breturn	offset-from-return-point
+                                  1-49  
+                                  1-50  	macro	Breturn
+                              1   1-51  	ldx2	bootload_0$entry_stack_ptr,di
+                              2   1-52  	tra	0+&1,x2
+                              3   1-53  &end
+                                  1-54  
+                                  1-55  "	Bentry	name,offset-from-return-point
+                                  1-56  
+                                  1-57  	macro	Bentry
+                              1   1-58  	segdef	&1
+                              2   1-59  	macro	&1_return
+                              3   1-60  	Breturn	&<&K,2&[0&;&2&]
+                              4   1-61  &&end
+                              5   1-62  &end
+                                  1-63  
+                                  1-64  " 	Bentry_internal	name,offset_from_return_point
+                                  1-65  
+                                  1-66  	macro	Bentry_internal
+                              1   1-67  	macro	&1_return	
+                              2   1-68  	Breturn	&<&K,2&[0&;&2&]
+                              3   1-69  &&end
+                              4   1-70  &end
+                                  1-71  
+                                  1-72  
+                                  1-73  " Definitions
+                                  1-74  
+                                  1-75  	equ_o	bostoe_absloc,10000		" bos_teohold
+                                  1-76  	equ_o	bostoe_lth,2000
+                                  1-77  
+                                  1-78  	equ_o	fgbx_absloc,24000		" now in bce toehold
+                                  1-79  	equ_o	fgbx_lth,2000
+                                  1-80  
+                                  1-81  	equ_o	toe_absloc,24000		" bootload Multics toehold
+                                  1-82  	equ_o	toe_lth,4000		" This starts at a 0 mod 4 
+                                  1-83  					" page address.  It is 
+                                  1-84  					" bound as first element
+                                  1-85  					" of bound_bootload_0.
+                                  1-86  
+                                  1-87  	equ_o	bbl0_absloc,24000		" bound_bootload_0 location
+                                  1-88  	equ_o	bbl0_lth,22000		" and length.
+                                  1-89  
+                                  1-90  	equ_o	toedata_absloc,46000	" toehold_data
+                                  1-91  	equ_o	toedata_lth,4000
+                                  1-92  
+                                  1-93  	equ_o	upt_absloc,52000		" unpaged_page_tables
+                                  1-94  	equ_o	upt_lth,2000
+                                  1-95  
+                                  1-96  	equ_o	iupt_absloc,54000		" init_unpaged_page_tables
+                                  1-97  	equ_o	iupt_lth,2000
+                                  1-98  
+                                  1-99  	equ_o	bkpt_absloc,56000		" breakpoint_page
+                                 1-100  	equ_o	bkpt_lth,2000
+                                 1-101  
+                                 1-102  	equ_o	prb_absloc,60000		" physical_record_buffer
+                                 1-103  	equ_o	prb_lth,6000		" memory past here up for 
+                                 1-104  					" grabs
+                                 1-105  
+                                 1-106  " END INCLUDE FILE bootload_equs.incl.alm
+                                    14  	include_nolist	slt
+                                    15  " 
+    000000                          16  new_link:	bss	,2
+    000002                          17  type_pair:bss	,2
+    000004                          18  link_ptr:	bss	,2
+    000006                          19  def_ptr:	bss	,2
+    000010                          20  segno:	bss	,1
+    000011                          21  linkp:	bss	,1
+    000012                          22  limit:	bss	,1
+    000013                          23  last_pair:bss	,1
+    000014                          24  exp_word:	bss	,1
+    000015                          25  pass:	bss	,1
+    000016  aa  040 040 040 040     26  segname:	aci	"",32
+    000017  aa  040 040 040 040
+    000020  aa  040 040 040 040
+    000021  aa  040 040 040 040
+    000022  aa  040 040 040 040
+    000023  aa  040 040 040 040
+    000024  aa  040 040 040 040
+    000025  aa  040 040 040 040
+    000026  aa  040 040 040 040     27  ename:	aci	"",32
+    000027  aa  040 040 040 040
+    000030  aa  040 040 040 040
+    000031  aa  040 040 040 040
+    000032  aa  040 040 040 040
+    000033  aa  040 040 040 040
+    000034  aa  040 040 040 040
+    000035  aa  040 040 040 040
+                                    28  
+                        000036      29  	segdef	prelink
+                        000016      30  	segdef	segname
+                        000026      31  	segdef	ename
+                                    32  
+    000036                          33  prelink:
+                                    34  	Bpush
+    000036  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000037  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    35  
+    000040  aa  3 00005 7201 00     36  	lxl0	slt|slt.first_init_seg	" prelink the init segs
+    000041  aa  3 00006 7211 00     37  	lxl1	slt|slt.last_init_seg
+    000042  0a   000050 7020 00     38  	tsx2	scan_sltes
+                                    39  
+    000043  aa  3 00003 7201 00     40  	lxl0	slt|slt.first_sup_seg	" and the sup segs
+    000044  aa  3 00004 7211 00     41  	lxl1	slt|slt.last_sup_seg
+    000045  0a   000050 7020 00     42  	tsx2	scan_sltes
+                                    43  
+                                    44  	Breturn				" that's all, folks
+    000046  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000047  aa   000000 7100 12         	tra	0+,x2
+                                    45  " 
+    000050                          46  scan_sltes:
+                                    47  	Bpush
+    000050  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000051  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    48  
+    000052  0a   000010 4400 00     49  	sxl0	segno
+    000053  0a   000012 7410 00     50  	stx1	limit			" save the limit
+                                    51  
+    000054                          52  scan_loop:
+    000054  4a  4 00016 2341 20     53  	szn	bootload_info$lot_ptr,*x0
+    000055  0a   000064 6010 00     54  	tnz	check_links
+                                    55  
+    000056                          56  scan_next:
+    000056  0a   000010 0540 00     57  	aos	segno			" next segment
+    000057  0a   000010 7200 00     58  	lxl0	segno
+    000060  0a   000012 1000 00     59  	cmpx0	limit			" done?
+    000061  0a   000054 6044 00     60  	tmoz	scan_loop			" no
+                                    61  
+                                    62  	Breturn				" yes
+    000062  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000063  aa   000000 7100 12         	tra	0+,x2
+                                    63  " 
+                                    64  " We have a linkage section.
+                                    65  
+    000064                          66  check_links:
+    000064  4a  4 00016 7611 20     67  	lprp	seg2,bootload_info$lot_ptr,*x0 " SEG2 -> linkage
+    000065  0a   000004 2514 00     68  	spri1	link_ptr
+    000066  aa  1 00000 3721 20     69  	epp	seg,seg2|0,*		" SEG -> definitions
+    000067  0a   000006 6520 00     70  	spri6	def_ptr
+                                    71  
+    000070  aa  1 00006 7271 00     72  	lxl7	seg2|6			" last link pair
+    000071  0a   000013 7470 00     73  	stx7	last_pair
+                                    74  
+    000072  aa  1 00006 2211 00     75  	ldx1	seg2|6			" X1 -> 1st link pair
+                                    76  
+    000073                          77  link_loop:
+    000073  0a   000013 1010 00     78  	cmpx1	last_pair			" done?
+    000074  0a   000056 6050 00     79  	tpl	scan_next			" yes
+                                    80  
+    000075  0a   000011 7410 00     81  	stx1	linkp
+    000076  0a   000004 3514 20     82  	epp	seg2,link_ptr,*		" SEG2 -> linkage
+    000077  0a   000006 3720 20     83  	epp	seg,def_ptr,*		" SEG -> definitions
+                                    84  
+    000100  aa  1 00000 7271 11     85  	lxl7	seg2|0,x1			" look at tag field
+    000101  aa   000046 1070 03     86  	cmpx7	=o46,du			" FT2?
+    000102  0a   000160 6010 00     87  	tnz	next_pair			" no
+                                    88  
+                                    89  " start work on the link
+                                    90  
+    000103  aa  1 00001 2271 11     91  	ldx7	seg2|1,x1			" get exp_ptr
+    000104  aa  6 00000 2351 17     92  	lda	seg|0,x7			" get expression word
+    000105  0a   000014 7550 00     93  	sta	exp_word			" save it
+                                    94  
+    000106  aa  6 00001 2361 01     95  	ldq	seg|1,au			" get type pair
+    000107  aa  6 00000 2351 01     96  	lda	seg|0,au			" get type pair
+    000110  0a   000002 7570 00     97  	staq	type_pair			" save it
+                                    98  
+    000111  0a   000112 7100 01     99  	tra	*+1,au			" dispatch
+    000112  0a   000160 7100 00    100  	tra	next_pair			" (0) unknown
+    000113  0a   000121 7100 00    101  	tra	type_1a			" (1) *|exp,m
+    000114  0a   000160 7100 00    102  	tra	next_pair			" (2)
+    000115  0a   000133 7100 00    103  	tra	type_3a			" (3)
+    000116  0a   000137 7100 00    104  	tra	type_4a			" (4)
+    000117  0a   000160 7100 00    105  	tra	next_pair			" (5)
+    000120  0a   000144 7100 00    106  	tra	type_6a			" (6)
+                                   107  
+    000121  0a   000122 7100 02    108  type_1a:	tra	*+1,qu			" dispatch
+    000122  0a   000125 7100 00    109  	tra	t1_text
+    000123  0a   000131 7100 00    110  	tra	t1_link
+    000124  0a   000160 7100 00    111  	tra	next_pair
+                                   112  
+    000125  aa  1 00007 2271 00    113  t1_text:	ldx7	seg2|7			" get the segment number
+    000126  aa   000000 3330 17    114  	easp	seg,0,x7			" pointer
+    000127  0a   000000 6520 00    115  	spri6	new_link
+    000130  0a   000150 7100 00    116  	tra	done
+                                   117  
+    000131  0a   000000 2514 00    118  t1_link:	spri1	new_link			" linkage ptr
+    000132  0a   000150 7100 00    119  	tra	done
+                                   120  
+    000133  0a   000163 7020 00    121  type_3a:	tsx2	find_seg			" find the segment
+    000134  0a   000160 7100 00    122  	tra	next_pair
+    000135  0a   000000 6520 00    123  	spri6	new_link
+    000136  0a   000150 7100 00    124  	tra	done
+                                   125  
+    000137  0a   000163 7020 00    126  type_4a:	tsx2	find_seg			" find the segment
+    000140  0a   000160 7100 00    127  	tra	next_pair
+    000141  0a   000202 7020 00    128  	tsx2	find_def
+    000142  0a   000160 7100 00    129  	tra	next_pair
+    000143  0a   000150 7100 00    130  	tra	done
+                                   131  
+    000144  aa  6 00000 2271 06    132  type_6a:	ldx7	seg|0,ql			" look at acc length
+    000145  aa   777000 3070 03    133  	canx7	=o777000,du		" null?
+    000146  0a   000137 6010 00    134  	tnz	type_4a
+    000147  0a   000133 7100 00    135  	tra	type_3a
+                                   136  
+    000150  0a   000004 3514 20    137  done:	epp	seg2,link_ptr,*		" restore link ptr
+    000151  0a   000011 2210 00    138  	ldx1	linkp			" and offset
+    000152  aa  1 00001 7271 11    139  	lxl7	seg2|1,x1			" get the modifier
+    000153  0a   000001 4470 00    140  	sxl7	new_link+1		" store it
+    000154  0a   000014 7270 00    141  	lxl7	exp_word			" get exp
+    000155  0a   000001 0470 00    142  	asx7	new_link+1		" add it in
+                                   143  
+    000156  0a   000000 2370 00    144  	ldaq	new_link			" get the new ptr
+    000157  aa  1 00000 7571 11    145  	staq	seg2|0,x1			" store it
+                                   146  
+    000160                         147  next_pair:
+    000160  0a   000011 2210 00    148  	ldx1	linkp			" and offset
+    000161  aa   000002 6210 11    149  	eax1	2,x1			" on to the next
+    000162  0a   000073 7100 00    150  	tra	link_loop
+                                   151  " 
+    000163                         152  find_seg:
+                                   153  	Bpush
+    000163  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000164  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                   154  
+    000165  aa  6 00000 3721 02    155  	epp	seg,seg|0,qu		" get ptr to segname
+    000166  aa  6 00000 2351 00    156  	lda	seg|0			" get length
+    000167  aa   000011 7710 00    157  	arl	9			" in AU
+    000170  aa  0 40000 1005 40    158  	mlr	(pr,rl),(),fill(040)	" copy it
+    000171  aa   600000 200001     159  	desc9a	seg|0(1),au
+    000172  0a   000016 000040     160  	desc9a	segname,32
+                                   161  
+    000173  4a  4 00020 7021 20    162  	tsx2	bootload_slt_manager$get_seg_ptr
+    000174  0a   000016 0000 00    163  	arg	segname
+    000175  0a   000200 7100 00    164  	tra	find_seg_error
+                                   165  	Breturn	1
+    000176  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000177  aa   000001 7100 12         	tra	0+1,x2
+    000200                         166  find_seg_error:
+                                   167  	Breturn	0
+    000200  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000201  aa   000000 7100 12         	tra	0+0,x2
+                                   168  " 
+    000202                         169  find_def:
+                                   170  	Bpush
+    000202  4a  4 00010 7421 20         	stx2	bootload_0$entry_stack_ptr,id
+    000203  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                   171  
+    000204  0a   000015 4500 00    172  	stz	pass			" first pass
+    000205  0a   000000 6520 00    173  	spri6	new_link			" save the text pointer
+    000206  0a   000003 7270 00    174  	lxl7	type_pair+1
+    000207  0a   000006 3514 77    175  	epp	seg2,def_ptr,*x7		" SEG2 -> ename
+    000210  aa  1 00000 2351 00    176  	lda	seg2|0			" get length
+    000211  aa   000011 7710 00    177  	arl	9			" in AU
+    000212  aa  0 40000 1005 40    178  	mlr	(pr,rl),(),fill(040)	" copy it
+    000213  aa   100000 200001     179  	desc9a	seg2|0(1),au
+    000214  0a   000026 000040     180  	desc9a	ename,32
+                                   181  
+    000215  0a   000000 2270 00    182  	ldx7	new_link			" get segment number
+    000216  4a  4 00022 2341 20    183  	szn	bootload_info$lot_ptr,*x7	" segment?
+    000217  0a   000301 6000 00    184  	tze	find_def_error	
+                                   185  
+    000220  4a  4 00022 7611 20    186  	lprp	seg2,bootload_info$lot_ptr,*x7 " get linkage ptr
+    000221  aa  1 00000 3721 20    187  	epp	seg,seg2|0,*		" SEG -> definitions
+    000222  aa  6 00000 2231 00    188  	ldx3	seg|0			" start with first def
+    000223  0a   000301 6000 00    189  	tze	find_def_error	
+                                   190  
+    000224                         191  next_def_3:
+    000224  aa  6 00002 2271 13    192  	ldx7	seg|2,x3			" get name ptr
+    000225  aa  6 00000 3515 17    193  	epp	seg2,seg|0,x7		" in SEG2
+    000226  aa  1 00000 2351 00    194  	lda	seg2|0			" get length
+    000227  aa   000011 7710 00    195  	arl	9			" in AU
+    000230  aa  0 40000 1065 40    196  	cmpc	(pr,rl),(),fill(040)
+    000231  aa   100000 200001     197  	desc9a	seg2|0(1),au
+    000232  0a   000016 000040     198  	desc9a	segname,32
+    000233  0a   000243 6000 00    199  	tze	found_def3
+                                   200  
+    000234  aa  6 00001 2231 13    201  	ldx3	seg|1,x3			" go to next type-3
+    000235  0a   000224 6010 00    202  	tnz	next_def_3
+                                   203  
+    000236  0a   000015 2340 00    204  pass_2:	szn	pass			" already done?
+    000237  0a   000301 6010 00    205  	tnz	find_def_error		" yes
+    000240  aa  6 00000 2231 00    206  rescan:	ldx3	seg|0			" start from scratch
+    000241  0a   000015 5540 00    207  	stc1	pass			" make full search
+    000242  0a   000245 7100 00    208  	tra	next_def
+                                   209  
+    000243                         210  found_def3:
+    000243  aa  6 00002 7231 13    211  	lxl3	seg|2,x3			" check other defs
+    000244  0a   000236 6000 00    212  	tze	pass_2
+                                   213  
+    000245  aa  6 00002 2271 13    214  next_def:	ldx7	seg|2,x3			" get name ptr
+    000246  aa  6 00000 3515 17    215  	epp	seg2,seg|0,x7		" in SEG2
+    000247  aa  1 00000 2351 00    216  	lda	seg2|0			" get length
+    000250  aa   000011 7710 00    217  	arl	9			" in AU
+    000251  aa  0 40000 1065 40    218  	cmpc	(pr,rl),(),fill(040)
+    000252  aa   100000 200001     219  	desc9a	seg2|0(1),au
+    000253  0a   000026 000040     220  	desc9a	ename,32
+    000254  0a   000267 6010 00    221  	tnz	def_no_match
+                                   222  
+    000255  aa  6 00001 7271 13    223  	lxl7	seg|1,x3			" get the class
+    000256  aa   000007 3670 03    224  	anx7	=o7,du
+    000257  0a   000260 7100 17    225  	tra	*+1,x7			" dispatch
+    000260  0a   000275 7100 00    226  	tra	d_text			" 0
+    000261  0a   000272 7100 00    227  	tra	d_link			" 1
+    000262  0a   000301 7100 00    228  	tra	find_def_error		" 2
+    000263  0a   000265 7100 00    229  	tra	type_3			" 3
+    000264  0a   000301 7100 00    230  	tra	find_def_error		" 4
+                                   231  
+    000265  0a   000015 2340 00    232  type_3:	szn	pass			" full search?
+    000266  0a   000240 6000 00    233  	tze	rescan			" no
+                                   234  
+    000267                         235  def_no_match:
+    000267  aa  6 00000 2231 13    236  	ldx3	seg|0,x3			" get next def
+    000270  0a   000245 6010 00    237  	tnz	next_def
+    000271  0a   000236 7100 00    238  	tra	pass_2
+                                   239  
+                                   240  
+    000272  0a   000000 2270 00    241  d_link:	ldx7	new_link
+    000273  4a  4 00022 7611 20    242  	lprp	seg2,bootload_info$lot_ptr,*x7 " linkage
+    000274  0a   000000 2514 00    243  	spri1	new_link
+                                   244  
+    000275  aa  6 00001 2271 13    245  d_text:	ldx7	seg|1,x3			" value
+    000276  0a   000001 0470 00    246  	asx7	new_link+1
+                                   247  	Breturn	1
+    000277  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000300  aa   000001 7100 12         	tra	0+1,x2
+                                   248  
+    000301                         249  find_def_error:
+    000301  4a  4 00024 7021 20    250  	tsx2	bootload_error$no_sym
+                                   251  	Breturn	0
+    000302  4a  4 00014 2221 20         	ldx2	bootload_0$entry_stack_ptr,di
+    000303  aa   000000 7100 12         	tra	0+0,x2
+                                   252  
+                                   253  	end	bootload_linker
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000304  5a   000003 000000 
+    000305  5a   000040 600000 
+    000306  aa   000000 000000 
+    000307  55   000012 000002 
+    000310  5a   000002 400003 
+    000311  55   000006 000012 
+    000312  aa  017 142 157 157
+    000313  aa  164 154 157 141
+    000314  aa  144 137 154 151
+    000315  aa  156 153 145 162
+    000316  55   000017 000003 
+    000317  0a   000026 400000 
+    000320  55   000015 000003 
+    000321  aa  005 145 156 141         ename
+    000322  aa  155 145 000 000
+    000323  55   000024 000012 
+    000324  0a   000016 400000 
+    000325  55   000022 000003 
+    000326  aa  007 163 145 147         segname
+    000327  aa  156 141 155 145
+    000330  55   000031 000017 
+    000331  0a   000036 400000 
+    000332  55   000027 000003 
+    000333  aa  007 160 162 145         prelink
+    000334  aa  154 151 156 153
+    000335  55   000002 000024 
+    000336  6a   000000 400002 
+    000337  55   000034 000003 
+    000340  aa  014 163 171 155         symbol_table
+    000341  aa  142 157 154 137
+    000342  aa  164 141 142 154
+    000343  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000344  aa   000000 000015 
+    000345  aa   000000 000000 
+    000346  5a   000012 000000 
+    000347  aa   000000 000000 
+    000350  5a   000017 000000 
+    000351  5a   000024 000000 
+    000352  aa   000000 000000 
+    000353  5a   000031 000000 
+    000354  aa   000000 000000 
+    000355  aa   000000 000000 
+    000356  aa   000000 000000 
+    000357  aa   000000 000000 
+    000360  aa   000000 000000 
+    000361  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000362  aa  006 156 157 137         no_sym
+    000363  aa  163 171 155 000
+    000364  aa  013 147 145 164         get_seg_ptr
+    000365  aa  137 163 145 147
+    000366  aa  137 160 164 162
+    000367  aa  024 142 157 157         bootload_slt_manager
+    000370  aa  164 154 157 141
+    000371  aa  144 137 163 154
+    000372  aa  164 137 155 141
+    000373  aa  156 141 147 145
+    000374  aa  162 000 000 000
+    000375  aa  007 154 157 164         lot_ptr
+    000376  aa  137 160 164 162
+    000377  aa  015 142 157 157         bootload_info
+    000400  aa  164 154 157 141
+    000401  aa  144 137 151 156
+    000402  aa  146 157 000 000
+    000403  aa  014 157 165 164         out_of_stack
+    000404  aa  137 157 146 137
+    000405  aa  163 164 141 143
+    000406  aa  153 000 000 000
+    000407  aa  016 142 157 157         bootload_error
+    000410  aa  164 154 157 141
+    000411  aa  144 137 145 162
+    000412  aa  162 157 162 000
+    000413  aa  017 145 156 164         entry_stack_ptr
+    000414  aa  162 171 137 163
+    000415  aa  164 141 143 153
+    000416  aa  137 160 164 162
+    000417  aa  012 142 157 157         bootload_0
+    000420  aa  164 154 157 141
+    000421  aa  144 137 060 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000422  aa   000004 000000 
+    000423  55   000103 000056 
+    000424  aa   000004 000000 
+    000425  55   000063 000060 
+    000426  aa   000004 000000 
+    000427  55   000073 000071 
+    000430  aa   000004 000000 
+    000431  55   000103 000077 
+    000432  aa   000004 000000 
+    000433  55   000113 000107 
+    000434  aa   000001 000000 
+    000435  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000436  5a   000116 000000 
+    000437  5a   000120 000000 
+    000440  5a   000122 000000 
+    000441  5a   000124 000000 
+    000442  5a   000126 000000 
+    000443  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000304 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000026 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_0|entry_stack_ptr
+    000011  5a   000136 0000 56
+    000012  9a   777766 0000 46         bootload_error|out_of_stack
+    000013  5a   000135 0000 00
+    000014  9a   777764 0000 46         bootload_0|entry_stack_ptr
+    000015  5a   000136 0000 54
+    000016  9a   777762 0000 46         bootload_info|lot_ptr
+    000017  5a   000134 0000 70
+    000020  9a   777760 0000 46         bootload_slt_manager|get_seg_ptr
+    000021  5a   000133 0000 00
+    000022  9a   777756 0000 46         bootload_info|lot_ptr
+    000023  5a   000134 0000 77
+    000024  9a   777754 0000 46         bootload_error|no_sym
+    000025  5a   000132 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   247350 161251 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000224 
+    000020  aa   000000 000137 
+    000021  aa   000177 000171 
+    000022  aa   000214 000137 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000064 
+    000067  aa   175453 021735 
+    000070  aa   000000 117547 
+    000071  aa   215115 400000 
+    000072  aa   000117 000043 
+    000073  aa   127236 043477 
+    000074  aa   000000 112724 
+    000075  aa   701742 600000 
+    000076  aa   000130 000031 
+    000077  aa   043243 130516 
+    000100  aa   000000 104205 
+    000101  aa   554413 200000 
+    000102  aa   076163 160145          >special_ldd>install>MR12.3-1114>bootload_linker.alm
+    000103  aa   143151 141154 
+    000104  aa   137154 144144 
+    000105  aa   076151 156163 
+    000106  aa   164141 154154 
+    000107  aa   076115 122061 
+    000110  aa   062056 063055 
+    000111  aa   061061 061064 
+    000112  aa   076142 157157 
+    000113  aa   164154 157141 
+    000114  aa   144137 154151 
+    000115  aa   156153 145162 
+    000116  aa   056141 154155 
+    000117  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000120  aa   076151 156143 
+    000121  aa   154165 144145 
+    000122  aa   076142 157157 
+    000123  aa   164154 157141 
+    000124  aa   144137 145161 
+    000125  aa   165163 056151 
+    000126  aa   156143 154056 
+    000127  aa   141154 155040 
+    000130  aa   076154 144144          >ldd>include>slt.incl.alm
+    000131  aa   076151 156143 
+    000132  aa   154165 144145 
+    000133  aa   076163 154164 
+    000134  aa   056151 156143 
+    000135  aa   154056 141154 
+    000136  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+       10000    .._00000                 bootload_equs:       75.
+        2000    .._00001                 bootload_equs:       76.
+       24000    .._00002                 bootload_equs:       78.
+        2000    .._00003                 bootload_equs:       79.
+       24000    .._00004                 bootload_equs:       81.
+        4000    .._00005                 bootload_equs:       82.
+       24000    .._00006                 bootload_equs:       87.
+       22000    .._00007                 bootload_equs:       88.
+       46000    .._00010                 bootload_equs:       90.
+        4000    .._00011                 bootload_equs:       91.
+       52000    .._00012                 bootload_equs:       93.
+        2000    .._00013                 bootload_equs:       94.
+       54000    .._00014                 bootload_equs:       96.
+        2000    .._00015                 bootload_equs:       97.
+       56000    .._00016                 bootload_equs:       99.
+        2000    .._00017                 bootload_equs:      100.
+       60000    .._00020                 bootload_equs:      102.
+        6000    .._00021                 bootload_equs:      103.
+           1    acls.acl                 slt:           62.
+          13    acls.code                slt:           66.
+           0    acls.count               slt:           61.
+          11    acls.mode                slt:           65.
+           1    acls.userid              slt:           64.
+       24000    bbl0_absloc              bootload_equs:       87.
+       22000    bbl0_lth                 bootload_equs:       88.
+       56000    bkpt_absloc              bootload_equs:       99.
+        2000    bkpt_lth                 bootload_equs:      100.
+                bootload_0               bootload_linker:     34,   44,   47,   62,  153,  165,  167,  170,  247,  251.
+                bootload_error           bootload_linker:     34,   47,  153,  170,  250.
+                bootload_info            bootload_linker:     53,   67,  183,  186,  242.
+                bootload_slt_manager     bootload_linker:    162.
+       10000    bostoe_absloc            bootload_equs:       75.
+        2000    bostoe_lth               bootload_equs:       76.
+          64    check_links              bootload_linker:     54,   66.
+         267    def_no_match             bootload_linker:    221,  235.
+           6    def_ptr                  bootload_linker:     19,   70,   83,  175.
+         150    done                     bootload_linker:    116,  119,  124,  130,  137.
+           0    ds                       bootload_equs:       12.
+         272    d_link                   bootload_linker:    227,  241.
+         275    d_text                   bootload_linker:    226,  245.
+          26    ename                    bootload_linker:     27,   31,  180,  220.
+                entry_stack_ptr          bootload_linker:     34,   44,   47,   62,  153,  165,  167,  170,  247,  251.
+          14    exp_word                 bootload_linker:     24,   93,  141.
+       24000    fgbx_absloc              bootload_equs:       78.
+        2000    fgbx_lth                 bootload_equs:       79.
+         202    find_def                 bootload_linker:    128,  169.
+         301    find_def_error           bootload_linker:    184,  189,  205,  228,  230,  249.
+         163    find_seg                 bootload_linker:    121,  126,  152.
+         200    find_seg_error           bootload_linker:    164,  166.
+         243    found_def3               bootload_linker:    199,  210.
+           7    fv                       bootload_equs:       19.
+                get_seg_ptr              bootload_linker:    162.
+       54000    iupt_absloc              bootload_equs:       96.
+        2000    iupt_lth                 bootload_equs:       97.
+          13    last_pair                bootload_linker:     23,   73,   78.
+          12    limit                    bootload_linker:     22,   50,   59.
+          11    linkp                    bootload_linker:     21,   81,  138,  148.
+          73    link_loop                bootload_linker:     77,  150.
+           4    link_ptr                 bootload_linker:     18,   68,   82,  137.
+                lot_ptr                  bootload_linker:     53,   67,  183,  186,  242.
+           2    mb                       bootload_equs:       14.
+           1    name_seg.ht              slt:           35.
+           0    name_seg.next_loc        slt:           33.
+         201    name_seg_size            slt:           31.
+           0    new_link                 bootload_linker:     16,  115,  118,  123,  140,  142,  144,  173,  182,  241,  243,  246.
+         245    next_def                 bootload_linker:    208,  214,  237.
+         224    next_def_3               bootload_linker:    191,  202.
+         160    next_pair                bootload_linker:     87,  100,  102,  105,  111,  122,  127,  129,  147.
+                no_sym                   bootload_linker:    250.
+           4    nt                       bootload_equs:       16.
+                out_of_stack             bootload_linker:     34,   47,  153,  170.
+          15    pass                     bootload_linker:     25,  172,  204,  207,  232.
+         236    pass_2                   bootload_linker:    204,  212,  238.
+           0    path.acls                slt:           56.
+           1    path.name                slt:           55.
+           0    path.size                slt:           54.
+           5    prb                      bootload_equs:       17.
+       60000    prb_absloc               bootload_equs:      102.
+        6000    prb_lth                  bootload_equs:      103.
+          36    prelink                  bootload_linker:     29,   33.
+         240    rescan                   bootload_linker:    206,  233.
+          54    scan_loop                bootload_linker:     52,   60.
+          56    scan_next                bootload_linker:     56,   79.
+          50    scan_sltes               bootload_linker:     38,   42,   46.
+           6    seg                      bootload_linker:     69,   83,   92,   95,   96,  114,  132,  155,  156,  159,  187,
+                                                             188,  192,  193,  201,  206,  211,  214,  215,  223,  236,  245,
+                                         bootload_equs:       18.
+           1    seg2                     bootload_linker:     67,   69,   72,   75,   82,   85,   91,  113,  137,  139,  145,
+                                                             175,  176,  179,  186,  187,  193,  194,  197,  215,  216,  219,
+                                                             242,
+                                         bootload_equs:       13.
+           0    segnam.count             slt:           41.
+           1    segnam.hp                slt:           44.
+           2    segnam.name              slt:           49.
+           1    segnam.names             slt:           42.
+      400000    segnam.ref               slt:           45.
+        7777    segnam.segno_mask        slt:           47.
+           0    segnam.segno_shift       slt:           46.
+          16    segname                  bootload_linker:     26,   30,  160,  163,  198.
+          10    segno                    bootload_linker:     20,   49,   57,   58.
+           3    slt                      bootload_linker:     36,   37,   40,   41,
+                                         bootload_equs:       15.
+           5    slt.first_init_seg       bootload_linker:     36,
+                                         slt:           21.
+           3    slt.first_sup_seg        bootload_linker:     40,
+                                         slt:           19.
+           7    slt.free_core_size       slt:           23.
+           2    slt.free_core_start      slt:           18.
+           6    slt.last_init_seg        bootload_linker:     37,
+                                         slt:           22.
+           4    slt.last_sup_seg         bootload_linker:     41,
+                                         slt:           20.
+           0    slt.name_seg_ptr         slt:           17.
+          10    slt.seg                  slt:           24.
+          10    slt.slte                 slt:           26.
+      100010    slt_size                 slt:           14.
+         131    t1_link                  bootload_linker:    110,  118.
+         125    t1_text                  bootload_linker:    109,  113.
+       46000    toedata_absloc           bootload_equs:       90.
+        4000    toedata_lth              bootload_equs:       91.
+       24000    toe_absloc               bootload_equs:       81.
+        4000    toe_lth                  bootload_equs:       82.
+         121    type_1a                  bootload_linker:    101,  108.
+         265    type_3                   bootload_linker:    229,  232.
+         133    type_3a                  bootload_linker:    103,  121,  135.
+         137    type_4a                  bootload_linker:    104,  126,  134.
+         144    type_6a                  bootload_linker:    106,  132.
+           2    type_pair                bootload_linker:     17,   97,  174.
+       52000    upt_absloc               bootload_equs:       93.
+        2000    upt_lth                  bootload_equs:       94.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

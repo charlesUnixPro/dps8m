@@ -1,0 +1,1445 @@
+	COMPILATION LISTING OF SEGMENT pc_wired
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1808.79_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9          /* use: pl1_macro pc.pl1.pmac  -target l68 */
+       10 pc_wired: proc;
+       11 
+       12 /* RE Mullen, v2pl1, oct 1973 */
+       13 /* Modified for unified page wait primitive, B. Greenberg 6/6/74 */
+       14 /* write_wait_uid for new lock, 11/3/75 by BSG */
+       15 /* Modified for ADP conversion, 03/03/81, W. Olin Sibert */
+       16 /* Modified for unwire_write_wait, February 1982, J. Bongiovanni */
+       17 /* Modified for write_wait_uid_list, November 1982, J. Bongiovanni */
+       18 
+       19 dcl  a_astep pointer parameter;			/* pointer to AST entry */
+       20 dcl  first_page fixed bin parameter;			/* first page affected */
+       21 dcl  no_pages fixed bin parameter;			/* number of pages, or -1 if all remaining */
+       22 dcl  a_uid bit (36) aligned parameter;			/* arg uid of segment */
+       23 dcl  a_listp ptr parameter;				/* pointer to list of pages */
+       24 dcl  a_list (0:255) fixed bin based (a_listp);		/* list of pages */
+       25 
+       26 dcl  fp fixed bin;					/* first page */
+       27 dcl  waitev fixed bin (35);				/* wait event from pread */
+       28 dcl  i fixed bin;					/* loop index */
+       29 dcl (j, k) fixed bin (35);				/* temporary wait indices */
+       30 dcl  rptp fixed bin (18);				/* offset of page table */
+       31 dcl  lp fixed bin;					/* last page */
+       32 dcl  np fixed bin;					/* number of pages */
+       33 dcl  max_page fixed bin;				/* highest page number allowed */
+       34 dcl  increment fixed bin;				/* do loop increment */
+       35 dcl  uid bit (36) aligned;				/* uid of segment */
+       36 dcl  oldmask fixed bin (71);				/* saved interrupt mask */
+       37 dcl  ptwp ptr;					/* saved pointer to ptw for wired stack pages */
+       38 
+       39 dcl  do_io bit (1) aligned;				/* flag on if I/O is to be done */
+       40 dcl  io bit (1) aligned;				/* ="1"b for read, "0"b for write */
+       41 dcl  must_wait bit (1) aligned;			/* on if must wait for I/O to complete */
+       42 dcl  set_wired bit (1) aligned;			/* on if wired bit is to be set */
+       43 dcl  wired bit (1) aligned;				/* value of wired bit, if to be set */
+       44 dcl  uent bit (1) aligned;				/* on if must check uid before looking around */
+       45 dcl  have_list bit (1) aligned;			/* on if we were passed a list of pages */
+       46 
+       47 dcl  page_no fixed bin;				/* current page number */
+       48 dcl  wptwp ptr;					/* pointer to current PTW */
+       49 
+       50 dcl  list (0:255) fixed bin;				/* copy of list of pages */
+       51 
+       52 dcl  1 wptw aligned like ptw based (wptwp);		/* working PTW */
+       53 
+       54 dcl  pmut$lock_ptl entry (fixed bin (71), ptr);
+       55 dcl  pmut$unlock_ptl entry (fixed bin (71), ptr);
+       56 dcl  page$pread entry (ptr, fixed bin, fixed bin (35));
+       57 dcl  page$pwrite entry (ptr, fixed bin);
+       58 dcl  page$pwait entry (fixed bin (35));
+       59 
+       60 dcl  sst$astsize fixed bin external static;
+       61 dcl  sst$pts (0 : 3) fixed bin external static;
+       62 dcl  sst$wired fixed bin external static;
+       63 
+       64 dcl (addrel, binary, min, rel) builtin;
+       65 
+       66 /*  */
+       67 
+       68 pc_wired$wire_wait: entry (a_astep, first_page, no_pages);	/* entry to get pages into core and wire down */
+       69 
+       70 	io = "1"b;
+       71 	do_io = "1"b;
+       72 	must_wait = "1"b;
+       73 	set_wired = "1"b;
+       74 	wired = "1"b;
+       75 	uent = "0"b;
+       76 	have_list = "0"b;
+       77 	go to join;
+       78 
+       79 pc_wired$wire: entry (a_astep, first_page, no_pages);	/* entry to wire pages */
+       80 
+       81 	do_io = "0"b;
+       82 	must_wait = "0"b;
+       83 	set_wired = "1"b;
+       84 	wired = "1"b;
+       85 	uent = "0"b;
+       86 	have_list = "0"b;
+       87 	go to join;
+       88 
+       89 
+       90 pc_wired$read: entry (a_astep, first_page, no_pages);	/* entry to read pages */
+       91 
+       92 	io = "1"b;
+       93 	do_io = "1"b;
+       94 	must_wait = "0"b;
+       95 	set_wired = "0"b;
+       96 	uent = "0"b;
+       97 	have_list = "0"b;
+       98 	go to join;
+       99 
+      100 
+      101 pc_wired$unwire: entry (a_astep, first_page, no_pages);	/* entry to turn off wired bit */
+      102 
+      103 	io = "0"b;
+      104 	must_wait = "0"b;
+      105 	set_wired = "1"b;
+      106 	wired = "0"b;
+      107 	uent = "0"b;
+      108 	have_list = "0"b;
+      109 	go to join;
+      110 
+      111 
+      112 pc_wired$write_wait: entry (a_astep, first_page, no_pages); /* entry to issue write and wait for I/O */
+      113 
+      114 	io = "0"b;
+      115 	do_io = "1"b;
+      116 	must_wait = "1"b;
+      117 	set_wired = "0"b;
+      118 	uent = "0"b;
+      119 	have_list = "0"b;
+      120 	go to join;
+      121 
+      122 
+      123 pc_wired$write: entry (a_astep, first_page, no_pages);	/* entry to issue a write */
+      124 
+      125 	io = "0"b;
+      126 	do_io = "1"b;
+      127 	must_wait = "0"b;
+      128 	set_wired = "0"b;
+      129 	uent = "0"b;
+      130 	have_list = "0"b;
+      131 	go to join;
+      132 
+      133 
+      134 pc_wired$write_wait_uid: entry (a_astep, first_page, no_pages, a_uid); /* For cleanup */
+      135 
+      136 	io = "0"b;
+      137 	do_io = "1"b;
+      138 	must_wait = "1"b;
+      139 	set_wired = "0"b;
+      140 	uent = "1"b;
+      141 	uid = a_uid;
+      142 	have_list = "0"b;
+      143 	go to join;
+      144 
+      145 pc_wired$write_wait_uid_list: entry (a_astep, a_listp, first_page, no_pages, a_uid);
+      146 			
+      147           io = "0"b;
+      148 	do_io = "1"b;
+      149 	must_wait = "1"b;
+      150 	set_wired = "0"b;
+      151 	uent = "1"b;
+      152 	uid = a_uid;
+      153 	have_list = "1"b;
+      154 	goto join;
+      155 
+      156 pc_wired$unwire_write_wait: entry (a_astep, first_page, no_pages);
+      157 		        
+      158           io = "0"b;
+      159 	do_io = "1"b;
+      160 	must_wait = "1"b;
+      161 	set_wired = "1"b;
+      162 	wired = "0"b;
+      163 	uent = "0"b;
+      164 	have_list = "0"b;
+      165 
+      166 
+      167 
+      168 join:	astep = a_astep;				/* Copy args. */
+      169 	np = no_pages;
+      170 	max_page = sst$pts (binary (astep ->  aste.ptsi, 3)) - 1;	/* Highest valid page number */
+      171 	fp = first_page;
+      172 
+      173 	if have_list then do;
+      174 	     list = a_list;
+      175 	     lp = fp + np - 1;
+      176 	end;
+      177 	else do;
+      178 	     if np = -1 then lp = binary (astep -> aste.csl, 9) - 1;
+      179 	     else lp = fp + np - 1;
+      180 	end;
+      181 
+      182 	call pmut$lock_ptl (oldmask, ptwp);		/* lock and mask */
+      183 
+      184 	ptp = addrel (astep, sst$astsize);		/* get a pointer to the page table */
+      185 	rptp = binary (rel (ptp), 18); 		/* get offset for pwait calls */
+      186 
+      187 
+      188 	if set_wired then do i = fp to lp;		/* Unwire/wire all needed pages. */
+      189 	     if have_list then page_no = list (i);
+      190 	     else page_no = i;
+      191 	     if page_no <= max_page then do;
+      192 		wptwp = addr (ptp -> ptwa (page_no));
+      193 		if wired ^= wptw.wired		/* if changing wired bit */
+      194 		     then if wired
+      195 		          then sst$wired = sst$wired + 1; /* change total */
+      196 		     else sst$wired = sst$wired - 1;
+      197 		wptw.wired = wired;			/* Wire/unwire as needed. */
+      198 	     end;
+      199 	end;
+      200 
+      201 loop:	k, j, waitev = -1;				/* Set out of service indicator. */
+      202 	if uent then				/* Racing with cleanup, but we are in same racket */
+      203 	     if uid ^= astep -> aste.uid then go to nomore;
+      204 
+      205 	do i = lp to fp by -1;			/* Loop backwards to optimize disk spiral */
+      206 	     if have_list then page_no = list (i);
+      207 	     else page_no = i;
+      208 	     if page_no <= max_page then do;
+      209 		wptwp = addr (ptp -> ptwa (page_no));
+      210 		if wptw.os then k = page_no + rptp;		/* If out of service remember to wait. */
+      211 		else if do_io then do;
+      212 		     if ^wptw.valid then do;		/* Try to read in a page. */
+      213 			if io then call page$pread (astep, page_no, waitev); /* try to read the page */
+      214 			if waitev > 0 then j = waitev;/* use new wait event */
+      215 		     end;
+      216 		     else do;			/* page is in core, probably want to write */
+      217 			if ^io then if (wptw.phm | wptw.phm1) then
+      218 			     call page$pwrite (astep, page_no); /* issue the write request */
+      219 			if wptw.os then j = page_no + rptp;
+      220 		     end;
+      221 		end;
+      222 	     end;
+      223 	end;
+      224 
+      225 	if k ^= -1 then do;
+      226 	     j = k;
+      227 	     go to wait1;
+      228 	end;
+      229 
+      230 	if must_wait & j ^= -1 then do;		/* See if we must wait */
+      231 wait1:	     call page$pwait (j);			/* wait for event */
+      232 	     go to loop;
+      233 	end;
+      234 
+      235 nomore:	call pmut$unlock_ptl (oldmask, ptwp);		/* unlock and unmask */
+      236 	return;
+      237 
+      238 	/*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      238 
+      239 
+      240 /* BEGIN INCLUDE FILE ... ptw.incl.pl1 ... MACRO ... For ADP conversion, 02/26/81 */
+      241 /* Added core_ptwa, Benson Margulies, 84-01 */
+      242 
+      243 dcl  ptp pointer;
+      244 
+      245 
+      246 
+      247      /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  2     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  2     3 
+  2     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  2     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  2     6     2 pad1 bit (4) unaligned,
+  2     7     2 flags unaligned like l68_ptw_flags;
+  2     8 
+  2     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  2    10     2 add bit (18) unaligned,
+  2    11     2 flags like l68_ptw_flags unaligned;
+  2    12 
+  2    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  2    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  2    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  2    16 
+  2    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  2    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  2    19     2 first bit (1),				/* the page has not yet been written out */
+  2    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  2    21 
+  2    22     2 pad1 bit (1),
+  2    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  2    24     2 phu bit (1),					/* page has been used bit */
+  2    25 
+  2    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  2    27     2 nypd bit (1), 				/* must be moved to paging device */
+  2    28     2 phm bit (1),					/* page has been modified bit */
+  2    29 
+  2    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  2    31     2 wired bit (1),				/* page is to remain in core */
+  2    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  2    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  2    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  2    35 
+  2    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      247 
+      248 
+      249      dcl 1 ptw aligned based (ptp) like l68_ptw;
+      250      dcl 1 ptw_flags unaligned like l68_ptw_flags based;
+      251 
+      252      dcl 1 core_ptw aligned based (ptp) like l68_core_ptw;
+      253      dcl 1 special_ptw aligned based (ptp) like l68_special_ptw;
+      254      dcl 1 real_disk_ptw aligned based (ptp) like l68_real_disk_ptw;
+      255      dcl 1 null_disk_ptw aligned based (ptp) like l68_null_disk_ptw;
+      256 
+      257 
+      258 
+      259 /* Arrays and overlays for various purposes */
+      260 
+      261 dcl 1 ptwa (0:255) based (ptp) aligned like ptw;		/* page table */
+      262 dcl 1 core_ptwa (0:255) based (ptp) aligned like core_ptw;
+      263 dcl  ptwa_bits (0:255) based (ptp) bit (36) aligned;	/* page table array as raw bits */
+      264 
+      265 dcl 1 mptw based (ptp) aligned,			/* page table word while page is not in core */
+      266     2 devadd bit (22) unaligned,			/* device address where page resides */
+      267     2 pad bit (14) unaligned;
+      268 
+      269 dcl 1 mptwa (0 : 1) based (ptp) aligned,		/* page table while pages are not in core */
+      270     2 devadd bit (22) unaligned,			/* device address where page resides */
+      271     2 pad bit (14) unaligned;
+      272 
+      273 dcl 1 atptw based (ptp) aligned,			/* PL/I has problems on overlay-def based */
+      274     2 add bit (18) unal,
+      275     2 (core, disk, pd, reserved) bit (1) unal,		/* address types */
+      276     2 pad bit (14) unal;
+      277 
+      278 dcl 1 atptwa (0:255) based (ptp) aligned like atptw;
+      279 
+      280 /* END INCLUDE FILE ... ptw.incl.pl1 */
+      281 
+      282 
+      283      end pc_wired;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1808.7  pc_wired.pl1                      >udd>sm>ds>w>ml>pc_wired.pl1
+238          1    01/30/85  1623.9  aste.incl.pl1                     >ldd>incl>aste.incl.pl1
+247          2    03/27/82  0530.2  ptw.l68.incl.pl1                  >ldd>incl>ptw.l68.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_astep                                parameter       pointer                  dcl 19 ref 68 79 90 101 112 123 134 145 156 168
+a_list                                 based           fixed bin(17,0)          array dcl 24 ref 174
+a_listp                                parameter       pointer                  dcl 23 ref 145 174
+a_uid                                  parameter       bit(36)                  dcl 22 ref 134 141 145 152
+addrel                                                 builtin function         dcl 64 ref 184
+aste                                   based           structure                level 1 dcl 1-11
+astep                           000530 automatic       pointer                  dcl 1-9 set ref 168* 170 178 184 202 213* 217*
+atptw                                  based           structure                level 1 dcl 273
+binary                                                 builtin function         dcl 64 ref 170 178 185
+core_ptw                               based           structure                level 1 dcl 252
+csl                      12            based           bit(9)                   level 2 packed packed unaligned dcl 1-11 ref 178
+do_io                           000116 automatic       bit(1)                   dcl 39 set ref 71* 81* 93* 115* 126* 137* 148* 159*
+                                                                                  211
+first_page                             parameter       fixed bin(17,0)          dcl 20 ref 68 79 90 101 112 123 134 145 156 171
+flags                     0(18)        based           structure                level 2 packed packed unaligned dcl 52
+fp                              000100 automatic       fixed bin(17,0)          dcl 26 set ref 171* 175 179 188 205
+have_list                       000124 automatic       bit(1)                   dcl 45 set ref 76* 86* 97* 108* 119* 130* 142* 153*
+                                                                                  164* 173 189 206
+i                               000102 automatic       fixed bin(17,0)          dcl 28 set ref 188* 189 190* 205* 206 207*
+io                              000117 automatic       bit(1)                   dcl 40 set ref 70* 92* 103* 114* 125* 136* 147* 158*
+                                                                                  213 217
+j                               000103 automatic       fixed bin(35,0)          dcl 29 set ref 201* 214* 219* 226* 230 231*
+k                               000104 automatic       fixed bin(35,0)          dcl 29 set ref 201* 210* 225 226
+l68_core_ptw                           based           structure                level 1 dcl 2-4
+l68_null_disk_ptw                      based           structure                level 1 dcl 2-15
+l68_ptw                                based           structure                level 1 dcl 2-9
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 2-17
+l68_real_disk_ptw                      based           structure                level 1 dcl 2-14
+l68_special_ptw                        based           structure                level 1 dcl 2-13
+list                            000130 automatic       fixed bin(17,0)          array dcl 50 set ref 174* 189 206
+lp                              000106 automatic       fixed bin(17,0)          dcl 31 set ref 175* 178* 179* 188 205
+max_page                        000110 automatic       fixed bin(17,0)          dcl 33 set ref 170* 191 208
+must_wait                       000120 automatic       bit(1)                   dcl 41 set ref 72* 82* 94* 104* 116* 127* 138* 149*
+                                                                                  160* 230
+no_pages                               parameter       fixed bin(17,0)          dcl 21 ref 68 79 90 101 112 123 134 145 156 169
+np                              000107 automatic       fixed bin(17,0)          dcl 32 set ref 169* 175 178 179
+oldmask                         000112 automatic       fixed bin(71,0)          dcl 36 set ref 182* 235*
+os                        0(32)        based           bit(1)                   level 3 packed packed unaligned dcl 52 ref 210 219
+page$pread                      000014 constant        entry                    external dcl 56 ref 213
+page$pwait                      000020 constant        entry                    external dcl 58 ref 231
+page$pwrite                     000016 constant        entry                    external dcl 57 ref 217
+page_no                         000125 automatic       fixed bin(17,0)          dcl 47 set ref 189* 190* 191 192 206* 207* 208 209
+                                                                                  210 213* 217* 219
+phm                       0(29)        based           bit(1)                   level 3 packed packed unaligned dcl 52 ref 217
+phm1                      0(27)        based           bit(1)                   level 3 packed packed unaligned dcl 52 ref 217
+pmut$lock_ptl                   000010 constant        entry                    external dcl 54 ref 182
+pmut$unlock_ptl                 000012 constant        entry                    external dcl 55 ref 235
+ptp                             000532 automatic       pointer                  dcl 243 set ref 184* 185 192 209
+ptsi                     13(28)        based           bit(2)                   level 2 packed packed unaligned dcl 1-11 ref 170
+ptw                                    based           structure                level 1 dcl 249
+ptwa                                   based           structure                array level 1 dcl 261 set ref 192 209
+ptwp                            000114 automatic       pointer                  dcl 37 set ref 182* 235*
+rel                                                    builtin function         dcl 64 ref 185
+rptp                            000105 automatic       fixed bin(18,0)          dcl 30 set ref 185* 210 219
+set_wired                       000121 automatic       bit(1)                   dcl 42 set ref 73* 83* 95* 105* 117* 128* 139* 150*
+                                                                                  161* 188
+sst$astsize                     000022 external static fixed bin(17,0)          dcl 60 ref 184
+sst$pts                         000024 external static fixed bin(17,0)          array dcl 61 ref 170
+sst$wired                       000026 external static fixed bin(17,0)          dcl 62 set ref 193* 193 196* 196
+uent                            000123 automatic       bit(1)                   dcl 44 set ref 75* 85* 96* 107* 118* 129* 140* 151*
+                                                                                  163* 202
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "pc_wired" ref 202
+uid                             000111 automatic       bit(36)                  dcl 35 in procedure "pc_wired" set ref 141* 152* 202
+valid                     0(33)        based           bit(1)                   level 3 packed packed unaligned dcl 52 ref 212
+waitev                          000101 automatic       fixed bin(35,0)          dcl 27 set ref 201* 213* 214 214
+wired                           000122 automatic       bit(1)                   dcl 43 in procedure "pc_wired" set ref 74* 84* 106*
+                                                                                  162* 193 193 197
+wired                     0(31)        based           bit(1)                   level 3 in structure "wptw" packed packed unaligned
+                                                                                  dcl 52 in procedure "pc_wired" set ref 193 197*
+wptw                                   based           structure                level 1 dcl 52
+wptwp                           000126 automatic       pointer                  dcl 48 set ref 192* 193 197 209* 210 212 217 217 219
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+atptwa                                 based           structure                array level 1 dcl 278
+core_ptwa                              based           structure                array level 1 dcl 262
+increment                              automatic       fixed bin(17,0)          dcl 34
+min                                                    builtin function         dcl 64
+mptw                                   based           structure                level 1 dcl 265
+mptwa                                  based           structure                array level 1 dcl 269
+null_disk_ptw                          based           structure                level 1 dcl 255
+ptw_flags                              based           structure                level 1 packed packed unaligned dcl 250
+ptwa_bits                              based           bit(36)                  array dcl 263
+real_disk_ptw                          based           structure                level 1 dcl 254
+seg_aste                               based           structure                level 1 dcl 1-96
+special_ptw                            based           structure                level 1 dcl 253
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+join                            000320 constant        label                    dcl 168 ref 77 87 98 109 120 131 143 154
+loop                            000455 constant        label                    dcl 201 ref 232
+nomore                          000616 constant        label                    dcl 235 set ref 202
+pc_wired                        000004 constant        entry                    external dcl 10
+pc_wired$read                   000067 constant        entry                    external dcl 90
+pc_wired$unwire                 000113 constant        entry                    external dcl 101
+pc_wired$unwire_write_wait      000276 constant        entry                    external dcl 156
+pc_wired$wire                   000043 constant        entry                    external dcl 79
+pc_wired$wire_wait              000016 constant        entry                    external dcl 68
+pc_wired$write                  000163 constant        entry                    external dcl 123
+pc_wired$write_wait             000137 constant        entry                    external dcl 112
+pc_wired$write_wait_uid         000212 constant        entry                    external dcl 134
+pc_wired$write_wait_uid_list    000245 constant        entry                    external dcl 145
+wait1                           000606 constant        label                    dcl 231 ref 227
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 192 209
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1134        1164     631        1144
+Length      1416     631        30         215     303           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pc_wired                            372 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+pc_wired                 000100 fp                          pc_wired
+                         000101 waitev                      pc_wired
+                         000102 i                           pc_wired
+                         000103 j                           pc_wired
+                         000104 k                           pc_wired
+                         000105 rptp                        pc_wired
+                         000106 lp                          pc_wired
+                         000107 np                          pc_wired
+                         000110 max_page                    pc_wired
+                         000111 uid                         pc_wired
+                         000112 oldmask                     pc_wired
+                         000114 ptwp                        pc_wired
+                         000116 do_io                       pc_wired
+                         000117 io                          pc_wired
+                         000120 must_wait                   pc_wired
+                         000121 set_wired                   pc_wired
+                         000122 wired                       pc_wired
+                         000123 uent                        pc_wired
+                         000124 have_list                   pc_wired
+                         000125 page_no                     pc_wired
+                         000126 wptwp                       pc_wired
+                         000130 list                        pc_wired
+                         000530 astep                       pc_wired
+                         000532 ptp                         pc_wired
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+page$pread                    page$pwait                    page$pwrite                   pmut$lock_ptl
+pmut$unlock_ptl
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sst$astsize                   sst$pts                       sst$wired
+
+
+CONSTANTS
+000630  aa     777777777777
+
+000000  aa     514000000044
+
+000001  aa     404000000021
+
+000002  aa     464000000000
+
+BEGIN PROCEDURE pc_wired
+ENTRY TO pc_wired                                           STATEMENT 1 ON LINE 10
+pc_wired: proc;
+
+000003  da     000076200000
+000004  aa   000600 6270 00	eax7 	384
+000005  aa  7 00034 3521 20	epp2 	pr7|28,*
+000006  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000007  aa     000000000000
+000010  aa     000000000000
+						STATEMENT 1 ON LINE 68
+pc_wired$wire_wait: entry (a_astep, first_page, no_pages);
+
+000011  aa   000017 7100 04	tra  	15,ic		000030
+ENTRY TO pc_wired$wire_wait                                 STATEMENT 1 ON LINE 68
+pc_wired$wire_wait: entry (a_astep, first_page, no_pages);
+
+000012  at     000003000002
+000013  tt     000001000001
+000014  ta     000012000000
+000015  da     000114300000
+000016  aa   000600 6270 00	eax7 	384
+000017  aa  7 00034 3521 20	epp2 	pr7|28,*
+000020  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000021  aa     000006000000
+000022  aa     000000000000
+000023  aa  6 00032 3735 20	epp7 	pr6|26,*
+000024  aa  7 00004 3715 20	epp5 	pr7|4,*
+000025  aa  6 00534 6515 00	spri5	pr6|348
+000026  aa  7 00006 3535 20	epp3 	pr7|6,*
+000027  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 70
+	io = "1"b;
+
+000030  aa   400000 2350 03	lda  	131072,du
+000031  aa  6 00117 7551 00	sta  	pr6|79		io
+						STATEMENT 1 ON LINE 71
+	do_io = "1"b;
+
+000032  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 72
+	must_wait = "1"b;
+
+000033  aa  6 00120 7551 00	sta  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 73
+	set_wired = "1"b;
+
+000034  aa  6 00121 7551 00	sta  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 74
+	wired = "1"b;
+
+000035  aa  6 00122 7551 00	sta  	pr6|82		wired
+						STATEMENT 1 ON LINE 75
+	uent = "0"b;
+
+000036  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 76
+	have_list = "0"b;
+
+000037  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 77
+	go to join;
+
+000040  aa   000260 7100 04	tra  	176,ic		000320
+ENTRY TO pc_wired$wire                                      STATEMENT 1 ON LINE 79
+pc_wired$wire: entry (a_astep, first_page, no_pages);
+
+000041  ta     000012000000
+000042  da     000130300000
+000043  aa   000600 6270 00	eax7 	384
+000044  aa  7 00034 3521 20	epp2 	pr7|28,*
+000045  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000046  aa     000006000000
+000047  aa     000000000000
+000050  aa  6 00032 3735 20	epp7 	pr6|26,*
+000051  aa  7 00004 3715 20	epp5 	pr7|4,*
+000052  aa  6 00534 6515 00	spri5	pr6|348
+000053  aa  7 00006 3535 20	epp3 	pr7|6,*
+000054  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 81
+	do_io = "0"b;
+
+000055  aa  6 00116 4501 00	stz  	pr6|78		do_io
+						STATEMENT 1 ON LINE 82
+	must_wait = "0"b;
+
+000056  aa  6 00120 4501 00	stz  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 83
+	set_wired = "1"b;
+
+000057  aa   400000 2350 03	lda  	131072,du
+000060  aa  6 00121 7551 00	sta  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 84
+	wired = "1"b;
+
+000061  aa  6 00122 7551 00	sta  	pr6|82		wired
+						STATEMENT 1 ON LINE 85
+	uent = "0"b;
+
+000062  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 86
+	have_list = "0"b;
+
+000063  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 87
+	go to join;
+
+000064  aa   000234 7100 04	tra  	156,ic		000320
+ENTRY TO pc_wired$read                                      STATEMENT 1 ON LINE 90
+pc_wired$read: entry (a_astep, first_page, no_pages);
+
+000065  ta     000012000000
+000066  da     000144300000
+000067  aa   000600 6270 00	eax7 	384
+000070  aa  7 00034 3521 20	epp2 	pr7|28,*
+000071  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000072  aa     000006000000
+000073  aa     000000000000
+000074  aa  6 00032 3735 20	epp7 	pr6|26,*
+000075  aa  7 00004 3715 20	epp5 	pr7|4,*
+000076  aa  6 00534 6515 00	spri5	pr6|348
+000077  aa  7 00006 3535 20	epp3 	pr7|6,*
+000100  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 92
+	io = "1"b;
+
+000101  aa   400000 2350 03	lda  	131072,du
+000102  aa  6 00117 7551 00	sta  	pr6|79		io
+						STATEMENT 1 ON LINE 93
+	do_io = "1"b;
+
+000103  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 94
+	must_wait = "0"b;
+
+000104  aa  6 00120 4501 00	stz  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 95
+	set_wired = "0"b;
+
+000105  aa  6 00121 4501 00	stz  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 96
+	uent = "0"b;
+
+000106  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 97
+	have_list = "0"b;
+
+000107  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 98
+	go to join;
+
+000110  aa   000210 7100 04	tra  	136,ic		000320
+ENTRY TO pc_wired$unwire                                    STATEMENT 1 ON LINE 101
+pc_wired$unwire: entry (a_astep, first_page, no_pages);
+
+000111  ta     000012000000
+000112  da     000160300000
+000113  aa   000600 6270 00	eax7 	384
+000114  aa  7 00034 3521 20	epp2 	pr7|28,*
+000115  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000116  aa     000006000000
+000117  aa     000000000000
+000120  aa  6 00032 3735 20	epp7 	pr6|26,*
+000121  aa  7 00004 3715 20	epp5 	pr7|4,*
+000122  aa  6 00534 6515 00	spri5	pr6|348
+000123  aa  7 00006 3535 20	epp3 	pr7|6,*
+000124  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 103
+	io = "0"b;
+
+000125  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 104
+	must_wait = "0"b;
+
+000126  aa  6 00120 4501 00	stz  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 105
+	set_wired = "1"b;
+
+000127  aa   400000 2350 03	lda  	131072,du
+000130  aa  6 00121 7551 00	sta  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 106
+	wired = "0"b;
+
+000131  aa  6 00122 4501 00	stz  	pr6|82		wired
+						STATEMENT 1 ON LINE 107
+	uent = "0"b;
+
+000132  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 108
+	have_list = "0"b;
+
+000133  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 109
+	go to join;
+
+000134  aa   000164 7100 04	tra  	116,ic		000320
+ENTRY TO pc_wired$write_wait                                STATEMENT 1 ON LINE 112
+pc_wired$write_wait: entry (a_astep, first_page, no_pages);
+
+000135  ta     000012000000
+000136  da     000176300000
+000137  aa   000600 6270 00	eax7 	384
+000140  aa  7 00034 3521 20	epp2 	pr7|28,*
+000141  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000142  aa     000006000000
+000143  aa     000000000000
+000144  aa  6 00032 3735 20	epp7 	pr6|26,*
+000145  aa  7 00004 3715 20	epp5 	pr7|4,*
+000146  aa  6 00534 6515 00	spri5	pr6|348
+000147  aa  7 00006 3535 20	epp3 	pr7|6,*
+000150  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 114
+	io = "0"b;
+
+000151  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 115
+	do_io = "1"b;
+
+000152  aa   400000 2350 03	lda  	131072,du
+000153  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 116
+	must_wait = "1"b;
+
+000154  aa  6 00120 7551 00	sta  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 117
+	set_wired = "0"b;
+
+000155  aa  6 00121 4501 00	stz  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 118
+	uent = "0"b;
+
+000156  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 119
+	have_list = "0"b;
+
+000157  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 120
+	go to join;
+
+000160  aa   000140 7100 04	tra  	96,ic		000320
+ENTRY TO pc_wired$write                                     STATEMENT 1 ON LINE 123
+pc_wired$write: entry (a_astep, first_page, no_pages);
+
+000161  ta     000012000000
+000162  da     000212300000
+000163  aa   000600 6270 00	eax7 	384
+000164  aa  7 00034 3521 20	epp2 	pr7|28,*
+000165  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000166  aa     000006000000
+000167  aa     000000000000
+000170  aa  6 00032 3735 20	epp7 	pr6|26,*
+000171  aa  7 00004 3715 20	epp5 	pr7|4,*
+000172  aa  6 00534 6515 00	spri5	pr6|348
+000173  aa  7 00006 3535 20	epp3 	pr7|6,*
+000174  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 125
+	io = "0"b;
+
+000175  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 126
+	do_io = "1"b;
+
+000176  aa   400000 2350 03	lda  	131072,du
+000177  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 127
+	must_wait = "0"b;
+
+000200  aa  6 00120 4501 00	stz  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 128
+	set_wired = "0"b;
+
+000201  aa  6 00121 4501 00	stz  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 129
+	uent = "0"b;
+
+000202  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 130
+	have_list = "0"b;
+
+000203  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 131
+	go to join;
+
+000204  aa   000114 7100 04	tra  	76,ic		000320
+ENTRY TO pc_wired$write_wait_uid                            STATEMENT 1 ON LINE 134
+pc_wired$write_wait_uid: entry (a_astep, first_page, no_pages, a_uid);
+
+000205  at     000004000002
+000206  tt     000001000001
+000207  ta     000000000000
+000210  ta     000205000000
+000211  da     000232300000
+000212  aa   000600 6270 00	eax7 	384
+000213  aa  7 00034 3521 20	epp2 	pr7|28,*
+000214  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000215  aa     000010000000
+000216  aa     000000000000
+000217  aa  6 00032 3735 20	epp7 	pr6|26,*
+000220  aa  7 00004 3715 20	epp5 	pr7|4,*
+000221  aa  6 00534 6515 00	spri5	pr6|348
+000222  aa  7 00006 3535 20	epp3 	pr7|6,*
+000223  aa  6 00536 2535 00	spri3	pr6|350
+000224  aa  7 00010 3515 20	epp1 	pr7|8,*
+000225  aa  6 00540 2515 00	spri1	pr6|352
+						STATEMENT 1 ON LINE 136
+	io = "0"b;
+
+000226  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 137
+	do_io = "1"b;
+
+000227  aa   400000 2350 03	lda  	131072,du
+000230  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 138
+	must_wait = "1"b;
+
+000231  aa  6 00120 7551 00	sta  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 139
+	set_wired = "0"b;
+
+000232  aa  6 00121 4501 00	stz  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 140
+	uent = "1"b;
+
+000233  aa  6 00123 7551 00	sta  	pr6|83		uent
+						STATEMENT 1 ON LINE 141
+	uid = a_uid;
+
+000234  aa  6 00540 2351 20	lda  	pr6|352,*		a_uid
+000235  aa  6 00111 7551 00	sta  	pr6|73		uid
+						STATEMENT 1 ON LINE 142
+	have_list = "0"b;
+
+000236  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 143
+	go to join;
+
+000237  aa   000061 7100 04	tra  	49,ic		000320
+ENTRY TO pc_wired$write_wait_uid_list                       STATEMENT 1 ON LINE 145
+pc_wired$write_wait_uid_list: entry (a_astep, a_listp, first_page, no_pages, a_uid);
+
+000240  at     000005000002
+000241  tt     000002000001
+000242  tt     000001000000
+000243  ta     000240000000
+000244  da     000255300000
+000245  aa   000600 6270 00	eax7 	384
+000246  aa  7 00034 3521 20	epp2 	pr7|28,*
+000247  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000250  aa     000012000000
+000251  aa     000000000000
+000252  aa  6 00032 3735 20	epp7 	pr6|26,*
+000253  aa  7 00006 3715 20	epp5 	pr7|6,*
+000254  aa  6 00534 6515 00	spri5	pr6|348
+000255  aa  7 00010 3535 20	epp3 	pr7|8,*
+000256  aa  6 00536 2535 00	spri3	pr6|350
+000257  aa  7 00012 3515 20	epp1 	pr7|10,*
+000260  aa  6 00540 2515 00	spri1	pr6|352
+						STATEMENT 1 ON LINE 147
+          io = "0"b;
+
+000261  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 148
+	do_io = "1"b;
+
+000262  aa   400000 2350 03	lda  	131072,du
+000263  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 149
+	must_wait = "1"b;
+
+000264  aa  6 00120 7551 00	sta  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 150
+	set_wired = "0"b;
+
+000265  aa  6 00121 4501 00	stz  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 151
+	uent = "1"b;
+
+000266  aa  6 00123 7551 00	sta  	pr6|83		uent
+						STATEMENT 1 ON LINE 152
+	uid = a_uid;
+
+000267  aa  6 00540 2351 20	lda  	pr6|352,*		a_uid
+000270  aa  6 00111 7551 00	sta  	pr6|73		uid
+						STATEMENT 1 ON LINE 153
+	have_list = "1"b;
+
+000271  aa   400000 2350 03	lda  	131072,du
+000272  aa  6 00124 7551 00	sta  	pr6|84		have_list
+						STATEMENT 1 ON LINE 154
+	goto join;
+
+000273  aa   000025 7100 04	tra  	21,ic		000320
+ENTRY TO pc_wired$unwire_write_wait                         STATEMENT 1 ON LINE 156
+pc_wired$unwire_write_wait: entry (a_astep, first_page, no_pages);
+
+000274  ta     000012000000
+000275  da     000277300000
+000276  aa   000600 6270 00	eax7 	384
+000277  aa  7 00034 3521 20	epp2 	pr7|28,*
+000300  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000301  aa     000006000000
+000302  aa     000000000000
+000303  aa  6 00032 3735 20	epp7 	pr6|26,*
+000304  aa  7 00004 3715 20	epp5 	pr7|4,*
+000305  aa  6 00534 6515 00	spri5	pr6|348
+000306  aa  7 00006 3535 20	epp3 	pr7|6,*
+000307  aa  6 00536 2535 00	spri3	pr6|350
+						STATEMENT 1 ON LINE 158
+          io = "0"b;
+
+000310  aa  6 00117 4501 00	stz  	pr6|79		io
+						STATEMENT 1 ON LINE 159
+	do_io = "1"b;
+
+000311  aa   400000 2350 03	lda  	131072,du
+000312  aa  6 00116 7551 00	sta  	pr6|78		do_io
+						STATEMENT 1 ON LINE 160
+	must_wait = "1"b;
+
+000313  aa  6 00120 7551 00	sta  	pr6|80		must_wait
+						STATEMENT 1 ON LINE 161
+	set_wired = "1"b;
+
+000314  aa  6 00121 7551 00	sta  	pr6|81		set_wired
+						STATEMENT 1 ON LINE 162
+	wired = "0"b;
+
+000315  aa  6 00122 4501 00	stz  	pr6|82		wired
+						STATEMENT 1 ON LINE 163
+	uent = "0"b;
+
+000316  aa  6 00123 4501 00	stz  	pr6|83		uent
+						STATEMENT 1 ON LINE 164
+	have_list = "0"b;
+
+000317  aa  6 00124 4501 00	stz  	pr6|84		have_list
+						STATEMENT 1 ON LINE 168
+join:	astep = a_astep;
+
+000320  aa  6 00032 3735 20	epp7 	pr6|26,*
+000321  aa  7 00002 3715 20	epp5 	pr7|2,*		a_astep
+000322  aa  5 00000 3715 20	epp5 	pr5|0,*		a_astep
+000323  aa  6 00530 6515 00	spri5	pr6|344		astep
+						STATEMENT 1 ON LINE 169
+	np = no_pages;
+
+000324  aa  6 00536 2361 20	ldq  	pr6|350,*		no_pages
+000325  aa  6 00107 7561 00	stq  	pr6|71		np
+						STATEMENT 1 ON LINE 170
+	max_page = sst$pts (binary (astep ->  aste.ptsi, 3)) - 1;
+
+000326  aa  5 00013 2351 00	lda  	pr5|11		aste.ptsi
+000327  aa   000034 7350 00	als  	28
+000330  aa   000106 7730 00	lrl  	70
+000331  aa  6 00044 3701 20	epp4 	pr6|36,*
+000332  la  4 00024 2361 66	ldq  	pr4|20,*ql	sst$pts
+000333  aa   000001 1760 07	sbq  	1,dl
+000334  aa  6 00110 7561 00	stq  	pr6|72		max_page
+						STATEMENT 1 ON LINE 171
+	fp = first_page;
+
+000335  aa  6 00534 2361 20	ldq  	pr6|348,*		first_page
+000336  aa  6 00100 7561 00	stq  	pr6|64		fp
+						STATEMENT 1 ON LINE 173
+	if have_list then do;
+
+000337  aa  6 00124 2351 00	lda  	pr6|84		have_list
+000340  aa   000012 6000 04	tze  	10,ic		000352
+						STATEMENT 1 ON LINE 174
+	     list = a_list;
+
+000341  aa  7 00004 3535 20	epp3 	pr7|4,*		a_listp
+000342  aa  3 00000 3535 20	epp3 	pr3|0,*		a_listp
+000343  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000344  aa  3 00000 00 2000	desc9a	pr3|0,1024	a_list
+000345  aa  6 00130 00 2000	desc9a	pr6|88,1024	list
+						STATEMENT 1 ON LINE 175
+	     lp = fp + np - 1;
+
+000346  aa  6 00107 0761 00	adq  	pr6|71		np
+000347  aa   000001 1760 07	sbq  	1,dl
+000350  aa  6 00106 7561 00	stq  	pr6|70		lp
+						STATEMENT 1 ON LINE 176
+	end;
+
+000351  aa   000014 7100 04	tra  	12,ic		000365
+						STATEMENT 1 ON LINE 177
+	else do;
+
+						STATEMENT 1 ON LINE 178
+	     if np = -1 then lp = binary (astep -> aste.csl, 9) - 1;
+
+000352  aa  6 00107 2361 00	ldq  	pr6|71		np
+000353  aa   000255 1160 04	cmpq 	173,ic		000630 = 777777777777
+000354  aa   000006 6010 04	tnz  	6,ic		000362
+000355  aa  5 00012 2351 00	lda  	pr5|10		aste.csl
+000356  aa   000077 7730 00	lrl  	63
+000357  aa   000001 1760 07	sbq  	1,dl
+000360  aa  6 00106 7561 00	stq  	pr6|70		lp
+000361  aa   000004 7100 04	tra  	4,ic		000365
+						STATEMENT 1 ON LINE 179
+	     else lp = fp + np - 1;
+
+000362  aa  6 00100 0761 00	adq  	pr6|64		fp
+000363  aa   000001 1760 07	sbq  	1,dl
+000364  aa  6 00106 7561 00	stq  	pr6|70		lp
+						STATEMENT 1 ON LINE 180
+	end;
+
+						STATEMENT 1 ON LINE 182
+	call pmut$lock_ptl (oldmask, ptwp);
+
+000365  aa  6 00112 3521 00	epp2 	pr6|74		oldmask
+000366  aa  6 00550 2521 00	spri2	pr6|360
+000367  aa  6 00114 3521 00	epp2 	pr6|76		ptwp
+000370  aa  6 00552 2521 00	spri2	pr6|362
+000371  aa  6 00546 6211 00	eax1 	pr6|358
+000372  aa   010000 4310 07	fld  	4096,dl
+000373  la  4 00010 3521 20	epp2 	pr4|8,*		pmut$lock_ptl
+000374  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 184
+	ptp = addrel (astep, sst$astsize);
+
+000375  aa  6 00044 3701 20	epp4 	pr6|36,*
+000376  la  4 00022 2361 20	ldq  	pr4|18,*		sst$astsize
+000377  aa  6 00530 3521 66	epp2 	pr6|344,*ql	astep
+000400  aa   000000 0520 03	adwp2	0,du
+000401  aa  6 00532 2521 00	spri2	pr6|346		ptp
+						STATEMENT 1 ON LINE 185
+	rptp = binary (rel (ptp), 18);
+
+000402  aa  2 00000 6351 00	eaa  	pr2|0		ptp
+000403  aa   000066 7730 00	lrl  	54
+000404  aa  6 00105 7561 00	stq  	pr6|69		rptp
+						STATEMENT 1 ON LINE 188
+	if set_wired then do i = fp to lp;
+
+000405  aa  6 00121 2351 00	lda  	pr6|81		set_wired
+000406  aa   000047 6000 04	tze  	39,ic		000455
+000407  aa  6 00106 2361 00	ldq  	pr6|70		lp
+000410  aa  6 00542 7561 00	stq  	pr6|354
+000411  aa  6 00100 2361 00	ldq  	pr6|64		fp
+000412  aa  6 00102 7561 00	stq  	pr6|66		i
+000413  aa   000000 0110 03	nop  	0,du
+000414  aa  6 00102 2361 00	ldq  	pr6|66		i
+000415  aa  6 00542 1161 00	cmpq 	pr6|354
+000416  aa   000037 6054 04	tpnz 	31,ic		000455
+						STATEMENT 1 ON LINE 189
+	     if have_list then page_no = list (i);
+
+000417  aa  6 00124 2351 00	lda  	pr6|84		have_list
+000420  aa   000004 6000 04	tze  	4,ic		000424
+000421  aa  6 00130 2361 06	ldq  	pr6|88,ql		list
+000422  aa  6 00125 7561 00	stq  	pr6|85		page_no
+000423  aa   000002 7100 04	tra  	2,ic		000425
+						STATEMENT 1 ON LINE 190
+	     else page_no = i;
+
+000424  aa  6 00125 7561 00	stq  	pr6|85		page_no
+						STATEMENT 1 ON LINE 191
+	     if page_no <= max_page then do;
+
+000425  aa  6 00110 1161 00	cmpq 	pr6|72		max_page
+000426  aa   000025 6054 04	tpnz 	21,ic		000453
+						STATEMENT 1 ON LINE 192
+		wptwp = addr (ptp -> ptwa (page_no));
+
+000427  aa  6 00532 3735 66	epp7 	pr6|346,*ql	ptwa
+000430  aa  6 00126 6535 00	spri7	pr6|86		wptwp
+						STATEMENT 1 ON LINE 193
+		if wired ^= wptw.wired		/* if changing wired bit */
+		     then if wired
+		          then sst$wired = sst$wired + 1;
+
+000431  aa  7 00000 2351 00	lda  	pr7|0		wptw.wired
+000432  aa   000037 7350 00	als  	31
+000433  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000434  aa  6 00122 1151 00	cmpa 	pr6|82		wired
+000435  aa   000011 6000 04	tze  	9,ic		000446
+000436  aa  6 00122 2351 00	lda  	pr6|82		wired
+000437  aa   000004 6000 04	tze  	4,ic		000443
+000440  aa  6 00044 3701 20	epp4 	pr6|36,*
+000441  la  4 00026 0541 20	aos  	pr4|22,*		sst$wired
+000442  aa   000004 7100 04	tra  	4,ic		000446
+						STATEMENT 1 ON LINE 196
+		     else sst$wired = sst$wired - 1;
+
+000443  aa   000001 3360 07	lcq  	1,dl
+000444  aa  6 00044 3701 20	epp4 	pr6|36,*
+000445  la  4 00026 0561 20	asq  	pr4|22,*		sst$wired
+						STATEMENT 1 ON LINE 197
+		wptw.wired = wired;
+
+000446  aa  6 00122 2351 00	lda  	pr6|82		wired
+000447  aa   000037 7710 00	arl  	31
+000450  aa  7 00000 6751 00	era  	pr7|0		wptw.wired
+000451  aa   000020 3750 07	ana  	16,dl
+000452  aa  7 00000 6551 00	ersa 	pr7|0		wptw.wired
+						STATEMENT 1 ON LINE 198
+	     end;
+
+						STATEMENT 1 ON LINE 199
+	end;
+
+000453  aa  6 00102 0541 00	aos  	pr6|66		i
+000454  aa   777740 7100 04	tra  	-32,ic		000414
+						STATEMENT 1 ON LINE 201
+loop:	k, j, waitev = -1;
+
+000455  aa   000001 3360 07	lcq  	1,dl
+000456  aa  6 00104 7561 00	stq  	pr6|68		k
+000457  aa  6 00103 7561 00	stq  	pr6|67		j
+000460  aa  6 00101 7561 00	stq  	pr6|65		waitev
+						STATEMENT 1 ON LINE 202
+	if uent then				/* Racing with cleanup, but we are in same racket */
+	     if uid ^= astep -> aste.uid then go to nomore;
+
+000461  aa  6 00123 2351 00	lda  	pr6|83		uent
+000462  aa   000005 6000 04	tze  	5,ic		000467
+000463  aa  6 00111 2351 00	lda  	pr6|73		uid
+000464  aa  6 00530 3735 20	epp7 	pr6|344,*		astep
+000465  aa  7 00003 1151 00	cmpa 	pr7|3		aste.uid
+000466  aa   000130 6010 04	tnz  	88,ic		000616
+						STATEMENT 1 ON LINE 205
+	do i = lp to fp by -1;
+
+000467  aa  6 00100 2361 00	ldq  	pr6|64		fp
+000470  aa  6 00543 7561 00	stq  	pr6|355
+000471  aa  6 00106 2361 00	ldq  	pr6|70		lp
+000472  aa  6 00102 7561 00	stq  	pr6|66		i
+000473  aa   000000 0110 03	nop  	0,du
+000474  aa  6 00102 2361 00	ldq  	pr6|66		i
+000475  aa  6 00543 1161 00	cmpq 	pr6|355
+000476  aa   000076 6040 04	tmi  	62,ic		000574
+						STATEMENT 1 ON LINE 206
+	     if have_list then page_no = list (i);
+
+000477  aa  6 00124 2351 00	lda  	pr6|84		have_list
+000500  aa   000004 6000 04	tze  	4,ic		000504
+000501  aa  6 00130 2361 06	ldq  	pr6|88,ql		list
+000502  aa  6 00125 7561 00	stq  	pr6|85		page_no
+000503  aa   000002 7100 04	tra  	2,ic		000505
+						STATEMENT 1 ON LINE 207
+	     else page_no = i;
+
+000504  aa  6 00125 7561 00	stq  	pr6|85		page_no
+						STATEMENT 1 ON LINE 208
+	     if page_no <= max_page then do;
+
+000505  aa  6 00110 1161 00	cmpq 	pr6|72		max_page
+000506  aa   000063 6054 04	tpnz 	51,ic		000571
+						STATEMENT 1 ON LINE 209
+		wptwp = addr (ptp -> ptwa (page_no));
+
+000507  aa  6 00532 3735 66	epp7 	pr6|346,*ql	ptwa
+000510  aa  6 00126 6535 00	spri7	pr6|86		wptwp
+						STATEMENT 1 ON LINE 210
+		if wptw.os then k = page_no + rptp;
+
+000511  aa  7 00000 2351 00	lda  	pr7|0		wptw.os
+000512  aa   000010 3150 07	cana 	8,dl
+000513  aa   000004 6000 04	tze  	4,ic		000517
+000514  aa  6 00105 0761 00	adq  	pr6|69		rptp
+000515  aa  6 00104 7561 00	stq  	pr6|68		k
+000516  aa   000053 7100 04	tra  	43,ic		000571
+						STATEMENT 1 ON LINE 211
+		else if do_io then do;
+
+000517  aa  6 00116 2351 00	lda  	pr6|78		do_io
+000520  aa   000051 6000 04	tze  	41,ic		000571
+						STATEMENT 1 ON LINE 212
+		     if ^wptw.valid then do;
+
+000521  aa  7 00000 2351 00	lda  	pr7|0		wptw.valid
+000522  aa   000004 3150 07	cana 	4,dl
+000523  aa   000022 6010 04	tnz  	18,ic		000545
+						STATEMENT 1 ON LINE 213
+			if io then call page$pread (astep, page_no, waitev);
+
+000524  aa  6 00117 2351 00	lda  	pr6|79		io
+000525  aa   000014 6000 04	tze  	12,ic		000541
+000526  aa  6 00530 3521 00	epp2 	pr6|344		astep
+000527  aa  6 00556 2521 00	spri2	pr6|366
+000530  aa  6 00125 3521 00	epp2 	pr6|85		page_no
+000531  aa  6 00560 2521 00	spri2	pr6|368
+000532  aa  6 00101 3521 00	epp2 	pr6|65		waitev
+000533  aa  6 00562 2521 00	spri2	pr6|370
+000534  aa  6 00554 6211 00	eax1 	pr6|364
+000535  aa   014000 4310 07	fld  	6144,dl
+000536  aa  6 00044 3701 20	epp4 	pr6|36,*
+000537  la  4 00014 3521 20	epp2 	pr4|12,*		page$pread
+000540  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 214
+			if waitev > 0 then j = waitev;
+
+000541  aa  6 00101 2361 00	ldq  	pr6|65		waitev
+000542  aa   000027 6044 04	tmoz 	23,ic		000571
+000543  aa  6 00103 7561 00	stq  	pr6|67		j
+						STATEMENT 1 ON LINE 215
+		     end;
+
+000544  aa   000025 7100 04	tra  	21,ic		000571
+						STATEMENT 1 ON LINE 216
+		     else do;
+
+						STATEMENT 1 ON LINE 217
+			if ^io then if (wptw.phm | wptw.phm1) then
+			     call page$pwrite (astep, page_no);
+
+000545  aa  6 00117 2351 00	lda  	pr6|79		io
+000546  aa   000015 6010 04	tnz  	13,ic		000563
+000547  aa  7 00000 2351 00	lda  	pr7|0		wptw.phm1
+000550  aa   000500 3150 07	cana 	320,dl
+000551  aa   000012 6000 04	tze  	10,ic		000563
+000552  aa  6 00530 3521 00	epp2 	pr6|344		astep
+000553  aa  6 00550 2521 00	spri2	pr6|360
+000554  aa  6 00125 3521 00	epp2 	pr6|85		page_no
+000555  aa  6 00552 2521 00	spri2	pr6|362
+000556  aa  6 00546 6211 00	eax1 	pr6|358
+000557  aa   010000 4310 07	fld  	4096,dl
+000560  aa  6 00044 3701 20	epp4 	pr6|36,*
+000561  la  4 00016 3521 20	epp2 	pr4|14,*		page$pwrite
+000562  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 219
+			if wptw.os then j = page_no + rptp;
+
+000563  aa  6 00126 2351 20	lda  	pr6|86,*		wptw.os
+000564  aa   000010 3150 07	cana 	8,dl
+000565  aa   000004 6000 04	tze  	4,ic		000571
+000566  aa  6 00125 2361 00	ldq  	pr6|85		page_no
+000567  aa  6 00105 0761 00	adq  	pr6|69		rptp
+000570  aa  6 00103 7561 00	stq  	pr6|67		j
+						STATEMENT 1 ON LINE 220
+		     end;
+
+						STATEMENT 1 ON LINE 221
+		end;
+
+						STATEMENT 1 ON LINE 222
+	     end;
+
+						STATEMENT 1 ON LINE 223
+	end;
+
+000571  aa   000001 3360 07	lcq  	1,dl
+000572  aa  6 00102 0561 00	asq  	pr6|66		i
+000573  aa   777701 7100 04	tra  	-63,ic		000474
+						STATEMENT 1 ON LINE 225
+	if k ^= -1 then do;
+
+000574  aa  6 00104 2361 00	ldq  	pr6|68		k
+000575  aa   000033 1160 04	cmpq 	27,ic		000630 = 777777777777
+000576  aa   000003 6000 04	tze  	3,ic		000601
+						STATEMENT 1 ON LINE 226
+	     j = k;
+
+000577  aa  6 00103 7561 00	stq  	pr6|67		j
+						STATEMENT 1 ON LINE 227
+	     go to wait1;
+
+000600  aa   000006 7100 04	tra  	6,ic		000606
+						STATEMENT 1 ON LINE 228
+	end;
+
+						STATEMENT 1 ON LINE 230
+	if must_wait & j ^= -1 then do;
+
+000601  aa  6 00120 2351 00	lda  	pr6|80		must_wait
+000602  aa   000014 6000 04	tze  	12,ic		000616
+000603  aa  6 00103 2361 00	ldq  	pr6|67		j
+000604  aa   000024 1160 04	cmpq 	20,ic		000630 = 777777777777
+000605  aa   000011 6000 04	tze  	9,ic		000616
+						STATEMENT 1 ON LINE 231
+wait1:	     call page$pwait (j);
+
+000606  aa  6 00103 3521 00	epp2 	pr6|67		j
+000607  aa  6 00550 2521 00	spri2	pr6|360
+000610  aa  6 00546 6211 00	eax1 	pr6|358
+000611  aa   004000 4310 07	fld  	2048,dl
+000612  aa  6 00044 3701 20	epp4 	pr6|36,*
+000613  la  4 00020 3521 20	epp2 	pr4|16,*		page$pwait
+000614  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 232
+	     go to loop;
+
+000615  aa   777640 7100 04	tra  	-96,ic		000455
+						STATEMENT 1 ON LINE 233
+	end;
+
+						STATEMENT 1 ON LINE 235
+nomore:	call pmut$unlock_ptl (oldmask, ptwp);
+
+000616  aa  6 00112 3521 00	epp2 	pr6|74		oldmask
+000617  aa  6 00550 2521 00	spri2	pr6|360
+000620  aa  6 00114 3521 00	epp2 	pr6|76		ptwp
+000621  aa  6 00552 2521 00	spri2	pr6|362
+000622  aa  6 00546 6211 00	eax1 	pr6|358
+000623  aa   010000 4310 07	fld  	4096,dl
+000624  aa  6 00044 3701 20	epp4 	pr6|36,*
+000625  la  4 00012 3521 20	epp2 	pr4|10,*		pmut$unlock_ptl
+000626  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 236
+	return;
+
+000627  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 283
+     end pc_wired;
+
+  END PROCEDURE pc_wired
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

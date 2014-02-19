@@ -1,0 +1,810 @@
+	COMPILATION LISTING OF SEGMENT setfaults
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1020.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4 */
+       14 setfaults: proc (a_astep, a_recalculate_access);
+       15 
+       16 /* Modified by B. Greenberg 4/24/74 for cache and v2pl1 */
+       17 /* Rewritten by R. Bratt 2/4/75 to restructure the code, clear associative memories, and add the disconnect entry */
+       18 /* Modified by R. Bratt 10/9/75  to adhere to nss locking strategies */
+       19 /* Modified by E. Stone 5/75 to retain access in the sdw, ie just to zero the df bits and the address */
+       20 /* Modified by D. Vinograd 6/76 to allow setfaulting of hardcore segs - used by the volume dumper */
+       21 /* Modified 03/21/81, W. Olin Sibert, for ADP SDW formats */
+       22 /* Reorganized, 04/17/81, WOS */
+       23 /* Modified 02/15/83, E. N. Kittlitz, added if_256K. */
+       24 /* Modified 08/09/83, E. N. Kittlitz, setfaults$if_active added pvid, vtocx args */
+       25 /*
+       26*   setfaults contains four entry points
+       27*
+       28*   ---> setfaults$setfaults allows a process to disconnect all sdws from an active segment.
+       29*   As an optimization, if the setfaults is to cause access recalculation then the connected
+       30*   sdws have their fault bits set but they remain on the trailer. The associative memories
+       31*   of all processors are cleared. The ast is assumed to be locked.
+       32*   USAGE: call setfaults (astep, recalculate_access);
+       33*
+       34*   ---> setfaults$if_active is used to setfaults when given a uid. It searches
+       35*   the ast and if the segment is active all connected sdws are faulted. See setfaults$setfaults.
+       36*   The ast is presumed to be unlocked.
+       37*   USAGE: call setfaults$if_active (uid, pvid, vtocx, recalculate_access);
+       38*
+       39*   ---> setfaults$deltrailer is used to clean up a dead process.
+       40*   The ast is presumed to be locked!
+       41*   USAGE: call setfaults$deltrailer (astep, segno, dstep);
+       42*
+       43*   ---> setfaults$disconnect is used to disconnect a segment number in the calling
+       44*   process from its aste. This code depends on  pmut$swap_sdw to clear this processors'
+       45*   sdw associative memory. The ast is assumed to be unlocked.
+       46*   USAGE: call setfaults$disconnect (segno);
+       47*
+       48*   ---> setfaults$cache is used to set cache bits in all the sdws connected to an aste.
+       49*   The associative memories of all processors are cleared. The ast must be locked.
+       50*   USAGE: call setfaults$cache (astep, cache_bit);
+       51*
+       52*   astep ptr --- aste pointer
+       53*   segno fixed bin(17) --- segment number to be disconnected
+       54*   uid bit (36) aligned --- unique identifier of segment of interest
+       55*   dstep fixed bin(17) --- relative descriptor segment aste pointer
+       56*   recalculate_access bit(1) aligned ---  set to cause access recalculation
+       57*   cache_bit bit(1) aligned --- bit to stuff into sdw cache bit
+       58*
+       59**/
+       60 
+       61 /**/
+       62 
+       63 dcl  a_astep ptr parameter;
+       64 dcl  a_cache_bit bit (1) aligned parameter;
+       65 dcl  a_segno fixed bin (17) parameter;
+       66 dcl  a_uid bit (36) aligned parameter;
+       67 dcl  a_pvid bit (36) aligned parameter;
+       68 dcl  a_rdstep fixed bin (17) parameter;
+       69 dcl  a_recalculate_access bit (1) aligned parameter;
+       70 dcl  a_vtocx fixed bin parameter;
+       71 
+       72 dcl  dstep ptr;
+       73 dcl  (segno, rdstep) fixed bin (17);
+       74 dcl  uid bit (36) aligned;
+       75 dcl  pvid bit (36) aligned;
+       76 dcl  vtocx fixed bin;
+       77 dcl  cache_bit bit (1) aligned;
+       78 dcl  disconnect_any_msl bit (1) aligned;
+       79 dcl  sdwp pointer;
+       80 
+       81 dcl  (set_cache_bit, process_all_trailers, recalculate_access) bit (1) init ("0"b);
+       82 
+       83 dcl  pds$dstep bit (18) aligned external static;
+       84 dcl  sst$tfreep pointer external static;
+       85 dcl  sst$setfaults_acc fixed bin (35) external static;
+       86 dcl  sst$setfaults_all fixed bin (35) external static;
+       87 dcl  sys_info$system_type fixed bin external static;
+       88 
+       89 dcl  sst_seg$ external static;
+       90 dcl  ds_seg$ (0:1023) fixed bin (71) external static;
+       91 dcl  dseg$ (0:1023) fixed bin (71) external static;
+       92 
+       93 dcl  get_ptrs_$given_astep entry (ptr) returns (fixed bin (71));
+       94 dcl  get_ptrs_$given_segno entry (fixed bin) returns (ptr);
+       95 dcl  lock$lock_ast entry ();
+       96 dcl  lock$unlock_ast entry ();
+       97 dcl  page$cam entry ();
+       98 dcl  pmut$swap_sdw entry (ptr, ptr);
+       99 dcl  search_ast$check entry (bit (36) aligned, bit (36) aligned, fixed bin, fixed bin (35)) returns (ptr);
+      100 dcl  syserr ext entry options (variable);
+      101 dcl  thread$out ext entry (ptr, bit (18) aligned);
+      102 
+      103 dcl  (addr, baseno, binary, null, ptr, rel) builtin;
+      104 
+      105 /**/
+      106 
+      107 	astep = a_astep;				/* copy the arguments */
+      108 	recalculate_access = a_recalculate_access;
+      109 	process_all_trailers = "1"b;
+      110 	set_cache_bit = "0"b;
+      111 
+      112 	call process_trailers ();
+      113 	call page$cam ();
+      114 	return;					/* End of setfaults$setfaults */
+      115 
+      116 
+      117 
+      118 setfaults$if_active: entry (a_uid, a_pvid, a_vtocx, a_recalculate_access);
+      119 
+      120 	uid = a_uid;				/* copy these as service to caller */
+      121 	pvid = a_pvid;				/* avoid segfaults on directory */
+      122 	vtocx = a_vtocx;				/* if that's where formals are */
+      123 	recalculate_access = a_recalculate_access;
+      124 	process_all_trailers = "1"b;
+      125 	set_cache_bit = "0"b;
+      126 
+      127 	call lock$lock_ast ();
+      128 
+      129 	astep = search_ast$check (uid, pvid, vtocx, (0)); /* ignore double-uid error */
+      130 	if astep ^= null () then do;
+      131 	     call process_trailers ();
+      132 	     call page$cam ();
+      133 	end;
+      134 
+      135 	call lock$unlock_ast ();
+      136 	return;					/* End of setfaults$if_active */
+      137 
+      138 
+      139 setfaults$cache: entry (a_astep, a_cache_bit);
+      140 
+      141 	astep = a_astep;				/* copy arguments */
+      142 	cache_bit = a_cache_bit;			/* AST is locked */
+      143 
+      144 	if sys_info$system_type = ADP_SYSTEM then do;	/* Oh yeah? */
+      145 	     call syserr (5, "setfaults: Ignoring setfaults$cache call for aste @ ^o on ADP system", astep);
+      146 	     return;
+      147 	end;
+      148 
+      149 	recalculate_access = "0"b;
+      150 	set_cache_bit = "1"b;
+      151 	process_all_trailers = "1"b;
+      152 
+      153 	if astep -> aste.strp = (18)"0"b then		/* should be trailers  */
+      154 	     call syserr (1, "setfaults: illegal cache  access trailer.");
+      155 
+      156 	call process_trailers ();
+      157 	call page$cam ();
+      158 	return;					/* End of setfaults$cache */
+      159 
+      160 /**/
+      161 
+      162 setfaults$deltrailer: entry (a_astep, a_segno, a_rdstep);
+      163 
+      164 	astep = a_astep;				/* copy arguments */
+      165 	segno = a_segno;
+      166 	rdstep = a_rdstep;
+      167 
+      168 	recalculate_access = "0"b;
+      169 	process_all_trailers = "0"b;
+      170 	set_cache_bit = "0"b;
+      171 
+      172 	call process_trailers ();
+      173 	return;					/* End of setfaults$deltrailer */
+      174 
+      175 
+      176 
+      177 setfaults$disconnect: entry (a_segno);
+      178 
+      179 	disconnect_any_msl = "1"b;
+      180 	go to disconnect_common;
+      181 
+      182 setfaults$if_256K: entry (a_segno);
+      183 
+      184 	disconnect_any_msl = "0"b;
+      185 
+      186 disconnect_common:
+      187 	segno = a_segno;
+      188 
+      189 	recalculate_access = "0"b;
+      190 	process_all_trailers = "0"b;
+      191 	set_cache_bit = "0"b;
+      192 
+      193 	astep = get_ptrs_$given_segno (segno);		/* Does it seem active? */
+      194 	if astep = null () then return;
+      195 
+      196 	rdstep = binary (pds$dstep, 18);
+      197 
+      198 	call lock$lock_ast ();
+      199 
+      200 	astep = get_ptrs_$given_segno (segno);		/* Still active ? */
+      201 	if astep ^= null () then
+      202 	     if disconnect_any_msl | bin (aste.msl) = 256 then
+      203 		call process_trailers ();
+      204 
+      205 	call lock$unlock_ast ();
+      206 	return;
+      207 
+      208 /**/
+      209 
+      210 process_trailers: proc ();
+      211 
+      212 dcl  thrtmp bit (18) aligned;				/* temporary for unthreading */
+      213 dcl  trp pointer;
+      214 dcl  next_trp pointer;
+      215 
+      216 	if astep -> aste.hc then return;
+      217 
+      218 	if ^set_cache_bit & process_all_trailers then do; /* if turning off access for all */
+      219 	     if ^astep -> aste.inhibit_cache then do;	/* let cache control know */
+      220 		astep -> aste.any_access_on = "0"b;
+      221 		astep -> aste.write_access_on = "0"b;
+      222 	     end;
+      223 	end;
+      224 
+      225 	strp = ptr (sst$tfreep, 0);			/* get a pointer to the trailer segment */
+      226 
+      227 	do trp = ptr (strp, astep -> aste.strp) repeat (next_trp) while (rel (trp));
+      228 	     next_trp = ptr (trp, trp -> str.fp);
+      229 	     dstep = ptr (addr (sst_seg$), trp -> str.dstep); /* get the DSEG ASTEP for this trailer */
+      230 
+      231 	     if rel (dstep) = (18)"1"b then		/* check for bad trailer entry */
+      232 		call syserr (1, "setfaults: deleted trailer.");
+      233 
+      234 	     if ^(dstep -> aste.ehs | (dstep -> aste.bp = "0"b)) then
+      235 		call syserr (1, "setfaults: illegal trailer");
+      236 
+      237 	     if process_all_trailers
+      238 		| (binary (trp -> str.dstep, 18) = rdstep & binary (trp -> str.segno, 18) = segno)
+      239 	     then do;
+      240 		segno = binary (trp -> str.segno, 18);	/* get segno of the SDW of interest */
+      241 
+      242 		call flush_this_sdw ();		/* Perform appropriate manipulations */
+      243 
+      244 		if recalculate_access then do;	/* Meter */
+      245 		     sst$setfaults_acc = sst$setfaults_acc + 1;
+      246 		     sst$setfaults_all = sst$setfaults_all + 1;
+      247 		end;
+      248 
+      249 		if (^recalculate_access) & (^set_cache_bit) then do; /* Must actually remove this one */
+      250 		     sst$setfaults_all = sst$setfaults_all + 1; /* Meter */
+      251 
+      252 		     thrtmp = astep -> aste.strp;	/* thread this trailer out */
+      253 		     call thread$out (trp, thrtmp);	/* and zero its threads */
+      254 		     astep -> aste.strp = thrtmp;
+      255 
+      256 		     trp -> str.fp = rel (sst$tfreep);	/* thread entry into free list */
+      257 		     sst$tfreep = trp;		/* set new free list pointer */
+      258 		     trp -> str.bp = "0"b;		/* for neatness */
+      259 		     trp -> str.dstep = "777777"b3;	/* wipe out the old dstep so check_trailer works */
+      260 		end;
+      261 
+      262 		if ^process_all_trailers then return;	/* Got the one we wanted */
+      263 	     end;
+      264 	end;
+      265 
+      266 	if ^process_all_trailers then call syserr (1, "setfaults: Missing trailer.");
+      267 						/* Looked everywhere and failed to find it */
+      268 	return;
+      269      end process_trailers;
+      270 
+      271 /**/
+      272 
+      273 flush_this_sdw: proc ();
+      274 
+      275 /* This procedure does whatever is appropriate to a single SDW. It sets up the abs_seg
+      276*   (we use ds_seg$) for this, modifies the SDW, and cleans it up. It expect dstep and
+      277*   segno to be set, to tell it what to do. */
+      278 
+      279 dcl  ds_sdw fixed bin (71);
+      280 
+      281 
+      282 	ds_sdw = get_ptrs_$given_astep (dstep);		/* set up the address field of the SDW */
+      283 	call pmut$swap_sdw (addr (ds_seg$), addr (ds_sdw)); /* store the SDW into the DSEG abs_seg */
+      284 
+      285 	sdwp = addr (ds_seg$ (segno));		/* The SDW in question */
+      286 
+      287 	if sys_info$system_type = ADP_SYSTEM then do;
+      288 	     if set_cache_bit then ;			/* Oh yeah? -- ignore it */
+      289 
+      290 	     else if recalculate_access then		/* Just turn it off */
+      291 		adp_sdw.valid = "0"b;
+      292 
+      293 	     else do;
+      294 		adp_sdw.valid = "0"b;		/* Kill it completely */
+      295 		adp_sdw.add = ""b;
+      296 	     end;
+      297 	end;					/* of ADP SDW modifications */
+      298 
+      299 	else do;
+      300 	     l68_sdw.df_no = "00"b;			/* For safety's sake */
+      301 
+      302 	     if set_cache_bit then
+      303 		l68_sdw.cache = cache_bit;
+      304 
+      305 	     else if recalculate_access then		/* Just turn it off */
+      306 		l68_sdw.valid = "0"b;
+      307 
+      308 	     else do;
+      309 		l68_sdw.valid = "0"b;		/* Kill it completely */
+      310 		l68_sdw.add = ""b;
+      311 	     end;
+      312 	end;					/* of L68 SDW modifications */
+      313 
+      314 	dseg$ (binary (baseno (addr (ds_seg$)), 17)) = 0; /* cleanup the abs_seg */
+      315 
+      316 	return;
+      317      end flush_this_sdw;
+      318 
+      319  /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+  1     2 
+  1     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+  1     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+  1     5 
+  1     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+  1     7     ("Level68", "ADP");
+  1     8 
+  1     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      319 
+      320  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  2     2 
+  2     3 /* Template for an AST entry. Length = 12 words. */
+  2     4 
+  2     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  2     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  2     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  2     8 
+  2     9 dcl  astep ptr;
+  2    10 
+  2    11 dcl 1 aste based (astep) aligned,
+  2    12 
+  2    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  2    14     2 bp bit (18),					/* backward used list rel pointer */
+  2    15 
+  2    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  2    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  2    18 
+  2    19     2 strp bit (18),				/* rel pointer to process trailer */
+  2    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  2    21 
+  2    22     2 uid bit (36),					/* segment unique id */
+  2    23 
+  2    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  2    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  2    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    27 
+  2    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  2    29     2 init bit (1),					/* used bit - insure 1 lap */
+  2    30     2 gtus bit (1),					/* global transparent usage switch */
+  2    31     2 gtms bit (1),					/* global transparent modified switch */
+  2    32     2 hc bit (1),					/* hard core segment */
+  2    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  2    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  2    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  2    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  2    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  2    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  2    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  2    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  2    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  2    42     2 pad1 bit (2),					/* OO */
+  2    43     2 dius bit (1),					/* dumper in use switch */
+  2    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  2    45     2 dmpr_pad bit (1),
+  2    46     2 ehs bit (1),					/* entry hold switch */
+  2    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  2    48     2 dirsw bit (1),				/* directory switch */
+  2    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  2    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  2    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  2    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  2    53 
+  2    54     2 dtu bit (36),					/* date and time segment last used */
+  2    55 
+  2    56     2 dtm bit (36),					/* date and time segment last modified */
+  2    57 
+  2    58 
+  2    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  2    60 
+  2    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  2    62 
+  2    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  2    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  2    65     2 fms bit (1),					/* file modified switch */
+  2    66     2 npfs bit (1),					/* no page fault switch */
+  2    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  2    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  2    69     2 per_process bit (1),				/* use master quota for this entry */
+  2    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  2    71     2 pad2 bit (2),
+  2    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  2    73     2 np bit (9),					/* number of pages in core */
+  2    74 
+  2    75 
+  2    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  2    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  2    78     2 damaged bit (1),				/* PC declared segment unusable */
+  2    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  2    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  2    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  2    82     2 ptsi bit (2),					/* page table size index */
+  2    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  2    84 
+  2    85 
+  2    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  2    87 
+  2    88 
+  2    89 dcl 1 aste_part aligned based (astep),
+  2    90 
+  2    91     2 one bit (36) unaligned,				/* fp and bp */
+  2    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  2    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  2    94 
+  2    95 
+  2    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  2    97     2 pad1 bit (8*36),
+  2    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  2    99     2 pad2 bit (3*36);
+  2   100 
+  2   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      320 
+      321  
+  3     2 /*  BEGIN INCLUDE FILE ... str.incl.pl1 ... last modified March 1970 */
+  3     3 
+  3     4 dcl str_seg$ ext,
+  3     5     strp ptr;
+  3     6 
+  3     7 dcl 1 str based (strp) aligned,		/* segment or process trailer declaration */
+  3     8 
+  3     9    (2 fp bit (18),				/* forward ast trailer rel pointer */
+  3    10     2 bp bit (18),				/* backward ast trailer rel pointer*/
+  3    11 
+  3    12     2 segno bit (18),			/* segment number*/
+  3    13     2 dstep bit (18)) unaligned;		/* rel pointer to ring 0 dste */
+  3    14  
+  3    15 dcl stra (0:8000) bit (72) based (strp) aligned;
+  3    16 
+  3    17 /*  END INCLUDE FILE ... str.incl.pl1 */
+  3    18 
+      321 
+      322  /* BEGIN INCLUDE FILE ... sdw.l68.incl.pl1 ... Updated for ADP conversion 03/01/81 */
+  4     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  4     3 
+  4     4 dcl 1 l68_sdw based (sdwp) aligned,			/* Level 68 Segment Descriptor Word */
+  4     5 
+  4     6    (2 add bit (24), 				/* main memory address of page table */
+  4     7     2 rings,					/* ring brackets for the segment */
+  4     8       3 r1 bit (3),
+  4     9       3 r2 bit (3),
+  4    10       3 r3 bit (3),
+  4    11     2 valid bit (1),				/* directed fault bit (0 => fault) */
+  4    12     2 df_no bit (2),				/* directed fault number */
+  4    13 
+  4    14     2 pad1 bit (1),
+  4    15     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  4    16     2 access,					/* access bits */
+  4    17       3 read bit (1),				/* read permission bit */
+  4    18       3 execute bit (1),				/* execute permission bit */
+  4    19       3 write bit (1),				/* write permission bit */
+  4    20       3 privileged bit (1),				/* privileged bit */
+  4    21     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  4    22     2 not_a_gate bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  4    23     2 cache bit (1),				/* cache enable bit */
+  4    24     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  4    25 
+  4    26 /* END INCLUDE FILE ... sdw.l68.incl.pl1 */
+      322 
+      323  /* BEGIN INCLUDE FILE ... sdw.adp.incl.pl1 ... 01/16/81, for ADP conversion */
+  5     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  5     3 
+  5     4 dcl 1 adp_sdw based (sdwp) aligned,			/* ADP Segment Descriptor Word */
+  5     5 
+  5     6    (2 add bit (26), 				/* Page table address */
+  5     7     2 valid bit (1),				/* "1"b => SDW is valid */
+  5     8     2 rings,					/* Ring brackets */
+  5     9       3 r1 bit (3),
+  5    10       3 r2 bit (3),
+  5    11       3 r3 bit (3),
+  5    12 
+  5    13     2 bound bit (14),				/* Bound of segment, in 16 word blocks */
+  5    14     2 pad1 bit (2),
+  5    15     2 entry_bound bit (14),				/* Gate entry bound */
+  5    16     2 access,					/* Access permission bits */
+  5    17       3 read bit (1),
+  5    18       3 execute bit (1),
+  5    19       3 write bit (1),
+  5    20       3 privileged bit (1),
+  5    21     2 unpaged bit (1),				/* "1"b => segment is unpaged */
+  5    22     2 not_a_gate bit (1)) unaligned;			/* "0"b => entry bound is checked by hardware */
+  5    23 
+  5    24 /* END INCLUDE FILE sdw.adp.incl.pl1 */
+      323 
+      324 
+      325 /**/
+      326 
+      327 /* BEGIN MESSAGE DOCUMENTATION
+      328*
+      329*   Message:
+      330*   setfaults: illegal cache access trailer
+      331*
+      332*   S: $crash
+      333*
+      334*   T: $run
+      335*
+      336*   M: It was found that no record of processes connected to a
+      337*   segment (trailers) existed when the encacheability state of a segment
+      338*   had to be changed. Such change can only occur if processes are
+      339*   connected to the segment. $err
+      340*
+      341*   A: Be sure to get a dump. $recover
+      342*   $notify
+      343*
+      344*   Message:
+      345*   setfaults: deleted trailer
+      346*
+      347*   S: $crash
+      348*
+      349*   T: $run
+      350*
+      351*   M: A trailer entry (record of a process's connection to a segment)
+      352*   for some segment was marked as free. $err
+      353*
+      354*
+      355*   A: $recover
+      356*   $inform
+      357*
+      358*   Message:
+      359*   setfaults: illegal trailer
+      360*
+      361*   S: $crash
+      362*
+      363*   T: $run
+      364*
+      365*   M: A trailer  entry (record of a process's connection to a segment)
+      366*   for some segment specifies a second segment as the descriptor
+      367*   segment for some process connected to that segment, but that second segment
+      368*   does not have certain bits on in its AST entry which would be on in the
+      369*   AST entry of a descriptor segment.
+      370*   $err
+      371*
+      372*   A: $recover
+      373*   $inform
+      374*
+      375*   Message:
+      376*   setfaults: missing trailer
+      377*
+      378*   S: $crash
+      379*
+      380*   T: $run
+      381*
+      382*   M: Upon terminating a segment, it was found that
+      383*   no record of the process's connection to that segment (trailer)
+      384*   existed, even though an SDW for that segment appeared in
+      385*   the process's descriptor segment (i.e., the process was connected to it).
+      386*   $err
+      387*
+      388*   A: $recover
+      389*   $notify
+      390*
+      391*   END MESSAGE DOCUMENTATION */
+      392 
+      393      end setfaults;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0808.5  setfaults.pl1                     >spec>install>1112>setfaults.pl1
+319          1    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+320          2    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+321          3    05/06/74  1751.6  str.incl.pl1                      >ldd>include>str.incl.pl1
+322          4    03/27/82  0429.8  sdw.l68.incl.pl1                  >ldd>include>sdw.l68.incl.pl1
+323          5    03/27/82  0429.8  sdw.adp.incl.pl1                  >ldd>include>sdw.adp.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 1-4 ref 144 287
+a_astep                                parameter       pointer                  dcl 63 ref 14 107 139 141 162 164
+a_cache_bit                            parameter       bit(1)                   dcl 64 ref 139 142
+a_pvid                                 parameter       bit(36)                  dcl 67 ref 118 121
+a_rdstep                               parameter       fixed bin(17,0)          dcl 68 ref 162 166
+a_recalculate_access                   parameter       bit(1)                   dcl 69 ref 14 108 118 123
+a_segno                                parameter       fixed bin(17,0)          dcl 65 ref 162 165 177 182 186
+a_uid                                  parameter       bit(36)                  dcl 66 ref 118 120
+a_vtocx                                parameter       fixed bin(17,0)          dcl 70 ref 118 122
+add                                    based           bit(26)                  level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 5-4 in procedure "setfaults" set ref
+                                                                                  295*
+add                                    based           bit(24)                  level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 4-4 in procedure "setfaults" set ref
+                                                                                  310*
+addr                                                   builtin function         dcl 103 ref 229 283 283 283 283 285 314
+adp_sdw                                based           structure                level 1 dcl 5-4
+any_access_on             5(06)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  220*
+aste                                   based           structure                level 1 dcl 2-11
+astep                           000120 automatic       pointer                  dcl 2-9 set ref 107* 129* 130 141* 145* 153 164*
+                                                                                  193* 194 200* 201 201 216 219 220 221 227 252 254
+baseno                                                 builtin function         dcl 103 ref 314
+binary                                                 builtin function         dcl 103 ref 196 237 237 240 314
+bp                        0(18)        based           bit(18)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 2-11 in procedure "setfaults" ref 234
+bp                        0(18)        based           bit(18)                  level 2 in structure "str" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "setfaults" set ref 258*
+cache                     1(21)        based           bit(1)                   level 2 packed packed unaligned dcl 4-4 set ref 302*
+cache_bit                       000107 automatic       bit(1)                   dcl 77 set ref 142* 302
+df_no                     0(34)        based           bit(2)                   level 2 packed packed unaligned dcl 4-4 set ref 300*
+disconnect_any_msl              000110 automatic       bit(1)                   dcl 78 set ref 179* 184* 201
+ds_sdw                          000152 automatic       fixed bin(71,0)          dcl 279 set ref 282* 283 283
+ds_seg$                         000024 external static fixed bin(71,0)          array dcl 90 set ref 283 283 285 314
+dseg$                           000026 external static fixed bin(71,0)          array dcl 91 set ref 314*
+dstep                     1(18)        based           bit(18)                  level 2 in structure "str" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "setfaults" set ref 229 237
+                                                                                  259*
+dstep                           000100 automatic       pointer                  dcl 72 in procedure "setfaults" set ref 229* 231 234
+                                                                                  234 282*
+ehs                       5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 ref 234
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 3-7 set ref 228
+                                                                                  256*
+get_ptrs_$given_astep           000030 constant        entry                    external dcl 93 ref 282
+get_ptrs_$given_segno           000032 constant        entry                    external dcl 94 ref 193 200
+hc                        5(04)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 ref 216
+inhibit_cache             5(08)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 ref 219
+l68_sdw                                based           structure                level 1 dcl 4-4
+lock$lock_ast                   000034 constant        entry                    external dcl 95 ref 127 198
+lock$unlock_ast                 000036 constant        entry                    external dcl 96 ref 135 205
+msl                       4            based           bit(9)                   level 2 packed packed unaligned dcl 2-11 ref 201
+next_trp                        000142 automatic       pointer                  dcl 214 set ref 228* 264
+null                                                   builtin function         dcl 103 ref 130 194 201
+page$cam                        000040 constant        entry                    external dcl 97 ref 113 132 157
+pds$dstep                       000010 external static bit(18)                  dcl 83 ref 196
+pmut$swap_sdw                   000042 constant        entry                    external dcl 98 ref 283
+process_all_trailers            000115 automatic       bit(1)                   initial packed unaligned dcl 81 set ref 81* 109*
+                                                                                  124* 151* 169* 190* 218 237 262 266
+ptr                                                    builtin function         dcl 103 ref 225 227 228 229
+pvid                            000105 automatic       bit(36)                  dcl 75 set ref 121* 129*
+rdstep                          000103 automatic       fixed bin(17,0)          dcl 73 set ref 166* 196* 237
+recalculate_access              000116 automatic       bit(1)                   initial packed unaligned dcl 81 set ref 81* 108*
+                                                                                  123* 149* 168* 189* 244 249 290 305
+rel                                                    builtin function         dcl 103 ref 227 231 256
+sdwp                            000112 automatic       pointer                  dcl 79 set ref 285* 290 294 295 300 302 305 309 310
+search_ast$check                000044 constant        entry                    external dcl 99 ref 129
+segno                     1            based           bit(18)                  level 2 in structure "str" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "setfaults" ref 237 240
+segno                           000102 automatic       fixed bin(17,0)          dcl 73 in procedure "setfaults" set ref 165* 186*
+                                                                                  193* 200* 237 240* 285
+set_cache_bit                   000114 automatic       bit(1)                   initial packed unaligned dcl 81 set ref 81* 110*
+                                                                                  125* 150* 170* 191* 218 249 288 302
+sst$setfaults_acc               000014 external static fixed bin(35,0)          dcl 85 set ref 245* 245
+sst$setfaults_all               000016 external static fixed bin(35,0)          dcl 86 set ref 246* 246 250* 250
+sst$tfreep                      000012 external static pointer                  dcl 84 set ref 225 256 257*
+sst_seg$                        000022 external static fixed bin(17,0)          dcl 89 set ref 229
+str                                    based           structure                level 1 dcl 3-7
+strp                      2            based           bit(18)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 2-11 in procedure "setfaults" set ref 153 227
+                                                                                  252 254*
+strp                            000122 automatic       pointer                  dcl 3-4 in procedure "setfaults" set ref 225* 227
+sys_info$system_type            000020 external static fixed bin(17,0)          dcl 87 ref 144 287
+syserr                          000046 constant        entry                    external dcl 100 ref 145 153 231 234 266
+thread$out                      000050 constant        entry                    external dcl 101 ref 253
+thrtmp                          000136 automatic       bit(18)                  dcl 212 set ref 252* 253* 254
+trp                             000140 automatic       pointer                  dcl 213 set ref 227* 227* 228 228 229 237 237 240
+                                                                                  253* 256 257 258 259*
+uid                             000104 automatic       bit(36)                  dcl 74 set ref 120* 129*
+valid                     0(26)        based           bit(1)                   level 2 in structure "adp_sdw" packed packed
+                                                                                  unaligned dcl 5-4 in procedure "setfaults" set ref
+                                                                                  290* 294*
+valid                     0(33)        based           bit(1)                   level 2 in structure "l68_sdw" packed packed
+                                                                                  unaligned dcl 4-4 in procedure "setfaults" set ref
+                                                                                  305* 309*
+vtocx                           000106 automatic       fixed bin(17,0)          dcl 76 set ref 122* 129*
+write_access_on           5(07)        based           bit(1)                   level 2 packed packed unaligned dcl 2-11 set ref
+                                                                                  221*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+L68_SYSTEM                             internal static fixed bin(17,0)          initial dcl 1-3
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 1-6
+asta                                   based           bit(432)                 array dcl 2-86
+aste_part                              based           structure                level 1 dcl 2-89
+seg_aste                               based           structure                level 1 dcl 2-96
+str_seg$                               external static fixed bin(17,0)          dcl 3-4
+stra                                   based           bit(72)                  array dcl 3-15
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+disconnect_common               000440 constant        label                    dcl 186 ref 180
+flush_this_sdw                  001010 constant        entry                    internal dcl 273 ref 242
+process_trailers                000530 constant        entry                    internal dcl 210 ref 112 131 156 172 201
+setfaults                       000111 constant        entry                    external dcl 14
+setfaults$cache                 000245 constant        entry                    external dcl 139
+setfaults$deltrailer            000357 constant        entry                    external dcl 162
+setfaults$disconnect            000410 constant        entry                    external dcl 177
+setfaults$if_256K               000426 constant        entry                    external dcl 182
+setfaults$if_active             000150 constant        entry                    external dcl 118
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+bin                                                    builtin function         ref 201
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1440        1512    1126        1450
+Length      2024    1126        52         275     311           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+setfaults                           189 external procedure  is an external procedure.  
+process_trailers                        internal procedure  shares stack frame of external procedure setfaults.  
+flush_this_sdw                          internal procedure  shares stack frame of external procedure setfaults.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+setfaults                000100 dstep                       setfaults
+                         000102 segno                       setfaults
+                         000103 rdstep                      setfaults
+                         000104 uid                         setfaults
+                         000105 pvid                        setfaults
+                         000106 vtocx                       setfaults
+                         000107 cache_bit                   setfaults
+                         000110 disconnect_any_msl          setfaults
+                         000112 sdwp                        setfaults
+                         000114 set_cache_bit               setfaults
+                         000115 process_all_trailers        setfaults
+                         000116 recalculate_access          setfaults
+                         000120 astep                       setfaults
+                         000122 strp                        setfaults
+                         000136 thrtmp                      process_trailers
+                         000140 trp                         process_trailers
+                         000142 next_trp                    process_trailers
+                         000152 ds_sdw                      flush_this_sdw
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_ptrs_$given_astep         get_ptrs_$given_segno         lock$lock_ast                 lock$unlock_ast
+page$cam                      pmut$swap_sdw                 search_ast$check              syserr
+thread$out
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ds_seg$                       dseg$                         pds$dstep                     sst$setfaults_acc
+sst$setfaults_all             sst$tfreep                    sst_seg$                      sys_info$system_type
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     81 000100        14 000105       107 000122       108 000126       109 000131       110 000133       112 000134
+    113 000135       114 000142       118 000143       120 000161       121 000164       122 000166       123 000170
+    124 000173       125 000175       127 000176       129 000203       130 000223       131 000227       132 000230
+    135 000235       136 000242       139 000243       141 000253       142 000257       144 000262       145 000266
+    146 000313       149 000314       150 000315       151 000317       153 000320       156 000344       157 000345
+    158 000352       162 000353       164 000370       165 000374       166 000376       168 000400       169 000401
+    170 000402       172 000403       173 000404       177 000405       179 000421       180 000423       182 000424
+    184 000437       186 000440       189 000442       190 000443       191 000444       193 000445       194 000456
+    196 000462       198 000466       200 000472       201 000503       205 000522       206 000527       210 000530
+    216 000531       218 000536       219 000542       220 000545       221 000547       225 000551       227 000555
+    228 000564       229 000571       231 000601       234 000626       237 000657       240 000674       242 000675
+    244 000676       245 000700       246 000705       249 000711       250 000715       252 000722       253 000726
+    254 000736       256 000741       257 000747       258 000751       259 000753       262 000755       264 000760
+    266 000763       268 001007       273 001010       282 001011       283 001022       285 001037       287 001044
+    288 001047       290 001052       294 001057       295 001061       297 001063       300 001064       302 001066
+    305 001076       309 001103       310 001105       314 001107       316 001120
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

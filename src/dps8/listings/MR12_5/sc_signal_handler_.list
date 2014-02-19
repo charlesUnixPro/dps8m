@@ -1,0 +1,1329 @@
+	COMPILATION LISTING OF SEGMENT sc_signal_handler_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1116.32_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(87-02-05,GDixon), approve(87-05-25,MCR7680),
+       16*     audit(87-05-06,Parisek), install(87-08-04,MR12.1-1055):
+       17*     Correct coding standard violations, and remove unnecessary statements.
+       18*                                                   END HISTORY COMMENTS */
+       19 
+       20 
+       21 /**** The initializer's ring four base-of-stack handler.
+       22*      In admin mode proper, this is pre-empted by default_error_handler_$wall,
+       23*      and should never be called. That is, when sc_stat_$admin_listener_switch
+       24*      is "1"b. In the admin environment (sc_stat_$admin_sci_ptr ^= null)
+       25*      this is still the handler. This uses ssu_$abort_line to abort execution
+       26*      of a command, not the "abort" condition.
+       27**/
+       28 
+       29 /**** Written by the hidden Imam. */
+       30 /* Modified 1984-10-08 BIM for new admin mode */
+       31 
+       32 /* format: style2,idind30,indcomtxt */
+       33 
+       34 sc_signal_handler_:
+       35      procedure;
+       36 
+       37 	dcl     error_switch	        ptr;	/* Switch to write message on. */
+       38 	dcl     mp		        ptr;	/* ptr to allocated message */
+       39 	dcl     ml		        fixed bin (21);
+       40 						/* lth of message */
+       41 	dcl     msg_area		        area (512); /* area in which condition_interpreter puts message */
+       42 	dcl     string		        char (64) aligned;
+       43 						/* Basic fault message. */
+       44 
+       45 	dcl     (addr, empty, null)	        builtin;
+       46 
+       47 	dcl     as_$dump		        entry (char (*) aligned);
+       48 	dcl     condition_interpreter_        entry (ptr, ptr, fixed bin (21), fixed bin, ptr, char (*), ptr, ptr);
+       49 	dcl     find_condition_info_	        entry (ptr, ptr, fixed bin (35));
+       50 	dcl     ioa_$ioa_switch	        entry () options (variable);
+       51 	dcl     restart_mc_ttys_	        entry;
+       52 	dcl     ssu_$abort_line	        entry () options (variable);
+       53 	dcl     ssu_$get_info_ptr	        entry (ptr) returns (ptr);
+       54 	dcl     sys_log_		        entry options (variable);
+       55 
+       56 /* First locate the condition frame which caused us to be invoked. */
+       57 
+       58 	CI.version = condition_info_version_1;
+       59 	call find_condition_info_ (null (), addr (CI), (0));
+       60 
+       61 	condition_info_header_ptr = CI.info_ptr;
+       62 	if condition_info_header_ptr ^= null ()
+       63 	then if condition_info_header.quiet_restart
+       64 	     then return;
+       65 
+       66 /* QUIT signals are handled specially. We don't quit out of anything we can't restart. */
+       67 
+       68 	if CI.condition_name = "quit"
+       69 	then return;
+       70 
+       71 	if sc_stat_$admin_sci_ptr ^= null ()
+       72 	then do;
+       73 		sc_subsystem_info_ptr = ssu_$get_info_ptr (sc_stat_$admin_sci_ptr);
+       74 		if sc_subsystem_info.no_real_tty
+       75 		then error_switch = sc_stat_$admin_log_iocb;
+       76 		else error_switch = sc_subsystem_info.real_iocb;
+       77 
+       78 	     end;
+       79 	else if sc_stat_$mc_is_on
+       80 	then error_switch = sc_stat_$mc_iocb;
+       81 	else error_switch = sc_stat_$master_iocb;
+       82 
+       83 	if condition_info_header_ptr ^= null ()
+       84 	then if condition_info_header.default_restart
+       85 	     then do;
+       86 		     call get_message_string;
+       87 		     call iox_$put_chars (error_switch, mp, ml, (0));
+       88 		     return;
+       89 		end;
+       90 
+       91 /**** There is no need to muck with switches, since sc_process_command_line_
+       92*      saves and restores. */
+       93 
+       94 /* Make up error message. */
+       95 
+       96 	string = "error: " || CI.condition_name;
+       97 	if sc_stat_$mc_is_on
+       98 	then call sys_log_ (SL_LOG_BEEP, "sc_signal_handler_: ^a", string);
+       99 	else call ioa_$ioa_switch (error_switch, "^a", string);
+      100 
+      101 	if sc_stat_$Multics
+      102 	then call as_$dump (string);			/* Take nice dump. */
+      103 
+      104 	call get_message_string;
+      105 	call iox_$put_chars (error_switch, mp, ml, (0));
+      106 
+      107 /* The message is printed. Now try to reset the system control environment and bust out of here */
+      108 
+      109 	call iox_$control (sc_stat_$master_iocb, "start", null, (0));
+      110 						/* Make sure we aren't missing a wakeup. */
+      111 	if sc_stat_$mc_is_on
+      112 	then call restart_mc_ttys_ ();		/* .. or set of wakeups */
+      113 
+      114 	if sc_stat_$admin_sci_ptr ^= null ()
+      115 	then call ssu_$abort_line (sc_stat_$admin_sci_ptr, 0, "Execution aborted by error signal.");
+      116 	else go to sc_stat_$master_abort_label;		/* Return to console listener loop */
+      117 
+      118 get_message_string:
+      119      procedure;
+      120 
+      121 	call condition_interpreter_ (addr (msg_area), mp, ml, 3, CI.mc_ptr, (CI.condition_name), CI.wc_ptr, CI.info_ptr)
+      122 	     ;
+      123      end get_message_string;
+      124 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+      125 
+  2     1 /* BEGIN INCLUDE FILE ... condition_info.incl.pl1 */
+  2     2 
+  2     3 /* Structure for find_condition_info_.
+  2     4*
+  2     5*   Written 1-Mar-79 by M. N. Davidoff.
+  2     6**/
+  2     7 
+  2     8 /* automatic */
+  2     9 
+  2    10      declare condition_info_ptr     pointer;
+  2    11 
+  2    12 /* based */
+  2    13 
+  2    14      declare 1 condition_info	      aligned based (condition_info_ptr),
+  2    15 	     2 mc_ptr	      pointer,		/* pointer to machine conditions at fault time */
+  2    16 	     2 version	      fixed binary,		/* Must be 1 */
+  2    17 	     2 condition_name     char (32) varying,	/* name of condition */
+  2    18 	     2 info_ptr	      pointer,		/* pointer to the condition data structure */
+  2    19 	     2 wc_ptr	      pointer,		/* pointer to wall crossing machine conditions */
+  2    20 	     2 loc_ptr	      pointer,		/* pointer to location where condition occured */
+  2    21 	     2 flags	      unaligned,
+  2    22 	       3 crawlout	      bit (1),		/* on if condition occured in lower ring */
+  2    23 	       3 pad1	      bit (35),
+  2    24 	     2 pad2	      bit (36),
+  2    25 	     2 user_loc_ptr	      pointer,		/* ptr to most recent nonsupport loc before condition occurred */
+  2    26 	     2 pad3	      (4) bit (36);
+  2    27 
+  2    28 /* internal static */
+  2    29 
+  2    30      declare condition_info_version_1
+  2    31 			      fixed binary internal static options (constant) initial (1);
+  2    32 
+  2    33 /* END INCLUDE FILE ... condition_info.incl.pl1 */
+      126 
+      127 	declare 1 CI		        aligned like condition_info;
+      128 
+  3     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  3     2 
+  3     3 /* Written 05/04/78 by C. D. Tavares */
+  3     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  3     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  3     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  3     7 
+  3     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  3     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  3    10      iox_$close entry (pointer, fixed bin (35)),
+  3    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  3    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  3    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  3    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  3    15      iox_$err_not_attached entry options (variable),
+  3    16      iox_$err_not_closed entry options (variable),
+  3    17      iox_$err_no_operation entry options (variable),
+  3    18      iox_$err_not_open entry options (variable),
+  3    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  3    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  3    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  3    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  3    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  3    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  3    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  3    28      iox_$propagate entry (pointer),
+  3    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  3    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  3    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  3    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  3    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  3    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  3    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  3    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  3    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  3    40 
+  3    41 dcl (iox_$user_output,
+  3    42      iox_$user_input,
+  3    43      iox_$user_io,
+  3    44      iox_$error_output) external static pointer;
+  3    45 
+  3    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      129 
+      130 
+  4     1 /*  BEGIN:   sc_stat_.incl.pl1			  *  *  *  *  *  */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(87-02-04,GDixon), approve(87-05-25,MCR7690),
+  4     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  4     7*     Add sc_stat_$vchn_requires_accept in support of DSA virtual channels.
+  4     8*  2) change(87-02-04,GDixon), approve(87-05-25,MCR7680),
+  4     9*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  4    10*     Reorganized by type of data to improve readability.
+  4    11*                                                   END HISTORY COMMENTS */
+  4    12 
+  4    13 
+  4    14 			      /* ACCESS NAMES		       */
+  4    15 dcl (
+  4    16  sc_stat_$exec_access_name,	      /* check MC access in an exec request    */
+  4    17  sc_stat_$unidentified_access_name  /* check access if no one is logged in.  */
+  4    18     ) char(32) ext static;
+  4    19 
+  4    20 		        /* PATHNAMES			       */
+  4    21 dcl (
+  4    22  sc_stat_$info_dir,	        /* admin info segs directory		       */
+  4    23  sc_stat_$log_dir,	        /* as log segs directory		       */
+  4    24  sc_stat_$mc_acs_dir,       /* message coordinator ACS segments (.mcacs) dir */
+  4    25  sc_stat_$sysdir	        /* system control directory		       */
+  4    26     ) char(168) ext static;
+  4    27 
+  4    28 		        /* OTHER CHAR STRINGS			       */
+  4    29 dcl (
+  4    30  sc_stat_$master_channel    /* Master TTY channel.		       */
+  4    31     )  char(6) aligned ext static;
+  4    32 
+  4    33 			       /* LABELS			       */
+  4    34 dcl (
+  4    35  sc_stat_$admin_listener_exit_label, /* GO here to exit admin mode.  Set to  */
+  4    36 			       /*    ssu_$null_label unless 	       */
+  4    37 			       /*	   admin_listener is active.	       */
+  4    38  sc_stat_$master_abort_label,	       /* GO here after fault that is not      */
+  4    39 			       /*    attributable to a particular      */
+  4    40 			       /*	   command.		       */
+  4    41  sc_stat_$system_shutdown_label      /* GO here to shut down system	       */
+  4    42     ) label variable ext static;
+  4    43 
+  4    44 			 /* POINTERS TO			       */
+  4    45 dcl (
+  4    46  sc_stat_$admin_log_iocb,	 /* IOCB for admin log		       */
+  4    47  sc_stat_$admin_log_write_ptr, /* DATA for log_write_ calls on the admin log */
+  4    48  sc_stat_$admin_sci_ptr,	 /* DATA ssu_ for terminal currently executing */
+  4    49  sc_stat_$as_log_write_ptr,	 /* DATA for log_write_ calls on as log, used  */
+  4    50 			 /*      by sys_log_.		       */
+  4    51  sc_stat_$initzer_ttyp,	 /* ENT  mc_ate for initializer terminal       */
+  4    52  sc_stat_$master_iocb,	 /* IOCB for "master_i/o"		       */
+  4    53  sc_stat_$master_sci_ptr,	 /* DATA ssu_ (permanent) for system control   */
+  4    54  sc_stat_$mc_ansp,		 /* HEAD of mc_anstbl		       */
+  4    55  sc_stat_$mc_iocb,		 /* IOCB ptr for "mc_i/o"		       */
+  4    56  sc_stat_$sv1_iocb,		 /* IOCB ptr for "severity1"		       */
+  4    57  sc_stat_$sv2_iocb,		 /* IOCB ptr for "severity2"		       */
+  4    58  sc_stat_$sv3_iocb		 /* IOCB ptr for "severity3"		       */
+  4    59     ) ptr ext static;
+  4    60 
+  4    61 			   /* SWITCHES			       */
+  4    62 dcl (
+  4    63  sc_stat_$Go,		   /* TRUE after answering service is listening*/
+  4    64  sc_stat_$Go_typed,		   /* TRUE immediately after 'go' is typed     */
+  4    65  sc_stat_$Multics,		   /* TRUE after answering service started     */
+  4    66  sc_stat_$Multics_typed,	   /* TRUE immediately after 'mult' is typed   */
+  4    67  sc_stat_$Star_typed,	   /* TRUE if 'mult' and 'go' came from 'star' */
+  4    68  sc_stat_$admin_listener_switch, /* TRUE if in the admin listener	       */
+  4    69  sc_stat_$did_part1,	   /* TRUE if part 1 of system startup ec done */
+  4    70  sc_stat_$did_part2,	   /* TRUE if part 2 of system startup ec done */
+  4    71  sc_stat_$did_part3,	   /* TRUE if part 3 of system startup ec done */
+  4    72  sc_stat_$mc_is_on,		   /* TRUE if message coordinator running      */
+  4    73  sc_stat_$no_operator_login,	   /* TRUE if operator login not required, or  */
+  4    74 			   /*	 if PNT not yet available.	       */
+  4    75  sc_stat_$shutdown_typed,	   /* TRUE if 'shutdown' command in progress.  */
+  4    76  sc_stat_$test_mode,	   /* TRUE if in test environment	       */
+  4    77  sc_stat_$vchn_requires_accept   /* TRUE if vchn may only be used if accepted*/
+  4    78 			   /*      by operator signed on system console*/
+  4    79     ) bit(1) aligned ext static;
+  4    80 
+  4    81 
+  4    82 /*  END OF:  sc_stat_.incl.pl1			  *  *  *  *  *  */
+      131 
+      132 
+  5     1 /*  BEGIN:   sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+  5     2 
+  5     3 /* format:style3,idind30 */
+  5     4 
+  5     5 /* Created  1984-10-24  BIM */
+  5     6 /* Modified 1985-01-07, BIM: access control flags that track admin and X */
+  5     7 /* Modified 1985-02-18, E. Swenson to save away abort_line procedure. */
+  5     8 
+  5     9 
+  5    10 /****^  HISTORY COMMENTS:
+  5    11*  1) change(87-02-17,GDixon), approve(87-07-03,MCR7680),
+  5    12*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  5    13*     Correct formatting problems.  Add sc_subsystem_info.flags.dont_mask_calls
+  5    14*     switch.
+  5    15*  2) change(87-07-03,GDixon), approve(87-07-03,MCR7680),
+  5    16*     audit(87-07-13,Parisek), install(87-08-04,MR12.1-1056):
+  5    17*     Removed dont_mask_calls flag.  It is no longer needed to correctly perform
+  5    18*     masking on a per-request basis.
+  5    19*                                                   END HISTORY COMMENTS */
+  5    20 
+  5    21 
+  5    22 declare	sc_subsystem_info_ptr	pointer;
+  5    23 declare	1 sc_subsystem_info		aligned based (sc_subsystem_info_ptr),
+  5    24 	  2 restriction_flags	bit (36) aligned,	/* copied from mc atep or fabricated */
+  5    25 	  2 flags			aligned,
+  5    26 	    3 no_real_tty		bit (1) unaligned,	/* for sc_admin_command_ */
+  5    27 	    3 print_ready		bit (1) unal,	/* on for all except the system console,	*/
+  5    28 						/*  instructs sc_process_command_line_ to deal	*/
+  5    29 						/*  with the prompt				*/
+  5    30 	    3 the_system_console	bit (1) unal,	/* syserr messages are printed here (but console	*/
+  5    31 						/*  recover doesn't try to fix this) copied here	*/
+  5    32 						/*  from the mc_ate to save other looking in there*/
+  5    33 	    3 printer_offed		bit (1) unal,	/* suppress logging */
+  5    34 	    3 pad			bit (32) unaligned,
+  5    35 	  2 source_name		char (32) unaligned,
+  5    36 	  2 area_ptr		pointer,
+  5    37 	  2 mc_atep		pointer,		/* needed to play with attachments */
+  5    38 	  2 real_iocb		pointer,		/* for sc_signal_io_handler_ */
+  5    39 	  2 hangup_entry		entry (pointer) variable,
+  5    40 						/* called on io_no_permission. */
+  5    41 	  2 real_execute_line	entry (ptr, ptr, fixed bin (21), fixed bin (35)),
+  5    42 	  2 real_locate_request	entry (ptr, char (*), ptr, fixed bin (35)),
+  5    43 	  2 access_control_name	char (32) unaligned,
+  5    44 	  2 real_invoke_request	entry,		/* since MR11 ssu_ lacks the ability to	abort a	*/
+  5    45 						/*  single request, we have an invoke_request that*/
+  5    46 						/*  handles a condition to unwind the request	*/
+  5    47 	  2 abort_request_label	label,		/* go here (nonlocally) to unwind a single request */
+  5    48 	  2 real_abort_line		entry options (variable);
+  5    49 
+  5    50 declare	sc_ss_area		area based (sc_subsystem_info.area_ptr);
+  5    51 
+  5    52 /* The following defines the user flags for the request table. */
+  5    53 
+  5    54 declare	sc_rf_ptr			pointer;
+  5    55 declare	1 sc_request_flags		unaligned based (sc_rf_ptr),
+  5    56 	  2 dont_parse_arguments	bit,		/* reply, intercom */
+  5    57 	  2 obsolete		bit,		/* warn opr to not use it */
+  5    58 	  2 dont_mask_calls		bit,		/* this runs without masking ev calls */
+  5    59 	  2 requires_as		bit,		/* not before AS */
+  5    60 	  2 requires_no_as		bit,		/* only before AS */
+  5    61 	  2 complete_disks_first	bit,		/* try to mount disks */
+  5    62 	  2 no_login_needed		bit,		/* sign_on */
+  5    63 	  2 pad			bit (5),
+  5    64 	  2 restriction_type	fixed bin (6) unsigned;
+  5    65 						/* index into restriction flag string */
+  5    66 
+  5    67 
+  5    68 /*  END OF:  sc_subsystem_info_.incl.pl1		  *  *  *  *  *  */
+      133 
+      134 
+  6     1 /* BEGIN INCLUDE FILE sys_log_constants.incl.pl1 ... 82-09-24 E. N. Kittlitz */
+  6     2 
+  6     3 
+  6     4 /****^  HISTORY COMMENTS:
+  6     5*  1) change(87-04-22,GDixon), approve(87-06-10,MCR7708),
+  6     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  6     7*     Added sl_info structure and associated named constants for use in calling
+  6     8*     sys_log_$general.
+  6     9*                                                   END HISTORY COMMENTS */
+  6    10 
+  6    11 
+  6    12 /* format: style4 */
+  6    13 
+  6    14 dcl  (
+  6    15      SL_TYPE_CRASH init (-3),				/* type message with banner & kill system */
+  6    16      SL_TYPE_BEEP init (-2),				/* type message with banner */
+  6    17      SL_TYPE init (-1),				/* type message */
+  6    18      SL_LOG_SILENT init (0),				/* log message */
+  6    19      SL_LOG init (1),				/* log & type message */
+  6    20      SL_LOG_BEEP init (2),				/* log & type message with banner */
+  6    21      SL_LOG_CRASH init (3)				/* log & type message with banner & kill system */
+  6    22      ) fixed bin internal static options (constant);
+  6    23 
+  6    24 dcl  1 sl_info aligned automatic,
+  6    25        2 version char(8),			/* structure version       */
+  6    26        2 arg_list_ptr ptr,			/* arg_list with values    */
+  6    27        2 loc,
+  6    28          3 (mode, severity, code, caller, data, class, ioa_msg) fixed bin,
+  6    29            /* These flags control where the corresponding data item is found.*/
+  6    30 	 /*  -1: data appears in the corresponding structure element below */
+  6    31 	 /*   0: data is not present anywhere			       */
+  6    32 	 /*  +N: data is Nth item in argument list pointed to by 	       */
+  6    33 	 /*      sl_info.arg_list_ptr.  Upon return, data copied into      */
+  6    34 	 /*      corresponding structure element.		       */
+  6    35 	 /*  if data = +N:					       */
+  6    36 	 /*      argN is data_ptr, argN+1 is data_len		       */
+  6    37 	 /*  if ioa_msg = +N:				       */
+  6    38 	 /*      argN+1, ... argLAST are arguments substituted into the    */
+  6    39 	 /*      ioa_msg control string.  The formatted msg is returned.   */
+  6    40        2 flags,
+  6    41          3 ioa_msg_is_error_code bit(1) unal,	/* ioa_ctl is error code.  */
+  6    42          3 flags_pad bit(35) unal,
+  6    43        2 mode fixed bin,			/* as-mode, command-mode   */
+  6    44        2 severity fixed bin,			/* error severity	       */
+  6    45        2 code fixed bin(35),			/* error table code        */
+  6    46        2 caller char(65) varying,		/* caller refname$entryname*/
+  6    47        2 data,				/* binary data ptr/length  */
+  6    48          3 data_ptr ptr,
+  6    49          3 data_lth fixed bin(21),
+  6    50        2 class char(10) varying,		/* binary data class       */
+  6    51        2 ioa_msg char(500) varying;		/* formatted message text  */
+  6    52 
+  6    53 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    54 /*							       */
+  6    55 /* If data values (eg, sl_info.caller) are passed in the argument list,      */
+  6    56 /* their data types should be as shown in the structure above, except that   */
+  6    57 /* character strings should be char(*) nonvarying.		       */
+  6    58 /*							       */
+  6    59 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    60 
+  6    61 /* value for sl_info.version */
+  6    62 dcl  SL_INFO_version_1 char (8) int static options(constant) init("sl_info1");
+  6    63 
+  6    64 /* values for sl_info.mode */
+  6    65 dcl (SL_INFO_as_mode init(1),
+  6    66      SL_INFO_command_mode init(2)) fixed bin int static options(constant);
+  6    67 
+  6    68 /* values for sl_info.loc.(severity code caller data class ioa_ctl arg) */
+  6    69 dcl (SL_INFO_arg_given_in_structure init(-1),
+  6    70      SL_INFO_arg_not_given init(0)) fixed bin int static options(constant);
+  6    71 
+  6    72 
+  6    73 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    74 /*							       */
+  6    75 /* The following static structures are commonly used in the Login Server     */
+  6    76 /* user control software.					       */
+  6    77 /*							       */
+  6    78 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    79 
+  6    80 /* Syntax: call Abort (severity, code, ioa_ctl, args);		       */
+  6    81 
+  6    82 dcl  1 sl_info_sev_code_msg		aligned int static options(constant),
+  6    83        2 version char(8)		init ("sl_info1"),
+  6    84        2 arg_list_ptr ptr		init (null),
+  6    85        2 loc,
+  6    86          3 (mode			init (-1),
+  6    87 	  severity  		init ( 1),
+  6    88 	  code 			init ( 2),
+  6    89 	  caller 			init (-1),
+  6    90 	  data 			init ( 0),
+  6    91 	  class 			init ( 0),
+  6    92 	  ioa_msg			init ( 3)) fixed bin,
+  6    93        2 flags,
+  6    94          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  6    95          3 flags_pad bit(35) unal	init ("0"b),
+  6    96        2 mode fixed bin		init ( 1),
+  6    97        2 severity fixed bin		init ( 0),
+  6    98        2 code fixed bin(35)		init ( 0),
+  6    99        2 caller char(65) varying	init (""),
+  6   100        2 data,
+  6   101          3 data_ptr ptr		init (null),
+  6   102          3 data_lth fixed bin(21)	init ( 0),
+  6   103        2 class char(10) varying	init (""),
+  6   104        2 ioa_msg char(500) varying	init ("");
+  6   105 
+  6   106 /* Syntax: call Abort (severity, ioa_ctl, args);			       */
+  6   107 
+  6   108 dcl  1 sl_info_sev_msg		aligned int static options(constant),
+  6   109        2 version char(8)		init ("sl_info1"),
+  6   110        2 arg_list_ptr ptr		init (null),
+  6   111        2 loc,
+  6   112          3 (mode			init (-1),
+  6   113 	  severity  		init ( 1),
+  6   114 	  code 			init ( 0),
+  6   115 	  caller 			init (-1),
+  6   116 	  data 			init ( 0),
+  6   117 	  class 			init ( 0),
+  6   118 	  ioa_msg			init ( 2)) fixed bin,
+  6   119        2 flags,
+  6   120          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  6   121          3 flags_pad bit(35) unal	init ("0"b),
+  6   122        2 mode fixed bin		init ( 1),
+  6   123        2 severity fixed bin		init ( 0),
+  6   124        2 code fixed bin(35)		init ( 0),
+  6   125        2 caller char(65) varying	init (""),
+  6   126        2 data,
+  6   127          3 data_ptr ptr		init (null),
+  6   128          3 data_lth fixed bin(21)	init ( 0),
+  6   129        2 class char(10) varying	init (""),
+  6   130        2 ioa_msg char(500) varying	init ("");
+  6   131 
+  6   132 /* Syntax: call Abort (severity, ioa_ctl_as_error_code, args);	       */
+  6   133 
+  6   134 dcl  1 sl_info_sev_coded_msg		aligned int static options(constant),
+  6   135        2 version char(8)		init ("sl_info1"),
+  6   136        2 arg_list_ptr ptr		init (null),
+  6   137        2 loc,
+  6   138          3 (mode			init (-1),
+  6   139 	  severity  		init ( 1),
+  6   140 	  code 			init ( 0),
+  6   141 	  caller 			init (-1),
+  6   142 	  data 			init ( 0),
+  6   143 	  class 			init ( 0),
+  6   144 	  ioa_msg			init ( 2)) fixed bin,
+  6   145        2 flags,
+  6   146          3 ioa_msg_is_error_code bit(1) unal init ("1"b),
+  6   147          3 flags_pad bit(35) unal	init ("0"b),
+  6   148        2 mode fixed bin		init ( 1),
+  6   149        2 severity fixed bin		init ( 0),
+  6   150        2 code fixed bin(35)		init ( 0),
+  6   151        2 caller char(65) varying	init (""),
+  6   152        2 data,
+  6   153          3 data_ptr ptr		init (null),
+  6   154          3 data_lth fixed bin(21)	init ( 0),
+  6   155        2 class char(10) varying	init (""),
+  6   156        2 ioa_msg char(500) varying	init ("");
+  6   157 
+  6   158 
+  6   159 /* Syntax: call Abort (severity, code, error_return_label, ioa_ctl, args);   */
+  6   160 
+  6   161 dcl  1 sl_info_sev_code_label_msg	aligned int static options(constant),
+  6   162        2 version char(8)		init ("sl_info1"),
+  6   163        2 arg_list_ptr ptr		init (null),
+  6   164        2 loc,
+  6   165          3 (mode			init (-1),
+  6   166 	  severity  		init ( 1),
+  6   167 	  code 			init ( 2),
+  6   168 	  caller 			init (-1),
+  6   169 	  data 			init ( 0),
+  6   170 	  class 			init ( 0),
+  6   171 	  ioa_msg			init ( 4)) fixed bin,
+  6   172        2 flags,
+  6   173          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  6   174          3 flags_pad bit(35) unal	init ("0"b),
+  6   175        2 mode fixed bin		init ( 1),
+  6   176        2 severity fixed bin		init ( 0),
+  6   177        2 code fixed bin(35)		init ( 0),
+  6   178        2 caller char(65) varying	init (""),
+  6   179        2 data,
+  6   180          3 data_ptr ptr		init (null),
+  6   181          3 data_lth fixed bin(21)	init ( 0),
+  6   182        2 class char(10) varying	init (""),
+  6   183        2 ioa_msg char(500) varying	init ("");
+  6   184 
+  6   185 /* Syntax:  call Log_error (code, ioa_ctl, args);			       */
+  6   186 
+  6   187 dcl  1 sl_info_code_msg		aligned int static options(constant),
+  6   188        2 version char(8)		init ("sl_info1"),
+  6   189        2 arg_list_ptr ptr		init (null),
+  6   190        2 loc,
+  6   191          3 (mode			init (-1),
+  6   192 	  severity  		init (-1),
+  6   193 	  code 			init ( 1),
+  6   194 	  caller 			init (-1),
+  6   195 	  data 			init ( 0),
+  6   196 	  class 			init ( 0),
+  6   197 	  ioa_msg			init ( 2)) fixed bin,
+  6   198        2 flags,
+  6   199          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  6   200          3 flags_pad bit(35) unal	init ("0"b),
+  6   201        2 mode fixed bin		init ( 1),
+  6   202        2 severity fixed bin		init ( 0),
+  6   203        2 code fixed bin(35)		init ( 0),
+  6   204        2 caller char(65) varying	init (""),
+  6   205        2 data,
+  6   206          3 data_ptr ptr		init (null),
+  6   207          3 data_lth fixed bin(21)	init ( 0),
+  6   208        2 class char(10) varying	init (""),
+  6   209        2 ioa_msg char(500) varying	init ("");
+  6   210 
+  6   211 
+  6   212 /* Syntax:  call Trace (ioa_ctl, args);				       */
+  6   213 
+  6   214 dcl  1 sl_info_msg			aligned int static options(constant),
+  6   215        2 version char(8)		init ("sl_info1"),
+  6   216        2 arg_list_ptr ptr		init (null),
+  6   217        2 loc,
+  6   218          3 (mode			init (-1),
+  6   219 	  severity  		init (-1),
+  6   220 	  code 			init ( 0),
+  6   221 	  caller 			init (-1),
+  6   222 	  data 			init ( 0),
+  6   223 	  class 			init ( 0),
+  6   224 	  ioa_msg			init ( 1)) fixed bin,
+  6   225        2 flags,
+  6   226          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  6   227          3 flags_pad bit(35) unal	init ("0"b),
+  6   228        2 mode fixed bin		init ( 1),
+  6   229        2 severity fixed bin		init ( 0),
+  6   230        2 code fixed bin(35)		init ( 0),
+  6   231        2 caller char(65) varying	init (""),
+  6   232        2 data,
+  6   233          3 data_ptr ptr		init (null),
+  6   234          3 data_lth fixed bin(21)	init ( 0),
+  6   235        2 class char(10) varying	init (""),
+  6   236        2 ioa_msg char(500) varying	init ("");
+  6   237 
+  6   238 /* END INCLUDE FILE sys_log_constants.incl.pl1 */
+      135 
+      136 
+      137 /* BEGIN MESSAGE DOCUMENTATION
+      138*
+      139*   Message:
+      140*   sc_signal_handler_: error: CONDITION_NAME
+      141*
+      142*   S:	as (severity2)
+      143*
+      144*   T:	$run
+      145*
+      146*   M:	A CONDITION_NAME condition occurred while running an operator
+      147*	command.  An answering service dump has been taken to further
+      148*	describe the cause of the condition.
+      149*
+      150*   A:	$notify_sa
+      151*
+      152*   END MESSAGE DOCUMENTATION */
+      153 
+      154      end sc_signal_handler_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1116.3  sc_signal_handler_.pl1            >udd>sm>ds>w>ml>sc_signal_handler_.pl1
+125          1    03/24/82  1447.2  condition_info_header.incl.pl1    >ldd>incl>condition_info_header.incl.pl1
+126          2    06/28/79  1304.8  condition_info.incl.pl1           >ldd>incl>condition_info.incl.pl1
+129          3    05/23/83  1016.6  iox_entries.incl.pl1              >ldd>incl>iox_dcls.incl.pl1
+131          4    08/06/87  1013.5  sc_stat_.incl.pl1                 >ldd>incl>sc_stat_.incl.pl1
+133          5    08/06/87  1013.5  sc_subsystem_info_.incl.pl1       >ldd>incl>sc_subsystem_info_.incl.pl1
+135          6    08/06/87  1013.5  sys_log_constants.incl.pl1        >ldd>incl>sys_log_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CI                              001130 automatic       structure                level 1 dcl 127 set ref 59 59
+SL_LOG_BEEP                     000000 constant        fixed bin(17,0)          initial dcl 6-14 set ref 97*
+action_flags              2            based           structure                level 2 dcl 1-6
+addr                                                   builtin function         dcl 45 ref 59 59 121 121
+as_$dump                        000010 constant        entry                    external dcl 47 ref 101
+condition_info                         based           structure                level 1 dcl 2-14
+condition_info_header                  based           structure                level 1 dcl 1-6
+condition_info_header_ptr       001126 automatic       pointer                  dcl 1-4 set ref 61* 62 62 83 83
+condition_info_version_1               constant        fixed bin(17,0)          initial dcl 2-30 ref 58
+condition_interpreter_          000012 constant        entry                    external dcl 48 ref 121
+condition_name            3     001130 automatic       varying char(32)         level 2 dcl 127 set ref 68 96 121
+default_restart           2(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-6 ref 83
+empty                                                  builtin function         dcl 45 ref 41
+error_switch                    000100 automatic       pointer                  dcl 37 set ref 74* 76* 79* 81* 87* 99* 105*
+find_condition_info_            000014 constant        entry                    external dcl 49 ref 59
+flags                     1            based           structure                level 2 dcl 5-23
+info_ptr                 14     001130 automatic       pointer                  level 2 dcl 127 set ref 61 121*
+ioa_$ioa_switch                 000016 constant        entry                    external dcl 50 ref 99
+iox_$control                    000030 constant        entry                    external dcl 3-8 ref 109
+iox_$put_chars                  000032 constant        entry                    external dcl 3-8 ref 87 105
+mc_ptr                          001130 automatic       pointer                  level 2 dcl 127 set ref 121*
+ml                              000104 automatic       fixed bin(21,0)          dcl 39 set ref 87* 105* 121*
+mp                              000102 automatic       pointer                  dcl 38 set ref 87* 105* 121*
+msg_area                        000106 automatic       area(512)                dcl 41 set ref 41* 121 121
+no_real_tty               1            based           bit(1)                   level 3 packed packed unaligned dcl 5-23 ref 74
+null                                                   builtin function         dcl 45 ref 59 59 62 71 83 109 109 114
+quiet_restart             2(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-6 ref 62
+real_iocb                16            based           pointer                  level 2 dcl 5-23 ref 76
+restart_mc_ttys_                000020 constant        entry                    external dcl 51 ref 111
+sc_stat_$Multics                000046 external static bit(1)                   dcl 4-62 ref 101
+sc_stat_$admin_log_iocb         000036 external static pointer                  dcl 4-45 ref 74
+sc_stat_$admin_sci_ptr          000040 external static pointer                  dcl 4-45 set ref 71 73* 114 114*
+sc_stat_$master_abort_label     000034 external static label variable           dcl 4-34 ref 114
+sc_stat_$master_iocb            000042 external static pointer                  dcl 4-45 set ref 81 109*
+sc_stat_$mc_iocb                000044 external static pointer                  dcl 4-45 ref 79
+sc_stat_$mc_is_on               000050 external static bit(1)                   dcl 4-62 ref 79 97 111
+sc_subsystem_info                      based           structure                level 1 dcl 5-23
+sc_subsystem_info_ptr           001162 automatic       pointer                  dcl 5-22 set ref 73* 74 76
+ssu_$abort_line                 000022 constant        entry                    external dcl 52 ref 114
+ssu_$get_info_ptr               000024 constant        entry                    external dcl 53 ref 73
+string                          001106 automatic       char(64)                 dcl 42 set ref 96* 97* 99* 101*
+sys_log_                        000026 constant        entry                    external dcl 54 ref 97
+version                   2     001130 automatic       fixed bin(17,0)          level 2 dcl 127 set ref 58*
+wc_ptr                   16     001130 automatic       pointer                  level 2 dcl 127 set ref 121*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+SL_INFO_arg_given_in_structure         internal static fixed bin(17,0)          initial dcl 6-69
+SL_INFO_arg_not_given                  internal static fixed bin(17,0)          initial dcl 6-69
+SL_INFO_as_mode                        internal static fixed bin(17,0)          initial dcl 6-65
+SL_INFO_command_mode                   internal static fixed bin(17,0)          initial dcl 6-65
+SL_INFO_version_1                      internal static char(8)                  initial packed unaligned dcl 6-62
+SL_LOG                                 internal static fixed bin(17,0)          initial dcl 6-14
+SL_LOG_CRASH                           internal static fixed bin(17,0)          initial dcl 6-14
+SL_LOG_SILENT                          internal static fixed bin(17,0)          initial dcl 6-14
+SL_TYPE                                internal static fixed bin(17,0)          initial dcl 6-14
+SL_TYPE_BEEP                           internal static fixed bin(17,0)          initial dcl 6-14
+SL_TYPE_CRASH                          internal static fixed bin(17,0)          initial dcl 6-14
+condition_info_ptr                     automatic       pointer                  dcl 2-10
+iox_$attach_loud                000000 constant        entry                    external dcl 3-8
+iox_$attach_name                000000 constant        entry                    external dcl 3-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 3-8
+iox_$close                      000000 constant        entry                    external dcl 3-8
+iox_$close_file                 000000 constant        entry                    external dcl 3-8
+iox_$delete_record              000000 constant        entry                    external dcl 3-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 3-8
+iox_$detach                     000000 constant        entry                    external dcl 3-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 3-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 3-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 3-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 3-8
+iox_$err_not_open               000000 constant        entry                    external dcl 3-8
+iox_$error_output                      external static pointer                  dcl 3-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 3-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 3-8
+iox_$get_chars                  000000 constant        entry                    external dcl 3-8
+iox_$get_line                   000000 constant        entry                    external dcl 3-8
+iox_$look_iocb                  000000 constant        entry                    external dcl 3-8
+iox_$modes                      000000 constant        entry                    external dcl 3-8
+iox_$move_attach                000000 constant        entry                    external dcl 3-8
+iox_$open                       000000 constant        entry                    external dcl 3-8
+iox_$open_file                  000000 constant        entry                    external dcl 3-8
+iox_$position                   000000 constant        entry                    external dcl 3-8
+iox_$propagate                  000000 constant        entry                    external dcl 3-8
+iox_$read_key                   000000 constant        entry                    external dcl 3-8
+iox_$read_length                000000 constant        entry                    external dcl 3-8
+iox_$read_record                000000 constant        entry                    external dcl 3-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 3-8
+iox_$seek_key                   000000 constant        entry                    external dcl 3-8
+iox_$user_input                        external static pointer                  dcl 3-41
+iox_$user_io                           external static pointer                  dcl 3-41
+iox_$user_output                       external static pointer                  dcl 3-41
+iox_$write_record               000000 constant        entry                    external dcl 3-8
+sc_request_flags                       based           structure                level 1 packed packed unaligned dcl 5-55
+sc_rf_ptr                              automatic       pointer                  dcl 5-54
+sc_ss_area                             based           area(1024)               dcl 5-50
+sc_stat_$Go                            external static bit(1)                   dcl 4-62
+sc_stat_$Go_typed                      external static bit(1)                   dcl 4-62
+sc_stat_$Multics_typed                 external static bit(1)                   dcl 4-62
+sc_stat_$Star_typed                    external static bit(1)                   dcl 4-62
+sc_stat_$admin_listener_exit_label     external static label variable           dcl 4-34
+sc_stat_$admin_listener_switch         external static bit(1)                   dcl 4-62
+sc_stat_$admin_log_write_ptr           external static pointer                  dcl 4-45
+sc_stat_$as_log_write_ptr              external static pointer                  dcl 4-45
+sc_stat_$did_part1                     external static bit(1)                   dcl 4-62
+sc_stat_$did_part2                     external static bit(1)                   dcl 4-62
+sc_stat_$did_part3                     external static bit(1)                   dcl 4-62
+sc_stat_$exec_access_name              external static char(32)                 packed unaligned dcl 4-15
+sc_stat_$info_dir                      external static char(168)                packed unaligned dcl 4-21
+sc_stat_$initzer_ttyp                  external static pointer                  dcl 4-45
+sc_stat_$log_dir                       external static char(168)                packed unaligned dcl 4-21
+sc_stat_$master_channel                external static char(6)                  dcl 4-29
+sc_stat_$master_sci_ptr                external static pointer                  dcl 4-45
+sc_stat_$mc_acs_dir                    external static char(168)                packed unaligned dcl 4-21
+sc_stat_$mc_ansp                       external static pointer                  dcl 4-45
+sc_stat_$no_operator_login             external static bit(1)                   dcl 4-62
+sc_stat_$shutdown_typed                external static bit(1)                   dcl 4-62
+sc_stat_$sv1_iocb                      external static pointer                  dcl 4-45
+sc_stat_$sv2_iocb                      external static pointer                  dcl 4-45
+sc_stat_$sv3_iocb                      external static pointer                  dcl 4-45
+sc_stat_$sysdir                        external static char(168)                packed unaligned dcl 4-21
+sc_stat_$system_shutdown_label         external static label variable           dcl 4-34
+sc_stat_$test_mode                     external static bit(1)                   dcl 4-62
+sc_stat_$unidentified_access_name      external static char(32)                 packed unaligned dcl 4-15
+sc_stat_$vchn_requires_accept          external static bit(1)                   dcl 4-62
+sl_info                                automatic       structure                level 1 dcl 6-24
+sl_info_code_msg                       internal static structure                level 1 dcl 6-187
+sl_info_msg                            internal static structure                level 1 dcl 6-214
+sl_info_sev_code_label_msg             internal static structure                level 1 dcl 6-161
+sl_info_sev_code_msg                   internal static structure                level 1 dcl 6-82
+sl_info_sev_coded_msg                  internal static structure                level 1 dcl 6-134
+sl_info_sev_msg                        internal static structure                level 1 dcl 6-108
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+get_message_string              000431 constant        entry                    internal dcl 118 ref 86 104
+sc_signal_handler_              000044 constant        entry                    external dcl 34
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       730        1002     511         740
+Length      1320     511        52         301     217           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sc_signal_handler_                  730 external procedure  is an external procedure.  
+get_message_string                      internal procedure  shares stack frame of external procedure sc_signal_handler_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sc_signal_handler_       000100 error_switch                sc_signal_handler_
+                         000102 mp                          sc_signal_handler_
+                         000104 ml                          sc_signal_handler_
+                         000106 msg_area                    sc_signal_handler_
+                         001106 string                      sc_signal_handler_
+                         001126 condition_info_header_ptr   sc_signal_handler_
+                         001130 CI                          sc_signal_handler_
+                         001162 sc_subsystem_info_ptr       sc_signal_handler_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          tra_ext_2           shorten_stack
+ext_entry           op_empty_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+as_$dump                      condition_interpreter_        find_condition_info_          ioa_$ioa_switch
+iox_$control                  iox_$put_chars                restart_mc_ttys_              ssu_$abort_line
+ssu_$get_info_ptr             sys_log_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sc_stat_$Multics              sc_stat_$admin_log_iocb       sc_stat_$admin_sci_ptr        sc_stat_$master_abort_label
+sc_stat_$master_iocb          sc_stat_$mc_iocb              sc_stat_$mc_is_on
+
+
+CONSTANTS
+000000  aa     000000000002
+
+000001  aa     524000000000
+
+000002  aa     404000000025
+
+000003  aa     524000000042
+
+000004  aa     404000000005
+
+000005  aa     404000000043
+
+000006  aa     524000000005
+
+000007  aa     524000000002
+
+000010  aa     524000000100
+
+000011  aa     524000000026
+
+000012  aa     404000000021
+
+000013  aa  161 165 151 164	quit
+
+000014  aa     464000000000
+
+000016  aa  163 164 141 162	star
+000017  aa  164 000 000 000	t
+
+000020  aa  145 162 162 157	erro
+000021  aa  162 072 040 000	r: 
+
+000022  aa     077777000043
+000023  aa     000001000000
+
+000024  aa  163 143 137 163	sc_s
+000025  aa  151 147 156 141	igna
+000026  aa  154 137 150 141	l_ha
+000027  aa  156 144 154 145	ndle
+000030  aa  162 137 072 040	r_: 
+000031  aa  136 141 000 000	^a
+
+000032  aa  105 170 145 143	Exec
+000033  aa  165 164 151 157	utio
+000034  aa  156 040 141 142	n ab
+000035  aa  157 162 164 145	orte
+000036  aa  144 040 142 171	d by
+000037  aa  040 145 162 162	 err
+000040  aa  157 162 040 163	or s
+000041  aa  151 147 156 141	igna
+000042  aa  154 056 000 000	l.
+
+BEGIN PROCEDURE sc_signal_handler_
+ENTRY TO sc_signal_handler_                                 STATEMENT 1 ON LINE 34
+sc_signal_handler_:
+     procedure;
+
+000043  da     000213200000
+000044  aa   001340 6270 00	eax7 	736
+000045  aa  7 00034 3521 20	epp2 	pr7|28,*
+000046  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000047  aa     000000000000
+000050  aa     000000000000
+						STATEMENT 1 ON LINE 41
+000051  aa   001000 2360 07	ldq  	512,dl
+000052  aa  6 00106 3521 00	epp2 	pr6|70		msg_area
+000053  aa  0 01405 7001 00	tsx0 	pr0|773		op_empty_
+						STATEMENT 1 ON LINE 58
+	CI.version = condition_info_version_1;
+
+000054  aa   000001 2360 07	ldq  	1,dl
+000055  aa  6 01132 7561 00	stq  	pr6|602		CI.version
+						STATEMENT 1 ON LINE 59
+	call find_condition_info_ (null (), addr (CI), (0));
+
+000056  aa   777744 3734 24	epp7 	-28,ic*
+000057  aa  6 01172 6535 00	spri7	pr6|634
+000060  aa  6 01130 3715 00	epp5 	pr6|600		CI
+000061  aa  6 01174 6515 00	spri5	pr6|636
+000062  aa  6 01176 4501 00	stz  	pr6|638
+000063  aa  6 01172 3521 00	epp2 	pr6|634
+000064  aa  6 01202 2521 00	spri2	pr6|642
+000065  aa  6 01174 3521 00	epp2 	pr6|636
+000066  aa  6 01204 2521 00	spri2	pr6|644
+000067  aa  6 01176 3521 00	epp2 	pr6|638
+000070  aa  6 01206 2521 00	spri2	pr6|646
+000071  aa  6 01200 6211 00	eax1 	pr6|640
+000072  aa   014000 4310 07	fld  	6144,dl
+000073  aa  6 00044 3701 20	epp4 	pr6|36,*
+000074  la  4 00014 3521 20	epp2 	pr4|12,*		find_condition_info_
+000075  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 61
+	condition_info_header_ptr = CI.info_ptr;
+
+000076  aa  6 01144 3735 20	epp7 	pr6|612,*		CI.info_ptr
+000077  aa  6 01126 6535 00	spri7	pr6|598		condition_info_header_ptr
+						STATEMENT 1 ON LINE 62
+	if condition_info_header_ptr ^= null ()
+	then if condition_info_header.quiet_restart
+	     then return;
+
+000100  aa  6 01126 2371 00	ldaq 	pr6|598		condition_info_header_ptr
+000101  aa   777721 6770 04	eraq 	-47,ic		000022 = 077777000043 000001000000
+000102  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000103  aa   000005 6000 04	tze  	5,ic		000110
+000104  aa  6 01126 3715 20	epp5 	pr6|598,*		condition_info_header_ptr
+000105  aa  5 00002 2351 00	lda  	pr5|2		condition_info_header.quiet_restart
+000106  aa   100000 3150 03	cana 	32768,du
+000107  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 68
+	if CI.condition_name = "quit"
+	then return;
+
+000110  aa  6 01133 7271 00	lxl7 	pr6|603		CI.condition_name
+000111  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+000112  aa  6 01134 00 0017	desc9a	pr6|604,x7	CI.condition_name
+000113  aa   777702 00 0004	desc9a	-62,4		000013 = 161165151164
+000114  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 71
+	if sc_stat_$admin_sci_ptr ^= null ()
+	then do;
+
+000115  aa  6 00044 3701 20	epp4 	pr6|36,*
+000116  la  4 00040 2371 20	ldaq 	pr4|32,*		sc_stat_$admin_sci_ptr
+000117  aa   777703 6770 04	eraq 	-61,ic		000022 = 077777000043 000001000000
+000120  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000121  aa   000025 6000 04	tze  	21,ic		000146
+						STATEMENT 1 ON LINE 73
+		sc_subsystem_info_ptr = ssu_$get_info_ptr (sc_stat_$admin_sci_ptr);
+
+000122  la  4 00040 3521 20	epp2 	pr4|32,*		sc_stat_$admin_sci_ptr
+000123  aa  6 01202 2521 00	spri2	pr6|642
+000124  aa  6 01162 3521 00	epp2 	pr6|626		sc_subsystem_info_ptr
+000125  aa  6 01204 2521 00	spri2	pr6|644
+000126  aa  6 01200 6211 00	eax1 	pr6|640
+000127  aa   010000 4310 07	fld  	4096,dl
+000130  la  4 00024 3521 20	epp2 	pr4|20,*		ssu_$get_info_ptr
+000131  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 74
+		if sc_subsystem_info.no_real_tty
+		then error_switch = sc_stat_$admin_log_iocb;
+
+000132  aa  6 01162 3735 20	epp7 	pr6|626,*		sc_subsystem_info_ptr
+000133  aa  7 00001 2351 00	lda  	pr7|1		sc_subsystem_info.no_real_tty
+000134  aa   400000 3150 03	cana 	131072,du
+000135  aa   000006 6000 04	tze  	6,ic		000143
+000136  aa  6 00044 3701 20	epp4 	pr6|36,*
+000137  la  4 00036 3715 20	epp5 	pr4|30,*		sc_stat_$admin_log_iocb
+000140  aa  5 00000 3715 20	epp5 	pr5|0,*		sc_stat_$admin_log_iocb
+000141  aa  6 00100 6515 00	spri5	pr6|64		error_switch
+000142  aa   000015 7100 04	tra  	13,ic		000157
+						STATEMENT 1 ON LINE 76
+		else error_switch = sc_subsystem_info.real_iocb;
+
+000143  aa  7 00016 3715 20	epp5 	pr7|14,*		sc_subsystem_info.real_iocb
+000144  aa  6 00100 6515 00	spri5	pr6|64		error_switch
+						STATEMENT 1 ON LINE 78
+	     end;
+
+000145  aa   000012 7100 04	tra  	10,ic		000157
+						STATEMENT 1 ON LINE 79
+	else if sc_stat_$mc_is_on
+	then error_switch = sc_stat_$mc_iocb;
+
+000146  la  4 00050 2351 20	lda  	pr4|40,*		sc_stat_$mc_is_on
+000147  aa   000005 6000 04	tze  	5,ic		000154
+000150  la  4 00044 3715 20	epp5 	pr4|36,*		sc_stat_$mc_iocb
+000151  aa  5 00000 3715 20	epp5 	pr5|0,*		sc_stat_$mc_iocb
+000152  aa  6 00100 6515 00	spri5	pr6|64		error_switch
+000153  aa   000004 7100 04	tra  	4,ic		000157
+						STATEMENT 1 ON LINE 81
+	else error_switch = sc_stat_$master_iocb;
+
+000154  la  4 00042 3715 20	epp5 	pr4|34,*		sc_stat_$master_iocb
+000155  aa  5 00000 3715 20	epp5 	pr5|0,*		sc_stat_$master_iocb
+000156  aa  6 00100 6515 00	spri5	pr6|64		error_switch
+						STATEMENT 1 ON LINE 83
+	if condition_info_header_ptr ^= null ()
+	then if condition_info_header.default_restart
+	     then do;
+
+000157  aa  6 01126 2371 00	ldaq 	pr6|598		condition_info_header_ptr
+000160  aa   777642 6770 04	eraq 	-94,ic		000022 = 077777000043 000001000000
+000161  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000162  aa   000025 6000 04	tze  	21,ic		000207
+000163  aa  6 01126 3735 20	epp7 	pr6|598,*		condition_info_header_ptr
+000164  aa  7 00002 2351 00	lda  	pr7|2		condition_info_header.default_restart
+000165  aa   200000 3150 03	cana 	65536,du
+000166  aa   000021 6000 04	tze  	17,ic		000207
+						STATEMENT 1 ON LINE 86
+		     call get_message_string;
+
+000167  aa   000242 6700 04	tsp4 	162,ic		000431
+						STATEMENT 1 ON LINE 87
+		     call iox_$put_chars (error_switch, mp, ml, (0));
+
+000170  aa  6 01176 4501 00	stz  	pr6|638
+000171  aa  6 00100 3521 00	epp2 	pr6|64		error_switch
+000172  aa  6 01212 2521 00	spri2	pr6|650
+000173  aa  6 00102 3521 00	epp2 	pr6|66		mp
+000174  aa  6 01214 2521 00	spri2	pr6|652
+000175  aa  6 00104 3521 00	epp2 	pr6|68		ml
+000176  aa  6 01216 2521 00	spri2	pr6|654
+000177  aa  6 01176 3521 00	epp2 	pr6|638
+000200  aa  6 01220 2521 00	spri2	pr6|656
+000201  aa  6 01210 6211 00	eax1 	pr6|648
+000202  aa   020000 4310 07	fld  	8192,dl
+000203  aa  6 00044 3701 20	epp4 	pr6|36,*
+000204  la  4 00032 3521 20	epp2 	pr4|26,*		iox_$put_chars
+000205  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 88
+		     return;
+
+000206  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 89
+		end;
+
+						STATEMENT 1 ON LINE 96
+	string = "error: " || CI.condition_name;
+
+000207  aa   000007 2360 07	ldq  	7,dl
+000210  aa  6 01133 0761 00	adq  	pr6|603		CI.condition_name
+000211  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000212  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000213  aa   777606 00 0007	desc9a	-122,7		000020 = 145162162157
+000214  aa  2 00000 00 0007	desc9a	pr2|0,7
+000215  aa  6 01133 7271 00	lxl7 	pr6|603		CI.condition_name
+000216  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000217  aa  6 01134 00 0017	desc9a	pr6|604,x7	CI.condition_name
+000220  aa  2 00001 60 0017	desc9a	pr2|1(3),x7
+000221  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000222  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000223  aa  6 01106 00 0100	desc9a	pr6|582,64	string
+						STATEMENT 1 ON LINE 97
+	if sc_stat_$mc_is_on
+	then call sys_log_ (SL_LOG_BEEP, "sc_signal_handler_: ^a", string);
+
+000224  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000225  aa  6 00044 3701 20	epp4 	pr6|36,*
+000226  la  4 00050 2351 20	lda  	pr4|40,*		sc_stat_$mc_is_on
+000227  aa   000030 6000 04	tze  	24,ic		000257
+000230  aa   777574 2370 04	ldaq 	-132,ic		000024 = 163143137163 151147156141
+000231  aa  6 01200 7571 00	staq 	pr6|640
+000232  aa   777574 2370 04	ldaq 	-132,ic		000026 = 154137150141 156144154145
+000233  aa  6 01202 7571 00	staq 	pr6|642
+000234  aa   777574 2370 04	ldaq 	-132,ic		000030 = 162137072040 136141000000
+000235  aa  6 01204 7571 00	staq 	pr6|644
+000236  aa   777542 3520 04	epp2 	-158,ic		000000 = 000000000002
+000237  aa  6 01224 2521 00	spri2	pr6|660
+000240  aa  6 01200 3521 00	epp2 	pr6|640
+000241  aa  6 01226 2521 00	spri2	pr6|662
+000242  aa  6 01106 3521 00	epp2 	pr6|582		string
+000243  aa  6 01230 2521 00	spri2	pr6|664
+000244  aa   777546 3520 04	epp2 	-154,ic		000012 = 404000000021
+000245  aa  6 01232 2521 00	spri2	pr6|666
+000246  aa   777543 3520 04	epp2 	-157,ic		000011 = 524000000026
+000247  aa  6 01234 2521 00	spri2	pr6|668
+000250  aa   777540 3520 04	epp2 	-160,ic		000010 = 524000000100
+000251  aa  6 01236 2521 00	spri2	pr6|670
+000252  aa  6 01222 6211 00	eax1 	pr6|658
+000253  aa   014000 4310 07	fld  	6144,dl
+000254  la  4 00026 3521 20	epp2 	pr4|22,*		sys_log_
+000255  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+000256  aa   000023 7100 04	tra  	19,ic		000301
+						STATEMENT 1 ON LINE 99
+	else call ioa_$ioa_switch (error_switch, "^a", string);
+
+000257  aa   136141 2350 03	lda  	48225,du
+000260  aa  6 01176 7551 00	sta  	pr6|638
+000261  aa  6 00100 3521 00	epp2 	pr6|64		error_switch
+000262  aa  6 01224 2521 00	spri2	pr6|660
+000263  aa  6 01176 3521 00	epp2 	pr6|638
+000264  aa  6 01226 2521 00	spri2	pr6|662
+000265  aa  6 01106 3521 00	epp2 	pr6|582		string
+000266  aa  6 01230 2521 00	spri2	pr6|664
+000267  aa   777525 3520 04	epp2 	-171,ic		000014 = 464000000000
+000270  aa  6 01232 2521 00	spri2	pr6|666
+000271  aa   777516 3520 04	epp2 	-178,ic		000007 = 524000000002
+000272  aa  6 01234 2521 00	spri2	pr6|668
+000273  aa   777515 3520 04	epp2 	-179,ic		000010 = 524000000100
+000274  aa  6 01236 2521 00	spri2	pr6|670
+000275  aa  6 01222 6211 00	eax1 	pr6|658
+000276  aa   014000 4310 07	fld  	6144,dl
+000277  la  4 00016 3521 20	epp2 	pr4|14,*		ioa_$ioa_switch
+000300  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 101
+	if sc_stat_$Multics
+	then call as_$dump (string);
+
+000301  aa  6 00044 3701 20	epp4 	pr6|36,*
+000302  la  4 00046 2351 20	lda  	pr4|38,*		sc_stat_$Multics
+000303  aa   000011 6000 04	tze  	9,ic		000314
+000304  aa  6 01106 3521 00	epp2 	pr6|582		string
+000305  aa  6 01202 2521 00	spri2	pr6|642
+000306  aa   777502 3520 04	epp2 	-190,ic		000010 = 524000000100
+000307  aa  6 01204 2521 00	spri2	pr6|644
+000310  aa  6 01200 6211 00	eax1 	pr6|640
+000311  aa   004000 4310 07	fld  	2048,dl
+000312  la  4 00010 3521 20	epp2 	pr4|8,*		as_$dump
+000313  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 104
+	call get_message_string;
+
+000314  aa   000115 6700 04	tsp4 	77,ic		000431
+						STATEMENT 1 ON LINE 105
+	call iox_$put_chars (error_switch, mp, ml, (0));
+
+000315  aa  6 01176 4501 00	stz  	pr6|638
+000316  aa  6 00100 3521 00	epp2 	pr6|64		error_switch
+000317  aa  6 01212 2521 00	spri2	pr6|650
+000320  aa  6 00102 3521 00	epp2 	pr6|66		mp
+000321  aa  6 01214 2521 00	spri2	pr6|652
+000322  aa  6 00104 3521 00	epp2 	pr6|68		ml
+000323  aa  6 01216 2521 00	spri2	pr6|654
+000324  aa  6 01176 3521 00	epp2 	pr6|638
+000325  aa  6 01220 2521 00	spri2	pr6|656
+000326  aa  6 01210 6211 00	eax1 	pr6|648
+000327  aa   020000 4310 07	fld  	8192,dl
+000330  aa  6 00044 3701 20	epp4 	pr6|36,*
+000331  la  4 00032 3521 20	epp2 	pr4|26,*		iox_$put_chars
+000332  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 109
+	call iox_$control (sc_stat_$master_iocb, "start", null, (0));
+
+000333  aa   777463 2370 04	ldaq 	-205,ic		000016 = 163164141162 164000000000
+000334  aa  6 01174 7571 00	staq 	pr6|636
+000335  aa   777465 3734 24	epp7 	-203,ic*
+000336  aa  6 01172 6535 00	spri7	pr6|634
+000337  aa  6 01176 4501 00	stz  	pr6|638
+000340  aa  6 00044 3701 20	epp4 	pr6|36,*
+000341  la  4 00042 3521 20	epp2 	pr4|34,*		sc_stat_$master_iocb
+000342  aa  6 01242 2521 00	spri2	pr6|674
+000343  aa  6 01174 3521 00	epp2 	pr6|636
+000344  aa  6 01244 2521 00	spri2	pr6|676
+000345  aa  6 01172 3521 00	epp2 	pr6|634
+000346  aa  6 01246 2521 00	spri2	pr6|678
+000347  aa  6 01176 3521 00	epp2 	pr6|638
+000350  aa  6 01250 2521 00	spri2	pr6|680
+000351  aa   777443 3520 04	epp2 	-221,ic		000014 = 464000000000
+000352  aa  6 01252 2521 00	spri2	pr6|682
+000353  aa  6 01256 2521 00	spri2	pr6|686
+000354  aa   777432 3520 04	epp2 	-230,ic		000006 = 524000000005
+000355  aa  6 01254 2521 00	spri2	pr6|684
+000356  aa   777427 3520 04	epp2 	-233,ic		000005 = 404000000043
+000357  aa  6 01260 2521 00	spri2	pr6|688
+000360  aa  6 01240 6211 00	eax1 	pr6|672
+000361  aa   020000 4310 07	fld  	8192,dl
+000362  la  4 00030 3521 20	epp2 	pr4|24,*		iox_$control
+000363  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 111
+	if sc_stat_$mc_is_on
+	then call restart_mc_ttys_ ();
+
+000364  aa  6 00044 3701 20	epp4 	pr6|36,*
+000365  la  4 00050 2351 20	lda  	pr4|40,*		sc_stat_$mc_is_on
+000366  aa   000005 6000 04	tze  	5,ic		000373
+000367  aa  6 00056 6211 00	eax1 	pr6|46
+000370  aa   000000 4310 07	fld  	0,dl
+000371  la  4 00020 3521 20	epp2 	pr4|16,*		restart_mc_ttys_
+000372  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 114
+	if sc_stat_$admin_sci_ptr ^= null ()
+	then call ssu_$abort_line (sc_stat_$admin_sci_ptr, 0, "Execution aborted by error signal.");
+
+000373  aa  6 00044 3701 20	epp4 	pr6|36,*
+000374  la  4 00040 2371 20	ldaq 	pr4|32,*		sc_stat_$admin_sci_ptr
+000375  aa   777425 6770 04	eraq 	-235,ic		000022 = 077777000043 000001000000
+000376  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000377  aa   000004 6010 04	tnz  	4,ic		000403
+000400  aa  6 00044 3701 20	epp4 	pr6|36,*
+000401  la  4 00034 3521 20	epp2 	pr4|28,*		sc_stat_$master_abort_label
+000402  aa  0 00660 7101 00	tra  	pr0|432		tra_ext_2
+000403  aa  6 01176 4501 00	stz  	pr6|638
+000404  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000405  aa   777426 00 0044	desc9a	-234,36		000032 = 105170145143
+000406  aa  6 01210 00 0044	desc9a	pr6|648,36
+000407  aa  6 00044 3701 20	epp4 	pr6|36,*
+000410  la  4 00040 3521 20	epp2 	pr4|32,*		sc_stat_$admin_sci_ptr
+000411  aa  6 01224 2521 00	spri2	pr6|660
+000412  aa  6 01176 3521 00	epp2 	pr6|638
+000413  aa  6 01226 2521 00	spri2	pr6|662
+000414  aa  6 01210 3521 00	epp2 	pr6|648
+000415  aa  6 01230 2521 00	spri2	pr6|664
+000416  aa   777376 3520 04	epp2 	-258,ic		000014 = 464000000000
+000417  aa  6 01232 2521 00	spri2	pr6|666
+000420  aa   777364 3520 04	epp2 	-268,ic		000004 = 404000000005
+000421  aa  6 01234 2521 00	spri2	pr6|668
+000422  aa   777361 3520 04	epp2 	-271,ic		000003 = 524000000042
+000423  aa  6 01236 2521 00	spri2	pr6|670
+000424  aa  6 01222 6211 00	eax1 	pr6|658
+000425  aa   014000 4310 07	fld  	6144,dl
+000426  la  4 00022 3521 20	epp2 	pr4|18,*		ssu_$abort_line
+000427  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 154
+     end sc_signal_handler_;
+
+000430  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+BEGIN PROCEDURE get_message_string
+ENTRY TO get_message_string                                 STATEMENT 1 ON LINE 118
+get_message_string:
+     procedure;
+
+000431  aa  6 01164 6501 00	spri4	pr6|628
+						STATEMENT 1 ON LINE 121
+	call condition_interpreter_ (addr (msg_area), mp, ml, 3, CI.mc_ptr, (CI.condition_name), CI.wc_ptr, CI.info_ptr)
+	     ;
+
+000432  aa  6 01133 2361 00	ldq  	pr6|603		CI.condition_name
+000433  aa   524000 2760 03	orq  	174080,du
+000434  aa  6 01262 7561 00	stq  	pr6|690
+000435  aa  6 00106 3735 00	epp7 	pr6|70		msg_area
+000436  aa  6 01264 6535 00	spri7	pr6|692
+000437  aa   000003 2360 07	ldq  	3,dl
+000440  aa  6 01263 7561 00	stq  	pr6|691
+000441  aa  6 01133 2361 00	ldq  	pr6|603		CI.condition_name
+000442  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000443  aa  6 01304 2521 00	spri2	pr6|708
+000444  aa  6 01133 7271 00	lxl7 	pr6|603		CI.condition_name
+000445  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000446  aa  6 01134 00 0017	desc9a	pr6|604,x7	CI.condition_name
+000447  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000450  aa  6 01264 3521 00	epp2 	pr6|692
+000451  aa  6 01272 2521 00	spri2	pr6|698
+000452  aa  6 00102 3521 00	epp2 	pr6|66		mp
+000453  aa  6 01274 2521 00	spri2	pr6|700
+000454  aa  6 00104 3521 00	epp2 	pr6|68		ml
+000455  aa  6 01276 2521 00	spri2	pr6|702
+000456  aa  6 01263 3521 00	epp2 	pr6|691
+000457  aa  6 01300 2521 00	spri2	pr6|704
+000460  aa  6 01130 3521 00	epp2 	pr6|600		CI.mc_ptr
+000461  aa  6 01302 2521 00	spri2	pr6|706
+000462  aa  6 01146 3521 00	epp2 	pr6|614		CI.wc_ptr
+000463  aa  6 01306 2521 00	spri2	pr6|710
+000464  aa  6 01144 3521 00	epp2 	pr6|612		CI.info_ptr
+000465  aa  6 01310 2521 00	spri2	pr6|712
+000466  aa   777326 3520 04	epp2 	-298,ic		000014 = 464000000000
+000467  aa  6 01312 2521 00	spri2	pr6|714
+000470  aa  6 01314 2521 00	spri2	pr6|716
+000471  aa  6 01322 2521 00	spri2	pr6|722
+000472  aa  6 01326 2521 00	spri2	pr6|726
+000473  aa  6 01330 2521 00	spri2	pr6|728
+000474  aa   777306 3520 04	epp2 	-314,ic		000002 = 404000000025
+000475  aa  6 01316 2521 00	spri2	pr6|718
+000476  aa   777314 3520 04	epp2 	-308,ic		000012 = 404000000021
+000477  aa  6 01320 2521 00	spri2	pr6|720
+000500  aa  6 01262 3521 00	epp2 	pr6|690
+000501  aa  6 01324 2521 00	spri2	pr6|724
+000502  aa  6 01270 6211 00	eax1 	pr6|696
+000503  aa   040000 4310 07	fld  	16384,dl
+000504  aa  6 00044 3701 20	epp4 	pr6|36,*
+000505  la  4 00012 3521 20	epp2 	pr4|10,*		condition_interpreter_
+000506  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 123
+     end get_message_string;
+
+000507  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000510  aa  6 01164 6101 00	rtcd 	pr6|628
+  END PROCEDURE get_message_string
+  END PROCEDURE sc_signal_handler_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

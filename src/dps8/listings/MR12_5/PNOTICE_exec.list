@@ -1,0 +1,218 @@
+ASSEMBLY LISTING OF SEGMENT >udd>sm>ds>w>ml>PNOTICE_exec.alm                                                                                                                                        
+ASSEMBLED ON:	05/05/00  1823.3 mdt Fri
+OPTIONS USED:	list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1102.3 mdt Fri
+
+    000000  aa   000000 000001       1  	dec	1			"version 1 structure
+    000001  aa   000000 000001       2  	dec	1			"no. of pnotices
+    000002  aa   000000 000003       3  	dec	3			"no. of STIs
+    000003  aa   000000 000144       4  	dec	100			"lgth of all pnotices + no. of pnotices
+                                     5            acc       "Copyright (c) 1989 by Massachusetts Institute of
+    000004  aa  143 103 157 160      6  Technology and Honeywell Information Systems, Inc."
+    000005  aa  171 162 151 147
+    000006  aa  150 164 040 050
+    000007  aa  143 051 040 061
+    000010  aa  071 070 071 040
+    000011  aa  142 171 040 115
+    000012  aa  141 163 163 141
+    000013  aa  143 150 165 163
+    000014  aa  145 164 164 163
+    000015  aa  040 111 156 163
+    000016  aa  164 151 164 165
+    000017  aa  164 145 040 157
+    000020  aa  146 012 124 145
+    000021  aa  143 150 156 157
+    000022  aa  154 157 147 171
+    000023  aa  040 141 156 144
+    000024  aa  040 110 157 156
+    000025  aa  145 171 167 145
+    000026  aa  154 154 040 111
+    000027  aa  156 146 157 162
+    000030  aa  155 141 164 151
+    000031  aa  157 156 040 123
+    000032  aa  171 163 164 145
+    000033  aa  155 163 054 040
+    000034  aa  111 156 143 056
+                                     7  
+    000035  aa  103 061 115 130      8  	aci	"C1MXSM0E0000"
+    000036  aa  123 115 060 105
+    000037  aa  060 060 060 060
+    000040  aa  103 062 115 130      9  	aci	"C2MXSM0E0000"
+    000041  aa  123 115 060 105
+    000042  aa  060 060 060 060
+    000043  aa  103 063 115 130     10  	aci	"C3MXSM0E0000"
+    000044  aa  123 115 060 105
+    000045  aa  060 060 060 060
+                                    11  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000046  5a   000003 000000 
+    000047  5a   000021 600000 
+    000050  aa   000000 000000 
+    000051  55   000012 000002 
+    000052  5a   000002 400003 
+    000053  55   000006 000012 
+    000054  aa  014 120 116 117
+    000055  aa  124 111 103 105
+    000056  aa  137 145 170 145
+    000057  aa  143 000 000 000
+    000060  55   000002 000003 
+    000061  6a   000000 400002 
+    000062  55   000015 000003 
+    000063  aa  014 163 171 155         symbol_table
+    000064  aa  142 157 154 137
+    000065  aa  164 141 142 154
+    000066  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000067  aa   000000 000015 
+    000070  aa   000000 000000 
+    000071  aa   000000 000000 
+    000072  aa   000000 000000 
+    000073  aa   000000 000000 
+    000074  aa   000000 000000 
+    000075  aa   000000 000000 
+    000076  5a   000012 000000 
+    000077  aa   000000 000000 
+    000100  aa   000000 000000 
+    000101  aa   000000 000000 
+    000102  aa   000000 000000 
+    000103  aa   000000 000000 
+    000104  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000105  aa   000001 000000 
+    000106  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000107  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000046 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 131064 
+    000007  aa   477342 017153 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000126 
+    000020  aa   000000 000102 
+    000021  aa   000112 000107 
+    000022  aa   000120 000102 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   123143 150162 
+    000035  aa   157164 150056 
+    000036  aa   123171 163115 
+    000037  aa   141151 156164 
+    000040  aa   056155 040040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040163 171155 
+    000046  aa   142157 154163 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000040 
+    000067  aa   310561 236233 
+    000070  aa   000000 131064 
+    000071  aa   477342 600000 
+    000072  aa   076165 144144          >udd>sm>ds>w>ml>PNOTICE_exec.alm
+    000073  aa   076163 155076 
+    000074  aa   144163 076167 
+    000075  aa   076155 154076 
+    000076  aa   120116 117124 
+    000077  aa   111103 105137 
+    000100  aa   145170 145143 
+    000101  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

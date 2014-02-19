@@ -317,15 +317,28 @@ char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, 
 
     if (best != -1)
       {
+        // Didn't find a component track bracketed the offset; return the
+        // component that was before the offset
+        if (compname)
+          * compname = bookComponents [best].compname;
+        if (compoffset)
+          * compoffset = offset - bookComponents [best] . txt_start;
         sprintf (buf, "%s:%s+0%0o", bookSegments [i] . segname,
           bookComponents [best].compname,
           offset - bookComponents [best] . txt_start);
         return buf;
       }
 
-   sprintf (buf, "%s:0%0o", bookSegments [i] . segname,
-              offset);
-   return buf;
+    // Found a segment, but it had no components. Return the segment name
+    // as the component name
+
+    if (compname)
+      * compname = bookSegments [i] . segname;
+    if (compoffset)
+      * compoffset = offset;
+    sprintf (buf, "%s:+0%0o", bookSegments [i] . segname,
+             offset);
+    return buf;
  }
 
 // Warning: returns ptr to static buffer
@@ -404,24 +417,107 @@ void listSource (char * compname, word18 offset)
         FILE * listing = fopen (path, "r");
         if (listing)
           {
-            // sim_printf ("found <%s>\n", path);
-
-            // alm listing files look like:
-            //     000226  4a  4 00010 7421 20  \tstx2]tbootload_0$entry_stack_ptr,id
-            while (! feof (listing))
+            char line [133];
+            if (feof (listing))
+              goto fileDone;
+            fgets (line, 132, listing);
+            if (strncmp (line, "ASSEMBLY LISTING", 16) == 0)
               {
-                char line [133];
-                fgets (line, 132, listing);
-                if (strncmp (line, offset_str, offset_str_len) == 0)
+                // Search ALM listing file
+                // sim_printf ("found <%s>\n", path);
+
+                // ALM listing files look like:
+                //     000226  4a  4 00010 7421 20  \tstx2]tbootload_0$entry_stack_ptr,id
+                while (! feof (listing))
                   {
-                    sim_printf ("%s", line);
-                    //break;
+                    fgets (line, 132, listing);
+                    if (strncmp (line, offset_str, offset_str_len) == 0)
+                      {
+                        sim_printf ("%s", line);
+                        //break;
+                      }
+                    if (strcmp (line, "\fLITERALS\n") == 0)
+                      break;
                   }
-                if (strcmp (line, "\fLITERALS\n") == 0)
-                  break;
-              }
+              } // if assembly listing
+            else if (strncmp (line, "\tCOMPILATION LISTING", 20) == 0)
+              {
+                // Search PL/I listing file
+
+                // PL/I files have a line location table
+                //     "   LINE    LOC      LINE    LOC ...."
+
+                while (! feof (listing))
+                  {
+                    fgets (line, 132, listing);
+                    if (strncmp (line, "   LINE    LOC", 14) != 0)
+                      continue;
+                    // Found the table
+                    // Table lines look like
+                    //     "     13 000705       275 000713  ...
+                    int best = -1;
+                    int bestLine = -1;
+                    while (! feof (listing))
+                      {
+                        int lineno [7], loc [7];
+                        fgets (line, 132, listing);
+                        int cnt = sscanf (line,
+                          " %d %o %d %o %d %o %d %o %d %o %d %o %d %o", 
+                          & lineno [0], & loc [0], 
+                          & lineno [1], & loc [1], 
+                          & lineno [2], & loc [2], 
+                          & lineno [3], & loc [3], 
+                          & lineno [4], & loc [4], 
+                          & lineno [5], & loc [5], 
+                          & lineno [6], & loc [6]);
+                        if (! (cnt == 2 || cnt == 4 || cnt == 6 ||
+                               cnt == 8 || cnt == 10 || cnt == 12 ||
+                               cnt == 14))
+                          break; // end of table
+                        int n;
+                        for (n = 0; n < cnt / 2; n ++)
+                          {
+                            if (loc [n] > best && loc [n] <= offset)
+                              {
+                                best = loc [n];
+                                bestLine = lineno [n];
+                              }
+                          }
+                        if (best == offset)
+                          break;
+                      }
+                    if (best == -1)
+                      goto fileDone; // Not found in table
+
+                    // Look for the line in the listing
+                    rewind (listing);
+                    while (! feof (listing))
+                      {
+                        fgets (line, 132, listing);
+                        if (strncmp (line, "\f\tSOURCE", 8) == 0)
+                          goto fileDone; // end of source code listing
+                        char prefix [10];
+                        strncpy (prefix, line, 9);
+                        prefix [9] = '\0';
+                        char * endptr;
+                        long lno = strtol (prefix, & endptr, 10);
+                        if (endptr != prefix + 9)
+                          continue;
+                        if (lno > bestLine)
+                          break;
+                        if (lno != bestLine)
+                          continue;
+                        // Got it
+                        sim_printf ("%s", line);
+                        break;
+                      }
+                    goto fileDone;
+                  } // if table start
+              } // if PL/I listing
+                        
+fileDone:
             fclose (listing);
-          }
+          } // if (listing)
       }
   }
 

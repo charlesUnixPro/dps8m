@@ -1,0 +1,1049 @@
+	COMPILATION LISTING OF SEGMENT segment_loader
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1020.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2 */
+       13 segment_loader:
+       14      proc;
+       15 
+       16 /* format: off */
+       17 
+       18 /* SEGMENT_LOADER - Loader for Multics Initialization.
+       19*
+       20*   The segment loader will be called to load a collection from
+       21*   the Multics System Tape (MST).
+       22*   All segments contained in the MST collection
+       23*   will be loaded. When a collection mark is found on MST,
+       24*   the segment loader will return to its caller.
+       25*
+       26*   Written 06/05/67, Noel I. Morris
+       27*   Modified 03/29/76, Noel I. Morris for loading separate defs.
+       28*   Modified 08/02/77, Bernard S. Greenberg for aste.gtpd and flush.
+       29*   Modified 04/06/81, W. Olin Sibert, to update for ADP SDWs and sdw_util_
+       30*   Modified 6/82 BIM boot_tape_io, hc_linkage_seg, hc_definitions_seg.
+       31*   Modified '82 CAH to have pre linking done externally, also slt_manager change.
+       32*   Modified 10/83 by Keith Loepere for warm boot from disk.
+       33*   */
+       34 
+       35 /* format: on */
+       36 	dcl     header_area		 (1000) fixed bin (35);
+       37 						/* area into which segment header is read */
+       38 	dcl     header_ptr		 ptr;		/* pointer to header area */
+       39 	dcl     type		 fixed bin (17);	/* type of record on MST */
+       40 	dcl     count		 fixed bin (17);	/* length of record on MST */
+       41 	dcl     seg_ptr		 ptr;		/* pointer to segment being loaded */
+       42 	dcl     text_ptr		 ptr;		/* pointer to text segment */
+       43 	dcl     text_no		 fixed bin (18);	/* text segment number */
+       44 	dcl     link_ptr		 ptr;		/* pointer to linkage section */
+       45 	dcl     seg_number		 fixed bin (18);	/* segment number of segment being loaded */
+       46 	dcl     expect_link		 bit (1) aligned;	/* linkage section expected switch */
+       47 	dcl     expect_defs		 bit (1) aligned;	/* definitions expected switch */
+       48 	dcl     control_ptr		 ptr;		/* pointer to control word */
+       49 	dcl     last_sltep		 ptr;		/* pointer to previous slt entry */
+       50 	dcl     tsdw		 fixed bin (71);
+       51 	dcl     reading_sdw		 fixed bin (71);
+       52 	dcl     ptp		 ptr;
+       53 
+       54 	dcl     1 control_word	 aligned,		/* MST control word */
+       55 	        ( 2 type		 fixed bin (17),	/* control word type */
+       56 		2 count		 fixed bin (17)
+       57 		)		 unaligned;	/* count of words following */
+       58 
+       59 
+       60 	dcl     as_linkage$		 external static;	/* combined linkage segments */
+       61 	dcl     ws_linkage$		 external static;
+       62 	dcl     ai_linkage$		 external static;
+       63 	dcl     wi_linkage$		 external static;
+       64 
+       65 	dcl     slt$		 external static;
+       66 
+       67 	dcl     1 lot$		 ext like lot;	/* linkage offset table */
+       68 
+       69 	dcl     definitions_$	 ext;		/* definitions segment */
+       70 
+       71 	dcl     make_sdw		 entry (fixed bin (18), fixed bin (71), ptr, ptr);
+       72 	dcl     pc_wired$write	 entry (ptr, fixed bin, fixed bin);
+       73 	dcl     pmut$swap_sdw	 entry (ptr, ptr);
+       74 	dcl     sdw_util_$set_access	 entry (pointer, bit (4) unaligned);
+       75 	dcl     slt_manager$build_entry
+       76 				 entry (ptr) returns (ptr);
+       77 	dcl     syserr		 entry options (variable);
+       78 	dcl     disk_reader		 entry (ptr, fixed bin (17));
+       79 
+       80 	dcl     (addr, addrel, baseno, bin, mod, null, rel, size)
+       81 				 builtin;
+       82 
+       83 
+       84 	expect_defs = "0"b;				/* Initialize the control switches */
+       85 	expect_link = "0"b;
+       86 
+       87 	sltp = addr (slt$);				/* Get a pointer to SLT structure. */
+       88 	lotp = addr (lot$);				/* Get a pointer to the LOT. */
+       89 	definitions_ptr = addr (definitions_$);
+       90 
+       91 	header_ptr = addr (header_area);		/* Generate pointer to header area. */
+       92 
+       93 	control_ptr = addr (control_word);		/* Generate pointer to control word. */
+       94 
+       95 /* Read control word and dispatch on it. */
+       96 
+       97 loop:
+       98 	call read_control_word (type, count);		/* Read a control word. */
+       99 	if type = 2
+      100 	then go to collection;
+      101 	else if type ^= 0
+      102 	then call syserr (CRASH, "segment_loader: unknown control type ^d", type);
+      103 
+      104 /* Process header record. */
+      105 
+      106 	if count > size (header_area)
+      107 	then /* Error if header is too large ... */
+      108 	     call syserr (CRASH, "segment_loader: bad header size ^d", count);
+      109 						/* ... or too small. */
+      110 
+      111 	call disk_reader (header_ptr, count);		/* Read in the header. */
+      112 
+      113 	call read_control_word (type, count);		/* Read in next control word. */
+      114 	if type ^= 1
+      115 	then /* It must be a segment control word. */
+      116 	     call syserr (CRASH, "segment_loader: unexpected control type ^d", type);
+      117 
+      118 	if header_ptr -> slte.link_sect
+      119 	then do;					/* If this is a linkage segment... */
+      120 		if ^expect_link
+      121 		then /* If unexpected ... */
+      122 		     call syserr (CRASH, "segment_loader: Unexpected linkage.");
+      123 		expect_link = "0"b;			/* Turn off switch. */
+      124 		expect_defs = "1"b;			/* Defs should come next. */
+      125 
+      126 		if last_sltep -> slte.combine_link
+      127 		then do;				/* If linkage may be combined ... */
+      128 			if last_sltep -> slte.link_sect_wired
+      129 			then /* If linkage is wired ... */
+      130 			     if last_sltep -> slte.init_seg
+      131 			     then /* If text is init seg ... */
+      132 				hclsp = addr (wi_linkage$);
+      133 						/* Use wired_init_linkage. */
+      134 			     else /* If text is sup seg ... */
+      135 				hclsp = addr (ws_linkage$);
+      136 						/* Use wired_sup_linkage. */
+      137 			else /* If linkage is not wired ... */
+      138 			     if last_sltep -> slte.init_seg
+      139 			then /* If text is init seg ... */
+      140 			     hclsp = addr (ai_linkage$);
+      141 						/* Use active_init_linkage. */
+      142 			else /* If text is sup seg ... */
+      143 			     hclsp = addr (as_linkage$);
+      144 						/* Use active_sup_linkage. */
+      145 
+      146 			seg_ptr = hclsp -> hc_linkage_seg.next_free_ptr;
+      147 						/* Get pointer to end of combined linkage. */
+      148 			hclsp -> hc_linkage_seg.next_free_ptr = addrel (seg_ptr, count + mod (count, 2));
+      149 						/* Update pointer to next free even loc. */
+      150 
+      151 			call disk_reader (seg_ptr, count);
+      152 						/* Read in the linkage section into place. */
+      153 		     end;
+      154 
+      155 		else /* If linkage not to be combined ... */
+      156 		     call load_segment;		/* Load in the segment. */
+      157 
+      158 		link_ptr = seg_ptr;			/* Save pointer to linkage. */
+      159 		lot.lp (text_no) = link_ptr;		/* Set LOT entry. */
+      160 		link_ptr -> linkage_header.segment_number = text_no;
+      161 						/* Save text segment number in linkage header. */
+      162 	     end;
+      163 
+      164 	else if header_ptr -> slte.defs
+      165 	then do;					/* If this is a definitions segment ... */
+      166 		if ^expect_defs
+      167 		then /* If unexpected ... */
+      168 		     call syserr (CRASH, "segment_loader: Unexpected defs.");
+      169 		expect_defs = "0"b;
+      170 
+      171 		seg_ptr = definitions.next_free_ptr;	/* Get pointer to end of definitions. */
+      172 		definitions.next_free_ptr = addrel (seg_ptr, count);
+      173 						/* Update pointer to next free. */
+      174 
+      175 		call disk_reader (seg_ptr, count);	/* Read definitions into place. */
+      176 
+      177 		definitions.dot (text_no).offset = bin (rel (seg_ptr), 18);
+      178 		definitions.dot (text_no).length = count;
+      179 						/* Fill in offset table entry. */
+      180 
+      181 		link_ptr -> linkage_header.def_ptr = seg_ptr;
+      182 						/* Set correct defs pointer. */
+      183 	     end;
+      184 
+      185 	else do;					/* Must be text, or something. */
+      186 		if expect_link | expect_defs
+      187 		then /* Must not expect anything else. */
+      188 		     call syserr (CRASH, "segment_loader: Missing linkage or defs.");
+      189 		expect_link = header_ptr -> slte.link_provided;
+      190 						/* Set switch. */
+      191 
+      192 		call load_segment;			/* Load in the segment. */
+      193 		text_ptr = seg_ptr;			/* Save pointer to the text. */
+      194 		text_no = bin (baseno (text_ptr), 18);	/* Also, get text segment number. */
+      195 	     end;
+      196 
+      197 	last_sltep = sltep;				/* Save pointer to last SLT entry. */
+      198 
+      199 	go to loop;				/* Continue. */
+      200 
+      201 /* Process collection record. */
+      202 
+      203 collection:
+      204 	call read_control_word (type, count);		/* Read the collection mark. */
+      205 
+      206 	return;					/* Return to caller. */
+      207 
+      208 /* LOAD_SEGMENT - Build a segment and read it in from disk. */
+      209 
+      210 load_segment:
+      211      proc;
+      212 
+      213 	seg_ptr = slt_manager$build_entry (header_ptr);	/* Build new entry in SLT. */
+      214 	if seg_ptr = null ()
+      215 	then call syserr (CRASH, "segment_loader: error from slt_manager$build_entry");
+      216 
+      217 	seg_number = bin (baseno (seg_ptr), 15);	/* Get segment number of new segment. */
+      218 
+      219 	sltep = addr (slt.seg (seg_number));
+      220 
+      221 	call make_sdw (seg_number, tsdw, astep, ptp);	/* Get an AST entry */
+      222 	if astep = null ()
+      223 	then return;				/* abs-seg */
+      224 
+      225 	reading_sdw = tsdw;				/* get copy of SDW for disk reader */
+      226 	call sdw_util_$set_access (addr (reading_sdw), "1010"b);
+      227 						/* Force RW access while we're reading */
+      228 	call pmut$swap_sdw (seg_ptr, addr (reading_sdw)); /* place SDW in DSEG */
+      229 
+      230 	aste.gtpd = "1"b;				/* Keep off PD until flushed */
+      231 
+      232 	call disk_reader (seg_ptr, count);		/* Slurp in the new segment. */
+      233 
+      234 	call pmut$swap_sdw (seg_ptr, addr (tsdw));	/* store real SDW in DSEG */
+      235 
+      236 	call pc_wired$write (astep, 0, -1);		/* Flush to disk */
+      237 
+      238 	aste.gtpd = "0"b;				/* PD migration ok now */
+      239 
+      240 	return;
+      241 
+      242 
+      243      end load_segment;
+      244 
+      245 
+      246 /* READ_CONTROL_WORD - Read a control word from MST. */
+      247 
+      248 read_control_word:
+      249      proc (type, count);
+      250 
+      251 	dcl     type		 fixed bin (17),	/* control word type */
+      252 	        count		 fixed bin (17);	/* count of following record */
+      253 
+      254 
+      255 	call disk_reader (control_ptr, 1);		/* Read in the control word. */
+      256 
+      257 	type = control_word.type;			/* Return the type. */
+      258 	count = control_word.count;			/* Return the count. */
+      259 
+      260 	return;
+      261 
+      262 
+      263      end read_control_word;				/* format: off */
+      264 
+      265  /* Begin include file hc_linkage_seg.incl.pl1 */
+  1     2 /* BIM 7/82 */
+  1     3 
+  1     4 /* format: style3 */
+  1     5 
+  1     6 declare	hclsp		ptr;
+  1     7 declare	1 hc_linkage_seg	aligned based (hclsp),
+  1     8 	  2 next_free_ptr	pointer,
+  1     9 	  2 free_area	bit (36) aligned;
+  1    10 
+  1    11 /* End include file hc_linkage_seg */
+      265  /* Begin include file hc_definitions_seg.incl.pl1 BIM 7/82 */
+  2     2 /* format: style3 */
+  2     3 
+  2     4 declare	definitions_ptr	ptr;
+  2     5 
+  2     6 declare	1 definitions	aligned based (definitions_ptr),
+  2     7 	  2 next_free_ptr	pointer,			/* next section, starts after table */
+  2     8 	  2 dot		(2:511) aligned,		/* definitions_offset_table */
+  2     9 	    3 offset	fixed bin (18) uns unal,	/* in this segment */
+  2    10 	    3 length	fixed bin unal,
+  2    11 	  2 first_free	bit (0) aligned;
+  2    12 
+  2    13 /* End include file hc_definitions_seg.incl.pl1 */
+      265 
+      266  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  3     2 
+  3     3 /* Template for an AST entry. Length = 12 words. */
+  3     4 
+  3     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  3     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  3     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  3     8 
+  3     9 dcl  astep ptr;
+  3    10 
+  3    11 dcl 1 aste based (astep) aligned,
+  3    12 
+  3    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  3    14     2 bp bit (18),					/* backward used list rel pointer */
+  3    15 
+  3    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  3    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  3    18 
+  3    19     2 strp bit (18),				/* rel pointer to process trailer */
+  3    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  3    21 
+  3    22     2 uid bit (36),					/* segment unique id */
+  3    23 
+  3    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  3    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  3    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    27 
+  3    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  3    29     2 init bit (1),					/* used bit - insure 1 lap */
+  3    30     2 gtus bit (1),					/* global transparent usage switch */
+  3    31     2 gtms bit (1),					/* global transparent modified switch */
+  3    32     2 hc bit (1),					/* hard core segment */
+  3    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  3    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  3    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  3    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  3    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  3    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  3    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  3    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  3    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  3    42     2 pad1 bit (2),					/* OO */
+  3    43     2 dius bit (1),					/* dumper in use switch */
+  3    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  3    45     2 dmpr_pad bit (1),
+  3    46     2 ehs bit (1),					/* entry hold switch */
+  3    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  3    48     2 dirsw bit (1),				/* directory switch */
+  3    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  3    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  3    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  3    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  3    53 
+  3    54     2 dtu bit (36),					/* date and time segment last used */
+  3    55 
+  3    56     2 dtm bit (36),					/* date and time segment last modified */
+  3    57 
+  3    58 
+  3    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  3    60 
+  3    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  3    62 
+  3    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  3    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  3    65     2 fms bit (1),					/* file modified switch */
+  3    66     2 npfs bit (1),					/* no page fault switch */
+  3    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  3    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  3    69     2 per_process bit (1),				/* use master quota for this entry */
+  3    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  3    71     2 pad2 bit (2),
+  3    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  3    73     2 np bit (9),					/* number of pages in core */
+  3    74 
+  3    75 
+  3    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  3    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  3    78     2 damaged bit (1),				/* PC declared segment unusable */
+  3    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  3    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  3    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  3    82     2 ptsi bit (2),					/* page table size index */
+  3    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  3    84 
+  3    85 
+  3    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  3    87 
+  3    88 
+  3    89 dcl 1 aste_part aligned based (astep),
+  3    90 
+  3    91     2 one bit (36) unaligned,				/* fp and bp */
+  3    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  3    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  3    94 
+  3    95 
+  3    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  3    97     2 pad1 bit (8*36),
+  3    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  3    99     2 pad2 bit (3*36);
+  3   100 
+  3   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      266 
+      267  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  4     2 
+  4     3 /* Declarations for Segment Loading Table header and array.
+  4     4*
+  4     5*   Used by Initialization and MST Checker subroutines */
+  4     6 
+  4     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  4     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  4     9     namep ptr,					/* pointer to segment name list block */
+  4    10     pathp ptr,					/* pointer to segment's directory path name */
+  4    11     aclp ptr;					/* pointer to acl structure */
+  4    12 
+  4    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  4    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  4    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  4    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  4    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  4    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  4    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  4    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  4    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  4    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  4    23 
+  4    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  4    25 
+  4    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  4    27 	2 pad bit (18) unal,
+  4    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  4    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  4    30 
+  4    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  4    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  4    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  4    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  4    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  4    36 	  3 pad bit (5) unal,
+  4    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  4    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  4    39 
+  4    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  4    41 	2 size fixed bin (17),			/* length of pathname */
+  4    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  4    43 	2 acls fixed bin;				/* ACL list starts here */
+  4    44 
+  4    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  4    46 	2 count fixed bin,				/* number of entries in acl list */
+  4    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  4    48 	  3 userid char (32),			/* user specification */
+  4    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  4    50 	  3 pad bit (36) aligned,
+  4    51 	  3 code fixed bin;
+  4    52 
+  4    53 
+  4    54 /* END INCLUDE FILE slt.incl.pl1 */
+      267 
+      268  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  5     2 /* Declaration for Segment Loading Table Entry structure.
+  5     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  5     4 /* modified 5/4/76 by Noel I. Morris	*/
+  5     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  5     6 /* format: style3 */
+  5     7 
+  5     8 dcl	sltep		ptr;
+  5     9 
+  5    10 dcl	1 slte_uns	based (sltep) aligned,
+  5    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  5    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  5    13 /**** End of word 1 */
+  5    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  5    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  5    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  5    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  5    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  5    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  5    20 	  2 pad1		bit (3),			/* unused */
+  5    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  5    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  5    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  5    24 	  2 pad3		bit (2),
+  5    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  5    26 /**** End of 1st half of word 2 */
+  5    27 	  2 pad4		bit (3),
+  5    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  5    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  5    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  5    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  5    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  5    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  5    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  5    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  5    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  5    37 /***** End of word 2 */
+  5    38 	  2 pad5		bit (6),
+  5    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  5    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  5    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  5    42 /***** End of word 3 */
+  5    43 	  2 pad7		bit (3),
+  5    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  5    45 	  2 bit_count	fixed bin (24) uns
+  5    46 	  )		unaligned;		/* bitcount of segment */
+  5    47 
+  5    48 dcl	1 slte		based (sltep) aligned,
+  5    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  5    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  5    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  5    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  5    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  5    54 	  2 firmware_seg    bit (1),
+  5    55 	  2 layout_seg      bit (1),
+  5    56 	  2 breakpointable  bit (1),
+  5    57 	  2 pad2		bit (3),
+  5    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  5    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  5    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  5    61 	  2 pad3		bit (2),
+  5    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  5    63 	  2 pad4		bit (3),
+  5    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  5    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  5    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  5    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  5    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  5    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  5    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  5    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  5    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  5    73 	  2 pad5		bit (6),
+  5    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  5    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  5    76 	  2 segno		bit (18),			/* text/link segment number */
+  5    77 	  2 pad6		bit (3),
+  5    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  5    79 	  2 bit_count	bit (24)
+  5    80 	  )		unaligned;		/* bitcount of segment */
+  5    81 
+  5    82 /* END INCLUDE FILE slte.incl.pl1 */
+      268 
+      269  /* BEGIN INCLUDE FILE object_link_dcls.incl.pl1 BIM 1981 from linkdcl */
+  6     2 
+  6     3 
+  6     4 /****^  HISTORY COMMENTS:
+  6     5*  1) change(86-05-02,Elhard), approve(86-05-02,MCR7391),
+  6     6*     audit(86-11-18,Schroth), install(86-11-20,MR12.0-1222):
+  6     7*     Modified to add partial_link structure for an object MSF partially snapped
+  6     8*     link.
+  6     9*  2) change(86-11-13,DGHowe), approve(86-11-13,MCR7391), audit(86-11-13,Zwick),
+  6    10*     install(86-11-20,MR12.0-1222):
+  6    11*     Added a declaration of FAULT_TAG_1, FAULT_TAG_2 and FAULT_TAG_3.
+  6    12*                                                   END HISTORY COMMENTS */
+  6    13 
+  6    14 
+  6    15 /* format: style3 */
+  6    16 /* everything you ever wanted in a linkage section */
+  6    17 
+  6    18 /*
+  6    19* Last Modified (Date and Reason):
+  6    20*  15 Nov 1971 by C Garman 
+  6    21*   6/75 by M.Weaver to add virgin_linkage_header declaration
+  6    22*   6/75 by S.Webber to comment existing structures better
+  6    23*   9/77 by M. Weaver to add run_depth to link
+  6    24*   7/81 by B. Margulies for firstref structure, unsigned fixed bins.
+  6    25*   3/83 by M. Weaver to add flags overlaying def_ptr
+  6    26**/
+  6    27 
+  6    28 declare	1 object_link	based aligned,		/* link pair in linkage section */
+  6    29 	  2 header_relp	fixed bin (17) unal,	/* rel pointer to beginning of linkage, always negative */
+  6    30 	  2 ringno	fixed bin (3) unsigned unal,	/* MBZ */
+  6    31 	  2 mbz		bit (6) unal,
+  6    32 	  2 run_depth	fixed bin (2) unal,		/* run unit depth, filled when link is snapped */
+  6    33 	  2 tag		bit (6) unal,		/* fault tag. 46(8) if not snapped, 43(8) if snapped */
+  6    34 	  2 expression_relp fixed bin (18) unsigned unal, /* pointer (rel to defs) of expression word */
+  6    35 	  2 mbz2		bit (12) unal,
+  6    36 	  2 modifier	bit (6) unal;		/* modifier to be left in snapped link */
+  6    37 
+  6    38 declare	1 partial_link	based aligned,		/* partially snapped link */
+  6    39 	  2 type		fixed bin (3) unsigned unal,	/* target section of link */
+  6    40 	  2 component	fixed bin (15) unsigned unal,	/* target component index */
+  6    41 	  2 mbz1		bit (12) unal,
+  6    42 	  2 tag		bit (6) unal,		/* fault tag 3 47(8), ITS 43(8) if snapped */
+  6    43 	  
+  6    44 	  2 offset	fixed bin (18) unsigned unal,	/* word offset of link */
+  6    45 	  2 mbz2		bit (3) unal,
+  6    46 	  2 bit_offset	fixed bin (6) unsigned unal,	/* bit offset (in practice, always 0) */
+  6    47 	  2 mbz3		bit (3) unal,
+  6    48 	  2 modifier	bit (6) unal;		/* modifier to be left in snapped link */
+  6    49 
+  6    50 declare	1 linkage_header	based aligned,		/* linkage block header */
+  6    51 	  2 def_ptr	ptr,			/* pointer to definition section */
+  6    52 	  2 symbol_ptr	ptr unal,			/* pointer to symbol section in object segment */
+  6    53 	  2 original_linkage_ptr
+  6    54 			ptr unal,			/* pointer to linkage section in object segment */
+  6    55 	  2 unused	bit (72),
+  6    56 	  2 stats,
+  6    57 	    3 begin_links	fixed bin (18) unsigned unal, /* offset (rel to this section) of first link */
+  6    58 	    3 block_length	fixed bin (18) unsigned unal, /* number of words in this linkage section */
+  6    59 	    3 segment_number
+  6    60 			fixed bin (18) unsigned unal, /* text segment number associated with this section */
+  6    61 	    3 static_length fixed bin (18) unsigned unal; /* number of words of static for this segment */
+  6    62 
+  6    63 declare	1 linkage_header_flags
+  6    64 			aligned based,		/* overlay of def_ptr for flags */
+  6    65 	  2 pad1		bit (28) unaligned,		/* flags are in first word */
+  6    66 	  2 static_vlas	bit (1) unaligned,		/* static section "owns" some LA/VLA segments */
+  6    67 	  2 perprocess_static
+  6    68 			bit (1) unaligned,		/* 1 copy of static section is shared among all tasks/run units */
+  6    69 	  2 pad2		bit (6) unaligned;
+  6    70 
+  6    71 declare	1 virgin_linkage_header
+  6    72 			aligned based,		/* template for linkage header in object segment */
+  6    73 	  2 pad		bit (30) unaligned,		/* is filled in by linker */
+  6    74 	  2 defs_in_link	bit (6) unaligned,		/* =o20 if defs in linkage (nonstandard) */
+  6    75 	  2 def_offset	fixed bin (18) unsigned unaligned,
+  6    76 						/* offset of definition section */
+  6    77 	  2 first_ref_relp	fixed bin (18) unsigned unaligned,
+  6    78 						/* offset of trap-at-first-reference offset array */
+  6    79 	  2 filled_in_later bit (144),
+  6    80 	  2 link_begin	fixed bin (18) unsigned unaligned,
+  6    81 						/* offset of first link */
+  6    82 	  2 linkage_section_lng
+  6    83 			fixed bin (18) unsigned unaligned,
+  6    84 						/* length of linkage section */
+  6    85 	  2 segno_pad	fixed bin (18) unsigned unaligned,
+  6    86 						/* will be segment number of copied linkage */
+  6    87 	  2 static_length	fixed bin (18) unsigned unaligned;
+  6    88 						/* length of static section */
+  6    89 
+  6    90 declare	1 fr_traps	based aligned,		/* First Reference Trap Procedures */
+  6    91 	  2 decl_vers	fixed bin,		/* version of this struc, value=1, ABS reloc */
+  6    92 	  2 n_traps	fixed bin,		/* number of traps on this segment, ABS */
+  6    93 	  2 trap_array	(n_fr_traps refer (fr_traps.n_traps)) aligned,
+  6    94 	    3 call_relp	fixed bin (18) unsigned unaligned,
+  6    95 						/* LINK18, offset of link defining procedure to call */
+  6    96 	    3 info_relp	fixed bin (18) unsigned unaligned;
+  6    97 						/* LINK18, offser of link defining argument list for trap proc */
+  6    98 
+  6    99 declare	FR_TRAPS_VERSION_1	init (1) fixed bin internal static options (constant);
+  6   100 declare   FAULT_TAG_1	bit(6) unaligned init ("40"b3) static options (constant);
+  6   101 declare   FAULT_TAG_2	bit(6) unaligned init ("46"b3) static options (constant);
+  6   102 declare   FAULT_TAG_3	bit(6) unaligned init ("47"b3) static options (constant);
+  6   103 
+  6   104 /* END INCLUDE FILE object_link_dcls.incl.pl1 */
+      269 
+      270  /* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  7     2 /* modified by M. Weaver 3/77 */
+  7     3 
+  7     4 dcl  lotp ptr;
+  7     5 
+  7     6 dcl 1 lot based (lotp) aligned,
+  7     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  7     8 
+  7     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  7    10 						/* lot fault has fault code = 0 and offset = 0 */
+  7    11 
+  7    12 dcl  isotp ptr;
+  7    13 dcl 1 isot based (isotp) aligned,
+  7    14     2 isp (0:9999) ptr unaligned;
+  7    15 
+  7    16 dcl 1 isot1 (0 :9999) aligned based,
+  7    17     2 flags unaligned,
+  7    18       3 fault bit (2) unaligned,
+  7    19       3 system bit (1) unaligned,
+  7    20       3 mbz bit (6) unaligned,
+  7    21     2 fault_code fixed bin (8) unaligned,
+  7    22     2 static_offset bit (18) unaligned;
+  7    23 
+  7    24 
+  7    25 /* END INCLUDE FILE  lot.incl.pl1 */
+      270 
+      271  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  8     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  8     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  8     4 
+  8     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  8     6 
+  8     7 dcl (
+  8     8 
+  8     9 /* The following constants define the message action codes.  This indicates
+  8    10*how a message is to be handled.  */
+  8    11 
+  8    12      SYSERR_CRASH_SYSTEM	init (1),			
+  8    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  8    14 
+  8    15      SYSERR_TERMINATE_PROCESS	init (2),
+  8    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  8    17 
+  8    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  8    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  8    20 
+  8    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  8    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  8    23 
+  8    24      SYSERR_LOG_OR_PRINT	init (4),
+  8    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  8    26 
+  8    27      SYSERR_LOG_OR_DISCARD	init (5),
+  8    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  8    29 
+  8    30 
+  8    31 /* The following constants are added to the normal severities to indicate
+  8    32*different sorting classes of messages.  */
+  8    33 
+  8    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  8    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  8    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  8    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  8    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  8    39 	) fixed bin internal static options (constant);
+  8    40 
+  8    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      271 
+      272 
+      273   
+      274 
+      275 /* BEGIN MESSAGE DOCUMENTATION
+      276*
+      277*   Message:
+      278*   segment_loader: unknown control type TTT
+      279*
+      280*   S: $crash
+      281*
+      282*   T: $init
+      283*
+      284*   M: A bad segment control word was found in the mst source.
+      285*
+      286*   A: $recover
+      287*   $boot_tape
+      288*
+      289*   Message:
+      290*   segment_loader: bad header size: SSS
+      291*
+      292*   S: $crash
+      293*
+      294*   T: $init
+      295*
+      296*   M: A bad segment header was found in the mst source.
+      297*
+      298*   A: $recover
+      299*   $boot_tape
+      300*
+      301*   Message:
+      302*   segment_loader: unexpected control type: TTT
+      303*
+      304*   S: $crash
+      305*
+      306*   T: $init
+      307*
+      308*   M: A segment control word was found out of sequence in the mst source.
+      309*
+      310*   A: $recover
+      311*   $boot_tape
+      312*
+      313*   Message:
+      314*   segment_loader: Unexpected DEFS/LINKAGE
+      315*
+      316*   S: $crash
+      317*
+      318*   T: $init
+      319*
+      320*   M: A linkage or definitions section was found out of sequence in the mst source.
+      321*
+      322*   A: $recover
+      323*   $boot_tape
+      324*
+      325*   Message:
+      326*   segment_loader: Missing linkage or defs.
+      327*
+      328*   S: $crash
+      329*
+      330*   T: $init
+      331*
+      332*   M: A linkage or definitions section which should be in the
+      333*   mst source appears to be missing.
+      334*
+      335*   A: $recover
+      336*   $boot_tape
+      337*
+      338*   Message:
+      339*   segment_loader: error from slt_manager$build_entry
+      340*
+      341*   S: $crash
+      342*
+      343*   T: $init
+      344*
+      345*   M: $err
+      346*
+      347*   A: $recover
+      348*   $boot_tape
+      349*
+      350*   END MESSAGE DOCUMENTATION */
+      351 
+      352 
+      353      end segment_loader;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.1  segment_loader.pl1                >spec>install>1110>segment_loader.pl1
+265          1    10/20/82  0938.6  hc_linkage_seg.incl.pl1           >ldd>include>hc_linkage_seg.incl.pl1
+265          2    10/20/82  0938.5  hc_definitions_seg.incl.pl1       >ldd>include>hc_definitions_seg.incl.pl1
+266          3    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+267          4    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+268          5    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+269          6    11/24/86  1226.9  object_link_dcls.incl.pl1         >ldd>include>object_link_dcls.incl.pl1
+270          7    08/05/77  1022.4  lot.incl.pl1                      >ldd>include>lot.incl.pl1
+271          8    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000011 constant        fixed bin(17,0)          initial dcl 8-7 set ref 101* 106* 114* 120* 166*
+                                                                                  186* 214*
+addr                                                   builtin function         dcl 80 ref 87 88 89 91 93 128 134 137 142 219 226
+                                                                                  226 228 228 234 234
+addrel                                                 builtin function         dcl 80 ref 148 172
+ai_linkage$                     000014 external static fixed bin(17,0)          dcl 62 set ref 137
+as_linkage$                     000010 external static fixed bin(17,0)          dcl 60 set ref 142
+aste                                   based           structure                level 1 dcl 3-11
+astep                           002110 automatic       pointer                  dcl 3-9 set ref 221* 222 230 236* 238
+baseno                                                 builtin function         dcl 80 ref 194 217
+bin                                                    builtin function         dcl 80 ref 177 194 217
+combine_link              1(27)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 126
+control_ptr                     002070 automatic       pointer                  dcl 48 set ref 93* 255*
+control_word                    002102 automatic       structure                level 1 dcl 54 set ref 93
+count                                  parameter       fixed bin(17,0)          dcl 251 in procedure "read_control_word" set ref 248
+                                                                                  258*
+count                           002053 automatic       fixed bin(17,0)          dcl 40 in procedure "segment_loader" set ref 97* 106
+                                                                                  106* 111* 113* 148 148 151* 172 175* 178 203* 232*
+count                     0(18) 002102 automatic       fixed bin(17,0)          level 2 in structure "control_word" packed packed
+                                                                                  unaligned dcl 54 in procedure "segment_loader" set
+                                                                                  ref 258
+def_ptr                                based           pointer                  level 2 dcl 6-50 set ref 181*
+definitions                            based           structure                level 1 dcl 2-6
+definitions_$                   000024 external static fixed bin(17,0)          dcl 69 set ref 89
+definitions_ptr                 002106 automatic       pointer                  dcl 2-4 set ref 89* 171 172 177 178
+defs                      1(29)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 164
+disk_reader                     000042 constant        entry                    external dcl 78 ref 111 151 175 232 255
+dot                       2            based           structure                array level 2 dcl 2-6
+expect_defs                     002066 automatic       bit(1)                   dcl 47 set ref 84* 124* 166 169* 186
+expect_link                     002065 automatic       bit(1)                   dcl 46 set ref 85* 120 123* 186 189*
+gtpd                     12(12)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 set ref
+                                                                                  230* 238*
+hc_linkage_seg                         based           structure                level 1 dcl 1-7
+hclsp                           002104 automatic       pointer                  dcl 1-6 set ref 128* 134* 137* 142* 146 148
+header_area                     000100 automatic       fixed bin(35,0)          array dcl 36 set ref 91 106
+header_ptr                      002050 automatic       pointer                  dcl 38 set ref 91* 111* 118 164 189 213*
+init_seg                  1(22)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 128 137
+last_sltep                      002072 automatic       pointer                  dcl 49 set ref 126 128 128 137 197*
+length                    2(18)        based           fixed bin(17,0)          array level 3 packed packed unaligned dcl 2-6 set
+                                                                                  ref 178*
+link_provided             1(24)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 189
+link_ptr                        002062 automatic       pointer                  dcl 44 set ref 158* 159 160 181
+link_sect                 1(25)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 118
+link_sect_wired           1(26)        based           bit(1)                   level 2 packed packed unaligned dcl 5-48 ref 128
+linkage_header                         based           structure                level 1 dcl 6-50
+lot                                    based           structure                level 1 dcl 7-6
+lot$                            000022 external static structure                level 1 packed packed unaligned dcl 67 set ref 88
+lotp                            002116 automatic       pointer                  dcl 7-4 set ref 88* 159
+lp                                     based           pointer                  array level 2 packed packed unaligned dcl 7-6 set
+                                                                                  ref 159*
+make_sdw                        000026 constant        entry                    external dcl 71 ref 221
+mod                                                    builtin function         dcl 80 ref 148
+next_free_ptr                          based           pointer                  level 2 in structure "definitions" dcl 2-6
+                                                                                  in procedure "segment_loader" set ref 171 172*
+next_free_ptr                          based           pointer                  level 2 in structure "hc_linkage_seg" dcl 1-7
+                                                                                  in procedure "segment_loader" set ref 146 148*
+null                                                   builtin function         dcl 80 ref 214 222
+offset                    2            based           fixed bin(18,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 2-6 set ref 177*
+pc_wired$write                  000030 constant        entry                    external dcl 72 ref 236
+pmut$swap_sdw                   000032 constant        entry                    external dcl 73 ref 228 234
+ptp                             002100 automatic       pointer                  dcl 52 set ref 221*
+reading_sdw                     002076 automatic       fixed bin(71,0)          dcl 51 set ref 225* 226 226 228 228
+rel                                                    builtin function         dcl 80 ref 177
+sdw_util_$set_access            000034 constant        entry                    external dcl 74 ref 226
+seg                      10            based           structure                array level 2 dcl 4-13 set ref 219
+seg_number                      002064 automatic       fixed bin(18,0)          dcl 45 set ref 217* 219 221*
+seg_ptr                         002054 automatic       pointer                  dcl 41 set ref 146* 148 151* 158 171* 172 175* 177
+                                                                                  181 193 213* 214 217 228* 232* 234*
+segment_number            7            based           fixed bin(18,0)          level 3 packed packed unsigned unaligned dcl 6-50
+                                                                                  set ref 160*
+size                                                   builtin function         dcl 80 ref 106
+slt                                    based           structure                level 1 dcl 4-13
+slt$                            000020 external static fixed bin(17,0)          dcl 65 set ref 87
+slt_manager$build_entry         000036 constant        entry                    external dcl 75 ref 213
+slte                                   based           structure                level 1 dcl 5-48
+sltep                           002114 automatic       pointer                  dcl 5-8 set ref 197 219*
+sltp                            002112 automatic       pointer                  dcl 4-7 set ref 87* 219
+stats                     6            based           structure                level 2 dcl 6-50
+syserr                          000040 constant        entry                    external dcl 77 ref 101 106 114 120 166 186 214
+text_no                         002060 automatic       fixed bin(18,0)          dcl 43 set ref 159 160 177 178 194*
+text_ptr                        002056 automatic       pointer                  dcl 42 set ref 193* 194
+tsdw                            002074 automatic       fixed bin(71,0)          dcl 50 set ref 221* 225 234 234
+type                            002052 automatic       fixed bin(17,0)          dcl 39 in procedure "segment_loader" set ref 97* 99
+                                                                                  101 101* 113* 114 114* 203*
+type                            002102 automatic       fixed bin(17,0)          level 2 in structure "control_word" packed packed
+                                                                                  unaligned dcl 54 in procedure "segment_loader" set
+                                                                                  ref 257
+type                                   parameter       fixed bin(17,0)          dcl 251 in procedure "read_control_word" set ref 248
+                                                                                  257*
+wi_linkage$                     000016 external static fixed bin(17,0)          dcl 63 set ref 128
+ws_linkage$                     000012 external static fixed bin(17,0)          dcl 61 set ref 134
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 8-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 8-7
+FAULT_TAG_1                            internal static bit(6)                   initial packed unaligned dcl 6-100
+FAULT_TAG_2                            internal static bit(6)                   initial packed unaligned dcl 6-101
+FAULT_TAG_3                            internal static bit(6)                   initial packed unaligned dcl 6-102
+FR_TRAPS_VERSION_1                     internal static fixed bin(17,0)          initial dcl 6-99
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 8-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 8-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 8-7
+aclp                                   automatic       pointer                  dcl 4-7
+acls                                   based           structure                level 1 dcl 4-45
+asta                                   based           bit(432)                 array dcl 3-86
+aste_part                              based           structure                level 1 dcl 3-89
+fr_traps                               based           structure                level 1 dcl 6-90
+isot                                   based           structure                level 1 dcl 7-13
+isot1                                  based           structure                array level 1 dcl 7-16
+isotp                                  automatic       pointer                  dcl 7-12
+linkage_header_flags                   based           structure                level 1 dcl 6-63
+lot_fault                              internal static bit(36)                  initial dcl 7-9
+name_seg                               based           structure                level 1 dcl 4-26
+namep                                  automatic       pointer                  dcl 4-7
+names_ptr                              automatic       pointer                  dcl 4-7
+object_link                            based           structure                level 1 dcl 6-28
+partial_link                           based           structure                level 1 dcl 6-38
+path                                   based           structure                level 1 dcl 4-40
+pathp                                  automatic       pointer                  dcl 4-7
+seg_aste                               based           structure                level 1 dcl 3-96
+segnam                                 based           structure                level 1 dcl 4-31
+slte_uns                               based           structure                level 1 dcl 5-10
+virgin_linkage_header                  based           structure                level 1 dcl 6-71
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+collection                      000533 constant        label                    dcl 203 ref 99
+load_segment                    000536 constant        entry                    internal dcl 210 ref 155 192
+loop                            000144 constant        label                    dcl 97 ref 199
+read_control_word               000731 constant        entry                    internal dcl 248 ref 97 113 203
+segment_loader                  000123 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1146        1212     767        1156
+Length      1552     767        44         323     157           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+segment_loader                     1194 external procedure  is an external procedure.  
+load_segment                            internal procedure  shares stack frame of external procedure segment_loader.  
+read_control_word                       internal procedure  shares stack frame of external procedure segment_loader.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+segment_loader           000100 header_area                 segment_loader
+                         002050 header_ptr                  segment_loader
+                         002052 type                        segment_loader
+                         002053 count                       segment_loader
+                         002054 seg_ptr                     segment_loader
+                         002056 text_ptr                    segment_loader
+                         002060 text_no                     segment_loader
+                         002062 link_ptr                    segment_loader
+                         002064 seg_number                  segment_loader
+                         002065 expect_link                 segment_loader
+                         002066 expect_defs                 segment_loader
+                         002070 control_ptr                 segment_loader
+                         002072 last_sltep                  segment_loader
+                         002074 tsdw                        segment_loader
+                         002076 reading_sdw                 segment_loader
+                         002100 ptp                         segment_loader
+                         002102 control_word                segment_loader
+                         002104 hclsp                       segment_loader
+                         002106 definitions_ptr             segment_loader
+                         002110 astep                       segment_loader
+                         002112 sltp                        segment_loader
+                         002114 sltep                       segment_loader
+                         002116 lotp                        segment_loader
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+disk_reader                   make_sdw                      pc_wired$write                pmut$swap_sdw
+sdw_util_$set_access          slt_manager$build_entry       syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ai_linkage$                   as_linkage$                   definitions_$                 lot$
+slt$                          wi_linkage$                   ws_linkage$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000122        84 000130        85 000131        87 000132        88 000134        89 000136        91 000140
+     93 000142        97 000144        99 000146       101 000151       106 000176       111 000224       113 000235
+    114 000237       118 000265       120 000271       123 000313       124 000314       126 000316       128 000322
+    134 000334       137 000340       142 000347       146 000352       148 000354       151 000363       153 000373
+    155 000374       158 000375       159 000377       160 000402       162 000405       164 000406       166 000411
+    169 000433       171 000434       172 000437       175 000443       177 000454       178 000462       181 000465
+    183 000467       186 000470       189 000514       192 000521       193 000522       194 000524       197 000530
+    199 000532       203 000533       206 000535       210 000536       213 000537       214 000550       217 000574
+    219 000600       221 000604       222 000621       225 000626       226 000630       228 000645       230 000660
+    232 000663       234 000674       236 000707       238 000725       240 000730       248 000731       255 000733
+    257 000746       258 000752       260 000756
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

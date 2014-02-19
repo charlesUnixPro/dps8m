@@ -1,0 +1,1124 @@
+		Generation of System MR12.3mu on Tape m3745_mastmult,den=1600 at 11/14/89  0931.4 mst Tue
+
+
+	NAME		     DATE CHANGED	      AUTHOR	      LANG	PATHNAME
+
+
+bootload_tape_label               11/11/89  0955.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+bound_bootload_0                  11/11/89  1136.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  toehold                         11/11/89  0934.0  Hirneisen.SysMaint.a    alm         
+  bootload_early_dump             11/11/89  0937.4  Hirneisen.SysMaint.a    alm         
+  bootload_abs_mode               11/11/89  0953.0  Hirneisen.SysMaint.a    alm         
+  bootload_0                      11/11/89  0953.2  Hirneisen.SysMaint.a    alm         
+  bootload_console                11/11/89  0937.9  Hirneisen.SysMaint.a    alm         
+  bootload_dseg                   11/11/89  0937.7  Hirneisen.SysMaint.a    alm         
+  bootload_error                  11/11/89  0936.9  Hirneisen.SysMaint.a    alm         
+  bootload_faults                 11/11/89  0936.8  Hirneisen.SysMaint.a    alm         
+  bootload_flagbox                11/11/89  0936.6  Hirneisen.SysMaint.a    alm         
+  bootload_formline               11/11/89  0936.4  Hirneisen.SysMaint.a    alm         
+  bootload_info                   11/11/89  1036.4  Hirneisen.SysMaint.a    cds         
+  bootload_io                     11/11/89  0936.2  Hirneisen.SysMaint.a    alm         
+  bootload_linker                 11/11/89  0936.0  Hirneisen.SysMaint.a    alm         
+  bootload_loader                 11/11/89  0935.6  Hirneisen.SysMaint.a    alm         
+  bootload_slt_manager            11/11/89  0935.4  Hirneisen.SysMaint.a    alm         
+  bootload_tape_fw                11/11/89  0935.0  Hirneisen.SysMaint.a    alm         
+  template_slt_                   11/11/89  0934.4  Hirneisen.SysMaint.a    alm         
+ 
+fw.mtp610.m610.y2                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.mtp601.m601.t1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.mtc500.m500.v1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+bound_hc_data_wired               11/11/89  1134.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  scs                             11/11/89  1100.8  Hirneisen.SysMaint.a    cds         
+  hardcore_sct_seg                11/11/89  0953.3  Hirneisen.SysMaint.a    alm         
+  wired_hardcore_data             11/11/89  1100.5  Hirneisen.SysMaint.a    cds         
+ 
+bootload_1                        11/11/89  0955.4  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+bound_active_1                    11/11/89  1133.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  initializer                     11/11/89  1027.7  Hirneisen.SysMaint.a    PL/I        
+  call_bce                        11/11/89  1028.8  Hirneisen.SysMaint.a    PL/I        
+  freecore                        11/11/89  1028.2  Hirneisen.SysMaint.a    PL/I        
+  prds_init                       11/11/89  1027.5  Hirneisen.SysMaint.a    PL/I        
+  fast_connect_init               11/11/89  0954.3  Hirneisen.SysMaint.a    alm         
+  wire_proc                       11/11/89  1026.3  Hirneisen.SysMaint.a    PL/I        
+  get_main                        11/11/89  1028.0  Hirneisen.SysMaint.a    PL/I        
+  rsw_util                        11/11/89  1027.1  Hirneisen.SysMaint.a    PL/I        
+  mask_instruction                11/11/89  0954.1  Hirneisen.SysMaint.a    alm         
+  init_scu                        11/11/89  1027.8  Hirneisen.SysMaint.a    PL/I        
+  flagbox_mgr                     11/11/89  1028.4  Hirneisen.SysMaint.a    PL/I        
+  ptw_util_                       11/11/89  1027.3  Hirneisen.SysMaint.a    PL/I        
+  sdw_util_                       11/11/89  1026.6  Hirneisen.SysMaint.a    PL/I        
+  dbr_util_                       11/11/89  1028.7  Hirneisen.SysMaint.a    PL/I        
+  delete_segs                     11/11/89  1028.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_bce_wired                   11/11/89  1136.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_alm_die                     11/11/89  0954.0  Hirneisen.SysMaint.a    alm         
+  bce_check_abort                 11/11/89  1015.9  Hirneisen.SysMaint.a    PL/I        
+  bce_console_io                  11/11/89  1015.7  Hirneisen.SysMaint.a    PL/I        
+  bce_continue                    11/11/89  1015.4  Hirneisen.SysMaint.a    PL/I        
+  bce_data                        11/11/89  1036.6  Hirneisen.SysMaint.a    cds         
+  bce_die                         11/11/89  1015.3  Hirneisen.SysMaint.a    PL/I        
+  bce_error                       11/11/89  1015.1  Hirneisen.SysMaint.a    PL/I        
+  bce_esd                         11/11/89  1014.9  Hirneisen.SysMaint.a    PL/I        
+  bce_execute_command_            11/11/89  1014.8  Hirneisen.SysMaint.a    PL/I        
+  bce_fwload                      11/11/89  1014.5  Hirneisen.SysMaint.a    PL/I        
+  bce_get_to_command_level        11/11/89  1014.2  Hirneisen.SysMaint.a    PL/I        
+  bce_ioi_post                    11/11/89  1014.0  Hirneisen.SysMaint.a    PL/I        
+  bce_list_requests_              11/11/89  1013.9  Hirneisen.SysMaint.a    PL/I        
+  bce_listen_                     11/11/89  1013.7  Hirneisen.SysMaint.a    PL/I        
+  bce_map_over_requests_          11/11/89  1013.6  Hirneisen.SysMaint.a    PL/I        
+  bce_query                       11/11/89  1013.4  Hirneisen.SysMaint.a    PL/I        
+  bce_request_table_              11/11/89  0953.4  Hirneisen.SysMaint.a    alm         
+  bootload_disk_io                11/11/89  1013.2  Hirneisen.SysMaint.a    PL/I        
+  init_bce                        11/11/89  1012.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_disk_util_1                 11/11/89  1138.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  read_disk                       11/11/89  1003.9  Hirneisen.SysMaint.a    PL/I        
+  disk_run                        11/11/89  1004.3  Hirneisen.SysMaint.a    PL/I        
+  disk_name_pvtx                  11/11/89  1004.5  Hirneisen.SysMaint.a    PL/I        
+  find_partition                  11/11/89  1004.2  Hirneisen.SysMaint.a    PL/I        
+  stock_man                       11/11/89  1003.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_error_active_1              11/11/89  1138.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  terminate_proc                  11/11/89  1001.2  Hirneisen.SysMaint.a    PL/I        
+  hardware_fault                  11/11/89  1001.4  Hirneisen.SysMaint.a    PL/I        
+  cache_tester                    11/11/89  1001.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_init_1                      11/11/89  1138.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  real_initializer                11/11/89  1058.5  Hirneisen.SysMaint.a    PL/I        
+  initial_error_handler           11/11/89  1022.0  Hirneisen.SysMaint.a    PL/I        
+  tc_init                         11/11/89  1020.0  Hirneisen.SysMaint.a    PL/I        
+  initialize_faults               11/11/89  1021.7  Hirneisen.SysMaint.a    PL/I        
+  initialize_faults_data          11/11/89  1100.3  Hirneisen.SysMaint.a    cds         
+  make_sdw                        11/11/89  1021.4  Hirneisen.SysMaint.a    PL/I        
+  map_onto_disk                   11/11/89  1021.2  Hirneisen.SysMaint.a    PL/I        
+  init_hc_part                    11/11/89  1022.2  Hirneisen.SysMaint.a    PL/I        
+  pre_link_hc                     11/11/89  1021.0  Hirneisen.SysMaint.a    PL/I        
+  slt_manager                     11/11/89  1020.6  Hirneisen.SysMaint.a    PL/I        
+  segment_loader                  11/11/89  1020.8  Hirneisen.SysMaint.a    PL/I        
+  disk_reader                     11/11/89  1022.8  Hirneisen.SysMaint.a    PL/I        
+  hc_load_mpc                     11/11/89  1022.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_interceptors                11/11/89  1139.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  fim                             11/11/89  0952.5  Hirneisen.SysMaint.a    alm         
+  wired_fim                       11/11/89  0951.6  Hirneisen.SysMaint.a    alm         
+  iom_interrupt                   11/11/89  0952.0  Hirneisen.SysMaint.a    alm         
+  fim_util                        11/11/89  0952.2  Hirneisen.SysMaint.a    alm         
+  sys_trouble                     11/11/89  0951.8  Hirneisen.SysMaint.a    alm         
+ 
+bound_io_wired                    11/11/89  1140.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  io_chnl_util                    11/11/89  1016.0  Hirneisen.SysMaint.a    PL/I        
+  io_error                        11/11/89  1015.9  Hirneisen.SysMaint.a    PL/I        
+  ioi_masked                      11/11/89  1015.3  Hirneisen.SysMaint.a    PL/I        
+  ioi_page_table                  11/11/89  1014.9  Hirneisen.SysMaint.a    PL/I        
+  ioi_wire                        11/11/89  1014.8  Hirneisen.SysMaint.a    PL/I        
+  io_log_status_info              11/11/89  1100.2  Hirneisen.SysMaint.a    cds         
+  trace                           11/11/89  1014.6  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_io_active                   11/11/89  1140.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  ioam_                           11/11/89  1018.7  Hirneisen.SysMaint.a    PL/I        
+  ioi_usurp_channels              11/11/89  1016.6  Hirneisen.SysMaint.a    PL/I        
+  ioi_suspend_devices             11/11/89  1016.9  Hirneisen.SysMaint.a    PL/I        
+  ioi_assignment                  11/11/89  1018.4  Hirneisen.SysMaint.a    PL/I        
+  ioi_connect                     11/11/89  1018.0  Hirneisen.SysMaint.a    PL/I        
+  ioi_device                      11/11/89  1017.9  Hirneisen.SysMaint.a    PL/I        
+  ioi_get_status                  11/11/89  1017.3  Hirneisen.SysMaint.a    PL/I        
+  ioi_set                         11/11/89  1017.1  Hirneisen.SysMaint.a    PL/I        
+  ioi_config                      11/11/89  1018.2  Hirneisen.SysMaint.a    PL/I        
+  ioi_workspace                   11/11/89  1016.2  Hirneisen.SysMaint.a    PL/I        
+  ioi_verify_lock                 11/11/89  1016.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_iom_support                 11/11/89  1143.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  iom_connect                     11/11/89  0951.2  Hirneisen.SysMaint.a    alm         
+  iom_switches                    11/11/89  1013.7  Hirneisen.SysMaint.a    PL/I        
+  io_manager                      11/11/89  0951.4  Hirneisen.SysMaint.a    alm         
+  iom_assign                      11/11/89  1014.5  Hirneisen.SysMaint.a    PL/I        
+  iom_error                       11/11/89  1014.3  Hirneisen.SysMaint.a    PL/I        
+  iom_overhead                    11/11/89  1014.1  Hirneisen.SysMaint.a    PL/I        
+  iom_reset                       11/11/89  1013.9  Hirneisen.SysMaint.a    PL/I        
+  iom_unassign                    11/11/89  1013.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_library_1_                  11/11/89  1145.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  init_vol_header_                11/11/89  1005.1  Hirneisen.SysMaint.a    PL/I        
+  tape_checksum_                  11/11/89  0949.1  Hirneisen.SysMaint.a    alm         
+  cv_integer_string_              11/11/89  1007.0  Hirneisen.SysMaint.a    PL/I        
+  cv_dec_                         11/11/89  1007.6  Hirneisen.SysMaint.a    PL/I        
+  cv_bin_                         11/11/89  1008.1  Hirneisen.SysMaint.a    PL/I        
+  cv_float_                       11/11/89  1007.4  Hirneisen.SysMaint.a    PL/I        
+  unwinder_                       11/11/89  0959.6  Hirneisen.SysMaint.a    PL/I        
+  unwind_stack_                   11/11/89  0959.8  Hirneisen.SysMaint.a    PL/I        
+  nonlocal_goto_                  11/11/89  0949.5  Hirneisen.SysMaint.a    alm         
+  pl1_signal_                     11/11/89  1001.6  Hirneisen.SysMaint.a    PL/I        
+  pl1_signal_conversion_          11/11/89  1001.4  Hirneisen.SysMaint.a    PL/I        
+  ondata_                         11/11/89  0949.4  Hirneisen.SysMaint.a    alm         
+  condition_                      11/11/89  0950.3  Hirneisen.SysMaint.a    alm         
+  signal_                         11/11/89  1000.8  Hirneisen.SysMaint.a    PL/I        
+  sct_manager_                    11/11/89  1001.1  Hirneisen.SysMaint.a    PL/I        
+  define_area_                    11/11/89  1006.5  Hirneisen.SysMaint.a    PL/I        
+  cv_config_card_                 11/11/89  1007.8  Hirneisen.SysMaint.a    PL/I        
+  oc_trans_input_                 11/11/89  1002.2  Hirneisen.SysMaint.a    PL/I        
+  hash_index_                     11/11/89  0949.7  Hirneisen.SysMaint.a    alm         
+  bcd_to_ascii_                   11/11/89  0950.4  Hirneisen.SysMaint.a    alm         
+  cu_                             11/11/89  0950.0  Hirneisen.SysMaint.a    alm         
+  requote_string_                 11/11/89  1001.3  Hirneisen.SysMaint.a    PL/I        
+  bce_command_processor_          11/11/89  1008.8  Hirneisen.SysMaint.a    PL/I        
+  bootload_fs_                    11/11/89  1008.5  Hirneisen.SysMaint.a    PL/I        
+  com_err_                        11/11/89  1008.2  Hirneisen.SysMaint.a    PL/I        
+  active_fnc_err_                 11/11/89  0950.8  Hirneisen.SysMaint.a    alm         
+  sub_err_                        11/11/89  1000.5  Hirneisen.SysMaint.a    PL/I        
+  decode_descriptor_              11/11/89  1006.8  Hirneisen.SysMaint.a    PL/I        
+  stack_header_util_              11/11/89  0949.2  Hirneisen.SysMaint.a    alm         
+  fill_vol_extents_               11/11/89  1005.9  Hirneisen.SysMaint.a    PL/I        
+  cv_fsdisk_error_                11/11/89  1007.3  Hirneisen.SysMaint.a    PL/I        
+  assign_                         11/11/89  0950.5  Hirneisen.SysMaint.a    alm         
+  unpack_picture_                 11/11/89  1000.1  Hirneisen.SysMaint.a    PL/I        
+  adjust_float_                   11/11/89  0950.7  Hirneisen.SysMaint.a    alm         
+  picture_info_                   11/11/89  1001.9  Hirneisen.SysMaint.a    PL/I        
+  config_data_                    11/11/89  1059.8  Hirneisen.SysMaint.a    cds         
+  get_defptr_                     11/11/89  0949.8  Hirneisen.SysMaint.a    alm         
+  filemap_checksum_               11/11/89  0949.9  Hirneisen.SysMaint.a    alm         
+  match_star_name_                11/11/89  1004.6  Hirneisen.SysMaint.a    PL/I        
+  get_equal_name_                 11/11/89  1005.6  Hirneisen.SysMaint.a    PL/I        
+  get_temp_segments_              11/11/89  1005.3  Hirneisen.SysMaint.a    PL/I        
+  display_access_class_           11/11/89  1006.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_library_wired_              11/11/89  1151.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  PNOTICE_exec                    11/11/89  0948.2  Hirneisen.SysMaint.a    alm         
+  clock_                          11/11/89  0946.5  Hirneisen.SysMaint.a    alm         
+  config_                         11/11/89  0954.8  Hirneisen.SysMaint.a    PL/I        
+  formline_                       11/11/89  0944.3  Hirneisen.SysMaint.a    alm         
+  pc_check_tables_                11/11/89  0953.9  Hirneisen.SysMaint.a    PL/I        
+  oc_trans_output_                11/11/89  0954.4  Hirneisen.SysMaint.a    PL/I        
+  wired_utility_                  11/11/89  0940.0  Hirneisen.SysMaint.a    alm         
+  char_bit_offset_fcns_           11/11/89  0946.6  Hirneisen.SysMaint.a    alm         
+  mvt_                            11/11/89  0943.2  Hirneisen.SysMaint.a    alm         
+  mrl_                            11/11/89  0943.3  Hirneisen.SysMaint.a    alm         
+  find_bit_                       11/11/89  0944.8  Hirneisen.SysMaint.a    alm         
+  find_char_                      11/11/89  0944.6  Hirneisen.SysMaint.a    alm         
+  ioa_                            11/11/89  0954.6  Hirneisen.SysMaint.a    PL/I        
+  template_area_header            11/11/89  1059.3  Hirneisen.SysMaint.a    cds         
+  alloc_                          11/11/89  0948.0  Hirneisen.SysMaint.a    alm         
+  pl1_operators_                  11/11/89  0941.3  Hirneisen.SysMaint.a    alm         
+  any_to_any_                     11/11/89  0947.3  Hirneisen.SysMaint.a    alm         
+  dec_ops_                        11/11/89  0946.2  Hirneisen.SysMaint.a    alm         
+  cplx_dec_ops_                   11/11/89  0946.4  Hirneisen.SysMaint.a    alm         
+  record_io_                      11/11/89  0940.5  Hirneisen.SysMaint.a    alm         
+  put_field_                      11/11/89  0940.9  Hirneisen.SysMaint.a    alm         
+  put_format_                     11/11/89  0940.6  Hirneisen.SysMaint.a    alm         
+  math_routines_                  11/11/89  0943.5  Hirneisen.SysMaint.a    alm         
+  square_root_                    11/11/89  0940.3  Hirneisen.SysMaint.a    alm         
+  double_square_root_             11/11/89  0945.3  Hirneisen.SysMaint.a    alm         
+  sine_                           11/11/89  0940.4  Hirneisen.SysMaint.a    alm         
+  double_sine_                    11/11/89  0945.4  Hirneisen.SysMaint.a    alm         
+  tangent_                        11/11/89  0940.1  Hirneisen.SysMaint.a    alm         
+  double_tangent_                 11/11/89  0945.1  Hirneisen.SysMaint.a    alm         
+  logarithm_                      11/11/89  0943.7  Hirneisen.SysMaint.a    alm         
+  double_logarithm_               11/11/89  0945.7  Hirneisen.SysMaint.a    alm         
+  exponential_                    11/11/89  0944.9  Hirneisen.SysMaint.a    alm         
+  double_exponential_             11/11/89  0945.8  Hirneisen.SysMaint.a    alm         
+  arc_tangent_                    11/11/89  0947.0  Hirneisen.SysMaint.a    alm         
+  double_arc_tangent_             11/11/89  0945.9  Hirneisen.SysMaint.a    alm         
+  arc_sine_                       11/11/89  0947.2  Hirneisen.SysMaint.a    alm         
+  double_arc_sine_                11/11/89  0946.1  Hirneisen.SysMaint.a    alm         
+  integer_power_integer_          11/11/89  0943.9  Hirneisen.SysMaint.a    alm         
+  power_integer_                  11/11/89  0941.1  Hirneisen.SysMaint.a    alm         
+  power_                          11/11/89  0941.2  Hirneisen.SysMaint.a    alm         
+  math_constants_                 11/11/89  0943.6  Hirneisen.SysMaint.a    alm         
+  call_math_error_                11/11/89  0946.8  Hirneisen.SysMaint.a    alm         
+  fort_math_ops_                  11/11/89  0944.2  Hirneisen.SysMaint.a    alm         
+  bfp_to_hfp_                     11/11/89  0946.9  Hirneisen.SysMaint.a    alm         
+  hfp_to_bfp_                     11/11/89  0944.0  Hirneisen.SysMaint.a    alm         
+  principal_angle_                11/11/89  0941.1  Hirneisen.SysMaint.a    alm         
+  double_principal_angle_         11/11/89  0945.5  Hirneisen.SysMaint.a    alm         
+  math_routines_end_              11/11/89  0943.4  Hirneisen.SysMaint.a    alm         
+ 
+bound_page_control                11/11/89  1105.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  page_fault                      11/11/89  0925.1  Hirneisen.SysMaint.a    alm         
+  page                            11/11/89  0926.5  Hirneisen.SysMaint.a    alm         
+  post_purge                      11/11/89  0924.2  Hirneisen.SysMaint.a    alm         
+  device_control                  11/11/89  0931.5  Hirneisen.SysMaint.a    alm         
+  dctl                            11/11/89  0931.8  Hirneisen.SysMaint.a    alm         
+  page_error                      11/11/89  0926.0  Hirneisen.SysMaint.a    alm         
+  free_store                      11/11/89  0930.9  Hirneisen.SysMaint.a    alm         
+  quotaw                          11/11/89  1008.6  Hirneisen.SysMaint.a    PL/I        
+  pc                              11/11/89  1026.8  Hirneisen.SysMaint.a    PL/I        
+  pc_abs                          11/11/89  1026.4  Hirneisen.SysMaint.a    PL/I        
+  pc_wired                        11/11/89  1026.1  Hirneisen.SysMaint.a    PL/I        
+  get_ptrs_                       11/11/89  0927.0  Hirneisen.SysMaint.a    alm         
+  disk_control                    11/11/89  1009.9  Hirneisen.SysMaint.a    PL/I        
+  disk_error_data                 11/11/89  1027.9  Hirneisen.SysMaint.a    cds         
+  thread                          11/11/89  0923.8  Hirneisen.SysMaint.a    alm         
+  pc_trace                        11/11/89  0924.6  Hirneisen.SysMaint.a    alm         
+  pc_trace_pl1                    11/11/89  1008.9  Hirneisen.SysMaint.a    PL/I        
+  evict_page                      11/11/89  0931.1  Hirneisen.SysMaint.a    alm         
+  core_queue_man                  11/11/89  0932.1  Hirneisen.SysMaint.a    alm         
+  cam_cache                       11/11/89  0932.3  Hirneisen.SysMaint.a    alm         
+  lock_volmap                     11/11/89  0926.7  Hirneisen.SysMaint.a    alm         
+  stock                           11/11/89  0924.0  Hirneisen.SysMaint.a    alm         
+  volmap                          11/11/89  0923.6  Hirneisen.SysMaint.a    alm         
+  volmap_page                     11/11/89  0923.2  Hirneisen.SysMaint.a    alm         
+  pc_deposit                      11/11/89  1009.3  Hirneisen.SysMaint.a    PL/I        
+  volmap_util                     11/11/89  1008.4  Hirneisen.SysMaint.a    PL/I        
+  hc_dm_util                      11/11/89  1009.6  Hirneisen.SysMaint.a    PL/I        
+  page_synch                      11/11/89  0924.8  Hirneisen.SysMaint.a    alm         
+  pc_signal                       11/11/89  1009.0  Hirneisen.SysMaint.a    PL/I        
+  bootload_disk_post              11/11/89  1010.8  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_priv_1                      11/11/89  1106.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  privileged_mode_ut              11/11/89  0922.4  Hirneisen.SysMaint.a    alm         
+  absadr                          11/11/89  0923.1  Hirneisen.SysMaint.a    alm         
+  parity_check                    11/11/89  0922.9  Hirneisen.SysMaint.a    alm         
+  syserr                          11/11/89  0922.1  Hirneisen.SysMaint.a    alm         
+  syserr_real                     11/11/89  1007.9  Hirneisen.SysMaint.a    PL/I        
+  wire_stack                      11/11/89  0921.9  Hirneisen.SysMaint.a    alm         
+ 
+bound_tc_priv                     11/11/89  1106.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  pxss                            11/11/89  0925.8  Hirneisen.SysMaint.a    alm         
+  meter_response_time             11/11/89  0926.8  Hirneisen.SysMaint.a    alm         
+ 
+bound_temp_1                      11/11/89  1108.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  set_smic_pattern                11/11/89  0949.6  Hirneisen.SysMaint.a    PL/I        
+  scas_init                       11/11/89  0950.0  Hirneisen.SysMaint.a    PL/I        
+  scs_and_clock_init              11/11/89  0949.8  Hirneisen.SysMaint.a    PL/I        
+  disk_init                       11/11/89  0959.1  Hirneisen.SysMaint.a    PL/I        
+  establish_config_deck           11/11/89  0958.9  Hirneisen.SysMaint.a    PL/I        
+  init_sst                        11/11/89  0953.0  Hirneisen.SysMaint.a    PL/I        
+  init_aste_pools                 11/11/89  0957.6  Hirneisen.SysMaint.a    PL/I        
+  init_pvt                        11/11/89  0953.8  Hirneisen.SysMaint.a    PL/I        
+  iom_data_init                   11/11/89  0951.5  Hirneisen.SysMaint.a    PL/I        
+  ioi_init                        11/11/89  0951.7  Hirneisen.SysMaint.a    PL/I        
+  io_config_init                  11/11/89  0952.2  Hirneisen.SysMaint.a    PL/I        
+  collect_free_core               11/11/89  1000.0  Hirneisen.SysMaint.a    PL/I        
+  make_segs_paged                 11/11/89  0950.8  Hirneisen.SysMaint.a    PL/I        
+  init_empty_root                 11/11/89  0954.3  Hirneisen.SysMaint.a    PL/I        
+  get_io_segs                     11/11/89  0957.8  Hirneisen.SysMaint.a    PL/I        
+  announce_chwm                   11/11/89  1001.0  Hirneisen.SysMaint.a    PL/I        
+  init_partitions                 11/11/89  0954.1  Hirneisen.SysMaint.a    PL/I        
+  init_root_vols                  11/11/89  0953.4  Hirneisen.SysMaint.a    PL/I        
+  create_rpv_partition            11/11/89  0959.6  Hirneisen.SysMaint.a    PL/I        
+  move_non_perm_wired_segs        11/11/89  0950.6  Hirneisen.SysMaint.a    PL/I        
+  read_disk_label                 11/11/89  0950.4  Hirneisen.SysMaint.a    PL/I        
+  init_early_config               11/11/89  0957.2  Hirneisen.SysMaint.a    PL/I        
+  find_rpv_subsystem              11/11/89  0958.2  Hirneisen.SysMaint.a    PL/I        
+  boot_rpv_subsystem              11/11/89  1000.7  Hirneisen.SysMaint.a    PL/I        
+  load_disk_mpcs                  11/11/89  0951.4  Hirneisen.SysMaint.a    PL/I        
+  init_toehold                    11/11/89  0952.5  Hirneisen.SysMaint.a    PL/I        
+  save_handler_mc                 11/11/89  0925.6  Hirneisen.SysMaint.a    alm         
+  find_file_partition             11/11/89  0958.5  Hirneisen.SysMaint.a    PL/I        
+  load_mst                        11/11/89  0951.0  Hirneisen.SysMaint.a    PL/I        
+  tape_reader                     11/11/89  0949.5  Hirneisen.SysMaint.a    PL/I        
+  boot_tape_io                    11/11/89  1000.4  Hirneisen.SysMaint.a    PL/I        
+  establish_temp_segs             11/11/89  0958.7  Hirneisen.SysMaint.a    PL/I        
+  bce_abs_seg                     11/11/89  1000.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_unencacheable               11/11/89  1109.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  cache_priv                      11/11/89  0925.0  Hirneisen.SysMaint.a    alm         
+ 
+bound_wired_1                     11/11/89  1130.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  vtoc_interrupt                  11/11/89  0943.7  Hirneisen.SysMaint.a    PL/I        
+  disk_emergency                  11/11/89  0945.5  Hirneisen.SysMaint.a    PL/I        
+  ocdcm_                          11/11/89  0944.3  Hirneisen.SysMaint.a    PL/I        
+  scr_util                        11/11/89  0943.8  Hirneisen.SysMaint.a    PL/I        
+  debug_check                     11/11/89  0952.7  Hirneisen.SysMaint.a    PL/I        
+  wired_plm                       11/11/89  0943.5  Hirneisen.SysMaint.a    PL/I        
+  wired_shutdown                  11/11/89  0943.4  Hirneisen.SysMaint.a    PL/I        
+  pc_recover_sst                  11/11/89  0944.1  Hirneisen.SysMaint.a    PL/I        
+ 
+emergency_shutdown                11/11/89  0939.0  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+error_table_                      11/11/89  0936.7  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+init_processor                    11/11/89  0934.6  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+inzr_stk0                         11/11/89  1007.7  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+pds                               11/11/89  1007.4  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+prds                              11/11/89  1007.0  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+pvt                               11/11/89  1006.7  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+restart_fault                     11/11/89  0920.4  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+return_to_ring_0_                 11/11/89  0920.3  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+signaller                         11/11/89  0919.8  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+sst_seg                           11/11/89  1006.2  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+sys_boot_info                     11/11/89  1036.4  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+sys_info                          11/11/89  1006.0  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+syserr_data                       11/11/89  1005.8  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+tc_data                           11/11/89  1005.5  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+fw.dsc500.d500.x1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.dsc191.m191.v1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.msp800.msp8.k1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+auto.ec                           02/20/85  0925.6  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+dump.ec                           11/02/84  0913.1  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+go.ec                             07/11/84  0944.4  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+rtb.ec                            07/11/84  0944.4  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+bound_bce_dump_                   11/11/89  1133.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_dump                        11/11/89  1025.4  Hirneisen.SysMaint.a    PL/I        
+  bce_create_sstnt                11/11/89  1026.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_bce_exec_com_               11/11/89  1134.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_exec_com_                   11/11/89  1025.2  Hirneisen.SysMaint.a    PL/I        
+  bce_exec_com_input              11/11/89  1024.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_bce_paged                   11/11/89  1134.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_alert                       11/11/89  1024.5  Hirneisen.SysMaint.a    PL/I        
+  bce_appending_simulation        11/11/89  1024.0  Hirneisen.SysMaint.a    PL/I        
+  bce_copy_disk                   11/11/89  1023.6  Hirneisen.SysMaint.a    PL/I        
+  bce_parse_disk_spec             11/11/89  1022.7  Hirneisen.SysMaint.a    PL/I        
+  bce_test_disk                   11/11/89  1021.7  Hirneisen.SysMaint.a    PL/I        
+  bce_display_disk_label          11/11/89  1023.4  Hirneisen.SysMaint.a    PL/I        
+  bce_get_flagbox                 11/11/89  1023.2  Hirneisen.SysMaint.a    PL/I        
+  bce_lock_mca                    11/11/89  1023.0  Hirneisen.SysMaint.a    PL/I        
+  bce_query_af                    11/11/89  1022.6  Hirneisen.SysMaint.a    PL/I        
+  bce_ready                       11/11/89  1022.4  Hirneisen.SysMaint.a    PL/I        
+  bce_severity                    11/11/89  1022.3  Hirneisen.SysMaint.a    PL/I        
+  bce_shutdown_state              11/11/89  1022.1  Hirneisen.SysMaint.a    PL/I        
+  bce_state                       11/11/89  1022.0  Hirneisen.SysMaint.a    PL/I        
+  bootload_fs_cmds_               11/11/89  1021.5  Hirneisen.SysMaint.a    PL/I        
+  bootload_qedx                   11/11/89  1021.3  Hirneisen.SysMaint.a    PL/I        
+  config_deck_edit_               11/11/89  1021.0  Hirneisen.SysMaint.a    PL/I        
+  init_clocks                     11/11/89  1020.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_bce_probe_                  11/11/89  1135.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_probe                       11/11/89  1032.9  Hirneisen.SysMaint.a    PL/I        
+  bce_component_to_wordnum_       11/11/89  1019.8  Hirneisen.SysMaint.a    PL/I        
+  bce_display_instruction_        11/11/89  1019.4  Hirneisen.SysMaint.a    PL/I        
+  bce_display_scu_                11/11/89  1019.2  Hirneisen.SysMaint.a    PL/I        
+  bce_get_defptr_                 11/11/89  1019.0  Hirneisen.SysMaint.a    PL/I        
+  bce_inst_length_                11/11/89  1018.8  Hirneisen.SysMaint.a    PL/I        
+  bce_name_to_segnum_             11/11/89  1018.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_bce_save_                   11/11/89  1135.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bce_save                        11/11/89  1017.1  Hirneisen.SysMaint.a    PL/I        
+  bce_save_util_                  11/11/89  1016.0  Hirneisen.SysMaint.a    PL/I        
+  tape_error_data                 11/11/89  1036.8  Hirneisen.SysMaint.a    cds         
+ 
+bound_date_time_                  11/11/89  1137.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  convert_date_to_binary_         11/11/89  1037.4  Hirneisen.SysMaint.a    PL/I        
+  time_defaults_                  11/11/89  0933.7  Hirneisen.SysMaint.a    alm         
+  time_info_                      11/11/89  1034.9  Hirneisen.SysMaint.a    cds         
+  date_time_                      11/11/89  1011.8  Hirneisen.SysMaint.a    PL/I        
+  encode_clock_value_             11/11/89  1011.6  Hirneisen.SysMaint.a    PL/I        
+  cv_fstime_                      11/11/89  0933.9  Hirneisen.SysMaint.a    alm         
+  date_name_                      11/11/89  1012.7  Hirneisen.SysMaint.a    PL/I        
+  set_system_time_zone_           11/11/89  1011.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_multics_bce_                11/11/89  1104.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  command_processor_              11/11/89  1014.0  Hirneisen.SysMaint.a    PL/I        
+  find_command_                   11/11/89  1013.0  Hirneisen.SysMaint.a    PL/I        
+  pipe_                           11/11/89  1011.3  Hirneisen.SysMaint.a    PL/I        
+  cp_data_                        11/11/89  1029.3  Hirneisen.SysMaint.a    cds         
+  config_deck_parse_              11/11/89  1013.6  Hirneisen.SysMaint.a    PL/I        
+  config_deck_data_               11/11/89  1029.6  Hirneisen.SysMaint.a    cds         
+  display_disk_label_             11/11/89  1013.4  Hirneisen.SysMaint.a    PL/I        
+  equal                           11/11/89  1013.3  Hirneisen.SysMaint.a    PL/I        
+  plus                            11/11/89  1012.1  Hirneisen.SysMaint.a    PL/I        
+  substr                          11/11/89  1011.6  Hirneisen.SysMaint.a    PL/I        
+  pl1_decat_char_                 11/11/89  1012.2  Hirneisen.SysMaint.a    PL/I        
+  move_r_or_t_                    11/11/89  0932.5  Hirneisen.SysMaint.a    alm         
+  numeric_to_ascii_               11/11/89  1012.8  Hirneisen.SysMaint.a    PL/I        
+  numeric_to_ascii_base_          11/11/89  1012.6  Hirneisen.SysMaint.a    PL/I        
+  op_mnemonic_                    11/11/89  1029.1  Hirneisen.SysMaint.a    cds         
+  relocate_instruction_           11/11/89  1011.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_qedx_                       11/11/89  1109.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  edx_util_                       11/11/89  0956.4  Hirneisen.SysMaint.a    PL/I        
+  get_addr_                       11/11/89  0956.2  Hirneisen.SysMaint.a    PL/I        
+  search_file_                    11/11/89  0954.9  Hirneisen.SysMaint.a    PL/I        
+  qedx_                           11/11/89  0955.2  Hirneisen.SysMaint.a    PL/I        
+  check_entryname_                11/11/89  0956.8  Hirneisen.SysMaint.a    PL/I        
+  qedx                            11/11/89  0956.0  Hirneisen.SysMaint.a    PL/I        
+ 
+fw.mtc500.m500.v1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.mtp601.m601.t1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.mtp610.m610.y2                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.urcmpc.u400.m1                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.urcmpc.ucmn.a2                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+fw.urcmpc.ucrp.b2                 10/22/88  1510.3  Hirneisen.SysMaint.a    NON-OBJECT >ldd>firmware                               
+
+active_all_rings_data             11/11/89  1037.3  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+active_hardcore_data              11/11/89  1037.2  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+admin_gate_                       11/11/89  0955.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+ast_lock_meter_seg                11/11/89  1037.0  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+bound_355_wired                   11/11/89  1133.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  dn355                           11/11/89  1031.9  Hirneisen.SysMaint.a    PL/I        
+  dn355_util                      11/11/89  0954.5  Hirneisen.SysMaint.a    alm         
+  dn355_messages                  11/11/89  0954.6  Hirneisen.SysMaint.a    alm         
+  dn355_boot_interrupt            11/11/89  1031.7  Hirneisen.SysMaint.a    PL/I        
+  fnp_multiplexer                 11/11/89  1031.0  Hirneisen.SysMaint.a    PL/I        
+  channel_manager                 11/11/89  1032.6  Hirneisen.SysMaint.a    PL/I        
+  cmtv                            11/11/89  0954.8  Hirneisen.SysMaint.a    alm         
+  tty_interrupt                   11/11/89  1029.5  Hirneisen.SysMaint.a    PL/I        
+  tty_space_man                   11/11/89  1028.9  Hirneisen.SysMaint.a    PL/I        
+  tty_lock                        11/11/89  1029.2  Hirneisen.SysMaint.a    PL/I        
+  mcs_timer                       11/11/89  1030.2  Hirneisen.SysMaint.a    PL/I        
+  mcs_trace                       11/11/89  1030.0  Hirneisen.SysMaint.a    PL/I        
+  fnp_util                        11/11/89  1030.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_uncp_wired                  11/11/89  1109.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  uncp                            11/11/89  0933.8  Hirneisen.SysMaint.a    PL/I        
+  uncp_multiplexer                11/11/89  0929.9  Hirneisen.SysMaint.a    PL/I        
+  uncp_boot_interrupt             11/11/89  0930.5  Hirneisen.SysMaint.a    PL/I        
+  uncp_util                       11/11/89  0929.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_dir_control                 11/11/89  1137.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  check_gate_acl_                 11/11/89  1010.3  Hirneisen.SysMaint.a    PL/I        
+  acc_list_                       11/11/89  1011.3  Hirneisen.SysMaint.a    PL/I        
+  acl_                            11/11/89  1010.8  Hirneisen.SysMaint.a    PL/I        
+  acc_name_                       11/11/89  1011.0  Hirneisen.SysMaint.a    PL/I        
+  fs_alloc                        11/11/89  1010.1  Hirneisen.SysMaint.a    PL/I        
+  hash                            11/11/89  1009.6  Hirneisen.SysMaint.a    PL/I        
+  allocate_dir_ht_                11/11/89  1010.6  Hirneisen.SysMaint.a    PL/I        
+  pathname_am                     11/11/89  1008.5  Hirneisen.SysMaint.a    PL/I        
+  kst_util                        11/11/89  1009.3  Hirneisen.SysMaint.a    PL/I        
+  kstsrch                         11/11/89  1009.2  Hirneisen.SysMaint.a    PL/I        
+  makeknown_                      11/11/89  1009.0  Hirneisen.SysMaint.a    PL/I        
+  makeunknown_                    11/11/89  1008.8  Hirneisen.SysMaint.a    PL/I        
+  segno_usage                     11/11/89  1008.1  Hirneisen.SysMaint.a    PL/I        
+  get_kstep                       11/11/89  1010.0  Hirneisen.SysMaint.a    PL/I        
+  sum                             11/11/89  1007.8  Hirneisen.SysMaint.a    PL/I        
+  vtoc_attributes                 11/11/89  1004.8  Hirneisen.SysMaint.a    PL/I        
+  change_dtem                     11/11/89  1010.5  Hirneisen.SysMaint.a    PL/I        
+  ref_name_                       11/11/89  1008.3  Hirneisen.SysMaint.a    PL/I        
+  get_pathname_                   11/11/89  1009.8  Hirneisen.SysMaint.a    PL/I        
+  getuid                          11/11/89  0933.6  Hirneisen.SysMaint.a    alm         
+ 
+bound_disk_util_2                 11/11/89  1138.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  accept_fs_disk                  11/11/89  1003.5  Hirneisen.SysMaint.a    PL/I        
+  demount_pv                      11/11/89  1003.3  Hirneisen.SysMaint.a    PL/I        
+  fsout_vol                       11/11/89  1003.0  Hirneisen.SysMaint.a    PL/I        
+  get_pvtx                        11/11/89  1002.8  Hirneisen.SysMaint.a    PL/I        
+  init_volmap_seg                 11/11/89  1002.5  Hirneisen.SysMaint.a    PL/I        
+  logical_volume_manager          11/11/89  1002.2  Hirneisen.SysMaint.a    PL/I        
+  map_free_count                  11/11/89  0933.5  Hirneisen.SysMaint.a    alm         
+  partition_io                    11/11/89  1002.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_error_active_2              11/11/89  1139.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  syserr_copy                     11/11/89  1000.9  Hirneisen.SysMaint.a    PL/I        
+  syserr_seg_manager              11/11/89  1000.6  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_error_wired_2               11/11/89  1139.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  illegal_procedure               11/11/89  0956.9  Hirneisen.SysMaint.a    PL/I        
+  mos_memory_check                11/11/89  0956.7  Hirneisen.SysMaint.a    PL/I        
+  syserr_copy_wired_log           11/11/89  0956.5  Hirneisen.SysMaint.a    PL/I        
+  syserr_log_daemon               11/11/89  0956.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_file_system                 11/11/89  1133.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  truncate                        11/11/89  1040.1  Hirneisen.SysMaint.a    PL/I        
+  terminate_                      11/11/89  1040.5  Hirneisen.SysMaint.a    PL/I        
+  delentry                        11/11/89  1047.2  Hirneisen.SysMaint.a    PL/I        
+  del_dir_tree                    11/11/89  1047.5  Hirneisen.SysMaint.a    PL/I        
+  quota                           11/11/89  1043.8  Hirneisen.SysMaint.a    PL/I        
+  append                          11/11/89  1048.8  Hirneisen.SysMaint.a    PL/I        
+  make_seg                        11/11/89  1044.7  Hirneisen.SysMaint.a    PL/I        
+  makestack                       11/11/89  1044.6  Hirneisen.SysMaint.a    PL/I        
+  initiate_                       11/11/89  1046.1  Hirneisen.SysMaint.a    PL/I        
+  fs_search                       11/11/89  1046.6  Hirneisen.SysMaint.a    PL/I        
+  link_man                        11/11/89  1045.5  Hirneisen.SysMaint.a    PL/I        
+  link_snap                       11/11/89  1045.0  Hirneisen.SysMaint.a    PL/I        
+  status_                         11/11/89  1041.0  Hirneisen.SysMaint.a    PL/I        
+  set                             11/11/89  1042.8  Hirneisen.SysMaint.a    PL/I        
+  asd_                            11/11/89  1048.4  Hirneisen.SysMaint.a    PL/I        
+  chname                          11/11/89  1048.2  Hirneisen.SysMaint.a    PL/I        
+  fs_get                          11/11/89  1046.9  Hirneisen.SysMaint.a    PL/I        
+  ringbr_                         11/11/89  1043.1  Hirneisen.SysMaint.a    PL/I        
+  star_                           11/11/89  1041.4  Hirneisen.SysMaint.a    PL/I        
+  fs_move                         11/11/89  1046.8  Hirneisen.SysMaint.a    PL/I        
+  initiate_search_rules           11/11/89  1045.9  Hirneisen.SysMaint.a    PL/I        
+  trap_caller_caller_             11/11/89  1040.3  Hirneisen.SysMaint.a    PL/I        
+  acl                             11/11/89  1049.2  Hirneisen.SysMaint.a    PL/I        
+  list_inacl_all                  11/11/89  1044.8  Hirneisen.SysMaint.a    PL/I        
+  set_stack_ptr                   11/11/89  0953.6  Hirneisen.SysMaint.a    alm         
+  get_defname_                    11/11/89  1046.5  Hirneisen.SysMaint.a    PL/I        
+  stack_oob_handler               11/11/89  1041.8  Hirneisen.SysMaint.a    PL/I        
+  access_class_check              11/11/89  1058.2  Hirneisen.SysMaint.a    PL/I        
+  reclassify                      11/11/89  1043.6  Hirneisen.SysMaint.a    PL/I        
+  hc_page_trace                   11/11/89  1046.4  Hirneisen.SysMaint.a    PL/I        
+  copy_fdump                      11/11/89  1048.0  Hirneisen.SysMaint.a    PL/I        
+  correct_qused                   11/11/89  1047.7  Hirneisen.SysMaint.a    PL/I        
+  demand_deactivate               11/11/89  1047.1  Hirneisen.SysMaint.a    PL/I        
+  ips_                            11/11/89  0953.7  Hirneisen.SysMaint.a    alm         
+  kst_info                        11/11/89  1045.8  Hirneisen.SysMaint.a    PL/I        
+  level_0_                        11/11/89  1045.7  Hirneisen.SysMaint.a    PL/I        
+  other_process_info              11/11/89  1044.3  Hirneisen.SysMaint.a    PL/I        
+  proc_info                       11/11/89  1044.2  Hirneisen.SysMaint.a    PL/I        
+  quota_util                      11/11/89  1043.8  Hirneisen.SysMaint.a    PL/I        
+  ring0_init                      11/11/89  1043.5  Hirneisen.SysMaint.a    PL/I        
+  ring_0_peek                     11/11/89  1043.4  Hirneisen.SysMaint.a    PL/I        
+  set_disk_table_loc              11/11/89  1042.6  Hirneisen.SysMaint.a    PL/I        
+  set_kst_attributes              11/11/89  1042.5  Hirneisen.SysMaint.a    PL/I        
+  set_privileges                  11/11/89  1042.3  Hirneisen.SysMaint.a    PL/I        
+  set_sons_lvid                   11/11/89  1042.1  Hirneisen.SysMaint.a    PL/I        
+  shutdown                        11/11/89  1041.9  Hirneisen.SysMaint.a    PL/I        
+  tc_shutdown                     11/11/89  1040.9  Hirneisen.SysMaint.a    PL/I        
+  template_address_space          11/11/89  1040.6  Hirneisen.SysMaint.a    PL/I        
+  uid_path_util                   11/11/89  1040.0  Hirneisen.SysMaint.a    PL/I        
+  vacate_pv                       11/11/89  1032.8  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_hc_backup                   11/11/89  1134.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  hc_dmpr_primitives              11/11/89  1030.7  Hirneisen.SysMaint.a    PL/I        
+  dbm_man                         11/11/89  1031.2  Hirneisen.SysMaint.a    PL/I        
+  retv_copy                       11/11/89  1030.3  Hirneisen.SysMaint.a    PL/I        
+  retv_util                       11/11/89  1029.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_hc_reconfig                 11/11/89  1135.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  reconfig                        11/11/89  1027.6  Hirneisen.SysMaint.a    PL/I        
+  start_cpu                       11/11/89  1027.2  Hirneisen.SysMaint.a    PL/I        
+  stop_cpu                        11/11/89  1026.9  Hirneisen.SysMaint.a    PL/I        
+  add_scu                         11/11/89  1028.8  Hirneisen.SysMaint.a    PL/I        
+  configure_test_cpu              11/11/89  1028.4  Hirneisen.SysMaint.a    PL/I        
+  validate_cpu_card               11/11/89  1026.6  Hirneisen.SysMaint.a    PL/I        
+  io_reconfig                     11/11/89  1027.9  Hirneisen.SysMaint.a    PL/I        
+  fv_iv_template                  11/11/89  0953.0  Hirneisen.SysMaint.a    alm         
+ 
+bound_hc_tuning                   11/11/89  1136.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  force_write                     11/11/89  1026.4  Hirneisen.SysMaint.a    PL/I        
+  user_wire                       11/11/89  1023.0  Hirneisen.SysMaint.a    PL/I        
+  trace_mc                        11/11/89  1023.2  Hirneisen.SysMaint.a    PL/I        
+  tc                              11/11/89  1023.7  Hirneisen.SysMaint.a    PL/I        
+  hc_tune                         11/11/89  1059.0  Hirneisen.SysMaint.a    PL/I        
+  set_procs_required              11/11/89  1026.0  Hirneisen.SysMaint.a    PL/I        
+  tc_util                         11/11/89  1023.4  Hirneisen.SysMaint.a    PL/I        
+  history_reg_save                11/11/89  1026.3  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_init_2                      11/11/89  1139.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  make_branches                   11/11/89  1018.9  Hirneisen.SysMaint.a    PL/I        
+  init_branches                   11/11/89  1019.4  Hirneisen.SysMaint.a    PL/I        
+  load_system                     11/11/89  1019.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_library_2_                  11/11/89  1146.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  aim_check_                      11/11/89  0948.7  Hirneisen.SysMaint.a    alm         
+  aim_util_                       11/11/89  0948.6  Hirneisen.SysMaint.a    alm         
+  access_operations_              11/11/89  0948.9  Hirneisen.SysMaint.a    alm         
+  convert_access_operation_       11/11/89  0958.5  Hirneisen.SysMaint.a    PL/I        
+  crawlout_default_handler_       11/11/89  0958.1  Hirneisen.SysMaint.a    PL/I        
+  buddy_alloc_                    11/11/89  0959.4  Hirneisen.SysMaint.a    PL/I        
+  buddy_freen_                    11/11/89  0958.8  Hirneisen.SysMaint.a    PL/I        
+  buddy_area_                     11/11/89  0959.2  Hirneisen.SysMaint.a    PL/I        
+  buddy_area_assign_              11/11/89  0959.0  Hirneisen.SysMaint.a    PL/I        
+  unique_bits_                    11/11/89  0955.2  Hirneisen.SysMaint.a    PL/I        
+  unique_chars_                   11/11/89  0955.1  Hirneisen.SysMaint.a    PL/I        
+  object_info_                    11/11/89  0956.2  Hirneisen.SysMaint.a    PL/I        
+  object_lib_                     11/11/89  0955.9  Hirneisen.SysMaint.a    PL/I        
+  link_trap_caller_               11/11/89  0957.6  Hirneisen.SysMaint.a    PL/I        
+  pl1_resignaller_                11/11/89  0955.6  Hirneisen.SysMaint.a    PL/I        
+  copy_on_write_handler_          11/11/89  0958.3  Hirneisen.SysMaint.a    PL/I        
+  isot_fault_handler_             11/11/89  0957.8  Hirneisen.SysMaint.a    PL/I        
+  lot_fault_handler_              11/11/89  0956.9  Hirneisen.SysMaint.a    PL/I        
+  parse_tty_name_                 11/11/89  0955.7  Hirneisen.SysMaint.a    PL/I        
+  mode_string_                    11/11/89  0956.7  Hirneisen.SysMaint.a    PL/I        
+  set_ext_variable_               11/11/89  0955.3  Hirneisen.SysMaint.a    PL/I        
+  list_init_                      11/11/89  0957.3  Hirneisen.SysMaint.a    PL/I        
+  call_outer_ring_                11/11/89  0958.6  Hirneisen.SysMaint.a    PL/I        
+  rtcd_util_                      11/11/89  0948.5  Hirneisen.SysMaint.a    alm         
+  ipc_validate_                   11/11/89  0958.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_log_active_                 11/11/89  1058.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  log_data_                       11/11/89  1029.7  Hirneisen.SysMaint.a    cds         
+  log_initialize_                 11/11/89  1025.8  Hirneisen.SysMaint.a    PL/I        
+  log_name_                       11/11/89  1025.6  Hirneisen.SysMaint.a    PL/I        
+  log_position_                   11/11/89  1025.5  Hirneisen.SysMaint.a    PL/I        
+  log_segment_                    11/11/89  1025.2  Hirneisen.SysMaint.a    PL/I        
+  log_wakeup_                     11/11/89  1025.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_mcs_util                    11/11/89  1100.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  priv_channel_manager            11/11/89  1022.2  Hirneisen.SysMaint.a    PL/I        
+  get_mcm_meters                  11/11/89  1022.5  Hirneisen.SysMaint.a    PL/I        
+  tty_area_manager                11/11/89  1021.8  Hirneisen.SysMaint.a    PL/I        
+  priv_mcs_trace                  11/11/89  1022.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_priv_mpx                    11/11/89  1107.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  sty_mpx                         11/11/89  1005.7  Hirneisen.SysMaint.a    PL/I        
+  priv_ibm3270_mpx                11/11/89  1007.0  Hirneisen.SysMaint.a    PL/I        
+  priv_x25_mpx                    11/11/89  1006.2  Hirneisen.SysMaint.a    PL/I        
+  priv_hasp_mpx                   11/11/89  1007.5  Hirneisen.SysMaint.a    PL/I        
+  priv_polled_vip_mpx             11/11/89  1006.6  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_process_creation            11/11/89  1107.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  act_proc                        11/11/89  1005.2  Hirneisen.SysMaint.a    PL/I        
+  deact_proc                      11/11/89  1003.1  Hirneisen.SysMaint.a    PL/I        
+  initialize_kst                  11/11/89  1002.0  Hirneisen.SysMaint.a    PL/I        
+  init_proc                       11/11/89  1002.2  Hirneisen.SysMaint.a    PL/I        
+  stop_process                    11/11/89  1001.9  Hirneisen.SysMaint.a    PL/I        
+  grab_aste                       11/11/89  1002.5  Hirneisen.SysMaint.a    PL/I        
+  deactivate_segs                 11/11/89  1002.9  Hirneisen.SysMaint.a    PL/I        
+  check_trailer                   11/11/89  0921.8  Hirneisen.SysMaint.a    alm         
+  get_process_usage               11/11/89  1002.7  Hirneisen.SysMaint.a    PL/I        
+  create_hproc                    11/11/89  1004.6  Hirneisen.SysMaint.a    PL/I        
+  copy_stack_0                    11/11/89  1005.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_protocol_mpx                11/11/89  1109.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  protocol_mpx                    11/11/89  0956.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_salvager                    11/11/89  1059.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  salvage_pv                      11/11/89  1027.8  Hirneisen.SysMaint.a    PL/I        
+  disk_rebuild                    11/11/89  1030.2  Hirneisen.SysMaint.a    PL/I        
+  vm_vio                          11/11/89  1027.3  Hirneisen.SysMaint.a    PL/I        
+  on_line_salvager                11/11/89  1030.0  Hirneisen.SysMaint.a    PL/I        
+  salv_directory                  11/11/89  1028.6  Hirneisen.SysMaint.a    PL/I        
+  salvager                        11/11/89  1027.6  Hirneisen.SysMaint.a    PL/I        
+  salv_err_msg                    11/11/89  1028.3  Hirneisen.SysMaint.a    PL/I        
+  dir_dump                        11/11/89  1030.6  Hirneisen.SysMaint.a    PL/I        
+  salv_dump_copy                  11/11/89  1028.5  Hirneisen.SysMaint.a    PL/I        
+  salv_dir_checker_               11/11/89  1029.0  Hirneisen.SysMaint.a    PL/I        
+  salv_check_vtoce_               11/11/89  1029.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_scavenger                   11/11/89  1100.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  scavenger                       11/11/89  1026.1  Hirneisen.SysMaint.a    PL/I        
+  scavenge_volume                 11/11/89  1026.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_segment_control             11/11/89  1102.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  alm_syserr_caller               11/11/89  1024.4  Hirneisen.SysMaint.a    PL/I        
+  mountedp                        11/11/89  1022.2  Hirneisen.SysMaint.a    PL/I        
+  private_logical_volume          11/11/89  1021.9  Hirneisen.SysMaint.a    PL/I        
+  setfaults                       11/11/89  1020.8  Hirneisen.SysMaint.a    PL/I        
+  search_ast                      11/11/89  0928.8  Hirneisen.SysMaint.a    alm         
+  seg_fault                       11/11/89  1021.3  Hirneisen.SysMaint.a    PL/I        
+  activate                        11/11/89  1024.6  Hirneisen.SysMaint.a    PL/I        
+  lock                            11/11/89  1022.3  Hirneisen.SysMaint.a    PL/I        
+  meter_ast_lock                  11/11/89  0929.0  Hirneisen.SysMaint.a    alm         
+  get_aste                        11/11/89  1023.1  Hirneisen.SysMaint.a    PL/I        
+  segment_mover                   11/11/89  1021.0  Hirneisen.SysMaint.a    PL/I        
+  deactivate                      11/11/89  1023.9  Hirneisen.SysMaint.a    PL/I        
+  put_aste                        11/11/89  1021.7  Hirneisen.SysMaint.a    PL/I        
+  limit_covert_channel            11/11/89  1022.7  Hirneisen.SysMaint.a    PL/I        
+  deactivate_for_demount          11/11/89  1023.6  Hirneisen.SysMaint.a    PL/I        
+  shutdown_file_system            11/11/89  1020.6  Hirneisen.SysMaint.a    PL/I        
+  switch_shutdown_file_system     11/11/89  0928.7  Hirneisen.SysMaint.a    alm         
+  access_viol                     11/11/89  1024.9  Hirneisen.SysMaint.a    PL/I        
+  boundfault                      11/11/89  1024.0  Hirneisen.SysMaint.a    PL/I        
+  outward_call_handler            11/11/89  1022.0  Hirneisen.SysMaint.a    PL/I        
+  hc_exponent_control             11/11/89  1022.9  Hirneisen.SysMaint.a    PL/I        
+  verify_lock                     11/11/89  1020.1  Hirneisen.SysMaint.a    PL/I        
+  flush_ast_pool                  11/11/89  1023.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_system_security             11/11/89  1104.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  level_error                     11/11/89  1011.3  Hirneisen.SysMaint.a    PL/I        
+  access_audit_util_              11/11/89  1013.8  Hirneisen.SysMaint.a    PL/I        
+  access_audit_                   11/11/89  1014.5  Hirneisen.SysMaint.a    PL/I        
+  level                           11/11/89  0927.5  Hirneisen.SysMaint.a    alm         
+  access_audit_check_ep_          11/11/89  0927.6  Hirneisen.SysMaint.a    alm         
+  dc_find                         11/11/89  1012.7  Hirneisen.SysMaint.a    PL/I        
+  access_mode                     11/11/89  1013.6  Hirneisen.SysMaint.a    PL/I        
+  update_kste_access              11/11/89  1011.0  Hirneisen.SysMaint.a    PL/I        
+  fs_modes                        11/11/89  1012.5  Hirneisen.SysMaint.a    PL/I        
+  access_audit_log_fault_         11/11/89  1014.0  Hirneisen.SysMaint.a    PL/I        
+  set_sys_audit_thresholds_       11/11/89  1011.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_tc_wired                    11/11/89  1106.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  set_alarm_timer                 11/11/89  1001.2  Hirneisen.SysMaint.a    PL/I        
+  proc_int_handler                11/11/89  1001.7  Hirneisen.SysMaint.a    PL/I        
+  ring_alarm                      11/11/89  1001.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_temp_2                      11/11/89  1108.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  init_sst_name_seg               11/11/89  0939.8  Hirneisen.SysMaint.a    PL/I        
+  init_str_seg                    11/11/89  0939.4  Hirneisen.SysMaint.a    PL/I        
+  init_root_dir                   11/11/89  0940.1  Hirneisen.SysMaint.a    PL/I        
+  create_root_vtoce               11/11/89  0948.9  Hirneisen.SysMaint.a    PL/I        
+  create_root_dir                 11/11/89  0949.1  Hirneisen.SysMaint.a    PL/I        
+  init_sys_var                    11/11/89  0939.2  Hirneisen.SysMaint.a    PL/I        
+  init_hardcore_gates             11/11/89  0940.5  Hirneisen.SysMaint.a    PL/I        
+  init_vtoc_man                   11/11/89  0938.8  Hirneisen.SysMaint.a    PL/I        
+  init_lvt                        11/11/89  0940.3  Hirneisen.SysMaint.a    PL/I        
+  init_stack_0                    11/11/89  0939.6  Hirneisen.SysMaint.a    PL/I        
+  init_syserr_log                 11/11/89  0938.9  Hirneisen.SysMaint.a    PL/I        
+  accept_rpv                      11/11/89  0949.2  Hirneisen.SysMaint.a    PL/I        
+  init_scavenger_data             11/11/89  0939.9  Hirneisen.SysMaint.a    PL/I        
+  init_dm_journal_seg             11/11/89  0940.6  Hirneisen.SysMaint.a    PL/I        
+  dir_lock_init                   11/11/89  0948.7  Hirneisen.SysMaint.a    PL/I        
+  fnp_init                        11/11/89  0948.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_tty_active                  11/11/89  1109.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  fast_hc_ipc                     11/11/89  0925.4  Hirneisen.SysMaint.a    alm         
+  hc_ipc                          11/11/89  0938.5  Hirneisen.SysMaint.a    PL/I        
+  truncate_stacks                 11/11/89  0938.2  Hirneisen.SysMaint.a    PL/I        
+  try_to_unlock_lock              11/11/89  0938.1  Hirneisen.SysMaint.a    PL/I        
+  mcs_timer_daemon                11/11/89  0938.4  Hirneisen.SysMaint.a    PL/I        
+  tty_write                       11/11/89  0934.6  Hirneisen.SysMaint.a    PL/I        
+  tty_util_                       11/11/89  0925.2  Hirneisen.SysMaint.a    alm         
+  tty_read                        11/11/89  0935.8  Hirneisen.SysMaint.a    PL/I        
+  tty_overstrike_canon            11/11/89  0936.4  Hirneisen.SysMaint.a    PL/I        
+  tty_replace_canon               11/11/89  0935.6  Hirneisen.SysMaint.a    PL/I        
+  tty_index                       11/11/89  0936.9  Hirneisen.SysMaint.a    PL/I        
+  tty_modes                       11/11/89  0936.6  Hirneisen.SysMaint.a    PL/I        
+  tty_tables_mgr                  11/11/89  0935.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_vtoc_man                    11/11/89  1130.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  vtoc_man                        11/11/89  0953.1  Hirneisen.SysMaint.a    PL/I        
+  vtoc_search                     11/11/89  0939.6  Hirneisen.SysMaint.a    alm         
+  vtoce_stock_man                 11/11/89  0952.8  Hirneisen.SysMaint.a    PL/I        
+  update_vtoce                    11/11/89  0953.7  Hirneisen.SysMaint.a    PL/I        
+  truncate_vtoce                  11/11/89  0953.9  Hirneisen.SysMaint.a    PL/I        
+  create_vtoce                    11/11/89  0954.7  Hirneisen.SysMaint.a    PL/I        
+  delete_vtoce                    11/11/89  0954.5  Hirneisen.SysMaint.a    PL/I        
+  priv_delete_vtoce               11/11/89  0954.2  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_x25_mpx                     11/11/89  1130.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  x25_mpx_data                    11/11/89  1128.3  Hirneisen.SysMaint.a    cds         
+  x25_mpx                         11/11/89  0942.0  Hirneisen.SysMaint.a    PL/I        
+  lap_simplex                     11/11/89  0943.0  Hirneisen.SysMaint.a    PL/I        
+ 
+dm_hcs_                           11/11/89  0939.4  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+hasp_mpx                          11/11/89  0940.9  Hirneisen.SysMaint.a    PL/I        >ldd>hard>execution                         
+ 
+hc_backup_                        11/11/89  0936.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+hcs_                              11/11/89  0935.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+hphcs_                            11/11/89  0934.8  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+access_audit_gate_                11/11/89  0955.8  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+dm_hphcs_                         11/11/89  0939.2  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+ibm3270_mpx                       11/11/89  0940.3  Hirneisen.SysMaint.a    PL/I        >ldd>hard>execution                         
+ 
+initializer_gate_                 11/11/89  0934.3  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+ioi_                              11/11/89  0922.9  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+mhcs_                             11/11/89  0922.2  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+phcs_                             11/11/89  0921.8  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+polled_vip_mpx                    11/11/89  0939.7  Hirneisen.SysMaint.a    PL/I        >ldd>hard>execution                         
+ 
+protocol_ring0_iso_               11/11/89  0921.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+salv_data                         11/11/89  1006.5  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+shcs_                             11/11/89  0920.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+system_privilege_                 11/11/89  0919.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+tandd_                            11/11/89  0919.3  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+pds                               11/11/89  1007.4  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+tty_buf                           11/11/89  1004.6  Hirneisen.SysMaint.a    cds         >ldd>hard>execution                         
+ 
+bound_error_handlers_             11/11/89  1139.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  default_error_handler_          11/11/89  0959.8  Hirneisen.SysMaint.a    PL/I        
+  message_table_                  11/11/89  0933.1  Hirneisen.SysMaint.a    alm         
+  special_messages_               11/11/89  0957.0  Hirneisen.SysMaint.a    PL/I        
+  get_ppr_                        11/11/89  0959.2  Hirneisen.SysMaint.a    PL/I        
+  get_tpr_                        11/11/89  0958.9  Hirneisen.SysMaint.a    PL/I        
+  linkage_error_                  11/11/89  0957.3  Hirneisen.SysMaint.a    PL/I        
+  find_pathname_                  11/11/89  0959.6  Hirneisen.SysMaint.a    PL/I        
+  interpret_info_struc_           11/11/89  0957.8  Hirneisen.SysMaint.a    PL/I        
+  interpret_oncode_               11/11/89  0957.6  Hirneisen.SysMaint.a    PL/I        
+  cv_error_                       11/11/89  1000.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_expand_path_                11/11/89  1139.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  expand_pathname_                11/11/89  0956.0  Hirneisen.SysMaint.a    PL/I        
+  absolute_pathname_              11/11/89  0956.3  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_fsim_                       11/11/89  1133.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  file_                           11/11/89  0953.4  Hirneisen.SysMaint.a    alm         
+  file                            11/11/89  1032.4  Hirneisen.SysMaint.a    PL/I        
+  file_util                       11/11/89  1032.3  Hirneisen.SysMaint.a    PL/I        
+  msf_manager_                    11/11/89  1031.5  Hirneisen.SysMaint.a    PL/I        
+  make_msf_                       11/11/89  1032.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_hc_initlzr_auxl_            11/11/89  1134.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  hc_initlzr_auxl_init_           11/11/89  1029.6  Hirneisen.SysMaint.a    PL/I        
+  hc_device_acct_                 11/11/89  1029.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_mount_timer_poll_           11/11/89  1029.0  Hirneisen.SysMaint.a    PL/I        
+  lv_request_                     11/11/89  1029.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_ios_                        11/11/89  1143.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  get_at_entry_                   11/11/89  1013.3  Hirneisen.SysMaint.a    PL/I        
+  ios_                            11/11/89  1012.9  Hirneisen.SysMaint.a    PL/I        
+  ios_write_around_               11/11/89  1012.4  Hirneisen.SysMaint.a    PL/I        
+  ios_signal_                     11/11/89  1012.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_ipc_                        11/11/89  1144.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  ipc_                            11/11/89  0951.0  Hirneisen.SysMaint.a    alm         
+  ipc_data_                       11/11/89  1059.9  Hirneisen.SysMaint.a    cds         
+  ipc_fast_                       11/11/89  1010.6  Hirneisen.SysMaint.a    PL/I        
+  ipc_real_                       11/11/89  1010.0  Hirneisen.SysMaint.a    PL/I        
+  ipc_util_                       11/11/89  1009.7  Hirneisen.SysMaint.a    PL/I        
+  get_control_point_id_           11/11/89  0951.1  Hirneisen.SysMaint.a    alm         
+  create_ips_mask_                11/11/89  1012.3  Hirneisen.SysMaint.a    PL/I        
+  set_lock_                       11/11/89  1009.6  Hirneisen.SysMaint.a    PL/I        
+  timer_manager_                  11/11/89  1009.2  Hirneisen.SysMaint.a    PL/I        
+  wkp_signal_handler_             11/11/89  1009.0  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_library_3_                  11/11/89  1146.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  access_audit_r1_                11/11/89  0948.4  Hirneisen.SysMaint.a    alm         
+ 
+bound_log_support_                11/11/89  1100.3  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  log_read_                       11/11/89  1023.6  Hirneisen.SysMaint.a    PL/I        
+  log_list_history_               11/11/89  1024.3  Hirneisen.SysMaint.a    PL/I        
+  log_initiate_                   11/11/89  1024.6  Hirneisen.SysMaint.a    PL/I        
+  log_write_                      11/11/89  1022.8  Hirneisen.SysMaint.a    PL/I        
+  log_create_                     11/11/89  1024.8  Hirneisen.SysMaint.a    PL/I        
+  log_salvage_                    11/11/89  1023.2  Hirneisen.SysMaint.a    PL/I        
+  log_move_                       11/11/89  1024.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_mdir_control                11/11/89  1102.0  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  mdcs_util_                      11/11/89  1019.4  Hirneisen.SysMaint.a    PL/I        
+  mdc_create_                     11/11/89  1021.4  Hirneisen.SysMaint.a    PL/I        
+  mdc_set_                        11/11/89  1020.4  Hirneisen.SysMaint.a    PL/I        
+  mdc_repair_                     11/11/89  1020.7  Hirneisen.SysMaint.a    PL/I        
+  mdc_check_mdcs_                 11/11/89  1021.6  Hirneisen.SysMaint.a    PL/I        
+  mdc_lock_                       11/11/89  1021.1  Hirneisen.SysMaint.a    PL/I        
+  mdc_parse_acct_                 11/11/89  1020.9  Hirneisen.SysMaint.a    PL/I        
+  mdc_set_path_                   11/11/89  1020.1  Hirneisen.SysMaint.a    PL/I        
+  mdc_util_                       11/11/89  1019.6  Hirneisen.SysMaint.a    PL/I        
+  mdc_status_                     11/11/89  1019.8  Hirneisen.SysMaint.a    PL/I        
+  mdc_init_                       11/11/89  1021.3  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_mdxhdx_                     11/11/89  1102.9  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  wdx                             11/11/89  1014.9  Hirneisen.SysMaint.a    PL/I        
+  volume_registration_mgr_        11/11/89  1015.4  Hirneisen.SysMaint.a    PL/I        
+  vrm_lock_                       11/11/89  1015.2  Hirneisen.SysMaint.a    PL/I        
+  mdx                             11/11/89  1017.2  Hirneisen.SysMaint.a    PL/I        
+  lv_request_communicator_        11/11/89  1017.9  Hirneisen.SysMaint.a    PL/I        
+  init_disk_pack_                 11/11/89  1018.0  Hirneisen.SysMaint.a    PL/I        
+  verify_label_                   11/11/89  1016.9  Hirneisen.SysMaint.a    PL/I        
+  disk_table_                     11/11/89  1018.3  Hirneisen.SysMaint.a    PL/I        
+  salv_caller                     11/11/89  1017.0  Hirneisen.SysMaint.a    PL/I        
+  disk_rebuild_caller             11/11/89  1018.9  Hirneisen.SysMaint.a    PL/I        
+  countervalidate_label_          11/11/89  1019.2  Hirneisen.SysMaint.a    PL/I        
+  volume_registration_cmds_       11/11/89  1016.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_oc_                         11/11/89  1104.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  ocd_                            11/11/89  1010.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_process_env_                11/11/89  1108.8  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  command_query_                  11/11/89  1001.4  Hirneisen.SysMaint.a    PL/I        
+  convert_access_class_           11/11/89  1001.1  Hirneisen.SysMaint.a    PL/I        
+  convert_binary_integer_         11/11/89  1000.9  Hirneisen.SysMaint.a    PL/I        
+  get_process_id_                 11/11/89  1000.6  Hirneisen.SysMaint.a    PL/I        
+  iox_                            11/11/89  0921.5  Hirneisen.SysMaint.a    alm         
+  iox_attach_name                 11/11/89  1000.4  Hirneisen.SysMaint.a    PL/I        
+  iox_open_file                   11/11/89  0958.9  Hirneisen.SysMaint.a    PL/I        
+  iox_close_file                  11/11/89  1000.1  Hirneisen.SysMaint.a    PL/I        
+  iox_detach                      11/11/89  0959.9  Hirneisen.SysMaint.a    PL/I        
+  iox_measure_options             11/11/89  0959.1  Hirneisen.SysMaint.a    PL/I        
+  iox_get_options                 11/11/89  0959.4  Hirneisen.SysMaint.a    PL/I        
+  iox_find_iocb                   11/11/89  0959.6  Hirneisen.SysMaint.a    PL/I        
+  iox_propagate                   11/11/89  0958.7  Hirneisen.SysMaint.a    PL/I        
+  syn_                            11/11/89  0958.1  Hirneisen.SysMaint.a    PL/I        
+  iox_signal_                     11/11/89  0958.5  Hirneisen.SysMaint.a    PL/I        
+  iox_init_                       11/11/89  0959.2  Hirneisen.SysMaint.a    PL/I        
+  pathname_                       11/11/89  0958.4  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_rcp_                        11/11/89  1111.5  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  rcp_rcse_                       11/11/89  0943.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_lock_                       11/11/89  0948.4  Hirneisen.SysMaint.a    PL/I        
+  rcp_set_lock_                   11/11/89  0942.7  Hirneisen.SysMaint.a    PL/I        
+  rcp_access_kernel_              11/11/89  0954.4  Hirneisen.SysMaint.a    PL/I        
+  rcp_access_kernel_setup         11/11/89  0954.1  Hirneisen.SysMaint.a    PL/I        
+  rcp_compute_raw_mode            11/11/89  0951.0  Hirneisen.SysMaint.a    PL/I        
+  rcp_compute_bracket_mode        11/11/89  0951.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_compute_aim_mode            11/11/89  0951.5  Hirneisen.SysMaint.a    PL/I        
+  rcp_merge_modes                 11/11/89  0947.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_operation_access            11/11/89  0947.3  Hirneisen.SysMaint.a    PL/I        
+  rcp_audit                       11/11/89  0953.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_setup_event                 11/11/89  0942.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_assign_device_              11/11/89  0953.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_attach_                     11/11/89  0953.7  Hirneisen.SysMaint.a    PL/I        
+  rcp_control_                    11/11/89  0950.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_resource_info_              11/11/89  0943.1  Hirneisen.SysMaint.a    PL/I        
+  rcp_get_scratch_volume_         11/11/89  0948.7  Hirneisen.SysMaint.a    PL/I        
+  rcp_cancel_resource_            11/11/89  0952.3  Hirneisen.SysMaint.a    PL/I        
+  rcp_match_                      11/11/89  0948.1  Hirneisen.SysMaint.a    PL/I        
+  rcp_find_                       11/11/89  0949.1  Hirneisen.SysMaint.a    PL/I        
+  rcp_check_assign_               11/11/89  0952.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_check_attach_               11/11/89  0951.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_tape_                       11/11/89  0942.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_auto_register_              11/11/89  0952.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_mount_timer_                11/11/89  0947.5  Hirneisen.SysMaint.a    PL/I        
+  rcp_disk_                       11/11/89  0949.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_ioi_attach_                 11/11/89  0948.5  Hirneisen.SysMaint.a    PL/I        
+  rcp_comment_                    11/11/89  0951.7  Hirneisen.SysMaint.a    PL/I        
+  rcp_pointers_                   11/11/89  0947.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_validate_                   11/11/89  0941.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_check_attach_lv_            11/11/89  0951.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_attach_lv_                  11/11/89  0953.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_lv_                         11/11/89  0948.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_detach_lv_                  11/11/89  0949.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_detach_                     11/11/89  0950.0  Hirneisen.SysMaint.a    PL/I        
+  rcp_unassign_                   11/11/89  0941.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_device_info_                11/11/89  0949.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_copy_                       11/11/89  0950.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_promote_                    11/11/89  0943.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_message_                    11/11/89  0947.7  Hirneisen.SysMaint.a    PL/I        
+  rcp_force_unassign_             11/11/89  0948.9  Hirneisen.SysMaint.a    PL/I        
+  rcp_reconfigure_                11/11/89  0943.6  Hirneisen.SysMaint.a    PL/I        
+  rcp_ring1_init_                 11/11/89  0942.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_tape_survey_                11/11/89  0942.0  Hirneisen.SysMaint.a    PL/I        
+  rcp_authenticate_device_        11/11/89  0953.0  Hirneisen.SysMaint.a    PL/I        
+  rcp_preload_                    11/11/89  0946.8  Hirneisen.SysMaint.a    PL/I        
+  rcp_unload_                     11/11/89  0941.7  Hirneisen.SysMaint.a    PL/I        
+  cv_rcp_attributes_              11/11/89  0954.6  Hirneisen.SysMaint.a    PL/I        
+  resource_info_                  11/11/89  0941.3  Hirneisen.SysMaint.a    PL/I        
+  rcp_pre_claim_                  11/11/89  0947.0  Hirneisen.SysMaint.a    PL/I        
+  rcp_cancel_id_                  11/11/89  0952.5  Hirneisen.SysMaint.a    PL/I        
+  rcp_reserve_                    11/11/89  0943.2  Hirneisen.SysMaint.a    PL/I        
+  rcp_match_user_name_            11/11/89  0947.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_rcprm_                      11/11/89  1112.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  rcprm_find_resource_            11/11/89  0939.6  Hirneisen.SysMaint.a    PL/I        
+  rcprm_find_op                   11/11/89  0940.4  Hirneisen.SysMaint.a    PL/I        
+  rcprm_registry_util_            11/11/89  0936.8  Hirneisen.SysMaint.a    PL/I        
+  rcprm_journalize_               11/11/89  0938.8  Hirneisen.SysMaint.a    PL/I        
+  rcprm_list_resource_            11/11/89  0937.6  Hirneisen.SysMaint.a    PL/I        
+  rcprm_registry_mgr_             11/11/89  0937.1  Hirneisen.SysMaint.a    PL/I        
+  rcprm_verify_registries_        11/11/89  0936.6  Hirneisen.SysMaint.a    PL/I        
+  rcprm_journal_file_             11/11/89  0939.2  Hirneisen.SysMaint.a    PL/I        
+  commit                          11/11/89  0941.0  Hirneisen.SysMaint.a    PL/I        
+  rollback                        11/11/89  0936.1  Hirneisen.SysMaint.a    PL/I        
+  write_record                    11/11/89  0935.9  Hirneisen.SysMaint.a    PL/I        
+  delete_record                   11/11/89  0940.8  Hirneisen.SysMaint.a    PL/I        
+  add_key                         11/11/89  0941.1  Hirneisen.SysMaint.a    PL/I        
+  delete_key                      11/11/89  0940.9  Hirneisen.SysMaint.a    PL/I        
+  record_status                   11/11/89  0936.4  Hirneisen.SysMaint.a    PL/I        
+  print_data                      11/11/89  0940.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_reloader_                   11/11/89  1113.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  bk_ss_                          11/11/89  1027.5  Hirneisen.SysMaint.a    cds         
+  backup_load                     11/11/89  0935.0  Hirneisen.SysMaint.a    PL/I        
+  backup_load_dir_list            11/11/89  0934.5  Hirneisen.SysMaint.a    PL/I        
+  bk_input                        11/11/89  0933.3  Hirneisen.SysMaint.a    PL/I        
+  backup_util                     11/11/89  0933.8  Hirneisen.SysMaint.a    PL/I        
+  backup_map_                     11/11/89  0934.1  Hirneisen.SysMaint.a    PL/I        
+  bk_arg_reader_                  11/11/89  0933.5  Hirneisen.SysMaint.a    PL/I        
+  bk_retrieve                     11/11/89  0932.9  Hirneisen.SysMaint.a    PL/I        
+  backup_control_mgr_             11/11/89  0935.6  Hirneisen.SysMaint.a    PL/I        
+  reload                          11/11/89  0932.6  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_system_control_             11/11/89  1103.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  system_control_                 11/11/89  1015.1  Hirneisen.SysMaint.a    PL/I        
+  sc_process_command_line_        11/11/89  1016.8  Hirneisen.SysMaint.a    PL/I        
+  sc_execute_command_line_        11/11/89  1017.7  Hirneisen.SysMaint.a    PL/I        
+  sc_signal_io_handler_           11/11/89  1015.7  Hirneisen.SysMaint.a    PL/I        
+  sc_admin_mode_                  11/11/89  1018.6  Hirneisen.SysMaint.a    PL/I        
+  sc_create_sci_                  11/11/89  1018.2  Hirneisen.SysMaint.a    PL/I        
+  sc_abort_line_util_             11/11/89  1019.5  Hirneisen.SysMaint.a    PL/I        
+  sc_get_error_name_              11/11/89  1017.6  Hirneisen.SysMaint.a    PL/I        
+  sc_edit_motd_                   11/11/89  1018.1  Hirneisen.SysMaint.a    PL/I        
+  sc_exec_request_                11/11/89  1018.0  Hirneisen.SysMaint.a    PL/I        
+  sc_ipc_mask_                    11/11/89  1017.1  Hirneisen.SysMaint.a    PL/I        
+  sc_init_                        11/11/89  1017.2  Hirneisen.SysMaint.a    PL/I        
+  sc_requests_                    11/11/89  1016.3  Hirneisen.SysMaint.a    PL/I        
+  sc_shutdown_                    11/11/89  1016.1  Hirneisen.SysMaint.a    PL/I        
+  sc_signal_handler_              11/11/89  1015.9  Hirneisen.SysMaint.a    PL/I        
+  sys_log_                        11/11/89  1015.4  Hirneisen.SysMaint.a    PL/I        
+  sc_command                      11/11/89  1018.4  Hirneisen.SysMaint.a    PL/I        
+  sc_admin_command_               11/11/89  1018.8  Hirneisen.SysMaint.a    PL/I        
+  sc_request_table_               11/11/89  0928.0  Hirneisen.SysMaint.a    alm         
+  sc_stat_                        11/11/89  0927.9  Hirneisen.SysMaint.a    alm         
+  lock_mca                        11/11/89  1019.7  Hirneisen.SysMaint.a    PL/I        
+  call_ec_                        11/11/89  1019.9  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_system_startup_             11/11/89  1104.6  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  rcp_init                        11/11/89  1010.2  Hirneisen.SysMaint.a    PL/I        
+  mca_init_                       11/11/89  1010.8  Hirneisen.SysMaint.a    PL/I        
+  system_startup_                 11/11/89  1009.5  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_tape_label_util_            11/11/89  1105.2  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  authenticate_                   11/11/89  1009.3  Hirneisen.SysMaint.a    PL/I        
+  canon_resource_name_            11/11/89  1009.0  Hirneisen.SysMaint.a    PL/I        
+  canon_for_volume_label_         11/11/89  1009.1  Hirneisen.SysMaint.a    PL/I        
+  ebcdic_to_ascii_                11/11/89  0927.4  Hirneisen.SysMaint.a    alm         
+  ebcdic8_to_ascii_               11/11/89  1008.8  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_tape_mult_                  11/11/89  1106.1  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  tape_ioi_                       11/11/89  0927.1  Hirneisen.SysMaint.a    alm         
+  tape_ioi_io                     11/11/89  1006.7  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_utils                  11/11/89  1006.2  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_buffer_man             11/11/89  1008.1  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_wks_man                11/11/89  1005.9  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_activate               11/11/89  1008.4  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_modes                  11/11/89  1006.5  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_hardware_status        11/11/89  1007.5  Hirneisen.SysMaint.a    PL/I        
+  tape_ioi_error_retry            11/11/89  1007.8  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_write_                11/11/89  1002.0  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_read_                 11/11/89  1002.7  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_labeler_              11/11/89  1004.7  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_                      11/11/89  1005.5  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_parse_                11/11/89  1003.1  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_open_                 11/11/89  1003.3  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_close_                11/11/89  1005.2  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_detach_               11/11/89  1005.0  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_util_                 11/11/89  1002.4  Hirneisen.SysMaint.a    PL/I        
+  tape_mult_modes_                11/11/89  1003.5  Hirneisen.SysMaint.a    PL/I        
+  tape_dim_data_                  11/11/89  0927.2  Hirneisen.SysMaint.a    alm         
+  parse_tape_reel_name_           11/11/89  1008.7  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_volume_reloader_            11/11/89  1129.4  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  reload_volume_                  11/11/89  1000.9  Hirneisen.SysMaint.a    PL/I        
+  rldr_volume_map_                11/11/89  0957.5  Hirneisen.SysMaint.a    PL/I        
+  rldr_vtoc_header_               11/11/89  0956.9  Hirneisen.SysMaint.a    PL/I        
+  rldr_input_                     11/11/89  0958.4  Hirneisen.SysMaint.a    PL/I        
+  rldr_check_pvol_                11/11/89  0959.4  Hirneisen.SysMaint.a    PL/I        
+  rldr_label_                     11/11/89  0958.1  Hirneisen.SysMaint.a    PL/I        
+  rldr_report_                    11/11/89  0957.8  Hirneisen.SysMaint.a    PL/I        
+  rldr_arg_reader_                11/11/89  0959.8  Hirneisen.SysMaint.a    PL/I        
+  rldr_output_                    11/11/89  0957.9  Hirneisen.SysMaint.a    PL/I        
+  reloader                        11/11/89  1000.2  Hirneisen.SysMaint.a    PL/I        
+  rldr_vtoc_buffer_               11/11/89  0957.2  Hirneisen.SysMaint.a    PL/I        
+  rldr_finish_                    11/11/89  0959.1  Hirneisen.SysMaint.a    PL/I        
+ 
+bound_volume_rldr_ut_             11/11/89  1129.7  Hirneisen.SysMaint.a    binder      >ldd>hard>execution                         
+  display_volume_log              11/11/89  0956.6  Hirneisen.SysMaint.a    PL/I        
+  rdisk_                          11/11/89  0955.5  Hirneisen.SysMaint.a    PL/I        
+  recover_volume_log              11/11/89  0955.0  Hirneisen.SysMaint.a    PL/I        
+ 
+default_rtmf.rtdt                 04/05/85  1004.5  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+initializer_mdc_                  11/11/89  0934.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+mdc_                              11/11/89  0922.7  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+mdc_priv_                         11/11/89  0922.5  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+operator_pointers_                11/11/89  0922.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+trace_operator_pointers_          11/11/89  0918.9  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+rcp_                              11/11/89  0921.3  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+rcp_priv_                         11/11/89  0920.9  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+rcp_sys_                          11/11/89  0920.7  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+rcp_admin_                        11/11/89  0921.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 
+ring_zero_meter_limits_ASCII_     07/11/84  0944.4  GJohnson.SysMaint.a     NON-OBJECT >ldd>hard>execution                         
+
+template_pit                      11/11/89  0919.1  Hirneisen.SysMaint.a    alm         >ldd>hard>execution                         
+ 

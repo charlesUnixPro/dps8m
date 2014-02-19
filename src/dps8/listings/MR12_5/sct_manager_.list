@@ -1,0 +1,623 @@
+	COMPILATION LISTING OF SEGMENT sct_manager_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1001.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,insnl,delnl,ifthendo */
+       14 sct_manager_$call_handler:
+       15      proc (mcptr, cname, info_ptr, wc_ptr, continue) options (support);
+       16 
+       17 /* This procedure manages the SCT (System Condition Table).
+       18*   Entries are provided for setting and getting the value of an entry
+       19*   in the SCT. (An entry in the SCT is merely a procedure entry pointer.)
+       20*   An entry is also provided for use by the signal_ procedure to call to check
+       21*   if a particular condition has a static handler enabled.
+       22*
+       23*   Static handlers are not general and should be used with caution.
+       24*
+       25*   Initial coding:
+       26*   4/75	S. Webber
+       27*   Modified July 1981 Benson I. Margulies to set the support bit.
+       28*   Modified September 1981 Benson I. Margulies for info_ptr.
+       29**/
+       30 
+       31 /* Parameters */
+       32 
+       33 dcl  continue bit (1) aligned;
+       34 dcl  code fixed bin (35);
+       35 dcl  cname char (*);				/* condition name */
+       36 dcl  (info_ptr, wc_ptr) ptr;
+       37 dcl  mcptr ptr;					/* pointer to machine conditions passed from signal_ */
+       38 dcl  handler ptr;					/* entry pointer for handler being set */
+       39 dcl  fcode fixed bin;				/* FIM fault code, used to index into SCT */
+       40 
+       41 /* Automatic */
+       42 
+       43 dcl  entry_variable entry (pointer, character (*), pointer, pointer, bit (1) aligned) variable;
+       44 dcl  sp ptr;
+       45 dcl  sct_ptr ptr;
+       46 
+       47 /* Based */
+       48 
+       49 dcl  1 entry aligned,
+       50        2 ep ptr,
+       51        2 environment ptr;
+       52 
+       53 dcl  ptr_array (0:127) ptr unaligned based;
+       54 
+       55 /* External */
+       56 
+       57 dcl  error_table_$argerr fixed bin (35) external;
+       58 
+       59 /* Constants */
+       60 
+       61 dcl  (addr, baseptr, bin, hbound, null, ptr, unspec) builtin;
+       62 
+  1     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  1     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  1     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  1     4 /*	Modified April 1983 by C. Hornig for tasking */
+  1     5 
+  1     6 /****^  HISTORY COMMENTS:
+  1     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  1     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  1     9*     added the heap_header_ptr definition.
+  1    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  1    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  1    12*     Modified to support control point management.  These changes were actually
+  1    13*     made in February 1985 by G. Palter.
+  1    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  1    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  1    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  1    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  1    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  1    19*     (ITS pair).
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 /* format: style2 */
+  1    23 
+  1    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  1    25 
+  1    26      dcl	   1 stack_header	      based (sb) aligned,
+  1    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  1    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  1    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  1    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  1    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  1    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  1    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  1    34 	     2 pad4	      bit (2) unal,
+  1    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  1    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  1    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  1    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  1    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  1    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  1    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  1    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  1    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  1    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  1    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  1    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  1    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  1    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  1    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  1    50 	     2 return_no_pop_op_ptr
+  1    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  1    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  1    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  1    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  1    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  1    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  1    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  1    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  1    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  1    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  1    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  1    62 	     2 trace,
+  1    63 	       3 frames,
+  1    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  1    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  1    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  1    67 	     2 pad2	      bit (36),		/*  (61) */
+  1    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  1    69 
+  1    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  1    71 
+  1    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  1    73 						/* (551) octal */
+  1    74 
+  1    75 
+  1    76 /*	The following constants are offsets within this transfer vector table.  */
+  1    77 
+  1    78      dcl	   (
+  1    79 	   call_offset	      fixed bin init (271),
+  1    80 	   push_offset	      fixed bin init (272),
+  1    81 	   return_offset	      fixed bin init (273),
+  1    82 	   return_no_pop_offset   fixed bin init (274),
+  1    83 	   entry_offset	      fixed bin init (275)
+  1    84 	   )		      internal static;
+  1    85 
+  1    86 
+  1    87 
+  1    88 
+  1    89 
+  1    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  1    91*	move the whole stack header should use this overlay.
+  1    92**/
+  1    93 
+  1    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  1    95 
+  1    96 
+  1    97 
+  1    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+       63 
+  2     1 /*  */
+  2     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+  2     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+  2     4 /* Modified 07/07/76 by Morris for fault register data */
+  2     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+  2     6 /* Modified '82 to make values constant */
+  2     7 
+  2     8 /* words 0-15 pointer registers */
+  2     9 
+  2    10 dcl  mcp ptr;
+  2    11 
+  2    12 dcl 1 mc based (mcp) aligned,
+  2    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+  2    14    (2 regs,					/* registers */
+  2    15       3 x (0:7) bit (18),				/* index registers */
+  2    16       3 a bit (36),					/* accumulator */
+  2    17       3 q bit (36),					/* q-register */
+  2    18       3 e bit (8),					/* exponent */
+  2    19       3 pad1 bit (28),
+  2    20       3 t bit (27),					/* timer register */
+  2    21       3 pad2 bit (6),
+  2    22       3 ralr bit (3),				/* ring alarm register */
+  2    23 
+  2    24     2 scu (0:7) bit (36),
+  2    25 
+  2    26     2 mask bit (72),				/* mem controller mask at time of fault */
+  2    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+  2    28     2 errcode fixed bin (35),				/* fault handler's error code */
+  2    29     2 fim_temp,
+  2    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+  2    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+  2    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+  2    33     2 fault_reg bit (36),				/* fault register */
+  2    34     2 pad2 bit (1),
+  2    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+  2    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+  2    37     2 fault_time bit (54),				/* time of fault */
+  2    38 
+  2    39     2 eis_info (0:7) bit (36)) unaligned;
+  2    40 
+  2    41 
+  2    42 dcl (apx fixed bin init (0),
+  2    43      abx fixed bin init (1),
+  2    44      bpx fixed bin init (2),
+  2    45      bbx fixed bin init (3),
+  2    46      lpx fixed bin init (4),
+  2    47      lbx fixed bin init (5),
+  2    48      spx fixed bin init (6),
+  2    49      sbx fixed bin init (7)) internal static options (constant);
+  2    50 
+  2    51 
+  2    52 
+  2    53 
+  2    54 dcl  scup ptr;
+  2    55 
+  2    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+  2    57 
+  2    58 
+  2    59 /*	WORD (0)		*/
+  2    60 
+  2    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+  2    62       3 prr bit (3),				/* procedure ring register */
+  2    63       3 psr bit (15),				/* procedure segment register */
+  2    64       3 p bit (1),					/* procedure privileged bit */
+  2    65 
+  2    66     2 apu,					/* APPENDING UNIT STATUS */
+  2    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+  2    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+  2    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+  2    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+  2    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+  2    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+  2    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+  2    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+  2    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+  2    76       3 ptw bit (1),				/* Fetch of PTW */
+  2    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+  2    78       3 fap bit (1),				/* Fetch of final address paged */
+  2    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+  2    80       3 fabs bit (1),				/* Fetch of final address absolute */
+  2    81 
+  2    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+  2    83 
+  2    84 
+  2    85 /*	WORD (1)		*/
+  2    86 
+  2    87     2 fd,						/* FAULT  DATA */
+  2    88       3 iro bit (1),				/* illegal ring order */
+  2    89       3 oeb bit (1),				/* out of execute bracket */
+  2    90       3 e_off bit (1),				/* no execute */
+  2    91       3 orb bit (1),				/* out of read bracket */
+  2    92       3 r_off bit (1),				/* no read */
+  2    93       3 owb bit (1),				/* out of write bracket */
+  2    94       3 w_off bit (1),				/* no write */
+  2    95       3 no_ga bit (1),				/* not a gate */
+  2    96       3 ocb bit (1),				/* out of call bracket */
+  2    97       3 ocall bit (1),				/* outward call */
+  2    98       3 boc bit (1),				/* bad outward call */
+  2    99       3 inret bit (1),				/* inward return */
+  2   100       3 crt bit (1),				/* cross ring transfer */
+  2   101       3 ralr bit (1),				/* ring alarm register */
+  2   102       3 am_er bit (1),				/* associative memory fault */
+  2   103       3 oosb bit (1),				/* out of segment bounds */
+  2   104       3 paru bit (1),				/* processor parity upper */
+  2   105       3 parl bit (1),				/* processor parity lower */
+  2   106       3 onc_1 bit (1),				/* op not complete type 1 */
+  2   107       3 onc_2 bit (1),				/* op not complete type 2 */
+  2   108 
+  2   109     2 port_stat,					/* PORT  STATUS */
+  2   110       3 ial bit (4),				/* illegal action lines */
+  2   111       3 iac bit (3),				/* illegal action channel */
+  2   112       3 con_chan bit (3),				/* connect channel */
+  2   113 
+  2   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+  2   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+  2   116 
+  2   117 
+  2   118 /*	WORD (2)		*/
+  2   119 
+  2   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+  2   121       3 trr bit (3),				/* temporary ring register */
+  2   122       3 tsr bit (15),				/* temporary segment register */
+  2   123 
+  2   124     2 pad2 bit (9),
+  2   125 
+  2   126     2 cpu_no bit (3),				/* CPU number */
+  2   127 
+  2   128     2 delta bit (6),				/* tally modification DELTA */
+  2   129 
+  2   130 
+  2   131 /*	WORD (3)		*/
+  2   132 
+  2   133     2 word3 bit (18),
+  2   134 
+  2   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+  2   136       3 tsna,					/* Word 1 status */
+  2   137         4 prn bit (3),				/* Word 1  PR  number */
+  2   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+  2   139       3 tsnb,					/* Word 2  status */
+  2   140         4 prn bit (3),				/* Word 2  PR  number */
+  2   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+  2   142       3 tsnc,					/* Word 3  status */
+  2   143         4 prn bit (3),				/* Word 3  PR  number */
+  2   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+  2   145 
+  2   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+  2   147 
+  2   148 
+  2   149 /* 	WORD (4)		*/
+  2   150 
+  2   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+  2   152 
+  2   153     2 ir,						/* INDICATOR  REGISTERS */
+  2   154       3 zero bit (1),				/* zero indicator */
+  2   155       3 neg bit (1),				/* negative indicator */
+  2   156       3 carry bit (1),				/* carryry indicator */
+  2   157       3 ovfl bit (1),				/* overflow indicator */
+  2   158       3 eovf bit (1),				/* eponent overflow */
+  2   159       3 eufl bit (1),				/* exponent underflow */
+  2   160       3 oflm bit (1),				/* overflow mask */
+  2   161       3 tro bit (1),				/* tally runout */
+  2   162       3 par bit (1),				/* parity error */
+  2   163       3 parm bit (1),				/* parity mask */
+  2   164       3 bm bit (1),					/* ^bar mode */
+  2   165       3 tru bit (1),				/* truncation mode */
+  2   166       3 mif bit (1),				/* multi-word instruction mode */
+  2   167       3 abs bit (1),				/* absolute mode */
+  2   168       3 hex bit (1),				/* hexadecimal exponent mode */
+  2   169       3 pad bit (3),
+  2   170 
+  2   171 
+  2   172 /*	WORD (5)		*/
+  2   173 
+  2   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+  2   175 
+  2   176     2 cu,						/* CONTROL UNIT STATUS */
+  2   177       3 rf bit (1),					/* on first cycle of repeat instr */
+  2   178       3 rpt bit (1),				/* repeat instruction */
+  2   179       3 rd bit (1),					/* repeat double instruction */
+  2   180       3 rl bit (1),					/* repeat link instruciton */
+  2   181       3 pot bit (1),				/* IT  modification */
+  2   182       3 pon bit (1),				/* return type instruction */
+  2   183       3 xde bit (1),				/* XDE from Even location */
+  2   184       3 xdo bit (1),				/* XDE from Odd  location */
+  2   185       3 poa bit (1),				/* operation preparation */
+  2   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+  2   187       3 its bit (1),				/* ITS modification */
+  2   188       3 if bit (1),					/* fault occured during instruction fetch */
+  2   189 
+  2   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+  2   191 
+  2   192 
+  2   193 /*	WORDS (6,7)	*/
+  2   194 
+  2   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+  2   196 
+  2   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+  2   198 
+  2   199 
+  2   200 
+  2   201 
+  2   202 
+  2   203 
+  2   204 /*	ALTERNATE   SCU  DECLARATION		*/
+  2   205 
+  2   206 
+  2   207 dcl 1 scux based (scup) aligned,
+  2   208 
+  2   209    (2 pad0 bit (36),
+  2   210 
+  2   211     2 fd,						/* GROUP II  FAULT DATA */
+  2   212       3 isn bit (1),				/* illegal segment number */
+  2   213       3 ioc bit (1),				/* illegal op  code  */
+  2   214       3 ia_am bit (1),				/* illegal address - modifier */
+  2   215       3 isp bit (1),				/* illegal slave  procedure */
+  2   216       3 ipr bit (1),				/* illegal procedure */
+  2   217       3 nea bit (1),				/* non existent address */
+  2   218       3 oobb bit (1),				/* out of bounds */
+  2   219       3 pad bit (29),
+  2   220 
+  2   221     2 pad2 bit (36),
+  2   222 
+  2   223     2 pad3a bit (18),
+  2   224 
+  2   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+  2   226       3 prn bit (3),				/* PR  number */
+  2   227       3 prv bit (1),				/* PR  valid bit */
+  2   228 
+  2   229     2 pad3b bit (6)) unaligned,
+  2   230 
+  2   231     2 pad45 (0:1) bit (36),
+  2   232 
+  2   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+  2   234 
+  2   235 
+  2   236 
+  2   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+       64 
+       65 
+       66 /* Entry to call_handler entry */
+       67 
+       68 	call get_sct_ptr;				/* get SCT pointer from stack header */
+       69 	if sct_ptr = null
+       70 	then goto no;
+       71 	if unspec (sct_ptr -> ptr_array (bin (mcptr -> mc.fcode, 17))) = "0"b then do;
+       72 no:
+       73 	     continue = "1"b;			/* return so stack will be searched */
+       74 	     return;
+       75 	end;
+       76 	if sct_ptr -> ptr_array (bin (mcptr -> mc.fcode, 17)) = null
+       77 	then goto no;
+       78 
+       79 	entry.ep = sct_ptr -> ptr_array (bin (mcptr -> mc.fcode, 17));
+       80 	entry.environment = null;
+       81 	unspec (entry_variable) = unspec (entry);	/* Legal PL/1 ! */
+       82 
+       83 	call entry_variable (mcptr, cname, info_ptr, wc_ptr, continue);
+       84 						/* call the handler, it sets continue */
+       85 
+       86 	return;
+       87 		
+       88 
+       89 /**** 	Entry to set entry */
+       90 
+       91 set:
+       92      entry (fcode, handler, code);
+       93 
+       94 	call get_sct_ptr;				/* get SCT pointer from stack header */
+       95 	if sct_ptr = null
+       96 	then goto badx;
+       97 	if fcode < 0 | fcode > hbound (sct_ptr -> ptr_array, 1) then do;
+       98 badx:
+       99 	     code = error_table_$argerr;
+      100 	     return;
+      101 	end;
+      102 
+      103 	sct_ptr -> ptr_array (fcode) = handler;
+      104 	code = 0;
+      105 	return;
+      106 
+      107 /**/
+      108 
+      109 /* Entry to get entry */
+      110 
+      111 get:
+      112      entry (fcode, handler, code);
+      113 
+      114 	call get_sct_ptr;				/* get SCT pointer from stack header */
+      115 	if sct_ptr = null
+      116 	then goto badx;
+      117 	if fcode < 0 | fcode > hbound (sct_ptr -> ptr_array, 1)
+      118 	then goto badx;
+      119 
+      120 	handler = sct_ptr -> ptr_array (fcode);
+      121 	if unspec (handler) = ""b
+      122 	then handler = null ();
+      123 	code = 0;
+      124 	return;
+      125 
+      126 
+      127 get_sct_ptr:
+      128      proc;					/* subroutine to get SCT pointer from stack header */
+      129 
+      130 	sct_ptr = stackbaseptr () -> stack_header.sct_ptr;/* extract SCT pointer */
+      131 	return;
+      132 
+      133      end;
+      134 
+      135      end sct_manager_$call_handler;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  sct_manager_.pl1                  >spec>install>1110>sct_manager_.pl1
+63           1    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+64           2    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+bin                                                    builtin function         dcl 61 ref 71 76 79
+cname                                  parameter       char                     packed unaligned dcl 35 set ref 14 83*
+code                                   parameter       fixed bin(35,0)          dcl 34 set ref 91 98* 104* 111 123*
+continue                               parameter       bit(1)                   dcl 33 set ref 14 72* 83*
+entry                           000106 automatic       structure                level 1 dcl 49 set ref 81
+entry_variable                  000100 automatic       entry variable           dcl 43 set ref 81* 83
+environment               2     000106 automatic       pointer                  level 2 dcl 49 set ref 80*
+ep                              000106 automatic       pointer                  level 2 dcl 49 set ref 79*
+error_table_$argerr             000010 external static fixed bin(35,0)          dcl 57 ref 98
+fcode                                  parameter       fixed bin(17,0)          dcl 39 in procedure "sct_manager_$call_handler" ref
+                                                                                  91 97 97 103 111 117 117 120
+fcode                    44(19)        based           bit(17)                  level 3 in structure "mc" packed packed unaligned
+                                                                                  dcl 2-12 in procedure "sct_manager_$call_handler"
+                                                                                  ref 71 76 79
+fim_temp                 44            based           structure                level 2 packed packed unaligned dcl 2-12
+handler                                parameter       pointer                  dcl 38 set ref 91 103 111 120* 121 121*
+hbound                                                 builtin function         dcl 61 ref 97 117
+info_ptr                               parameter       pointer                  dcl 36 set ref 14 83*
+mc                                     based           structure                level 1 dcl 2-12
+mcptr                                  parameter       pointer                  dcl 37 set ref 14 71 76 79 83*
+null                                                   builtin function         dcl 61 ref 69 76 80 95 115 121
+ptr_array                              based           pointer                  array packed unaligned dcl 53 set ref 71 76 79 97
+                                                                                  103* 117 120
+sct_ptr                  54            based           pointer                  level 2 in structure "stack_header" dcl 1-26
+                                                                                  in procedure "sct_manager_$call_handler" ref 130
+sct_ptr                         000104 automatic       pointer                  dcl 45 in procedure "sct_manager_$call_handler" set
+                                                                                  ref 69 71 76 79 95 97 103 115 117 120 130*
+stack_header                           based           structure                level 1 dcl 1-26
+unspec                                                 builtin function         dcl 61 set ref 71 81* 81 121
+wc_ptr                                 parameter       pointer                  dcl 36 set ref 14 83*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+abx                                    internal static fixed bin(17,0)          initial dcl 2-42
+addr                                                   builtin function         dcl 61
+apx                                    internal static fixed bin(17,0)          initial dcl 2-42
+baseptr                                                builtin function         dcl 61
+bbx                                    internal static fixed bin(17,0)          initial dcl 2-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 2-42
+call_offset                            internal static fixed bin(17,0)          initial dcl 1-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 1-78
+lbx                                    internal static fixed bin(17,0)          initial dcl 2-42
+lpx                                    internal static fixed bin(17,0)          initial dcl 2-42
+mcp                                    automatic       pointer                  dcl 2-10
+ptr                                                    builtin function         dcl 61
+push_offset                            internal static fixed bin(17,0)          initial dcl 1-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 1-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 1-78
+sb                                     automatic       pointer                  dcl 1-24
+sbx                                    internal static fixed bin(17,0)          initial dcl 2-42
+scu                                    based           structure                level 1 dcl 2-56
+scup                                   automatic       pointer                  dcl 2-54
+scux                                   based           structure                level 1 dcl 2-207
+sp                                     automatic       pointer                  dcl 44
+spx                                    internal static fixed bin(17,0)          initial dcl 2-42
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 1-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 1-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+badx                            000151 constant        label                    dcl 98 ref 95 115 117
+get                             000171 constant        entry                    external dcl 111
+get_sct_ptr                     000230 constant        entry                    internal dcl 127 ref 68 94 114
+no                              000051 constant        label                    dcl 72 ref 69 76
+sct_manager_$call_handler       000015 constant        entry                    external dcl 14
+set                             000131 constant        entry                    external dcl 91
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+stackbaseptr                                           builtin function         ref 130
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       322         334     236         332
+Length       532     236        12         161      64           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+sct_manager_$call_handler           106 external procedure  is an external procedure.  
+get_sct_ptr                             internal procedure  shares stack frame of external procedure sct_manager_$call_handler.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+sct_manager_$call_handler
+                         000100 entry_variable              sct_manager_$call_handler
+                         000104 sct_ptr                     sct_manager_$call_handler
+                         000106 entry                       sct_manager_$call_handler
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var_desc   return_mac          ext_entry           ext_entry_desc      set_support
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$argerr
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000010        68 000031        69 000032        71 000036        72 000051        74 000054        76 000055
+     79 000065        80 000067        81 000071        83 000075        86 000124        91 000125        94 000137
+     95 000140        97 000144        98 000151       100 000155       103 000156       104 000165       105 000166
+    111 000167       114 000177       115 000200       117 000204       120 000211       121 000217       123 000226
+    124 000227       127 000230       130 000231       131 000234
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,3456 @@
+	COMPILATION LISTING OF SEGMENT config_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1057.34_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       12*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       13*     Correct error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 /* format: style2 */
+       18 
+       19 
+       20 config:
+       21 config_:
+       22      proc ();
+       23 
+       24 /* *	This is an all rings program which manages the config_deck segment. It has entries
+       25*   *	for locating various types of information in the config_deck, as well as entries
+       26*   *	for manipulating it. During Service Multics operation, the config_deck is protected
+       27*   *	against simulataneous updates by wired_hardcore_data$config_lock; all updates also
+       28*   *	automatically cause it to be immediately force updated to disk. At other times, it
+       29*   *	is not protected (there being only one process), and any updates must be manually
+       30*   *	requested by a call to config_$update.
+       31*   */
+       32 
+       33 /* *	Completely rewritten, for Bootload Multics, 11/13/80 W. Olin Sibert
+       34*	Considerable rearranged for installation, BIM, 7/82.
+       35*	Modified to write out deck to partition in update entry '82.
+       36*	Modified to not run off end of deck. K. Loepere, April '84.
+       37*   */
+       38 
+       39 /* *	Entrypoints for extracting information:
+       40*   *
+       41*   *	call config_$find (card_word, cardp);
+       42*   *
+       43*   *	   Locates a card whose name field is card_word. If cardp is null, the first such card
+       44*   *	   in the config_deck is returned. Otherwise, the first one following the one pointed
+       45*   *	   to by cardp is used.
+       46*   *
+       47*   *	call config_$find_2 (card_word, field_name, cardp);
+       48*   *
+       49*   *	   Similar to config_$find, but locates a card whose name is card_word, and whose first
+       50*   *	   data field contains field_name.
+       51*   *
+       52*   *	call config_$find_periph (peripheral_name, cardp);
+       53*   *
+       54*   *	   Locates the (first) PRPH config card for the peripheral named peripheral_name.
+       55*   *
+       56*   *	call config_$find_peripheral (peripheral_name, iom_no, channel_no, info, code);
+       57*   *
+       58*   *	   Locates the (first) PRPH config card for the peripheral named peripheral_name,
+       59*   *	   and returns the iom number, channel number, and first information parameter
+       60*   *	   from the card. If no such card can be found, code is set nonzero.
+       61*   *
+       62*   *	call config_$find_parm (parameter_name, parm_ptr);
+       63*   *
+       64*   *	   Locates some PARM card which contains an entry for parameter_name, and returns
+       65*   *	   a pointer to the first field following the parameter name. Note that parm_ptr
+       66*   *	   therefore points into the middle of a card.
+       67*   *
+       68*   *	call config_$find_table (table_name, table_size);
+       69*   *
+       70*   *	   Locates some TBLS card which contains an entry for table_name and returns
+       71*   *	   the number following the table name. If no appropriate card can be found,
+       72*   *	   -1 is returned for table_size.
+       73*   */
+       74 
+       75 
+       76 /* *	Entrypoints for modifying the config_deck:
+       77*   *
+       78*   *	call config_$clear ();
+       79*   *
+       80*   *	   This initializes the config_deck segment by completely filling it with "free" cards.
+       81*   *
+       82*   *	call config_$init_card (card_word, cardp);
+       83*   *
+       84*   *	   This initializes the card image pointed to by cardp to be an empty card with the supplied name.
+       85*   *	   If cardp is null on input, it is returned as a pointer to a card in the config_deck; otherwise,
+       86*   *	   it is assumed to point to a user-supplied card buffer.
+       87*   *
+       88*   *	call config_$replace (cardp1, cardp2);
+       89*   *
+       90*   *	   This replaces the contents of the card pointed to by cardp1 by the new card image
+       91*   *	   pointed to by cardp2. Neither pointer may be null.
+       92*   *
+       93*   *	call config_$add (cardp, after_cardp);
+       94*   *
+       95*   *	   This adds the card image pointed to by cardp to the config_deck, at the end if
+       96*   *	   after_cardp is null, or immediately following the card pointed to by after_cardp.
+       97*   *
+       98*   *	call config_$delete (cardp);
+       99*   *
+      100*   *	   This removes the card pointed to by cardp from the config_deck.
+      101*   *
+      102*   *	call config_$update ();
+      103*   *
+      104*   *	   This updates the config_deck image to its disk partition, for use in circumstances
+      105*   *	   where that is not being done automatically.
+      106*   */
+      107 
+      108 
+      109 	dcl     (
+      110 	        P_cardp		 pointer,
+      111 	        P_cardp1		 pointer,
+      112 	        P_cardp2		 pointer,
+      113 	        P_after_cardp	 pointer,
+      114 	        P_card_word		 char (4) aligned,
+      115 	        P_field_name	 char (4) aligned,
+      116 	        P_peripheral_name	 char (4) aligned,
+      117 	        P_parm_name		 char (4) aligned,
+      118 	        P_parm_ptr		 pointer,
+      119 	        P_table_name	 char (4) aligned,
+      120 	        P_table_size	 fixed bin,
+      121 	        P_iom_no		 fixed bin (3),
+      122 	        P_channel_no	 fixed bin (8),
+      123 	        P_peripheral_info	 bit (36) aligned,
+      124 	        P_code		 fixed bin (35)
+      125 	        )			 parameter;
+      126 
+      127 	dcl     config_seg_size	 fixed bin (19);
+      128 	dcl     whoami		 char (32);
+      129 	dcl     idx		 fixed bin;
+      130 	dcl     lock_sw		 bit (1) aligned;	/* This is set if the config must be unlocked */
+      131 	dcl     (delete_idx, after_idx)
+      132 				 fixed bin;
+      133 	dcl     after_cardp		 pointer;
+      134 	dcl     card_word		 char (4) aligned;
+      135 	dcl     field_data		 bit (36) aligned;
+      136 
+      137 	dcl     1 card_image	 aligned like config_card automatic;
+      138 
+      139 	dcl     dseg$		 (0:1023) fixed bin (71) external static;
+      140 	dcl     sys_info$initialization_state
+      141 				 fixed bin external static;
+      142 
+      143 	dcl     get_ring_		 entry () returns (fixed bin (3));
+      144 	dcl     sub_err_		 entry () options (variable);
+      145 	dcl     syserr		 entry options (variable);
+      146 	dcl     get_ptrs_$given_segno	 entry (fixed bin (15)) returns (pointer);
+      147 	dcl     pc_wired$write_wait	 entry (pointer, fixed bin, fixed bin);
+      148 
+      149 	dcl     astep		 pointer;
+      150 
+      151 	dcl     (addr, addrel, baseno, bin, binary, divide, mod, null, rel, rtrim, size, substr, unspec, verify)
+      152 				 builtin;
+      153 
+      154 
+      155 /* Note that none of the $find entrypoints bother to lock the config_deck. This is because their
+      156*   callers expect card pointers to be valid when returned, and hence must implement their own
+      157*   locking mechanism (calling config_$lock and config_$unlock as necessary) to make this work at
+      158*   all. Since most config deck hacking is done only in initialization code, anyway, this turns
+      159*   out not to be a problem: once initialization is over, nobody ever adds or deletes cards, so
+      160*   individual card pointers remain valid forever.
+      161*   */
+      162 
+      163 
+      164 find:
+      165      entry (P_card_word, P_cardp);
+      166 
+      167 /* Find a card with a specified name */
+      168 
+      169 	whoami = "config_$find";
+      170 
+      171 	if P_cardp ^= null ()
+      172 	then cardp = addrel (validate_cardp (P_cardp), size (config_card));
+      173 						/* SKIP the one we got */
+      174 	else cardp = addr (config_deck$);		/* Start with first card if none specified */
+      175 
+      176 	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+      177 						/* Assume four page default (other programs know this limit, this might as well) */
+      178 	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+      179 
+      180 	card_word = P_card_word;
+      181 
+      182 	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+      183 	     if config_card.word = card_word
+      184 	     then do;				/* Found one */
+      185 		     P_cardp = cardp;
+      186 		     return;			/* Return it */
+      187 		end;
+      188 
+      189 	     cardp = addrel (cardp, size (config_card));	/* on to the next card */
+      190 	end;					/* of looking */
+      191 
+      192 	P_cardp = null ();				/* Sorry... no more left */
+      193 
+      194 	return;					/* End of config_$find */
+      195 
+      196 /*  */
+      197 
+      198 find_2:
+      199      entry (P_card_word, P_field_name, P_cardp);
+      200 
+      201 /* Find a card with a specified name and first field */
+      202 
+      203 	whoami = "config_$find_2";
+      204 
+      205 	cardp = addr (config_deck$);			/* Start looking from the beginning */
+      206 
+      207 	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+      208 						/* Assume four page default (other programs know this limit, this might as well) */
+      209 	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+      210 
+      211 	card_word = P_card_word;
+      212 
+      213 	field_data = unspec (P_field_name);		/* Translate to a bitstring */
+      214 
+      215 	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+      216 	     if config_card.word = card_word
+      217 	     then if config_card.data_field (1) = field_data
+      218 		then do;
+      219 			P_cardp = cardp;		/* Found one */
+      220 			return;			/* Return it */
+      221 		     end;
+      222 
+      223 	     cardp = addrel (cardp, size (config_card));	/* on to the next card */
+      224 	end;					/* of looking */
+      225 
+      226 	P_cardp = null ();				/* Sorry... no more left */
+      227 
+      228 	return;					/* End of config_$find */
+      229 
+      230 /*  */
+      231 
+      232 find_2_next:
+      233      entry (P_card_word, P_field_name, P_cardp);
+      234 
+      235 /* Like config_$find_2, except it finds the NEXT matching card after the one at P_cardp. */
+      236 
+      237 	whoami = "config_$find_2_next";
+      238 
+      239 	if P_cardp ^= null ()
+      240 	then cardp = addrel (validate_cardp (P_cardp), size (config_card));
+      241 						/* SKIP the one we got */
+      242 	else cardp = addr (config_deck$);		/* Start with first card if none specified */
+      243 
+      244 	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+      245 						/* Assume four page default (other programs know this limit, this might as well) */
+      246 	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+      247 
+      248 	card_word = P_card_word;
+      249 	field_data = unspec (P_field_name);
+      250 
+      251 	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+      252 	     if config_card.word = card_word
+      253 	     then if config_card.data_field (1) = field_data
+      254 		then do;
+      255 			P_cardp = cardp;		/* Found one */
+      256 			return;
+      257 		     end;
+      258 
+      259 	     cardp = addrel (cardp, size (config_card));	/* on to the next card */
+      260 	end;					/* of looking */
+      261 
+      262 	P_cardp = null ();				/* Sorry... no more left */
+      263 
+      264 	return;					/* End of config_$find */
+      265 
+      266 
+      267 find_periph:
+      268      entry (P_peripheral_name, P_cardp);
+      269 
+      270 /* Find a PRPH card for a specified peripheral */
+      271 
+      272 	whoami = "config_$find_periph";
+      273 
+      274 	call find_2 ("prph", P_peripheral_name, P_cardp); /* Very simple */
+      275 
+      276 	return;					/* End of config_$find_periph */
+      277 
+      278 
+      279 
+      280 find_peripheral:
+      281      entry (P_peripheral_name, P_iom_no, P_channel_no, P_peripheral_info, P_code);
+      282 
+      283 /* Find a PRPH card for a specified peripheral, and return info about the peripheral */
+      284 
+      285 	whoami = "config_$find_peripheral";
+      286 
+      287 	cardp = null ();				/* Prepare to call ourselves to locate the card */
+      288 	call find_2 ("prph", P_peripheral_name, cardp);
+      289 
+      290 	if cardp = null ()
+      291 	then do;					/* Not found */
+      292 		P_iom_no = -1;
+      293 		P_channel_no = -1;
+      294 		P_peripheral_info = ""b;
+      295 		P_code = 1;			/* Indicate error */
+      296 		return;
+      297 	     end;
+      298 
+      299 	P_iom_no = cardp -> prph_card.iom;		/* Otherwise, return the info */
+      300 	P_channel_no = cardp -> prph_card.chan;
+      301 	P_peripheral_info = unspec (cardp -> prph_card.model);
+      302 	P_code = 0;				/* Indicate success */
+      303 
+      304 	return;					/* End of config_$find_peripheral */
+      305 
+      306 
+      307 find_parm:
+      308      entry (P_parm_name, P_parm_ptr);
+      309 
+      310 /* Find a PARM card with the specified field */
+      311 
+      312 	whoami = "config_$find_parm";
+      313 
+      314 	field_data = unspec (P_parm_name);		/* We must search for it as bit patterns */
+      315 
+      316 	cardp = null ();
+      317 
+      318 FIND_PARM_LOOP:
+      319 	call find ("parm", cardp);			/* Look through all the PARM cards */
+      320 	if cardp ^= null ()
+      321 	then do;					/* Found one */
+      322 		do idx = 1 to config_card.n_fields;	/* Do any match? */
+      323 		     if config_card.data_field (idx) = field_data
+      324 		     then if config_card.field_type (idx) = CONFIG_STRING_TYPE
+      325 			then do;
+      326 				P_parm_ptr = addr (config_card.data_field (idx));
+      327 				return;		/* Return a pointer to the matching parameter */
+      328 			     end;
+      329 		end;				/* of search of a single card */
+      330 
+      331 		goto FIND_PARM_LOOP;		/* Isn't it a KLUDGE that pl1 doesn't have do ... until? */
+      332 	     end;
+      333 
+      334 	P_parm_ptr = null ();			/* If not found, return null */
+      335 
+      336 	return;					/* End of config_$find_parm */
+      337 
+      338 
+      339 find_table:
+      340      entry (P_table_name, P_table_size);
+      341 
+      342 /* Find a TBLS card for the specified field, and return the size it specifies */
+      343 
+      344 	whoami = "config_$find_table";
+      345 
+      346 	field_data = unspec (P_table_name);		/* We must search for it as bit patterns */
+      347 
+      348 	cardp = null ();
+      349 
+      350 FIND_TABLE_LOOP:
+      351 	call find ("tbls", cardp);			/* Look through all the PARM cards */
+      352 	if cardp ^= null ()
+      353 	then do;					/* Found one */
+      354 		do idx = 1 to config_card.n_fields;	/* Do any match? */
+      355 		     if config_card.data_field (idx) = field_data
+      356 		     then if config_card.field_type (idx) = CONFIG_STRING_TYPE
+      357 			then do;
+      358 				if idx = config_card.n_fields
+      359 				then /* Nothing after the name. Grump. */
+      360 				     if get_ring_ () = 0
+      361 				     then call syserr (BEEP, "^a: TBLS card specifies no value for ^a", whoami,
+      362 					     P_table_name);
+      363 				     else call sub_err_ (0, whoami, ACTION_DEFAULT_RESTART, null (), (0),
+      364 					     "TBLS card specified no value for ^a", P_table_name);
+      365 
+      366 				else if (config_card.field_type (idx + 1) ^= CONFIG_OCTAL_TYPE)
+      367 					& (config_card.field_type (idx + 1) ^= CONFIG_DECIMAL_TYPE)
+      368 				then if get_ring_ () = 0
+      369 				     then call syserr (BEEP,
+      370 					     "^a: TBLS card specifies invalid type of value for ^a", whoami,
+      371 					     P_table_name);
+      372 				     else call sub_err_ (0, whoami, ACTION_DEFAULT_RESTART, null (), (0),
+      373 					     "TBLS card specifies invalid type of value for ^a", P_table_name);
+      374 
+      375 				else do;		/* At last, it's OK to return the value */
+      376 					P_table_size = binary (config_card.data_field (idx + 1), 35);
+      377 					return;	/* Return the size */
+      378 				     end;
+      379 			     end;			/* Of having found the right table name */
+      380 		end;				/* Of loop through fields on a single card */
+      381 
+      382 		goto FIND_TABLE_LOOP;		/* Isn't it a KLUDGE that pl1 doesn't have do ... until? */
+      383 	     end;
+      384 
+      385 	P_table_size = -1;				/* If not found, return clearly invalid value */
+      386 
+      387 	return;					/* End of config_$find_table */
+      388 
+      389 
+      390 clear:
+      391      entry ();
+      392 
+      393 /* Clear the whole config deck */
+      394 
+      395 	whoami = "config_$clear";
+      396 
+      397 	call get_config_size ();			/* This will always work for clearing; if not the first */
+      398 						/* time, then in the second, recursive, invocation. */
+      399 
+      400 	config_n_cards = config_max_cards;
+      401 
+      402 	do idx = 1 to config_max_cards;		/* Clear out each card */
+      403 	     cardp = addr (config_deck.cards (idx));
+      404 
+      405 	     config_card.word = FREE_CARD_WORD;		/* The "free" pattern */
+      406 	     config_card.data_field (*) = EMPTY_FIELD;
+      407 	     unspec (config_card.type_word) = ""b;	/* And nothing in the type fields */
+      408 	end;
+      409 
+      410 	call unlock_config_deck ();
+      411 
+      412 	return;					/* End of config_$clear */
+      413 
+      414 
+      415 init_card:
+      416      entry (P_card_word, P_cardp);
+      417 
+      418 /* Initialize a card image, possibly first getting space for it from the config deck. */
+      419 
+      420 	whoami = "config_$init_card";
+      421 
+      422 	cardp = P_cardp;				/* Get the pointer */
+      423 
+      424 	if cardp = null ()
+      425 	then do;					/* Caller wants to get a card from the deck */
+      426 
+      427 		call get_config_size ();		/* Locks the config deck */
+      428 		if config_n_cards >= config_max_cards
+      429 		then /* Not bloody likely.... */
+      430 		     if get_ring_ () = 0
+      431 		     then call syserr (CRASH, "^a: The config_deck is full.", whoami);
+      432 		     else call sub_err_ (0, whoami, ACTION_CANT_RESTART, null (), (0), "The config_deck is full.");
+      433 
+      434 		config_n_cards = config_n_cards + 1;	/* It has gotten larger */
+      435 
+      436 		cardp = addr (config_deck.cards (config_n_cards));
+      437 						/* Get a pointer to the newly allocated image */
+      438 	     end;					/* Of allocating new image */
+      439 
+      440 	config_card.word = P_card_word;		/* Initialize it */
+      441 	config_card.data_field (*) = EMPTY_FIELD;
+      442 	unspec (config_card.type_word) = ""b;
+      443 
+      444 	if P_cardp = null ()
+      445 	then do;					/* We had to allocate a new one, so: */
+      446 		call unlock_config_deck ();		/* unlock, and */
+      447 		P_cardp = cardp;			/* return the pointer */
+      448 	     end;
+      449 
+      450 	return;					/* End of config_$init_card */
+      451 
+      452 
+      453 replace:
+      454      entry (P_cardp1, P_cardp2);
+      455 
+      456 /* Replace card1 with card2 */
+      457 
+      458 	whoami = "config_$replace";
+      459 
+      460 	cardp = validate_cardp (P_cardp1);
+      461 
+      462 	card_image = P_cardp2 -> config_card;		/* Copy it into our stack frame */
+      463 
+      464 	call get_config_size ();			/* Locks the config_deck */
+      465 
+      466 	cardp -> config_card = card_image;		/* Copy the image in */
+      467 
+      468 	call unlock_config_deck ();			/* All done */
+      469 
+      470 	return;					/* End of config_$replace */
+      471 
+      472 
+      473 add:
+      474      entry (P_cardp, P_after_cardp);
+      475 
+      476 /* Add a card, after after_card if non-null -- note that this cannot make a card first in the deck */
+      477 
+      478 	whoami = "config_$add";
+      479 
+      480 	card_image = P_cardp -> config_card;		/* Copy it into our stack frame */
+      481 
+      482 	if P_after_cardp ^= null ()
+      483 	then after_cardp = validate_cardp (P_after_cardp);
+      484 	else after_cardp = null ();
+      485 
+      486 	call get_config_size ();			/* Locks the config_deck */
+      487 
+      488 	if config_n_cards >= config_max_cards
+      489 	then /* Not bloody likely.... */
+      490 	     if get_ring_ () = 0
+      491 	     then call syserr (CRASH, "^a: The config_deck is full.", whoami);
+      492 	     else call sub_err_ (0, whoami, ACTION_CANT_RESTART, null (), (0), "The config deck is full.");
+      493 
+      494 	if after_cardp ^= null ()
+      495 	then /* Find the card we are to add this after */
+      496 	     after_idx = divide (binary (rel (after_cardp), 18), size (config_card), 17, 0) + 1;
+      497 	else after_idx = config_n_cards;		/* If none specified, add after the last */
+      498 
+      499 	config_n_cards = config_n_cards + 1;		/* It has gotten larger */
+      500 
+      501 	do idx = (config_n_cards - 1) to (after_idx + 1) by -1;
+      502 						/* Move the later ones up */
+      503 	     config_deck.cards (idx + 1) = config_deck.cards (idx);
+      504 	end;
+      505 
+      506 	config_deck.cards (after_idx + 1) = card_image;	/* Pop it in */
+      507 
+      508 	call unlock_config_deck ();			/* All done */
+      509 
+      510 	return;					/* End of config_$add */
+      511 
+      512 
+      513 delete:
+      514      entry (P_cardp);
+      515 
+      516 /* Delete a card */
+      517 
+      518 	whoami = "config_$delete";
+      519 
+      520 	cardp = validate_cardp (P_cardp);
+      521 
+      522 	call get_config_size ();			/* Locks the config_deck */
+      523 
+      524 	delete_idx = divide (binary (rel (cardp), 18), size (config_card), 17, 0) + 1;
+      525 
+      526 	do idx = delete_idx + 1 to config_n_cards;	/* Move the remaining ones down */
+      527 	     config_deck.cards (idx - 1) = config_deck.cards (idx);
+      528 	end;
+      529 
+      530 	config_deck.cards (config_n_cards).word = FREE_CARD_WORD;
+      531 						/* Clear out the last card */
+      532 	config_deck.cards (config_n_cards).data_field (*) = EMPTY_FIELD;
+      533 	unspec (config_deck.cards (config_n_cards).type_word) = ""b;
+      534 
+      535 	call unlock_config_deck ();			/* All done */
+      536 
+      537 	return;					/* End of config_$delete */
+      538 
+      539 
+      540 update:
+      541      entry ();
+      542 
+      543 /* Writes the config_deck back to disk, synchronously */
+      544 
+      545 	whoami = "config_$update";
+      546 
+      547 	if (get_ring_ ()) ^= 0
+      548 	then /* Do nothing in test environment */
+      549 	     return;
+      550 	if sys_info$initialization_state < 2
+      551 	then return;				/* and nothing within bce */
+      552 
+      553 	call get_config_size;			/* sets config_seg_size */
+      554 
+      555 	astep = get_ptrs_$given_segno (bin (baseno (configp), 15));
+      556 	call pc_wired$write_wait (astep, 0, 4);
+      557 
+      558 	call unlock_config_deck;
+      559 	return;
+      560 
+      561 
+      562 get_config_size:
+      563      proc ();
+      564 
+      565 /* *	This procedure sets n_cards and max_cards appropriately, by examining
+      566*   *	the information in the config_deck segment. If the segment is empty,
+      567*   *	it is initialized appropriately.
+      568*   */
+      569 
+      570 	dcl     idx		 fixed bin;
+      571 
+      572 
+      573 /* First, lock the config_deck to this process. This is always done before any operation which references
+      574*   or modifies the config_deck. However, any putative card pointers should be validated before this step.
+      575*   */
+      576 
+      577 	call lock_config_deck ();
+      578 
+      579 	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+      580 						/* Assume four page default (other programs know this limit, this might as well) */
+      581 
+      582 	configp = addr (config_deck$);		/* Make addressable */
+      583 
+      584 	if config_deck.cards (1).word = ZERO_CARD_WORD
+      585 	then do;					/* It's empty already */
+      586 		config_deck.cards (1).word = FREE_CARD_WORD;
+      587 						/* Make config_$clear work */
+      588 		call clear ();			/* Clear it out completely */
+      589 		config_n_cards = 0;			/* And return a size of zero */
+      590 		return;				/* All done */
+      591 	     end;
+      592 
+      593 	do idx = 1 to config_max_cards;		/* Otherwise, look for the first free card */
+      594 	     if config_deck.cards (idx).word = FREE_CARD_WORD
+      595 	     then goto FOUND_FREE_CARD;
+      596 	end;
+      597 
+      598 FOUND_FREE_CARD:
+      599 	config_n_cards = idx - 1;			/* Last card used is one before the free one */
+      600 
+      601 	return;					/* All done */
+      602      end get_config_size;
+      603 
+      604 
+      605 validate_cardp:
+      606      proc (P_validate_cardp) returns (pointer);
+      607 
+      608 /* *	This procedure verifies that cardp is, indeed, a pointer into the config_deck
+      609*   *	and points at the beginning of a config card. It does not, however, catch all
+      610*   *	possible cases which would result from format errors in the config_deck.
+      611*   */
+      612 
+      613 	dcl     P_validate_cardp	 pointer parameter;
+      614 
+      615 	dcl     return_cardp	 pointer;
+      616 
+      617 
+      618 	if substr (unspec (P_validate_cardp), (37 - 6), 6) ^= "43"b3
+      619 	then do;
+      620 INVALID_CARD_POINTER:
+      621 		if get_ring_ () = 0
+      622 		then call syserr (CRASH, "^a: Invalid card pointer ^p does not point to a valid config card.", whoami,
+      623 			P_validate_cardp);
+      624 		else call sub_err_ (0, whoami, ACTION_CAN_RESTART, null (), (0),
+      625 			"Invalid card pointer ^p does not point to a valid config card.", P_validate_cardp);
+      626 		return (null ());			/* In case someone typed GO */
+      627 	     end;
+      628 
+      629 	return_cardp = P_validate_cardp;
+      630 
+      631 	if baseno (return_cardp) ^= baseno (addr (config_deck$))
+      632 	then goto INVALID_CARD_POINTER;
+      633 
+      634 	if mod (binary (rel (return_cardp), 18), size (config_card)) ^= 0
+      635 	then goto INVALID_CARD_POINTER;
+      636 
+      637 	if verify (rtrim (return_cardp -> config_card.word), VALID_CARD_WORD_CHARACTERS) ^= 0
+      638 	then goto INVALID_CARD_POINTER;
+      639 
+      640 	return (return_cardp);
+      641      end validate_cardp;
+      642 
+      643 
+      644 lock_config_deck:
+      645      proc ();
+      646 
+      647 /* This procedure locks the config_deck lock if it can, and sets lock_sw if it does. If it can't
+      648*   be locked because of a mylock error, this is ignored, and lock_sw is not set.
+      649*   */
+      650 
+      651 /* For now, it does nothing at all */
+      652 
+      653 	lock_sw = "0"b;
+      654 
+      655 	if (get_ring_ ()) ^= 0
+      656 	then /* Test environment, do nothing */
+      657 	     return;
+      658 
+      659 	return;
+      660      end lock_config_deck;
+      661 
+      662 
+      663 
+      664 unlock_config_deck:
+      665      proc ();
+      666 
+      667 /* This procedure unlocks the config_deck lock if lock_sw is set.
+      668*   */
+      669 
+      670 /* For now, it does nothing at all */
+      671 
+      672 	lock_sw = "0"b;
+      673 
+      674 	if (get_ring_ ()) ^= 0
+      675 	then /* Test environment, do nothing */
+      676 	     return;
+      677 
+      678 	return;
+      679      end unlock_config_deck;
+      680 
+      681 /* format: off */
+      682 
+      683  /* BEGIN INCLUDE FILE ... config_deck.incl.pl1 ... 11/13/80, W. Olin Sibert */
+  1     2 
+  1     3 dcl (configp, cardp) pointer;
+  1     4 dcl  config_n_cards fixed bin;			/* Number of cards used in config */
+  1     5 dcl  config_max_cards fixed bin;			/* Max number of cards in config */
+  1     6 
+  1     7 dcl  config_deck$ fixed bin external static;
+  1     8 
+  1     9 dcl 1 config_deck aligned based (configp),
+  1    10     2 cards (config_n_cards) aligned like config_card,
+  1    11     2 pad_cards (config_max_cards - config_n_cards) aligned like config_card;
+  1    12 
+  1    13 dcl 1 config_card aligned based (cardp),
+  1    14     2 word char (4) aligned,
+  1    15     2 data_field (14) bit (36) aligned,
+  1    16     2 type_word aligned like config_card_type_word;
+  1    17 
+  1    18 dcl 1 config_card_type_word aligned based,
+  1    19     2 field_type (14) bit (2) unaligned,
+  1    20     2 pad1 bit (4) unaligned,
+  1    21     2 n_fields fixed bin (4) unsigned unaligned;
+  1    22 
+  1    23 dcl (CONFIG_DECIMAL_TYPE	init ("11"b),
+  1    24      CONFIG_OCTAL_TYPE	init ("00"b),
+  1    25      CONFIG_SINGLE_CHAR_TYPE	init ("01"b),
+  1    26      CONFIG_STRING_TYPE	init ("10"b)) bit (2) aligned static options (constant);
+  1    27 
+  1    28 dcl  ZERO_CARD_WORD char (4) aligned internal static options (constant) init ("    ");
+  1    29 dcl  FREE_CARD_WORD char (4) aligned internal static options (constant) init ("ÿÿÿÿ");
+  1    30 
+  1    31 dcl  VALID_CARD_WORD_CHARACTERS char (38) internal static options (constant) init
+  1    32     ("abcdefghijklmnopqrstuvwxyz0123456789_.");		/* lowercase letters, digits, period and underscore */
+  1    33 
+  1    34 dcl  EMPTY_FIELD bit (36) aligned internal static options (constant) init ("777777777777"b3);
+  1    35 
+  1    36 /* END INCLUDE FILE config_deck.incl.pl1 */
+      683 
+      684  /* BEGIN INCLUDE FILE ... config_prph_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 
+  2     3 dcl  prph_cardp ptr;				/* Pointer to a PRPH card. */
+  2     4 
+  2     5 dcl 1 prph_card based (prph_cardp) aligned,		/* PRPH card declaration */
+  2     6     2 word char (4),				/* "prph" */
+  2     7     2 name char (4),				/* subsystem name */
+  2     8     2 iom fixed bin (3),				/* IOM number */
+  2     9     2 chan fixed bin (8),				/* channel number */
+  2    10     2 model fixed bin,				/* model number */
+  2    11     2 state char (4),                                       /* ON/OFF state */
+  2    12     2 pad (9) bit (36) aligned,			/* pad to 15 fields */
+  2    13 
+  2    14     2 type_word aligned,
+  2    15       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    16       3 pad1 bit (4) unaligned,
+  2    17       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    18 
+  2    19 dcl  PRPH_CARD_WORD char (4) aligned internal static options (constant) init ("prph");
+  2    20 
+  2    21 /* END INCLUDE FILE ... config_prph_card.incl.pl1 */
+      684 
+      685  /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  3     2 /* format: style3 */
+  3     3 
+  3     4 /* These constants are to be used for the flags argument of sub_err_ */
+  3     5 /* They are just "string (condition_info_header.action_flags)" */
+  3     6 
+  3     7 declare	(
+  3     8 	ACTION_CAN_RESTART	init (""b),
+  3     9 	ACTION_CANT_RESTART init ("1"b),
+  3    10 	ACTION_DEFAULT_RESTART
+  3    11 			init ("01"b),
+  3    12 	ACTION_QUIET_RESTART
+  3    13 			init ("001"b),
+  3    14 	ACTION_SUPPORT_SIGNAL
+  3    15 			init ("0001"b)
+  3    16 	)		bit (36) aligned internal static options (constant);
+  3    17 
+  3    18 /* End include file */
+      685 
+      686  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  4     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  4     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  4     4 
+  4     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  4     6 
+  4     7 dcl (
+  4     8 
+  4     9 /* The following constants define the message action codes.  This indicates
+  4    10*how a message is to be handled.  */
+  4    11 
+  4    12      SYSERR_CRASH_SYSTEM	init (1),			
+  4    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  4    14 
+  4    15      SYSERR_TERMINATE_PROCESS	init (2),
+  4    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  4    17 
+  4    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  4    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  4    20 
+  4    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  4    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  4    23 
+  4    24      SYSERR_LOG_OR_PRINT	init (4),
+  4    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  4    26 
+  4    27      SYSERR_LOG_OR_DISCARD	init (5),
+  4    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  4    29 
+  4    30 
+  4    31 /* The following constants are added to the normal severities to indicate
+  4    32*different sorting classes of messages.  */
+  4    33 
+  4    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  4    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  4    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  4    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  4    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  4    39 	) fixed bin internal static options (constant);
+  4    40 
+  4    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      686 
+      687 
+      688 
+      689 /* BEGIN MESSAGE DOCUMENTATION
+      690*
+      691*   Message:
+      692*   config_$find_table: TBLS card specifies no value for NAME.
+      693*
+      694*   S:  $beep
+      695*
+      696*   M:  The config deck does not specify a value for NAME.
+      697*
+      698*   A:  One should be added.
+      699*
+      700*   Message: 
+      701*   config_$ENTRY: the config deck is full.
+      702*
+      703*   S:  $crash
+      704*
+      705*   M:  No space remained in the config deck for additional cards.
+      706*
+      707*   A:  If this recurs, try another boot tape. Remove unneccessary
+      708*   config cards.
+      709*
+      710*   END MESSAGE DOCUMENTATION */
+      711 
+      712      end config_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1057.3  config_.pl1                       >udd>sm>ds>w>ml>config_.pl1
+683          1    05/08/81  1953.6  config_deck.incl.pl1              >ldd>incl>config_deck.incl.pl1
+684          2    10/31/84  1415.5  config_prph_card.incl.pl1         >ldd>incl>config_prph_card.incl.pl1
+685          3    04/16/82  1058.1  sub_err_flags.incl.pl1            >ldd>incl>sub_err_flags.incl.pl1
+686          4    05/17/85  0715.7  syserr_constants.incl.pl1         >ldd>incl>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CANT_RESTART             000013 constant        bit(36)                  initial dcl 3-7 set ref 432* 492*
+ACTION_CAN_RESTART              000031 constant        bit(36)                  initial dcl 3-7 set ref 624*
+ACTION_DEFAULT_RESTART          000000 constant        bit(36)                  initial dcl 3-7 set ref 363* 372*
+BEEP                            000034 constant        fixed bin(17,0)          initial dcl 4-7 set ref 358* 366*
+CONFIG_DECIMAL_TYPE                    constant        bit(2)                   initial dcl 1-23 ref 366
+CONFIG_OCTAL_TYPE                      constant        bit(2)                   initial dcl 1-23 ref 366
+CONFIG_STRING_TYPE              000013 constant        bit(2)                   initial dcl 1-23 ref 323 355
+CRASH                           000041 constant        fixed bin(17,0)          initial dcl 4-7 set ref 428* 488* 620*
+EMPTY_FIELD                     003011 constant        bit(36)                  initial dcl 1-34 ref 406 441 532
+FREE_CARD_WORD                  003011 constant        char(4)                  initial dcl 1-29 ref 182 215 251 405 530 586 594
+P_after_cardp                          parameter       pointer                  dcl 109 set ref 473 482 482*
+P_card_word                            parameter       char(4)                  dcl 109 ref 164 180 198 211 232 248 415 440
+P_cardp                                parameter       pointer                  dcl 109 set ref 164 171 171* 185* 192* 198 219* 226*
+                                                                                  232 239 239* 255* 262* 267 274* 415 422 444 447*
+                                                                                  473 480 513 520*
+P_cardp1                               parameter       pointer                  dcl 109 set ref 453 460*
+P_cardp2                               parameter       pointer                  dcl 109 ref 453 462
+P_channel_no                           parameter       fixed bin(8,0)           dcl 109 set ref 280 293* 300*
+P_code                                 parameter       fixed bin(35,0)          dcl 109 set ref 280 295* 302*
+P_field_name                           parameter       char(4)                  dcl 109 ref 198 213 232 249
+P_iom_no                               parameter       fixed bin(3,0)           dcl 109 set ref 280 292* 299*
+P_parm_name                            parameter       char(4)                  dcl 109 ref 307 314
+P_parm_ptr                             parameter       pointer                  dcl 109 set ref 307 326* 334*
+P_peripheral_info                      parameter       bit(36)                  dcl 109 set ref 280 294* 301*
+P_peripheral_name                      parameter       char(4)                  dcl 109 set ref 267 274* 280 288*
+P_table_name                           parameter       char(4)                  dcl 109 set ref 339 346 358* 363* 366* 372*
+P_table_size                           parameter       fixed bin(17,0)          dcl 109 set ref 339 376* 385*
+P_validate_cardp                       parameter       pointer                  dcl 613 set ref 605 618 620* 624* 629
+VALID_CARD_WORD_CHARACTERS      000001 constant        char(38)                 initial packed unaligned dcl 1-31 ref 637
+ZERO_CARD_WORD                         constant        char(4)                  initial dcl 1-28 ref 584
+addr                                                   builtin function         dcl 151 ref 174 205 242 326 403 436 582 631
+addrel                                                 builtin function         dcl 151 ref 171 189 223 239 259
+after_cardp                     000114 automatic       pointer                  dcl 133 set ref 482* 484* 494 494
+after_idx                       000113 automatic       fixed bin(17,0)          dcl 131 set ref 494* 497* 501 506
+astep                           000140 automatic       pointer                  dcl 149 set ref 555* 556*
+baseno                                                 builtin function         dcl 151 ref 555 555 631 631
+bin                                                    builtin function         dcl 151 ref 555 555
+binary                                                 builtin function         dcl 151 ref 376 494 524 634
+card_image                      000120 automatic       structure                level 1 dcl 137 set ref 462* 466 480* 506
+card_word                       000116 automatic       char(4)                  dcl 134 set ref 180* 183 211* 216 248* 252
+cardp                           000144 automatic       pointer                  dcl 1-3 set ref 171* 171 174* 176 178 178 182 183
+                                                                                  185 189* 189 189 205* 207 209 209 215 216 216 219
+                                                                                  223* 223 223 239* 239 242* 244 246 246 251 252 252
+                                                                                  255 259* 259 259 287* 288* 290 299 300 301 316*
+                                                                                  318* 320 322 323 323 326 348* 350* 352 354 355 355
+                                                                                  358 366 366 376 403* 405 406 407 422* 424 436* 440
+                                                                                  441 442 447 460* 466 494 520* 524 524 579 634
+cards                                  based           structure                array level 2 dcl 1-9 set ref 403 436 503* 503 506*
+                                                                                  527* 527
+chan                      3            based           fixed bin(8,0)           level 2 dcl 2-5 ref 300
+config_card                            based           structure                level 1 dcl 1-13 set ref 171 176 178 189 207 209 223
+                                                                                  239 244 246 259 462 466* 480 494 524 579 634
+config_card_type_word                  based           structure                level 1 dcl 1-18
+config_deck                            based           structure                level 1 dcl 1-9
+config_deck$                    000024 external static fixed bin(17,0)          dcl 1-7 set ref 174 205 242 582 631
+config_max_cards                000147 automatic       fixed bin(17,0)          dcl 1-5 set ref 176* 182 207* 215 244* 251 400 402
+                                                                                  428 488 579* 593
+config_n_cards                  000146 automatic       fixed bin(17,0)          dcl 1-4 set ref 178* 182 209* 215 246* 251 400* 428
+                                                                                  434* 434 436 488 497 499* 499 501 526 530 532 533
+                                                                                  589* 598*
+configp                         000142 automatic       pointer                  dcl 1-3 set ref 403 436 503 503 506 527 527 530 532
+                                                                                  533 555 555 582* 584 586 594
+data_field                1            based           bit(36)                  array level 3 in structure "config_deck" dcl 1-9
+                                                                                  in procedure "config_" set ref 532*
+data_field                1            based           bit(36)                  array level 2 in structure "config_card" dcl 1-13
+                                                                                  in procedure "config_" set ref 216 252 323 326 355
+                                                                                  376 406* 441*
+delete_idx                      000112 automatic       fixed bin(17,0)          dcl 131 set ref 524* 526
+divide                                                 builtin function         dcl 151 ref 176 178 207 209 244 246 494 524 579
+field_data                      000117 automatic       bit(36)                  dcl 135 set ref 213* 216 249* 252 314* 323 346* 355
+field_type               17            based           bit(2)                   array level 3 packed packed unaligned dcl 1-13 set
+                                                                                  ref 323 355 366 366
+get_ptrs_$given_segno           000020 constant        entry                    external dcl 146 ref 555
+get_ring_                       000012 constant        entry                    external dcl 143 ref 358 366 428 488 547 620 655 674
+idx                             000200 automatic       fixed bin(17,0)          dcl 570 in procedure "get_config_size" set ref 593*
+                                                                                  594* 598
+idx                             000110 automatic       fixed bin(17,0)          dcl 129 in procedure "config_" set ref 182* 215*
+                                                                                  251* 322* 323 323 326* 354* 355 355 358 366 366
+                                                                                  376* 402* 403* 501* 503 503* 526* 527 527*
+iom                       2            based           fixed bin(3,0)           level 2 dcl 2-5 ref 299
+lock_sw                         000111 automatic       bit(1)                   dcl 130 set ref 653* 672*
+mod                                                    builtin function         dcl 151 ref 634
+model                     4            based           fixed bin(17,0)          level 2 dcl 2-5 ref 301
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 1-13
+                                                                                  set ref 322 354 358
+null                                                   builtin function         dcl 151 ref 171 192 226 239 262 287 290 316 320 334
+                                                                                  348 352 363 363 372 372 424 432 432 444 482 484
+                                                                                  492 492 494 624 624 626
+pc_wired$write_wait             000022 constant        entry                    external dcl 147 ref 556
+prph_card                              based           structure                level 1 dcl 2-5
+rel                                                    builtin function         dcl 151 ref 494 524 634
+return_cardp                    000210 automatic       pointer                  dcl 615 set ref 629* 631 634 637 640
+rtrim                                                  builtin function         dcl 151 ref 637
+size                                                   builtin function         dcl 151 ref 171 176 178 189 207 209 223 239 244 246
+                                                                                  259 494 524 579 634
+sub_err_                        000014 constant        entry                    external dcl 144 ref 363 372 432 492 624
+substr                                                 builtin function         dcl 151 ref 618
+sys_info$initialization_state   000010 external static fixed bin(17,0)          dcl 140 ref 550
+syserr                          000016 constant        entry                    external dcl 145 ref 358 366 428 488 620
+type_word                17            based           structure                array level 3 in structure "config_deck" dcl 1-9
+                                                                                  in procedure "config_" set ref 533*
+type_word                17            based           structure                level 2 in structure "config_card" dcl 1-13
+                                                                                  in procedure "config_" set ref 407* 442*
+unspec                                                 builtin function         dcl 151 set ref 213 249 301 314 346 407* 442* 533*
+                                                                                  618
+verify                                                 builtin function         dcl 151 ref 637
+whoami                          000100 automatic       char(32)                 packed unaligned dcl 128 set ref 169* 203* 237* 272*
+                                                                                  285* 312* 344* 358* 363* 366* 372* 395* 420* 428*
+                                                                                  432* 458* 478* 488* 492* 518* 545* 620* 624*
+word                                   based           char(4)                  level 2 in structure "config_card" dcl 1-13
+                                                                                  in procedure "config_" set ref 182 183 215 216 251
+                                                                                  252 405* 440* 637
+word                                   based           char(4)                  array level 3 in structure "config_deck" dcl 1-9
+                                                                                  in procedure "config_" set ref 530* 584 586* 594
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 3-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 3-7
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 4-7
+CONFIG_SINGLE_CHAR_TYPE                internal static bit(2)                   initial dcl 1-23
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 4-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 4-7
+PRPH_CARD_WORD                         internal static char(4)                  initial dcl 2-19
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 4-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 4-7
+config_seg_size                        automatic       fixed bin(19,0)          dcl 127
+dseg$                                  external static fixed bin(71,0)          array dcl 139
+prph_cardp                             automatic       pointer                  dcl 2-3
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+FIND_PARM_LOOP                  000757 constant        label                    dcl 318 ref 331
+FIND_TABLE_LOOP                 001056 constant        label                    dcl 350 ref 382
+FOUND_FREE_CARD                 002360 constant        label                    dcl 598 ref 594
+INVALID_CARD_POINTER            002372 constant        label                    dcl 620 ref 631 634 637
+add                             001707 constant        entry                    external dcl 473
+clear                           001401 constant        entry                    external dcl 390 ref 588
+config                          000307 constant        entry                    external dcl 20
+config_                         000300 constant        entry                    external dcl 20
+delete                          002126 constant        entry                    external dcl 513
+find                            000321 constant        entry                    external dcl 164 ref 318 350
+find_2                          000425 constant        entry                    external dcl 198 ref 274 288
+find_2_next                     000514 constant        entry                    external dcl 232
+find_parm                       000742 constant        entry                    external dcl 307
+find_periph                     000624 constant        entry                    external dcl 267
+find_peripheral                 000662 constant        entry                    external dcl 280
+find_table                      001041 constant        entry                    external dcl 339
+get_config_size                 002317 constant        entry                    internal dcl 562 ref 397 427 464 486 522 553
+init_card                       001455 constant        entry                    external dcl 415
+lock_config_deck                002557 constant        entry                    internal dcl 644 ref 577
+replace                         001647 constant        entry                    external dcl 453
+unlock_config_deck              002574 constant        entry                    internal dcl 664 ref 410 446 468 508 535 558
+update                          002233 constant        entry                    external dcl 540
+validate_cardp                  002364 constant        entry                    internal dcl 605 ref 171 239 460 482 520
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+wordno                                                 builtin function         ref 178 209 246
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3240        3266    3013        3250
+Length      3562    3013        26         260     224           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+config_                             308 external procedure  is an external procedure.  
+get_config_size                         internal procedure  shares stack frame of external procedure config_.  
+validate_cardp                          internal procedure  shares stack frame of external procedure config_.  
+lock_config_deck                        internal procedure  shares stack frame of external procedure config_.  
+unlock_config_deck                      internal procedure  shares stack frame of external procedure config_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+config_                  000100 whoami                      config_
+                         000110 idx                         config_
+                         000111 lock_sw                     config_
+                         000112 delete_idx                  config_
+                         000113 after_idx                   config_
+                         000114 after_cardp                 config_
+                         000116 card_word                   config_
+                         000117 field_data                  config_
+                         000120 card_image                  config_
+                         000140 astep                       config_
+                         000142 configp                     config_
+                         000144 cardp                       config_
+                         000146 config_n_cards              config_
+                         000147 config_max_cards            config_
+                         000200 idx                         get_config_size
+                         000210 return_cardp                validate_cardp
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_in         call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+get_ptrs_$given_segno         get_ring_                     pc_wired$write_wait           sub_err_
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+config_deck$                  sys_info$initialization_state
+
+
+CONSTANTS
+002611  aa  777 777 777 777	ÿÿÿÿ
+002612  aa  777 777 777 777	ÿÿÿÿ
+002613  aa  777 777 777 777	ÿÿÿÿ
+002614  aa  777 777 777 777	ÿÿÿÿ
+002615  aa  777 777 777 777	ÿÿÿÿ
+002616  aa  777 777 777 777	ÿÿÿÿ
+002617  aa  777 777 777 777	ÿÿÿÿ
+002620  aa  777 777 777 777	ÿÿÿÿ
+002621  aa  777 777 777 777	ÿÿÿÿ
+002622  aa  777 777 777 777	ÿÿÿÿ
+002623  aa  777 777 777 777	ÿÿÿÿ
+002624  aa  777 777 000 777	ÿÿ ÿ
+002625  aa  000 000 000 000	    
+002626  aa  000 000 000 000	    
+002627  aa  000 000 777 777	  ÿÿ
+002630  aa  777 777 777 777	ÿÿÿÿ
+002631  aa  777 777 777 777	ÿÿÿÿ
+002632  aa  777 777 777 777	ÿÿÿÿ
+002633  aa  777 777 777 777	ÿÿÿÿ
+002634  aa  777 777 777 777	ÿÿÿÿ
+002635  aa  777 777 777 777	ÿÿÿÿ
+002636  aa  777 777 777 777	ÿÿÿÿ
+002637  aa  777 777 777 777	ÿÿÿÿ
+002640  aa  777 777 777 000	ÿÿÿ 
+002641  aa  777 000 000 000	ÿ   
+002642  aa  000 000 000 000	    
+002643  aa  000 000 000 000	    
+002644  aa  000 000 000 000	    
+002645  aa  000 000 000 000	    
+002646  aa  000 000 000 000	    
+002647  aa  000 000 000 777	   ÿ
+002650  aa  777 777 777 777	ÿÿÿÿ
+002651  aa  777 777 777 777	ÿÿÿÿ
+002652  aa  777 777 777 777	ÿÿÿÿ
+002653  aa  777 777 777 777	ÿÿÿÿ
+002654  aa  777 777 777 777	ÿÿÿÿ
+002655  aa  777 777 777 777	ÿÿÿÿ
+002656  aa  777 777 777 777	ÿÿÿÿ
+002657  aa  777 777 777 777	ÿÿÿÿ
+002660  aa  777 777 777 777	ÿÿÿÿ
+002661  aa  777 777 777 777	ÿÿÿÿ
+002662  aa  777 777 777 777	ÿÿÿÿ
+002663  aa  777 777 777 777	ÿÿÿÿ
+002664  aa  777 777 777 777	ÿÿÿÿ
+002665  aa  777 777 777 777	ÿÿÿÿ
+002666  aa  777 777 777 777	ÿÿÿÿ
+002667  aa  777 777 777 777	ÿÿÿÿ
+002670  aa  777 777 777 777	ÿÿÿÿ
+002671  aa  777 777 777 777	ÿÿÿÿ
+002672  aa  777 777 777 777	ÿÿÿÿ
+002673  aa  777 777 777 777	ÿÿÿÿ
+002674  aa  777 777 777 777	ÿÿÿÿ
+002675  aa  777 777 777 777	ÿÿÿÿ
+002676  aa  777 777 777 777	ÿÿÿÿ
+002677  aa  777 777 777 777	ÿÿÿÿ
+002700  aa  777 777 777 777	ÿÿÿÿ
+002701  aa  777 777 777 777	ÿÿÿÿ
+002702  aa  777 777 777 777	ÿÿÿÿ
+002703  aa  777 777 777 777	ÿÿÿÿ
+002704  aa  777 777 777 777	ÿÿÿÿ
+002705  aa  777 777 777 777	ÿÿÿÿ
+002706  aa  777 777 777 777	ÿÿÿÿ
+002707  aa  777 777 777 777	ÿÿÿÿ
+002710  aa  777 777 777 777	ÿÿÿÿ
+002711  aa  777 777 777 777	ÿÿÿÿ
+002712  aa  777 777 777 777	ÿÿÿÿ
+002713  aa  777 777 777 777	ÿÿÿÿ
+002714  aa  777 777 777 777	ÿÿÿÿ
+002715  aa  777 777 777 777	ÿÿÿÿ
+002716  aa  777 777 777 777	ÿÿÿÿ
+002717  aa  777 777 777 777	ÿÿÿÿ
+002720  aa  777 777 777 777	ÿÿÿÿ
+002721  aa  777 777 777 777	ÿÿÿÿ
+002722  aa  777 777 777 777	ÿÿÿÿ
+002723  aa  777 777 777 777	ÿÿÿÿ
+002724  aa  777 777 777 777	ÿÿÿÿ
+002725  aa  777 777 777 777	ÿÿÿÿ
+002726  aa  777 777 777 777	ÿÿÿÿ
+002727  aa  777 777 777 777	ÿÿÿÿ
+002730  aa  777 777 777 777	ÿÿÿÿ
+002731  aa  777 777 777 777	ÿÿÿÿ
+002732  aa  777 777 777 777	ÿÿÿÿ
+002733  aa  777 777 777 777	ÿÿÿÿ
+002734  aa  777 777 777 777	ÿÿÿÿ
+002735  aa  777 777 777 777	ÿÿÿÿ
+002736  aa  777 777 777 777	ÿÿÿÿ
+002737  aa  777 777 777 777	ÿÿÿÿ
+002740  aa  777 777 777 777	ÿÿÿÿ
+002741  aa  777 777 777 777	ÿÿÿÿ
+002742  aa  777 777 777 777	ÿÿÿÿ
+002743  aa  777 777 777 777	ÿÿÿÿ
+002744  aa  777 777 777 777	ÿÿÿÿ
+002745  aa  777 777 777 777	ÿÿÿÿ
+002746  aa  777 777 777 777	ÿÿÿÿ
+002747  aa  777 777 777 777	ÿÿÿÿ
+002750  aa  777 777 777 777	ÿÿÿÿ
+002751  aa  777 777 777 777	ÿÿÿÿ
+002752  aa  777 777 777 777	ÿÿÿÿ
+002753  aa  777 777 777 777	ÿÿÿÿ
+002754  aa  777 777 777 777	ÿÿÿÿ
+002755  aa  777 777 777 777	ÿÿÿÿ
+002756  aa  777 777 777 777	ÿÿÿÿ
+002757  aa  777 777 777 777	ÿÿÿÿ
+002760  aa  777 777 777 777	ÿÿÿÿ
+002761  aa  777 777 777 777	ÿÿÿÿ
+002762  aa  777 777 777 777	ÿÿÿÿ
+002763  aa  777 777 777 777	ÿÿÿÿ
+002764  aa  777 777 777 777	ÿÿÿÿ
+002765  aa  777 777 777 777	ÿÿÿÿ
+002766  aa  777 777 777 777	ÿÿÿÿ
+002767  aa  777 777 777 777	ÿÿÿÿ
+002770  aa  777 777 777 777	ÿÿÿÿ
+002771  aa  777 777 777 777	ÿÿÿÿ
+002772  aa  777 777 777 777	ÿÿÿÿ
+002773  aa  777 777 777 777	ÿÿÿÿ
+002774  aa  777 777 777 777	ÿÿÿÿ
+002775  aa  777 777 777 777	ÿÿÿÿ
+002776  aa  777 777 777 777	ÿÿÿÿ
+002777  aa  777 777 777 777	ÿÿÿÿ
+003000  aa  777 777 777 777	ÿÿÿÿ
+003001  aa  777 777 777 777	ÿÿÿÿ
+003002  aa  777 777 777 777	ÿÿÿÿ
+003003  aa  777 777 777 777	ÿÿÿÿ
+003004  aa  777 777 777 777	ÿÿÿÿ
+003005  aa  777 777 777 777	ÿÿÿÿ
+003006  aa  777 777 777 777	ÿÿÿÿ
+003007  aa  777 777 777 777	ÿÿÿÿ
+003010  aa  777 777 777 777	ÿÿÿÿ
+
+000000  aa     200000000000
+
+000001  aa  141 142 143 144	abcd
+000002  aa  145 146 147 150	efgh
+000003  aa  151 152 153 154	ijkl
+000004  aa  155 156 157 160	mnop
+000005  aa  161 162 163 164	qrst
+000006  aa  165 166 167 170	uvwx
+000007  aa  171 172 060 061	yz01
+000010  aa  062 063 064 065	2345
+000011  aa  066 067 070 071	6789
+000012  aa  137 056 000 000	_.
+
+000013  aa     400000000000
+
+000014  aa     524000000076
+
+000015  aa     524000000102
+
+000016  aa     524000000030
+
+000017  aa     524000000034
+
+000020  aa     524000000060
+
+000021  aa     524000000064
+
+000022  aa     524000000043
+
+000023  aa     404000000005
+
+000024  aa     526000000040
+
+000025  aa     524000000047
+
+000026  aa  164 142 154 163	tbls
+
+000027  aa  160 141 162 155	parm
+
+003011  aa     777777777777
+
+000030  aa  160 162 160 150	prph
+
+000031  aa     000000000000
+
+003012  aa     000000000020
+
+000032  aa     404000000043
+
+000033  aa     514000000044
+
+000034  aa     000000000003
+
+000035  aa     404000000010
+
+000036  aa     404000000003
+
+000037  aa     404000000021
+
+000040  aa     524000000004
+
+000041  aa     000000000001
+
+000042  aa     464000000000
+
+000044  aa     077777000043
+000045  aa     000001000000
+
+000046  aa  143 157 156 146	conf
+000047  aa  151 147 137 044	ig_$
+000050  aa  141 144 144 000	add
+
+000051  aa  143 157 156 146	conf
+000052  aa  151 147 137 044	ig_$
+000053  aa  146 151 156 144	find
+
+000054  aa  143 157 156 146	conf
+000055  aa  151 147 137 044	ig_$
+000056  aa  165 160 144 141	upda
+000057  aa  164 145 000 000	te
+
+000060  aa  143 157 156 146	conf
+000061  aa  151 147 137 044	ig_$
+000062  aa  144 145 154 145	dele
+000063  aa  164 145 000 000	te
+
+000064  aa  143 157 156 146	conf
+000065  aa  151 147 137 044	ig_$
+000066  aa  162 145 160 154	repl
+000067  aa  141 143 145 000	ace
+
+000070  aa  143 157 156 146	conf
+000071  aa  151 147 137 044	ig_$
+000072  aa  143 154 145 141	clea
+000073  aa  162 000 000 000	r
+
+000074  aa  143 157 156 146	conf
+000075  aa  151 147 137 044	ig_$
+000076  aa  146 151 156 144	find
+000077  aa  137 062 000 000	_2
+
+000100  aa  143 157 156 146	conf
+000101  aa  151 147 137 044	ig_$
+000102  aa  151 156 151 164	init
+000103  aa  137 143 141 162	_car
+000104  aa  144 000 000 000	d
+
+000105  aa  143 157 156 146	conf
+000106  aa  151 147 137 044	ig_$
+000107  aa  146 151 156 144	find
+000110  aa  137 164 141 142	_tab
+000111  aa  154 145 000 000	le
+
+000112  aa  143 157 156 146	conf
+000113  aa  151 147 137 044	ig_$
+000114  aa  146 151 156 144	find
+000115  aa  137 160 141 162	_par
+000116  aa  155 000 000 000	m
+
+000117  aa  143 157 156 146	conf
+000120  aa  151 147 137 044	ig_$
+000121  aa  146 151 156 144	find
+000122  aa  137 160 145 162	_per
+000123  aa  151 160 150 000	iph
+
+000124  aa  143 157 156 146	conf
+000125  aa  151 147 137 044	ig_$
+000126  aa  146 151 156 144	find
+000127  aa  137 062 137 156	_2_n
+000130  aa  145 170 164 000	ext
+
+000131  aa  124 150 145 040	The 
+000132  aa  143 157 156 146	conf
+000133  aa  151 147 040 144	ig d
+000134  aa  145 143 153 040	eck 
+000135  aa  151 163 040 146	is f
+000136  aa  165 154 154 056	ull.
+
+000137  aa  124 150 145 040	The 
+000140  aa  143 157 156 146	conf
+000141  aa  151 147 137 144	ig_d
+000142  aa  145 143 153 040	eck 
+000143  aa  151 163 040 146	is f
+000144  aa  165 154 154 056	ull.
+
+000145  aa  143 157 156 146	conf
+000146  aa  151 147 137 044	ig_$
+000147  aa  146 151 156 144	find
+000150  aa  137 160 145 162	_per
+000151  aa  151 160 150 145	iphe
+000152  aa  162 141 154 000	ral
+
+000153  aa  136 141 072 040	^a: 
+000154  aa  124 150 145 040	The 
+000155  aa  143 157 156 146	conf
+000156  aa  151 147 137 144	ig_d
+000157  aa  145 143 153 040	eck 
+000160  aa  151 163 040 146	is f
+000161  aa  165 154 154 056	ull.
+
+000162  aa  124 102 114 123	TBLS
+000163  aa  040 143 141 162	 car
+000164  aa  144 040 163 160	d sp
+000165  aa  145 143 151 146	ecif
+000166  aa  151 145 144 040	ied 
+000167  aa  156 157 040 166	no v
+000170  aa  141 154 165 145	alue
+000171  aa  040 146 157 162	 for
+000172  aa  040 136 141 000	 ^a
+
+000173  aa  136 141 072 040	^a: 
+000174  aa  124 102 114 123	TBLS
+000175  aa  040 143 141 162	 car
+000176  aa  144 040 163 160	d sp
+000177  aa  145 143 151 146	ecif
+000200  aa  151 145 163 040	ies 
+000201  aa  156 157 040 166	no v
+000202  aa  141 154 165 145	alue
+000203  aa  040 146 157 162	 for
+000204  aa  040 136 141 000	 ^a
+
+000205  aa  124 102 114 123	TBLS
+000206  aa  040 143 141 162	 car
+000207  aa  144 040 163 160	d sp
+000210  aa  145 143 151 146	ecif
+000211  aa  151 145 163 040	ies 
+000212  aa  151 156 166 141	inva
+000213  aa  154 151 144 040	lid 
+000214  aa  164 171 160 145	type
+000215  aa  040 157 146 040	 of 
+000216  aa  166 141 154 165	valu
+000217  aa  145 040 146 157	e fo
+000220  aa  162 040 136 141	r ^a
+
+000221  aa  136 141 072 040	^a: 
+000222  aa  124 102 114 123	TBLS
+000223  aa  040 143 141 162	 car
+000224  aa  144 040 163 160	d sp
+000225  aa  145 143 151 146	ecif
+000226  aa  151 145 163 040	ies 
+000227  aa  151 156 166 141	inva
+000230  aa  154 151 144 040	lid 
+000231  aa  164 171 160 145	type
+000232  aa  040 157 146 040	 of 
+000233  aa  166 141 154 165	valu
+000234  aa  145 040 146 157	e fo
+000235  aa  162 040 136 141	r ^a
+
+000236  aa  111 156 166 141	Inva
+000237  aa  154 151 144 040	lid 
+000240  aa  143 141 162 144	card
+000241  aa  040 160 157 151	 poi
+000242  aa  156 164 145 162	nter
+000243  aa  040 136 160 040	 ^p 
+000244  aa  144 157 145 163	does
+000245  aa  040 156 157 164	 not
+000246  aa  040 160 157 151	 poi
+000247  aa  156 164 040 164	nt t
+000250  aa  157 040 141 040	o a 
+000251  aa  166 141 154 151	vali
+000252  aa  144 040 143 157	d co
+000253  aa  156 146 151 147	nfig
+000254  aa  040 143 141 162	 car
+000255  aa  144 056 000 000	d.
+
+000256  aa  136 141 072 040	^a: 
+000257  aa  111 156 166 141	Inva
+000260  aa  154 151 144 040	lid 
+000261  aa  143 141 162 144	card
+000262  aa  040 160 157 151	 poi
+000263  aa  156 164 145 162	nter
+000264  aa  040 136 160 040	 ^p 
+000265  aa  144 157 145 163	does
+000266  aa  040 156 157 164	 not
+000267  aa  040 160 157 151	 poi
+000270  aa  156 164 040 164	nt t
+000271  aa  157 040 141 040	o a 
+000272  aa  166 141 154 151	vali
+000273  aa  144 040 143 157	d co
+000274  aa  156 146 151 147	nfig
+000275  aa  040 143 141 162	 car
+000276  aa  144 056 000 000	d.
+
+BEGIN PROCEDURE config_
+ENTRY TO config_                                            STATEMENT 1 ON LINE 20
+config:
+config_:
+     proc ();
+
+000277  da     000104200000
+000300  aa   000500 6270 00	eax7 	320
+000301  aa  7 00034 3521 20	epp2 	pr7|28,*
+000302  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000303  aa     000000000000
+000304  aa     000000000000
+000305  aa   000024 7100 04	tra  	20,ic		000331
+ENTRY TO config                                             STATEMENT 1 ON LINE 20
+config:
+config_:
+     proc ();
+
+000306  da     000111200000
+000307  aa   000500 6270 00	eax7 	320
+000310  aa  7 00034 3521 20	epp2 	pr7|28,*
+000311  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000312  aa     000000000000
+000313  aa     000000000000
+						STATEMENT 1 ON LINE 164
+find:
+     entry (P_card_word, P_cardp);
+
+000314  aa   000015 7100 04	tra  	13,ic		000331
+ENTRY TO find                                               STATEMENT 1 ON LINE 164
+find:
+     entry (P_card_word, P_cardp);
+
+000315  at     000002000040
+000316  ta     000042000000
+000317  ta     000315000000
+000320  da     000116300000
+000321  aa   000500 6270 00	eax7 	320
+000322  aa  7 00034 3521 20	epp2 	pr7|28,*
+000323  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000324  aa     000004000000
+000325  aa     000000000000
+000326  aa  6 00032 3735 20	epp7 	pr6|26,*
+000327  aa  7 00004 3715 20	epp5 	pr7|4,*
+000330  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 169
+	whoami = "config_$find";
+
+000331  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000332  aa   777520 00 0014	desc9a	-176,12		000051 = 143157156146
+000333  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 171
+	if P_cardp ^= null ()
+	then cardp = addrel (validate_cardp (P_cardp), size (config_card));
+
+000334  aa  6 00150 2371 20	ldaq 	pr6|104,*		P_cardp
+000335  aa   777507 6770 04	eraq 	-185,ic		000044 = 077777000043 000001000000
+000336  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000337  aa   000015 6000 04	tze  	13,ic		000354
+000340  aa  6 00150 3521 20	epp2 	pr6|104,*		P_cardp
+000341  aa  6 00232 2521 00	spri2	pr6|154
+000342  aa  6 00226 3521 00	epp2 	pr6|150
+000343  aa  6 00234 2521 00	spri2	pr6|156
+000344  aa  6 00230 3521 00	epp2 	pr6|152
+000345  aa   010000 4310 07	fld  	4096,dl
+000346  aa  2 00000 7571 00	staq 	pr2|0
+000347  aa   002015 6700 04	tsp4 	1037,ic		002364
+000350  aa  6 00226 3521 20	epp2 	pr6|150,*
+000351  aa   000020 0520 03	adwp2	16,du
+000352  aa  6 00144 2521 00	spri2	pr6|100		cardp
+000353  aa   000003 7100 04	tra  	3,ic		000356
+						STATEMENT 1 ON LINE 174
+	else cardp = addr (config_deck$);
+
+000354  la  4 00024 3735 20	epp7 	pr4|20,*		config_deck$
+000355  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 176
+	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+
+000356  aa   007777 2360 07	ldq  	4095,dl
+000357  aa   000020 5060 07	div  	16,dl
+000360  aa  6 00147 7561 00	stq  	pr6|103		config_max_cards
+						STATEMENT 1 ON LINE 178
+	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+
+000361  aa  6 00144 6361 20	eaq  	pr6|100,*		cardp
+000362  aa   000022 7720 00	qrl  	18
+000363  aa   000020 5060 07	div  	16,dl
+000364  aa  6 00146 7561 00	stq  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 180
+	card_word = P_card_word;
+
+000365  aa  6 00032 3735 20	epp7 	pr6|26,*
+000366  aa  7 00002 2351 20	lda  	pr7|2,*		P_card_word
+000367  aa  6 00116 7551 00	sta  	pr6|78		card_word
+						STATEMENT 1 ON LINE 182
+	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+
+000370  aa  6 00147 2361 00	ldq  	pr6|103		config_max_cards
+000371  aa  6 00152 7561 00	stq  	pr6|106
+000372  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+000373  aa   000001 0760 07	adq  	1,dl
+000374  aa  6 00110 7561 00	stq  	pr6|72		idx
+000375  aa   000000 0110 03	nop  	0,du
+000376  aa  6 00110 2361 00	ldq  	pr6|72		idx
+000377  aa  6 00152 1161 00	cmpq 	pr6|106
+000400  aa   000016 6054 04	tpnz 	14,ic		000416
+000401  aa  6 00144 2351 20	lda  	pr6|100,*		config_card.word
+000402  aa   002407 1150 04	cmpa 	1287,ic		003011 = 777777777777
+000403  aa   000013 6000 04	tze  	11,ic		000416
+						STATEMENT 1 ON LINE 183
+	     if config_card.word = card_word
+	     then do;
+
+000404  aa  6 00116 1151 00	cmpa 	pr6|78		card_word
+000405  aa   000004 6010 04	tnz  	4,ic		000411
+						STATEMENT 1 ON LINE 185
+		     P_cardp = cardp;
+
+000406  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+000407  aa  6 00150 6535 20	spri7	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 186
+		     return;
+
+000410  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 187
+		end;
+
+						STATEMENT 1 ON LINE 189
+	     cardp = addrel (cardp, size (config_card));
+
+000411  aa  6 00144 3521 20	epp2 	pr6|100,*		cardp
+000412  aa   000020 0520 03	adwp2	16,du
+000413  aa  6 00144 2521 00	spri2	pr6|100		cardp
+						STATEMENT 1 ON LINE 190
+	end;
+
+000414  aa  6 00110 0541 00	aos  	pr6|72		idx
+000415  aa   777761 7100 04	tra  	-15,ic		000376
+						STATEMENT 1 ON LINE 192
+	P_cardp = null ();
+
+000416  aa   777426 2370 04	ldaq 	-234,ic		000044 = 077777000043 000001000000
+000417  aa  6 00150 7571 20	staq 	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 194
+	return;
+
+000420  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_2                                             STATEMENT 1 ON LINE 198
+find_2:
+     entry (P_card_word, P_field_name, P_cardp);
+
+000421  at     000003000040
+000422  tt     000040000042
+000423  ta     000421000000
+000424  da     000123300000
+000425  aa   000500 6270 00	eax7 	320
+000426  aa  7 00034 3521 20	epp2 	pr7|28,*
+000427  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000430  aa     000006000000
+000431  aa     000000000000
+000432  aa  6 00032 3735 20	epp7 	pr6|26,*
+000433  aa  7 00006 3715 20	epp5 	pr7|6,*
+000434  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 203
+	whoami = "config_$find_2";
+
+000435  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000436  aa   777437 00 0016	desc9a	-225,14		000074 = 143157156146
+000437  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 205
+	cardp = addr (config_deck$);
+
+000440  aa  6 00044 3701 20	epp4 	pr6|36,*
+000441  la  4 00024 3735 20	epp7 	pr4|20,*		config_deck$
+000442  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 207
+	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+
+000443  aa   007777 2360 07	ldq  	4095,dl
+000444  aa   000020 5060 07	div  	16,dl
+000445  aa  6 00147 7561 00	stq  	pr6|103		config_max_cards
+						STATEMENT 1 ON LINE 209
+	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+
+000446  aa  7 00000 6361 00	eaq  	pr7|0		cardp
+000447  aa   000022 7720 00	qrl  	18
+000450  aa   000020 5060 07	div  	16,dl
+000451  aa  6 00146 7561 00	stq  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 211
+	card_word = P_card_word;
+
+000452  aa  6 00032 3715 20	epp5 	pr6|26,*
+000453  aa  5 00002 2351 20	lda  	pr5|2,*		P_card_word
+000454  aa  6 00116 7551 00	sta  	pr6|78		card_word
+						STATEMENT 1 ON LINE 213
+	field_data = unspec (P_field_name);
+
+000455  aa  5 00004 2351 20	lda  	pr5|4,*
+000456  aa  6 00117 7551 00	sta  	pr6|79		field_data
+						STATEMENT 1 ON LINE 215
+	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+
+000457  aa  6 00147 2361 00	ldq  	pr6|103		config_max_cards
+000460  aa  6 00153 7561 00	stq  	pr6|107
+000461  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+000462  aa   000001 0760 07	adq  	1,dl
+000463  aa  6 00110 7561 00	stq  	pr6|72		idx
+000464  aa  6 00110 2361 00	ldq  	pr6|72		idx
+000465  aa  6 00153 1161 00	cmpq 	pr6|107
+000466  aa   000021 6054 04	tpnz 	17,ic		000507
+000467  aa  6 00144 2351 20	lda  	pr6|100,*		config_card.word
+000470  aa   002321 1150 04	cmpa 	1233,ic		003011 = 777777777777
+000471  aa   000016 6000 04	tze  	14,ic		000507
+						STATEMENT 1 ON LINE 216
+	     if config_card.word = card_word
+	     then if config_card.data_field (1) = field_data
+		then do;
+
+000472  aa  6 00116 1151 00	cmpa 	pr6|78		card_word
+000473  aa   000007 6010 04	tnz  	7,ic		000502
+000474  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+000475  aa  7 00001 2351 00	lda  	pr7|1		config_card.data_field
+000476  aa  6 00117 1151 00	cmpa 	pr6|79		field_data
+000477  aa   000003 6010 04	tnz  	3,ic		000502
+						STATEMENT 1 ON LINE 219
+			P_cardp = cardp;
+
+000500  aa  6 00150 6535 20	spri7	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 220
+			return;
+
+000501  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 221
+		     end;
+
+						STATEMENT 1 ON LINE 223
+	     cardp = addrel (cardp, size (config_card));
+
+000502  aa  6 00144 3521 20	epp2 	pr6|100,*		cardp
+000503  aa   000020 0520 03	adwp2	16,du
+000504  aa  6 00144 2521 00	spri2	pr6|100		cardp
+						STATEMENT 1 ON LINE 224
+	end;
+
+000505  aa  6 00110 0541 00	aos  	pr6|72		idx
+000506  aa   777756 7100 04	tra  	-18,ic		000464
+						STATEMENT 1 ON LINE 226
+	P_cardp = null ();
+
+000507  aa   777335 2370 04	ldaq 	-291,ic		000044 = 077777000043 000001000000
+000510  aa  6 00150 7571 20	staq 	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 228
+	return;
+
+000511  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_2_next                                        STATEMENT 1 ON LINE 232
+find_2_next:
+     entry (P_card_word, P_field_name, P_cardp);
+
+000512  ta     000421000000
+000513  da     000131300000
+000514  aa   000500 6270 00	eax7 	320
+000515  aa  7 00034 3521 20	epp2 	pr7|28,*
+000516  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000517  aa     000006000000
+000520  aa     000000000000
+000521  aa  6 00032 3735 20	epp7 	pr6|26,*
+000522  aa  7 00006 3715 20	epp5 	pr7|6,*
+000523  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 237
+	whoami = "config_$find_2_next";
+
+000524  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000525  aa   777400 00 0023	desc9a	-256,19		000124 = 143157156146
+000526  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 239
+	if P_cardp ^= null ()
+	then cardp = addrel (validate_cardp (P_cardp), size (config_card));
+
+000527  aa  6 00150 2371 20	ldaq 	pr6|104,*		P_cardp
+000530  aa   777314 6770 04	eraq 	-308,ic		000044 = 077777000043 000001000000
+000531  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000532  aa   000015 6000 04	tze  	13,ic		000547
+000533  aa  6 00150 3521 20	epp2 	pr6|104,*		P_cardp
+000534  aa  6 00232 2521 00	spri2	pr6|154
+000535  aa  6 00226 3521 00	epp2 	pr6|150
+000536  aa  6 00234 2521 00	spri2	pr6|156
+000537  aa  6 00230 3521 00	epp2 	pr6|152
+000540  aa   010000 4310 07	fld  	4096,dl
+000541  aa  2 00000 7571 00	staq 	pr2|0
+000542  aa   001622 6700 04	tsp4 	914,ic		002364
+000543  aa  6 00226 3521 20	epp2 	pr6|150,*
+000544  aa   000020 0520 03	adwp2	16,du
+000545  aa  6 00144 2521 00	spri2	pr6|100		cardp
+000546  aa   000004 7100 04	tra  	4,ic		000552
+						STATEMENT 1 ON LINE 242
+	else cardp = addr (config_deck$);
+
+000547  aa  6 00044 3701 20	epp4 	pr6|36,*
+000550  la  4 00024 3735 20	epp7 	pr4|20,*		config_deck$
+000551  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 244
+	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+
+000552  aa   007777 2360 07	ldq  	4095,dl
+000553  aa   000020 5060 07	div  	16,dl
+000554  aa  6 00147 7561 00	stq  	pr6|103		config_max_cards
+						STATEMENT 1 ON LINE 246
+	config_n_cards = divide (wordno (cardp), size (config_card), 17, 0);
+
+000555  aa  6 00144 6361 20	eaq  	pr6|100,*		cardp
+000556  aa   000022 7720 00	qrl  	18
+000557  aa   000020 5060 07	div  	16,dl
+000560  aa  6 00146 7561 00	stq  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 248
+	card_word = P_card_word;
+
+000561  aa  6 00032 3735 20	epp7 	pr6|26,*
+000562  aa  7 00002 2351 20	lda  	pr7|2,*		P_card_word
+000563  aa  6 00116 7551 00	sta  	pr6|78		card_word
+						STATEMENT 1 ON LINE 249
+	field_data = unspec (P_field_name);
+
+000564  aa  7 00004 2351 20	lda  	pr7|4,*
+000565  aa  6 00117 7551 00	sta  	pr6|79		field_data
+						STATEMENT 1 ON LINE 251
+	do idx = config_n_cards + 1 to config_max_cards while (config_card.word ^= FREE_CARD_WORD);
+
+000566  aa  6 00147 2361 00	ldq  	pr6|103		config_max_cards
+000567  aa  6 00154 7561 00	stq  	pr6|108
+000570  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+000571  aa   000001 0760 07	adq  	1,dl
+000572  aa  6 00110 7561 00	stq  	pr6|72		idx
+000573  aa   000000 0110 03	nop  	0,du
+000574  aa  6 00110 2361 00	ldq  	pr6|72		idx
+000575  aa  6 00154 1161 00	cmpq 	pr6|108
+000576  aa   000021 6054 04	tpnz 	17,ic		000617
+000577  aa  6 00144 2351 20	lda  	pr6|100,*		config_card.word
+000600  aa   002211 1150 04	cmpa 	1161,ic		003011 = 777777777777
+000601  aa   000016 6000 04	tze  	14,ic		000617
+						STATEMENT 1 ON LINE 252
+	     if config_card.word = card_word
+	     then if config_card.data_field (1) = field_data
+		then do;
+
+000602  aa  6 00116 1151 00	cmpa 	pr6|78		card_word
+000603  aa   000007 6010 04	tnz  	7,ic		000612
+000604  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+000605  aa  7 00001 2351 00	lda  	pr7|1		config_card.data_field
+000606  aa  6 00117 1151 00	cmpa 	pr6|79		field_data
+000607  aa   000003 6010 04	tnz  	3,ic		000612
+						STATEMENT 1 ON LINE 255
+			P_cardp = cardp;
+
+000610  aa  6 00150 6535 20	spri7	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 256
+			return;
+
+000611  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 257
+		     end;
+
+						STATEMENT 1 ON LINE 259
+	     cardp = addrel (cardp, size (config_card));
+
+000612  aa  6 00144 3521 20	epp2 	pr6|100,*		cardp
+000613  aa   000020 0520 03	adwp2	16,du
+000614  aa  6 00144 2521 00	spri2	pr6|100		cardp
+						STATEMENT 1 ON LINE 260
+	end;
+
+000615  aa  6 00110 0541 00	aos  	pr6|72		idx
+000616  aa   777756 7100 04	tra  	-18,ic		000574
+						STATEMENT 1 ON LINE 262
+	P_cardp = null ();
+
+000617  aa   777225 2370 04	ldaq 	-363,ic		000044 = 077777000043 000001000000
+000620  aa  6 00150 7571 20	staq 	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 264
+	return;
+
+000621  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_periph                                        STATEMENT 1 ON LINE 267
+find_periph:
+     entry (P_peripheral_name, P_cardp);
+
+000622  ta     000315000000
+000623  da     000137300000
+000624  aa   000500 6270 00	eax7 	320
+000625  aa  7 00034 3521 20	epp2 	pr7|28,*
+000626  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000627  aa     000004000000
+000630  aa     000000000000
+000631  aa  6 00032 3735 20	epp7 	pr6|26,*
+000632  aa  7 00004 3715 20	epp5 	pr7|4,*
+000633  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 272
+	whoami = "config_$find_periph";
+
+000634  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000635  aa   777263 00 0023	desc9a	-333,19		000117 = 143157156146
+000636  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 274
+	call find_2 ("prph", P_peripheral_name, P_cardp);
+
+000637  aa   777171 2350 04	lda  	-391,ic		000030 = 160162160150
+000640  aa  6 00240 7551 00	sta  	pr6|160
+000641  aa  6 00240 3521 00	epp2 	pr6|160
+000642  aa  6 00232 2521 00	spri2	pr6|154
+000643  aa  6 00032 3735 20	epp7 	pr6|26,*
+000644  aa  7 00002 3521 20	epp2 	pr7|2,*		P_peripheral_name
+000645  aa  6 00234 2521 00	spri2	pr6|156
+000646  aa  6 00150 3521 20	epp2 	pr6|104,*		P_cardp
+000647  aa  6 00236 2521 00	spri2	pr6|158
+000650  aa  6 00230 6211 00	eax1 	pr6|152
+000651  aa   014000 4310 07	fld  	6144,dl
+000652  aa   777553 3520 04	epp2 	-149,ic		000425 = 000500627000
+000653  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 276
+	return;
+
+000654  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_peripheral                                    STATEMENT 1 ON LINE 280
+find_peripheral:
+     entry (P_peripheral_name, P_iom_no, P_channel_no, P_peripheral_info, P_code);
+
+000655  at     000005000040
+000656  tt     000036000035
+000657  tt     000033000032
+000660  ta     000655000000
+000661  da     000146300000
+000662  aa   000500 6270 00	eax7 	320
+000663  aa  7 00034 3521 20	epp2 	pr7|28,*
+000664  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000665  aa     000012000000
+000666  aa     000000000000
+						STATEMENT 1 ON LINE 285
+	whoami = "config_$find_peripheral";
+
+000667  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000670  aa   777256 00 0027	desc9a	-338,23		000145 = 143157156146
+000671  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 287
+	cardp = null ();
+
+000672  aa   777152 2370 04	ldaq 	-406,ic		000044 = 077777000043 000001000000
+000673  aa  6 00144 7571 00	staq 	pr6|100		cardp
+						STATEMENT 1 ON LINE 288
+	call find_2 ("prph", P_peripheral_name, cardp);
+
+000674  aa   777134 2350 04	lda  	-420,ic		000030 = 160162160150
+000675  aa  6 00240 7551 00	sta  	pr6|160
+000676  aa  6 00240 3521 00	epp2 	pr6|160
+000677  aa  6 00232 2521 00	spri2	pr6|154
+000700  aa  6 00032 3735 20	epp7 	pr6|26,*
+000701  aa  7 00002 3521 20	epp2 	pr7|2,*		P_peripheral_name
+000702  aa  6 00234 2521 00	spri2	pr6|156
+000703  aa  6 00144 3521 00	epp2 	pr6|100		cardp
+000704  aa  6 00236 2521 00	spri2	pr6|158
+000705  aa  6 00230 6211 00	eax1 	pr6|152
+000706  aa   014000 4310 07	fld  	6144,dl
+000707  aa   777516 3520 04	epp2 	-178,ic		000425 = 000500627000
+000710  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 290
+	if cardp = null ()
+	then do;
+
+000711  aa  6 00144 2371 00	ldaq 	pr6|100		cardp
+000712  aa   777132 6770 04	eraq 	-422,ic		000044 = 077777000043 000001000000
+000713  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000714  aa   000012 6010 04	tnz  	10,ic		000726
+						STATEMENT 1 ON LINE 292
+		P_iom_no = -1;
+
+000715  aa   000001 3360 07	lcq  	1,dl
+000716  aa  6 00032 3735 20	epp7 	pr6|26,*
+000717  aa  7 00004 7561 20	stq  	pr7|4,*		P_iom_no
+						STATEMENT 1 ON LINE 293
+		P_channel_no = -1;
+
+000720  aa   000001 3360 07	lcq  	1,dl
+000721  aa  7 00006 7561 20	stq  	pr7|6,*		P_channel_no
+						STATEMENT 1 ON LINE 294
+		P_peripheral_info = ""b;
+
+000722  aa  7 00010 4501 20	stz  	pr7|8,*		P_peripheral_info
+						STATEMENT 1 ON LINE 295
+		P_code = 1;
+
+000723  aa   000001 2360 07	ldq  	1,dl
+000724  aa  7 00012 7561 20	stq  	pr7|10,*		P_code
+						STATEMENT 1 ON LINE 296
+		return;
+
+000725  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 297
+	     end;
+
+						STATEMENT 1 ON LINE 299
+	P_iom_no = cardp -> prph_card.iom;
+
+000726  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+000727  aa  7 00002 2361 00	ldq  	pr7|2		prph_card.iom
+000730  aa  6 00032 3715 20	epp5 	pr6|26,*
+000731  aa  5 00004 7561 20	stq  	pr5|4,*		P_iom_no
+						STATEMENT 1 ON LINE 300
+	P_channel_no = cardp -> prph_card.chan;
+
+000732  aa  7 00003 2361 00	ldq  	pr7|3		prph_card.chan
+000733  aa  5 00006 7561 20	stq  	pr5|6,*		P_channel_no
+						STATEMENT 1 ON LINE 301
+	P_peripheral_info = unspec (cardp -> prph_card.model);
+
+000734  aa  7 00004 2351 00	lda  	pr7|4
+000735  aa  5 00010 7551 20	sta  	pr5|8,*		P_peripheral_info
+						STATEMENT 1 ON LINE 302
+	P_code = 0;
+
+000736  aa  5 00012 4501 20	stz  	pr5|10,*		P_code
+						STATEMENT 1 ON LINE 304
+	return;
+
+000737  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_parm                                          STATEMENT 1 ON LINE 307
+find_parm:
+     entry (P_parm_name, P_parm_ptr);
+
+000740  ta     000315000000
+000741  da     000154300000
+000742  aa   000500 6270 00	eax7 	320
+000743  aa  7 00034 3521 20	epp2 	pr7|28,*
+000744  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000745  aa     000004000000
+000746  aa     000000000000
+						STATEMENT 1 ON LINE 312
+	whoami = "config_$find_parm";
+
+000747  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000750  aa   777143 00 0021	desc9a	-413,17		000112 = 143157156146
+000751  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 314
+	field_data = unspec (P_parm_name);
+
+000752  aa  6 00032 3735 20	epp7 	pr6|26,*
+000753  aa  7 00002 2351 20	lda  	pr7|2,*
+000754  aa  6 00117 7551 00	sta  	pr6|79		field_data
+						STATEMENT 1 ON LINE 316
+	cardp = null ();
+
+000755  aa   777067 2370 04	ldaq 	-457,ic		000044 = 077777000043 000001000000
+000756  aa  6 00144 7571 00	staq 	pr6|100		cardp
+						STATEMENT 1 ON LINE 318
+FIND_PARM_LOOP:
+	call find ("parm", cardp);
+
+000757  aa   777050 2350 04	lda  	-472,ic		000027 = 160141162155
+000760  aa  6 00240 7551 00	sta  	pr6|160
+000761  aa  6 00240 3521 00	epp2 	pr6|160
+000762  aa  6 00232 2521 00	spri2	pr6|154
+000763  aa  6 00144 3521 00	epp2 	pr6|100		cardp
+000764  aa  6 00234 2521 00	spri2	pr6|156
+000765  aa  6 00230 6211 00	eax1 	pr6|152
+000766  aa   010000 4310 07	fld  	4096,dl
+000767  aa   777332 3520 04	epp2 	-294,ic		000321 = 000500627000
+000770  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 320
+	if cardp ^= null ()
+	then do;
+
+000771  aa  6 00144 2371 00	ldaq 	pr6|100		cardp
+000772  aa   777052 6770 04	eraq 	-470,ic		000044 = 077777000043 000001000000
+000773  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000774  aa   000035 6000 04	tze  	29,ic		001031
+						STATEMENT 1 ON LINE 322
+		do idx = 1 to config_card.n_fields;
+
+000775  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+000776  aa  7 00017 2361 00	ldq  	pr7|15		config_card.n_fields
+000777  aa  0 00430 3771 00	anaq 	pr0|280		= 000000000000 000000000017
+001000  aa  6 00155 7561 00	stq  	pr6|109
+001001  aa   000001 2360 07	ldq  	1,dl
+001002  aa  6 00110 7561 00	stq  	pr6|72		idx
+001003  aa   000000 0110 03	nop  	0,du
+001004  aa  6 00110 2361 00	ldq  	pr6|72		idx
+001005  aa  6 00155 1161 00	cmpq 	pr6|109
+001006  aa   777751 6054 04	tpnz 	-23,ic		000757
+						STATEMENT 1 ON LINE 323
+		     if config_card.data_field (idx) = field_data
+		     then if config_card.field_type (idx) = CONFIG_STRING_TYPE
+			then do;
+
+001007  aa  6 00144 2351 66	lda  	pr6|100,*ql	config_card.data_field
+001010  aa  6 00117 1151 00	cmpa 	pr6|79		field_data
+001011  aa   000015 6010 04	tnz  	13,ic		001026
+001012  aa   000001 7360 00	qls  	1
+001013  aa  6 00240 7561 00	stq  	pr6|160
+001014  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001015  aa  000 004 066 506	cmpb 	(pr,ql),(ic),fill(0)
+001016  aa  7 00016 67 0002	descb	pr7|14(34),2	config_card.field_type
+001017  aa   776776 00 0002	descb	-514,2		000013 = 400000000000
+001020  aa   000006 6010 04	tnz  	6,ic		001026
+						STATEMENT 1 ON LINE 326
+				P_parm_ptr = addr (config_card.data_field (idx));
+
+001021  aa  6 00110 7271 00	lxl7 	pr6|72		idx
+001022  aa  7 00000 3715 17	epp5 	pr7|0,7		config_card.data_field
+001023  aa  6 00032 3535 20	epp3 	pr6|26,*
+001024  aa  3 00004 6515 20	spri5	pr3|4,*		P_parm_ptr
+						STATEMENT 1 ON LINE 327
+				return;
+
+001025  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 328
+			     end;
+
+						STATEMENT 1 ON LINE 329
+		end;
+
+001026  aa  6 00110 0541 00	aos  	pr6|72		idx
+001027  aa   777755 7100 04	tra  	-19,ic		001004
+						STATEMENT 1 ON LINE 331
+		goto FIND_PARM_LOOP;
+
+001030  aa   777727 7100 04	tra  	-41,ic		000757
+						STATEMENT 1 ON LINE 332
+	     end;
+
+						STATEMENT 1 ON LINE 334
+	P_parm_ptr = null ();
+
+001031  aa   777013 2370 04	ldaq 	-501,ic		000044 = 077777000043 000001000000
+001032  aa  6 00032 3735 20	epp7 	pr6|26,*
+001033  aa  7 00004 7571 20	staq 	pr7|4,*		P_parm_ptr
+						STATEMENT 1 ON LINE 336
+	return;
+
+001034  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO find_table                                         STATEMENT 1 ON LINE 339
+find_table:
+     entry (P_table_name, P_table_size);
+
+001035  at     000002000040
+001036  ta     000037000000
+001037  ta     001035000000
+001040  da     000162300000
+001041  aa   000500 6270 00	eax7 	320
+001042  aa  7 00034 3521 20	epp2 	pr7|28,*
+001043  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001044  aa     000004000000
+001045  aa     000000000000
+						STATEMENT 1 ON LINE 344
+	whoami = "config_$find_table";
+
+001046  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001047  aa   777037 00 0022	desc9a	-481,18		000105 = 143157156146
+001050  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 346
+	field_data = unspec (P_table_name);
+
+001051  aa  6 00032 3735 20	epp7 	pr6|26,*
+001052  aa  7 00002 2351 20	lda  	pr7|2,*
+001053  aa  6 00117 7551 00	sta  	pr6|79		field_data
+						STATEMENT 1 ON LINE 348
+	cardp = null ();
+
+001054  aa   776770 2370 04	ldaq 	-520,ic		000044 = 077777000043 000001000000
+001055  aa  6 00144 7571 00	staq 	pr6|100		cardp
+						STATEMENT 1 ON LINE 350
+FIND_TABLE_LOOP:
+	call find ("tbls", cardp);
+
+001056  aa   776750 2350 04	lda  	-536,ic		000026 = 164142154163
+001057  aa  6 00240 7551 00	sta  	pr6|160
+001060  aa  6 00240 3521 00	epp2 	pr6|160
+001061  aa  6 00232 2521 00	spri2	pr6|154
+001062  aa  6 00144 3521 00	epp2 	pr6|100		cardp
+001063  aa  6 00234 2521 00	spri2	pr6|156
+001064  aa  6 00230 6211 00	eax1 	pr6|152
+001065  aa   010000 4310 07	fld  	4096,dl
+001066  aa   777233 3520 04	epp2 	-357,ic		000321 = 000500627000
+001067  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 352
+	if cardp ^= null ()
+	then do;
+
+001070  aa  6 00144 2371 00	ldaq 	pr6|100		cardp
+001071  aa   776753 6770 04	eraq 	-533,ic		000044 = 077777000043 000001000000
+001072  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001073  aa   000301 6000 04	tze  	193,ic		001374
+						STATEMENT 1 ON LINE 354
+		do idx = 1 to config_card.n_fields;
+
+001074  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001075  aa  7 00017 2361 00	ldq  	pr7|15		config_card.n_fields
+001076  aa  0 00430 3771 00	anaq 	pr0|280		= 000000000000 000000000017
+001077  aa  6 00161 7561 00	stq  	pr6|113
+001100  aa   000001 2360 07	ldq  	1,dl
+001101  aa  6 00110 7561 00	stq  	pr6|72		idx
+001102  aa  6 00110 2361 00	ldq  	pr6|72		idx
+001103  aa  6 00161 1161 00	cmpq 	pr6|113
+001104  aa   777752 6054 04	tpnz 	-22,ic		001056
+						STATEMENT 1 ON LINE 355
+		     if config_card.data_field (idx) = field_data
+		     then if config_card.field_type (idx) = CONFIG_STRING_TYPE
+			then do;
+
+001105  aa  6 00144 2351 66	lda  	pr6|100,*ql	config_card.data_field
+001106  aa  6 00117 1151 00	cmpa 	pr6|79		field_data
+001107  aa   000262 6010 04	tnz  	178,ic		001371
+001110  aa   000001 7360 00	qls  	1
+001111  aa  6 00240 7561 00	stq  	pr6|160
+001112  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001113  aa  000 004 066 506	cmpb 	(pr,ql),(ic),fill(0)
+001114  aa  7 00016 67 0002	descb	pr7|14(34),2	config_card.field_type
+001115  aa   776700 00 0002	descb	-576,2		000013 = 400000000000
+001116  aa   000253 6010 04	tnz  	171,ic		001371
+						STATEMENT 1 ON LINE 358
+				if idx = config_card.n_fields
+				then /* Nothing after the name. Grump. */
+				     if get_ring_ () = 0
+				     then call syserr (BEEP, "^a: TBLS card specifies no value for ^a", whoami,
+					     P_table_name);
+
+001117  aa  7 00017 2361 00	ldq  	pr7|15		config_card.n_fields
+001120  aa  0 00430 3771 00	anaq 	pr0|280		= 000000000000 000000000017
+001121  aa  6 00110 1161 00	cmpq 	pr6|72		idx
+001122  aa   000115 6010 04	tnz  	77,ic		001237
+001123  aa  6 00241 3521 00	epp2 	pr6|161
+001124  aa  6 00232 2521 00	spri2	pr6|154
+001125  aa  6 00230 6211 00	eax1 	pr6|152
+001126  aa   004000 4310 07	fld  	2048,dl
+001127  aa  6 00044 3701 20	epp4 	pr6|36,*
+001130  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+001131  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001132  aa  6 00241 2361 00	ldq  	pr6|161
+001133  aa   000033 6010 04	tnz  	27,ic		001166
+001134  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001135  aa   777037 00 0050	desc9a	-481,40		000173 = 136141072040
+001136  aa  6 00242 00 0050	desc9a	pr6|162,40
+001137  aa   776675 3520 04	epp2 	-579,ic		000034 = 000000000003
+001140  aa  6 00256 2521 00	spri2	pr6|174
+001141  aa  6 00242 3521 00	epp2 	pr6|162
+001142  aa  6 00260 2521 00	spri2	pr6|176
+001143  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001144  aa  6 00262 2521 00	spri2	pr6|178
+001145  aa  6 00032 3735 20	epp7 	pr6|26,*
+001146  aa  7 00002 3521 20	epp2 	pr7|2,*		P_table_name
+001147  aa  6 00264 2521 00	spri2	pr6|180
+001150  aa   776667 3520 04	epp2 	-585,ic		000037 = 404000000021
+001151  aa  6 00266 2521 00	spri2	pr6|182
+001152  aa   776653 3520 04	epp2 	-597,ic		000025 = 524000000047
+001153  aa  6 00270 2521 00	spri2	pr6|184
+001154  aa   776650 3520 04	epp2 	-600,ic		000024 = 526000000040
+001155  aa  6 00272 2521 00	spri2	pr6|186
+001156  aa   776662 3520 04	epp2 	-590,ic		000040 = 524000000004
+001157  aa  6 00274 2521 00	spri2	pr6|188
+001160  aa  6 00254 6211 00	eax1 	pr6|172
+001161  aa   020000 4310 07	fld  	8192,dl
+001162  aa  6 00044 3701 20	epp4 	pr6|36,*
+001163  la  4 00016 3521 20	epp2 	pr4|14,*		syserr
+001164  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001165  aa   000204 7100 04	tra  	132,ic		001371
+						STATEMENT 1 ON LINE 363
+				     else call sub_err_ (0, whoami, ACTION_DEFAULT_RESTART, null (), (0),
+					     "TBLS card specified no value for ^a", P_table_name);
+
+001166  aa  6 00241 4501 00	stz  	pr6|161
+001167  aa   776655 3734 24	epp7 	-595,ic*
+001170  aa  6 00226 6535 00	spri7	pr6|150
+001171  aa  6 00276 4501 00	stz  	pr6|190
+001172  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001173  aa   776770 00 0044	desc9a	-520,36		000162 = 124102114123
+001174  aa  6 00242 00 0044	desc9a	pr6|162,36
+001175  aa  6 00241 3521 00	epp2 	pr6|161
+001176  aa  6 00302 2521 00	spri2	pr6|194
+001177  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001200  aa  6 00304 2521 00	spri2	pr6|196
+001201  aa   776577 3520 04	epp2 	-641,ic		000000 = 200000000000
+001202  aa  6 00306 2521 00	spri2	pr6|198
+001203  aa  6 00226 3521 00	epp2 	pr6|150
+001204  aa  6 00310 2521 00	spri2	pr6|200
+001205  aa  6 00276 3521 00	epp2 	pr6|190
+001206  aa  6 00312 2521 00	spri2	pr6|202
+001207  aa  6 00242 3521 00	epp2 	pr6|162
+001210  aa  6 00314 2521 00	spri2	pr6|204
+001211  aa  6 00032 3715 20	epp5 	pr6|26,*
+001212  aa  5 00002 3521 20	epp2 	pr5|2,*		P_table_name
+001213  aa  6 00316 2521 00	spri2	pr6|206
+001214  aa   776607 3520 04	epp2 	-633,ic		000023 = 404000000005
+001215  aa  6 00320 2521 00	spri2	pr6|208
+001216  aa  6 00330 2521 00	spri2	pr6|216
+001217  aa   776605 3520 04	epp2 	-635,ic		000024 = 526000000040
+001220  aa  6 00322 2521 00	spri2	pr6|210
+001221  aa   776612 3520 04	epp2 	-630,ic		000033 = 514000000044
+001222  aa  6 00324 2521 00	spri2	pr6|212
+001223  aa   776617 3520 04	epp2 	-625,ic		000042 = 464000000000
+001224  aa  6 00326 2521 00	spri2	pr6|214
+001225  aa   776575 3520 04	epp2 	-643,ic		000022 = 524000000043
+001226  aa  6 00332 2521 00	spri2	pr6|218
+001227  aa   776611 3520 04	epp2 	-631,ic		000040 = 524000000004
+001230  aa  6 00334 2521 00	spri2	pr6|220
+001231  aa  6 00300 6211 00	eax1 	pr6|192
+001232  aa   034000 4310 07	fld  	14336,dl
+001233  aa  6 00044 3701 20	epp4 	pr6|36,*
+001234  la  4 00014 3521 20	epp2 	pr4|12,*		sub_err_
+001235  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001236  aa   000133 7100 04	tra  	91,ic		001371
+						STATEMENT 1 ON LINE 366
+				else if (config_card.field_type (idx + 1) ^= CONFIG_OCTAL_TYPE)
+					& (config_card.field_type (idx + 1) ^= CONFIG_DECIMAL_TYPE)
+				then if get_ring_ () = 0
+				     then call syserr (BEEP,
+					     "^a: TBLS card specifies invalid type of value for ^a", whoami,
+					     P_table_name);
+
+001237  aa  6 00240 7271 00	lxl7 	pr6|160
+001240  aa  003 100 060 517	csl  	(pr,x7),(pr),fill(0),bool(move)
+001241  aa  7 00017 00 0002	descb	pr7|15,2		config_card.field_type
+001242  aa  6 00240 00 0044	descb	pr6|160,36	config_card.field_type
+001243  aa  6 00240 2351 00	lda  	pr6|160		config_card.field_type
+001244  aa   000117 6000 04	tze  	79,ic		001363
+001245  aa   600000 1150 03	cmpa 	196608,du
+001246  aa   000115 6000 04	tze  	77,ic		001363
+001247  aa  6 00240 3521 00	epp2 	pr6|160
+001250  aa  6 00232 2521 00	spri2	pr6|154
+001251  aa  6 00230 6211 00	eax1 	pr6|152
+001252  aa   004000 4310 07	fld  	2048,dl
+001253  aa  6 00044 3701 20	epp4 	pr6|36,*
+001254  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+001255  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001256  aa  6 00240 2361 00	ldq  	pr6|160
+001257  aa   000033 6010 04	tnz  	27,ic		001312
+001260  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001261  aa   776741 00 0064	desc9a	-543,52		000221 = 136141072040
+001262  aa  6 00254 00 0064	desc9a	pr6|172,52
+001263  aa   776551 3520 04	epp2 	-663,ic		000034 = 000000000003
+001264  aa  6 00302 2521 00	spri2	pr6|194
+001265  aa  6 00254 3521 00	epp2 	pr6|172
+001266  aa  6 00304 2521 00	spri2	pr6|196
+001267  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001270  aa  6 00306 2521 00	spri2	pr6|198
+001271  aa  6 00032 3735 20	epp7 	pr6|26,*
+001272  aa  7 00002 3521 20	epp2 	pr7|2,*		P_table_name
+001273  aa  6 00310 2521 00	spri2	pr6|200
+001274  aa   776543 3520 04	epp2 	-669,ic		000037 = 404000000021
+001275  aa  6 00312 2521 00	spri2	pr6|202
+001276  aa   776523 3520 04	epp2 	-685,ic		000021 = 524000000064
+001277  aa  6 00314 2521 00	spri2	pr6|204
+001300  aa   776524 3520 04	epp2 	-684,ic		000024 = 526000000040
+001301  aa  6 00316 2521 00	spri2	pr6|206
+001302  aa   776536 3520 04	epp2 	-674,ic		000040 = 524000000004
+001303  aa  6 00320 2521 00	spri2	pr6|208
+001304  aa  6 00300 6211 00	eax1 	pr6|192
+001305  aa   020000 4310 07	fld  	8192,dl
+001306  aa  6 00044 3701 20	epp4 	pr6|36,*
+001307  la  4 00016 3521 20	epp2 	pr4|14,*		syserr
+001310  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001311  aa   000060 7100 04	tra  	48,ic		001371
+						STATEMENT 1 ON LINE 372
+				     else call sub_err_ (0, whoami, ACTION_DEFAULT_RESTART, null (), (0),
+					     "TBLS card specifies invalid type of value for ^a", P_table_name);
+
+001312  aa  6 00240 4501 00	stz  	pr6|160
+001313  aa   776531 3734 24	epp7 	-679,ic*
+001314  aa  6 00226 6535 00	spri7	pr6|150
+001315  aa  6 00276 4501 00	stz  	pr6|190
+001316  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001317  aa   776667 00 0060	desc9a	-585,48		000205 = 124102114123
+001320  aa  6 00254 00 0060	desc9a	pr6|172,48
+001321  aa  6 00240 3521 00	epp2 	pr6|160
+001322  aa  6 00302 2521 00	spri2	pr6|194
+001323  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001324  aa  6 00304 2521 00	spri2	pr6|196
+001325  aa   776453 3520 04	epp2 	-725,ic		000000 = 200000000000
+001326  aa  6 00306 2521 00	spri2	pr6|198
+001327  aa  6 00226 3521 00	epp2 	pr6|150
+001330  aa  6 00310 2521 00	spri2	pr6|200
+001331  aa  6 00276 3521 00	epp2 	pr6|190
+001332  aa  6 00312 2521 00	spri2	pr6|202
+001333  aa  6 00254 3521 00	epp2 	pr6|172
+001334  aa  6 00314 2521 00	spri2	pr6|204
+001335  aa  6 00032 3715 20	epp5 	pr6|26,*
+001336  aa  5 00002 3521 20	epp2 	pr5|2,*		P_table_name
+001337  aa  6 00316 2521 00	spri2	pr6|206
+001340  aa   776463 3520 04	epp2 	-717,ic		000023 = 404000000005
+001341  aa  6 00320 2521 00	spri2	pr6|208
+001342  aa  6 00330 2521 00	spri2	pr6|216
+001343  aa   776461 3520 04	epp2 	-719,ic		000024 = 526000000040
+001344  aa  6 00322 2521 00	spri2	pr6|210
+001345  aa   776466 3520 04	epp2 	-714,ic		000033 = 514000000044
+001346  aa  6 00324 2521 00	spri2	pr6|212
+001347  aa   776473 3520 04	epp2 	-709,ic		000042 = 464000000000
+001350  aa  6 00326 2521 00	spri2	pr6|214
+001351  aa   776447 3520 04	epp2 	-729,ic		000020 = 524000000060
+001352  aa  6 00332 2521 00	spri2	pr6|218
+001353  aa   776465 3520 04	epp2 	-715,ic		000040 = 524000000004
+001354  aa  6 00334 2521 00	spri2	pr6|220
+001355  aa  6 00300 6211 00	eax1 	pr6|192
+001356  aa   034000 4310 07	fld  	14336,dl
+001357  aa  6 00044 3701 20	epp4 	pr6|36,*
+001360  la  4 00014 3521 20	epp2 	pr4|12,*		sub_err_
+001361  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001362  aa   000007 7100 04	tra  	7,ic		001371
+						STATEMENT 1 ON LINE 375
+				else do;
+
+						STATEMENT 1 ON LINE 376
+					P_table_size = binary (config_card.data_field (idx + 1), 35);
+
+001363  aa  6 00110 7261 00	lxl6 	pr6|72		idx
+001364  aa  7 00001 2351 16	lda  	pr7|1,6		config_card.data_field
+001365  aa   000044 7730 00	lrl  	36
+001366  aa  6 00032 3715 20	epp5 	pr6|26,*
+001367  aa  5 00004 7561 20	stq  	pr5|4,*		P_table_size
+						STATEMENT 1 ON LINE 377
+					return;
+
+001370  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 378
+				     end;
+
+						STATEMENT 1 ON LINE 379
+			     end;
+
+						STATEMENT 1 ON LINE 380
+		end;
+
+001371  aa  6 00110 0541 00	aos  	pr6|72		idx
+001372  aa   777510 7100 04	tra  	-184,ic		001102
+						STATEMENT 1 ON LINE 382
+		goto FIND_TABLE_LOOP;
+
+001373  aa   777463 7100 04	tra  	-205,ic		001056
+						STATEMENT 1 ON LINE 383
+	     end;
+
+						STATEMENT 1 ON LINE 385
+	P_table_size = -1;
+
+001374  aa   000001 3360 07	lcq  	1,dl
+001375  aa  6 00032 3735 20	epp7 	pr6|26,*
+001376  aa  7 00004 7561 20	stq  	pr7|4,*		P_table_size
+						STATEMENT 1 ON LINE 387
+	return;
+
+001377  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO clear                                              STATEMENT 1 ON LINE 390
+clear:
+     entry ();
+
+001400  da     000167200000
+001401  aa   000500 6270 00	eax7 	320
+001402  aa  7 00034 3521 20	epp2 	pr7|28,*
+001403  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001404  aa     000000000000
+001405  aa     000000000000
+						STATEMENT 1 ON LINE 395
+	whoami = "config_$clear";
+
+001406  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001407  aa   776462 00 0015	desc9a	-718,13		000070 = 143157156146
+001410  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 397
+	call get_config_size ();
+
+001411  aa   000706 6700 04	tsp4 	454,ic		002317
+						STATEMENT 1 ON LINE 400
+	config_n_cards = config_max_cards;
+
+001412  aa  6 00147 2361 00	ldq  	pr6|103		config_max_cards
+001413  aa  6 00146 7561 00	stq  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 402
+	do idx = 1 to config_max_cards;
+
+001414  aa  6 00165 7561 00	stq  	pr6|117
+001415  aa   000001 2360 07	ldq  	1,dl
+001416  aa  6 00110 7561 00	stq  	pr6|72		idx
+001417  aa   000000 0110 03	nop  	0,du
+001420  aa  6 00110 2361 00	ldq  	pr6|72		idx
+001421  aa  6 00165 1161 00	cmpq 	pr6|117
+001422  aa   000027 6054 04	tpnz 	23,ic		001451
+						STATEMENT 1 ON LINE 403
+	     cardp = addr (config_deck.cards (idx));
+
+001423  aa   000004 7360 00	qls  	4
+001424  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+001425  aa  7 77760 3735 06	epp7 	pr7|-16,ql	config_deck.cards
+001426  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 405
+	     config_card.word = FREE_CARD_WORD;
+
+001427  aa   001362 2350 04	lda  	754,ic		003011 = 777777777777
+001430  aa  7 00000 7551 00	sta  	pr7|0		config_card.word
+						STATEMENT 1 ON LINE 406
+	     config_card.data_field (*) = EMPTY_FIELD;
+
+001431  aa   001360 2350 04	lda  	752,ic		003011 = 777777777777
+001432  aa   000001 2360 07	ldq  	1,dl
+001433  aa  6 00166 7561 00	stq  	pr6|118
+001434  aa  6 00276 7551 00	sta  	pr6|190
+001435  aa   000000 0110 03	nop  	0,du
+001436  aa  6 00276 2351 00	lda  	pr6|190
+001437  aa  6 00166 7271 00	lxl7 	pr6|118
+001440  aa  6 00144 7551 77	sta  	pr6|100,*7	config_card.data_field
+001441  aa  6 00166 2361 00	ldq  	pr6|118
+001442  aa  6 00166 0541 00	aos  	pr6|118
+001443  aa   000016 1160 07	cmpq 	14,dl
+001444  aa   777772 6040 04	tmi  	-6,ic		001436
+						STATEMENT 1 ON LINE 407
+	     unspec (config_card.type_word) = ""b;
+
+001445  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001446  aa  7 00017 4501 00	stz  	pr7|15
+						STATEMENT 1 ON LINE 408
+	end;
+
+001447  aa  6 00110 0541 00	aos  	pr6|72		idx
+001450  aa   777750 7100 04	tra  	-24,ic		001420
+						STATEMENT 1 ON LINE 410
+	call unlock_config_deck ();
+
+001451  aa   001123 6700 04	tsp4 	595,ic		002574
+						STATEMENT 1 ON LINE 412
+	return;
+
+001452  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO init_card                                          STATEMENT 1 ON LINE 415
+init_card:
+     entry (P_card_word, P_cardp);
+
+001453  ta     000315000000
+001454  da     000175300000
+001455  aa   000500 6270 00	eax7 	320
+001456  aa  7 00034 3521 20	epp2 	pr7|28,*
+001457  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001460  aa     000004000000
+001461  aa     000000000000
+001462  aa  6 00032 3735 20	epp7 	pr6|26,*
+001463  aa  7 00004 3715 20	epp5 	pr7|4,*
+001464  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 420
+	whoami = "config_$init_card";
+
+001465  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001466  aa   776413 00 0021	desc9a	-757,17		000100 = 143157156146
+001467  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 422
+	cardp = P_cardp;
+
+001470  aa  6 00150 3735 20	epp7 	pr6|104,*		P_cardp
+001471  aa  7 00000 3735 20	epp7 	pr7|0,*		P_cardp
+001472  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 424
+	if cardp = null ()
+	then do;
+
+001473  aa  6 00144 2371 00	ldaq 	pr6|100		cardp
+001474  aa   776350 6770 04	eraq 	-792,ic		000044 = 077777000043 000001000000
+001475  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001476  aa   000114 6010 04	tnz  	76,ic		001612
+						STATEMENT 1 ON LINE 427
+		call get_config_size ();
+
+001477  aa   000620 6700 04	tsp4 	400,ic		002317
+						STATEMENT 1 ON LINE 428
+		if config_n_cards >= config_max_cards
+		then /* Not bloody likely.... */
+		     if get_ring_ () = 0
+		     then call syserr (CRASH, "^a: The config_deck is full.", whoami);
+
+001500  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+001501  aa  6 00147 1161 00	cmpq 	pr6|103		config_max_cards
+001502  aa   000102 6040 04	tmi  	66,ic		001604
+001503  aa  6 00276 3521 00	epp2 	pr6|190
+001504  aa  6 00232 2521 00	spri2	pr6|154
+001505  aa  6 00230 6211 00	eax1 	pr6|152
+001506  aa   004000 4310 07	fld  	2048,dl
+001507  aa  6 00044 3701 20	epp4 	pr6|36,*
+001510  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+001511  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001512  aa  6 00276 2361 00	ldq  	pr6|190
+001513  aa   000026 6010 04	tnz  	22,ic		001541
+001514  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001515  aa   776437 00 0034	desc9a	-737,28		000153 = 136141072040
+001516  aa  6 00230 00 0034	desc9a	pr6|152,28
+001517  aa   776322 3520 04	epp2 	-814,ic		000041 = 000000000001
+001520  aa  6 00256 2521 00	spri2	pr6|174
+001521  aa  6 00230 3521 00	epp2 	pr6|152
+001522  aa  6 00260 2521 00	spri2	pr6|176
+001523  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001524  aa  6 00262 2521 00	spri2	pr6|178
+001525  aa   776312 3520 04	epp2 	-822,ic		000037 = 404000000021
+001526  aa  6 00264 2521 00	spri2	pr6|180
+001527  aa   776270 3520 04	epp2 	-840,ic		000017 = 524000000034
+001530  aa  6 00266 2521 00	spri2	pr6|182
+001531  aa   776273 3520 04	epp2 	-837,ic		000024 = 526000000040
+001532  aa  6 00270 2521 00	spri2	pr6|184
+001533  aa  6 00254 6211 00	eax1 	pr6|172
+001534  aa   014000 4310 07	fld  	6144,dl
+001535  aa  6 00044 3701 20	epp4 	pr6|36,*
+001536  la  4 00016 3521 20	epp2 	pr4|14,*		syserr
+001537  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001540  aa   000044 7100 04	tra  	36,ic		001604
+						STATEMENT 1 ON LINE 432
+		     else call sub_err_ (0, whoami, ACTION_CANT_RESTART, null (), (0), "The config_deck is full.");
+
+001541  aa  6 00276 4501 00	stz  	pr6|190
+001542  aa   776302 3734 24	epp7 	-830,ic*
+001543  aa  6 00226 6535 00	spri7	pr6|150
+001544  aa  6 00240 4501 00	stz  	pr6|160
+001545  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001546  aa   776372 00 0030	desc9a	-774,24		000137 = 124150145040
+001547  aa  6 00230 00 0030	desc9a	pr6|152,24
+001550  aa  6 00276 3521 00	epp2 	pr6|190
+001551  aa  6 00302 2521 00	spri2	pr6|194
+001552  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001553  aa  6 00304 2521 00	spri2	pr6|196
+001554  aa   776237 3520 04	epp2 	-865,ic		000013 = 400000000000
+001555  aa  6 00306 2521 00	spri2	pr6|198
+001556  aa  6 00226 3521 00	epp2 	pr6|150
+001557  aa  6 00310 2521 00	spri2	pr6|200
+001560  aa  6 00240 3521 00	epp2 	pr6|160
+001561  aa  6 00312 2521 00	spri2	pr6|202
+001562  aa  6 00230 3521 00	epp2 	pr6|152
+001563  aa  6 00314 2521 00	spri2	pr6|204
+001564  aa   776237 3520 04	epp2 	-865,ic		000023 = 404000000005
+001565  aa  6 00316 2521 00	spri2	pr6|206
+001566  aa  6 00326 2521 00	spri2	pr6|214
+001567  aa   776235 3520 04	epp2 	-867,ic		000024 = 526000000040
+001570  aa  6 00320 2521 00	spri2	pr6|208
+001571  aa   776242 3520 04	epp2 	-862,ic		000033 = 514000000044
+001572  aa  6 00322 2521 00	spri2	pr6|210
+001573  aa   776247 3520 04	epp2 	-857,ic		000042 = 464000000000
+001574  aa  6 00324 2521 00	spri2	pr6|212
+001575  aa   776221 3520 04	epp2 	-879,ic		000016 = 524000000030
+001576  aa  6 00330 2521 00	spri2	pr6|216
+001577  aa  6 00300 6211 00	eax1 	pr6|192
+001600  aa   030000 4310 07	fld  	12288,dl
+001601  aa  6 00044 3701 20	epp4 	pr6|36,*
+001602  la  4 00014 3521 20	epp2 	pr4|12,*		sub_err_
+001603  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 434
+		config_n_cards = config_n_cards + 1;
+
+001604  aa  6 00146 0541 00	aos  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 436
+		cardp = addr (config_deck.cards (config_n_cards));
+
+001605  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+001606  aa   000004 7360 00	qls  	4
+001607  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+001610  aa  7 77760 3735 06	epp7 	pr7|-16,ql	config_deck.cards
+001611  aa  6 00144 6535 00	spri7	pr6|100		cardp
+						STATEMENT 1 ON LINE 438
+	     end;
+
+						STATEMENT 1 ON LINE 440
+	config_card.word = P_card_word;
+
+001612  aa  6 00032 3715 20	epp5 	pr6|26,*
+001613  aa  5 00002 2351 20	lda  	pr5|2,*		P_card_word
+001614  aa  7 00000 7551 00	sta  	pr7|0		config_card.word
+						STATEMENT 1 ON LINE 441
+	config_card.data_field (*) = EMPTY_FIELD;
+
+001615  aa   001174 2350 04	lda  	636,ic		003011 = 777777777777
+001616  aa   000001 2360 07	ldq  	1,dl
+001617  aa  6 00166 7561 00	stq  	pr6|118
+001620  aa  6 00240 7551 00	sta  	pr6|160
+001621  aa   000000 0110 03	nop  	0,du
+001622  aa  6 00240 2351 00	lda  	pr6|160
+001623  aa  6 00166 7271 00	lxl7 	pr6|118
+001624  aa  6 00144 7551 77	sta  	pr6|100,*7	config_card.data_field
+001625  aa  6 00166 2361 00	ldq  	pr6|118
+001626  aa  6 00166 0541 00	aos  	pr6|118
+001627  aa   000016 1160 07	cmpq 	14,dl
+001630  aa   777772 6040 04	tmi  	-6,ic		001622
+						STATEMENT 1 ON LINE 442
+	unspec (config_card.type_word) = ""b;
+
+001631  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001632  aa  7 00017 4501 00	stz  	pr7|15
+						STATEMENT 1 ON LINE 444
+	if P_cardp = null ()
+	then do;
+
+001633  aa  6 00150 2371 20	ldaq 	pr6|104,*		P_cardp
+001634  aa   776210 6770 04	eraq 	-888,ic		000044 = 077777000043 000001000000
+001635  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001636  aa   000004 6010 04	tnz  	4,ic		001642
+						STATEMENT 1 ON LINE 446
+		call unlock_config_deck ();
+
+001637  aa   000735 6700 04	tsp4 	477,ic		002574
+						STATEMENT 1 ON LINE 447
+		P_cardp = cardp;
+
+001640  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001641  aa  6 00150 6535 20	spri7	pr6|104,*		P_cardp
+						STATEMENT 1 ON LINE 448
+	     end;
+
+						STATEMENT 1 ON LINE 450
+	return;
+
+001642  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO replace                                            STATEMENT 1 ON LINE 453
+replace:
+     entry (P_cardp1, P_cardp2);
+
+001643  at     000002000042
+001644  ta     000042000000
+001645  ta     001643000000
+001646  da     000202300000
+001647  aa   000500 6270 00	eax7 	320
+001650  aa  7 00034 3521 20	epp2 	pr7|28,*
+001651  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001652  aa     000004000000
+001653  aa     000000000000
+						STATEMENT 1 ON LINE 458
+	whoami = "config_$replace";
+
+001654  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001655  aa   776210 00 0017	desc9a	-888,15		000064 = 143157156146
+001656  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 460
+	cardp = validate_cardp (P_cardp1);
+
+001657  aa  6 00032 3735 20	epp7 	pr6|26,*
+001660  aa  7 00002 3521 20	epp2 	pr7|2,*		P_cardp1
+001661  aa  6 00232 2521 00	spri2	pr6|154
+001662  aa  6 00144 3521 00	epp2 	pr6|100		cardp
+001663  aa  6 00234 2521 00	spri2	pr6|156
+001664  aa  6 00230 3521 00	epp2 	pr6|152
+001665  aa   010000 4310 07	fld  	4096,dl
+001666  aa  2 00000 7571 00	staq 	pr2|0
+001667  aa   000475 6700 04	tsp4 	317,ic		002364
+						STATEMENT 1 ON LINE 462
+	card_image = P_cardp2 -> config_card;
+
+001670  aa  6 00032 3735 20	epp7 	pr6|26,*
+001671  aa  7 00004 3715 20	epp5 	pr7|4,*		P_cardp2
+001672  aa  5 00000 3715 20	epp5 	pr5|0,*		P_cardp2
+001673  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001674  aa  5 00000 00 0100	desc9a	pr5|0,64		config_card
+001675  aa  6 00120 00 0100	desc9a	pr6|80,64		card_image
+						STATEMENT 1 ON LINE 464
+	call get_config_size ();
+
+001676  aa   000421 6700 04	tsp4 	273,ic		002317
+						STATEMENT 1 ON LINE 466
+	cardp -> config_card = card_image;
+
+001677  aa  6 00144 3735 20	epp7 	pr6|100,*		cardp
+001700  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001701  aa  6 00120 00 0100	desc9a	pr6|80,64		card_image
+001702  aa  7 00000 00 0100	desc9a	pr7|0,64		config_card
+						STATEMENT 1 ON LINE 468
+	call unlock_config_deck ();
+
+001703  aa   000671 6700 04	tsp4 	441,ic		002574
+						STATEMENT 1 ON LINE 470
+	return;
+
+001704  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO add                                                STATEMENT 1 ON LINE 473
+add:
+     entry (P_cardp, P_after_cardp);
+
+001705  ta     001643000000
+001706  da     000206300000
+001707  aa   000500 6270 00	eax7 	320
+001710  aa  7 00034 3521 20	epp2 	pr7|28,*
+001711  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001712  aa     000004000000
+001713  aa     000000000000
+001714  aa  6 00032 3735 20	epp7 	pr6|26,*
+001715  aa  7 00002 3715 20	epp5 	pr7|2,*
+001716  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 478
+	whoami = "config_$add";
+
+001717  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001720  aa   776127 00 0013	desc9a	-937,11		000046 = 143157156146
+001721  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 480
+	card_image = P_cardp -> config_card;
+
+001722  aa  6 00150 3735 20	epp7 	pr6|104,*		P_cardp
+001723  aa  7 00000 3735 20	epp7 	pr7|0,*		P_cardp
+001724  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001725  aa  7 00000 00 0100	desc9a	pr7|0,64		config_card
+001726  aa  6 00120 00 0100	desc9a	pr6|80,64		card_image
+						STATEMENT 1 ON LINE 482
+	if P_after_cardp ^= null ()
+	then after_cardp = validate_cardp (P_after_cardp);
+
+001727  aa  6 00032 3715 20	epp5 	pr6|26,*
+001730  aa  5 00004 2371 20	ldaq 	pr5|4,*		P_after_cardp
+001731  aa   776113 6770 04	eraq 	-949,ic		000044 = 077777000043 000001000000
+001732  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001733  aa   000012 6000 04	tze  	10,ic		001745
+001734  aa  5 00004 3521 20	epp2 	pr5|4,*		P_after_cardp
+001735  aa  6 00232 2521 00	spri2	pr6|154
+001736  aa  6 00114 3521 00	epp2 	pr6|76		after_cardp
+001737  aa  6 00234 2521 00	spri2	pr6|156
+001740  aa  6 00230 3521 00	epp2 	pr6|152
+001741  aa   010000 4310 07	fld  	4096,dl
+001742  aa  2 00000 7571 00	staq 	pr2|0
+001743  aa   000421 6700 04	tsp4 	273,ic		002364
+001744  aa   000003 7100 04	tra  	3,ic		001747
+						STATEMENT 1 ON LINE 484
+	else after_cardp = null ();
+
+001745  aa   776077 2370 04	ldaq 	-961,ic		000044 = 077777000043 000001000000
+001746  aa  6 00114 7571 00	staq 	pr6|76		after_cardp
+						STATEMENT 1 ON LINE 486
+	call get_config_size ();
+
+001747  aa   000350 6700 04	tsp4 	232,ic		002317
+						STATEMENT 1 ON LINE 488
+	if config_n_cards >= config_max_cards
+	then /* Not bloody likely.... */
+	     if get_ring_ () = 0
+	     then call syserr (CRASH, "^a: The config_deck is full.", whoami);
+
+001750  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+001751  aa  6 00147 1161 00	cmpq 	pr6|103		config_max_cards
+001752  aa   000102 6040 04	tmi  	66,ic		002054
+001753  aa  6 00240 3521 00	epp2 	pr6|160
+001754  aa  6 00232 2521 00	spri2	pr6|154
+001755  aa  6 00230 6211 00	eax1 	pr6|152
+001756  aa   004000 4310 07	fld  	2048,dl
+001757  aa  6 00044 3701 20	epp4 	pr6|36,*
+001760  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+001761  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001762  aa  6 00240 2361 00	ldq  	pr6|160
+001763  aa   000026 6010 04	tnz  	22,ic		002011
+001764  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001765  aa   776167 00 0034	desc9a	-905,28		000153 = 136141072040
+001766  aa  6 00230 00 0034	desc9a	pr6|152,28
+001767  aa   776052 3520 04	epp2 	-982,ic		000041 = 000000000001
+001770  aa  6 00256 2521 00	spri2	pr6|174
+001771  aa  6 00230 3521 00	epp2 	pr6|152
+001772  aa  6 00260 2521 00	spri2	pr6|176
+001773  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+001774  aa  6 00262 2521 00	spri2	pr6|178
+001775  aa   776042 3520 04	epp2 	-990,ic		000037 = 404000000021
+001776  aa  6 00264 2521 00	spri2	pr6|180
+001777  aa   776020 3520 04	epp2 	-1008,ic		000017 = 524000000034
+002000  aa  6 00266 2521 00	spri2	pr6|182
+002001  aa   776023 3520 04	epp2 	-1005,ic		000024 = 526000000040
+002002  aa  6 00270 2521 00	spri2	pr6|184
+002003  aa  6 00254 6211 00	eax1 	pr6|172
+002004  aa   014000 4310 07	fld  	6144,dl
+002005  aa  6 00044 3701 20	epp4 	pr6|36,*
+002006  la  4 00016 3521 20	epp2 	pr4|14,*		syserr
+002007  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+002010  aa   000044 7100 04	tra  	36,ic		002054
+						STATEMENT 1 ON LINE 492
+	     else call sub_err_ (0, whoami, ACTION_CANT_RESTART, null (), (0), "The config deck is full.");
+
+002011  aa  6 00240 4501 00	stz  	pr6|160
+002012  aa   776032 3734 24	epp7 	-998,ic*
+002013  aa  6 00226 6535 00	spri7	pr6|150
+002014  aa  6 00276 4501 00	stz  	pr6|190
+002015  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002016  aa   776114 00 0030	desc9a	-948,24		000131 = 124150145040
+002017  aa  6 00230 00 0030	desc9a	pr6|152,24
+002020  aa  6 00240 3521 00	epp2 	pr6|160
+002021  aa  6 00302 2521 00	spri2	pr6|194
+002022  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+002023  aa  6 00304 2521 00	spri2	pr6|196
+002024  aa   775767 3520 04	epp2 	-1033,ic		000013 = 400000000000
+002025  aa  6 00306 2521 00	spri2	pr6|198
+002026  aa  6 00226 3521 00	epp2 	pr6|150
+002027  aa  6 00310 2521 00	spri2	pr6|200
+002030  aa  6 00276 3521 00	epp2 	pr6|190
+002031  aa  6 00312 2521 00	spri2	pr6|202
+002032  aa  6 00230 3521 00	epp2 	pr6|152
+002033  aa  6 00314 2521 00	spri2	pr6|204
+002034  aa   775767 3520 04	epp2 	-1033,ic		000023 = 404000000005
+002035  aa  6 00316 2521 00	spri2	pr6|206
+002036  aa  6 00326 2521 00	spri2	pr6|214
+002037  aa   775765 3520 04	epp2 	-1035,ic		000024 = 526000000040
+002040  aa  6 00320 2521 00	spri2	pr6|208
+002041  aa   775772 3520 04	epp2 	-1030,ic		000033 = 514000000044
+002042  aa  6 00322 2521 00	spri2	pr6|210
+002043  aa   775777 3520 04	epp2 	-1025,ic		000042 = 464000000000
+002044  aa  6 00324 2521 00	spri2	pr6|212
+002045  aa   775751 3520 04	epp2 	-1047,ic		000016 = 524000000030
+002046  aa  6 00330 2521 00	spri2	pr6|216
+002047  aa  6 00300 6211 00	eax1 	pr6|192
+002050  aa   030000 4310 07	fld  	12288,dl
+002051  aa  6 00044 3701 20	epp4 	pr6|36,*
+002052  la  4 00014 3521 20	epp2 	pr4|12,*		sub_err_
+002053  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 494
+	if after_cardp ^= null ()
+	then /* Find the card we are to add this after */
+	     after_idx = divide (binary (rel (after_cardp), 18), size (config_card), 17, 0) + 1;
+
+002054  aa  6 00114 2371 00	ldaq 	pr6|76		after_cardp
+002055  aa   775767 6770 04	eraq 	-1033,ic		000044 = 077777000043 000001000000
+002056  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+002057  aa   000007 6000 04	tze  	7,ic		002066
+002060  aa  6 00114 6351 20	eaa  	pr6|76,*		after_cardp
+002061  aa   000066 7730 00	lrl  	54
+002062  aa   000020 5060 07	div  	16,dl
+002063  aa   000001 0760 07	adq  	1,dl
+002064  aa  6 00113 7561 00	stq  	pr6|75		after_idx
+002065  aa   000003 7100 04	tra  	3,ic		002070
+						STATEMENT 1 ON LINE 497
+	else after_idx = config_n_cards;
+
+002066  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+002067  aa  6 00113 7561 00	stq  	pr6|75		after_idx
+						STATEMENT 1 ON LINE 499
+	config_n_cards = config_n_cards + 1;
+
+002070  aa  6 00146 0541 00	aos  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 501
+	do idx = (config_n_cards - 1) to (after_idx + 1) by -1;
+
+002071  aa   000001 0760 07	adq  	1,dl
+002072  aa  6 00167 7561 00	stq  	pr6|119
+002073  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+002074  aa   000001 1760 07	sbq  	1,dl
+002075  aa  6 00110 7561 00	stq  	pr6|72		idx
+002076  aa  6 00110 2361 00	ldq  	pr6|72		idx
+002077  aa  6 00167 1161 00	cmpq 	pr6|119
+002100  aa   000013 6040 04	tmi  	11,ic		002113
+						STATEMENT 1 ON LINE 503
+	     config_deck.cards (idx + 1) = config_deck.cards (idx);
+
+002101  aa   000004 7360 00	qls  	4
+002102  aa  6 00142 3735 66	epp7 	pr6|98,*ql	config_deck.cards
+002103  aa  6 00142 3715 20	epp5 	pr6|98,*		configp
+002104  aa  5 77760 3715 06	epp5 	pr5|-16,ql	config_deck.cards
+002105  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+002106  aa  5 00000 00 0100	desc9a	pr5|0,64		config_deck.cards
+002107  aa  7 00000 00 0100	desc9a	pr7|0,64		config_deck.cards
+						STATEMENT 1 ON LINE 504
+	end;
+
+002110  aa   000001 3360 07	lcq  	1,dl
+002111  aa  6 00110 0561 00	asq  	pr6|72		idx
+002112  aa   777764 7100 04	tra  	-12,ic		002076
+						STATEMENT 1 ON LINE 506
+	config_deck.cards (after_idx + 1) = card_image;
+
+002113  aa  6 00113 2361 00	ldq  	pr6|75		after_idx
+002114  aa   000004 7360 00	qls  	4
+002115  aa  6 00142 3735 66	epp7 	pr6|98,*ql	config_deck.cards
+002116  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+002117  aa  6 00120 00 0100	desc9a	pr6|80,64		card_image
+002120  aa  7 00000 00 0100	desc9a	pr7|0,64		config_deck.cards
+						STATEMENT 1 ON LINE 508
+	call unlock_config_deck ();
+
+002121  aa   000453 6700 04	tsp4 	299,ic		002574
+						STATEMENT 1 ON LINE 510
+	return;
+
+002122  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO delete                                             STATEMENT 1 ON LINE 513
+delete:
+     entry (P_cardp);
+
+002123  at     000001000042
+002124  ta     002123000000
+002125  da     000213300000
+002126  aa   000500 6270 00	eax7 	320
+002127  aa  7 00034 3521 20	epp2 	pr7|28,*
+002130  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+002131  aa     000002000000
+002132  aa     000000000000
+002133  aa  6 00032 3735 20	epp7 	pr6|26,*
+002134  aa  7 00002 3715 20	epp5 	pr7|2,*
+002135  aa  6 00150 6515 00	spri5	pr6|104
+						STATEMENT 1 ON LINE 518
+	whoami = "config_$delete";
+
+002136  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+002137  aa   775722 00 0016	desc9a	-1070,14		000060 = 143157156146
+002140  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 520
+	cardp = validate_cardp (P_cardp);
+
+002141  aa  6 00150 3521 20	epp2 	pr6|104,*		P_cardp
+002142  aa  6 00232 2521 00	spri2	pr6|154
+002143  aa  6 00144 3521 00	epp2 	pr6|100		cardp
+002144  aa  6 00234 2521 00	spri2	pr6|156
+002145  aa  6 00230 3521 00	epp2 	pr6|152
+002146  aa   010000 4310 07	fld  	4096,dl
+002147  aa  2 00000 7571 00	staq 	pr2|0
+002150  aa   000214 6700 04	tsp4 	140,ic		002364
+						STATEMENT 1 ON LINE 522
+	call get_config_size ();
+
+002151  aa   000146 6700 04	tsp4 	102,ic		002317
+						STATEMENT 1 ON LINE 524
+	delete_idx = divide (binary (rel (cardp), 18), size (config_card), 17, 0) + 1;
+
+002152  aa  6 00144 6351 20	eaa  	pr6|100,*		cardp
+002153  aa   000066 7730 00	lrl  	54
+002154  aa   000020 5060 07	div  	16,dl
+002155  aa   000001 0760 07	adq  	1,dl
+002156  aa  6 00112 7561 00	stq  	pr6|74		delete_idx
+						STATEMENT 1 ON LINE 526
+	do idx = delete_idx + 1 to config_n_cards;
+
+002157  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+002160  aa  6 00170 7561 00	stq  	pr6|120
+002161  aa  6 00112 2361 00	ldq  	pr6|74		delete_idx
+002162  aa   000001 0760 07	adq  	1,dl
+002163  aa  6 00110 7561 00	stq  	pr6|72		idx
+002164  aa  6 00110 2361 00	ldq  	pr6|72		idx
+002165  aa  6 00170 1161 00	cmpq 	pr6|120
+002166  aa   000013 6054 04	tpnz 	11,ic		002201
+						STATEMENT 1 ON LINE 527
+	     config_deck.cards (idx - 1) = config_deck.cards (idx);
+
+002167  aa   000004 7360 00	qls  	4
+002170  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+002171  aa  7 77740 3735 06	epp7 	pr7|-32,ql	config_deck.cards
+002172  aa  6 00142 3715 20	epp5 	pr6|98,*		configp
+002173  aa  5 77760 3715 06	epp5 	pr5|-16,ql	config_deck.cards
+002174  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+002175  aa  5 00000 00 0100	desc9a	pr5|0,64		config_deck.cards
+002176  aa  7 00000 00 0100	desc9a	pr7|0,64		config_deck.cards
+						STATEMENT 1 ON LINE 528
+	end;
+
+002177  aa  6 00110 0541 00	aos  	pr6|72		idx
+002200  aa   777764 7100 04	tra  	-12,ic		002164
+						STATEMENT 1 ON LINE 530
+	config_deck.cards (config_n_cards).word = FREE_CARD_WORD;
+
+002201  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+002202  aa   000004 7360 00	qls  	4
+002203  aa   000606 2350 04	lda  	390,ic		003011 = 777777777777
+002204  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+002205  aa  7 77760 7551 06	sta  	pr7|-16,ql	config_deck.word
+						STATEMENT 1 ON LINE 532
+	config_deck.cards (config_n_cards).data_field (*) = EMPTY_FIELD;
+
+002206  aa   000603 2350 04	lda  	387,ic		003011 = 777777777777
+002207  aa  6 00240 7561 00	stq  	pr6|160
+002210  aa   000001 2360 07	ldq  	1,dl
+002211  aa  6 00166 7561 00	stq  	pr6|118
+002212  aa  6 00276 7551 00	sta  	pr6|190
+002213  aa   000000 0110 03	nop  	0,du
+002214  aa  6 00146 2361 00	ldq  	pr6|102		config_n_cards
+002215  aa   000004 7360 00	qls  	4
+002216  aa  6 00166 0761 00	adq  	pr6|118
+002217  aa  6 00276 2351 00	lda  	pr6|190
+002220  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+002221  aa  7 77760 7551 06	sta  	pr7|-16,ql	config_deck.data_field
+002222  aa  6 00166 2361 00	ldq  	pr6|118
+002223  aa  6 00166 0541 00	aos  	pr6|118
+002224  aa   000016 1160 07	cmpq 	14,dl
+002225  aa   777767 6040 04	tmi  	-9,ic		002214
+						STATEMENT 1 ON LINE 533
+	unspec (config_deck.cards (config_n_cards).type_word) = ""b;
+
+002226  aa  6 00240 7271 00	lxl7 	pr6|160
+002227  aa  7 77777 4501 17	stz  	pr7|-1,7
+						STATEMENT 1 ON LINE 535
+	call unlock_config_deck ();
+
+002230  aa   000344 6700 04	tsp4 	228,ic		002574
+						STATEMENT 1 ON LINE 537
+	return;
+
+002231  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO update                                             STATEMENT 1 ON LINE 540
+update:
+     entry ();
+
+002232  da     000220200000
+002233  aa   000500 6270 00	eax7 	320
+002234  aa  7 00034 3521 20	epp2 	pr7|28,*
+002235  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+002236  aa     000000000000
+002237  aa     000000000000
+						STATEMENT 1 ON LINE 545
+	whoami = "config_$update";
+
+002240  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+002241  aa   775614 00 0016	desc9a	-1140,14		000054 = 143157156146
+002242  aa  6 00100 00 0040	desc9a	pr6|64,32		whoami
+						STATEMENT 1 ON LINE 547
+	if (get_ring_ ()) ^= 0
+	then /* Do nothing in test environment */
+	     return;
+
+002243  aa  6 00240 3521 00	epp2 	pr6|160
+002244  aa  6 00232 2521 00	spri2	pr6|154
+002245  aa  6 00230 6211 00	eax1 	pr6|152
+002246  aa   004000 4310 07	fld  	2048,dl
+002247  aa  6 00044 3701 20	epp4 	pr6|36,*
+002250  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+002251  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+002252  aa  6 00240 2361 00	ldq  	pr6|160
+002253  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 550
+	if sys_info$initialization_state < 2
+	then return;
+
+002254  aa  6 00044 3701 20	epp4 	pr6|36,*
+002255  la  4 00010 2361 20	ldq  	pr4|8,*		sys_info$initialization_state
+002256  aa   000002 1160 07	cmpq 	2,dl
+002257  aa   000002 6050 04	tpl  	2,ic		002261
+002260  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 553
+	call get_config_size;
+
+002261  aa   000036 6700 04	tsp4 	30,ic		002317
+						STATEMENT 1 ON LINE 555
+	astep = get_ptrs_$given_segno (bin (baseno (configp), 15));
+
+002262  aa  6 00142 2131 20	epaq 	pr6|98,*		configp
+002263  aa   077777 3750 03	ana  	32767,du
+002264  aa   000066 7730 00	lrl  	54
+002265  aa  6 00240 7561 00	stq  	pr6|160
+002266  aa  6 00240 3521 00	epp2 	pr6|160
+002267  aa  6 00232 2521 00	spri2	pr6|154
+002270  aa  6 00140 3521 00	epp2 	pr6|96		astep
+002271  aa  6 00234 2521 00	spri2	pr6|156
+002272  aa  6 00230 6211 00	eax1 	pr6|152
+002273  aa   010000 4310 07	fld  	4096,dl
+002274  aa  6 00044 3701 20	epp4 	pr6|36,*
+002275  la  4 00020 3521 20	epp2 	pr4|16,*		get_ptrs_$given_segno
+002276  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 556
+	call pc_wired$write_wait (astep, 0, 4);
+
+002277  aa  6 00240 4501 00	stz  	pr6|160
+002300  aa   000004 2360 07	ldq  	4,dl
+002301  aa  6 00276 7561 00	stq  	pr6|190
+002302  aa  6 00140 3521 00	epp2 	pr6|96		astep
+002303  aa  6 00232 2521 00	spri2	pr6|154
+002304  aa  6 00240 3521 00	epp2 	pr6|160
+002305  aa  6 00234 2521 00	spri2	pr6|156
+002306  aa  6 00276 3521 00	epp2 	pr6|190
+002307  aa  6 00236 2521 00	spri2	pr6|158
+002310  aa  6 00230 6211 00	eax1 	pr6|152
+002311  aa   014000 4310 07	fld  	6144,dl
+002312  aa  6 00044 3701 20	epp4 	pr6|36,*
+002313  la  4 00022 3521 20	epp2 	pr4|18,*		pc_wired$write_wait
+002314  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 558
+	call unlock_config_deck;
+
+002315  aa   000257 6700 04	tsp4 	175,ic		002574
+						STATEMENT 1 ON LINE 559
+	return;
+
+002316  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 712
+     end config_;
+
+BEGIN PROCEDURE get_config_size
+ENTRY TO get_config_size                                    STATEMENT 1 ON LINE 562
+get_config_size:
+     proc ();
+
+002317  aa  6 00172 6501 00	spri4	pr6|122
+						STATEMENT 1 ON LINE 577
+	call lock_config_deck ();
+
+002320  aa   000237 6700 04	tsp4 	159,ic		002557
+						STATEMENT 1 ON LINE 579
+	config_max_cards = divide (4 * 1024 - 1, size (config_card), 17, 0);
+
+002321  aa   007777 2360 07	ldq  	4095,dl
+002322  aa   000020 5060 07	div  	16,dl
+002323  aa  6 00147 7561 00	stq  	pr6|103		config_max_cards
+						STATEMENT 1 ON LINE 582
+	configp = addr (config_deck$);
+
+002324  aa  6 00044 3701 20	epp4 	pr6|36,*
+002325  la  4 00024 3735 20	epp7 	pr4|20,*		config_deck$
+002326  aa  6 00142 6535 00	spri7	pr6|98		configp
+						STATEMENT 1 ON LINE 584
+	if config_deck.cards (1).word = ZERO_CARD_WORD
+	then do;
+
+002327  aa  7 00000 2351 00	lda  	pr7|0		config_deck.word
+002330  aa   000000 1150 07	cmpa 	0,dl
+002331  aa   000011 6010 04	tnz  	9,ic		002342
+						STATEMENT 1 ON LINE 586
+		config_deck.cards (1).word = FREE_CARD_WORD;
+
+002332  aa   000457 2350 04	lda  	303,ic		003011 = 777777777777
+002333  aa  7 00000 7551 00	sta  	pr7|0		config_deck.word
+						STATEMENT 1 ON LINE 588
+		call clear ();
+
+002334  aa  6 00056 6211 00	eax1 	pr6|46
+002335  aa   000000 4310 07	fld  	0,dl
+002336  aa   777043 3520 04	epp2 	-477,ic		001401 = 000500627000
+002337  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 589
+		config_n_cards = 0;
+
+002340  aa  6 00146 4501 00	stz  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 590
+		return;
+
+002341  aa  6 00172 6101 00	rtcd 	pr6|122
+						STATEMENT 1 ON LINE 591
+	     end;
+
+						STATEMENT 1 ON LINE 593
+	do idx = 1 to config_max_cards;
+
+002342  aa  6 00201 7561 00	stq  	pr6|129
+002343  aa   000001 2360 07	ldq  	1,dl
+002344  aa  6 00200 7561 00	stq  	pr6|128		idx
+002345  aa   000000 0110 03	nop  	0,du
+002346  aa  6 00200 2361 00	ldq  	pr6|128		idx
+002347  aa  6 00201 1161 00	cmpq 	pr6|129
+002350  aa   000010 6054 04	tpnz 	8,ic		002360
+						STATEMENT 1 ON LINE 594
+	     if config_deck.cards (idx).word = FREE_CARD_WORD
+	     then goto FOUND_FREE_CARD;
+
+002351  aa   000004 7360 00	qls  	4
+002352  aa  6 00142 3735 20	epp7 	pr6|98,*		configp
+002353  aa  7 77760 2351 06	lda  	pr7|-16,ql	config_deck.word
+002354  aa   000435 1150 04	cmpa 	285,ic		003011 = 777777777777
+002355  aa   000003 6000 04	tze  	3,ic		002360
+						STATEMENT 1 ON LINE 596
+	end;
+
+002356  aa  6 00200 0541 00	aos  	pr6|128		idx
+002357  aa   777767 7100 04	tra  	-9,ic		002346
+						STATEMENT 1 ON LINE 598
+FOUND_FREE_CARD:
+	config_n_cards = idx - 1;
+
+002360  aa  6 00200 2361 00	ldq  	pr6|128		idx
+002361  aa   000001 1760 07	sbq  	1,dl
+002362  aa  6 00146 7561 00	stq  	pr6|102		config_n_cards
+						STATEMENT 1 ON LINE 601
+	return;
+
+002363  aa  6 00172 6101 00	rtcd 	pr6|122
+						STATEMENT 1 ON LINE 602
+     end get_config_size;
+
+  END PROCEDURE get_config_size
+BEGIN PROCEDURE validate_cardp
+ENTRY TO validate_cardp                                     STATEMENT 1 ON LINE 605
+validate_cardp:
+     proc (P_validate_cardp) returns (pointer);
+
+002364  aa  6 00202 6501 00	spri4	pr6|130
+002365  aa  6 00204 2521 00	spri2	pr6|132
+						STATEMENT 1 ON LINE 618
+	if substr (unspec (P_validate_cardp), (37 - 6), 6) ^= "43"b3
+	then do;
+
+002366  aa  2 00002 2351 20	lda  	pr2|2,*
+002367  aa   000036 7350 00	als  	30
+002370  aa   430000 1150 03	cmpa 	143360,du
+002371  aa   000117 6000 04	tze  	79,ic		002510
+						STATEMENT 1 ON LINE 620
+INVALID_CARD_POINTER:
+		if get_ring_ () = 0
+		then call syserr (CRASH, "^a: Invalid card pointer ^p does not point to a valid config card.", whoami,
+			P_validate_cardp);
+
+002372  aa  6 00336 3521 00	epp2 	pr6|222
+002373  aa  6 00342 2521 00	spri2	pr6|226
+002374  aa  6 00340 6211 00	eax1 	pr6|224
+002375  aa   004000 4310 07	fld  	2048,dl
+002376  aa  6 00044 3701 20	epp4 	pr6|36,*
+002377  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+002400  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+002401  aa  6 00336 2361 00	ldq  	pr6|222
+002402  aa   000033 6010 04	tnz  	27,ic		002435
+002403  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002404  aa   775653 00 0104	desc9a	-1109,68		000256 = 136141072040
+002405  aa  6 00344 00 0104	desc9a	pr6|228,68
+002406  aa   775433 3520 04	epp2 	-1253,ic		000041 = 000000000001
+002407  aa  6 00370 2521 00	spri2	pr6|248
+002410  aa  6 00344 3521 00	epp2 	pr6|228
+002411  aa  6 00372 2521 00	spri2	pr6|250
+002412  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+002413  aa  6 00374 2521 00	spri2	pr6|252
+002414  aa  6 00204 3735 20	epp7 	pr6|132,*
+002415  aa  7 00002 3521 20	epp2 	pr7|2,*		P_validate_cardp
+002416  aa  6 00376 2521 00	spri2	pr6|254
+002417  aa   775420 3520 04	epp2 	-1264,ic		000037 = 404000000021
+002420  aa  6 00400 2521 00	spri2	pr6|256
+002421  aa   775374 3520 04	epp2 	-1284,ic		000015 = 524000000102
+002422  aa  6 00402 2521 00	spri2	pr6|258
+002423  aa   775401 3520 04	epp2 	-1279,ic		000024 = 526000000040
+002424  aa  6 00404 2521 00	spri2	pr6|260
+002425  aa   775415 3520 04	epp2 	-1267,ic		000042 = 464000000000
+002426  aa  6 00406 2521 00	spri2	pr6|262
+002427  aa  6 00366 6211 00	eax1 	pr6|246
+002430  aa   020000 4310 07	fld  	8192,dl
+002431  aa  6 00044 3701 20	epp4 	pr6|36,*
+002432  la  4 00016 3521 20	epp2 	pr4|14,*		syserr
+002433  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+002434  aa   000050 7100 04	tra  	40,ic		002504
+						STATEMENT 1 ON LINE 624
+		else call sub_err_ (0, whoami, ACTION_CAN_RESTART, null (), (0),
+			"Invalid card pointer ^p does not point to a valid config card.", P_validate_cardp);
+
+002435  aa  6 00365 4501 00	stz  	pr6|245
+002436  aa   775406 3734 24	epp7 	-1274,ic*
+002437  aa  6 00410 6535 00	spri7	pr6|264
+002440  aa  6 00336 4501 00	stz  	pr6|222
+002441  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+002442  aa   775575 00 0100	desc9a	-1155,64		000236 = 111156166141
+002443  aa  6 00344 00 0100	desc9a	pr6|228,64
+002444  aa  6 00365 3521 00	epp2 	pr6|245
+002445  aa  6 00414 2521 00	spri2	pr6|268
+002446  aa  6 00100 3521 00	epp2 	pr6|64		whoami
+002447  aa  6 00416 2521 00	spri2	pr6|270
+002450  aa   775361 3520 04	epp2 	-1295,ic		000031 = 000000000000
+002451  aa  6 00420 2521 00	spri2	pr6|272
+002452  aa  6 00410 3521 00	epp2 	pr6|264
+002453  aa  6 00422 2521 00	spri2	pr6|274
+002454  aa  6 00336 3521 00	epp2 	pr6|222
+002455  aa  6 00424 2521 00	spri2	pr6|276
+002456  aa  6 00344 3521 00	epp2 	pr6|228
+002457  aa  6 00426 2521 00	spri2	pr6|278
+002460  aa  6 00204 3715 20	epp5 	pr6|132,*
+002461  aa  5 00002 3521 20	epp2 	pr5|2,*		P_validate_cardp
+002462  aa  6 00430 2521 00	spri2	pr6|280
+002463  aa   775340 3520 04	epp2 	-1312,ic		000023 = 404000000005
+002464  aa  6 00432 2521 00	spri2	pr6|282
+002465  aa  6 00442 2521 00	spri2	pr6|290
+002466  aa   775336 3520 04	epp2 	-1314,ic		000024 = 526000000040
+002467  aa  6 00434 2521 00	spri2	pr6|284
+002470  aa   775343 3520 04	epp2 	-1309,ic		000033 = 514000000044
+002471  aa  6 00436 2521 00	spri2	pr6|286
+002472  aa   775350 3520 04	epp2 	-1304,ic		000042 = 464000000000
+002473  aa  6 00440 2521 00	spri2	pr6|288
+002474  aa  6 00446 2521 00	spri2	pr6|294
+002475  aa   775317 3520 04	epp2 	-1329,ic		000014 = 524000000076
+002476  aa  6 00444 2521 00	spri2	pr6|292
+002477  aa  6 00412 6211 00	eax1 	pr6|266
+002500  aa   034000 4310 07	fld  	14336,dl
+002501  aa  6 00044 3701 20	epp4 	pr6|36,*
+002502  la  4 00014 3521 20	epp2 	pr4|12,*		sub_err_
+002503  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 626
+		return (null ());
+
+002504  aa   775340 2370 04	ldaq 	-1312,ic		000044 = 077777000043 000001000000
+002505  aa  6 00204 3735 20	epp7 	pr6|132,*
+002506  aa  7 00004 7571 20	staq 	pr7|4,*
+002507  aa  6 00202 6101 00	rtcd 	pr6|130
+						STATEMENT 1 ON LINE 627
+	     end;
+
+						STATEMENT 1 ON LINE 629
+	return_cardp = P_validate_cardp;
+
+002510  aa  2 00002 3735 20	epp7 	pr2|2,*		P_validate_cardp
+002511  aa  7 00000 3735 20	epp7 	pr7|0,*		P_validate_cardp
+002512  aa  6 00210 6535 00	spri7	pr6|136		return_cardp
+						STATEMENT 1 ON LINE 631
+	if baseno (return_cardp) ^= baseno (addr (config_deck$))
+	then goto INVALID_CARD_POINTER;
+
+002513  aa  6 00044 3701 20	epp4 	pr6|36,*
+002514  la  4 00024 3715 20	epp5 	pr4|20,*		config_deck$
+002515  aa  5 00000 2131 00	epaq 	pr5|0
+002516  aa   077777 3750 03	ana  	32767,du
+002517  aa  6 00336 7551 00	sta  	pr6|222
+002520  aa  7 00000 2131 00	epaq 	pr7|0		return_cardp
+002521  aa   077777 3750 03	ana  	32767,du
+002522  aa  6 00336 1151 00	cmpa 	pr6|222
+002523  aa   777647 6010 04	tnz  	-89,ic		002372
+						STATEMENT 1 ON LINE 634
+	if mod (binary (rel (return_cardp), 18), size (config_card)) ^= 0
+	then goto INVALID_CARD_POINTER;
+
+002524  aa  7 00000 6351 00	eaa  	pr7|0		return_cardp
+002525  aa   000066 7730 00	lrl  	54
+002526  aa   000264 3520 04	epp2 	180,ic		003012 = 000000000020
+002527  aa  0 00704 7001 00	tsx0 	pr0|452		mdfx1
+002530  aa   777642 6010 04	tnz  	-94,ic		002372
+						STATEMENT 1 ON LINE 637
+	if verify (rtrim (return_cardp -> config_card.word), VALID_CARD_WORD_CHARACTERS) ^= 0
+	then goto INVALID_CARD_POINTER;
+
+002531  aa  000 000 165 500	tctr 	(pr)
+002532  aa  7 00000 00 0004	desc9a	pr7|0,4		config_card.word
+002533  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+002534  aa  6 00056 0001 00	arg  	pr6|46
+002535  aa  6 00056 2361 00	ldq  	pr6|46
+002536  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+002537  aa  6 00336 7561 00	stq  	pr6|222
+002540  aa   000004 2360 07	ldq  	4,dl
+002541  aa  6 00336 1761 00	sbq  	pr6|222
+002542  aa  000 000 164 540	tct  	(pr,rl)
+002543  aa  7 00000 00 0006	desc9a	pr7|0,ql		config_card.word
+002544  aa   000047 0000 04	arg  	39,ic		002611 = 777777777777
+002545  aa  6 00056 0001 00	arg  	pr6|46
+002546  aa  6 00056 2361 00	ldq  	pr6|46
+002547  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+002550  aa   000002 6070 04	ttf  	2,ic		002552
+002551  aa   000001 3360 07	lcq  	1,dl
+002552  aa   000001 0760 07	adq  	1,dl
+002553  aa   777617 6010 04	tnz  	-113,ic		002372
+						STATEMENT 1 ON LINE 640
+	return (return_cardp);
+
+002554  aa  6 00204 3535 20	epp3 	pr6|132,*
+002555  aa  3 00004 6535 20	spri7	pr3|4,*
+002556  aa  6 00202 6101 00	rtcd 	pr6|130
+						STATEMENT 1 ON LINE 641
+     end validate_cardp;
+
+  END PROCEDURE validate_cardp
+BEGIN PROCEDURE lock_config_deck
+ENTRY TO lock_config_deck                                   STATEMENT 1 ON LINE 644
+lock_config_deck:
+     proc ();
+
+002557  aa  6 00212 6501 00	spri4	pr6|138
+						STATEMENT 1 ON LINE 653
+	lock_sw = "0"b;
+
+002560  aa  6 00111 4501 00	stz  	pr6|73		lock_sw
+						STATEMENT 1 ON LINE 655
+	if (get_ring_ ()) ^= 0
+	then /* Test environment, do nothing */
+	     return;
+
+002561  aa  6 00450 3521 00	epp2 	pr6|296
+002562  aa  6 00454 2521 00	spri2	pr6|300
+002563  aa  6 00452 6211 00	eax1 	pr6|298
+002564  aa   004000 4310 07	fld  	2048,dl
+002565  aa  6 00044 3701 20	epp4 	pr6|36,*
+002566  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+002567  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+002570  aa  6 00450 2361 00	ldq  	pr6|296
+002571  aa   000002 6000 04	tze  	2,ic		002573
+002572  aa  6 00212 6101 00	rtcd 	pr6|138
+						STATEMENT 1 ON LINE 659
+	return;
+
+002573  aa  6 00212 6101 00	rtcd 	pr6|138
+						STATEMENT 1 ON LINE 660
+     end lock_config_deck;
+
+  END PROCEDURE lock_config_deck
+BEGIN PROCEDURE unlock_config_deck
+ENTRY TO unlock_config_deck                                 STATEMENT 1 ON LINE 664
+unlock_config_deck:
+     proc ();
+
+002574  aa  6 00220 6501 00	spri4	pr6|144
+						STATEMENT 1 ON LINE 672
+	lock_sw = "0"b;
+
+002575  aa  6 00111 4501 00	stz  	pr6|73		lock_sw
+						STATEMENT 1 ON LINE 674
+	if (get_ring_ ()) ^= 0
+	then /* Test environment, do nothing */
+	     return;
+
+002576  aa  6 00456 3521 00	epp2 	pr6|302
+002577  aa  6 00462 2521 00	spri2	pr6|306
+002600  aa  6 00460 6211 00	eax1 	pr6|304
+002601  aa   004000 4310 07	fld  	2048,dl
+002602  aa  6 00044 3701 20	epp4 	pr6|36,*
+002603  la  4 00012 3521 20	epp2 	pr4|10,*		get_ring_
+002604  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+002605  aa  6 00456 2361 00	ldq  	pr6|302
+002606  aa   000002 6000 04	tze  	2,ic		002610
+002607  aa  6 00220 6101 00	rtcd 	pr6|144
+						STATEMENT 1 ON LINE 678
+	return;
+
+002610  aa  6 00220 6101 00	rtcd 	pr6|144
+						STATEMENT 1 ON LINE 679
+     end unlock_config_deck;
+
+  END PROCEDURE unlock_config_deck
+  END PROCEDURE config_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1197 @@
+	COMPILATION LISTING OF SEGMENT outward_call_handler
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1716.18_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* OUTWARD_CALL_HANDLER - Handle Calls to Outer Rings.
+       14*   Modified 6/79 by Mike Grady for stack 0 sharing
+       15*   modified 11/5/76 by M. Weaver for stack header extension
+       16*   9/12/72 - Noel I. Morris			*/
+       17 
+       18 outward_call_handler: proc (mc_ptr);
+       19 
+       20 dcl  mc_ptr ptr;					/* pointer to machine conditions */
+       21 
+       22 dcl (caller_ringno,					/* ring in which fault occurred */
+       23      called_ringno) fixed bin (3),			/* target ring of call */
+       24      called_segno fixed bin (15),			/* target procedure of call */
+       25      r fixed bin (3),				/* ring number */
+       26      i fixed bin,					/* iteration variable */
+       27      ap ptr;					/* pointer to argument list */
+       28 
+       29 dcl 1 arglist_header based (ap) aligned,		/* argument list header */
+       30     2 arg_count fixed bin (17) unal,
+       31     2 code fixed bin (17) unal,
+       32     2 desc_count fixed bin (17) unal,
+       33     2 pad fixed bin (17) unal;
+       34 
+       35 dcl  dseg$ ext;					/* descriptor segment */
+       36 
+       37 dcl (pds$highest_ring,				/* highest permissable ring for process */
+       38      pds$initial_ring) fixed bin (3) ext,		/* initial non-hardcore ring for process */
+       39      pds$ips_mask (0:7) bit (36) aligned ext,		/* IPS mask for each ring */
+       40      pds$first_call fixed bin ext,			/* non-zero until first call from Ring 0 */
+       41      pds$validation_level fixed bin (3) ext,		/* user vaildation level */
+       42      pds$stacks (0:7) ptr ext,			/* pointers to stacks for each ring */
+       43      active_all_rings_data$stack_base_segno fixed bin (18) ext; /* segno of base of array of 8 stacks */
+       44 
+       45 dcl (addr,
+       46      addrel,
+       47      baseptr,
+       48      bit,
+       49      min,
+       50      null,
+       51      ptr,
+       52      size,
+       53      substr) builtin;
+       54 
+       55 
+       56 	/*  */
+  1     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+  1     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+  1     4 /* Modified 07/07/76 by Morris for fault register data */
+  1     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+  1     6 /* Modified '82 to make values constant */
+  1     7 
+  1     8 /* words 0-15 pointer registers */
+  1     9 
+  1    10 dcl  mcp ptr;
+  1    11 
+  1    12 dcl 1 mc based (mcp) aligned,
+  1    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+  1    14    (2 regs,					/* registers */
+  1    15       3 x (0:7) bit (18),				/* index registers */
+  1    16       3 a bit (36),					/* accumulator */
+  1    17       3 q bit (36),					/* q-register */
+  1    18       3 e bit (8),					/* exponent */
+  1    19       3 pad1 bit (28),
+  1    20       3 t bit (27),					/* timer register */
+  1    21       3 pad2 bit (6),
+  1    22       3 ralr bit (3),				/* ring alarm register */
+  1    23 
+  1    24     2 scu (0:7) bit (36),
+  1    25 
+  1    26     2 mask bit (72),				/* mem controller mask at time of fault */
+  1    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+  1    28     2 errcode fixed bin (35),				/* fault handler's error code */
+  1    29     2 fim_temp,
+  1    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+  1    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+  1    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+  1    33     2 fault_reg bit (36),				/* fault register */
+  1    34     2 pad2 bit (1),
+  1    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+  1    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+  1    37     2 fault_time bit (54),				/* time of fault */
+  1    38 
+  1    39     2 eis_info (0:7) bit (36)) unaligned;
+  1    40 
+  1    41 
+  1    42 dcl (apx fixed bin init (0),
+  1    43      abx fixed bin init (1),
+  1    44      bpx fixed bin init (2),
+  1    45      bbx fixed bin init (3),
+  1    46      lpx fixed bin init (4),
+  1    47      lbx fixed bin init (5),
+  1    48      spx fixed bin init (6),
+  1    49      sbx fixed bin init (7)) internal static options (constant);
+  1    50 
+  1    51 
+  1    52 
+  1    53 
+  1    54 dcl  scup ptr;
+  1    55 
+  1    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+  1    57 
+  1    58 
+  1    59 /*	WORD (0)		*/
+  1    60 
+  1    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+  1    62       3 prr bit (3),				/* procedure ring register */
+  1    63       3 psr bit (15),				/* procedure segment register */
+  1    64       3 p bit (1),					/* procedure privileged bit */
+  1    65 
+  1    66     2 apu,					/* APPENDING UNIT STATUS */
+  1    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+  1    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+  1    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+  1    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+  1    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+  1    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+  1    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+  1    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+  1    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+  1    76       3 ptw bit (1),				/* Fetch of PTW */
+  1    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+  1    78       3 fap bit (1),				/* Fetch of final address paged */
+  1    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+  1    80       3 fabs bit (1),				/* Fetch of final address absolute */
+  1    81 
+  1    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+  1    83 
+  1    84 
+  1    85 /*	WORD (1)		*/
+  1    86 
+  1    87     2 fd,						/* FAULT  DATA */
+  1    88       3 iro bit (1),				/* illegal ring order */
+  1    89       3 oeb bit (1),				/* out of execute bracket */
+  1    90       3 e_off bit (1),				/* no execute */
+  1    91       3 orb bit (1),				/* out of read bracket */
+  1    92       3 r_off bit (1),				/* no read */
+  1    93       3 owb bit (1),				/* out of write bracket */
+  1    94       3 w_off bit (1),				/* no write */
+  1    95       3 no_ga bit (1),				/* not a gate */
+  1    96       3 ocb bit (1),				/* out of call bracket */
+  1    97       3 ocall bit (1),				/* outward call */
+  1    98       3 boc bit (1),				/* bad outward call */
+  1    99       3 inret bit (1),				/* inward return */
+  1   100       3 crt bit (1),				/* cross ring transfer */
+  1   101       3 ralr bit (1),				/* ring alarm register */
+  1   102       3 am_er bit (1),				/* associative memory fault */
+  1   103       3 oosb bit (1),				/* out of segment bounds */
+  1   104       3 paru bit (1),				/* processor parity upper */
+  1   105       3 parl bit (1),				/* processor parity lower */
+  1   106       3 onc_1 bit (1),				/* op not complete type 1 */
+  1   107       3 onc_2 bit (1),				/* op not complete type 2 */
+  1   108 
+  1   109     2 port_stat,					/* PORT  STATUS */
+  1   110       3 ial bit (4),				/* illegal action lines */
+  1   111       3 iac bit (3),				/* illegal action channel */
+  1   112       3 con_chan bit (3),				/* connect channel */
+  1   113 
+  1   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+  1   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+  1   116 
+  1   117 
+  1   118 /*	WORD (2)		*/
+  1   119 
+  1   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+  1   121       3 trr bit (3),				/* temporary ring register */
+  1   122       3 tsr bit (15),				/* temporary segment register */
+  1   123 
+  1   124     2 pad2 bit (9),
+  1   125 
+  1   126     2 cpu_no bit (3),				/* CPU number */
+  1   127 
+  1   128     2 delta bit (6),				/* tally modification DELTA */
+  1   129 
+  1   130 
+  1   131 /*	WORD (3)		*/
+  1   132 
+  1   133     2 word3 bit (18),
+  1   134 
+  1   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+  1   136       3 tsna,					/* Word 1 status */
+  1   137         4 prn bit (3),				/* Word 1  PR  number */
+  1   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+  1   139       3 tsnb,					/* Word 2  status */
+  1   140         4 prn bit (3),				/* Word 2  PR  number */
+  1   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+  1   142       3 tsnc,					/* Word 3  status */
+  1   143         4 prn bit (3),				/* Word 3  PR  number */
+  1   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+  1   145 
+  1   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+  1   147 
+  1   148 
+  1   149 /* 	WORD (4)		*/
+  1   150 
+  1   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+  1   152 
+  1   153     2 ir,						/* INDICATOR  REGISTERS */
+  1   154       3 zero bit (1),				/* zero indicator */
+  1   155       3 neg bit (1),				/* negative indicator */
+  1   156       3 carry bit (1),				/* carryry indicator */
+  1   157       3 ovfl bit (1),				/* overflow indicator */
+  1   158       3 eovf bit (1),				/* eponent overflow */
+  1   159       3 eufl bit (1),				/* exponent underflow */
+  1   160       3 oflm bit (1),				/* overflow mask */
+  1   161       3 tro bit (1),				/* tally runout */
+  1   162       3 par bit (1),				/* parity error */
+  1   163       3 parm bit (1),				/* parity mask */
+  1   164       3 bm bit (1),					/* ^bar mode */
+  1   165       3 tru bit (1),				/* truncation mode */
+  1   166       3 mif bit (1),				/* multi-word instruction mode */
+  1   167       3 abs bit (1),				/* absolute mode */
+  1   168       3 hex bit (1),				/* hexadecimal exponent mode */
+  1   169       3 pad bit (3),
+  1   170 
+  1   171 
+  1   172 /*	WORD (5)		*/
+  1   173 
+  1   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+  1   175 
+  1   176     2 cu,						/* CONTROL UNIT STATUS */
+  1   177       3 rf bit (1),					/* on first cycle of repeat instr */
+  1   178       3 rpt bit (1),				/* repeat instruction */
+  1   179       3 rd bit (1),					/* repeat double instruction */
+  1   180       3 rl bit (1),					/* repeat link instruciton */
+  1   181       3 pot bit (1),				/* IT  modification */
+  1   182       3 pon bit (1),				/* return type instruction */
+  1   183       3 xde bit (1),				/* XDE from Even location */
+  1   184       3 xdo bit (1),				/* XDE from Odd  location */
+  1   185       3 poa bit (1),				/* operation preparation */
+  1   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+  1   187       3 its bit (1),				/* ITS modification */
+  1   188       3 if bit (1),					/* fault occured during instruction fetch */
+  1   189 
+  1   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+  1   191 
+  1   192 
+  1   193 /*	WORDS (6,7)	*/
+  1   194 
+  1   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+  1   196 
+  1   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+  1   198 
+  1   199 
+  1   200 
+  1   201 
+  1   202 
+  1   203 
+  1   204 /*	ALTERNATE   SCU  DECLARATION		*/
+  1   205 
+  1   206 
+  1   207 dcl 1 scux based (scup) aligned,
+  1   208 
+  1   209    (2 pad0 bit (36),
+  1   210 
+  1   211     2 fd,						/* GROUP II  FAULT DATA */
+  1   212       3 isn bit (1),				/* illegal segment number */
+  1   213       3 ioc bit (1),				/* illegal op  code  */
+  1   214       3 ia_am bit (1),				/* illegal address - modifier */
+  1   215       3 isp bit (1),				/* illegal slave  procedure */
+  1   216       3 ipr bit (1),				/* illegal procedure */
+  1   217       3 nea bit (1),				/* non existent address */
+  1   218       3 oobb bit (1),				/* out of bounds */
+  1   219       3 pad bit (29),
+  1   220 
+  1   221     2 pad2 bit (36),
+  1   222 
+  1   223     2 pad3a bit (18),
+  1   224 
+  1   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+  1   226       3 prn bit (3),				/* PR  number */
+  1   227       3 prv bit (1),				/* PR  valid bit */
+  1   228 
+  1   229     2 pad3b bit (6)) unaligned,
+  1   230 
+  1   231     2 pad45 (0:1) bit (36),
+  1   232 
+  1   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+  1   234 
+  1   235 
+  1   236 
+  1   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+       56 
+       57 
+       58 	/* BEGIN INCLUDE FILE ... sdw.incl.pl1 ... last modified 12 May 1976 */
+  2     2 
+  2     3 dcl  sdwp ptr;
+  2     4 
+  2     5 dcl 1 sdw based (sdwp) aligned,			/* Segment Descriptor Word */
+  2     6 
+  2     7    (2 add bit (24),					/* main memory address of page table */
+  2     8     2 (r1, r2, r3) bit (3),				/* ring brackets for the segment */
+  2     9     2 df bit (1),					/* directed fault bit (0 => fault) */
+  2    10     2 df_no bit (2),				/* directed fault number */
+  2    11 
+  2    12     2 pad1 bit (1),
+  2    13     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  2    14     2 access,					/* access bits */
+  2    15       3 read bit (1),				/* read permission bit */
+  2    16       3 execute bit (1),				/* execute permission bit */
+  2    17       3 write bit (1),				/* write permission bit */
+  2    18       3 privileged bit (1),				/* privileged bit */
+  2    19     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  2    20     2 entry_bound_sw bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  2    21     2 cache bit (1),				/* cache enable bit */
+  2    22     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  2    23 
+  2    24 dcl 1 sdwa (0: 1) based (sdwp) aligned like sdw;		/* SDW array (descriptor segment) */
+  2    25 
+  2    26 /* END INCLUDE FILE  sdw.incl.pl1 */
+       58 
+       59 
+       60 	/* BEGIN INCLUDE FILE its.incl.pl1
+  3     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  3     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  3     4 
+  3     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  3     6     2 pad1 bit (3) unaligned,
+  3     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  3     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  3     9     2 pad2 bit (9) unaligned,
+  3    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  3    11 
+  3    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  3    13     2 pad3 bit (3) unaligned,
+  3    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  3    15     2 pad4 bit (3) unaligned,
+  3    16     2 mod bit (6) unaligned;				/* further modification */
+  3    17 
+  3    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  3    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  3    20     2 pad1 bit (27) unaligned,
+  3    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  3    22 
+  3    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  3    24     2 pad2 bit (3) unaligned,
+  3    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  3    26     2 pad3 bit (3) unaligned,
+  3    27     2 mod bit (6) unaligned;				/* further modification */
+  3    28 
+  3    29 
+  3    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  3    31     2 pad1 bit (3) unaligned,
+  3    32     2 segno fixed bin (15) unsigned unaligned,
+  3    33     2 ringno fixed bin (3) unsigned unaligned,
+  3    34     2 pad2 bit (9) unaligned,
+  3    35     2 its_mod bit (6) unaligned,
+  3    36 
+  3    37     2 offset fixed bin (18) unsigned unaligned,
+  3    38     2 pad3 bit (3) unaligned,
+  3    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  3    40     2 pad4 bit (3) unaligned,
+  3    41     2 mod bit (6) unaligned;
+  3    42 
+  3    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  3    44     2 pr_no fixed bin (3) unsigned unaligned,
+  3    45     2 pad1 bit (27) unaligned,
+  3    46     2 itp_mod bit (6) unaligned,
+  3    47 
+  3    48     2 offset fixed bin (18) unsigned unaligned,
+  3    49     2 pad2 bit (3) unaligned,
+  3    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  3    51     2 pad3 bit (3) unaligned,
+  3    52     2 mod bit (6) unaligned;
+  3    53 
+  3    54 
+  3    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  3    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  3    57 
+  3    58 /* END INCLUDE FILE   its.incl.pl1 */
+       60 
+       61 
+       62 	/* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  4     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  4     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  4     4 /*	Modified April 1983 by C. Hornig for tasking */
+  4     5 
+  4     6 /****^  HISTORY COMMENTS:
+  4     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  4     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  4     9*     added the heap_header_ptr definition.
+  4    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  4    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  4    12*     Modified to support control point management.  These changes were actually
+  4    13*     made in February 1985 by G. Palter.
+  4    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  4    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  4    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  4    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  4    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  4    19*     (ITS pair).
+  4    20*                                                   END HISTORY COMMENTS */
+  4    21 
+  4    22 /* format: style2 */
+  4    23 
+  4    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  4    25 
+  4    26      dcl	   1 stack_header	      based (sb) aligned,
+  4    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  4    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  4    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  4    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  4    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  4    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  4    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  4    34 	     2 pad4	      bit (2) unal,
+  4    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  4    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  4    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  4    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  4    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  4    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  4    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  4    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  4    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  4    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  4    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  4    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  4    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  4    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  4    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  4    50 	     2 return_no_pop_op_ptr
+  4    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  4    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  4    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  4    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  4    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  4    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  4    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  4    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  4    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  4    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  4    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  4    62 	     2 trace,
+  4    63 	       3 frames,
+  4    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  4    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  4    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  4    67 	     2 pad2	      bit (36),		/*  (61) */
+  4    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  4    69 
+  4    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  4    71 
+  4    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  4    73 						/* (551) octal */
+  4    74 
+  4    75 
+  4    76 /*	The following constants are offsets within this transfer vector table.  */
+  4    77 
+  4    78      dcl	   (
+  4    79 	   call_offset	      fixed bin init (271),
+  4    80 	   push_offset	      fixed bin init (272),
+  4    81 	   return_offset	      fixed bin init (273),
+  4    82 	   return_no_pop_offset   fixed bin init (274),
+  4    83 	   entry_offset	      fixed bin init (275)
+  4    84 	   )		      internal static;
+  4    85 
+  4    86 
+  4    87 
+  4    88 
+  4    89 
+  4    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  4    91*	move the whole stack header should use this overlay.
+  4    92**/
+  4    93 
+  4    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  4    95 
+  4    96 
+  4    97 
+  4    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+       62 
+       63 	/* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  5     2 /* modified by M. Weaver 3/77 */
+  5     3 
+  5     4 dcl  lotp ptr;
+  5     5 
+  5     6 dcl 1 lot based (lotp) aligned,
+  5     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  5     8 
+  5     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  5    10 						/* lot fault has fault code = 0 and offset = 0 */
+  5    11 
+  5    12 dcl  isotp ptr;
+  5    13 dcl 1 isot based (isotp) aligned,
+  5    14     2 isp (0:9999) ptr unaligned;
+  5    15 
+  5    16 dcl 1 isot1 (0 :9999) aligned based,
+  5    17     2 flags unaligned,
+  5    18       3 fault bit (2) unaligned,
+  5    19       3 system bit (1) unaligned,
+  5    20       3 mbz bit (6) unaligned,
+  5    21     2 fault_code fixed bin (8) unaligned,
+  5    22     2 static_offset bit (18) unaligned;
+  5    23 
+  5    24 
+  5    25 /* END INCLUDE FILE  lot.incl.pl1 */
+       63 
+       64 
+       65 	/* 	BEGIN INCLUDE FILE ... stack_frame.incl.pl1 ... */
+  6     2 
+  6     3 /* format: off */
+  6     4 
+  6     5 /* Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr and pl1_ps_ptr */
+  6     6 /* Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager bit & main_proc bit */
+  6     7 /* Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr */
+  6     8 /* Modified: 03/01/84, S. Herbst - Added RETURN_PTR_MASK */
+  6     9 
+  6    10 
+  6    11 /****^  HISTORY COMMENTS:
+  6    12*  1) change(86-09-15,Kissel), approve(86-09-15,MCR7473),
+  6    13*     audit(86-10-01,Fawcett), install(86-11-03,MR12.0-1206):
+  6    14*     Modified to add constants for the translator_id field in the stack_frame
+  6    15*     structure.
+  6    16*                                                   END HISTORY COMMENTS */
+  6    17 
+  6    18 
+  6    19 dcl RETURN_PTR_MASK bit (72) int static options (constant)  /* mask to be AND'd with stack_frame.return_ptr */
+  6    20 	init ("777777777777777777000000"b3);		/* when copying, to ignore bits that a call fills */
+  6    21 						/* with indicators (nonzero for Fortran hexfp caller) */
+  6    22 			/* say: unspec(ptr) = unspec(stack_frame.return_ptr) & RETURN_PTR_MASK; */
+  6    23 
+  6    24 dcl TRANSLATOR_ID_PL1V2 bit (18) internal static options (constant) init ("000000"b3);
+  6    25 dcl TRANSLATOR_ID_ALM bit (18) internal static options (constant) init ("000001"b3);
+  6    26 dcl TRANSLATOR_ID_PL1V1 bit (18) internal static options (constant) init ("000002"b3);
+  6    27 dcl TRANSLATOR_ID_SIGNAL_CALLER bit (18) internal static options (constant) init ("000003"b3);
+  6    28 dcl TRANSLATOR_ID_SIGNALLER bit (18) internal static options (constant) init ("000004"b3);
+  6    29 
+  6    30 
+  6    31 dcl  sp pointer;					/* pointer to beginning of stack frame */
+  6    32 
+  6    33 dcl  stack_frame_min_length fixed bin static init(48);
+  6    34 
+  6    35 
+  6    36 dcl 1 stack_frame based(sp) aligned,
+  6    37     2 pointer_registers(0 : 7) ptr,
+  6    38     2 prev_sp pointer,
+  6    39     2 next_sp pointer,
+  6    40     2 return_ptr pointer,
+  6    41     2 entry_ptr pointer,
+  6    42     2 operator_and_lp_ptr ptr,			/* serves as both */
+  6    43     2 arg_ptr pointer,
+  6    44     2 static_ptr ptr unaligned,
+  6    45     2 support_ptr ptr unal, /* only used by fortran I/O */
+  6    46     2 on_unit_relp1 bit(18) unaligned,
+  6    47     2 on_unit_relp2 bit(18) unaligned,
+  6    48     2 translator_id bit(18) unaligned,			/* Translator ID (see constants above)
+  6    49*						   0 => PL/I version II
+  6    50*						   1 => ALM
+  6    51*						   2 => PL/I version I   
+  6    52*						   3 => signal caller frame
+  6    53*						   4 => signaller frame */
+  6    54     2 operator_return_offset bit(18) unaligned,
+  6    55     2 x(0: 7) bit(18) unaligned,			/* index registers */
+  6    56     2 a bit(36),					/* accumulator */
+  6    57     2 q bit(36),					/* q-register */
+  6    58     2 e bit(36),					/* exponent */
+  6    59     2 timer bit(27) unaligned,				/* timer */
+  6    60     2 pad bit(6) unaligned,
+  6    61     2 ring_alarm_reg bit(3) unaligned;
+  6    62 
+  6    63 
+  6    64 dcl 1 stack_frame_flags based(sp) aligned,
+  6    65     2 pad(0 : 7) bit(72),				/* skip over prs */
+  6    66     2 xx0 bit(22) unal,
+  6    67     2 main_proc bit(1) unal,				/* on if frame belongs to a main procedure */
+  6    68     2 run_unit_manager bit(1) unal,			/* on if frame belongs to run unit manager */
+  6    69     2 signal bit(1) unal,				/* on if frame belongs to logical signal_ */
+  6    70     2 crawl_out bit(1) unal,				/* on if this is a signal caller frame */
+  6    71     2 signaller bit(1) unal,				/* on if next frame is signaller's */
+  6    72     2 link_trap bit(1) unal,				/* on if this frame was made by the linker */
+  6    73     2 support bit(1) unal,				/* on if frame belongs to a support proc */
+  6    74     2 condition bit(1) unal,				/* on if condition established in this frame */
+  6    75     2 xx0a bit(6) unal,
+  6    76     2 xx1 fixed bin,
+  6    77     2 xx2 fixed bin,
+  6    78     2 xx3 bit(25) unal,
+  6    79     2 old_crawl_out bit (1) unal,			/* on if this is a signal caller frame */
+  6    80     2 old_signaller bit(1) unal,			/* on if next frame is signaller's */
+  6    81     2 xx3a bit(9) unaligned,
+  6    82     2 xx4(9) bit(72) aligned,
+  6    83     2 v2_pl1_op_ret_base ptr,				/* When a V2 PL/I program calls an operator the
+  6    84*						*  operator puts a pointer to the base of
+  6    85*						*  the calling procedure here. (text base ptr)  */
+  6    86     2 xx5 bit(72) aligned,
+  6    87     2 pl1_ps_ptr ptr;				/* ptr to ps for this frame; also used by fio. */
+  6    88 
+  6    89 /* format: on */
+  6    90 
+  6    91 /* 	END INCLUDE FILE ... stack_frame.incl.pl1 */
+       65 
+       66 
+       67 
+       68 /*  */
+       69 
+       70 /* Examine the machine conditions to determine the calling and target ring numbers.
+       71*   The highest ring in which this process may run is found in pds$highest_ring.
+       72*   The target ring number may not exceed this value.  An inner ring procedure
+       73*   is not permitted to pass any arguments to an outer ring.  (The outer ring
+       74*   procedure would not be able to reference such arguments anyway.)		*/
+       75 
+       76 	mcp = mc_ptr;				/* Copy pointer to machine conditions. */
+       77 	scup = addr (mcp -> mc.scu (0));		/* Generate pointer to SCU information. */
+       78 
+       79 	sdwp = addr (dseg$);			/* Generate pointer to descriptor segment. */
+       80 
+       81 	caller_ringno = fixed (scup -> scu.ppr.prr, 3);	/* Get ring in which fault occurred. */
+       82 	called_segno = fixed (scup -> scu.tpr.tsr, 15);	/* Get target procedure of call. */
+       83 	called_ringno = fixed (sdwp -> sdwa (called_segno).r1, 3);
+       84 						/* Get target ring number from SDW. */
+       85 	if called_ringno > pds$highest_ring then	/* Don't allow calls too far out. */
+       86 	     go to error_8;
+       87 
+       88 	if caller_ringno = 0 then do;			/* Call out from ring 0 */
+       89 
+       90 /* A process may make only one outward call from Ring 0 during its existence.
+       91*   The target ring number of this call must be no less than the value
+       92*   contained in pds$initial_ring.  The stack history contained in the Ring 0
+       93*   stack will automatically be "forgotten" when the FIM returns to the outer ring.	*/
+       94 
+       95 	     if pds$first_call = 0 then		/* If this is not the first call from Ring 0 ... */
+       96 		go to error_1;			/* ... don't allow another. */
+       97 	     pds$first_call = 0;			/* Indicate first call from Ring 0 is being accomplished. */
+       98 	     called_ringno = max (called_ringno, pds$initial_ring);
+       99 						/* Don't allow call inside initial ring. */
+      100 	end;
+      101 	else do;
+      102 
+      103 	     ap = mcp -> mc.prs (apx);		/* Get pointer to argument list. */
+      104 	     if ap -> arglist_header.arg_count ^= 0 then	/* Don't allow any arguments to be passed out. */
+      105 		go to error_8;
+      106 
+      107 /* The caller ring's stack, as well as the stacks belonging to all
+      108*   intermediate rings, must be reset.  No ring lower than the target ring
+      109*   will contain any stack history.					*/
+      110 
+      111 	     do r = caller_ringno to called_ringno;	/* Fudge all intermediate stacks. */
+      112 		sb = pds$stacks (r);		/* Get pointer to this ring's stack. */
+      113 		if sb ^= null then			/* If stack exists for ring ... */
+      114 		     sb -> stack_header.stack_end_ptr = sb -> stack_header.stack_begin_ptr;
+      115 						/* Reset stack. */
+      116 	     end;
+      117 	end;
+      118 
+      119 /* Now modify the machine conditions.  Set sp and sb to the target
+      120*   ring's stack.  Set the ring number to the target ring.  Make
+      121*   a dummy argument list containing no arguments, and set ap to point
+      122*   to it.  Finally, return to the FIM.					*/
+      123 
+      124 	sb = baseptr (active_all_rings_data$stack_base_segno + called_ringno); /* Compute pointer to target ring's stack. */
+      125 	mcp -> mc.prs (spx) = null;			/* Set null pointer in sp ... */
+      126 	mcp -> mc.prs (sbx) = sb;			/* ... and correct sb in machine conditions. */
+      127 
+      128 	scup -> scu.tpr.trr,
+      129 	     scup -> scu.ppr.prr = bit (called_ringno, 3); /* Change ring number in machine conditions. */
+      130 
+      131 	substr (scup -> scu.even_inst, 19, 10),		/* Modify both even and odd instructions to be ... */
+      132 	     substr (scup -> scu. odd_inst, 19, 10)	/* ... TRA (710(0)).  The CALL instruction would cause ... */
+      133 	     = "1110010000"b;			/* ... SB segno to be loaded into SP segno. */
+      134 
+      135 	pds$validation_level = called_ringno;		/* Set the validation level to called ring. */
+      136 
+      137 	ap = ptr (sb, size (stack_header));		/* Make a dummy arglist in stack (after header) */
+      138 	ap -> arglist_header.arg_count, ap -> arglist_header.desc_count, ap -> arglist_header.pad = 0;
+      139 	ap -> arglist_header.code = 4;		/* Make a null argument list. */
+      140 
+      141 	mcp -> mc.prs (apx) = ap;			/* Set ap in machine conditions. */
+      142 
+      143 	do i = 0 to 7;				/* Set the ring number in all pointer registers. */
+      144 	     addr (mcp -> mc.prs (i)) -> its.ringno = bit (called_ringno, 3);
+      145 	end;					/* PR's may not point to an inner ring. */
+      146 
+      147 	do i = 0 to called_ringno - 1;		/* mask IPS signals in all lower rings */
+      148 	     pds$ips_mask (i) = (36)"0"b;		/* set masks to zero */
+      149 	end;
+      150 
+      151 	return;					/* And return to caller. */
+      152 
+      153 
+      154 /* Error returns. */
+      155 
+      156 error_1:
+      157 	mcp -> mc.errcode = 1;			/* Return error code. */
+      158 	return;
+      159 
+      160 error_8:
+      161 	mcp -> mc.errcode = 8;
+      162 	return;
+      163 
+      164 
+      165 
+      166 
+      167      end outward_call_handler;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1716.1  outward_call_handler.pl1          >udd>sm>ds>w>ml>outward_call_handler.pl1
+56           1    12/15/83  1200.4  mc.incl.pl1                       >ldd>incl>mc.incl.pl1
+58           2    09/14/76  0859.8  sdw.incl.pl1                      >ldd>incl>sdw.incl.pl1
+60           3    11/26/79  1420.6  its.incl.pl1                      >ldd>incl>its.incl.pl1
+62           4    11/07/86  1650.3  stack_header.incl.pl1             >ldd>incl>stack_header.incl.pl1
+63           5    08/05/77  1122.4  lot.incl.pl1                      >ldd>incl>lot.incl.pl1
+65           6    11/07/86  1650.3  stack_frame.incl.pl1              >ldd>incl>stack_frame.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+active_all_rings_data$stack_base_segno
+                                000026 external static fixed bin(18,0)          dcl 37 ref 124
+addr                                                   builtin function         dcl 45 ref 77 79 144
+ap                              000106 automatic       pointer                  dcl 22 set ref 103* 104 137* 138 138 138 139 141
+apx                                    constant        fixed bin(17,0)          initial dcl 1-42 ref 103 141
+arg_count                              based           fixed bin(17,0)          level 2 packed packed unaligned dcl 29 set ref 104
+                                                                                  138*
+arglist_header                         based           structure                level 1 dcl 29
+baseptr                                                builtin function         dcl 45 ref 124
+bit                                                    builtin function         dcl 45 ref 128 144
+called_ringno                   000101 automatic       fixed bin(3,0)           dcl 22 set ref 83* 85 98* 98 111 124 128 135 144 147
+called_segno                    000102 automatic       fixed bin(15,0)          dcl 22 set ref 82* 83
+caller_ringno                   000100 automatic       fixed bin(3,0)           dcl 22 set ref 81* 88 111
+code                      0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 29 set ref 139*
+desc_count                1            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 29 set ref 138*
+dseg$                           000010 external static fixed bin(17,0)          dcl 35 set ref 79
+errcode                  43            based           fixed bin(35,0)          level 2 packed packed unaligned dcl 1-12 set ref
+                                                                                  156* 160*
+even_inst                 6            based           bit(36)                  level 2 dcl 1-56 set ref 131*
+i                               000104 automatic       fixed bin(17,0)          dcl 22 set ref 143* 144* 147* 148*
+its                                    based           structure                level 1 dcl 3-5
+mc                                     based           structure                level 1 dcl 1-12
+mc_ptr                                 parameter       pointer                  dcl 20 ref 18 76
+mcp                             000110 automatic       pointer                  dcl 1-10 set ref 76* 77 103 125 126 141 144 156 160
+null                                                   builtin function         dcl 45 ref 113 125
+odd_inst                  7            based           bit(36)                  level 2 dcl 1-56 set ref 131*
+pad                       1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 29 set ref 138*
+pds$first_call                  000020 external static fixed bin(17,0)          dcl 37 set ref 95 97*
+pds$highest_ring                000012 external static fixed bin(3,0)           dcl 37 ref 85
+pds$initial_ring                000014 external static fixed bin(3,0)           dcl 37 ref 98
+pds$ips_mask                    000016 external static bit(36)                  array dcl 37 set ref 148*
+pds$stacks                      000024 external static pointer                  array dcl 37 ref 112
+pds$validation_level            000022 external static fixed bin(3,0)           dcl 37 set ref 135*
+ppr                                    based           structure                level 2 packed packed unaligned dcl 1-56
+prr                                    based           bit(3)                   level 3 packed packed unaligned dcl 1-56 set ref 81
+                                                                                  128*
+prs                                    based           pointer                  array level 2 dcl 1-12 set ref 103 125* 126* 141*
+                                                                                  144
+ptr                                                    builtin function         dcl 45 ref 137
+r                               000103 automatic       fixed bin(3,0)           dcl 22 set ref 111* 112*
+r1                        0(24)        based           bit(3)                   array level 2 packed packed unaligned dcl 2-24 ref
+                                                                                  83
+ringno                    0(18)        based           bit(3)                   level 2 packed packed unaligned dcl 3-5 set ref 144*
+sb                              000116 automatic       pointer                  dcl 4-24 set ref 112* 113 113 113 124* 126 137 137
+sbx                                    constant        fixed bin(17,0)          initial dcl 1-42 ref 126
+scu                      30            based           bit(36)                  array level 2 in structure "mc" packed packed
+                                                                                  unaligned dcl 1-12 in procedure
+                                                                                  "outward_call_handler" set ref 77
+scu                                    based           structure                level 1 dcl 1-56 in procedure "outward_call_handler"
+scup                            000112 automatic       pointer                  dcl 1-54 set ref 77* 81 82 128 128 131 131
+sdw                                    based           structure                level 1 dcl 2-5
+sdwa                                   based           structure                array level 1 dcl 2-24
+sdwp                            000114 automatic       pointer                  dcl 2-3 set ref 79* 83
+size                                                   builtin function         dcl 45 ref 137
+spx                                    constant        fixed bin(17,0)          initial dcl 1-42 ref 125
+stack_begin_ptr          22            based           pointer                  level 2 dcl 4-26 ref 113
+stack_end_ptr            24            based           pointer                  level 2 dcl 4-26 set ref 113*
+stack_header                           based           structure                level 1 dcl 4-26 set ref 137
+substr                                                 builtin function         dcl 45 set ref 131* 131*
+tpr                       2            based           structure                level 2 packed packed unaligned dcl 1-56
+trr                       2            based           bit(3)                   level 3 packed packed unaligned dcl 1-56 set ref
+                                                                                  128*
+tsr                       2(03)        based           bit(15)                  level 3 packed packed unaligned dcl 1-56 ref 82
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 3-56
+ITS_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 3-55
+RETURN_PTR_MASK                        internal static bit(72)                  initial packed unaligned dcl 6-19
+TRANSLATOR_ID_ALM                      internal static bit(18)                  initial packed unaligned dcl 6-25
+TRANSLATOR_ID_PL1V1                    internal static bit(18)                  initial packed unaligned dcl 6-26
+TRANSLATOR_ID_PL1V2                    internal static bit(18)                  initial packed unaligned dcl 6-24
+TRANSLATOR_ID_SIGNALLER                internal static bit(18)                  initial packed unaligned dcl 6-28
+TRANSLATOR_ID_SIGNAL_CALLER            internal static bit(18)                  initial packed unaligned dcl 6-27
+abx                                    internal static fixed bin(17,0)          initial dcl 1-42
+addrel                                                 builtin function         dcl 45
+bbx                                    internal static fixed bin(17,0)          initial dcl 1-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 1-42
+call_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 4-78
+isot                                   based           structure                level 1 dcl 5-13
+isot1                                  based           structure                array level 1 dcl 5-16
+isotp                                  automatic       pointer                  dcl 5-12
+itp                                    based           structure                level 1 dcl 3-18
+itp_unsigned                           based           structure                level 1 dcl 3-43
+its_unsigned                           based           structure                level 1 dcl 3-30
+lbx                                    internal static fixed bin(17,0)          initial dcl 1-42
+lot                                    based           structure                level 1 dcl 5-6
+lot_fault                              internal static bit(36)                  initial dcl 5-9
+lotp                                   automatic       pointer                  dcl 5-4
+lpx                                    internal static fixed bin(17,0)          initial dcl 1-42
+min                                                    builtin function         dcl 45
+push_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 4-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 4-78
+scux                                   based           structure                level 1 dcl 1-207
+sp                                     automatic       pointer                  dcl 6-31
+stack_frame                            based           structure                level 1 dcl 6-36
+stack_frame_flags                      based           structure                level 1 dcl 6-64
+stack_frame_min_length                 internal static fixed bin(17,0)          initial dcl 6-33
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 4-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 4-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+error_1                         000224 constant        label                    dcl 156 ref 95
+error_8                         000227 constant        label                    dcl 160 ref 85 104
+outward_call_handler            000007 constant        entry                    external dcl 18
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+fixed                                                  builtin function         ref 81 82 83
+max                                                    builtin function         ref 98
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       354         404     232         364
+Length       666     232        30         245     122           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+outward_call_handler                 83 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+outward_call_handler     000100 caller_ringno               outward_call_handler
+                         000101 called_ringno               outward_call_handler
+                         000102 called_segno                outward_call_handler
+                         000103 r                           outward_call_handler
+                         000104 i                           outward_call_handler
+                         000106 ap                          outward_call_handler
+                         000110 mcp                         outward_call_handler
+                         000112 scup                        outward_call_handler
+                         000114 sdwp                        outward_call_handler
+                         000116 sb                          outward_call_handler
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_all_rings_data$stack_base_segno                      dseg$                         pds$first_call
+pds$highest_ring              pds$initial_ring              pds$ips_mask                  pds$stacks
+pds$validation_level
+
+
+CONSTANTS
+000000  aa     464000000000
+
+000002  aa     077777000043
+000003  aa     000001000000
+
+BEGIN PROCEDURE outward_call_handler
+ENTRY TO outward_call_handler                               STATEMENT 1 ON LINE 18
+outward_call_handler: proc (mc_ptr);
+
+000004  at     000001000000
+000005  ta     000004000000
+000006  da     000116300000
+000007  aa   000140 6270 00	eax7 	96
+000010  aa  7 00034 3521 20	epp2 	pr7|28,*
+000011  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000012  aa     000002000000
+000013  aa     000000000000
+						STATEMENT 1 ON LINE 76
+	mcp = mc_ptr;
+
+000014  aa  6 00032 3735 20	epp7 	pr6|26,*
+000015  aa  7 00002 3715 20	epp5 	pr7|2,*		mc_ptr
+000016  aa  5 00000 3715 20	epp5 	pr5|0,*		mc_ptr
+000017  aa  6 00110 6515 00	spri5	pr6|72		mcp
+						STATEMENT 1 ON LINE 77
+	scup = addr (mcp -> mc.scu (0));
+
+000020  aa  5 00030 3535 00	epp3 	pr5|24		mc.scu
+000021  aa  6 00112 2535 00	spri3	pr6|74		scup
+						STATEMENT 1 ON LINE 79
+	sdwp = addr (dseg$);
+
+000022  la  4 00010 3515 20	epp1 	pr4|8,*		dseg$
+000023  aa  6 00114 2515 00	spri1	pr6|76		sdwp
+						STATEMENT 1 ON LINE 81
+	caller_ringno = fixed (scup -> scu.ppr.prr, 3);
+
+000024  aa  3 00000 2351 00	lda  	pr3|0		scu.prr
+000025  aa   000105 7730 00	lrl  	69
+000026  aa  6 00100 7561 00	stq  	pr6|64		caller_ringno
+						STATEMENT 1 ON LINE 82
+	called_segno = fixed (scup -> scu.tpr.tsr, 15);
+
+000027  aa  3 00002 2351 00	lda  	pr3|2		scu.tsr
+000030  aa   000003 7350 00	als  	3
+000031  aa   000071 7730 00	lrl  	57
+000032  aa  6 00102 7561 00	stq  	pr6|66		called_segno
+						STATEMENT 1 ON LINE 83
+	called_ringno = fixed (sdwp -> sdwa (called_segno).r1, 3);
+
+000033  aa   000001 7360 00	qls  	1
+000034  aa  1 00000 2351 06	lda  	pr1|0,ql		sdwa.r1
+000035  aa   000030 7350 00	als  	24
+000036  aa   000105 7730 00	lrl  	69
+000037  aa  6 00101 7561 00	stq  	pr6|65		called_ringno
+						STATEMENT 1 ON LINE 85
+	if called_ringno > pds$highest_ring then	/* Don't allow calls too far out. */
+	     go to error_8;
+
+000040  la  4 00012 1161 20	cmpq 	pr4|10,*		pds$highest_ring
+000041  aa   000166 6054 04	tpnz 	118,ic		000227
+						STATEMENT 1 ON LINE 88
+	if caller_ringno = 0 then do;
+
+000042  aa  6 00100 2361 00	ldq  	pr6|64		caller_ringno
+000043  aa   000012 6010 04	tnz  	10,ic		000055
+						STATEMENT 1 ON LINE 95
+	     if pds$first_call = 0 then		/* If this is not the first call from Ring 0 ... */
+		go to error_1;
+
+000044  la  4 00020 2361 20	ldq  	pr4|16,*		pds$first_call
+000045  aa   000157 6000 04	tze  	111,ic		000224
+						STATEMENT 1 ON LINE 97
+	     pds$first_call = 0;
+
+000046  la  4 00020 4501 20	stz  	pr4|16,*		pds$first_call
+						STATEMENT 1 ON LINE 98
+	     called_ringno = max (called_ringno, pds$initial_ring);
+
+000047  aa  6 00101 2361 00	ldq  	pr6|65		called_ringno
+000050  la  4 00014 1161 20	cmpq 	pr4|12,*		pds$initial_ring
+000051  aa   000002 6050 04	tpl  	2,ic		000053
+000052  la  4 00014 2361 20	ldq  	pr4|12,*		pds$initial_ring
+000053  aa  6 00101 7561 00	stq  	pr6|65		called_ringno
+						STATEMENT 1 ON LINE 100
+	end;
+
+000054  aa   000034 7100 04	tra  	28,ic		000110
+						STATEMENT 1 ON LINE 101
+	else do;
+
+						STATEMENT 1 ON LINE 103
+	     ap = mcp -> mc.prs (apx);
+
+000055  aa   000000 2360 07	ldq  	0,dl
+000056  aa  5 00000 3535 26	epp3 	pr5|0,ql*		mc.prs
+000057  aa  6 00106 2535 00	spri3	pr6|70		ap
+						STATEMENT 1 ON LINE 104
+	     if ap -> arglist_header.arg_count ^= 0 then	/* Don't allow any arguments to be passed out. */
+		go to error_8;
+
+000060  aa  3 00000 2351 00	lda  	pr3|0		arglist_header.arg_count
+000061  aa   000066 7330 00	lrs  	54
+000062  aa   000145 6010 04	tnz  	101,ic		000227
+						STATEMENT 1 ON LINE 111
+	     do r = caller_ringno to called_ringno;
+
+000063  aa  6 00101 2361 00	ldq  	pr6|65		called_ringno
+000064  aa  6 00120 7561 00	stq  	pr6|80
+000065  aa  6 00100 2361 00	ldq  	pr6|64		caller_ringno
+000066  aa  6 00103 7561 00	stq  	pr6|67		r
+000067  aa   000000 0110 03	nop  	0,du
+000070  aa  6 00103 2361 00	ldq  	pr6|67		r
+000071  aa  6 00120 1161 00	cmpq 	pr6|80
+000072  aa   000016 6054 04	tpnz 	14,ic		000110
+						STATEMENT 1 ON LINE 112
+		sb = pds$stacks (r);
+
+000073  aa   000001 7360 00	qls  	1
+000074  aa  6 00044 3701 20	epp4 	pr6|36,*
+000075  la  4 00024 3735 66	epp7 	pr4|20,*ql	pds$stacks
+000076  aa  7 00000 3735 20	epp7 	pr7|0,*		pds$stacks
+000077  aa  6 00116 6535 00	spri7	pr6|78		sb
+						STATEMENT 1 ON LINE 113
+		if sb ^= null then			/* If stack exists for ring ... */
+		     sb -> stack_header.stack_end_ptr = sb -> stack_header.stack_begin_ptr;
+
+000100  aa  6 00116 2371 00	ldaq 	pr6|78		sb
+000101  aa   777701 6770 04	eraq 	-63,ic		000002 = 077777000043 000001000000
+000102  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000103  aa   000003 6000 04	tze  	3,ic		000106
+000104  aa  7 00022 3715 20	epp5 	pr7|18,*		stack_header.stack_begin_ptr
+000105  aa  7 00024 6515 00	spri5	pr7|20		stack_header.stack_end_ptr
+						STATEMENT 1 ON LINE 116
+	     end;
+
+000106  aa  6 00103 0541 00	aos  	pr6|67		r
+000107  aa   777761 7100 04	tra  	-15,ic		000070
+						STATEMENT 1 ON LINE 117
+	end;
+
+						STATEMENT 1 ON LINE 124
+	sb = baseptr (active_all_rings_data$stack_base_segno + called_ringno);
+
+000110  aa  6 00044 3701 20	epp4 	pr6|36,*
+000111  la  4 00026 2361 20	ldq  	pr4|22,*		active_all_rings_data$stack_base_segno
+000112  aa  6 00101 0761 00	adq  	pr6|65		called_ringno
+000113  aa  6 00000 3525 00	epbp2	pr6|0
+000114  aa   000000 3130 06	easp2	0,ql
+000115  aa  6 00116 2521 00	spri2	pr6|78		sb
+						STATEMENT 1 ON LINE 125
+	mcp -> mc.prs (spx) = null;
+
+000116  aa   000014 2360 07	ldq  	12,dl
+000117  aa   000000 6270 06	eax7 	0,ql
+000120  aa   777662 2370 04	ldaq 	-78,ic		000002 = 077777000043 000001000000
+000121  aa  6 00110 7571 77	staq 	pr6|72,*7		mc.prs
+						STATEMENT 1 ON LINE 126
+	mcp -> mc.prs (sbx) = sb;
+
+000122  aa   000016 2360 07	ldq  	14,dl
+000123  aa  6 00110 2521 66	spri2	pr6|72,*ql	mc.prs
+						STATEMENT 1 ON LINE 128
+	scup -> scu.tpr.trr,
+	     scup -> scu.ppr.prr = bit (called_ringno, 3);
+
+000124  aa  6 00101 2351 00	lda  	pr6|65		called_ringno
+000125  aa   000002 6050 04	tpl  	2,ic		000127
+000126  aa   000000 5310 00	neg  	0
+000127  aa   000041 7350 00	als  	33
+000130  aa  6 00112 3735 20	epp7 	pr6|74,*		scup
+000131  aa  6 00122 7551 00	sta  	pr6|82
+000132  aa  7 00002 6751 00	era  	pr7|2		scu.trr
+000133  aa  0 00006 3751 00	ana  	pr0|6		= 700000000000
+000134  aa  7 00002 6551 00	ersa 	pr7|2		scu.trr
+000135  aa  6 00122 2351 00	lda  	pr6|82
+000136  aa  7 00000 6751 00	era  	pr7|0		scu.prr
+000137  aa  0 00006 3751 00	ana  	pr0|6		= 700000000000
+000140  aa  7 00000 6551 00	ersa 	pr7|0		scu.prr
+						STATEMENT 1 ON LINE 131
+	substr (scup -> scu.even_inst, 19, 10),		/* Modify both even and odd instructions to be ... */
+	     substr (scup -> scu. odd_inst, 19, 10)	/* ... TRA (710(0)).  The CALL instruction would cause ... */
+	     = "1110010000"b;
+
+000141  aa   710000 2350 07	lda  	233472,dl
+000142  aa  7 00006 6751 00	era  	pr7|6		scu.even_inst
+000143  aa   777400 3750 07	ana  	261888,dl
+000144  aa  7 00006 6551 00	ersa 	pr7|6		scu.even_inst
+000145  aa   710000 2350 07	lda  	233472,dl
+000146  aa  7 00007 6751 00	era  	pr7|7		scu.odd_inst
+000147  aa   777400 3750 07	ana  	261888,dl
+000150  aa  7 00007 6551 00	ersa 	pr7|7		scu.odd_inst
+						STATEMENT 1 ON LINE 135
+	pds$validation_level = called_ringno;
+
+000151  aa  6 00101 2361 00	ldq  	pr6|65		called_ringno
+000152  la  4 00022 7561 20	stq  	pr4|18,*		pds$validation_level
+						STATEMENT 1 ON LINE 137
+	ap = ptr (sb, size (stack_header));
+
+000153  aa  2 00000 3515 00	epp1 	pr2|0
+000154  aa   000100 3114 00	eawp1	64
+000155  aa  6 00106 2515 00	spri1	pr6|70		ap
+						STATEMENT 1 ON LINE 138
+	ap -> arglist_header.arg_count, ap -> arglist_header.desc_count, ap -> arglist_header.pad = 0;
+
+000156  aa   000000 2350 07	lda  	0,dl
+000157  aa  1 00000 5511 60	stba 	pr1|0,60		arglist_header.arg_count
+000160  aa  1 00001 5511 60	stba 	pr1|1,60		arglist_header.desc_count
+000161  aa   000022 7710 00	arl  	18
+000162  aa  1 00001 5511 14	stba 	pr1|1,14		arglist_header.pad
+						STATEMENT 1 ON LINE 139
+	ap -> arglist_header.code = 4;
+
+000163  aa   000004 2350 07	lda  	4,dl
+000164  aa  1 00000 5511 14	stba 	pr1|0,14		arglist_header.code
+						STATEMENT 1 ON LINE 141
+	mcp -> mc.prs (apx) = ap;
+
+000165  aa   000000 2360 07	ldq  	0,dl
+000166  aa  6 00110 2515 66	spri1	pr6|72,*ql	mc.prs
+						STATEMENT 1 ON LINE 143
+	do i = 0 to 7;
+
+000167  aa  6 00104 4501 00	stz  	pr6|68		i
+000170  aa  6 00104 2361 00	ldq  	pr6|68		i
+000171  aa   000007 1160 07	cmpq 	7,dl
+000172  aa   000015 6054 04	tpnz 	13,ic		000207
+						STATEMENT 1 ON LINE 144
+	     addr (mcp -> mc.prs (i)) -> its.ringno = bit (called_ringno, 3);
+
+000173  aa   000001 7360 00	qls  	1
+000174  aa  6 00101 2351 00	lda  	pr6|65		called_ringno
+000175  aa   000002 6050 04	tpl  	2,ic		000177
+000176  aa   000000 5310 00	neg  	0
+000177  aa   000041 7350 00	als  	33
+000200  aa   000022 7710 00	arl  	18
+000201  aa  6 00110 3735 66	epp7 	pr6|72,*ql	mc.prs
+000202  aa  7 00000 6751 00	era  	pr7|0		its.ringno
+000203  aa   700000 3750 07	ana  	229376,dl
+000204  aa  7 00000 6551 00	ersa 	pr7|0		its.ringno
+						STATEMENT 1 ON LINE 145
+	end;
+
+000205  aa  6 00104 0541 00	aos  	pr6|68		i
+000206  aa   777762 7100 04	tra  	-14,ic		000170
+						STATEMENT 1 ON LINE 147
+	do i = 0 to called_ringno - 1;
+
+000207  aa  6 00101 2361 00	ldq  	pr6|65		called_ringno
+000210  aa   000001 1760 07	sbq  	1,dl
+000211  aa  6 00121 7561 00	stq  	pr6|81
+000212  aa  6 00104 4501 00	stz  	pr6|68		i
+000213  aa   000000 0110 03	nop  	0,du
+000214  aa  6 00104 2361 00	ldq  	pr6|68		i
+000215  aa  6 00121 1161 00	cmpq 	pr6|81
+000216  aa   000005 6054 04	tpnz 	5,ic		000223
+						STATEMENT 1 ON LINE 148
+	     pds$ips_mask (i) = (36)"0"b;
+
+000217  aa  6 00044 3701 20	epp4 	pr6|36,*
+000220  la  4 00016 4501 66	stz  	pr4|14,*ql	pds$ips_mask
+						STATEMENT 1 ON LINE 149
+	end;
+
+000221  aa  6 00104 0541 00	aos  	pr6|68		i
+000222  aa   777772 7100 04	tra  	-6,ic		000214
+						STATEMENT 1 ON LINE 151
+	return;
+
+000223  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 156
+error_1:
+	mcp -> mc.errcode = 1;
+
+000224  aa   000001 2360 07	ldq  	1,dl
+000225  aa  5 00043 7561 00	stq  	pr5|35		mc.errcode
+						STATEMENT 1 ON LINE 158
+	return;
+
+000226  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 160
+error_8:
+	mcp -> mc.errcode = 8;
+
+000227  aa   000010 2360 07	ldq  	8,dl
+000230  aa  5 00043 7561 00	stq  	pr5|35		mc.errcode
+						STATEMENT 1 ON LINE 162
+	return;
+
+000231  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 167
+     end outward_call_handler;
+
+  END PROCEDURE outward_call_handler
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

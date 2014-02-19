@@ -1,0 +1,597 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>math_constants_.alm                                                                                                                                  
+ASSEMBLED ON:	11/11/89  0943.6 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  "
+                                    10  "	Rewritten: 13 Feb 85 by HH to put the HFP constant values
+                                    11  "		immediately after the equivalent BFP values.  This was
+                                    12  "		done for the sake of the math routines that use X
+                                    13  "		register offsets to differentiate between the HFP and BFP
+                                    14  "		values.
+                                    15  
+                                    16  
+    000000                          17  	name	math_constants_
+                                    18  
+                        000000      19  	segdef	almost_one,hfp_almost_one
+    000000                          20  almost_one:
+    000000                          21  hfp_almost_one:
+    000000  aa   000777 777777      22  	oct	000777777777,777777777777
+    000001  aa   777777 777777 
+                                    23  
+                                    24  
+                        000004      25  	segdef	half_pi,hfp_half_pi
+    000002                          26  half_pi:
+    000002  aa   002622 077325      27  	dec	1.570796326794896619231d+00
+    000003  aa   042055 060432 
+    000004                          28  hfp_half_pi:
+    000004  aa   002062 207732      29  	oct	002062207732,504205506043
+    000005  aa   504205 506043 
+                                    30  
+                                    31  
+                        000010      32  	segdef	log_10_of_2,hfp_log_10_of_2
+    000006                          33  log_10_of_2:
+    000006  aa   776464 202324      34  	dec	3.010299956639811952137d-01
+    000007  aa   117571 775714 
+    000010                          35  hfp_log_10_of_2:
+    000010  aa   000232 101152      36  	oct	000232101152,047674776746
+    000011  aa   047674 776746 
+                                    37  
+                                    38  
+                        000014      39  	segdef	log_10_of_e,hfp_log_10_of_e
+    000012                          40  log_10_of_e:
+    000012  aa   776674 557305      41  	dec	4.342944819032518276511d-01
+    000013  aa   223345 034313 
+    000014                          42  hfp_log_10_of_e:
+    000014  aa   000336 267542      43  	oct	000336267542,511562416145
+    000015  aa   511562 416145 
+                                    44  
+                                    45  
+                        000020      46  	segdef	log_2_of_e,hfp_log_2_of_e
+    000016                          47  log_2_of_e:
+    000016  aa   002561 250731      48  	dec	1.442695040888963407359d+00
+    000017  aa   225602 774136 
+    000020                          49  hfp_log_2_of_e:
+    000020  aa   002056 125073      50  	oct	002056125073,122560277414
+    000021  aa   122560 277414 
+                                    51  
+                                    52  
+                        000024      53  	segdef	log_e_of_2,hfp_log_e_of_2
+    000022                          54  log_e_of_2:
+    000022  aa   000542 710277      55  	dec	6.931471805599453094172d-01
+    000023  aa   575071 736326 
+    000024                          56  hfp_log_e_of_2:
+    000024  aa   000542 710277      57  	oct	000542710277,575071736326
+    000025  aa   575071 736326 
+                                    58  
+                                    59  
+                        000026      60  	segdef	max_value,hfp_max_value
+    000026                          61  max_value:
+    000026                          62  hfp_max_value:
+    000026  aa   376777 777777      63  	oct	376777777777,777777777777
+    000027  aa   777777 777777 
+                                    64  
+                                    65  
+                        000032      66  	segdef	one_degree,hfp_one_degree
+    000030                          67  one_degree:
+    000030  aa   766435 750650      68  	dec	1.745329251994329576923d-02
+    000031  aa   451235 162127 
+    000032                          69  hfp_one_degree:
+    000032  aa   776216 764324      70  	oct	776216764324,224516471053
+    000033  aa   224516 471053 
+                                    71  
+                                    72  
+                        000036      73  	segdef	one_over_pi,hfp_one_over_pi
+    000034                          74  one_over_pi:
+    000034  aa   776505 746033      75  	dec	3.183098861837906715377d-01
+    000035  aa   344710 405225 
+    000036                          76  hfp_one_over_pi:
+    000036  aa   000242 763015      77  	oct	000242763015,562344202512
+    000037  aa   562344 202512 
+                                    78  
+                                    79  
+                        000042      80  	segdef	one_radian,hfp_one_radian
+    000040                          81  one_radian:
+    000040  aa   014712 273406      82  	dec	5.729577951308232087679d+01
+    000041  aa   461701 757342 
+    000042                          83  hfp_one_radian:
+    000042  aa   004162 456701      84  	oct	004162456701,514360373670
+    000043  aa   514360 373670 
+                                    85  
+                                    86  
+                        000046      87  	segdef	pi,hfp_pi
+    000044                          88  pi:
+    000044  aa   004622 077325      89  	dec	3.141592653589793238462d+00
+    000045  aa   042055 060432 
+    000046                          90  hfp_pi:
+    000046  aa   002144 417665      91  	oct	002144417665,210413214107
+    000047  aa   210413 214107 
+                                    92  
+                                    93  
+                        000052      94  	segdef	quarter_pi,hfp_quarter_pi
+    000050                          95  quarter_pi:
+    000050  aa   000622 077325      96  	dec	7.853981633974483096156d-01
+    000051  aa   042055 060432 
+    000052                          97  hfp_quarter_pi:
+    000052  aa   000622 077325      98  	oct	000622077325,042055060432
+    000053  aa   042055 060432 
+                                    99  
+                                   100  
+                        000056     101  	segdef	square_root_half,hfp_square_root_half
+    000054                         102  square_root_half:
+    000054  aa   000552 023631     103  	dec	7.071067811865475244008d-01
+    000055  aa   477473 631102 
+    000056                         104  hfp_square_root_half:
+    000056  aa   000552 023631     105  	oct	000552023631,477473631102
+    000057  aa   477473 631102 
+                                   106  
+                                   107  
+                        000062     108  	segdef	square_root_three,hfp_square_root_three
+    000060                         109  square_root_three:
+    000060  aa   002673 317272     110  	dec	1.732050807568877293527d+00
+    000061  aa   054114 524717 
+    000062                         111  hfp_square_root_three:
+    000062  aa   002067 331727     112  	oct	002067331727,205411452472
+    000063  aa   205411 452472 
+                                   113  
+                                   114  
+                        000066     115  	segdef	square_root_two,hfp_square_root_two
+    000064                         116  square_root_two:
+    000064  aa   002552 023631     117  	dec	1.414213562373095048801d+00
+    000065  aa   477473 631102 
+    000066                         118  hfp_square_root_two:
+    000066  aa   002055 202363     119  	oct	002055202363,147747363110
+    000067  aa   147747 363110 
+                                   120  
+                                   121  
+                                   122  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000070  5a   000003 000000 
+    000071  5a   000330 600000 
+    000072  aa   000000 000000 
+    000073  55   000012 000002 
+    000074  5a   000002 400003 
+    000075  55   000006 000012 
+    000076  aa  017 155 141 164
+    000077  aa  150 137 143 157
+    000100  aa  156 163 164 141
+    000101  aa  156 164 163 137
+    000102  55   000022 000003 
+    000103  0a   000066 400000 
+    000104  55   000015 000003 
+    000105  aa  023 150 146 160         hfp_square_root_two
+    000106  aa  137 163 161 165
+    000107  aa  141 162 145 137
+    000110  aa  162 157 157 164
+    000111  aa  137 164 167 157
+    000112  55   000031 000012 
+    000113  0a   000064 400000 
+    000114  55   000025 000003 
+    000115  aa  017 163 161 165         square_root_two
+    000116  aa  141 162 145 137
+    000117  aa  162 157 157 164
+    000120  aa  137 164 167 157
+    000121  55   000042 000022 
+    000122  0a   000062 400000 
+    000123  55   000034 000003 
+    000124  aa  025 150 146 160         hfp_square_root_three
+    000125  aa  137 163 161 165
+    000126  aa  141 162 145 137
+    000127  aa  162 157 157 164
+    000130  aa  137 164 150 162
+    000131  aa  145 145 000 000
+    000132  55   000052 000031 
+    000133  0a   000060 400000 
+    000134  55   000045 000003 
+    000135  aa  021 163 161 165         square_root_three
+    000136  aa  141 162 145 137
+    000137  aa  162 157 157 164
+    000140  aa  137 164 150 162
+    000141  aa  145 145 000 000
+    000142  55   000063 000042 
+    000143  0a   000056 400000 
+    000144  55   000055 000003 
+    000145  aa  024 150 146 160         hfp_square_root_half
+    000146  aa  137 163 161 165
+    000147  aa  141 162 145 137
+    000150  aa  162 157 157 164
+    000151  aa  137 150 141 154
+    000152  aa  146 000 000 000
+    000153  55   000073 000052 
+    000154  0a   000054 400000 
+    000155  55   000066 000003 
+    000156  aa  020 163 161 165         square_root_half
+    000157  aa  141 162 145 137
+    000160  aa  162 157 157 164
+    000161  aa  137 150 141 154
+    000162  aa  146 000 000 000
+    000163  55   000102 000063 
+    000164  0a   000052 400000 
+    000165  55   000076 000003 
+    000166  aa  016 150 146 160         hfp_quarter_pi
+    000167  aa  137 161 165 141
+    000170  aa  162 164 145 162
+    000171  aa  137 160 151 000
+    000172  55   000110 000073 
+    000173  0a   000050 400000 
+    000174  55   000105 000003 
+    000175  aa  012 161 165 141         quarter_pi
+    000176  aa  162 164 145 162
+    000177  aa  137 160 151 000
+    000200  55   000115 000102 
+    000201  0a   000046 400000 
+    000202  55   000113 000003 
+    000203  aa  006 150 146 160         hfp_pi
+    000204  aa  137 160 151 000
+    000205  55   000121 000110 
+    000206  0a   000044 400000 
+    000207  55   000120 000003 
+    000210  aa  002 160 151 000         pi
+    000211  55   000130 000115 
+    000212  0a   000042 400000 
+    000213  55   000124 000003 
+    000214  aa  016 150 146 160         hfp_one_radian
+    000215  aa  137 157 156 145
+    000216  aa  137 162 141 144
+    000217  aa  151 141 156 000
+    000220  55   000136 000121 
+    000221  0a   000040 400000 
+    000222  55   000133 000003 
+    000223  aa  012 157 156 145         one_radian
+    000224  aa  137 162 141 144
+    000225  aa  151 141 156 000
+    000226  55   000145 000130 
+    000227  0a   000036 400000 
+    000230  55   000141 000003 
+    000231  aa  017 150 146 160         hfp_one_over_pi
+    000232  aa  137 157 156 145
+    000233  aa  137 157 166 145
+    000234  aa  162 137 160 151
+    000235  55   000153 000136 
+    000236  0a   000034 400000 
+    000237  55   000150 000003 
+    000240  aa  013 157 156 145         one_over_pi
+    000241  aa  137 157 166 145
+    000242  aa  162 137 160 151
+    000243  55   000162 000145 
+    000244  0a   000032 400000 
+    000245  55   000156 000003 
+    000246  aa  016 150 146 160         hfp_one_degree
+    000247  aa  137 157 156 145
+    000250  aa  137 144 145 147
+    000251  aa  162 145 145 000
+    000252  55   000170 000153 
+    000253  0a   000030 400000 
+    000254  55   000165 000003 
+    000255  aa  012 157 156 145         one_degree
+    000256  aa  137 144 145 147
+    000257  aa  162 145 145 000
+    000260  55   000177 000162 
+    000261  0a   000026 400000 
+    000262  55   000173 000003 
+    000263  aa  015 150 146 160         hfp_max_value
+    000264  aa  137 155 141 170
+    000265  aa  137 166 141 154
+    000266  aa  165 145 000 000
+    000267  55   000205 000170 
+    000270  0a   000026 400000 
+    000271  55   000202 000003 
+    000272  aa  011 155 141 170         max_value
+    000273  aa  137 166 141 154
+    000274  aa  165 145 000 000
+    000275  55   000214 000177 
+    000276  0a   000024 400000 
+    000277  55   000210 000003 
+    000300  aa  016 150 146 160         hfp_log_e_of_2
+    000301  aa  137 154 157 147
+    000302  aa  137 145 137 157
+    000303  aa  146 137 062 000
+    000304  55   000222 000205 
+    000305  0a   000022 400000 
+    000306  55   000217 000003 
+    000307  aa  012 154 157 147         log_e_of_2
+    000310  aa  137 145 137 157
+    000311  aa  146 137 062 000
+    000312  55   000231 000214 
+    000313  0a   000020 400000 
+    000314  55   000225 000003 
+    000315  aa  016 150 146 160         hfp_log_2_of_e
+    000316  aa  137 154 157 147
+    000317  aa  137 062 137 157
+    000320  aa  146 137 145 000
+    000321  55   000237 000222 
+    000322  0a   000016 400000 
+    000323  55   000234 000003 
+    000324  aa  012 154 157 147         log_2_of_e
+    000325  aa  137 062 137 157
+    000326  aa  146 137 145 000
+    000327  55   000246 000231 
+    000330  0a   000014 400000 
+    000331  55   000242 000003 
+    000332  aa  017 150 146 160         hfp_log_10_of_e
+    000333  aa  137 154 157 147
+    000334  aa  137 061 060 137
+    000335  aa  157 146 137 145
+    000336  55   000254 000237 
+    000337  0a   000012 400000 
+    000340  55   000251 000003 
+    000341  aa  013 154 157 147         log_10_of_e
+    000342  aa  137 061 060 137
+    000343  aa  157 146 137 145
+    000344  55   000263 000246 
+    000345  0a   000010 400000 
+    000346  55   000257 000003 
+    000347  aa  017 150 146 160         hfp_log_10_of_2
+    000350  aa  137 154 157 147
+    000351  aa  137 061 060 137
+    000352  aa  157 146 137 062
+    000353  55   000271 000254 
+    000354  0a   000006 400000 
+    000355  55   000266 000003 
+    000356  aa  013 154 157 147         log_10_of_2
+    000357  aa  137 061 060 137
+    000360  aa  157 146 137 062
+    000361  55   000277 000263 
+    000362  0a   000004 400000 
+    000363  55   000274 000003 
+    000364  aa  013 150 146 160         hfp_half_pi
+    000365  aa  137 150 141 154
+    000366  aa  146 137 160 151
+    000367  55   000304 000271 
+    000370  0a   000002 400000 
+    000371  55   000302 000003 
+    000372  aa  007 150 141 154         half_pi
+    000373  aa  146 137 160 151
+    000374  55   000313 000277 
+    000375  0a   000000 400000 
+    000376  55   000307 000003 
+    000377  aa  016 150 146 160         hfp_almost_one
+    000400  aa  137 141 154 155
+    000401  aa  157 163 164 137
+    000402  aa  157 156 145 000
+    000403  55   000321 000304 
+    000404  0a   000000 400000 
+    000405  55   000316 000003 
+    000406  aa  012 141 154 155         almost_one
+    000407  aa  157 163 164 137
+    000410  aa  157 156 145 000
+    000411  55   000002 000313 
+    000412  6a   000000 400002 
+    000413  55   000324 000003 
+    000414  aa  014 163 171 155         symbol_table
+    000415  aa  142 157 154 137
+    000416  aa  164 141 142 154
+    000417  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000420  aa   000000 000065 
+    000421  aa   000000 000000 
+    000422  5a   000110 000000 
+    000423  aa   000000 000000 
+    000424  5a   000246 000000 
+    000425  5a   000263 000000 
+    000426  5a   000214 000000 
+    000427  5a   000231 000000 
+    000430  aa   000000 000000 
+    000431  aa   000000 000000 
+    000432  aa   000000 000000 
+    000433  aa   000000 000000 
+    000434  5a   000042 000000 
+    000435  aa   000000 000000 
+    000436  5a   000063 000000 
+    000437  aa   000000 000000 
+    000440  5a   000022 000000 
+    000441  aa   000000 000000 
+    000442  5a   000177 000000 
+    000443  aa   000000 000000 
+    000444  aa   000000 000000 
+    000445  aa   000000 000000 
+    000446  aa   000000 000000 
+    000447  aa   000000 000000 
+    000450  aa   000000 000000 
+    000451  5a   000031 000000 
+    000452  aa   000000 000000 
+    000453  5a   000052 000000 
+    000454  5a   000102 000000 
+    000455  5a   000012 000000 
+    000456  5a   000321 000000 
+    000457  aa   000000 000000 
+    000460  aa   000000 000000 
+    000461  5a   000277 000000 
+    000462  aa   000000 000000 
+    000463  aa   000000 000000 
+    000464  aa   000000 000000 
+    000465  5a   000136 000000 
+    000466  5a   000145 000000 
+    000467  5a   000073 000000 
+    000470  5a   000121 000000 
+    000471  5a   000130 000000 
+    000472  5a   000153 000000 
+    000473  5a   000162 000000 
+    000474  5a   000170 000000 
+    000475  5a   000205 000000 
+    000476  5a   000222 000000 
+    000477  5a   000237 000000 
+    000500  5a   000254 000000 
+    000501  5a   000271 000000 
+    000502  5a   000304 000000 
+    000503  5a   000115 000000 
+    000504  aa   000000 000000 
+    000505  5a   000313 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000506  aa   000001 000000 
+    000507  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000070 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   252676 222320 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000172 
+    000020  aa   000000 000104 
+    000021  aa   000115 000112 
+    000022  aa   000164 000104 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000046 
+    000067  aa   175453 017754 
+    000070  aa   000000 117547 
+    000071  aa   177004 400000 
+    000072  aa   076163 160145          >spec>install>1110>math_constants_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076155 
+    000077  aa   141164 150137 
+    000100  aa   143157 156163 
+    000101  aa   164141 156164 
+    000102  aa   163137 056141 
+    000103  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    almost_one               math_constants_:     19,   20.
+           2    half_pi                  math_constants_:     25,   26.
+           0    hfp_almost_one           math_constants_:     19,   21.
+           4    hfp_half_pi              math_constants_:     25,   28.
+          10    hfp_log_10_of_2          math_constants_:     32,   35.
+          14    hfp_log_10_of_e          math_constants_:     39,   42.
+          20    hfp_log_2_of_e           math_constants_:     46,   49.
+          24    hfp_log_e_of_2           math_constants_:     53,   56.
+          26    hfp_max_value            math_constants_:     60,   62.
+          32    hfp_one_degree           math_constants_:     66,   69.
+          36    hfp_one_over_pi          math_constants_:     73,   76.
+          42    hfp_one_radian           math_constants_:     80,   83.
+          46    hfp_pi                   math_constants_:     87,   90.
+          52    hfp_quarter_pi           math_constants_:     94,   97.
+          56    hfp_square_root_half     math_constants_:    101,  104.
+          62    hfp_square_root_three    math_constants_:    108,  111.
+          66    hfp_square_root_two      math_constants_:    115,  118.
+           6    log_10_of_2              math_constants_:     32,   33.
+          12    log_10_of_e              math_constants_:     39,   40.
+          16    log_2_of_e               math_constants_:     46,   47.
+          22    log_e_of_2               math_constants_:     53,   54.
+          26    max_value                math_constants_:     60,   61.
+          30    one_degree               math_constants_:     66,   67.
+          34    one_over_pi              math_constants_:     73,   74.
+          40    one_radian               math_constants_:     80,   81.
+          44    pi                       math_constants_:     87,   88.
+          50    quarter_pi               math_constants_:     94,   95.
+          54    square_root_half         math_constants_:    101,  102.
+          60    square_root_three        math_constants_:    108,  109.
+          64    square_root_two          math_constants_:    115,  116.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

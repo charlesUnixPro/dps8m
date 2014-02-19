@@ -1,0 +1,376 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXjdnGQff
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1005.6 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 /* SYSERR_DATA - The syserr database.	*/
+       14 /* Last modified (Date and reason):
+       15*   16 Nov 84 by K. Loepere to use up a full page.
+       16*   7 Mar 79 by D. Spector to fix "like to refer" bug
+       17*   2/6/76	by S. Webber Initial coding */
+       18 
+       19 syserr_data: proc;
+       20 
+       21 /* This program creates the syserr_data data base */
+       22 
+       23 /* Automatic */
+       24 
+       25 dcl 1 cdsa aligned like cds_args;
+       26 dcl  code fixed bin (35);
+       27 dcl  tsegp (1) ptr;
+       28 
+       29 /* Static */
+       30 
+       31 dcl  big_time fixed bin (71) init (100000000000000);
+       32 dcl  exclude_pad (1) char (32) aligned static options (constant) init ("pad*");
+       33 dcl  syserr_dataname char (11) aligned static init ("syserr_data") options (constant);
+       34 
+       35 /* Builtins */
+       36 
+       37 dcl (addr, bin, mod, rel, size, string) builtin;
+       38 
+       39 /* Entries */
+       40 
+       41 dcl  com_err_ entry options (variable);
+       42 dcl  create_data_segment_ entry (ptr, fixed bin (35));
+       43 dcl  get_temp_segments_ entry (char (*), (*) ptr, fixed bin (35));
+       44 dcl  release_temp_segments_ entry (char (*), (*) ptr, fixed bin (35));
+       45 
+       46 
+       47 /* The following structure describes the overall format of syserr_data */
+       48 
+       49 dcl  syserr_datap ptr;
+       50 
+       51 dcl 1 syserr_data aligned based (syserr_datap),
+       52     2 log_meters (16) fixed bin,
+       53     2 syserr_size fixed bin (18),			/* size of "sd" structure above */
+       54     2 wired_log_size fixed bin (18),			/* size of "wlog" structure above */
+       55     2 logger_proc_id bit (36),			/* process ID for logger HPROC */
+       56     2 pad fixed bin,
+       57     2 logger_ec fixed bin (71),			/* event channel for special wakeups for HPROC */
+       58     2 syserr_area aligned like sd,
+       59     2 wired_log_area aligned like wlog,
+       60     2 pad_extra_wmess (size (wmess)) bit (36);		/* extra header at end of wired section */
+       61 
+       62 	call get_temp_segments_ ("syserr_data", tsegp, code);
+       63 	syserr_datap = tsegp (1);
+       64 	wlog_ptr = addr (syserr_data.wired_log_area);
+       65 
+       66 /* Now begins the initialization */
+       67 
+       68 	syserr_data.syserr_size = size (sd);
+       69 	syserr_data.wired_log_area.head.bsize = 968;
+       70 	syserr_data.wired_log_size = size (wlog) + size (wmess);
+       71 
+       72 	call check (addr (syserr_data.syserr_area), "syserr_area", 2);
+       73 
+       74 /* Now set up call to create data base */
+       75 
+       76 	cdsa.sections (1).p = addr (syserr_data);
+       77 	cdsa.sections (1).len = size (syserr_data);
+       78 	cdsa.sections (1).struct_name = "syserr_data";
+       79 
+       80 	cdsa.seg_name = "syserr_data";
+       81 	cdsa.num_exclude_names = 1;
+       82 	cdsa.exclude_array_ptr = addr (exclude_pad);
+       83 
+       84 	string (cdsa.switches) = "0"b;
+       85 	cdsa.switches.have_text = "1"b;
+       86 
+       87 	call create_data_segment_ (addr (cdsa), code);
+       88 
+       89 	call release_temp_segments_ ("syserr_data", tsegp, code);
+       90 
+       91 check:	proc (where, message, modulo);
+       92 
+       93 dcl  message char (*) parameter;
+       94 dcl  modulo fixed bin parameter;
+       95 dcl  where ptr parameter;
+       96 
+       97 	     if mod (bin (rel (where), 18), modulo) ^= 0 then
+       98 		call com_err_ (0, syserr_dataname, "The variable ^a is not aligned on a ^d-word boundary.",
+       99 		message, modulo);
+      100 
+      101 	end check;
+      102  /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+      102 
+      103  /* BEGIN INCLUDE FILE  syserr_data.incl.pl1 */
+  2     2 
+  2     3 /* Created by  Bill Silver  on 01/03/73. */
+  2     4 /* Modified September 1975 by Larry Johnson to add binary data */
+  2     5 /* Modified March 1976 by Steve Webber for use with cds */
+  2     6 /* Modified 1985-01-21 by EJ Sharpe: added wmess.process_id */
+  2     7 /* Modified 1985-02-18 by Keith Loepere to break out headers. */
+  2     8 
+  2     9 /* This include file defines the syserr and log areas found in  syserr_data.cds
+  2    10*   There is one lock that coordinates the use of all the data found in
+  2    11*   syserr_data.cds.  NOTE, if this include file changes, syserr_data.cds
+  2    12*   may also have to be changed. */
+  2    13 
+  2    14 dcl  syserr_data$syserr_area char (1) aligned external,
+  2    15      syserr_data$wired_log_area char (1) aligned external;
+  2    16 
+  2    17 dcl  sd_ptr ptr,					/* Pointer to beginning of syserr_area. */
+  2    18      wlog_ptr ptr,					/* Pointer to beginning of wired_log_area. */
+  2    19      wmess_ptr ptr;					/* Pointer to a message entry in the wired log. */
+  2    20 
+  2    21 dcl 1 sd based (sd_ptr) aligned,			/* Overlay of syserr_data$syserr_area. */
+  2    22     2 lock bit (36),				/* Locks all the data in syserr_data. */
+  2    23     2 log_flag bit (1) unal,				/* ON => logging mechanism enabled. */
+  2    24     2 char_type_flag bit (1) unal,			/* ON => ASCII,  OFF => BCD. */
+  2    25     2 ocdcm_init_flag bit (1) unal,			/* ON => ocdcm_ has been initialized. */
+  2    26     2 pad bit (33) unal,
+  2    27     2 prev_text_written char (80);			/* Text of last message written */
+  2    28 
+  2    29 dcl 1 wlog based (wlog_ptr) aligned,			/* Overlay of syserr_data$wired_log_area. */
+  2    30     2 head like wlog_header,				/* Wired log header. */
+  2    31     2 buffer (wlog.head.bsize) bit (36);		/* Wired log buffer. */
+  2    32 
+  2    33 dcl 1 wlog_header based aligned,			/* WIRED LOG HEADER */
+  2    34     2 bsize fixed bin,				/* Size of the wired log buffer in words.
+  2    35*						   Defined in syserr_data.cds. */
+  2    36     2 count fixed bin,				/* Num of message entries in wired log. */
+  2    37     2 slog_ptr ptr,					/* Pointer to the paged log segment: syserr_log. */
+  2    38     2 seq_num fixed bin (35),				/* Sequence number of last message logged. */
+  2    39     2 next bit (18) unal,				/* Offset relative to base syserr_data */
+  2    40 						/* Where next entry will go in wired log. */
+  2    41     2 pad bit (18) unal;
+  2    42 
+  2    43 
+  2    44 /* This is an overlay of a message entry that goes into the wired log.  Each message
+  2    45*   entry corresponds to one syserr message. */
+  2    46 
+  2    47 dcl 1 wmess based (wmess_ptr) aligned,
+  2    48     2 header aligned like wmess_header,
+  2    49     2 text char (0 refer (wmess.text_len)),		/* Text of expanded message - kept in ASCII. */
+  2    50     2 data (0 refer (wmess.data_size)) bit (36);		/* Binary data area */
+  2    51 
+  2    52 dcl 1 wmess_header based aligned,
+  2    53     2 seq_num fixed bin (35),				/* Sequence number of this message. */
+  2    54     2 time fixed bin (71) unal,			/* Time message logged at */
+  2    55     2 code fixed bin (11) unal,			/* Syserr code associated with this message. */
+  2    56     2 text_len fixed bin (11) unal,			/* Length of message text in ASCII characters. */
+  2    57     2 data_size fixed bin (11) unal,			/* Size of binary data */
+  2    58     2 data_code fixed bin (11) unal,			/* Data code */
+  2    59     2 pad bit (24) unal,
+  2    60     2 process_id bit (36);				/* ID of process which wrote message */
+  2    61 
+  2    62 /* END INCLUDE FILE syserr_data.incl.pl1 */
+      103 
+      104      end syserr_data;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0900.6  !BBBJZjXjdnGQff.pl1               >spec>install>1115>syserr_data.cds
+102          1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+103          2    03/08/85  0852.7  syserr_data.incl.pl1              >ldd>include>syserr_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 37 ref 64 72 72 76 82 87 87
+big_time                        000150 automatic       fixed bin(71,0)          initial dcl 31 set ref 31*
+bin                                                    builtin function         dcl 37 ref 97
+bsize                    54            based           fixed bin(17,0)          level 4 in structure "syserr_data" dcl 51
+                                                                                  in procedure "syserr_data" set ref 69*
+bsize                                  based           fixed bin(17,0)          level 3 in structure "wlog" dcl 2-29 in procedure
+                                                                                  "syserr_data" ref 51 51 70 77 2-29
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000100 automatic       structure                level 1 dcl 25 set ref 87 87
+code                            000145 automatic       fixed bin(35,0)          dcl 26 set ref 62* 87* 89*
+com_err_                        000012 constant        entry                    external dcl 41 ref 97
+create_data_segment_            000014 constant        entry                    external dcl 42 ref 87
+data_size                 3(24)        based           fixed bin(11,0)          level 3 packed packed unaligned dcl 2-47 ref 51 2-47
+exclude_array_ptr        42     000100 automatic       pointer                  level 2 dcl 25 set ref 82*
+exclude_pad                     000003 constant        char(32)                 initial array dcl 32 set ref 82
+get_temp_segments_              000016 constant        entry                    external dcl 43 ref 62
+have_text                44(02) 000100 automatic       bit(1)                   level 3 packed packed unaligned dcl 25 set ref 85*
+head                                   based           structure                level 2 in structure "wlog" dcl 2-29 in procedure
+                                                                                  "syserr_data"
+head                     54            based           structure                level 3 in structure "syserr_data" dcl 51
+                                                                                  in procedure "syserr_data"
+header                                 based           structure                level 2 dcl 2-47
+len                       2     000100 automatic       fixed bin(18,0)          array level 3 dcl 25 set ref 77*
+message                                parameter       char                     packed unaligned dcl 93 set ref 91 97*
+mod                                                    builtin function         dcl 37 ref 97
+modulo                                 parameter       fixed bin(17,0)          dcl 94 set ref 91 97 97*
+num_exclude_names        40     000100 automatic       fixed bin(17,0)          level 2 dcl 25 set ref 81*
+p                               000100 automatic       pointer                  array level 3 dcl 25 set ref 76*
+rel                                                    builtin function         dcl 37 ref 97
+release_temp_segments_          000020 constant        entry                    external dcl 44 ref 89
+sd                                     based           structure                level 1 dcl 2-21 ref 68
+sd_ptr                          000154 automatic       pointer                  dcl 2-17 ref 68 2-21 2-21 2-21 2-21 2-21 2-21 2-21
+sections                        000100 automatic       structure                array level 2 dcl 25
+seg_name                 30     000100 automatic       char(32)                 level 2 dcl 25 set ref 80*
+size                                                   builtin function         dcl 37 ref 51 68 70 70 77 77
+string                                                 builtin function         dcl 37 set ref 84*
+struct_name               3     000100 automatic       char(32)                 array level 3 dcl 25 set ref 78*
+switches                 44     000100 automatic       structure                level 2 dcl 25 set ref 84*
+syserr_area              26            based           structure                level 2 dcl 51 set ref 72 72
+syserr_data                            based           structure                level 1 dcl 51 set ref 76 77
+syserr_dataname                 000000 constant        char(11)                 initial dcl 33 set ref 97*
+syserr_datap                    000152 automatic       pointer                  dcl 49 set ref 51 51 51 51 51 51 51 51 51 51 51 51
+                                                                                  51 51 51 51 51 51 51 51 51 51 51 51 63* 64 68 69
+                                                                                  70 72 72 76 77
+syserr_size              20            based           fixed bin(18,0)          level 2 dcl 51 set ref 68*
+text_len                  3(12)        based           fixed bin(11,0)          level 3 packed packed unaligned dcl 2-47 ref 51 2-47
+                                                                                  2-47
+tsegp                           000146 automatic       pointer                  array dcl 27 set ref 62* 63 89*
+where                                  parameter       pointer                  dcl 95 ref 91 97
+wired_log_area           54            based           structure                level 2 dcl 51 set ref 64
+wired_log_size           21            based           fixed bin(18,0)          level 2 dcl 51 set ref 70*
+wlog                                   based           structure                level 1 dcl 2-29 ref 70
+wlog_header                            based           structure                level 1 dcl 2-33
+wlog_ptr                        000156 automatic       pointer                  dcl 2-17 set ref 51 51 64* 70 70 77 2-29 2-29 2-29
+                                                                                  2-29 2-29 2-29 2-29 2-29 2-29
+wmess                                  based           structure                level 1 dcl 2-47 ref 51 70 77
+wmess_header                           based           structure                level 1 dcl 2-52
+wmess_ptr                       000160 automatic       pointer                  dcl 2-17 ref 51 70 77 2-47 2-47 2-47 2-47 2-47 2-47
+                                                                                  2-47 2-47 2-47 2-47 2-47 2-47
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+syserr_data$syserr_area         000022 external static char(1)                  dcl 2-14
+syserr_data$wired_log_area      000024 external static char(1)                  dcl 2-14
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check                           000351 constant        entry                    internal dcl 91 ref 72
+syserr_data                     000167 constant        entry                    external dcl 19
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       560         606     450         570
+Length      3000     450        26        2156     110           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+syserr_data                         178 external procedure  is an external procedure.  
+check                                   internal procedure  shares stack frame of external procedure syserr_data.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+syserr_data              000100 cdsa                        syserr_data
+                         000145 code                        syserr_data
+                         000146 tsegp                       syserr_data
+                         000150 big_time                    syserr_data
+                         000152 syserr_datap                syserr_data
+                         000154 sd_ptr                      syserr_data
+                         000156 wlog_ptr                    syserr_data
+                         000160 wmess_ptr                   syserr_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_          get_temp_segments_            release_temp_segments_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000166        31 000174        62 000176        63 000223        64 000225        68 000227        69 000231
+     70 000233        72 000244        76 000257        77 000261        78 000272        80 000275        81 000300
+     82 000302        84 000304        85 000305        87 000307        89 000322       104 000350        91 000351
+     97 000362       101 000430
+
+
+Object Segment >spec>install>1115>syserr_data
+Created on 11/11/89  1005.8 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    2000    2076    2106    2106
+Length    2367    2000      76      10     245       0
+
+
+9 Definitions:
+
+
+segname:    syserr_data
+
+text|0          log_meters
+text|24         logger_ec
+text|22         logger_proc_id
+symb|0          symbol_table
+text|26         syserr_area
+text|20         syserr_size
+text|54         wired_log_area
+text|21         wired_log_size
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

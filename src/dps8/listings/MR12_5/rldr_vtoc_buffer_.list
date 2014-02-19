@@ -1,0 +1,1183 @@
+	COMPILATION LISTING OF SEGMENT rldr_vtoc_buffer_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0957.2 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(86-02-11,GWMay), approve(), audit(), install():
+       16*     old history comments:
+       17*         Written in antiquity by Dave Vinograd.
+       18*         Modified: 03/83 by GA Texada to support multiple physical volume
+       19*                        reloading.
+       20*         Modified: Jan. 1985 by Greg Texada (fix by Steve Harris UNCA) to not
+       21*                        checksum null vtoces (phx18754).
+       22*         Modified: Feb. 1985 by Greg Texada for hardcore 821
+       23*  2) change(86-02-11,GWMay), approve(86-07-10,MCR7445), audit(86-07-14,GDixon),
+       24*     install(86-11-21,MR12.0-1223):
+       25*     added the value pvindex to the vtoc_buffer.array structure for use as
+       26*     a backward link to the owner PV info stored in rldr_data_. Changed the
+       27*     write routine to better implement the use of a single segment containing
+       28*     a the vtoc_buffer array limited to 100 entries. Formerly, a separate
+       29*     segment was created for each PV entry in rldr_data_. To reduce storage
+       30*     requirements for reloading when only the rpv is available, the vtoce segs
+       31*     were limited to one common segment to be used by all of the PVs. The idea
+       32*     is now to fill the buffer and then flush it when and end of volume is
+       33*     encountered or the array tops out at the limit. To make the emptying of
+       34*     the array easier, I added the pvindex value to the vtoc_buffer structure.
+       35*     The code now lopps throught the vtoc_buffer outputting the vtoce to the
+       36*     corresponding PV pointed to by vtoc_buffer.array(xxx).pvindex. Then
+       37*     clears both the control buffer_index and the vtoc_buffer entry.
+       38*                                                   END HISTORY COMMENTS */
+       39 
+       40 
+       41 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+       42 
+       43 rldr_vtoc_buffer_: proc;
+       44 
+       45 
+       46 dcl (buffer_idx, pvindex, vtocx) fixed bin;
+       47 dcl code		     fixed bin (35);
+       48 
+       49 dcl myname	     char (32) int static init ("rldr_vtoc_buffer_") options (constant);
+       50 dcl all_parts	     fixed bin static init (3) options (constant);
+       51 
+       52 dcl filemap_checksum_    entry (ptr, fixed bin, bit (36) aligned);
+       53 dcl rldr_report_$error_output entry options (variable);
+       54 dcl rldr_vtoc_buffer_$write entry (ptr, fixed bin (35));
+       55 dcl rldr_output_$read_vtoce entry (ptr, fixed bin, ptr, fixed bin, fixed bin, fixed bin (35));
+       56 dcl rldr_output_$write_vtoce entry (ptr, fixed bin, ptr, fixed bin, fixed bin, fixed bin (35));
+       57 
+       58 dcl (addr, bin, hbound, lbound, unspec) builtin;
+       59 
+       60 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       61 
+       62 
+       63 put: entry (rldr_datap, pvindex, vtocep, vtocx, code);
+       64     code = 0;
+       65     vtocbp = rldr_data_.vtocbp (pvindex);
+       66     controlp = rldr_data_.controlp (pvindex);
+       67     if vtoc_buffer.next = hbound (vtoc_buffer.array, 1) then
+       68       call rldr_vtoc_buffer_$write (rldr_datap, 0);
+       69     vtoc_buffer.next = vtoc_buffer.next + 1;
+       70     rldr_control (vtocx).buffer_idx = vtoc_buffer.next;
+       71     vtoc_buffer (vtoc_buffer.next).vtocx = vtocx;
+       72     vtoc_buffer (vtoc_buffer.next).pvindex = pvindex;
+       73     unspec (vtoc_buffer (vtoc_buffer.next).vtoce) = unspec (vtocep -> vtoce);
+       74     return;
+       75  
+       76 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       77 
+       78 
+       79 get: entry (rldr_datap, pvindex, vtocep, vtocx, code);
+       80     code = 0;
+       81     vtocbp = rldr_data_.vtocbp (pvindex);
+       82     controlp = rldr_data_.controlp (pvindex);
+       83     buffer_idx = rldr_control (vtocx).buffer_idx;
+       84     if buffer_idx = 0 then
+       85       call rldr_output_$read_vtoce (rldr_datap, pvindex, vtocep, vtocx, all_parts, code);
+       86     else unspec (vtocep -> vtoce) = unspec (vtoc_buffer (buffer_idx).vtoce);
+       87     return;
+       88 
+       89 /*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * 	*/
+       90 
+       91 write: entry (rldr_datap, code);
+       92 
+       93     code = 0;
+       94     vtocbp = rldr_data_.vtocbp (1);			/* use 1 because the vtoc buffer is */
+       95 						/* always in the same segment.      */
+       96 						/* walk through the vtoc_buffer     */
+       97 
+       98     do buffer_idx = lbound (vtoc_buffer.array, 1) to vtoc_buffer.next;
+       99 						/* fill in vtoce info before output */
+      100 
+      101        if vtoc_buffer (buffer_idx).vtoce.uid ^= "0"b then do;
+      102 	call filemap_checksum_ (addr (vtoc_buffer (buffer_idx).vtoce.fm (0)),
+      103 	   bin (vtoc_buffer (buffer_idx).vtoce.csl),
+      104 	   vtoc_buffer (buffer_idx).vtoce.fm_checksum);
+      105 	vtoc_buffer (buffer_idx).vtoce.fm_checksum_valid = "1"b;
+      106 	vtoc_buffer (buffer_idx).vtoce.fm_damaged = "0"b;
+      107        end;
+      108 						/* get the rldr control info for     */
+      109 						/* this vtoce.		       */
+      110 
+      111        controlp = rldr_data_(vtoc_buffer(buffer_idx).pvindex).controlp;
+      112 
+      113 						/* write this vtoc_buffer entry vtoce*/
+      114 						/* to disk.		       */
+      115 
+      116        call rldr_output_$write_vtoce (rldr_datap, 
+      117 	vtoc_buffer (buffer_idx).pvindex,
+      118 	addr (vtoc_buffer (buffer_idx).vtoce),
+      119 	vtoc_buffer (buffer_idx).vtocx, all_parts, code);
+      120 
+      121        if code ^= 0 then
+      122 	call rldr_report_$error_output (rldr_datap, code, myname,
+      123 	   "Unable to update vtoce ^o on pv ^a",
+      124 	    vtoc_buffer (buffer_idx).vtocx, 
+      125 	    rldr_data_.pvname (vtoc_buffer(buffer_idx).pvindex));
+      126 
+      127 						/* wipe out the control index which  */
+      128 						/* pointed to this vtoc_buffer entry */
+      129 
+      130        rldr_control(vtoc_buffer.array(buffer_idx).vtocx).buffer_idx = 0;
+      131 
+      132 						/* now wipe out this vtoc_buffer ent.*/
+      133 
+      134        unspec (vtoc_buffer.array(buffer_idx)) = "0"b;
+      135 
+      136     end;
+      137 						/* reset the limiter of the array    */
+      138     vtoc_buffer.next = 0;
+      139     return;
+      140 
+  1     1 /* BEGIN INCLUDE FILE ... rldr_data_.incl.pl1 ... March 1976 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  1     6*     audit(86-05-22,GWMay), install(86-07-18,MR12.0-1098):
+  1     7*     Add device_name to support the -pvname_device argument to reload.
+  1     8*  2) change(88-10-05,GWMay), approve(88-10-05,MCR8005), audit(88-10-12,Farley),
+  1     9*     install(88-10-17,MR12.2-1173):
+  1    10*     Added pointer and length values for use as an input_buffer for
+  1    11*     intermediate reads.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 
+  1    15 /* Severely modified 3/1/83 by GA Texada to support multiple physical */
+  1    16 /*          volume reloading.				          */
+  1    17 /*          Modified: 3/5/84 by GA Texada to make restart a per pv attribute */
+  1    18 /*		  and add stranger flag.			*/
+  1    19 
+  1    20 /* format: style1,ind2,^inddcls,ifthenstmt,dclind2,declareind2,ifthendo,ifthen*/
+  1    21 
+  1    22 
+  1    23 dcl rldr_datap	     ptr,
+  1    24   rldr_data_max_pvs	     fixed bin,
+  1    25 
+  1    26   1 rldr_data_	     aligned based (rldr_datap),
+  1    27     2 common	     like rldr_data_common,		/* only one of each needed			*/
+  1    28     2 per_pv	     (rldr_data_max_pvs refer (rldr_data_.npvs)) like rldr_data_perpv,
+  1    29 
+  1    30   1 rldr_data_common     aligned,
+  1    31     2 bits,
+  1    32     ( 3 save	     bit (1),			/* if on can use disk pack restored by BOS */
+  1    33       3 first_volume     bit (1),			/* if on indicates we are on first volume */
+  1    34       3 rpv	     bit (1),			/* if on indicates we are reloading rpv */
+  1    35       3 data_init	     bit (1),			/* if on data structure initialized to null state */
+  1    36       3 arg_init	     bit (1),			/* on if arguments have been processed */
+  1    37       3 disable_error_report bit (1),			/* if on will disable error messages */
+  1    38       3 no_object	     bit (1),			/* if on only vtoces will be reloaded */
+  1    39       3 err_online	     bit (1),			/* if on error messages written to error output */
+  1    40       3 detach	     bit (1),			/* if on attached media will  be detached */
+  1    41       3 brief	     bit (1),			/* if on brief mode enabled */
+  1    42       3 manual	     bit (1),			/* if on operator will select input volumes */
+  1    43       3 restart	     bit (1),			/* -restart was supplied			*/
+  1    44       3 stranger	     bit (1),			/* ON if the pv's do not belong to the mounted RPV*/
+  1    45       3 pad0	     bit (23)) unal,
+  1    46       3 old_256K_switch  bit (2) aligned,		/* state of 256KW connection switch before we came along*/
+  1    47       (3 last_pvid,					/* pvid of last good object read		*/
+  1    48       3 rpv_pvid,					/* rpv pvid */
+  1    49       3 rpv_lvid)	     bit (36),			/* rpv lvid */
+  1    50       3 last_valid_puid  (0:15) bit (36),		/* last non-zero path uid read from input medium */
+  1    51     2 chars,
+  1    52     ( 3 sys_dir,					/* directory where vologs are */
+  1    53       3 default_sys_dir) char (168),			/* default directory where vologs are */
+  1    54       (3 last_valid_vtoce_ename,			/* last valid entry name from VTOCE */
+  1    55       3 operator,					/* operator's name or initials */
+  1    56       3 io_module)	     char (32),			/* name of io outer module used to read input */
+  1    57       (3 input_volume_desc,				/* optional input medium attach description */
+  1    58       3 output_volume_desc) char (256),			/* optional output medium attach description */
+  1    59     2 fixed,
+  1    60     ( 3 num_abandoned,				/* count these as we go along			*/
+  1    61       3 last_vtocx,					/* vtocx of last valid object read		*/
+  1    62       3 npvs,					/* the number of pv names given to the reload_volume command*/
+  1    63       3 rpv_disk_type)   fixed bin,			/* model index of rpv disk drive */
+  1    64       (3 start_time,				/* time reload started */
+  1    65       3 from_time)	     fixed bin (71),		/*  time from which dump tapes should be skipped */
+  1    66       3 input_buffer_len fixed bin (21),		/* length of the data in the read buffer */
+  1    67       3 input_buffer_start fixed bin (21),		/* position in read buffer where new data begins */
+  1    68     2 ptrs,
+  1    69     ( 3 inputvol_iocbp,				/* iocb ptr for input */
+  1    70       3 error_iocbp,				/* iocb ptr for error output */
+  1    71       3 skip,					/* ptr to skip list */
+  1    72       3 volume_record_bp,				/* ptr to temp seg containing most recent volume record */
+  1    73       3 infop,					/* ptr to temp seg containig tdump info */
+  1    74       3 data_object_bp,				/* ptr to temp seg containing most recent object from input medium */
+  1    75       3 input_vol_lstp  ptr,				/* ptr to temp seg containing list of input media */
+  1    76       3 input_buffer_ptr)  ptr,			/* ptr to read buffer */
+  1    77  
+  1    78 
+  1    79   1 rldr_data_perpv	     aligned,			/* one entry per physical volume to be reloaded	*/
+  1    80     2 flags,
+  1    81       3 abandoned	     bit (1) unal,			/* we quit due to some error			*/
+  1    82       3 restart	     bit (1),			/* if on unitialized volume ok and reload will restart */
+  1    83       3 mbz0	     bit (34) unal,			/* beware, RFU				*/
+  1    84     (2 pvname,					/* physical volume name */
+  1    85     2 lvname,					/* logical volume name of physical volume being reloaded */
+  1    86     2 disk_model)	     char (32),			/* model name of disk drive */
+  1    87     2 device_name	     char (8),
+  1    88     (2 lvid,					/* logical volume id of volume being reloaded */
+  1    89     2 pvid)	     bit (36),			/* physical volume id of volume being reloaded */
+  1    90     (2 prev_wordx,					/* index to fsmap */
+  1    91     2 prev_bitx,					/* index to fsmap */
+  1    92     2 disk_type,					/* model index of disk drive */
+  1    93     2 usable_sectors,				/* usable sectors per cylinder of disk pack */
+  1    94     2 unusable_sectors,				/* unusable sectors per cylinder of disk pack */
+  1    95     2 n_vtoce)	     fixed bin,			/* number of vtoce on disk pack */
+  1    96     (2 vtocbp,					/* ptr to vtoc buffer seg */
+  1    97     2 vtoc_headerp,					/* ptr to temp seg containing the vtoc header */
+  1    98     2 labelp,					/* ptr to temp seg containing pack label */
+  1    99     2 bvlp,					/* ptr to volume log */
+  1   100     2 outputvol_iocbp,				/* iocb ptr for output */
+  1   101     2 controlp,					/* ptr to seg containing reload control info about vtoc */
+  1   102     2 vol_mapp)	     ptr,				/* ptr to temp seg containing volume map */
+  1   103 
+  1   104   1 rldr_data_nulled_pv  aligned int static options (constant),
+  1   105     2 flags,
+  1   106       3 abandoned	     bit (1) init ("0"b) unal,
+  1   107       3 restart	     bit (1) init ("0"b) unal,
+  1   108       3 mbz0	     bit (34) init ((34)"0"b) unal,
+  1   109       (2 pvname,
+  1   110     2 lvname,
+  1   111     2 disk_model)	     char (32) init (""),
+  1   112     2 device_name	     char (8) init (""),
+  1   113     (2 lvid,
+  1   114     2 pvid)	     bit (36) init ("0"b),
+  1   115     (2 prev_wordx,
+  1   116     2 prev_bitx,
+  1   117     2 disk_type,
+  1   118     2 usable_sectors,
+  1   119     2 unusable_sectors,
+  1   120     2 n_vtoce)	     fixed bin init (0),
+  1   121     (2 vtocbp,
+  1   122     2 vtoc_headerp,
+  1   123     2 labelp,
+  1   124     2 bvlp,
+  1   125     2 outputvol_iocbp,
+  1   126     2 controlp,
+  1   127     2 vol_mapp)	     ptr init (null ());
+  1   128 
+  1   129 
+  1   130 /* END INCLUDE FILE rldr_data_.incl.pl1 */
+      141 
+      142 
+  2     1 /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  2     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  2     6*     Add the subvolume info.
+  2     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  2    10*     dumper bit maps.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  2    14 /* Note: fsout_vol clears pad fields before writing the label */
+  2    15 
+  2    16 dcl  labelp ptr;
+  2    17 
+  2    18 dcl 1 label based (labelp) aligned,
+  2    19 
+  2    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  2    21 
+  2    22     2 gcos (5*64) fixed bin,
+  2    23 
+  2    24 /* Now we have the Multics label */
+  2    25 
+  2    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  2    27     2 version fixed bin,				/* Version 1 */
+  2    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  2    29     2 pv_name char (32),				/* Physical volume name. */
+  2    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  2    31     2 pvid bit (36),				/* Unique ID of this pack */
+  2    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  2    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  2    34     2 time_registered fixed bin (71),			/* time imported to system */
+  2    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  2    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  2    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  2    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  2    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  2    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  2    41     2 flagpad bit (33) unal,
+  2    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  2    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  2    44     2 password bit (72),				/* not yet used */
+  2    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  2    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  2    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  2    48     2 pad1 (13) fixed bin,
+  2    49     2 time_mounted fixed bin (71),			/* time mounted */
+  2    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  2    51 
+  2    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  2    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  2    54* */
+  2    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  2    56     2 pad6 fixed bin,				
+  2    57 
+  2    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  2    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  2    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  2    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  2    62     2 pad1a (2) fixed bin,
+  2    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  2    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  2    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  2    66     2 pad2 (40) fixed bin,
+  2    67     2 root,
+  2    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  2    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  2    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  2    71       3 pad7 bit (1) aligned,				
+  2    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  2    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  2    74       3 esd_state fixed bin,				/* State of esd */
+  2    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  2    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  2    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  2    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  2    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  2    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  2    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  2    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  2    83     2 pad3 (52) fixed bin,
+  2    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  2    85     2 parts (47),
+  2    86       3 part char (4),				/* Name of partition */
+  2    87       3 frec fixed bin,				/* First record */
+  2    88       3 nrec fixed bin,				/* Number of records */
+  2    89       3 pad5 fixed bin,
+  2    90     2 pad4 (5*64) fixed bin;
+  2    91 
+  2    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  2    93 
+  2    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      143 
+  3     1 /* BEGIN INCLUDE FILE ... vol_map.incl.pl1 */
+  3     2 
+  3     3 dcl   vol_mapp	ptr;
+  3     4 
+  3     5 dcl 1 vol_map based (vol_mapp) aligned,
+  3     6 
+  3     7     2 n_rec fixed bin(17),				/* number of records represented in the map */
+  3     8     2 base_add fixed bin(17),				/* record number for first bit in bit map */
+  3     9     2 n_free_rec fixed bin(17),			/* number of free records */
+  3    10     2 bit_map_n_words fixed bin(17),			/* number of words of the bit map */
+  3    11     2 pad (60) bit(36),				/* pad to 64 words */
+  3    12     2 bit_map (3*1024 - 64) bit(36) ;			/* bit map - the entire vol map occupies 3 records */
+  3    13 
+  3    14 /* END INCLUDE ... vol_map */
+      144 
+  4     1 /* BEGIN INCLUDE FILE ... vtoc_header.incl.pl1 */
+  4     2 
+  4     3 dcl  vtoc_headerp ptr;
+  4     4 
+  4     5 dcl 1 vtoc_header based (vtoc_headerp) aligned,
+  4     6 
+  4     7     2 version fixed bin (17),				/* version number. The current version number is 1. * */
+  4     8     2 n_vtoce fixed bin (17),				/* number of vtoc entries */
+  4     9     2 vtoc_last_recno fixed bin (17),			/* record number of the last record of the vtoc */
+  4    10     2 n_free_vtoce fixed bin (17),			/* number of free vtoc entries */
+  4    11     2 first_free_vtocx fixed bin (17),			/* index of the first vtoce in the free list */
+  4    12     2 pad (3) bit (36),
+  4    13     2 dmpr_bit_map (2048 - 8) bit (36);			/* space for dmpr bit map */
+  4    14 
+  4    15 /* END INCLUDE ... vtoc_header */
+  4    16 
+      145 
+      146 
+  5     1 /*   BEGIN INCLUDE FILE ... rldr_vtoc_buffer.incl.pl1 8/77 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(86-02-27,GWMay), approve(86-03-19,MCR7445), audit(86-10-30,GDixon),
+  5     6*     install(86-11-21,MR12.0-1223):
+  5     7*     added pvindex to the array portion of the structure. The value is used as
+  5     8*     a reverse link to the owner PVs info structure in rldr_data_. Reason for
+  5     9*     adding: vtoc_buffer is now limited to 100 entries and emptied upon
+  5    10*     encountering the end of the input tape volume or when the array fills up.
+  5    11*     The new value makes emptying the array fast and simple.
+  5    12*                                                   END HISTORY COMMENTS */
+  5    13 
+  5    14 
+  5    15 /*     Modified: Feb. 1985 by Greg Texada to change array size					*/
+  5    16 
+  5    17 dcl  vtocbp ptr;
+  5    18 
+  5    19 dcl  1 vtoc_buffer based (vtocbp) aligned,
+  5    20     2 next fixed bin,
+  5    21     2 array (100),
+  5    22       3 vtocx fixed bin,
+  5    23       3 pvindex fixed bin,
+  5    24       3 vtoce like vtoce aligned;
+  5    25 
+  5    26 /* END INCLUDE FILE ... rldr_vtoc_buffer.incl.pl1 */
+  5    27 
+  5    28 
+  5    29 
+  5    30 
+      147 
+  6     1 /* BEGIN INCLUDE FILE ...  rldr_control.incl.pll ... March 1976 */
+  6     2 
+  6     3 dcl  controlp ptr;					/* ptr to control segment */
+  6     4 
+  6     5 dcl 1 rldr_control based (controlp) aligned,		/* structure of control segment for reloader */
+  6     6     2 curn_volname char (32),				/* volune name of present input volume */
+  6     7     2 dir_num fixed bin,				/* number of directories reloaded */
+  6     8     2 dir_rec fixed bin,				/* number of driectory records reloaded */
+  6     9     2 seg_num fixed bin,				/* number of segments reloaded */
+  6    10     2 seg_rec fixed bin,				/* number of segment records reloaded */
+  6    11     2 input_vol_dir_num fixed bin,			/* number of directories reloaded from  input vol */
+  6    12     2 input_vol_dir_rec fixed bin,			/* number of driectory records reloaded from  input vol */
+  6    13     2 input_vol_seg_num fixed bin,			/* number of segments reloaded from input vol */
+  6    14     2 input_vol_seg_rec fixed bin,			/* number of segment records reloaded from input vol */
+  6    15     2 num_null_vtoce fixed bin,			/* number of null vtoce reloaded */
+  6    16     2 num_rejected fixed bin,				/* number of data objects on input media that were skipped */
+  6    17     2 curn_volid bit (36),				/* volume id of present input volume */
+  6    18     2 label like label aligned,
+  6    19     2 vol_map like  vol_map aligned,
+  6    20     2 vtoc_header like  vtoc_header aligned,
+  6    21     2 array (0 : 1),				/* look aside memory of vtoces reloaded */
+  6    22       3 uid bit (36),				/* uid of reloaded vtoce */
+  6    23       3 buffer_idx fixed bin,				/* index in vtoc buffer */
+  6    24       3 time_dumped fixed bin(71),			/* time object dumped */
+  6    25       3 volid bit (36);				/* volid of input volume vtoce reloaded from */
+  6    26 
+  6    27 /* END INCLUDE FILE ... rld_control.incl.pl1 */
+      148 
+      149 
+  7     1 /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  7     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  7     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  7     4 
+  7     5 dcl  vtocep ptr;
+  7     6 
+  7     7 dcl 1 vtoce based (vtocep) aligned,
+  7     8 
+  7     9 
+  7    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  7    11 
+  7    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  7    13 
+  7    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  7    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  7    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  7    17     2 pad2 bit (9),
+  7    18 
+  7    19     2 dtu bit (36),					/* date and time segment was last used */
+  7    20 
+  7    21     2 dtm bit (36),					/* date and time segment was last modified */
+  7    22 
+  7    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  7    24     2 deciduous bit (1),				/* true if hc_sdw */
+  7    25     2 nid bit (1),					/* no incremental dump switch */
+  7    26     2 dnzp bit (1),					/* Dont null zero pages */
+  7    27     2 gtpd bit (1),					/* Global transparent paging device */
+  7    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  7    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  7    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  7    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  7    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  7    33     2 pad3 bit (8),
+  7    34     2 dirsw bit (1),				/* directory switch */
+  7    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  7    36     2 pad4 bit (16)) unaligned,			/* not used */
+  7    37 
+  7    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  7    39 
+  7    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  7    41 
+  7    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  7    43 
+  7    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  7    45 
+  7    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  7    47 
+  7    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  7    49 
+  7    50 
+  7    51 
+  7    52 
+  7    53 
+  7    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  7    55 
+  7    56     2 pad6 (10) bit (36),				/* not used */
+  7    57 
+  7    58     2 ncd bit (1),					/* no complete dump switch */
+  7    59     2 pad7 bit (17),
+  7    60     2 pad8 bit (18),
+  7    61 
+  7    62     2 dtd bit (36),					/* date-time-dumped */
+  7    63 
+  7    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  7    65 
+  7    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  7    67 
+  7    68 
+  7    69 
+  7    70 
+  7    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  7    72 
+  7    73     2 primary_name char (32),				/* primary name of the segment */
+  7    74 
+  7    75     2 time_created bit (36),				/* time the segment was created */
+  7    76 
+  7    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  7    78 
+  7    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  7    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  7    81 
+  7    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  7    83 
+  7    84     2 access_class bit (72),				/* access class in branch */
+  7    85     2 perm_flags aligned,
+  7    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  7    87       3 pad9 bit (35) unal,
+  7    88     2 owner bit (36);				/* pvid of this volume */
+  7    89 
+  7    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  7    91 
+  7    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  7    93     2 pad1 bit (7*36),
+  7    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  7    95     2 pad2 bit (184*36);
+  7    96 
+  7    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      150 
+      151 
+      152 /* BEGIN MESSAGE DOCUMENTATION
+      153*
+      154*   Message:
+      155*   rldr_vtoc_buffer_: Unable to update vtoce WWW: ERROR_MESS
+      156*
+      157*   S:	$rld_out
+      158*
+      159*   T:	$reload
+      160*
+      161*   M:	An error occurred updating a VTOCE. Reloading continues.
+      162*
+      163*   A:	$ignore
+      164*
+      165*
+      166*   END MESSAGE DOCUMENTATION */
+      167 
+      168   end rldr_vtoc_buffer_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.4  rldr_vtoc_buffer_.pl1             >spec>install>1115>rldr_vtoc_buffer_.pl1
+141          1    10/18/88  1215.0  rldr_data_.incl.pl1               >ldd>include>rldr_data_.incl.pl1
+143          2    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+144          3    04/29/76  1050.5  vol_map.incl.pl1                  >ldd>include>vol_map.incl.pl1
+145          4    05/23/77  0919.3  vtoc_header.incl.pl1              >ldd>include>vtoc_header.incl.pl1
+147          5    11/24/86  1243.9  rldr_vtoc_buffer.incl.pl1         >ldd>include>rldr_vtoc_buffer.incl.pl1
+148          6    04/01/81  0830.5  rldr_control.incl.pl1             >ldd>include>rldr_control.incl.pl1
+150          7    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 58 ref 102 102 116 116
+all_parts                       000013 constant        fixed bin(17,0)          initial dcl 50 set ref 84* 116*
+array                 14024            based           structure                array level 2 in structure "rldr_control" dcl 6-5
+                                                                                  in procedure "rldr_vtoc_buffer_"
+array                     1            based           structure                array level 2 in structure "vtoc_buffer" dcl 5-19
+                                                                                  in procedure "rldr_vtoc_buffer_" set ref 67 98
+                                                                                  134*
+bin                                                    builtin function         dcl 58 ref 102 102
+buffer_idx            14025            based           fixed bin(17,0)          array level 3 in structure "rldr_control" dcl 6-5
+                                                                                  in procedure "rldr_vtoc_buffer_" set ref 70* 83
+                                                                                  130*
+buffer_idx                      000100 automatic       fixed bin(17,0)          dcl 46 in procedure "rldr_vtoc_buffer_" set ref 83*
+                                                                                  84 86 98* 101 102 102 102 102 102 105 106 111 116
+                                                                                  116 116 116 121 121 130 134*
+code                                   parameter       fixed bin(35,0)          dcl 47 set ref 63 64* 79 80* 84* 91 93* 116* 121
+                                                                                  121*
+controlp                        000624 automatic       pointer                  dcl 6-3 in procedure "rldr_vtoc_buffer_" set ref 66*
+                                                                                  70 82* 83 111* 130
+controlp                514            based           pointer                  array level 3 in structure "rldr_data_" dcl 1-23
+                                                                                  in procedure "rldr_vtoc_buffer_" ref 66 82 111
+csl                       5(09)        based           bit(9)                   array level 4 packed packed unaligned dcl 5-19 set
+                                                                                  ref 102 102
+filemap_checksum_               000010 constant        entry                    external dcl 52 ref 102
+fm                       23            based           bit(18)                  array level 4 packed packed unaligned dcl 5-19 set
+                                                                                  ref 102 102
+fm_checksum              11            based           bit(36)                  array level 4 dcl 5-19 set ref 102*
+fm_checksum_valid        10(08)        based           bit(1)                   array level 4 packed packed unaligned dcl 5-19 set
+                                                                                  ref 105*
+fm_damaged               10(07)        based           bit(1)                   array level 4 packed packed unaligned dcl 5-19 set
+                                                                                  ref 106*
+hbound                                                 builtin function         dcl 58 ref 67
+label                                  based           structure                level 1 dcl 2-18
+lbound                                                 builtin function         dcl 58 ref 98
+myname                          000000 constant        char(32)                 initial packed unaligned dcl 49 set ref 121*
+next                                   based           fixed bin(17,0)          level 2 dcl 5-19 set ref 67 69* 69 70 71 72 73 98
+                                                                                  138*
+per_pv                  434            based           structure                array level 2 dcl 1-23
+pvindex                   2            based           fixed bin(17,0)          array level 3 in structure "vtoc_buffer" dcl 5-19
+                                                                                  in procedure "rldr_vtoc_buffer_" set ref 72* 111
+                                                                                  116* 121
+pvindex                                parameter       fixed bin(17,0)          dcl 46 in procedure "rldr_vtoc_buffer_" set ref 63
+                                                                                  65 66 72 79 81 82 84*
+pvname                  437            based           char(32)                 array level 3 dcl 1-23 set ref 121*
+rldr_control                           based           structure                level 1 dcl 6-5
+rldr_data_                             based           structure                level 1 dcl 1-23
+rldr_data_common                000102 automatic       structure                level 1 dcl 1-23
+rldr_data_perpv                 000536 automatic       structure                level 1 dcl 1-23
+rldr_datap                             parameter       pointer                  dcl 1-23 set ref 63 65 66 67* 79 81 82 84* 91 94 111
+                                                                                  116* 121* 121
+rldr_output_$read_vtoce         000016 constant        entry                    external dcl 55 ref 84
+rldr_output_$write_vtoce        000020 constant        entry                    external dcl 56 ref 116
+rldr_report_$error_output       000012 constant        entry                    external dcl 53 ref 121
+rldr_vtoc_buffer_$write         000014 constant        entry                    external dcl 54 ref 67
+uid                       4            based           bit(36)                  array level 4 packed packed unaligned dcl 5-19 set
+                                                                                  ref 101
+unspec                                                 builtin function         dcl 58 set ref 73* 73 86* 86 134*
+vol_map                                based           structure                level 1 dcl 3-5
+vtoc_buffer                            based           structure                level 1 dcl 5-19
+vtoc_header                            based           structure                level 1 dcl 4-5
+vtocbp                          000622 automatic       pointer                  dcl 5-17 in procedure "rldr_vtoc_buffer_" set ref
+                                                                                  65* 67 67 69 69 70 71 71 72 72 73 73 81* 86 94* 98
+                                                                                  98 101 102 102 102 102 102 105 106 111 116 116 116
+                                                                                  116 121 121 130 134 138
+vtocbp                  502            based           pointer                  array level 3 in structure "rldr_data_" dcl 1-23
+                                                                                  in procedure "rldr_vtoc_buffer_" ref 65 81 94
+vtoce                                  based           structure                level 1 dcl 7-7 in procedure "rldr_vtoc_buffer_" set
+                                                                                  ref 73 86*
+vtoce                     3            based           structure                array level 3 in structure "vtoc_buffer" dcl 5-19
+                                                                                  in procedure "rldr_vtoc_buffer_" set ref 73* 86
+                                                                                  116 116
+vtocep                                 parameter       pointer                  dcl 7-5 set ref 63 73 79 84* 86
+vtocx                     1            based           fixed bin(17,0)          array level 3 in structure "vtoc_buffer" dcl 5-19
+                                                                                  in procedure "rldr_vtoc_buffer_" set ref 71* 116*
+                                                                                  121* 130
+vtocx                                  parameter       fixed bin(17,0)          dcl 46 in procedure "rldr_vtoc_buffer_" set ref 63
+                                                                                  70 71 79 83 84*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 2-92
+labelp                                 automatic       pointer                  dcl 2-16
+rldr_data_max_pvs                      automatic       fixed bin(17,0)          dcl 1-23
+rldr_data_nulled_pv                    internal static structure                level 1 dcl 1-23
+seg_vtoce                              based           structure                level 1 dcl 7-92
+vol_mapp                               automatic       pointer                  dcl 3-3
+vtoc_headerp                           automatic       pointer                  dcl 4-3
+vtoce_parts                            based           bit(2304)                array dcl 7-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+get                             000140 constant        entry                    external dcl 79
+put                             000044 constant        entry                    external dcl 63
+rldr_vtoc_buffer_               000031 constant        entry                    external dcl 43
+write                           000225 constant        entry                    external dcl 91
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       552         574     440         562
+Length      1106     440        22         275     111           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rldr_vtoc_buffer_                   460 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rldr_vtoc_buffer_        000100 buffer_idx                  rldr_vtoc_buffer_
+                         000102 rldr_data_common            rldr_vtoc_buffer_
+                         000536 rldr_data_perpv             rldr_vtoc_buffer_
+                         000622 vtocbp                      rldr_vtoc_buffer_
+                         000624 controlp                    rldr_vtoc_buffer_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+filemap_checksum_             rldr_output_$read_vtoce       rldr_output_$write_vtoce      rldr_report_$error_output
+rldr_vtoc_buffer_$write
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+CONSTANTS
+000437  aa     775777777777
+
+000000  aa  162 154 144 162	rldr
+000001  aa  137 166 164 157	_vto
+000002  aa  143 137 142 165	c_bu
+000003  aa  146 146 145 162	ffer
+000004  aa  137 040 040 040	_   
+000005  aa  040 040 040 040	    
+000006  aa  040 040 040 040	    
+000007  aa  040 040 040 040	    
+
+000010  aa     524000000040
+
+000011  aa     524000000042
+
+000012  aa     526000000040
+
+000013  aa     000000000003
+
+000014  aa     464000000000
+
+000015  aa     404000000043
+
+000016  aa     404000000021
+
+000017  aa  125 156 141 142	Unab
+000020  aa  154 145 040 164	le t
+000021  aa  157 040 165 160	o up
+000022  aa  144 141 164 145	date
+000023  aa  040 166 164 157	 vto
+000024  aa  143 145 040 136	ce ^
+000025  aa  157 040 157 156	o on
+000026  aa  040 160 166 040	 pv 
+000027  aa  136 141 000 000	^a
+
+BEGIN PROCEDURE rldr_vtoc_buffer_
+ENTRY TO rldr_vtoc_buffer_                                  STATEMENT 1 ON LINE 43
+rldr_vtoc_buffer_: proc;
+
+000030  da     000072200000
+000031  aa   000720 6270 00	eax7 	464
+000032  aa  7 00034 3521 20	epp2 	pr7|28,*
+000033  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000034  aa     000000000000
+000035  aa     000000000000
+						STATEMENT 1 ON LINE 63
+put: entry (rldr_datap, pvindex, vtocep, vtocx, code);
+
+000036  aa   000016 7100 04	tra  	14,ic		000054
+ENTRY TO put                                                STATEMENT 1 ON LINE 63
+put: entry (rldr_datap, pvindex, vtocep, vtocx, code);
+
+000037  at     000005000014
+000040  tt     000016000014
+000041  tt     000016000015
+000042  ta     000037000000
+000043  da     000076300000
+000044  aa   000720 6270 00	eax7 	464
+000045  aa  7 00034 3521 20	epp2 	pr7|28,*
+000046  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000047  aa     000012000000
+000050  aa     000000000000
+000051  aa  6 00032 3735 20	epp7 	pr6|26,*
+000052  aa  7 00012 3715 20	epp5 	pr7|10,*
+000053  aa  6 00626 6515 00	spri5	pr6|406
+						STATEMENT 1 ON LINE 64
+    code = 0;
+
+000054  aa  6 00626 4501 20	stz  	pr6|406,*		code
+						STATEMENT 1 ON LINE 65
+    vtocbp = rldr_data_.vtocbp (pvindex);
+
+000055  aa  6 00032 3735 20	epp7 	pr6|26,*
+000056  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000057  aa   000064 4020 07	mpy  	52,dl
+000060  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000061  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000062  aa  5 00416 3535 26	epp3 	pr5|270,ql*	rldr_data_.vtocbp
+000063  aa  6 00622 2535 00	spri3	pr6|402		vtocbp
+						STATEMENT 1 ON LINE 66
+    controlp = rldr_data_.controlp (pvindex);
+
+000064  aa  5 00430 3515 26	epp1 	pr5|280,ql*	rldr_data_.controlp
+000065  aa  6 00624 2515 00	spri1	pr6|404		controlp
+						STATEMENT 1 ON LINE 67
+    if vtoc_buffer.next = hbound (vtoc_buffer.array, 1) then
+      call rldr_vtoc_buffer_$write (rldr_datap, 0);
+
+000066  aa  3 00000 2361 00	ldq  	pr3|0		vtoc_buffer.next
+000067  aa   000144 1160 07	cmpq 	100,dl
+000070  aa   000012 6010 04	tnz  	10,ic		000102
+000071  aa  6 00631 4501 00	stz  	pr6|409
+000072  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000073  aa  6 00634 2521 00	spri2	pr6|412
+000074  aa  6 00631 3521 00	epp2 	pr6|409
+000075  aa  6 00636 2521 00	spri2	pr6|414
+000076  aa  6 00632 6211 00	eax1 	pr6|410
+000077  aa   010000 4310 07	fld  	4096,dl
+000100  la  4 00014 3521 20	epp2 	pr4|12,*		rldr_vtoc_buffer_$write
+000101  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 69
+    vtoc_buffer.next = vtoc_buffer.next + 1;
+
+000102  aa  6 00622 0541 20	aos  	pr6|402,*		vtoc_buffer.next
+						STATEMENT 1 ON LINE 70
+    rldr_control (vtocx).buffer_idx = vtoc_buffer.next;
+
+000103  aa  6 00032 3735 20	epp7 	pr6|26,*
+000104  aa  7 00010 2361 20	ldq  	pr7|8,*		vtocx
+000105  aa   000006 4020 07	mpy  	6,dl
+000106  aa   000000 6270 06	eax7 	0,ql
+000107  aa  6 00622 2361 20	ldq  	pr6|402,*		vtoc_buffer.next
+000110  aa  6 00624 3715 20	epp5 	pr6|404,*		controlp
+000111  aa  5 14025 7561 17	stq  	pr5|6165,7	rldr_control.buffer_idx
+						STATEMENT 1 ON LINE 71
+    vtoc_buffer (vtoc_buffer.next).vtocx = vtocx;
+
+000112  aa  6 00622 2361 20	ldq  	pr6|402,*		vtoc_buffer.next
+000113  aa   000302 4020 07	mpy  	194,dl
+000114  aa   000000 6260 06	eax6 	0,ql
+000115  aa  7 00010 2361 20	ldq  	pr7|8,*		vtocx
+000116  aa  6 00622 3535 20	epp3 	pr6|402,*		vtocbp
+000117  aa  3 77477 7561 16	stq  	pr3|-193,6	vtoc_buffer.vtocx
+						STATEMENT 1 ON LINE 72
+    vtoc_buffer (vtoc_buffer.next).pvindex = pvindex;
+
+000120  aa  3 00000 2361 00	ldq  	pr3|0		vtoc_buffer.next
+000121  aa   000302 4020 07	mpy  	194,dl
+000122  aa   000000 6250 06	eax5 	0,ql
+000123  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000124  aa  3 77500 7561 15	stq  	pr3|-192,5	vtoc_buffer.pvindex
+						STATEMENT 1 ON LINE 73
+    unspec (vtoc_buffer (vtoc_buffer.next).vtoce) = unspec (vtocep -> vtoce);
+
+000125  aa  3 00000 2361 00	ldq  	pr3|0		vtoc_buffer.next
+000126  aa   000302 4020 07	mpy  	194,dl
+000127  aa  3 77501 3515 06	epp1 	pr3|-191,ql
+000130  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000131  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000132  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000133  aa  5 00000 00 1400	desc9a	pr5|0,768
+000134  aa  1 00000 00 1400	desc9a	pr1|0,768
+						STATEMENT 1 ON LINE 74
+    return;
+
+000135  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO get                                                STATEMENT 1 ON LINE 79
+get: entry (rldr_datap, pvindex, vtocep, vtocx, code);
+
+000136  ta     000037000000
+000137  da     000102300000
+000140  aa   000720 6270 00	eax7 	464
+000141  aa  7 00034 3521 20	epp2 	pr7|28,*
+000142  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000143  aa     000012000000
+000144  aa     000000000000
+000145  aa  6 00032 3735 20	epp7 	pr6|26,*
+000146  aa  7 00012 3715 20	epp5 	pr7|10,*
+000147  aa  6 00626 6515 00	spri5	pr6|406
+						STATEMENT 1 ON LINE 80
+    code = 0;
+
+000150  aa  6 00626 4501 20	stz  	pr6|406,*		code
+						STATEMENT 1 ON LINE 81
+    vtocbp = rldr_data_.vtocbp (pvindex);
+
+000151  aa  6 00032 3735 20	epp7 	pr6|26,*
+000152  aa  7 00004 2361 20	ldq  	pr7|4,*		pvindex
+000153  aa   000064 4020 07	mpy  	52,dl
+000154  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000155  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000156  aa  5 00416 3535 26	epp3 	pr5|270,ql*	rldr_data_.vtocbp
+000157  aa  6 00622 2535 00	spri3	pr6|402		vtocbp
+						STATEMENT 1 ON LINE 82
+    controlp = rldr_data_.controlp (pvindex);
+
+000160  aa  5 00430 3515 26	epp1 	pr5|280,ql*	rldr_data_.controlp
+000161  aa  6 00624 2515 00	spri1	pr6|404		controlp
+						STATEMENT 1 ON LINE 83
+    buffer_idx = rldr_control (vtocx).buffer_idx;
+
+000162  aa  7 00010 2361 20	ldq  	pr7|8,*		vtocx
+000163  aa   000006 4020 07	mpy  	6,dl
+000164  aa  1 14025 2361 06	ldq  	pr1|6165,ql	rldr_control.buffer_idx
+000165  aa  6 00100 7561 00	stq  	pr6|64		buffer_idx
+						STATEMENT 1 ON LINE 84
+    if buffer_idx = 0 then
+      call rldr_output_$read_vtoce (rldr_datap, pvindex, vtocep, vtocx, all_parts, code);
+
+000166  aa   000023 6010 04	tnz  	19,ic		000211
+000167  aa  7 00002 3521 20	epp2 	pr7|2,*		rldr_datap
+000170  aa  6 00642 2521 00	spri2	pr6|418
+000171  aa  7 00004 3521 20	epp2 	pr7|4,*		pvindex
+000172  aa  6 00644 2521 00	spri2	pr6|420
+000173  aa  7 00006 3521 20	epp2 	pr7|6,*		vtocep
+000174  aa  6 00646 2521 00	spri2	pr6|422
+000175  aa  7 00010 3521 20	epp2 	pr7|8,*		vtocx
+000176  aa  6 00650 2521 00	spri2	pr6|424
+000177  aa   777614 3520 04	epp2 	-116,ic		000013 = 000000000003
+000200  aa  6 00652 2521 00	spri2	pr6|426
+000201  aa  6 00626 3521 20	epp2 	pr6|406,*		code
+000202  aa  6 00654 2521 00	spri2	pr6|428
+000203  aa  6 00640 6211 00	eax1 	pr6|416
+000204  aa   030000 4310 07	fld  	12288,dl
+000205  aa  6 00044 3701 20	epp4 	pr6|36,*
+000206  la  4 00016 3521 20	epp2 	pr4|14,*		rldr_output_$read_vtoce
+000207  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000210  aa   000010 7100 04	tra  	8,ic		000220
+						STATEMENT 1 ON LINE 86
+    else unspec (vtocep -> vtoce) = unspec (vtoc_buffer (buffer_idx).vtoce);
+
+000211  aa   000302 4020 07	mpy  	194,dl
+000212  aa  7 00006 3715 20	epp5 	pr7|6,*		vtocep
+000213  aa  5 00000 3715 20	epp5 	pr5|0,*		vtocep
+000214  aa  3 77501 3515 06	epp1 	pr3|-191,ql
+000215  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000216  aa  1 00000 00 1400	desc9a	pr1|0,768
+000217  aa  5 00000 00 1400	desc9a	pr5|0,768
+						STATEMENT 1 ON LINE 87
+    return;
+
+000220  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO write                                              STATEMENT 1 ON LINE 91
+write: entry (rldr_datap, code);
+
+000221  at     000002000014
+000222  ta     000015000000
+000223  ta     000221000000
+000224  da     000105300000
+000225  aa   000720 6270 00	eax7 	464
+000226  aa  7 00034 3521 20	epp2 	pr7|28,*
+000227  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000230  aa     000004000000
+000231  aa     000000000000
+000232  aa  6 00032 3735 20	epp7 	pr6|26,*
+000233  aa  7 00004 3715 20	epp5 	pr7|4,*
+000234  aa  6 00626 6515 00	spri5	pr6|406
+						STATEMENT 1 ON LINE 93
+    code = 0;
+
+000235  aa  6 00626 4501 20	stz  	pr6|406,*		code
+						STATEMENT 1 ON LINE 94
+    vtocbp = rldr_data_.vtocbp (1);
+
+000236  aa  6 00032 3735 20	epp7 	pr6|26,*
+000237  aa  7 00002 3715 20	epp5 	pr7|2,*		rldr_datap
+000240  aa  5 00000 3715 20	epp5 	pr5|0,*		rldr_datap
+000241  aa  5 00502 3535 20	epp3 	pr5|322,*		rldr_data_.vtocbp
+000242  aa  6 00622 2535 00	spri3	pr6|402		vtocbp
+						STATEMENT 1 ON LINE 98
+    do buffer_idx = lbound (vtoc_buffer.array, 1) to vtoc_buffer.next;
+
+000243  aa  3 00000 2361 00	ldq  	pr3|0		vtoc_buffer.next
+000244  aa  6 00630 7561 00	stq  	pr6|408
+000245  aa   000001 2360 07	ldq  	1,dl
+000246  aa  6 00100 7561 00	stq  	pr6|64		buffer_idx
+000247  aa   000000 0110 03	nop  	0,du
+000250  aa  6 00100 2361 00	ldq  	pr6|64		buffer_idx
+000251  aa  6 00630 1161 00	cmpq 	pr6|408
+000252  aa   000163 6054 04	tpnz 	115,ic		000435
+						STATEMENT 1 ON LINE 101
+       if vtoc_buffer (buffer_idx).vtoce.uid ^= "0"b then do;
+
+000253  aa   000302 4020 07	mpy  	194,dl
+000254  aa  6 00631 7561 00	stq  	pr6|409
+000255  aa  6 00622 3735 20	epp7 	pr6|402,*		vtocbp
+000256  aa  7 77502 2351 06	lda  	pr7|-190,ql	vtoc_buffer.uid
+000257  aa   000034 6000 04	tze  	28,ic		000313
+						STATEMENT 1 ON LINE 102
+	call filemap_checksum_ (addr (vtoc_buffer (buffer_idx).vtoce.fm (0)),
+	   bin (vtoc_buffer (buffer_idx).vtoce.csl),
+	   vtoc_buffer (buffer_idx).vtoce.fm_checksum);
+
+000260  aa  6 00100 2361 00	ldq  	pr6|64		buffer_idx
+000261  aa   015510 4020 07	mpy  	6984,dl
+000262  aa  7 77521 3521 00	epp2 	pr7|-175		vtoc_buffer.fm
+000263  aa  2 00000 5035 06	abd  	pr2|0,ql
+000264  aa  6 00656 2521 00	spri2	pr6|430
+000265  aa  6 00631 7271 00	lxl7 	pr6|409
+000266  aa  7 77503 2351 17	lda  	pr7|-189,7	vtoc_buffer.csl
+000267  aa   000011 7350 00	als  	9
+000270  aa   000077 7730 00	lrl  	63
+000271  aa  6 00660 7561 00	stq  	pr6|432
+000272  aa  6 00656 3521 00	epp2 	pr6|430
+000273  aa  6 00642 2521 00	spri2	pr6|418
+000274  aa  6 00660 3521 00	epp2 	pr6|432
+000275  aa  6 00644 2521 00	spri2	pr6|420
+000276  aa  7 77507 3521 17	epp2 	pr7|-185,7	vtoc_buffer.fm_checksum
+000277  aa  6 00646 2521 00	spri2	pr6|422
+000300  aa  6 00640 6211 00	eax1 	pr6|416
+000301  aa   014000 4310 07	fld  	6144,dl
+000302  aa  6 00044 3701 20	epp4 	pr6|36,*
+000303  la  4 00010 3521 20	epp2 	pr4|8,*		filemap_checksum_
+000304  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 105
+	vtoc_buffer (buffer_idx).vtoce.fm_checksum_valid = "1"b;
+
+000305  aa   001000 2350 03	lda  	512,du
+000306  aa  6 00631 7271 00	lxl7 	pr6|409
+000307  aa  6 00622 3735 20	epp7 	pr6|402,*		vtocbp
+000310  aa  7 77506 2551 17	orsa 	pr7|-186,7	vtoc_buffer.fm_checksum_valid
+						STATEMENT 1 ON LINE 106
+	vtoc_buffer (buffer_idx).vtoce.fm_damaged = "0"b;
+
+000311  aa   000126 2350 04	lda  	86,ic		000437 = 775777777777
+000312  aa  7 77506 3551 17	ansa 	pr7|-186,7	vtoc_buffer.fm_damaged
+						STATEMENT 1 ON LINE 107
+       end;
+
+						STATEMENT 1 ON LINE 111
+       controlp = rldr_data_(vtoc_buffer(buffer_idx).pvindex).controlp;
+
+000313  aa  6 00631 7271 00	lxl7 	pr6|409
+000314  aa  7 77500 2361 17	ldq  	pr7|-192,7	vtoc_buffer.pvindex
+000315  aa   000064 4020 07	mpy  	52,dl
+000316  aa  6 00032 3715 20	epp5 	pr6|26,*
+000317  aa  5 00002 3535 20	epp3 	pr5|2,*		rldr_datap
+000320  aa  3 00000 3535 20	epp3 	pr3|0,*		rldr_datap
+000321  aa  3 00430 3515 26	epp1 	pr3|280,ql*	rldr_data_.controlp
+000322  aa  6 00624 2515 00	spri1	pr6|404		controlp
+						STATEMENT 1 ON LINE 116
+       call rldr_output_$write_vtoce (rldr_datap, 
+	vtoc_buffer (buffer_idx).pvindex,
+	addr (vtoc_buffer (buffer_idx).vtoce),
+	vtoc_buffer (buffer_idx).vtocx, all_parts, code);
+
+000323  aa  7 77501 3535 17	epp3 	pr7|-191,7	vtoc_buffer.vtoce
+000324  aa  6 00656 2535 00	spri3	pr6|430
+000325  aa  5 00002 3521 20	epp2 	pr5|2,*		rldr_datap
+000326  aa  6 00642 2521 00	spri2	pr6|418
+000327  aa  7 77500 3521 17	epp2 	pr7|-192,7	vtoc_buffer.pvindex
+000330  aa  6 00644 2521 00	spri2	pr6|420
+000331  aa  6 00656 3521 00	epp2 	pr6|430
+000332  aa  6 00646 2521 00	spri2	pr6|422
+000333  aa  7 77477 3521 17	epp2 	pr7|-193,7	vtoc_buffer.vtocx
+000334  aa  6 00650 2521 00	spri2	pr6|424
+000335  aa   777456 3520 04	epp2 	-210,ic		000013 = 000000000003
+000336  aa  6 00652 2521 00	spri2	pr6|426
+000337  aa  6 00626 3521 20	epp2 	pr6|406,*		code
+000340  aa  6 00654 2521 00	spri2	pr6|428
+000341  aa  6 00640 6211 00	eax1 	pr6|416
+000342  aa   030000 4310 07	fld  	12288,dl
+000343  aa  6 00044 3701 20	epp4 	pr6|36,*
+000344  la  4 00020 3521 20	epp2 	pr4|16,*		rldr_output_$write_vtoce
+000345  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 121
+       if code ^= 0 then
+	call rldr_report_$error_output (rldr_datap, code, myname,
+	   "Unable to update vtoce ^o on pv ^a",
+	    vtoc_buffer (buffer_idx).vtocx, 
+	    rldr_data_.pvname (vtoc_buffer(buffer_idx).pvindex));
+
+000346  aa  6 00626 2361 20	ldq  	pr6|406,*		code
+000347  aa   000052 6000 04	tze  	42,ic		000421
+000350  aa   777440 2360 04	ldq  	-224,ic		000010 = 524000000040
+000351  aa  6 00660 7561 00	stq  	pr6|432
+000352  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000353  aa   777445 00 0044	desc9a	-219,36		000017 = 125156141142
+000354  aa  6 00640 00 0044	desc9a	pr6|416,36
+000355  aa  6 00631 7271 00	lxl7 	pr6|409
+000356  aa  6 00622 3735 20	epp7 	pr6|402,*		vtocbp
+000357  aa  7 77500 2361 17	ldq  	pr7|-192,7	vtoc_buffer.pvindex
+000360  aa   000064 4020 07	mpy  	52,dl
+000361  aa  6 00032 3715 20	epp5 	pr6|26,*
+000362  aa  5 00002 3521 20	epp2 	pr5|2,*		rldr_datap
+000363  aa  6 00664 2521 00	spri2	pr6|436
+000364  aa  6 00626 3521 20	epp2 	pr6|406,*		code
+000365  aa  6 00666 2521 00	spri2	pr6|438
+000366  aa   777412 3520 04	epp2 	-246,ic		000000 = 162154144162
+000367  aa  6 00670 2521 00	spri2	pr6|440
+000370  aa  6 00640 3521 00	epp2 	pr6|416
+000371  aa  6 00672 2521 00	spri2	pr6|442
+000372  aa  7 77477 3521 17	epp2 	pr7|-193,7	vtoc_buffer.vtocx
+000373  aa  6 00674 2521 00	spri2	pr6|444
+000374  aa  5 00002 3535 20	epp3 	pr5|2,*		rldr_datap
+000375  aa  3 00000 3535 20	epp3 	pr3|0,*		rldr_datap
+000376  aa  3 00353 3521 06	epp2 	pr3|235,ql	rldr_data_.pvname
+000377  aa  6 00676 2521 00	spri2	pr6|446
+000400  aa   777414 3520 04	epp2 	-244,ic		000014 = 464000000000
+000401  aa  6 00700 2521 00	spri2	pr6|448
+000402  aa   777413 3520 04	epp2 	-245,ic		000015 = 404000000043
+000403  aa  6 00702 2521 00	spri2	pr6|450
+000404  aa   777406 3520 04	epp2 	-250,ic		000012 = 526000000040
+000405  aa  6 00704 2521 00	spri2	pr6|452
+000406  aa   777403 3520 04	epp2 	-253,ic		000011 = 524000000042
+000407  aa  6 00706 2521 00	spri2	pr6|454
+000410  aa   777406 3520 04	epp2 	-250,ic		000016 = 404000000021
+000411  aa  6 00710 2521 00	spri2	pr6|456
+000412  aa  6 00660 3521 00	epp2 	pr6|432
+000413  aa  6 00712 2521 00	spri2	pr6|458
+000414  aa  6 00662 6211 00	eax1 	pr6|434
+000415  aa   030000 4310 07	fld  	12288,dl
+000416  aa  6 00044 3701 20	epp4 	pr6|36,*
+000417  la  4 00012 3521 20	epp2 	pr4|10,*		rldr_report_$error_output
+000420  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 130
+       rldr_control(vtoc_buffer.array(buffer_idx).vtocx).buffer_idx = 0;
+
+000421  aa  6 00631 7271 00	lxl7 	pr6|409
+000422  aa  6 00622 3735 20	epp7 	pr6|402,*		vtocbp
+000423  aa  7 77477 2361 17	ldq  	pr7|-193,7	vtoc_buffer.vtocx
+000424  aa   000006 4020 07	mpy  	6,dl
+000425  aa  6 00624 3715 20	epp5 	pr6|404,*		controlp
+000426  aa  5 14025 4501 06	stz  	pr5|6165,ql	rldr_control.buffer_idx
+						STATEMENT 1 ON LINE 134
+       unspec (vtoc_buffer.array(buffer_idx)) = "0"b;
+
+000427  aa  7 77477 3535 17	epp3 	pr7|-193,7
+000430  aa  000 100 100 400	mlr  	(),(pr),fill(000)
+000431  aa   000000 00 0000	desc9a	0,0
+000432  aa  3 00000 00 1410	desc9a	pr3|0,776
+						STATEMENT 1 ON LINE 136
+    end;
+
+000433  aa  6 00100 0541 00	aos  	pr6|64		buffer_idx
+000434  aa   777614 7100 04	tra  	-116,ic		000250
+						STATEMENT 1 ON LINE 138
+    vtoc_buffer.next = 0;
+
+000435  aa  6 00622 4501 20	stz  	pr6|402,*		vtoc_buffer.next
+						STATEMENT 1 ON LINE 139
+    return;
+
+000436  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 168
+  end rldr_vtoc_buffer_;
+
+  END PROCEDURE rldr_vtoc_buffer_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

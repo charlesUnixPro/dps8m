@@ -1,0 +1,804 @@
+	COMPILATION LISTING OF SEGMENT debug_check
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0952.7 mst Sat
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 debug_check: proc (a_name, a_sw);
+       14 
+       15 /*	Last Modified and Reason
+       16*
+       17*   2/14/76 by S. Webber to convert to using PARM cards
+       18*   01/22/76 by TVV for NSS
+       19*   10/08/74 by Bernard Greenberg for AST name table
+       20*   3/15/74 by A. Kobziar to remove references to tty_buf$ in salvager case
+       21*   10/01/73 by RE Mullen to convert to v2pl1
+       22*   12/27/73 by R.B.Snyder to make copy_card entry set values in sst etc. from debg card
+       23*   84-01-08 BIM to use sst and tc_data definitions, and to handle multiple
+       24*	      cards, and not to store numerics in whd.
+       25*   10/19/84 by Keith Loepere so that dirw works (one more time). */
+       26 
+       27 dcl  a_name char (4) aligned;
+       28 dcl  a_sw bit (1);
+       29 
+       30 declare sst$ast_track bit (1) aligned external static;
+       31 declare sst$double_write fixed bin (35) external static;
+       32 declare sst$dirlock_writebehind fixed bin (35) external static;
+       33 
+       34 declare tc_data$time_out_severity fixed bin (35) external static;
+       35 declare tc_data$notify_check fixed bin (35) external static;
+       36 
+       37 dcl  addwordno builtin;
+       38 dcl  bin builtin;
+       39 dcl  null builtin;
+       40 
+       41 dcl  i fixed bin;
+       42 dcl  searching bit (1) aligned;
+       43 dcl  next_opt fixed bin;
+       44 
+       45 dcl  config_$find entry (character (4) aligned, pointer);
+       46 dcl  config_$find_parm entry (character (4) aligned, pointer);
+       47 dcl  syserr entry options (variable);
+       48 
+       49 dcl 1 wired_hardcore_data$debug_check_options external,
+       50     2 count fixed bin,
+       51     2 opt (14) char (4) aligned;
+       52 
+  1     1 /* BEGIN INCLUDE FILE ... config_parm_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl parm_cardp pointer;				/* pointer to PARM card */
+  1     4 
+  1     5 dcl 1 parm_card aligned based (parm_cardp),		/* PARM card declaration */
+  1     6     2 word char (4),				/* "parm" */
+  1     7     2 options (14) char (4),				/* Parameters and their values */
+  1     8 
+  1     9     2 type_word aligned,
+  1    10       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    11       3 pad1 bit (4) unaligned,
+  1    12       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    13 
+  1    14 dcl 1 parm_card_array based (parm_cardp),		/* Overlay for counting options */
+  1    15     2 pad bit (36) aligned,
+  1    16     2 options (parm_card.n_fields) bit (36) aligned;
+  1    17 
+  1    18 
+  1    19 dcl  parm_ptr pointer;				/* For use with config$find_parm */
+  1    20 
+  1    21 dcl 1 numeric_parm aligned based (parm_ptr),		/* Overlay into middle of card for looking */
+  1    22     2 name char (4),				/* at a parameter found by config$find_parm */
+  1    23     2 value fixed bin (35);
+  1    24 
+  1    25 dcl 1 string_parm aligned based (parm_ptr),
+  1    26     2 name char (4),
+  1    27     2 value char (4);
+  1    28 
+  1    29 dcl  PARM_CARD_WORD char (4) aligned internal static options (constant) init ("parm");
+  1    30 
+  1    31 /* END INCLUDE FILE ... config_parm_card.incl.pl1 */
+       53 
+       54 
+       55 
+       56 
+       57 	a_sw = "0"b;
+       58 	do i = 1 to wired_hardcore_data$debug_check_options.count;
+       59 	     if wired_hardcore_data$debug_check_options.opt (i) = a_name then do;
+       60 		a_sw = "1"b;
+       61 		return;
+       62 	     end;
+       63 	end;
+       64 	return;
+       65 
+       66 copy_card: entry;
+       67 
+       68 	tc_data$time_out_severity = 3;			/* default timeout severity is 3 */
+       69 	tc_data$notify_check = 0;			/* don't perform notify checking as default */
+       70 
+       71 	next_opt = 0;
+       72 	searching = "1"b;
+       73 	parm_cardp = null ();
+       74 	do while (searching);			/* search until no more parm cards */
+       75 	     call config_$find (PARM_CARD_WORD, parm_cardp);
+       76 	     if parm_cardp = null then searching = "0"b;	/* no more */
+       77 	     else do;
+       78 		do i = 1 to parm_card.n_fields;
+       79 		     if parm_card.type_word.field_type (i)
+       80 			= CONFIG_STRING_TYPE
+       81 			& (i = parm_card.n_fields | (i < parm_card.n_fields & parm_card.field_type (i + 1) = CONFIG_STRING_TYPE))
+       82 			then do; /* no value following */
+       83 			next_opt = next_opt + 1;
+       84 			if next_opt > 14 then call syserr (ANNOUNCE, "debug_check: too many parameters on parm cards");
+       85 			wired_hardcore_data$debug_check_options.opt (next_opt) = parm_card.options (i);
+       86 		     end;
+       87 		end;
+       88 	     end;
+       89 	end;
+       90 
+       91 	wired_hardcore_data$debug_check_options.count = next_opt;
+       92 
+       93 	parm_ptr = null ();
+       94 	call config_$find_parm ("dblw", parm_ptr);
+       95 	if parm_ptr ^= null ()
+       96 	then sst$double_write = numeric_parm.value;
+       97 
+       98 	parm_ptr = null ();
+       99 	call config_$find_parm ("ntfy", parm_ptr);
+      100 	if parm_ptr ^= null ()
+      101 	then do;
+      102 	     tc_data$time_out_severity = numeric_parm.value;
+      103 	     parm_ptr = addwordno (parm_ptr, 1);
+      104 	     tc_data$notify_check = numeric_parm.value;
+      105 	end;
+      106 
+      107 	parm_ptr = null ();
+      108 	call config_$find_parm ("astk", parm_ptr);
+      109 	sst$ast_track = (parm_ptr ^= null ());
+      110 
+      111 	parm_ptr = null ();
+      112 	call config_$find_parm ("dirw", parm_ptr);
+      113 	sst$dirlock_writebehind = bin ((parm_ptr ^= null ()), 1);
+      114 
+      115 	return;
+      116 
+      117  
+      118 
+      119 /* BEGIN MESSAGE DOCUMENTATION
+      120*
+      121*   Message:
+      122*   debug_check: too many parameters on parm cards
+      123*
+      124*   S:	$info
+      125*
+      126*   T:	$init
+      127*
+      128*   M:	A total of 14 options may be specified on PARM cards.
+      129*   This limit has been exceeded.
+      130*   Options after the 14th will be ignored.
+      131*
+      132*   A:	Correct the configuration deck
+      133*   before the next bootload.
+      134*
+      135*
+      136*   END MESSAGE DOCUMENTATION */
+      137 
+  2     1 /* BEGIN INCLUDE FILE ... config_deck.incl.pl1 ... 11/13/80, W. Olin Sibert */
+  2     2 
+  2     3 dcl (configp, cardp) pointer;
+  2     4 dcl  config_n_cards fixed bin;			/* Number of cards used in config */
+  2     5 dcl  config_max_cards fixed bin;			/* Max number of cards in config */
+  2     6 
+  2     7 dcl  config_deck$ fixed bin external static;
+  2     8 
+  2     9 dcl 1 config_deck aligned based (configp),
+  2    10     2 cards (config_n_cards) aligned like config_card,
+  2    11     2 pad_cards (config_max_cards - config_n_cards) aligned like config_card;
+  2    12 
+  2    13 dcl 1 config_card aligned based (cardp),
+  2    14     2 word char (4) aligned,
+  2    15     2 data_field (14) bit (36) aligned,
+  2    16     2 type_word aligned like config_card_type_word;
+  2    17 
+  2    18 dcl 1 config_card_type_word aligned based,
+  2    19     2 field_type (14) bit (2) unaligned,
+  2    20     2 pad1 bit (4) unaligned,
+  2    21     2 n_fields fixed bin (4) unsigned unaligned;
+  2    22 
+  2    23 dcl (CONFIG_DECIMAL_TYPE	init ("11"b),
+  2    24      CONFIG_OCTAL_TYPE	init ("00"b),
+  2    25      CONFIG_SINGLE_CHAR_TYPE	init ("01"b),
+  2    26      CONFIG_STRING_TYPE	init ("10"b)) bit (2) aligned static options (constant);
+  2    27 
+  2    28 dcl  ZERO_CARD_WORD char (4) aligned internal static options (constant) init ("    ");
+  2    29 dcl  FREE_CARD_WORD char (4) aligned internal static options (constant) init ("ÿÿÿÿ");
+  2    30 
+  2    31 dcl  VALID_CARD_WORD_CHARACTERS char (38) internal static options (constant) init
+  2    32     ("abcdefghijklmnopqrstuvwxyz0123456789_.");		/* lowercase letters, digits, period and underscore */
+  2    33 
+  2    34 dcl  EMPTY_FIELD bit (36) aligned internal static options (constant) init ("777777777777"b3);
+  2    35 
+  2    36 /* END INCLUDE FILE config_deck.incl.pl1 */
+      138 
+  3     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  3     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  3     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  3     4 
+  3     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  3     6 
+  3     7 dcl (
+  3     8 
+  3     9 /* The following constants define the message action codes.  This indicates
+  3    10*how a message is to be handled.  */
+  3    11 
+  3    12      SYSERR_CRASH_SYSTEM	init (1),			
+  3    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  3    14 
+  3    15      SYSERR_TERMINATE_PROCESS	init (2),
+  3    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  3    17 
+  3    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  3    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  3    20 
+  3    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  3    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  3    23 
+  3    24      SYSERR_LOG_OR_PRINT	init (4),
+  3    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  3    26 
+  3    27      SYSERR_LOG_OR_DISCARD	init (5),
+  3    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  3    29 
+  3    30 
+  3    31 /* The following constants are added to the normal severities to indicate
+  3    32*different sorting classes of messages.  */
+  3    33 
+  3    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  3    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  3    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  3    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  3    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  3    39 	) fixed bin internal static options (constant);
+  3    40 
+  3    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      139 
+      140 
+      141      end debug_check;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0851.6  debug_check.pl1                   >spec>install>1115>debug_check.pl1
+53           1    05/08/81  1853.7  config_parm_card.incl.pl1         >ldd>include>config_parm_card.incl.pl1
+138          2    05/08/81  1853.6  config_deck.incl.pl1              >ldd>include>config_deck.incl.pl1
+139          3    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000007 constant        fixed bin(17,0)          initial dcl 3-7 set ref 84*
+CONFIG_STRING_TYPE              000353 constant        bit(2)                   initial dcl 2-23 ref 79 79
+PARM_CARD_WORD                  000000 constant        char(4)                  initial dcl 1-29 set ref 75*
+a_name                                 parameter       char(4)                  dcl 27 ref 13 59
+a_sw                                   parameter       bit(1)                   packed unaligned dcl 28 set ref 13 57* 60*
+addwordno                                              builtin function         dcl 37 ref 103
+bin                                                    builtin function         dcl 38 ref 113
+config_$find                    000022 constant        entry                    external dcl 45 ref 75
+config_$find_parm               000024 constant        entry                    external dcl 46 ref 94 99 108 112
+config_card                            based           structure                level 1 dcl 2-13
+config_card_type_word                  based           structure                level 1 dcl 2-18
+count                           000030 external static fixed bin(17,0)          level 2 dcl 49 set ref 58 91*
+field_type               17            based           bit(2)                   array level 3 packed packed unaligned dcl 1-5 ref 79
+                                                                                  79
+i                               000100 automatic       fixed bin(17,0)          dcl 41 set ref 58* 59* 78* 79 79 79 79 85*
+n_fields                 17(32)        based           fixed bin(4,0)           level 3 packed packed unsigned unaligned dcl 1-5 ref
+                                                                                  78 79 79
+next_opt                        000102 automatic       fixed bin(17,0)          dcl 43 set ref 71* 83* 83 84 85 91
+null                                                   builtin function         dcl 39 ref 73 76 93 95 98 100 107 109 111 113
+numeric_parm                           based           structure                level 1 dcl 1-21
+opt                       1     000030 external static char(4)                  array level 2 dcl 49 set ref 59 85*
+options                   1            based           char(4)                  array level 2 dcl 1-5 ref 85
+parm_card                              based           structure                level 1 dcl 1-5
+parm_cardp                      000104 automatic       pointer                  dcl 1-3 set ref 73* 75* 76 78 79 79 79 79 85
+parm_ptr                        000106 automatic       pointer                  dcl 1-19 set ref 93* 94* 95 95 98* 99* 100 102 103*
+                                                                                  103 104 107* 108* 109 111* 112* 113
+searching                       000101 automatic       bit(1)                   dcl 42 set ref 72* 74 76*
+sst$ast_track                   000010 external static bit(1)                   dcl 30 set ref 109*
+sst$dirlock_writebehind         000014 external static fixed bin(35,0)          dcl 32 set ref 113*
+sst$double_write                000012 external static fixed bin(35,0)          dcl 31 set ref 95*
+syserr                          000026 constant        entry                    external dcl 47 ref 84
+tc_data$notify_check            000020 external static fixed bin(35,0)          dcl 35 set ref 69* 104*
+tc_data$time_out_severity       000016 external static fixed bin(35,0)          dcl 34 set ref 68* 102*
+type_word                17            based           structure                level 2 dcl 1-5
+value                     1            based           fixed bin(35,0)          level 2 dcl 1-21 ref 95 102 104
+wired_hardcore_data$debug_check_options
+                                000030 external static structure                level 1 unaligned dcl 49
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 3-7
+CONFIG_DECIMAL_TYPE                    internal static bit(2)                   initial dcl 2-23
+CONFIG_OCTAL_TYPE                      internal static bit(2)                   initial dcl 2-23
+CONFIG_SINGLE_CHAR_TYPE                internal static bit(2)                   initial dcl 2-23
+CRASH                                  internal static fixed bin(17,0)          initial dcl 3-7
+EMPTY_FIELD                            internal static bit(36)                  initial dcl 2-34
+FREE_CARD_WORD                         internal static char(4)                  initial dcl 2-29
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 3-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 3-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 3-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 3-7
+VALID_CARD_WORD_CHARACTERS             internal static char(38)                 initial packed unaligned dcl 2-31
+ZERO_CARD_WORD                         internal static char(4)                  initial dcl 2-28
+cardp                                  automatic       pointer                  dcl 2-3
+config_deck                            based           structure                level 1 dcl 2-9
+config_deck$                           external static fixed bin(17,0)          dcl 2-7
+config_max_cards                       automatic       fixed bin(17,0)          dcl 2-5
+config_n_cards                         automatic       fixed bin(17,0)          dcl 2-4
+configp                                automatic       pointer                  dcl 2-3
+parm_card_array                        based           structure                level 1 unaligned dcl 1-14
+string_parm                            based           structure                level 1 dcl 1-25
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+copy_card                       000073 constant        entry                    external dcl 66
+debug_check                     000034 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       514         546     354         524
+Length      1004     354        32         222     140           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+debug_check                         108 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+debug_check              000100 i                           debug_check
+                         000101 searching                   debug_check
+                         000102 next_opt                    debug_check
+                         000104 parm_cardp                  debug_check
+                         000106 parm_ptr                    debug_check
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find                  config_$find_parm             syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+sst$ast_track                 sst$dirlock_writebehind       sst$double_write              tc_data$notify_check
+tc_data$time_out_severity     wired_hardcore_data$debug_check_options
+
+
+CONSTANTS
+000000  aa  160 141 162 155	parm
+
+000001  aa  144 151 162 167	dirw
+
+000002  aa  141 163 164 153	astk
+
+000003  aa  156 164 146 171	ntfy
+
+000004  aa  144 142 154 167	dblw
+
+000005  aa     524000000056
+
+000006  aa     404000000021
+
+000353  aa     400000000000
+
+000007  aa     000000000000
+
+000010  aa     516000000001
+
+000011  aa     524000000004
+
+000012  aa     077777000043
+000013  aa     000001000000
+
+000014  aa  144 145 142 165	debu
+000015  aa  147 137 143 150	g_ch
+000016  aa  145 143 153 072	eck:
+000017  aa  040 164 157 157	 too
+000020  aa  040 155 141 156	 man
+000021  aa  171 040 160 141	y pa
+000022  aa  162 141 155 145	rame
+000023  aa  164 145 162 163	ters
+000024  aa  040 157 156 040	 on 
+000025  aa  160 141 162 155	parm
+000026  aa  040 143 141 162	 car
+000027  aa  144 163 000 000	ds
+
+BEGIN PROCEDURE debug_check
+ENTRY TO debug_check                                        STATEMENT 1 ON LINE 13
+debug_check: proc (a_name, a_sw);
+
+000030  at     000002000011
+000031  ta     000010000000
+000032  ta     000030000000
+000033  da     000126300000
+000034  aa   000160 6270 00	eax7 	112
+000035  aa  7 00034 3521 20	epp2 	pr7|28,*
+000036  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000037  aa     000004000000
+000040  aa     000000000000
+						STATEMENT 1 ON LINE 57
+	a_sw = "0"b;
+
+000041  aa  6 00032 3735 20	epp7 	pr6|26,*
+000042  aa  7 00004 3715 20	epp5 	pr7|4,*
+000043  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000044  aa   000000 00 0000	descb	0,0
+000045  aa  5 00000 00 0001	descb	pr5|0,1		a_sw
+						STATEMENT 1 ON LINE 58
+	do i = 1 to wired_hardcore_data$debug_check_options.count;
+
+000046  la  4 00030 2361 20	ldq  	pr4|24,*		wired_hardcore_data$debug_check_options.count
+000047  aa  6 00110 7561 00	stq  	pr6|72
+000050  aa   000001 2360 07	ldq  	1,dl
+000051  aa  6 00100 7561 00	stq  	pr6|64		i
+000052  aa  6 00100 2361 00	ldq  	pr6|64		i
+000053  aa  6 00110 1161 00	cmpq 	pr6|72
+000054  aa   000015 6054 04	tpnz 	13,ic		000071
+						STATEMENT 1 ON LINE 59
+	     if wired_hardcore_data$debug_check_options.opt (i) = a_name then do;
+
+000055  aa  6 00044 3701 20	epp4 	pr6|36,*
+000056  la  4 00030 2351 66	lda  	pr4|24,*ql	wired_hardcore_data$debug_check_options.opt
+000057  aa  6 00032 3735 20	epp7 	pr6|26,*
+000060  aa  7 00002 1151 20	cmpa 	pr7|2,*		a_name
+000061  aa   000006 6010 04	tnz  	6,ic		000067
+						STATEMENT 1 ON LINE 60
+		a_sw = "1"b;
+
+000062  aa  7 00004 3715 20	epp5 	pr7|4,*
+000063  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000064  aa   000000 00 0000	descb	0,0
+000065  aa  5 00000 00 0001	descb	pr5|0,1		a_sw
+						STATEMENT 1 ON LINE 61
+		return;
+
+000066  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 62
+	     end;
+
+						STATEMENT 1 ON LINE 63
+	end;
+
+000067  aa  6 00100 0541 00	aos  	pr6|64		i
+000070  aa   777762 7100 04	tra  	-14,ic		000052
+						STATEMENT 1 ON LINE 64
+	return;
+
+000071  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO copy_card                                          STATEMENT 1 ON LINE 66
+copy_card: entry;
+
+000072  da     000134200000
+000073  aa   000160 6270 00	eax7 	112
+000074  aa  7 00034 3521 20	epp2 	pr7|28,*
+000075  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000076  aa     000000000000
+000077  aa     000000000000
+						STATEMENT 1 ON LINE 68
+	tc_data$time_out_severity = 3;
+
+000100  aa   000003 2360 07	ldq  	3,dl
+000101  aa  6 00044 3701 20	epp4 	pr6|36,*
+000102  la  4 00016 7561 20	stq  	pr4|14,*		tc_data$time_out_severity
+						STATEMENT 1 ON LINE 69
+	tc_data$notify_check = 0;
+
+000103  la  4 00020 4501 20	stz  	pr4|16,*		tc_data$notify_check
+						STATEMENT 1 ON LINE 71
+	next_opt = 0;
+
+000104  aa  6 00102 4501 00	stz  	pr6|66		next_opt
+						STATEMENT 1 ON LINE 72
+	searching = "1"b;
+
+000105  aa   400000 2350 03	lda  	131072,du
+000106  aa  6 00101 7551 00	sta  	pr6|65		searching
+						STATEMENT 1 ON LINE 73
+	parm_cardp = null ();
+
+000107  aa   777703 2370 04	ldaq 	-61,ic		000012 = 077777000043 000001000000
+000110  aa  6 00104 7571 00	staq 	pr6|68		parm_cardp
+						STATEMENT 1 ON LINE 74
+	do while (searching);
+
+000111  aa   000000 0110 03	nop  	0,du
+000112  aa  6 00101 2351 00	lda  	pr6|65		searching
+000113  aa   000111 6000 04	tze  	73,ic		000224
+						STATEMENT 1 ON LINE 75
+	     call config_$find (PARM_CARD_WORD, parm_cardp);
+
+000114  aa   777664 3520 04	epp2 	-76,ic		000000 = 160141162155
+000115  aa  6 00120 2521 00	spri2	pr6|80
+000116  aa  6 00104 3521 00	epp2 	pr6|68		parm_cardp
+000117  aa  6 00122 2521 00	spri2	pr6|82
+000120  aa  6 00116 6211 00	eax1 	pr6|78
+000121  aa   010000 4310 07	fld  	4096,dl
+000122  aa  6 00044 3701 20	epp4 	pr6|36,*
+000123  la  4 00022 3521 20	epp2 	pr4|18,*		config_$find
+000124  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 76
+	     if parm_cardp = null then searching = "0"b;
+
+000125  aa  6 00104 2371 00	ldaq 	pr6|68		parm_cardp
+000126  aa   777664 6770 04	eraq 	-76,ic		000012 = 077777000043 000001000000
+000127  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000130  aa   000003 6010 04	tnz  	3,ic		000133
+000131  aa  6 00101 4501 00	stz  	pr6|65		searching
+000132  aa   777760 7100 04	tra  	-16,ic		000112
+						STATEMENT 1 ON LINE 77
+	     else do;
+
+						STATEMENT 1 ON LINE 78
+		do i = 1 to parm_card.n_fields;
+
+000133  aa  6 00104 3735 20	epp7 	pr6|68,*		parm_cardp
+000134  aa  7 00017 2361 00	ldq  	pr7|15		parm_card.n_fields
+000135  aa  0 00430 3771 00	anaq 	pr0|280		= 000000000000 000000000017
+000136  aa  6 00111 7561 00	stq  	pr6|73
+000137  aa   000001 2360 07	ldq  	1,dl
+000140  aa  6 00100 7561 00	stq  	pr6|64		i
+000141  aa   000000 0110 03	nop  	0,du
+000142  aa  6 00100 2361 00	ldq  	pr6|64		i
+000143  aa  6 00111 1161 00	cmpq 	pr6|73
+000144  aa   777746 6054 04	tpnz 	-26,ic		000112
+						STATEMENT 1 ON LINE 79
+		     if parm_card.type_word.field_type (i)
+			= CONFIG_STRING_TYPE
+			& (i = parm_card.n_fields | (i < parm_card.n_fields & parm_card.field_type (i + 1) = CONFIG_STRING_TYPE))
+			then do;
+
+000145  aa   000001 7360 00	qls  	1
+000146  aa  6 00104 3735 20	epp7 	pr6|68,*		parm_cardp
+000147  aa  7 00017 2351 00	lda  	pr7|15		parm_card.n_fields
+000150  aa   000040 7350 00	als  	32
+000151  aa   000000 6270 06	eax7 	0,ql
+000152  aa   000104 7730 00	lrl  	68
+000153  aa  000 004 066 517	cmpb 	(pr,x7),(ic),fill(0)
+000154  aa  7 00016 67 0002	descb	pr7|14(34),2	parm_card.field_type
+000155  aa   000200 00 0002	descb	128,2		000353 = 400000000000
+000156  aa  6 00115 7471 00	stx7 	pr6|77
+000157  aa   000042 6010 04	tnz  	34,ic		000221
+000160  aa  6 00124 7561 00	stq  	pr6|84		parm_card.n_fields
+000161  aa  6 00100 1161 00	cmpq 	pr6|64		i
+000162  aa   000006 6000 04	tze  	6,ic		000170
+000163  aa   000036 6044 04	tmoz 	30,ic		000221
+000164  aa  000 004 066 517	cmpb 	(pr,x7),(ic),fill(0)
+000165  aa  7 00017 00 0002	descb	pr7|15,2		parm_card.field_type
+000166  aa   000167 00 0002	descb	119,2		000353 = 400000000000
+000167  aa   000032 6010 04	tnz  	26,ic		000221
+						STATEMENT 1 ON LINE 83
+			next_opt = next_opt + 1;
+
+000170  aa  6 00102 0541 00	aos  	pr6|66		next_opt
+						STATEMENT 1 ON LINE 84
+			if next_opt > 14 then call syserr (ANNOUNCE, "debug_check: too many parameters on parm cards");
+
+000171  aa  6 00102 2361 00	ldq  	pr6|66		next_opt
+000172  aa   000016 1160 07	cmpq 	14,dl
+000173  aa   000021 6044 04	tmoz 	17,ic		000214
+000174  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000175  aa   777620 00 0060	desc9a	-112,48		000014 = 144145142165
+000176  aa  6 00126 00 0060	desc9a	pr6|86,48
+000177  aa   777610 3520 04	epp2 	-120,ic		000007 = 000000000000
+000200  aa  6 00144 2521 00	spri2	pr6|100
+000201  aa  6 00126 3521 00	epp2 	pr6|86
+000202  aa  6 00146 2521 00	spri2	pr6|102
+000203  aa   777603 3520 04	epp2 	-125,ic		000006 = 404000000021
+000204  aa  6 00150 2521 00	spri2	pr6|104
+000205  aa   777600 3520 04	epp2 	-128,ic		000005 = 524000000056
+000206  aa  6 00152 2521 00	spri2	pr6|106
+000207  aa  6 00142 6211 00	eax1 	pr6|98
+000210  aa   010000 4310 07	fld  	4096,dl
+000211  aa  6 00044 3701 20	epp4 	pr6|36,*
+000212  la  4 00026 3521 20	epp2 	pr4|22,*		syserr
+000213  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 85
+			wired_hardcore_data$debug_check_options.opt (next_opt) = parm_card.options (i);
+
+000214  aa  6 00100 7271 00	lxl7 	pr6|64		i
+000215  aa  6 00104 2351 77	lda  	pr6|68,*7		parm_card.options
+000216  aa  6 00102 7261 00	lxl6 	pr6|66		next_opt
+000217  aa  6 00044 3701 20	epp4 	pr6|36,*
+000220  la  4 00030 7551 76	sta  	pr4|24,*6		wired_hardcore_data$debug_check_options.opt
+						STATEMENT 1 ON LINE 86
+		     end;
+
+						STATEMENT 1 ON LINE 87
+		end;
+
+000221  aa  6 00100 0541 00	aos  	pr6|64		i
+000222  aa   777720 7100 04	tra  	-48,ic		000142
+						STATEMENT 1 ON LINE 88
+	     end;
+
+						STATEMENT 1 ON LINE 89
+	end;
+
+000223  aa   777667 7100 04	tra  	-73,ic		000112
+						STATEMENT 1 ON LINE 91
+	wired_hardcore_data$debug_check_options.count = next_opt;
+
+000224  aa  6 00102 2361 00	ldq  	pr6|66		next_opt
+000225  aa  6 00044 3701 20	epp4 	pr6|36,*
+000226  la  4 00030 7561 20	stq  	pr4|24,*		wired_hardcore_data$debug_check_options.count
+						STATEMENT 1 ON LINE 93
+	parm_ptr = null ();
+
+000227  aa   777563 2370 04	ldaq 	-141,ic		000012 = 077777000043 000001000000
+000230  aa  6 00106 7571 00	staq 	pr6|70		parm_ptr
+						STATEMENT 1 ON LINE 94
+	call config_$find_parm ("dblw", parm_ptr);
+
+000231  aa   777553 2350 04	lda  	-149,ic		000004 = 144142154167
+000232  aa  6 00125 7551 00	sta  	pr6|85
+000233  aa  6 00125 3521 00	epp2 	pr6|85
+000234  aa  6 00120 2521 00	spri2	pr6|80
+000235  aa  6 00106 3521 00	epp2 	pr6|70		parm_ptr
+000236  aa  6 00122 2521 00	spri2	pr6|82
+000237  aa  6 00116 6211 00	eax1 	pr6|78
+000240  aa   010000 4310 07	fld  	4096,dl
+000241  la  4 00024 3521 20	epp2 	pr4|20,*		config_$find_parm
+000242  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 95
+	if parm_ptr ^= null ()
+	then sst$double_write = numeric_parm.value;
+
+000243  aa  6 00106 2371 00	ldaq 	pr6|70		parm_ptr
+000244  aa   777546 6770 04	eraq 	-154,ic		000012 = 077777000043 000001000000
+000245  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000246  aa   000005 6000 04	tze  	5,ic		000253
+000247  aa  6 00106 3735 20	epp7 	pr6|70,*		parm_ptr
+000250  aa  7 00001 2361 00	ldq  	pr7|1		numeric_parm.value
+000251  aa  6 00044 3701 20	epp4 	pr6|36,*
+000252  la  4 00012 7561 20	stq  	pr4|10,*		sst$double_write
+						STATEMENT 1 ON LINE 98
+	parm_ptr = null ();
+
+000253  aa   777537 2370 04	ldaq 	-161,ic		000012 = 077777000043 000001000000
+000254  aa  6 00106 7571 00	staq 	pr6|70		parm_ptr
+						STATEMENT 1 ON LINE 99
+	call config_$find_parm ("ntfy", parm_ptr);
+
+000255  aa   777526 2350 04	lda  	-170,ic		000003 = 156164146171
+000256  aa  6 00125 7551 00	sta  	pr6|85
+000257  aa  6 00125 3521 00	epp2 	pr6|85
+000260  aa  6 00120 2521 00	spri2	pr6|80
+000261  aa  6 00106 3521 00	epp2 	pr6|70		parm_ptr
+000262  aa  6 00122 2521 00	spri2	pr6|82
+000263  aa  6 00116 6211 00	eax1 	pr6|78
+000264  aa   010000 4310 07	fld  	4096,dl
+000265  aa  6 00044 3701 20	epp4 	pr6|36,*
+000266  la  4 00024 3521 20	epp2 	pr4|20,*		config_$find_parm
+000267  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 100
+	if parm_ptr ^= null ()
+	then do;
+
+000270  aa  6 00106 2371 00	ldaq 	pr6|70		parm_ptr
+000271  aa   777521 6770 04	eraq 	-175,ic		000012 = 077777000043 000001000000
+000272  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000273  aa   000011 6000 04	tze  	9,ic		000304
+						STATEMENT 1 ON LINE 102
+	     tc_data$time_out_severity = numeric_parm.value;
+
+000274  aa  6 00106 3735 20	epp7 	pr6|70,*		parm_ptr
+000275  aa  7 00001 2361 00	ldq  	pr7|1		numeric_parm.value
+000276  aa  6 00044 3701 20	epp4 	pr6|36,*
+000277  la  4 00016 7561 20	stq  	pr4|14,*		tc_data$time_out_severity
+						STATEMENT 1 ON LINE 103
+	     parm_ptr = addwordno (parm_ptr, 1);
+
+000300  aa   000001 1530 03	adwp7	1,du
+000301  aa  6 00106 6535 00	spri7	pr6|70		parm_ptr
+						STATEMENT 1 ON LINE 104
+	     tc_data$notify_check = numeric_parm.value;
+
+000302  aa  7 00001 2361 00	ldq  	pr7|1		numeric_parm.value
+000303  la  4 00020 7561 20	stq  	pr4|16,*		tc_data$notify_check
+						STATEMENT 1 ON LINE 105
+	end;
+
+						STATEMENT 1 ON LINE 107
+	parm_ptr = null ();
+
+000304  aa   777506 2370 04	ldaq 	-186,ic		000012 = 077777000043 000001000000
+000305  aa  6 00106 7571 00	staq 	pr6|70		parm_ptr
+						STATEMENT 1 ON LINE 108
+	call config_$find_parm ("astk", parm_ptr);
+
+000306  aa   777474 2350 04	lda  	-196,ic		000002 = 141163164153
+000307  aa  6 00125 7551 00	sta  	pr6|85
+000310  aa  6 00125 3521 00	epp2 	pr6|85
+000311  aa  6 00120 2521 00	spri2	pr6|80
+000312  aa  6 00106 3521 00	epp2 	pr6|70		parm_ptr
+000313  aa  6 00122 2521 00	spri2	pr6|82
+000314  aa  6 00116 6211 00	eax1 	pr6|78
+000315  aa   010000 4310 07	fld  	4096,dl
+000316  aa  6 00044 3701 20	epp4 	pr6|36,*
+000317  la  4 00024 3521 20	epp2 	pr4|20,*		config_$find_parm
+000320  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 109
+	sst$ast_track = (parm_ptr ^= null ());
+
+000321  aa  6 00106 2371 00	ldaq 	pr6|70		parm_ptr
+000322  aa   777470 6770 04	eraq 	-200,ic		000012 = 077777000043 000001000000
+000323  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000324  aa  0 00515 7001 00	tsx0 	pr0|333		r_ne_as
+000325  aa  6 00044 3701 20	epp4 	pr6|36,*
+000326  la  4 00010 7551 20	sta  	pr4|8,*		sst$ast_track
+						STATEMENT 1 ON LINE 111
+	parm_ptr = null ();
+
+000327  aa   777463 2370 04	ldaq 	-205,ic		000012 = 077777000043 000001000000
+000330  aa  6 00106 7571 00	staq 	pr6|70		parm_ptr
+						STATEMENT 1 ON LINE 112
+	call config_$find_parm ("dirw", parm_ptr);
+
+000331  aa   777450 2350 04	lda  	-216,ic		000001 = 144151162167
+000332  aa  6 00125 7551 00	sta  	pr6|85
+000333  aa  6 00125 3521 00	epp2 	pr6|85
+000334  aa  6 00120 2521 00	spri2	pr6|80
+000335  aa  6 00106 3521 00	epp2 	pr6|70		parm_ptr
+000336  aa  6 00122 2521 00	spri2	pr6|82
+000337  aa  6 00116 6211 00	eax1 	pr6|78
+000340  aa   010000 4310 07	fld  	4096,dl
+000341  la  4 00024 3521 20	epp2 	pr4|20,*		config_$find_parm
+000342  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 113
+	sst$dirlock_writebehind = bin ((parm_ptr ^= null ()), 1);
+
+000343  aa  6 00106 2371 00	ldaq 	pr6|70		parm_ptr
+000344  aa   777446 6770 04	eraq 	-218,ic		000012 = 077777000043 000001000000
+000345  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000346  aa  0 00515 7001 00	tsx0 	pr0|333		r_ne_as
+000347  aa   000107 7730 00	lrl  	71
+000350  aa  6 00044 3701 20	epp4 	pr6|36,*
+000351  la  4 00014 7561 20	stq  	pr4|12,*		sst$dirlock_writebehind
+						STATEMENT 1 ON LINE 115
+	return;
+
+000352  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 141
+     end debug_check;
+
+  END PROCEDURE debug_check
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

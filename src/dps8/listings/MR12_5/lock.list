@@ -1,0 +1,2223 @@
+	COMPILATION LISTING OF SEGMENT lock
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       16*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       17*     Correct error message documentation.
+       18*  2) change(87-03-31,Fawcett), approve(87-04-23,MCR7672),
+       19*     audit(87-04-23,Farley), install(87-04-28,MR12.1-1028):
+       20*     Corrected dir_unlock_given_uid to use "ind".  Put the mylock check in
+       21*     LOCK_FAST into the stac do loop to possibly avoid a missed cache write
+       22*     notify on lock.pid.  Added VALIDATE_CACHE  internal proc to insure that
+       23*     the  cache and memory contents of lock_count and highset_in_use are the
+       24*     same and detect any differences.
+       25*                                                   END HISTORY COMMENTS */
+       26 
+       27 
+       28 /* format: style3 */
+       29 
+       30 lock:
+       31      procedure;
+       32 
+       33 /* format: off */
+       34 
+       35 /* *	LOCK - ring zero primitive for shared data base locking.
+       36*   *
+       37*   *	This procedure supplies a number of entry points for manipulating
+       38*   *	locks.  Its coding is dependent on the read-alter-rewrite ability
+       39*   *	provided by the STAC and STACQ instructions.
+       40*   *
+       41*   *	The following entry points are available for setting a lock:
+       42*   *
+       43*   *	  lock$try -
+       44*   *
+       45*   *	    declare lock$try external entry (ptr, fixed bin(35), fixed bin(35), fixed bin(1));
+       46*   *	    call lock$try (lock_ptr, event, code, failsw);
+       47*   *
+       48*   *	  lock$wait -
+       49*   *
+       50*   *	    declare lock$wait external entry (ptr, fixed bin(35), fixed bin(35));
+       51*   *	    call lock$wait (lock_ptr, event, code);
+       52*   *
+       53*   *	  lock$dir_wait -
+       54*   *
+       55*   *	    declare lock$dir_wait external entry (ptr, bit(36) aligned, fixed bin(35));
+       56*   *	    call lock$dir_wait (dp, typelock,  code);
+       57*   *
+       58*   *	  lock$dir_try -
+       59*   *
+       60*   *	    declare lock$dir_try external entry (ptr, bit(36) aligned, fixed bin(35), fixed bin(1));
+       61*   *	    call lock$dir_try (dp, typelock, code, failsw);
+       62*   *
+       63*   *	Where -
+       64*   *	  lock_ptr	     is a pointer to the lock to be set. (Input)
+       65*   *	  dp	     is a pointer to the directory whose lock is to be set. (Input)
+       66*   *	  typelock     = "0"b if locked for read, = "1"b if locked for write. (Input)
+       67*   *	  code	     is a standard error code. (Output)
+       68*   *	  event	     is the event to be waited for if the lock cannot be set. (Input)
+       69*   *	  failsw	     = 0 if lock was set, = 1 if unable to set lock. (Output)
+       70*   *
+       71*   *        lock$dir_lock_(read write) -
+       72*   *           declare lock$dir_lock_(write read) entry (ptr, fixed bin (35));
+       73*   *           call lock$dir_lock_(write read) (dp, code);
+       74*   *
+       75*   *          These entries crash on mylock, and trust dir.uid, and salvage
+       76*   *          the directory under certain circumstances. They do wait for the lock.
+       77*   *
+       78*   *           lock$dir_lock_salvage -
+       79*   *
+       80*   *             declare lock$dir_lock_salvage entry (ptr, bit (36) aligned,
+       81*   *                 fixed bin (35));
+       82*   *             call lock$dir_lock_salvage (dp, uid, code);
+       83*   *
+       84*   *           This SIDE-DOOR for the salvager :
+       85*   *	     1) derives the UID for locking from the kst, not dir.uid.
+       86*   *           2) returns mylock rather than crashing
+       87*   *           3) takes a write lock.
+       88*   *           4) returns the UID used for locking
+       89*   *
+       90*   *
+       91*   *	The following entry points are available for unlocking a lock:
+       92*   *
+       93*   *        lock$dir_unlock_given_uid -
+       94*   *
+       95*   *	    declare lock$dir_unlock_given_uid
+       96*   *                external entry (bit (36) aligned);
+       97*   *	    call lock$dir_unlock_given_uid (dir_uid);
+       98*   *
+       99*   *        This entrypoint is for use when the contents of the directory
+      100*   *         are untrustworthy.  Primarily for the salvager.
+      101*   *
+      102*   *        lock$dir_unlock -
+      103*   *
+      104*   *        declare lock$dir_unlock entry (pointer);
+      105*   *         call lock$dir_unlock (dp);
+      106*   *
+      107*   *        This is the ordinary dir-unlocker.
+      108*
+      109*   *
+      110*   *	  lock$unlock -
+      111*   *
+      112*   *	    declare lock$unlock external entry (ptr, fixed bin(35));
+      113*   *	    call lock$unlock (lock_ptr, event);
+      114*   *
+      115*   *	Where -
+      116*   *	  lock_ptr	     is a pointer to the lock to be unlocked. (Input)
+      117*   *	  dp	     is a pointer to the directory to be unlocked. (Input)
+      118*   *	  event	     is the event to be signalled after resetting the lock. (Input)
+      119*   *
+      120*   *
+      121*   *	Modifications:
+      122*   *	20 Apr 1975, Andre Bensoussan: Rewritten for the new storage system.
+      123*   *	23 Sep 1975, Andre Bensoussan: Move call to caller() from internal proc to beginning of each entry point.
+      124*   *	24 Sep 1975, Andre Bensoussan: dir.modify is no longer reset to 0 by unlock_dir.
+      125*   *	   Also the entry lock$modify_dir has been eliminated.
+      126*   *	   Added new entries for lock_ast and unlock_ast.
+      127*   *	25 Feb 1976, RE Mullen: Added ast lock metering code.
+      128*   *	13 Jul 1978, B. Greenberg: Changed not to DIRW per-process dirs, and clock and stacq bifs.
+      129*   *	13 Feb 1980, M. Grady: fixed race condition with lock_dir and on_line_salvager.
+      130*   *	10 Aug 1981, W. Olin Sibert: changed lock_dir to validate UID in dir header vs. UID in KSTE,
+      131*   *	   changes for external static SST, and, *sigh*, format_pl1'd it.
+      132*   *      21 Nov 1981, J. Bongiovanni for ast lock metering
+      133*          Dec 81/Jan 82, Benson I. Margulies, multiple reader dir locks.
+      134*   *      2/82 BIM for salvager dir sidedoors.
+      135*   *	7 August 1982, J. Bongiovanni, don't stash AST locks in pds$lock_array,
+      136*   *	         meter AST locking conditionally
+      137*   *	Modified 830111 BIM to improve interactions of locking and salvaging.
+      138*   *	13 January 1983, J. Bongiovanni, to fix some races and add a trap
+      139*   *      Modified 830118 BIM to try again to find the race.
+      140*   *      Modified 830817 BIM to use salvage_entry not salvage_sw.
+      141*   *      Modified 831107 BIM to make array of dir locks quick to reference.
+      142*   *      Modified 831110 BIM to revert to heap strategy for dir locks.
+      143*   *	Modified 841102 KPL to fix dirw and to improve its efficiency.
+      144*   */
+      145 
+      146 
+      147 /* format: on */
+      148 
+      149 dcl	prds$processor_tag	ext fixed bin (3);
+      150 dcl	absadr		entry (ptr, fixed bin (35)) returns (fixed bin (26));
+      151 dcl	CPU_NAMES		char (8) aligned internal static options (constant) init ("abcdefgh");
+      152 dcl	a_lock_ptr	pointer parameter;		/* Arguments - pointer to lock */
+      153 dcl	a_dp		pointer parameter;		/* pointer to directory */
+      154 dcl	a_ind		bit (36) aligned parameter;	/* wait event for lock */
+      155 dcl	a_typelock	bit (36) aligned parameter;	/* = "0"b if read lock, = "1"b if write lock */
+      156 dcl	a_code		fixed bin (35) parameter;	/* standard error code */
+      157 dcl	a_failsw		fixed bin (1) parameter;	/* = 1 if try lock failed */
+      158 dcl	a_dir_uid		bit (36) aligned;		/* returned to salvager */
+      159 
+      160 dcl	per_process_flag	bit (1);
+      161 dcl	must_salvage	bit (1) aligned;
+      162 dcl	ind		bit (36) aligned;		/* wait event for lock */
+      163 dcl	caller_ptr	pointer;			/* pointer to where we were called from (+1) */
+      164 dcl	dir_uid		bit (36) aligned;		/* global var set by LOCK_DIR_SALVAGE */
+      165 dcl	code		fixed bin (35);		/* code set by internal procedure LOCK */
+      166 dcl	failsw		fixed bin (1);
+      167 dcl	(time_in, time_out) fixed bin (52);		/* temporaries for ast lock metering */
+      168 
+      169 dcl	seg_fault_error	condition;
+      170 
+      171 dcl	error_table_$mylock fixed bin (35) external static;
+      172 dcl	error_table_$dir_damage
+      173 			fixed bin (35) external static;
+      174 dcl	error_table_$notadir
+      175 			fixed bin (35) ext static;
+      176 
+      177 dcl	sst$ast_locked_at_time
+      178 			fixed bin (71) external static;
+      179 dcl	sst$ast_locked_total_time
+      180 			fixed bin (71) external static;
+      181 dcl	sst$ast_locking_count
+      182 			fixed bin (35) external static;
+      183 dcl	sst$ast_lock_wait_time
+      184 			fixed bin (71) external static;
+      185 dcl	sst$astl		bit (36) aligned external static;
+      186 dcl	sst$dirlock_writebehind
+      187 			fixed bin external static;
+      188 dcl	sst$lock_waits	fixed bin (35) external static;
+      189 dcl	sst$meter_ast_locking
+      190 			fixed bin external static;
+      191 dcl	tc_data$lock_error_severity
+      192 			fixed bin external static;
+      193 
+      194 dcl	pds$block_lock_count
+      195 			fixed bin external static;	/* count of locks set to this process */
+      196 dcl	pds$processid	bit (36) aligned external static;
+      197 dcl	tc_data$system_shutdown
+      198 			fixed bin external static;	/* for determining whether to force the lock */
+      199 
+      200 dcl	caller		entry returns (pointer);	/* returns a pointer to our caller */
+      201 dcl	get_kstep		entry (fixed bin, pointer, fixed bin (35));
+      202 dcl	meter_ast_lock$lock entry;
+      203 dcl	meter_ast_lock$unlock
+      204 			entry;
+      205 dcl	on_line_salvager	entry (pointer, fixed bin (35));
+      206 dcl	pxss$addevent	entry (bit (36) aligned);
+      207 dcl	pxss$delevent	entry (bit (36) aligned);
+      208 dcl	pxss$notify	entry (bit (36) aligned);
+      209 dcl	pxss$wait		entry;
+      210 dcl	syserr		entry options (variable);
+      211 dcl	update_vtoce	entry (pointer);
+      212 
+      213 dcl	(addr, baseno, binary, clock, hbound, max, null, segno, stac, stacq, substr, unspec)
+      214 			builtin;
+      215 
+      216 
+      217 try:
+      218      entry (a_lock_ptr, a_ind, a_code, a_failsw);
+      219 
+      220 	caller_ptr = caller ();
+      221 	call LOCK (a_lock_ptr, a_ind, a_code, a_failsw, 0 /* waitsw */);
+      222 	return;
+      223 
+      224 wait:
+      225      entry (a_lock_ptr, a_ind, a_code);
+      226 
+      227 	caller_ptr = caller ();
+      228 	call LOCK (a_lock_ptr, a_ind, a_code, failsw, 1 /* waitsw */);
+      229 	return;
+      230 
+      231 unlock:
+      232      entry (a_lock_ptr, a_ind);
+      233 
+      234 	caller_ptr = caller ();
+      235 	call UNLOCK (a_lock_ptr, a_ind);
+      236 	return;
+      237 
+      238 
+      239 
+      240 
+      241 lock_fast:
+      242      entry (a_lock_ptr);
+      243 	caller_ptr = caller ();
+      244 	call LOCK_FAST (a_lock_ptr);
+      245 	return;
+      246 
+      247 unlock_fast:
+      248      entry (a_lock_ptr);
+      249 	caller_ptr = caller ();
+      250 	call UNLOCK_FAST (a_lock_ptr);
+      251 	return;
+      252 
+      253 
+      254 lock_ast:
+      255      entry;
+      256 	caller_ptr = caller ();
+      257 	time_in = clock ();
+      258 	call LOCK_FAST (addr (sst$astl));
+      259 	if sst$meter_ast_locking ^= 0
+      260 	then call meter_ast_lock$lock;
+      261 	time_out = clock ();
+      262 	sst$ast_lock_wait_time = sst$ast_lock_wait_time + time_out - time_in;
+      263 	sst$ast_locked_at_time = time_out;
+      264 	sst$ast_locking_count = sst$ast_locking_count + 1;
+      265 	return;
+      266 
+      267 
+      268 unlock_ast:
+      269      entry;
+      270 	caller_ptr = caller ();
+      271 	sst$ast_locked_total_time = sst$ast_locked_total_time - sst$ast_locked_at_time + clock ();
+      272 	if sst$meter_ast_locking ^= 0
+      273 	then call meter_ast_lock$unlock;
+      274 	call UNLOCK_FAST (addr (sst$astl));
+      275 	return;
+      276 
+      277 
+      278 
+      279 dir_wait:
+      280      entry (a_dp, a_typelock, a_code);
+      281 
+      282 	caller_ptr = caller ();
+      283 	call LOCK_DIR (a_dp, a_typelock, a_code, failsw, 1 /* waitsw */);
+      284 
+      285 	return;
+      286 
+      287 dir_try:
+      288      entry (a_dp, a_typelock, a_code, a_failsw);
+      289 
+      290 	caller_ptr = caller ();
+      291 	call LOCK_DIR (a_dp, a_typelock, a_code, a_failsw, 0 /* waitsw */);
+      292 	return;
+      293 
+      294 dir_unlock:
+      295      entry (a_dp);
+      296 
+      297 	caller_ptr = caller ();
+      298 	ind = a_dp -> dir.uid;
+      299 	call UNLOCK_DIR (a_dp, ind);
+      300 	return;
+      301 
+      302 dir_unlock_given_uid:
+      303      entry (a_dir_uid);
+      304 
+      305 	caller_ptr = caller ();
+      306 	ind = a_dir_uid;
+      307 	call UNLOCK_DIR_NOCHECK (null, ind);
+      308 	return;
+      309 
+      310 
+      311 dir_lock_read:
+      312      entry (a_dp, a_code);
+      313 
+      314 	caller_ptr = caller ();
+      315 	call LOCK_DIR (a_dp, (36)"0"b, a_code, failsw, 1 /* waitsw */);
+      316 	if a_code = error_table_$mylock
+      317 	then call syserr (CRASH, "lock: dir_lock_read mylock err. dp =^p", a_dp);
+      318 	return;
+      319 
+      320 dir_lock_write:
+      321      entry (a_dp, a_code);
+      322 
+      323 	caller_ptr = caller ();
+      324 	call LOCK_DIR (a_dp, (36)"1"b, a_code, failsw, 1 /* waitsw */);
+      325 	if a_code = error_table_$mylock
+      326 	then call syserr (CRASH, "lock: dir_lock_write mylock err. dp =^p", a_dp);
+      327 	return;
+      328 
+      329 dir_lock_salvage:
+      330      entry (a_dp, a_dir_uid, a_code);
+      331 
+      332 	caller_ptr = caller ();
+      333 	dir_uid = ""b;
+      334 	call LOCK_DIR_SALVAGE (a_dp, (36)"1"b, a_code, failsw, 1 /* waitsw */);
+      335 						/* Always locks for write */
+      336 	a_dir_uid = dir_uid;
+      337 	return;
+      338 
+      339 
+      340 
+      341 LOCK:
+      342      procedure (lock_ptr, ind, code, failsw, waitsw);
+      343 
+      344 dcl	lock_ptr		ptr,
+      345 	ind		bit (36) aligned,
+      346 	code		fixed bin (35),
+      347 	failsw		fixed bin (1),
+      348 	waitsw		fixed bin (1);
+      349 
+      350 dcl	lwd		bit (36) aligned based (lock_ptr);
+      351 
+      352 	code = 0;
+      353 	failsw = 0;
+      354 
+      355 	if tc_data$system_shutdown ^= 0
+      356 	then return;
+      357 
+      358 	if lwd = pds$processid
+      359 	then do;
+      360 		code = error_table_$mylock;
+      361 		goto POST;
+      362 	     end;
+      363 
+      364 	pds$block_lock_count = pds$block_lock_count + 1;
+      365 
+      366 	do while (^stac (lock_ptr, pds$processid));
+      367 	     if waitsw = 0
+      368 	     then do;
+      369 		     failsw = 1;
+      370 		     pds$block_lock_count = pds$block_lock_count - 1;
+      371 		     goto POST;
+      372 		end;
+      373 
+      374 	     call pxss$addevent (ind);
+      375 
+      376 	     if lwd = "0"b
+      377 	     then call pxss$delevent (ind);
+      378 	     else do;
+      379 		     call pxss$wait;
+      380 		     sst$lock_waits = sst$lock_waits + 1;
+      381 		end;
+      382 	end;
+      383 
+      384 POST:
+      385 	return;
+      386 
+      387      end LOCK;
+      388 
+      389 
+      390 
+      391 UNLOCK:
+      392      procedure (lock_ptr, ind);
+      393 
+      394 dcl	lock_ptr		ptr,
+      395 	lwd		bit (36) aligned based (lock_ptr),
+      396 	ind		bit (36) aligned;
+      397 
+      398 
+      399 
+      400 	code = 0;
+      401 	failsw = 0;
+      402 
+      403 	if tc_data$system_shutdown ^= 0
+      404 	then return;				/* system shutdown ? */
+      405 
+      406 
+      407 	if pds$block_lock_count <= 0
+      408 	then do;
+      409 		call syserr (tc_data$lock_error_severity, "lock: pds$block_lock_count <= 0. caller = ^p.", caller ());
+      410 		pds$block_lock_count = 0;
+      411 	     end;
+      412 
+      413 	if ^stacq (lwd, "000000000000"b3, pds$processid)
+      414 	then do;
+      415 		call syserr (tc_data$lock_error_severity, "lock: lock ^p not equal to processid. caller = ^p",
+      416 		     addr (lwd), caller ());
+      417 		goto FORGET_RETURN;
+      418 	     end;
+      419 
+      420 	if lwd = pds$processid			/* Always crash if the hardware craps */
+      421 	then call syserr (CRASH, "lock: stacq hardware failure on ^p", lock_ptr);
+      422 	call pxss$notify (ind);			/* tell the world */
+      423 
+      424 FORGET_RETURN:
+      425 	pds$block_lock_count = pds$block_lock_count - 1;
+      426 
+      427 	return;
+      428 
+      429      end UNLOCK;
+      430 
+      431 
+      432 
+      433 LOCK_FAST:
+      434      proc (lock_ptr);
+      435 
+      436 
+  1     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  1     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  1     3*   encourages name conflicts.
+  1     4*   USE HC_FAST_LOCK INSTEAD!
+  1     5**/
+  1     6 
+  1     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  1     8 
+  1     9 /* format: style3 */
+  1    10 
+  1    11 declare	lock_ptr		pointer;
+  1    12 declare	1 lock		aligned based (lock_ptr),
+  1    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  1    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  1    15 	  2 flags		aligned,
+  1    16 	    3 notify_sw	bit (1) unaligned,
+  1    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  1    18 
+  1    19 /* End include file hc_lock.incl.pl1 */
+      437 
+      438 /* the ptr in here becomes a parameter */
+      439 
+      440 	if tc_data$system_shutdown ^= 0
+      441 	then return;
+      442 
+      443 	do while (^stac (addr (lock.pid), pds$processid));
+      444 	     if lock.pid = pds$processid
+      445 	     then call syserr (CRASH, "lock: lock_fast mylock err ^p", lock_ptr);
+      446 	     lock.notify_sw = "1"b;
+      447 	     call pxss$addevent (lock.event);
+      448 	     if (lock.pid ^= "0"b & lock.notify_sw = "1"b)
+      449 	     then call pxss$wait;
+      450 	     else call pxss$delevent (lock.event);
+      451 	end;
+      452 
+      453 	pds$block_lock_count = pds$block_lock_count + 1;
+      454 	return;
+      455 
+      456      end LOCK_FAST;
+      457 
+      458 
+      459 
+      460 UNLOCK_FAST:
+      461      proc (lock_ptr);
+      462 
+  2     1 /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  2     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  2     3*   encourages name conflicts.
+  2     4*   USE HC_FAST_LOCK INSTEAD!
+  2     5**/
+  2     6 
+  2     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  2     8 
+  2     9 /* format: style3 */
+  2    10 
+  2    11 declare	lock_ptr		pointer;
+  2    12 declare	1 lock		aligned based (lock_ptr),
+  2    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  2    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  2    15 	  2 flags		aligned,
+  2    16 	    3 notify_sw	bit (1) unaligned,
+  2    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  2    18 
+  2    19 /* End include file hc_lock.incl.pl1 */
+      463 
+      464 /* the ptr in here becomes the parameter */
+      465 
+      466 
+      467 	if tc_data$system_shutdown ^= 0
+      468 	then return;
+      469 
+      470 	if ^stacq (lock.pid, "000000000000"b3, pds$processid)
+      471 	then do;
+      472 		call syserr (tc_data$lock_error_severity,
+      473 		     "lock: unlock_fast lock ^p not locked to process. caller = ^p.", lock_ptr, caller ());
+      474 		return;
+      475 	     end;
+      476 	if lock.pid = pds$processid
+      477 	then call syserr (CRASH, "lock: stacq hardware failure on ^p", lock_ptr);
+      478 
+      479 	if lock.notify_sw
+      480 	then do;
+      481 		lock.notify_sw = "0"b;
+      482 		call pxss$notify (lock.event);
+      483 	     end;
+      484 	pds$block_lock_count = pds$block_lock_count - 1;
+      485 	return;
+      486 
+      487      end UNLOCK_FAST;
+      488 
+      489 
+      490 
+      491 LOCK_DIR:
+      492      procedure (dirp, typelock, code, failsw, waitsw);
+      493 
+      494 dcl	dirp		ptr;
+      495 dcl	typelock		bit (36) aligned;
+      496 dcl	code		fixed bin (35);
+      497 dcl	failsw		fixed bin (1);
+      498 dcl	waitsw		fixed bin (1);
+      499 
+      500 dcl	get_kstep_code	fixed bin (35);
+      501 dcl	salvage_entry	bit (1) aligned;
+      502 dcl	severity		fixed bin;
+      503 dcl	uid_to_lock	bit (36) aligned;
+      504 dcl	dir_lockx		fixed bin;
+      505 
+      506 	salvage_entry = "0"b;
+      507 	go to LOCK_START;
+      508 
+      509 LOCK_DIR_SALVAGE:
+      510      entry (dirp, typelock, code, failsw, waitsw);
+      511 
+      512 	salvage_entry = "1"b;
+      513 
+      514 LOCK_START:
+      515 	code = 0;
+      516 	failsw = 0;
+      517 
+      518 	if tc_data$system_shutdown ^= 0
+      519 	then return;
+      520 
+      521 	dir_lock_segp = addr (dir_lock_seg$);
+      522 	dir_lock_all_locksp = dir_lock_seg.header.locks_ptr;
+      523 	dir_lock_all_readersp = dir_lock_seg.header.readers_ptr;
+      524 
+      525 	call get_kstep (segno (dirp), kstep, get_kstep_code);
+      526 						/* The code is nonzero for fake dirs -- */
+      527 						/* happens if dirp is a hardcore segment (stack_0) */
+      528 	if salvage_entry
+      529 	then do;
+      530 		if get_kstep_code ^= 0		/* needed for salvaging */
+      531 		then do;
+      532 			code = get_kstep_code;
+      533 			return;
+      534 		     end;
+      535 		if ^kste.dirsw
+      536 		then do;				/* Not a dir? */
+      537 			code = error_table_$notadir;
+      538 			return;
+      539 		     end;
+      540 		dir_uid = kste.uid;
+      541 	     end;
+      542 
+      543 RELOCK:
+      544 	if salvage_entry
+      545 	then uid_to_lock = dir_uid;			/* The REAL uid, rather than what was recorded inside the dir */
+      546 	else uid_to_lock = dirp -> dir.uid;		/* let a seg_fault happen here */
+      547 
+      548 
+      549 /****
+      550*Here, we make sure that the UID in the directory matches the UID in the
+      551*kste, which, perforce, must have been derived from the branch at some time in
+      552*the past.  This check is skipped, however, if we find that the "directory" is
+      553*actually in a non-directory segment, since the supervisor occasionally
+      554*constructs imitation directory headers in automatic storage just so it can
+      555*lock with the right UID.  If the UID's fail to match, then the dir is 
+      556*salvaged. If we are called from the salvager, though, we skip all this.
+      557******/
+      558 
+      559 	if ^salvage_entry
+      560 	then do;
+      561 		must_salvage = "0"b;
+      562 		if (dirp -> dir.uid = ""b)		/* Cannot be correct */
+      563 		then must_salvage = "1"b;
+      564 		else if (get_kstep_code = 0)
+      565 		then /* means segno is valid, and hence kstep is valid */
+      566 		     if kste.dirsw
+      567 		     then /* only check directories */
+      568 			if (dirp -> dir.uid ^= kste.uid)
+      569 			then must_salvage = "1"b;
+      570 
+      571 		if must_salvage			/* Flunked the test */
+      572 		then do;				/* Neither the dir not dir_lock_seg is locked
+      573*here */
+      574 			call LOCK_FOR_SALVAGE_AND_SALVAGE (dirp, code);
+      575 						/* they will be locked and unlocked here. */
+      576 			if code = 0 & dirp -> dir.uid ^= ""b
+      577 			then go to RELOCK;		/* Dir is still valid */
+      578 			code = error_table_$dir_damage;
+      579 						/* dir went west */
+      580 			return;
+      581 		     end;				/** salvage case */
+      582 	     end;
+      583 
+      584 /************************ LOCK DIR LOCK SEG *********************************/
+      585 
+      586 
+      587 	call LOCK_FAST (dir_lock_segp);
+      588 
+      589 	dir_lockx = FIND_OR_MAKE_DIR_LOCK (uid_to_lock);
+      590 	dir_lockp = addr (dir_lock_all_dir_locks (dir_lockx));
+      591 
+      592 	call VALIDATE_CACHE (addr (dir_lock.lock_count)); /* ensure cache is correct */
+      593 
+      594 	if dir_lock.lock_count > 0
+      595 	then do;					/** Write Lock Locked */
+      596 		if dir_lock.write_locker ^= pds$processid
+      597 						/* Not Us */
+      598 		then go to LOCK_NOT_AVAILABLE;	/* common to read vs. write and write vs. write. */
+      599 		else go to MYLOCK_RETURN;
+      600 	     end;
+      601 	else do;					/* Read or no lock */
+      602 		dir_read_lockers_ptr = addr (dir_lock_all_readers (dir_lockx, 1));
+      603 		if THIS_PROCESS_IS_A_READER (dir_lockp, dir_read_lockers_ptr)
+      604 						/* some kind of mylock */
+      605 		then do;				/* we do not know a recovery mechanism for this one. */
+      606 			if typelock ^= ""b		/* We want write */
+      607 			then do;
+      608 				severity = tc_data$lock_error_severity;
+      609 				if severity ^= CRASH
+      610 				then severity = TERMINATE_PROCESS;
+      611 
+      612 				call syserr (severity,
+      613 				     "lock: LOCK_DIR: write lock call with read lock held. dp = ^p, uid = ^w.",
+      614 				     dirp, uid_to_lock);
+      615 			     end;			/* Control never passes here */
+      616 			else go to MYLOCK_RETURN;	/* simple read mylock */
+      617 		     end;
+      618 
+      619 		if /* tree */ typelock ^= ""b		/* want write ? */
+      620 		then if dir_lock.lock_count ^= 0	/* locked for read */
+      621 		     then goto LOCK_NOT_AVAILABLE;	/* wait for it */
+      622 		     else call LOCK_FOR_WRITE (dir_lockp);
+      623 		else call ADD_THIS_PROCESS_AS_READER (dir_lockp, dir_read_lockers_ptr);
+      624 						/* no, want read */
+      625 	     end;
+      626 
+      627 /******* UNLOCK DIR LOCK SEG *********************************************/
+      628 
+      629 
+      630 
+      631 UNLOCK_DIR_LOCK_SEG_RETURN:
+      632 	call UNLOCK_FAST (dir_lock_segp);
+      633 
+      634 	if ^salvage_entry
+      635 	then if dirp -> dir.modify
+      636 	     then if code = 0
+      637 		then do;
+      638 			call dir_unlock (dirp);
+      639 			call LOCK_FOR_SALVAGE_AND_SALVAGE (dirp, code);
+      640 			if code = 0
+      641 			then go to RELOCK;
+      642 		     end;
+      643 	return;
+      644 
+      645 /****** The following paths return to UNLOCK_DIR_LOCK_SEG_RETURN *****/
+      646 
+      647 
+      648 MYLOCK_RETURN:
+      649 	code = error_table_$mylock;
+      650 	go to UNLOCK_DIR_LOCK_SEG_RETURN;
+      651 
+      652 
+      653 LOCK_NOT_AVAILABLE:
+      654 	if waitsw = 0
+      655 	then do;
+      656 		failsw = 1;
+      657 		go to UNLOCK_DIR_LOCK_SEG_RETURN;
+      658 	     end;
+      659 
+      660 /********** Waiting is required, wait. */
+      661 
+      662 	call pxss$addevent (uid_to_lock);
+      663 	dir_lock.notify_sw = "1"b;
+      664 	call UNLOCK_FAST (dir_lock_segp);
+      665 	call pxss$wait;				/* since we set notify under the lock, there is no race. */
+      666 	sst$lock_waits = sst$lock_waits + 1;
+      667 	goto LOCK_START;				/* Anything can happen, so revalidate */
+      668 
+      669 
+      670 THIS_PROCESS_IS_A_READER:
+      671      procedure (a_dir_lockp, a_dir_readersp) returns (bit (1) aligned);
+      672 
+      673 declare	a_dir_lockp	pointer;
+      674 declare	a_dir_readersp	pointer;
+      675 declare	l_dir_readersp	pointer;
+      676 declare	l_dir_readers	(dir_lock_seg.header.max_readers) bit (36) aligned based (l_dir_readersp);
+      677 declare	rx		fixed bin;		/* ReaderIndex */
+      678 
+      679 
+      680 	if a_dir_lockp -> dir_lock.lock_count = 0
+      681 	then return ("0"b);
+      682 	l_dir_readersp = a_dir_readersp;
+      683 	do rx = 1 to dir_lock_seg.header.max_readers;
+      684 	     if l_dir_readers (rx) = pds$processid
+      685 	     then return ("1"b);
+      686 	end;
+      687 	return ("0"b);
+      688      end THIS_PROCESS_IS_A_READER;
+      689 
+      690 
+      691 FIND_OR_MAKE_DIR_LOCK:
+      692      procedure (a_UID) returns (fixed bin);
+      693 
+      694 declare	a_UID		bit (36) aligned;
+      695 declare	UID		bit (36) aligned;
+      696 declare	dx		fixed bin;
+      697 declare	first_free_dx	fixed bin;
+      698 declare	l_dir_lockp	pointer;
+      699 declare	1 l_dir_lock	aligned like dir_lock based (l_dir_lockp);
+      700 declare	l_dir_readersp	pointer;
+      701 declare	find_only		bit (1) aligned;
+      702 
+      703 	find_only = "0"b;
+      704 	go to Join;
+      705 
+      706 FIND_DIR_LOCK:
+      707      entry (a_UID) returns (fixed bin);
+      708 
+      709 	find_only = "1"b;
+      710 
+      711 Join:
+      712 	UID = a_UID;
+      713 	first_free_dx = 0;
+      714 	dir_lock_seg.header.meters.find_calls = dir_lock_seg.header.find_calls + 1;
+      715 
+      716 	call VALIDATE_CACHE (addr (dir_lock_seg.header.highest_in_use));
+      717 						/* ensure cache is correct */
+      718 	do dx = 1 to dir_lock_seg.header.highest_in_use;
+      719 	     if dir_lock_all_dir_locks (dx).uid = UID
+      720 	     then go to FOUND_ENTRY;
+      721 	     else if dir_lock_all_dir_locks (dx).uid = (36)"0"b & first_free_dx = 0
+      722 	     then first_free_dx = dx;
+      723 	end;
+      724 
+      725 	dir_lock_seg.header.meters.find_failures = dir_lock_seg.header.meters.find_failures + 1;
+      726 	if find_only
+      727 	then return (-1);
+      728 
+      729 
+      730 	if first_free_dx = 0
+      731 	then do;
+      732 		if dir_lock_seg.header.highest_in_use = dir_lock_seg.header.n_dir_locks
+      733 		then call syserr (CRASH, "lock: LOCK_DIR: dir_lock_seg full.");
+      734 		dir_lock_seg.header.highest_in_use, first_free_dx = dir_lock_seg.header.highest_in_use + 1;
+      735 		dir_lock_seg.header.meters.max_in_use = max (dir_lock_seg.header.meters.max_in_use, first_free_dx);
+      736 	     end;
+      737 
+      738 	l_dir_lockp = addr (dir_lock_all_dir_locks (first_free_dx));
+      739 	unspec (l_dir_lock) = ""b;
+      740 	l_dir_readersp = addr (dir_lock_seg.readers (first_free_dx, 1));
+      741 	l_dir_readersp -> dir_read_lockers (*) = ""b;
+      742 
+      743 	l_dir_lock.uid = a_UID;
+      744 	return (first_free_dx);
+      745 
+      746 FOUND_ENTRY:
+      747 	l_dir_lockp = addr (dir_lock_all_dir_locks (dx));
+      748 	return (dx);
+      749      end FIND_OR_MAKE_DIR_LOCK;
+      750 
+      751 LOCK_FOR_WRITE:
+      752      procedure (a_dir_lockp);
+      753 
+      754 declare	a_dir_lockp	pointer;
+      755 declare	l_dir_lockp	pointer;
+      756 declare	1 l_dir_lock	aligned like dir_lock based (l_dir_lockp);
+      757 declare	rx		fixed bin;
+      758 
+      759 	l_dir_lockp = a_dir_lockp;
+      760 	l_dir_lock.write_locker = pds$processid;
+      761 	l_dir_lock.lock_count = 1;
+      762 	l_dir_lock.notify_sw = "0"b;
+      763 	l_dir_lock.salvage_sw = salvage_entry;		/* GLOBAL */
+      764 	pds$block_lock_count = pds$block_lock_count + 1;
+      765 	return;
+      766 
+      767 ADD_THIS_PROCESS_AS_READER:
+      768      entry (a_dir_lockp, a_dir_readersp);
+      769 
+      770 declare	a_dir_readersp	pointer;
+      771 declare	l_dir_readersp	pointer;
+      772 declare	l_dir_readers	(dir_lock_seg.header.max_readers) bit (36) aligned based (l_dir_readersp);
+      773 
+      774 	l_dir_lockp = a_dir_lockp;
+      775 	l_dir_readersp = a_dir_readersp;
+      776 	do rx = 1 to hbound (l_dir_readers, 1) while (l_dir_readers (rx) ^= ""b);
+      777 	end;
+      778 	if rx > hbound (l_dir_readers, 1)
+      779 	then call syserr (CRASH, "lock: LOCK_DIR: Too many readers.");
+      780 
+      781 	call VALIDATE_CACHE (addr (l_dir_lock.lock_count));
+      782 						/* ensure cache is correct */
+      783 	l_dir_lock.lock_count = l_dir_lock.lock_count - 1;
+      784 	l_dir_readers (rx) = pds$processid;
+      785 	pds$block_lock_count = pds$block_lock_count + 1;
+      786 	return;
+      787 
+      788 UNLOCK_THIS_DIR:
+      789      entry (a_dir_lockx, a_uid);			/* Checks for screwups */
+      790 
+      791 declare	a_dir_lockx	fixed bin;
+      792 declare	a_uid		bit (36) aligned;
+      793 
+      794 	l_dir_lockp = addr (dir_lock_all_dir_locks (a_dir_lockx));
+      795 	l_dir_readersp = addr (dir_lock_all_readers (a_dir_lockx, 1));
+      796 	if l_dir_lock.uid ^= a_uid
+      797 	then do;
+      798 		call syserr (tc_data$lock_error_severity, "lock: UNLOCK_DIR: UID Mismatch.");
+      799 		return;
+      800 	     end;
+      801 
+      802 	call VALIDATE_CACHE (addr (l_dir_lock.lock_count));
+      803 						/* ensure cache is correct */
+      804 	if l_dir_lock.lock_count = 0
+      805 	then do;
+      806 		call syserr (tc_data$lock_error_severity, "lock: UNLOCK_DIR: lock count 0.");
+      807 		return;
+      808 	     end;
+      809 	else if l_dir_lock.lock_count < 0
+      810 	then do;
+      811 		do rx = 1 to hbound (l_dir_readers, 1) while (l_dir_readers (rx) ^= pds$processid);
+      812 		end;
+      813 		if rx > hbound (l_dir_readers, 1)
+      814 		then do;
+      815 			call syserr (tc_data$lock_error_severity,
+      816 			     "lock: UNLOCK_DIR: lock not read locked to process.");
+      817 			return;
+      818 		     end;
+      819 		l_dir_lock.lock_count = l_dir_lock.lock_count + 1;
+      820 		l_dir_readers (rx) = ""b;
+      821 		if l_dir_lock.notify_sw
+      822 		then if l_dir_lock.lock_count = 0
+      823 		     then do;
+      824 			     l_dir_lock.notify_sw = "0"b;
+      825 			     call pxss$notify (l_dir_lock.uid);
+      826 			end;
+      827 	     end;
+      828 	else if l_dir_lock.lock_count > 0
+      829 	then do;
+      830 		if l_dir_lock.write_locker ^= pds$processid
+      831 		then do;
+      832 			call syserr (tc_data$lock_error_severity,
+      833 			     "lock: UNLOCK_DIR: lock not write locked to process.");
+      834 			return;
+      835 		     end;
+      836 		l_dir_lock.lock_count = 0;
+      837 		l_dir_lock.write_locker = ""b;
+      838 		if l_dir_lock.notify_sw
+      839 		then do;
+      840 			l_dir_lock.notify_sw = "0"b;
+      841 			call pxss$notify (l_dir_lock.uid);
+      842 		     end;
+      843 	     end;
+      844 	pds$block_lock_count = pds$block_lock_count - 1;
+      845 	if (l_dir_lock.lock_count = 0) & (l_dir_lock.uid ^= (36)"1"b)
+      846 						/* leave the root at a nice low slot */
+      847 	then do;
+      848 		unspec (l_dir_lock) = ""b;
+      849 
+      850 		call VALIDATE_CACHE (addr (dir_lock_seg.header.highest_in_use));
+      851 						/* ensure cache is correct */
+      852 		if a_dir_lockx = dir_lock_seg.header.highest_in_use
+      853 		then dir_lock_seg.header.highest_in_use = max (0, dir_lock_seg.header.highest_in_use - 1);
+      854 						/* last one out please close the light */
+      855 	     end;
+      856 
+      857 	return;
+      858      end LOCK_FOR_WRITE;
+      859 
+      860 LOCK_FOR_SALVAGE_AND_SALVAGE:
+      861      procedure (dir_ptr, code);
+      862 declare	dir_ptr		pointer;
+      863 declare	correct_uid	bit (36) aligned;
+      864 declare	code		fixed bin (35);
+      865 
+      866 	code = 0;
+      867 	call dir_lock_salvage (dir_ptr, correct_uid, code);
+      868 	if code ^= 0
+      869 	then return;
+      870 
+      871 	call on_line_salvager (dir_ptr, code);
+      872 	call dir_unlock_given_uid (correct_uid);
+      873 
+      874 	return;
+      875      end LOCK_FOR_SALVAGE_AND_SALVAGE;
+      876 
+      877 
+      878 
+      879 UNLOCK_DIR:
+      880      entry (dirp, a_uid);
+      881 
+      882 dcl	a_uid		bit (36) aligned;
+      883 
+      884 dcl	uid_to_unlock	bit (36) aligned;
+      885 dcl	nocheck_entry	bit (1);
+      886 
+      887 dcl	get_ptrs_$given_segno
+      888 			entry (fixed bin) returns (ptr);
+      889 dcl	pc_wired$write_wait_uid
+      890 			entry (ptr, fixed bin, fixed bin, bit (36) aligned);
+      891 
+      892 
+      893 	nocheck_entry = "0"b;
+      894 	go to UNLOCK_START;
+      895 
+      896 UNLOCK_DIR_NOCHECK:
+      897      entry (dirp, a_uid);
+      898 
+      899 	nocheck_entry = "1"b;
+      900 
+      901 UNLOCK_START:
+      902 	uid_to_unlock = a_uid;
+      903 	if tc_data$system_shutdown ^= 0
+      904 	then return;
+      905 
+      906 	dir_lock_segp = addr (dir_lock_seg$);
+      907 	dir_lock_all_locksp = dir_lock_seg.header.locks_ptr;
+      908 	dir_lock_all_readersp = dir_lock_seg.header.readers_ptr;
+      909 
+      910 	per_process_flag = "0"b;
+      911 
+      912 	if dirp ^= null & ^nocheck_entry
+      913 	then begin;
+      914 
+      915 		on seg_fault_error go to DIR_GONE;
+      916 
+      917 		if dirp -> dir.modify
+      918 		then call syserr (JUST_LOG, "lock: unlock_dir with dir.modify - uid = ^w - callerp = ^p", ind,
+      919 			caller ());
+      920 		per_process_flag = dirp -> dir.per_process_sw;
+      921 						/* Save for unlocking */
+      922 	     end;
+      923 
+      924 DIR_GONE:
+      925 	call LOCK_FAST (dir_lock_segp);
+      926 
+      927 	dir_lockx = FIND_DIR_LOCK (uid_to_unlock);
+      928 
+      929 	if dir_lockx = -1
+      930 	then call TRY_TO_FIND_A_BETTER_UID;		/* This can change dir_lockx */
+      931 						/* and uid_to_unlock */
+      932 	if dir_lockx = -1
+      933 	then do;
+      934 		call syserr (tc_data$lock_error_severity, "lock: UNLOCK_DIR: dir ^w not locked. caller = ^p.", ind,
+      935 		     caller ());
+      936 		go to UNLOCK_SIDE_RETURN;
+      937 	     end;
+      938 
+      939 	call PERHAPS_WRITE_BEHIND (dir_lockx);
+      940 
+      941 	call UNLOCK_THIS_DIR (dir_lockx, uid_to_unlock);
+      942 
+      943 UNLOCK_SIDE_RETURN:
+      944 	call UNLOCK_FAST (dir_lock_segp);
+      945 	return;
+      946 
+      947 
+      948 
+      949 
+      950 TRY_TO_FIND_A_BETTER_UID:
+      951      procedure;
+      952 
+      953 	if dirp = null ()
+      954 	then return;
+      955 
+      956 	call get_kstep (binary (baseno (dirp)), kstep, get_kstep_code);
+      957 	if ^(get_kstep_code = 0 & kste.dirsw & kste.uid ^= uid_to_unlock)
+      958 	then return;
+      959 
+      960 	uid_to_unlock = kste.uid;
+      961 	dir_lockx = FIND_DIR_LOCK (uid_to_unlock);
+      962 
+      963 	call VALIDATE_CACHE (addr (dir_lock_all_dir_locks (dir_lockx).lock_count));
+      964 						/* ensure cache is correct */
+      965 	if dir_lock_all_dir_locks (dir_lockx).lock_count = 0
+      966 	then do;
+      967 		dir_lockx = -1;
+      968 		return;
+      969 	     end;
+      970 
+      971 	call syserr (JUST_LOG, "lock: UNLOCK_DIR: dir ^w unlock called with bad uid, caller = ^p", ind, caller ());
+      972      end TRY_TO_FIND_A_BETTER_UID;
+      973 
+      974 
+      975 PERHAPS_WRITE_BEHIND:
+      976      procedure (dirx);
+      977 
+      978 declare	dirx		fixed bin;
+      979 
+      980 	if dirp = null ()
+      981 	then return;
+      982 
+      983 	if sst$astl = pds$processid
+      984 	then call syserr (CRASH, "lock: AST lock set at dir unlock time.");
+      985 
+      986 	if sst$dirlock_writebehind = 0 | per_process_flag
+      987 	then return;
+      988 
+      989 	call VALIDATE_CACHE (addr (dir_lock_all_dir_locks (dirx).lock_count));
+      990 						/* ensure cache is correct */
+      991 	if dir_lock_all_dir_locks (dirx).lock_count < 0
+      992 	then return;
+      993 
+      994 	astep = get_ptrs_$given_segno (segno (dirp));
+      995 	if astep ^= null
+      996 	then do;					/* Writebehind time. */
+      997 		call UNLOCK_FAST (dir_lock_segp);	/* force write not under dir_lock_seg lock */
+      998 
+      999 		call pc_wired$write_wait_uid (astep, 0, -1, uid_to_unlock);
+     1000 		if aste.fmchanged
+     1001 		then do;				/* Cant be OFF fraudulently */
+     1002 			call lock_ast;
+     1003 			if aste.uid = uid_to_unlock
+     1004 			then call update_vtoce (astep);
+     1005 			call unlock_ast;
+     1006 		     end;
+     1007 
+     1008 		call LOCK_FAST (dir_lock_segp);	/* UNLOCK_THIS_DIR will make sure that dir_lockx still describes uid_to_unlock */
+     1009 	     end;
+     1010 
+     1011      end PERHAPS_WRITE_BEHIND;
+     1012      end LOCK_DIR;
+     1013 
+     1014 VALIDATE_CACHE:
+     1015      proc (word_ptr);
+     1016 dcl	word		based (word_ptr) bit (36) aligned;
+     1017 dcl	word_ptr		ptr;
+     1018 
+     1019 	if ^stacq (word, word, word)			/* ensure cache is correct */
+     1020 	then call syserr (ANNOUNCE, "lock: VALIDATE_CACHE: FAILED running on cpu ^a, memory address ^8o (oct)",
+     1021 		substr (CPU_NAMES, (prds$processor_tag + 1), 1), absadr (word_ptr, (0)));
+     1022 
+     1023      end VALIDATE_CACHE;
+     1024 
+     1025 /* format: off */
+     1026  /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  3     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  3     3*   encourages name conflicts.
+  3     4*   USE HC_FAST_LOCK INSTEAD!
+  3     5**/
+  3     6 
+  3     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  3     8 
+  3     9 /* format: style3 */
+  3    10 
+  3    11 declare	lock_ptr		pointer;
+  3    12 declare	1 lock		aligned based (lock_ptr),
+  3    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  3    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  3    15 	  2 flags		aligned,
+  3    16 	    3 notify_sw	bit (1) unaligned,
+  3    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  3    18 
+  3    19 /* End include file hc_lock.incl.pl1 */
+     1026 
+     1027  /* Begin include file dir_lock_seg_.incl.pl1 BIM 830312 */
+  4     2 /* From dirlockt.incl.pl1 */
+  4     3 
+  4     4 /* format: style3,idind25,indcomtxt */
+  4     5 
+  4     6 /**** Several arrays in this program are zero based. The zero-th
+  4     7*      entries are NEVER USED. referencers should start at 1, not lbound.
+  4     8*      The zero entries are there to improve the compiler's subscript
+  4     9*      calculations. The compiler can fetch dir_lock_all_dir_locks (foo).uid
+  4    10*      with an lda pr6|FOO,*ql */
+  4    11 
+  4    12 dcl	dir_lock_seg$	     external static;	/* name of the segment containing the directory locks */
+  4    13 
+  4    14 dcl	dir_lock_segp	     pointer;		/* pointer to the dirlock table */
+  4    15 
+  4    16 dcl	1 dir_lock_seg	     based (dir_lock_segp) aligned,
+  4    17 	  2 header	     aligned like dir_lock_seg_header,
+  4    18 	  2 dir_locks	     (0:dir_lock_seg.header.n_dir_locks) aligned like dir_lock,
+  4    19 	  2 readers	     (0:dir_lock_seg.header.n_dir_locks, dir_lock_seg.header.max_readers) bit (36) aligned;
+  4    20 
+  4    21 declare	(dir_lock_all_locksp, dir_lock_all_readersp)
+  4    22 			     pointer;
+  4    23 
+  4    24 declare	1 dir_lock_all_dir_locks (0:dir_lock_seg.header.n_dir_locks) aligned like dir_lock based (dir_lock_all_locksp);
+  4    25 declare	dir_lock_all_readers     (0:dir_lock_seg.header.n_dir_locks, dir_lock_seg.header.max_readers) bit (36)
+  4    26 			     aligned based (dir_lock_all_readersp);
+  4    27 
+  4    28 declare	DIR_LOCK_SEG_EVENT	     char (4) aligned init ("drls") int static options (constant);
+  4    29 
+  4    30 declare	1 dir_lock_seg_header    aligned based,
+  4    31 	  2 seg_lock	     aligned like lock,
+  4    32 	  2 n_dir_locks	     fixed bin,		/* max number */
+  4    33 	  2 highest_in_use	     fixed bin,
+  4    34 	  2 max_readers	     fixed bin,
+  4    35 	  2 pad_even	     bit (36) aligned,
+  4    36 	  2 readers_ptr	     pointer,
+  4    37 	  2 locks_ptr	     pointer,
+  4    38 	  2 meters	     aligned,
+  4    39 	    3 find_calls	     fixed bin (35),
+  4    40 	    3 find_failures	     fixed bin (35),
+  4    41 	    3 max_in_use	     fixed bin (35),
+  4    42 	    3 pad_meters	     fixed bin (35),
+  4    43 	  2 pad		     (16) bit (36) aligned;	/* to 32 */
+  4    44 
+  4    45 declare	dir_lockp		     pointer;
+  4    46 declare	1 dir_lock	     aligned based (dir_lockp),
+  4    47 	  2 uid		     bit (36) aligned,
+  4    48 	  2 flags		     aligned,
+  4    49 	    3 notify_sw	     bit (1) unaligned,
+  4    50 	    3 salvage_sw	     bit (1) unaligned,	/* ON if dir was locked for salvage */
+  4    51 	    3 pad		     bit (34) unaligned,
+  4    52 	  2 lock_count	     fixed bin (17),	/* POSITIVE --> write_lock */
+  4    53 						/* NEGATIVE --> -number of lockers */
+  4    54 						/* ZERO --> not locked */
+  4    55 	  2 write_locker	     bit (36) aligned;	/* in case of read, see next declaration, and expect this 0 */
+  4    56 
+  4    57 declare	dir_read_lockers_ptr     pointer;
+  4    58 declare	dir_read_lockers	     (dir_lock_seg.header.max_readers) bit (36) aligned based (dir_read_lockers_ptr);
+  4    59 
+  4    60 /* End include file dir_lock_seg_.incl.pl1 */
+     1027 
+     1028  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  5     2 
+  5     3 /* Template for an AST entry. Length = 12 words. */
+  5     4 
+  5     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  5     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  5     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  5     8 
+  5     9 dcl  astep ptr;
+  5    10 
+  5    11 dcl 1 aste based (astep) aligned,
+  5    12 
+  5    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  5    14     2 bp bit (18),					/* backward used list rel pointer */
+  5    15 
+  5    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  5    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  5    18 
+  5    19     2 strp bit (18),				/* rel pointer to process trailer */
+  5    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  5    21 
+  5    22     2 uid bit (36),					/* segment unique id */
+  5    23 
+  5    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  5    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  5    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  5    27 
+  5    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  5    29     2 init bit (1),					/* used bit - insure 1 lap */
+  5    30     2 gtus bit (1),					/* global transparent usage switch */
+  5    31     2 gtms bit (1),					/* global transparent modified switch */
+  5    32     2 hc bit (1),					/* hard core segment */
+  5    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  5    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  5    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  5    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  5    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  5    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  5    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  5    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  5    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  5    42     2 pad1 bit (2),					/* OO */
+  5    43     2 dius bit (1),					/* dumper in use switch */
+  5    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  5    45     2 dmpr_pad bit (1),
+  5    46     2 ehs bit (1),					/* entry hold switch */
+  5    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  5    48     2 dirsw bit (1),				/* directory switch */
+  5    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  5    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  5    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  5    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  5    53 
+  5    54     2 dtu bit (36),					/* date and time segment last used */
+  5    55 
+  5    56     2 dtm bit (36),					/* date and time segment last modified */
+  5    57 
+  5    58 
+  5    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  5    60 
+  5    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  5    62 
+  5    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  5    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  5    65     2 fms bit (1),					/* file modified switch */
+  5    66     2 npfs bit (1),					/* no page fault switch */
+  5    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  5    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  5    69     2 per_process bit (1),				/* use master quota for this entry */
+  5    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  5    71     2 pad2 bit (2),
+  5    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  5    73     2 np bit (9),					/* number of pages in core */
+  5    74 
+  5    75 
+  5    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  5    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  5    78     2 damaged bit (1),				/* PC declared segment unusable */
+  5    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  5    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  5    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  5    82     2 ptsi bit (2),					/* page table size index */
+  5    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  5    84 
+  5    85 
+  5    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  5    87 
+  5    88 
+  5    89 dcl 1 aste_part aligned based (astep),
+  5    90 
+  5    91     2 one bit (36) unaligned,				/* fp and bp */
+  5    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  5    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  5    94 
+  5    95 
+  5    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  5    97     2 pad1 bit (8*36),
+  5    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  5    99     2 pad2 bit (3*36);
+  5   100 
+  5   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+     1028 
+     1029  /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  6     2 
+  6     3 /*
+  6     4*Modified March 1976 by R. Bratt 
+  6     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  6     6 
+  6     7 
+  6     8 /****^  HISTORY COMMENTS:
+  6     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  6    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  6    11*     Add warning on use of kste.entryp.
+  6    12*                                                   END HISTORY COMMENTS */
+  6    13 
+  6    14 
+  6    15 dcl  pds$kstp ext ptr,
+  6    16     (kstp, kstep) ptr;
+  6    17 
+  6    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  6    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  6    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  6    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  6    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  6    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  6    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  6    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  6    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  6    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  6    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  6    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  6    30     2 unused_2 bit (9) unaligned,
+  6    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  6    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  6    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  6    34     2 end_of_kst bit (36);
+  6    35 
+  6    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  6    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  6    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  6    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  6    40     2 entryp ptr unaligned,				/* branch pointer */
+  6    41 						/* See WARNING below for requirements to use entryp. */
+  6    42     2 uid bit (36) aligned,				/* unique identifier */
+  6    43     2 access_information unaligned,
+  6    44       3 dtbm bit (36),				/* date time branch modified */
+  6    45       3 extended_access bit (33),			/* extended access from the branch */
+  6    46       3 access bit (3),				/* rew */
+  6    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  6    48     2 pad1 bit (3) unaligned,
+  6    49     2 flags unaligned,
+  6    50       3 dirsw bit (1),				/* directory switch */
+  6    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  6    52       3 priv_init bit (1),				/* privileged initiation */
+  6    53       3 tms bit (1),				/* transparent modification switch */
+  6    54       3 tus bit (1),				/* transparent usage switch */
+  6    55       3 tpd bit (1),				/* transparent paging device switch */
+  6    56       3 audit bit (1),				/* audit switch */
+  6    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  6    58       3 pad bit (3),
+  6    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  6    60 
+  6    61 
+  6    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    63 /*							       */
+  6    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  6    65 /* entry associated with the kst entry, you must first validate its value    */
+  6    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  6    67 /* the containing directory.  The containing directory must remain locked    */
+  6    68 /* during the entire period when kste.entryp and the directory entry are     */
+  6    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  6    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  6    71 /* directory since the dir entry could have been moved within the directory  */
+  6    72 /* by another processor.					       */
+  6    73 /*							       */
+  6    74 /* If you only need a pointer to the directory containing the associated     */
+  6    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  6    76 /*    pointer (kste.entryp, 0)				       */
+  6    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  6    78 /*							       */
+  6    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  6    80 
+  6    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+     1029 
+     1030  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  7     2 /* Modified 8/74 for NSS */
+  7     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  7     4 /* Modified 3/82 BIM for change pclock */
+  7     5 /* format: style3 */
+  7     6 
+  7     7 /* Template for the directory header. Length = 64 words. */
+  7     8 
+  7     9 dcl  dp ptr;
+  7    10 
+  7    11 dcl 1 dir based (dp) aligned,
+  7    12 
+  7    13    2 modify bit (36),				/* Process ID of last modifier */
+  7    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  7    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  7    16     2 dtc (3),					/* date-time checked by salvager array */
+  7    17       3 date bit (36),				/* the date */
+  7    18       3 error bit (36),				/* what errors were discovered */
+  7    19 
+  7    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  7    21 
+  7    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  7    23 
+  7    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  7    25 
+  7    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  7    27 
+  7    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  7    29     2 version_number fixed bin (17),			/* version number of header */
+  7    30 
+  7    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  7    32     2 pad2 bit (18),
+  7    33 
+  7    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  7    35     2 pad3 bit (18),
+  7    36 
+  7    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  7    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  7    39 
+  7    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  7    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  7    42 
+  7    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  7    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  7    45 
+  7    46     2 lcount fixed bin (17),				/* number of links */
+  7    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  7    48 
+  7    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  7    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  7    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  7    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  7    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  7    54     2 pad4 bit (14),
+  7    55 
+  7    56     2 iacl_count (0:7),
+  7    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  7    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  7    59 
+  7    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  7    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  7    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  7    63 
+  7    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  7    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  7    66 
+  7    67     2 htsize fixed bin (17),				/* size of hash table */
+  7    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  7    69 
+  7    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  7    71     2 pad6 fixed bin (17),
+  7    72 
+  7    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  7    74     2 pad7 bit (18)) unaligned,
+  7    75 
+  7    76     2 dts bit (36),					/* date-time directory last salvaged */
+  7    77 
+  7    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  7    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  7    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  7    81     2 checksum bit (36),				/* checksummed from uid on */
+  7    82     2 owner bit (36);				/* uid of parent dir */
+  7    83 
+  7    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  7    85 
+  7    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+     1030 
+     1031  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  8     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  8     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  8     4 
+  8     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  8     6 
+  8     7 dcl (
+  8     8 
+  8     9 /* The following constants define the message action codes.  This indicates
+  8    10*how a message is to be handled.  */
+  8    11 
+  8    12      SYSERR_CRASH_SYSTEM	init (1),			
+  8    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  8    14 
+  8    15      SYSERR_TERMINATE_PROCESS	init (2),
+  8    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  8    17 
+  8    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  8    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  8    20 
+  8    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  8    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  8    23 
+  8    24      SYSERR_LOG_OR_PRINT	init (4),
+  8    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  8    26 
+  8    27      SYSERR_LOG_OR_DISCARD	init (5),
+  8    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  8    29 
+  8    30 
+  8    31 /* The following constants are added to the normal severities to indicate
+  8    32*different sorting classes of messages.  */
+  8    33 
+  8    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  8    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  8    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  8    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  8    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  8    39 	) fixed bin internal static options (constant);
+  8    40 
+  8    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+     1031 
+     1032 
+     1033 
+     1034 /* BEGIN MESSAGE DOCUMENTATION
+     1035*
+     1036*   Message:
+     1037*   lock: dir_lock_read mylock err. dp =PTR
+     1038*
+     1039*   S: $crash
+     1040*
+     1041*   T: $run
+     1042*
+     1043*   M: An attempt to lock a directory for reading found the directory 
+     1044*   already locked to this process.  This indicates a supervisor 
+     1045*   programming error.
+     1046*
+     1047*   A: $reboot
+     1048*
+     1049*   Message:
+     1050*   lock: dir_lock_write mylock err. dp =PTR
+     1051*
+     1052*   S: $crash
+     1053*
+     1054*   T: $run
+     1055*
+     1056*   M: An attempt to lock a directory for writing found the directory
+     1057*   already locked to this process.  This indicates a supervisor 
+     1058*   programming error.
+     1059*
+     1060*   A: $reboot
+     1061*
+     1062*   Message:
+     1063*   lock: pds$block_lock_count <= 0. caller = PTR
+     1064*
+     1065*   S: $lock_severity
+     1066*
+     1067*   T: $run
+     1068*
+     1069*   M: An attempt to unlock a lock found that the process was holding no 
+     1070*   locks.  This indicates a supervisor programming error.
+     1071*
+     1072*   A: $reboot
+     1073*
+     1074*   Message:
+     1075*   lock: lock PTR not equal to processid. caller = PTR
+     1076*
+     1077*   S: $lock_severity
+     1078*
+     1079*   T: $run
+     1080*
+     1081*   M: An attempt was made to unlock a lock found not to be held by this
+     1082*   process.  This indicates a supervisor programming error.
+     1083*
+     1084*   A: $reboot
+     1085*
+     1086*   Message:
+     1087*   lock: stacq hardware failure on PTR
+     1088*
+     1089*   S: $crash
+     1090*
+     1091*   T: $run
+     1092*
+     1093*   M: The hardware failed to unlock the specified lock using a stacq 
+     1094*   instruction.
+     1095*
+     1096*   A: Fix the hardware.
+     1097*
+     1098*   Message:
+     1099*   lock: lock_fast mylock err PTR
+     1100*
+     1101*   S: $crash
+     1102*
+     1103*   T: $run
+     1104*
+     1105*   M: An attempt to lock a fast lock found the lock already locked to
+     1106*   the requesting process.  This indicates a supervisor programming 
+     1107*   error.
+     1108*
+     1109*   A: $reboot
+     1110*
+     1111*   Message:
+     1112*   lock: unlock_fast lock PTR not locked to process. caller = PTR
+     1113*
+     1114*   S: $lock_severity
+     1115*
+     1116*   T: $run
+     1117*
+     1118*   M: An attempt to unlock a fast lock found that the lock was not held
+     1119*   by the requesting process.  This indicates a supervisor 
+     1120*   programming error.
+     1121*
+     1122*   A: $reboot
+     1123*
+     1124*   Message:
+     1125*   lock: LOCK_DIR: write lock call with read lock held. dp = PTR, uid = UID.
+     1126*
+     1127*   S: $term
+     1128*
+     1129*   T: $run
+     1130*
+     1131*   M: A request was made to lock a directory for writing when the process
+     1132*   already possessed a read lock on that directory.  This indicates a 
+     1133*   supervisor programming error.
+     1134*
+     1135*   A: $reboot
+     1136*
+     1137*   Message:
+     1138*   lock: LOCK_DIR: dir_lock_seg full.
+     1139*
+     1140*   S: $crash
+     1141*
+     1142*   T: $run
+     1143*
+     1144*   M: The segment used to record all locked directories overflowed.
+     1145*   This may be a hardware problem.
+     1146*
+     1147*   A: $reboot
+     1148*
+     1149*   Message:
+     1150*   lock: LOCK_DIR: Too many readers.
+     1151*
+     1152*   S: $crash
+     1153*
+     1154*   T: $run
+     1155*
+     1156*   M: Too many processes attempted to request a read lock on a given 
+     1157*   directory.  This may indicate a hardware problem.
+     1158*
+     1159*   A: $reboot
+     1160*
+     1161*   Message:
+     1162*   lock: UNLOCK_DIR: UID Mismatch.
+     1163*
+     1164*   S: $lock_severity
+     1165*
+     1166*   T: $run
+     1167*
+     1168*   M: When attempting to unlock a directory, the UID for the directory
+     1169*   found in the dir_lock_seg entry did not match that of the directory.
+     1170*
+     1171*   A: $reboot
+     1172*
+     1173*   Message:
+     1174*   lock: UNLOCK_DIR: lock count 0.
+     1175*
+     1176*   S: $lock_severity
+     1177*
+     1178*   T: $run
+     1179*
+     1180*   M: An attempt to unlock a directory found the dir_lock_seg entry for
+     1181*   the directory not listing the directory as locked.
+     1182*
+     1183*   A: $reboot
+     1184*
+     1185*   Message:
+     1186*   lock: UNLOCK_DIR: lock not read locked to process.
+     1187*
+     1188*   S: $lock_severity
+     1189*
+     1190*   T: $run
+     1191*
+     1192*   M: A request to unlock a directory locked for reading found that the
+     1193*   requesting process was not holding the directory locked.
+     1194*
+     1195*   A: $reboot
+     1196*
+     1197*   Message:
+     1198*   lock: UNLOCK_DIR: lock not write locked to process.
+     1199*
+     1200*   S: $lock_severity
+     1201*
+     1202*   T: $run
+     1203*
+     1204*   M: A request to unlock a directory that was found to be locked for
+     1205*   writing was not locked to this process.
+     1206*
+     1207*   A: $reboot
+     1208*
+     1209*   Message:
+     1210*   lock: unlock_dir with dir.modify - uid = UID - callerp = PTR
+     1211*
+     1212*   S: $log
+     1213*
+     1214*   T: $run
+     1215*
+     1216*   M: A directory being unlocked appears to have been undergoing
+     1217*   a modification sequence that has not completed.
+     1218*
+     1219*   A: The next reference to the directory will force a directory salvage.
+     1220*
+     1221*   Message:
+     1222*   lock: UNLOCK_DIR: dir DIR_LOCK_IND not locked. caller = PTR.
+     1223*
+     1224*   S: $lock_severity
+     1225*
+     1226*   T: $run
+     1227*
+     1228*   M: A request to unlock a directory found that the dir_lock_seg entry
+     1229*   does not show that the directory was locked.
+     1230*
+     1231*
+     1232*  A: $reboot
+     1233*
+     1234*   Message:
+     1235*   lock: UNLOCK_DIR: dir DIR_LOCK_IND unlock called with bad uid, caller = PTR
+     1236*
+     1237*   S: $log
+     1238*
+     1239*   T: $run
+     1240*
+     1241*   M: A request to unlock a directory found that the UID of the directory 
+     1242*   does not match the UID at the time the directory was locked.  However,
+     1243*   the UID does match that in the KST.  This normally indicates that 
+     1244*   the directory was salvaged during the time that it was locked.
+     1245*
+     1246*   Message:
+     1247*   lock: AST lock set at dir unlock time.
+     1248*
+     1249*   S: $crash
+     1250*
+     1251*   T: $run
+     1252*
+     1253*   M: The AST was found locked to this process at directory unlock time.
+     1254*   This indicates a supervisor programming error.
+     1255*
+     1256*   A: $reboot
+     1257*
+     1258*   Message:
+     1259*   lock: VALIDATE_CACHE: FAILED running on cpu N, memory address OOOOOOOO (oct).
+     1260*
+     1261*   S: $info
+     1262*
+     1263*   T: $run
+     1264*
+     1265*   M:  This is most likely a cache write notify problem with the 8/70m
+     1266*   processor "CPU N", or the System Control Unit containing the "memory
+     1267*   address OOOOOOOO." 
+     1268*
+     1269*   A: $contact_sa
+     1270*
+     1271*   END MESSAGE DOCUMENTATION */
+     1272 
+     1273      end lock;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.5  lock.pl1                          >spec>install>1112>lock.pl1
+437          1    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+463          2    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+1026         3    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+1027         4    11/29/83  0931.2  dir_lock_seg_.incl.pl1            >ldd>include>dir_lock_seg_.incl.pl1
+1028         5    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+1029         6    09/18/86  1308.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+1030         7    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+1031         8    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANNOUNCE                        000025 constant        fixed bin(17,0)          initial dcl 8-7 set ref 1019*
+CPU_NAMES                       000000 constant        char(8)                  initial dcl 151 ref 1019 1019
+CRASH                           000031 constant        fixed bin(17,0)          initial dcl 8-7 set ref 316* 325* 420* 444* 476* 609
+                                                                                  732* 778* 983*
+JUST_LOG                        000021 constant        fixed bin(17,0)          initial dcl 8-7 set ref 917* 971*
+TERMINATE_PROCESS                      constant        fixed bin(17,0)          initial dcl 8-7 ref 609
+UID                             000226 automatic       bit(36)                  dcl 695 set ref 711* 719
+a_UID                                  parameter       bit(36)                  dcl 694 ref 691 706 711 743
+a_code                                 parameter       fixed bin(35,0)          dcl 156 set ref 217 221* 224 228* 279 283* 287 291*
+                                                                                  311 315* 316 320 324* 325 329 334*
+a_dir_lockp                            parameter       pointer                  dcl 673 in procedure "THIS_PROCESS_IS_A_READER" ref
+                                                                                  670 680
+a_dir_lockp                            parameter       pointer                  dcl 754 in procedure "LOCK_FOR_WRITE" ref 751 759
+                                                                                  767 774
+a_dir_lockx                            parameter       fixed bin(17,0)          dcl 791 ref 788 794 795 852
+a_dir_readersp                         parameter       pointer                  dcl 770 in procedure "LOCK_FOR_WRITE" ref 767 775
+a_dir_readersp                         parameter       pointer                  dcl 674 in procedure "THIS_PROCESS_IS_A_READER" ref
+                                                                                  670 682
+a_dir_uid                              parameter       bit(36)                  dcl 158 set ref 302 306 329 336*
+a_dp                                   parameter       pointer                  dcl 153 set ref 279 283* 287 291* 294 298 299* 311
+                                                                                  315* 316* 320 324* 325* 329 334*
+a_failsw                               parameter       fixed bin(1,0)           dcl 157 set ref 217 221* 287 291*
+a_ind                                  parameter       bit(36)                  dcl 154 set ref 217 221* 224 228* 231 235*
+a_lock_ptr                             parameter       pointer                  dcl 152 set ref 217 221* 224 228* 231 235* 241 244*
+                                                                                  247 250*
+a_typelock                             parameter       bit(36)                  dcl 155 set ref 279 283* 287 291*
+a_uid                                  parameter       bit(36)                  dcl 882 in procedure "LOCK_DIR" ref 879 896 901
+a_uid                                  parameter       bit(36)                  dcl 792 in procedure "LOCK_FOR_WRITE" ref 788 796
+absadr                          000012 constant        entry                    external dcl 150 ref 1019 1019
+addr                                                   builtin function         dcl 213 ref 258 258 274 274 415 415 443 521 590 592
+                                                                                  592 602 716 716 738 740 746 781 781 794 795 802
+                                                                                  802 850 850 906 963 963 989 989
+aste                                   based           structure                level 1 dcl 5-11
+astep                           000130 automatic       pointer                  dcl 5-9 set ref 994* 995 999* 1000 1003 1003*
+baseno                                                 builtin function         dcl 213 ref 956 956
+binary                                                 builtin function         dcl 213 ref 956 956
+caller                          000052 constant        entry                    external dcl 200 ref 220 227 234 243 249 256 270 282
+                                                                                  290 297 305 314 323 332 409 409 415 415 472 472
+                                                                                  917 917 934 934 971 971
+caller_ptr                      000104 automatic       pointer                  dcl 163 set ref 220* 227* 234* 243* 249* 256* 270*
+                                                                                  282* 290* 297* 305* 314* 323* 332*
+clock                                                  builtin function         dcl 213 ref 257 261 271
+code                                   parameter       fixed bin(35,0)          dcl 344 in procedure "LOCK" set ref 341 352* 360*
+code                            000107 automatic       fixed bin(35,0)          dcl 165 in procedure "lock" set ref 400*
+code                                   parameter       fixed bin(35,0)          dcl 864 in procedure "LOCK_FOR_SALVAGE_AND_SALVAGE"
+                                                                                  set ref 860 866* 867* 868 871*
+code                                   parameter       fixed bin(35,0)          dcl 496 in procedure "LOCK_DIR" set ref 491 509 514*
+                                                                                  532* 537* 574* 576 578* 634 639* 640 648*
+correct_uid                     000266 automatic       bit(36)                  dcl 863 set ref 867* 872*
+dir                                    based           structure                level 1 dcl 7-11
+dir_lock                               based           structure                level 1 dcl 4-46
+dir_lock_all_dir_locks                 based           structure                array level 1 dcl 4-24 set ref 590 738 746 794
+dir_lock_all_locksp             000120 automatic       pointer                  dcl 4-21 set ref 522* 590 719 721 738 746 794 907*
+                                                                                  963 963 965 989 989 991
+dir_lock_all_readers                   based           bit(36)                  array dcl 4-25 set ref 602 795
+dir_lock_all_readersp           000122 automatic       pointer                  dcl 4-21 set ref 523* 602 795 908*
+dir_lock_seg                           based           structure                level 1 dcl 4-16
+dir_lock_seg$                   000100 external static fixed bin(17,0)          dcl 4-12 set ref 521 906
+dir_lock_seg_header                    based           structure                level 1 dcl 4-30
+dir_lock_segp                   000116 automatic       pointer                  dcl 4-14 set ref 521* 522 523 587* 602 631* 664* 683
+                                                                                  714 714 716 716 718 725 725 732 732 734 734 735
+                                                                                  735 740 740 740 741 776 778 795 811 813 850 850
+                                                                                  852 852 852 906* 907 908 924* 943* 997* 1008*
+dir_lockp                       000124 automatic       pointer                  dcl 4-45 set ref 590* 592 592 594 596 603* 619 622*
+                                                                                  623* 663
+dir_lockx                       000202 automatic       fixed bin(17,0)          dcl 504 set ref 589* 590 602 927* 929 932 939* 941*
+                                                                                  961* 963 963 965 967*
+dir_ptr                                parameter       pointer                  dcl 862 set ref 860 867* 871*
+dir_read_lockers                       based           bit(36)                  array dcl 4-58 set ref 741*
+dir_read_lockers_ptr            000126 automatic       pointer                  dcl 4-57 set ref 602* 603* 623*
+dir_uid                         000106 automatic       bit(36)                  dcl 164 set ref 333* 336 540* 543
+dirp                                   parameter       pointer                  dcl 494 set ref 491 509 525 525 546 562 564 574* 576
+                                                                                  612* 634 638* 639* 879 896 912 917 920 953 956 956
+                                                                                  980 994 994
+dirsw                     7(12)        based           bit(1)                   level 3 packed packed unaligned dcl 6-36 ref 535 564
+                                                                                  957
+dirx                                   parameter       fixed bin(17,0)          dcl 978 ref 975 989 989 991
+dx                              000227 automatic       fixed bin(17,0)          dcl 696 set ref 718* 719 721 721* 746 748
+error_table_$dir_damage         000016 external static fixed bin(35,0)          dcl 172 ref 578
+error_table_$mylock             000014 external static fixed bin(35,0)          dcl 171 ref 316 325 360 648
+error_table_$notadir            000020 external static fixed bin(35,0)          dcl 174 ref 537
+event                     1            based           bit(36)                  level 2 in structure "lock" dcl 1-12 in procedure
+                                                                                  "LOCK_FAST" set ref 447* 450*
+event                     1            based           bit(36)                  level 2 in structure "lock" dcl 2-12 in procedure
+                                                                                  "UNLOCK_FAST" set ref 482*
+failsw                                 parameter       fixed bin(1,0)           dcl 344 in procedure "LOCK" set ref 341 353* 369*
+failsw                          000110 automatic       fixed bin(1,0)           dcl 166 in procedure "lock" set ref 228* 283* 315*
+                                                                                  324* 334* 401*
+failsw                                 parameter       fixed bin(1,0)           dcl 497 in procedure "LOCK_DIR" set ref 491 509 516*
+                                                                                  656*
+find_calls               14            based           fixed bin(35,0)          level 4 dcl 4-16 set ref 714* 714
+find_failures            15            based           fixed bin(35,0)          level 4 dcl 4-16 set ref 725* 725
+find_only                       000236 automatic       bit(1)                   dcl 701 set ref 703* 709* 726
+first_free_dx                   000230 automatic       fixed bin(17,0)          dcl 697 set ref 713* 721 721* 730 734* 735 738 740
+                                                                                  744
+flags                     7(12)        based           structure                level 2 in structure "kste" packed packed unaligned
+                                                                                  dcl 6-36 in procedure "lock"
+flags                     2            based           structure                level 2 in structure "lock" dcl 1-12 in procedure
+                                                                                  "LOCK_FAST"
+flags                     1            based           structure                level 2 in structure "dir_lock" dcl 4-46
+                                                                                  in procedure "lock"
+flags                     1            based           structure                level 2 in structure "l_dir_lock" dcl 756
+                                                                                  in procedure "LOCK_FOR_WRITE"
+flags                     2            based           structure                level 2 in structure "lock" dcl 2-12 in procedure
+                                                                                  "UNLOCK_FAST"
+fmchanged                12(09)        based           bit(1)                   level 2 packed packed unaligned dcl 5-11 ref 1000
+get_kstep                       000054 constant        entry                    external dcl 201 ref 525 956
+get_kstep_code                  000176 automatic       fixed bin(35,0)          dcl 500 set ref 525* 530 532 564 956* 957
+get_ptrs_$given_segno           000102 constant        entry                    external dcl 887 ref 994
+hbound                                                 builtin function         dcl 213 ref 776 778 811 813
+header                                 based           structure                level 2 dcl 4-16
+highest_in_use            4            based           fixed bin(17,0)          level 3 dcl 4-16 set ref 716 716 718 732 734 734*
+                                                                                  850 850 852 852* 852
+ind                             000102 automatic       bit(36)                  dcl 162 in procedure "lock" set ref 298* 299* 306*
+                                                                                  307* 917* 934* 971*
+ind                                    parameter       bit(36)                  dcl 394 in procedure "UNLOCK" set ref 391 422*
+ind                                    parameter       bit(36)                  dcl 344 in procedure "LOCK" set ref 341 374* 376*
+kste                                   based           structure                level 1 dcl 6-36
+kstep                           000132 automatic       pointer                  dcl 6-15 set ref 525* 535 540 564 564 956* 957 957
+                                                                                  960
+l_dir_lock                             based           structure                level 1 dcl 756 in procedure "LOCK_FOR_WRITE" set
+                                                                                  ref 848*
+l_dir_lock                             based           structure                level 1 dcl 699 in procedure "FIND_OR_MAKE_DIR_LOCK"
+                                                                                  set ref 739*
+l_dir_lockp                     000250 automatic       pointer                  dcl 755 in procedure "LOCK_FOR_WRITE" set ref 759*
+                                                                                  760 761 762 763 774* 781 781 783 783 794* 796 802
+                                                                                  802 804 809 819 819 821 821 824 825 828 830 836
+                                                                                  837 838 840 841 845 845 848
+l_dir_lockp                     000232 automatic       pointer                  dcl 698 in procedure "FIND_OR_MAKE_DIR_LOCK" set ref
+                                                                                  738* 739 743 746*
+l_dir_readers                          based           bit(36)                  array dcl 772 in procedure "LOCK_FOR_WRITE" set ref
+                                                                                  776 776 778 784* 811 811 813 820*
+l_dir_readers                          based           bit(36)                  array dcl 676 in procedure
+                                                                                  "THIS_PROCESS_IS_A_READER" ref 684
+l_dir_readersp                  000254 automatic       pointer                  dcl 771 in procedure "LOCK_FOR_WRITE" set ref 775*
+                                                                                  776 776 778 784 795* 811 811 813 820
+l_dir_readersp                  000234 automatic       pointer                  dcl 700 in procedure "FIND_OR_MAKE_DIR_LOCK" set ref
+                                                                                  740* 741
+l_dir_readersp                  000214 automatic       pointer                  dcl 675 in procedure "THIS_PROCESS_IS_A_READER" set
+                                                                                  ref 682* 684
+lock                                   based           structure                level 1 dcl 3-12 in procedure "lock"
+lock                                   based           structure                level 1 dcl 1-12 in procedure "LOCK_FAST"
+lock                                   based           structure                level 1 dcl 2-12 in procedure "UNLOCK_FAST"
+lock_count                2            based           fixed bin(17,0)          array level 2 in structure "dir_lock_all_dir_locks"
+                                                                                  dcl 4-24 in procedure "lock" set ref 963 963 965
+                                                                                  989 989 991
+lock_count                2            based           fixed bin(17,0)          level 2 in structure "l_dir_lock" dcl 756
+                                                                                  in procedure "LOCK_FOR_WRITE" set ref 761* 781 781
+                                                                                  783* 783 802 802 804 809 819* 819 821 828 836* 845
+lock_count                2            based           fixed bin(17,0)          level 2 in structure "dir_lock" dcl 4-46
+                                                                                  in procedure "lock" set ref 592 592 594 619 680
+lock_ptr                               parameter       pointer                  dcl 394 in procedure "UNLOCK" set ref 391 413 415
+                                                                                  415 420 420*
+lock_ptr                               parameter       pointer                  dcl 2-11 in procedure "UNLOCK_FAST" set ref 460 470
+                                                                                  472* 476 476* 479 481 482
+lock_ptr                               parameter       pointer                  dcl 344 in procedure "LOCK" ref 341 358 366 376
+lock_ptr                               parameter       pointer                  dcl 1-11 in procedure "LOCK_FAST" set ref 433 443
+                                                                                  444 444* 446 447 448 448 450
+locks_ptr                12            based           pointer                  level 3 dcl 4-16 ref 522 907
+lwd                                    based           bit(36)                  dcl 350 in procedure "LOCK" ref 358 376
+lwd                                    based           bit(36)                  dcl 394 in procedure "UNLOCK" set ref 413 415 415
+                                                                                  420
+max                                                    builtin function         dcl 213 ref 735 852
+max_in_use               16            based           fixed bin(35,0)          level 4 dcl 4-16 set ref 735* 735
+max_readers               5            based           fixed bin(17,0)          level 3 dcl 4-16 ref 602 683 740 741 776 778 795 811
+                                                                                  813
+meter_ast_lock$lock             000056 constant        entry                    external dcl 202 ref 259
+meter_ast_lock$unlock           000060 constant        entry                    external dcl 203 ref 272
+meters                   14            based           structure                level 3 dcl 4-16
+modify                                 based           bit(36)                  level 2 dcl 7-11 ref 634 917
+must_salvage                    000101 automatic       bit(1)                   dcl 161 set ref 561* 562* 564* 571
+n_dir_locks               3            based           fixed bin(17,0)          level 3 dcl 4-16 ref 732 740
+nocheck_entry                   000204 automatic       bit(1)                   packed unaligned dcl 885 set ref 893* 899* 912
+notify_sw                 2            based           bit(1)                   level 3 in structure "lock" packed packed unaligned
+                                                                                  dcl 1-12 in procedure "LOCK_FAST" set ref 446* 448
+notify_sw                 1            based           bit(1)                   level 3 in structure "l_dir_lock" packed packed
+                                                                                  unaligned dcl 756 in procedure "LOCK_FOR_WRITE"
+                                                                                  set ref 762* 821 824* 838 840*
+notify_sw                 2            based           bit(1)                   level 3 in structure "lock" packed packed unaligned
+                                                                                  dcl 2-12 in procedure "UNLOCK_FAST" set ref 479
+                                                                                  481*
+notify_sw                 1            based           bit(1)                   level 3 in structure "dir_lock" packed packed
+                                                                                  unaligned dcl 4-46 in procedure "lock" set ref
+                                                                                  663*
+null                                                   builtin function         dcl 213 ref 307 307 912 953 980 995
+on_line_salvager                000062 constant        entry                    external dcl 205 ref 871
+pc_wired$write_wait_uid         000104 constant        entry                    external dcl 889 ref 999
+pds$block_lock_count            000044 external static fixed bin(17,0)          dcl 194 set ref 364* 364 370* 370 407 410* 424* 424
+                                                                                  453* 453 484* 484 764* 764 785* 785 844* 844
+pds$processid                   000046 external static bit(36)                  dcl 196 ref 358 366 413 420 443 444 470 476 596 684
+                                                                                  760 784 811 830 983
+per_process_flag                000100 automatic       bit(1)                   packed unaligned dcl 160 set ref 910* 920* 986
+per_process_sw           24(18)        based           bit(1)                   level 2 packed packed unaligned dcl 7-11 ref 920
+pid                                    based           bit(36)                  level 2 in structure "lock" dcl 2-12 in procedure
+                                                                                  "UNLOCK_FAST" ref 470 476
+pid                                    based           bit(36)                  level 2 in structure "lock" dcl 1-12 in procedure
+                                                                                  "LOCK_FAST" set ref 443 444 448
+prds$processor_tag              000010 external static fixed bin(3,0)           dcl 149 ref 1019 1019
+pxss$addevent                   000064 constant        entry                    external dcl 206 ref 374 447 662
+pxss$delevent                   000066 constant        entry                    external dcl 207 ref 376 450
+pxss$notify                     000070 constant        entry                    external dcl 208 ref 422 482 825 841
+pxss$wait                       000072 constant        entry                    external dcl 209 ref 379 448 665
+readers                                based           bit(36)                  array level 2 dcl 4-16 set ref 740
+readers_ptr              10            based           pointer                  level 3 dcl 4-16 ref 523 908
+rx                              000252 automatic       fixed bin(17,0)          dcl 757 in procedure "LOCK_FOR_WRITE" set ref 776*
+                                                                                  776* 778 784 811* 811* 813 820
+rx                              000216 automatic       fixed bin(17,0)          dcl 677 in procedure "THIS_PROCESS_IS_A_READER" set
+                                                                                  ref 683* 684*
+salvage_entry                   000177 automatic       bit(1)                   dcl 501 set ref 506* 512* 528 543 559 634 763
+salvage_sw                1(01)        based           bit(1)                   level 3 packed packed unaligned dcl 756 set ref 763*
+seg_fault_error                 000000 stack reference condition                dcl 169 ref 915
+segno                                                  builtin function         dcl 213 ref 525 525 994 994
+severity                        000200 automatic       fixed bin(17,0)          dcl 502 set ref 608* 609 609* 612*
+sst$ast_lock_wait_time          000030 external static fixed bin(71,0)          dcl 183 set ref 262* 262
+sst$ast_locked_at_time          000022 external static fixed bin(71,0)          dcl 177 set ref 263* 271
+sst$ast_locked_total_time       000024 external static fixed bin(71,0)          dcl 179 set ref 271* 271
+sst$ast_locking_count           000026 external static fixed bin(35,0)          dcl 181 set ref 264* 264
+sst$astl                        000032 external static bit(36)                  dcl 185 set ref 258 258 274 274 983
+sst$dirlock_writebehind         000034 external static fixed bin(17,0)          dcl 186 ref 986
+sst$lock_waits                  000036 external static fixed bin(35,0)          dcl 188 set ref 380* 380 666* 666
+sst$meter_ast_locking           000040 external static fixed bin(17,0)          dcl 189 ref 259 272
+stac                                                   builtin function         dcl 213 ref 366 443
+stacq                                                  builtin function         dcl 213 ref 413 470 1019
+substr                                                 builtin function         dcl 213 ref 1019 1019
+syserr                          000074 constant        entry                    external dcl 210 ref 316 325 409 415 420 444 472 476
+                                                                                  612 732 778 798 806 815 832 917 934 971 983 1019
+tc_data$lock_error_severity     000042 external static fixed bin(17,0)          dcl 191 set ref 409* 415* 472* 608 798* 806* 815*
+                                                                                  832* 934*
+tc_data$system_shutdown         000050 external static fixed bin(17,0)          dcl 197 ref 355 403 440 467 518 903
+time_in                         000112 automatic       fixed bin(52,0)          dcl 167 set ref 257* 262
+time_out                        000114 automatic       fixed bin(52,0)          dcl 167 set ref 261* 262 263
+typelock                               parameter       bit(36)                  dcl 495 ref 491 509 606 619
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 5-11 in procedure "lock" ref 1003
+uid                                    based           bit(36)                  array level 2 in structure "dir_lock_all_dir_locks"
+                                                                                  dcl 4-24 in procedure "lock" set ref 719 721
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 7-11 in procedure
+                                                                                  "lock" ref 298 546 562 564 576
+uid                                    based           bit(36)                  level 2 in structure "l_dir_lock" dcl 699
+                                                                                  in procedure "FIND_OR_MAKE_DIR_LOCK" set ref 743*
+uid                                    based           bit(36)                  level 2 in structure "l_dir_lock" dcl 756
+                                                                                  in procedure "LOCK_FOR_WRITE" set ref 796 825*
+                                                                                  841* 845
+uid                       4            based           bit(36)                  level 2 in structure "kste" dcl 6-36 in procedure
+                                                                                  "lock" ref 540 564 957 960
+uid_to_lock                     000201 automatic       bit(36)                  dcl 503 set ref 543* 546* 589* 612* 662*
+uid_to_unlock                   000203 automatic       bit(36)                  dcl 884 set ref 901* 927* 941* 957 960* 961* 999*
+                                                                                  1003
+unspec                                                 builtin function         dcl 213 set ref 739* 848*
+update_vtoce                    000076 constant        entry                    external dcl 211 ref 1003
+waitsw                                 parameter       fixed bin(1,0)           dcl 498 in procedure "LOCK_DIR" ref 491 509 653
+waitsw                                 parameter       fixed bin(1,0)           dcl 344 in procedure "LOCK" ref 341 367
+word                                   based           bit(36)                  dcl 1016 ref 1019 1019 1019
+word_ptr                               parameter       pointer                  dcl 1017 set ref 1014 1019 1019 1019 1019* 1019*
+write_locker              3            based           bit(36)                  level 2 in structure "l_dir_lock" dcl 756
+                                                                                  in procedure "LOCK_FOR_WRITE" set ref 760* 830
+                                                                                  837*
+write_locker              3            based           bit(36)                  level 2 in structure "dir_lock" dcl 4-46
+                                                                                  in procedure "lock" ref 596
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 8-7
+DIR_LOCK_SEG_EVENT                     internal static char(4)                  initial dcl 4-28
+LOG                                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 8-7
+asta                                   based           bit(432)                 array dcl 5-86
+aste_part                              based           structure                level 1 dcl 5-89
+dp                                     automatic       pointer                  dcl 7-9
+kst                                    based           structure                level 1 dcl 6-18
+kstp                                   automatic       pointer                  dcl 6-15
+lock_ptr                               automatic       pointer                  dcl 3-11
+pds$kstp                               external static pointer                  dcl 6-15
+seg_aste                               based           structure                level 1 dcl 5-96
+version_number_2                       internal static fixed bin(17,0)          initial dcl 7-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ADD_THIS_PROCESS_AS_READER      003213 constant        entry                    internal dcl 767 ref 623
+DIR_GONE                        002652 constant        label                    dcl 924 ref 915
+FIND_DIR_LOCK                   003001 constant        entry                    internal dcl 706 ref 927 961
+FIND_OR_MAKE_DIR_LOCK           002775 constant        entry                    internal dcl 691 ref 589
+FORGET_RETURN                   001663 constant        label                    dcl 424 ref 417
+FOUND_ENTRY                     003162 constant        label                    dcl 746 ref 719
+Join                            003005 constant        label                    dcl 711 ref 704
+LOCK                            001413 constant        entry                    internal dcl 341 ref 221 228
+LOCK_DIR                        002131 constant        entry                    internal dcl 491 ref 283 291 315 324
+LOCK_DIR_SALVAGE                002135 constant        entry                    internal dcl 509 ref 334
+LOCK_FAST                       001667 constant        entry                    internal dcl 433 ref 244 258 587 924 1008
+LOCK_FOR_SALVAGE_AND_SALVAGE    003566 constant        entry                    internal dcl 860 ref 574 639
+LOCK_FOR_WRITE                  003170 constant        entry                    internal dcl 751 ref 622
+LOCK_NOT_AVAILABLE              002461 constant        label                    dcl 653 ref 596 619
+LOCK_START                      002141 constant        label                    dcl 514 ref 507 667
+MYLOCK_RETURN                   002454 constant        label                    dcl 648 ref 599 606
+PERHAPS_WRITE_BEHIND            003755 constant        entry                    internal dcl 975 ref 939
+POST                            001507 constant        label                    dcl 384 ref 361 371
+RELOCK                          002220 constant        label                    dcl 543 ref 576 640
+THIS_PROCESS_IS_A_READER        002734 constant        entry                    internal dcl 670 ref 603
+TRY_TO_FIND_A_BETTER_UID        003630 constant        entry                    internal dcl 950 ref 929
+UNLOCK                          001510 constant        entry                    internal dcl 391 ref 235
+UNLOCK_DIR                      002516 constant        entry                    internal dcl 879 ref 299
+UNLOCK_DIR_LOCK_SEG_RETURN      002417 constant        label                    dcl 631 ref 650 657
+UNLOCK_DIR_NOCHECK              002522 constant        entry                    internal dcl 896 ref 307
+UNLOCK_FAST                     002004 constant        entry                    internal dcl 460 ref 250 274 631 664 943 997
+UNLOCK_SIDE_RETURN              002731 constant        label                    dcl 943 ref 936
+UNLOCK_START                    002526 constant        label                    dcl 901 ref 894
+UNLOCK_THIS_DIR                 003305 constant        entry                    internal dcl 788 ref 941
+VALIDATE_CACHE                  004136 constant        entry                    internal dcl 1014 ref 592 716 781 802 850 963 989
+dir_lock_read                   001151 constant        entry                    external dcl 311
+dir_lock_salvage                001343 constant        entry                    external dcl 329 ref 867
+dir_lock_write                  001246 constant        entry                    external dcl 320
+dir_try                         001012 constant        entry                    external dcl 287
+dir_unlock                      001054 constant        entry                    external dcl 294 ref 638
+dir_unlock_given_uid            001111 constant        entry                    external dcl 302 ref 872
+dir_wait                        000747 constant        entry                    external dcl 279
+lock                            000407 constant        entry                    external dcl 30
+lock_ast                        000636 constant        entry                    external dcl 254 ref 1002
+lock_fast                       000563 constant        entry                    external dcl 241
+try                             000422 constant        entry                    external dcl 217
+unlock                          000532 constant        entry                    external dcl 231
+unlock_ast                      000706 constant        entry                    external dcl 268 ref 1005
+unlock_fast                     000611 constant        entry                    external dcl 247
+wait                            000465 constant        entry                    external dcl 224
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      5042        5150    4331        5052
+Length      5630    4331       106         444     511           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+lock                                592 external procedure  is an external procedure.  
+LOCK                                    internal procedure  shares stack frame of external procedure lock.  
+UNLOCK                                  internal procedure  shares stack frame of external procedure lock.  
+LOCK_FAST                               internal procedure  shares stack frame of external procedure lock.  
+UNLOCK_FAST                             internal procedure  shares stack frame of external procedure lock.  
+LOCK_DIR                                internal procedure  shares stack frame of external procedure lock.  
+THIS_PROCESS_IS_A_READER                internal procedure  shares stack frame of external procedure lock.  
+FIND_OR_MAKE_DIR_LOCK                   internal procedure  shares stack frame of external procedure lock.  
+LOCK_FOR_WRITE                          internal procedure  shares stack frame of external procedure lock.  
+LOCK_FOR_SALVAGE_AND_SALVAGE            internal procedure  shares stack frame of external procedure lock.  
+begin block on line 912             110 begin block         enables or reverts conditions.  
+on unit on line 915                  64 on unit               
+TRY_TO_FIND_A_BETTER_UID                internal procedure  shares stack frame of external procedure lock.  
+PERHAPS_WRITE_BEHIND                    internal procedure  shares stack frame of external procedure lock.  
+VALIDATE_CACHE                          internal procedure  shares stack frame of external procedure lock.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+lock                     000100 per_process_flag            lock
+                         000101 must_salvage                lock
+                         000102 ind                         lock
+                         000104 caller_ptr                  lock
+                         000106 dir_uid                     lock
+                         000107 code                        lock
+                         000110 failsw                      lock
+                         000112 time_in                     lock
+                         000114 time_out                    lock
+                         000116 dir_lock_segp               lock
+                         000120 dir_lock_all_locksp         lock
+                         000122 dir_lock_all_readersp       lock
+                         000124 dir_lockp                   lock
+                         000126 dir_read_lockers_ptr        lock
+                         000130 astep                       lock
+                         000132 kstep                       lock
+                         000176 get_kstep_code              LOCK_DIR
+                         000177 salvage_entry               LOCK_DIR
+                         000200 severity                    LOCK_DIR
+                         000201 uid_to_lock                 LOCK_DIR
+                         000202 dir_lockx                   LOCK_DIR
+                         000203 uid_to_unlock               LOCK_DIR
+                         000204 nocheck_entry               LOCK_DIR
+                         000214 l_dir_readersp              THIS_PROCESS_IS_A_READER
+                         000216 rx                          THIS_PROCESS_IS_A_READER
+                         000226 UID                         FIND_OR_MAKE_DIR_LOCK
+                         000227 dx                          FIND_OR_MAKE_DIR_LOCK
+                         000230 first_free_dx               FIND_OR_MAKE_DIR_LOCK
+                         000232 l_dir_lockp                 FIND_OR_MAKE_DIR_LOCK
+                         000234 l_dir_readersp              FIND_OR_MAKE_DIR_LOCK
+                         000236 find_only                   FIND_OR_MAKE_DIR_LOCK
+                         000250 l_dir_lockp                 LOCK_FOR_WRITE
+                         000252 rx                          LOCK_FOR_WRITE
+                         000254 l_dir_readersp              LOCK_FOR_WRITE
+                         000266 correct_uid                 LOCK_FOR_SALVAGE_AND_SALVAGE
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+enter_begin_block   leave_begin_block   call_ext_in         call_ext_out_desc   call_ext_out        return_mac
+tra_ext_1           stac_mac            enable_op           ext_entry           int_entry           stacq_mac
+clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        caller                        get_kstep                     get_ptrs_$given_segno
+meter_ast_lock$lock           meter_ast_lock$unlock         on_line_salvager              pc_wired$write_wait_uid
+pxss$addevent                 pxss$delevent                 pxss$notify                   pxss$wait
+syserr                        update_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dir_lock_seg$                 error_table_$dir_damage       error_table_$mylock           error_table_$notadir
+pds$block_lock_count          pds$processid                 prds$processor_tag            sst$ast_lock_wait_time
+sst$ast_locked_at_time        sst$ast_locked_total_time     sst$ast_locking_count         sst$astl
+sst$dirlock_writebehind       sst$lock_waits                sst$meter_ast_locking         tc_data$lock_error_severity
+tc_data$system_shutdown
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     30 000406       217 000414       220 000432       221 000440       222 000460       224 000461       227 000475
+    228 000504       229 000525       231 000526       234 000537       235 000546       236 000557       241 000560
+    243 000570       244 000577       245 000606       247 000607       249 000616       250 000625       251 000634
+    254 000635       256 000643       257 000652       258 000654       259 000661       261 000670       262 000672
+    263 000676       264 000700       265 000704       268 000705       270 000713       271 000722       272 000731
+    274 000737       275 000744       279 000745       282 000757       283 000766       285 001007       287 001010
+    290 001022       291 001031       292 001051       294 001052       297 001061       298 001070       299 001075
+    300 001105       302 001106       305 001121       306 001130       307 001132       308 001144       311 001145
+    314 001161       315 001170       316 001213       318 001243       320 001244       323 001256       324 001265
+    325 001310       327 001340       329 001341       332 001355       333 001364       334 001365       336 001410
+    337 001412       341 001413       352 001415       353 001416       355 001417       358 001423       360 001427
+    361 001431       364 001432       366 001433       367 001443       369 001445       370 001447       371 001451
+    374 001452       376 001460       379 001474       380 001501       382 001506       384 001507       391 001510
+    400 001512       401 001513       403 001514       407 001520       409 001522       410 001554       413 001556
+    415 001565       417 001624       420 001625       422 001653       424 001663       427 001666       433 001667
+    440 001671       443 001675       444 001707       446 001736       447 001743       448 001752       450 001771
+    451 002001       453 002002       454 002003       460 002004       467 002006       470 002012       472 002020
+    474 002056       476 002057       479 002106       481 002114       482 002116       484 002125       485 002130
+    491 002131       506 002133       507 002134       509 002135       512 002137       514 002141       516 002143
+    518 002144       521 002150       522 002152       523 002154       525 002156       528 002176       530 002200
+    532 002202       533 002204       535 002205       537 002211       538 002215       540 002216       543 002220
+    546 002225       559 002232       561 002234       562 002235       564 002245       571 002260       574 002262
+    576 002272       578 002301       580 002304       587 002305       589 002307       590 002311       592 002315
+    594 002321       596 002324       599 002330       602 002331       603 002336       606 002343       608 002346
+    609 002351       612 002355       619 002404       622 002412       623 002415       631 002417       634 002421
+    638 002431       639 002437       640 002450       643 002453       648 002454       650 002460       653 002461
+    656 002464       657 002466       662 002467       663 002476       664 002501       665 002503       666 002510
+    667 002515       879 002516       893 002520       894 002521       896 002522       899 002524       901 002526
+    903 002531       906 002535       907 002537       908 002541       910 002543       912 002544       915 002555
+    917 002574       920 002641       922 002651       924 002652       927 002654       929 002656       932 002662
+    934 002665       936 002724       939 002725       941 002727       943 002731       945 002733       670 002734
+    680 002736       682 002744       683 002747       684 002757       686 002770       687 002772       691 002775
+    703 002777       704 003000       706 003001       709 003003       711 003005       713 003010       714 003011
+    716 003016       718 003022       719 003033       721 003040       723 003046       725 003050       726 003055
+    730 003063       732 003065       734 003110       735 003115       738 003121       739 003125       740 003130
+    741 003142       743 003154       744 003157       746 003162       748 003164       751 003170       759 003172
+    760 003175       761 003200       762 003202       763 003204       764 003211       765 003212       767 003213
+    774 003215       775 003221       776 003224       777 003240       778 003242       781 003266       783 003273
+    784 003276       785 003303       786 003304       788 003305       794 003307       795 003314       796 003321
+    798 003324       799 003344       802 003345       804 003351       806 003354       807 003374       809 003375
+    811 003376       812 003414       813 003416       815 003422       817 003442       819 003443       820 003445
+    821 003450       824 003455       825 003457       827 003466       828 003467       830 003470       832 003474
+    834 003513       836 003514       837 003515       838 003516       840 003521       841 003523       844 003531
+    845 003534       848 003542       850 003545       852 003552       857 003565       860 003566       866 003570
+    867 003571       868 003604       871 003610       872 003621       874 003627       950 003630       953 003631
+    956 003637       957 003660       960 003672       961 003673       963 003675       965 003704       967 003712
+    968 003714       971 003715       972 003754       975 003755       980 003757       983 003765       986 004010
+    989 004016       991 004026       994 004036       995 004056       997 004062       999 004064      1000 004104
+   1002 004110      1003 004114      1005 004127      1008 004133      1011 004135      1014 004136      1019 004140
+   1023 004220
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

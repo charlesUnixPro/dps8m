@@ -1,0 +1,247 @@
+	COMPILATION LISTING OF SEGMENT numeric_to_ascii_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1012.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* General number formatter.
+       14*
+       15*   This routine returns the ASCII string representation of its input
+       16*   argument, which is float dec(59).  The returned varying string has
+       17*   no blanks in it.  The returned string is in I-format, F-format, or
+       18*   E-format depending on value of input.  The precision argument controls
+       19*   rounding or truncating of input value
+       20*	0	no action, as many digits as are necessary
+       21*		will appear in final string
+       22*	< 0	truncate to specified number of digits
+       23*	> 0	round to specified number of digits
+       24*
+       25*   Initial Version: 28 January 1974 by Barry L. Wolman */
+       26 
+       27 numeric_to_ascii_: proc(val,precision,ans);
+       28 
+       29 dcl	val float dec(59),
+       30 	precision fixed bin,
+       31 	ans char(72) varying;
+       32 
+       33 dcl	value float dec(59);
+       34 
+       35 dcl	1 value_overlay	aligned based(addr(value)),
+       36 	2 sign		char(1) unaligned,
+       37 	2 digits		char(59) unaligned,
+       38 	2 skip		bit(1) unaligned,
+       39 	2 exponent	fixed bin(7) unaligned;
+       40 
+       41 dcl	fixed_dec fixed dec(3);
+       42 
+       43 dcl	1 fixed_overlay	aligned based(addr(fixed_dec)),
+       44 	2 sign		char(1) unaligned,
+       45 	2 dig		char(3) unaligned;
+       46 
+       47 dcl	(p,exp,n,nzeros,ndigits) fixed bin;
+       48 
+       49 dcl	move_r_or_t_ entry(float dec(59),float dec(59),fixed bin);
+       50 
+       51 dcl	(abs,substr,convert) builtin;
+       52 
+       53 	p = precision;
+       54 
+       55 	if p ^= 0
+       56 	then do;
+       57 	     call move_r_or_t_(value,val,p);
+       58 	     p = abs(p);
+       59 	     end;
+       60 	else do;
+       61 	     value = val;
+       62 	     p = 59;
+       63 	     end;
+       64 
+       65 	if value = 0 then ans = "0";
+       66 	else do;
+       67 
+       68 	     if value > 0 then ans = "";
+       69 	     else do;
+       70 		value = abs(value);
+       71 		ans = "-";
+       72 		end;
+       73 
+       74 	     n = verify(digits,"0");
+       75 	     nzeros = verify(reverse(digits),"0");
+       76 	     ndigits = 61 - n - nzeros;
+       77 
+       78 	     exp = exponent + nzeros - 1;
+       79 
+       80 	     if exp >= 0
+       81 	     then if exp + ndigits > p then call e_format;
+       82 		else do;
+       83 		     ans = ans || substr(digits,n,ndigits);
+       84 		     if exp > 0 then ans = ans || substr((64)"0",1,exp);
+       85 		     end;
+       86 	     else do;
+       87 		nzeros = ndigits + exp;
+       88 
+       89 		if nzeros <= 0
+       90 		then if ndigits - nzeros > p
+       91 		     then call e_format;
+       92 		     else do;
+       93 			ans = ans || "0.";
+       94 			if nzeros ^= 0 then ans = ans || substr((64)"0",1,abs(nzeros));
+       95 			ans = ans || substr(digits,n,ndigits);
+       96 			end;
+       97 		else do;
+       98 		     ans = ans || substr(digits,n,nzeros);
+       99 		     ans = ans || ".";
+      100 		     ans = ans || substr(digits,nzeros+n,ndigits-nzeros);
+      101 		     end;
+      102 		end;
+      103 	     end;
+      104 
+      105 e_format:	     proc;
+      106 
+      107 	     ans = ans || substr(digits,n,1);
+      108 	     ans = ans || ".";
+      109 	     ans = ans || substr(digits,n+1,ndigits-1);
+      110 	     ans = ans || "e";
+      111 
+      112 	     exp = exp + ndigits - 1;
+      113 
+      114 	     fixed_dec = convert(fixed_dec,exp);
+      115 
+      116 	     if abs(exp) < 10 then ndigits = 1;
+      117 	     else if abs(exp) < 100 then ndigits = 2;
+      118 		else ndigits = 3;
+      119 
+      120 	     if exp < 0 then ans = ans || "-";
+      121 	     ans = ans || substr(fixed_overlay.dig,4-ndigits,ndigits);
+      122 	     end;
+      123 
+      124 	end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.8  numeric_to_ascii_.pl1             >spec>install>1111>numeric_to_ascii_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+abs                                                    builtin function         dcl 51 ref 58 70 94 116 117
+ans                                    parameter       varying char(72)         dcl 29 set ref 27 65* 68* 71* 83* 83 84* 84 93* 93
+                                                                                  94* 94 95* 95 98* 98 99* 99 100* 100 107* 107 108*
+                                                                                  108 109* 109 110* 110 120* 120 121* 121
+convert                                                builtin function         dcl 51 ref 114
+dig                       0(09)        based           char(3)                  level 2 packed packed unaligned dcl 43 ref 121
+digits                    0(09)        based           char(59)                 level 2 packed packed unaligned dcl 35 ref 74 75 83
+                                                                                  95 98 100 107 109
+exp                             000122 automatic       fixed bin(17,0)          dcl 47 set ref 78* 80 80 84 84 87 112* 112 114 116
+                                                                                  117 120
+exponent                 17(01)        based           fixed bin(7,0)           level 2 packed packed unaligned dcl 35 ref 78
+fixed_dec                       000120 automatic       fixed dec(3,0)           dcl 41 set ref 114* 114 121
+fixed_overlay                          based           structure                level 1 dcl 43
+move_r_or_t_                    000010 constant        entry                    external dcl 49 ref 57
+n                               000123 automatic       fixed bin(17,0)          dcl 47 set ref 74* 76 83 95 98 100 107 109
+ndigits                         000125 automatic       fixed bin(17,0)          dcl 47 set ref 76* 80 83 87 89 95 100 109 112 116*
+                                                                                  117* 118* 121 121
+nzeros                          000124 automatic       fixed bin(17,0)          dcl 47 set ref 75* 76 78 87* 89 89 94 94 98 100 100
+p                               000121 automatic       fixed bin(17,0)          dcl 47 set ref 53* 55 57* 58* 58 62* 80 89
+precision                              parameter       fixed bin(17,0)          dcl 29 ref 27 53
+substr                                                 builtin function         dcl 51 ref 83 84 94 95 98 100 107 109 121
+val                                    parameter       float dec(59)            dcl 29 set ref 27 57* 61
+value                           000100 automatic       float dec(59)            dcl 33 set ref 57* 61* 65 68 70* 70 74 75 78 83 95
+                                                                                  98 100 107 109
+value_overlay                          based           structure                level 1 dcl 35
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+e_format                        000322 constant        entry                    internal dcl 105 ref 80 89
+numeric_to_ascii_               000007 constant        entry                    external dcl 27
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 74 75 78 83 95 98 100 107 109 121
+reverse                                                builtin function         ref 75
+verify                                                 builtin function         ref 74 75
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       532         544     474         542
+Length       710     474        12         127      35           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+numeric_to_ascii_                   105 external procedure  is an external procedure.  
+e_format                                internal procedure  shares stack frame of external procedure numeric_to_ascii_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+numeric_to_ascii_        000100 value                       numeric_to_ascii_
+                         000120 fixed_dec                   numeric_to_ascii_
+                         000121 p                           numeric_to_ascii_
+                         000122 exp                         numeric_to_ascii_
+                         000123 n                           numeric_to_ascii_
+                         000124 nzeros                      numeric_to_ascii_
+                         000125 ndigits                     numeric_to_ascii_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+move_r_or_t_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     27 000003        53 000014        55 000017        57 000020        58 000032        59 000037        61 000040
+     62 000044        65 000046        68 000061        70 000071        71 000074        74 000102        75 000114
+     76 000126        78 000132        80 000140        83 000150        84 000163        85 000177        87 000200
+     89 000202        93 000211        94 000223        95 000243        96 000256        98 000257        99 000272
+    100 000301       124 000321       105 000322       107 000323       108 000335       109 000344       110 000361
+    112 000370       114 000374       116 000377       117 000411       118 000416       120 000420       121 000431
+    122 000446
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

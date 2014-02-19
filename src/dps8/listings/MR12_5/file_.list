@@ -1,0 +1,357 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>file_.alm                                                                                                                                            
+ASSEMBLED ON:	11/11/89  0953.4 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "	Outer Module Transfer Vector for the file outer module.
+                                    13  
+                        000000      14  	entry	filemodule
+                        000000      15  	entry	file_module
+    000000                          16  filemodule:
+    000000                          17  file_module:
+    000000  0a   000001 7100 16     18  	tra	*+1,6		go to proper transfer instruction
+                                    19  
+    000001  4a  4 00010 7101 20     20  	tra	<file>|[file_attach]
+    000002  4a  4 00012 7101 20     21  	tra	<file>|[file_detach]
+    000003  4a  4 00014 7101 20     22  	tra	<file>|[file_read]
+    000004  4a  4 00016 7101 20     23  	tra	<file>|[file_write]
+    000005  4a  4 00020 7101 20     24  	tra	<ios_>|[no_entry]
+    000006  4a  4 00022 7101 20     25  	tra	<file>|[file_order]
+    000007  4a  4 00020 7101 20     26  	tra	<ios_>|[no_entry]
+    000010  4a  4 00020 7101 20     27  	tra	<ios_>|[no_entry]
+    000011  4a  4 00024 7101 20     28  	tra	<file>|[file_setsize]
+    000012  4a  4 00026 7101 20     29  	tra	<file>|[file_getsize]
+    000013  4a  4 00030 7101 20     30  	tra	<file>|[file_setdelim]
+    000014  4a  4 00032 7101 20     31  	tra	<file>|[file_getdelim]
+    000015  4a  4 00034 7101 20     32  	tra	<file>|[file_seek]
+    000016  4a  4 00036 7101 20     33  	tra	<file>|[file_tell]
+    000017  4a  4 00020 7101 20     34  	tra	<ios_>|[no_entry]
+    000020  4a  4 00020 7101 20     35  	tra	<ios_>|[no_entry]
+    000021  4a  4 00020 7101 20     36  	tra	<ios_>|[no_entry]
+    000022  4a  4 00020 7101 20     37  	tra	<ios_>|[no_entry]
+    000023  4a  4 00020 7101 20     38  	tra	<ios_>|[no_entry]
+    000024  4a  4 00020 7101 20     39  	tra	<ios_>|[no_entry]
+    000025  4a  4 00020 7101 20     40  	tra	<ios_>|[no_entry]
+                                    41  
+                                    42  	end
+ENTRY SEQUENCES
+     
+    000026  5a   000016 0000 00
+    000027  aa  7 00046 2721 20
+    000030  0a   000000 7100 00
+    000031  5a   000010 0000 00
+    000032  aa  7 00046 2721 20
+    000033  0a   000000 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000034  5a   000003 000000 
+    000035  5a   000033 600000 
+    000036  aa   000000 000000 
+    000037  55   000010 000002 
+    000040  5a   000002 400003 
+    000041  55   000006 000010 
+    000042  aa  005 146 151 154
+    000043  aa  145 137 000 000
+    000044  55   000016 000003 
+    000045  0a   000032 500000 
+    000046  55   000013 000003 
+    000047  aa  013 146 151 154         file_module
+    000050  aa  145 137 155 157
+    000051  aa  144 165 154 145
+    000052  55   000024 000010 
+    000053  0a   000027 500000 
+    000054  55   000021 000003 
+    000055  aa  012 146 151 154         filemodule
+    000056  aa  145 155 157 144
+    000057  aa  165 154 145 000
+    000060  55   000002 000016 
+    000061  6a   000000 400002 
+    000062  55   000027 000003 
+    000063  aa  014 163 171 155         symbol_table
+    000064  aa  142 157 154 137
+    000065  aa  164 141 142 154
+    000066  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000067  aa   000000 000015 
+    000070  5a   000016 000000 
+    000071  aa   000000 000000 
+    000072  aa   000000 000000 
+    000073  aa   000000 000000 
+    000074  aa   000000 000000 
+    000075  aa   000000 000000 
+    000076  5a   000024 000000 
+    000077  aa   000000 000000 
+    000100  5a   000010 000000 
+    000101  aa   000000 000000 
+    000102  aa   000000 000000 
+    000103  aa   000000 000000 
+    000104  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000105  aa  011 146 151 154         file_tell
+    000106  aa  145 137 164 145
+    000107  aa  154 154 000 000
+    000110  aa  011 146 151 154         file_seek
+    000111  aa  145 137 163 145
+    000112  aa  145 153 000 000
+    000113  aa  015 146 151 154         file_getdelim
+    000114  aa  145 137 147 145
+    000115  aa  164 144 145 154
+    000116  aa  151 155 000 000
+    000117  aa  015 146 151 154         file_setdelim
+    000120  aa  145 137 163 145
+    000121  aa  164 144 145 154
+    000122  aa  151 155 000 000
+    000123  aa  014 146 151 154         file_getsize
+    000124  aa  145 137 147 145
+    000125  aa  164 163 151 172
+    000126  aa  145 000 000 000
+    000127  aa  014 146 151 154         file_setsize
+    000130  aa  145 137 163 145
+    000131  aa  164 163 151 172
+    000132  aa  145 000 000 000
+    000133  aa  012 146 151 154         file_order
+    000134  aa  145 137 157 162
+    000135  aa  144 145 162 000
+    000136  aa  010 156 157 137         no_entry
+    000137  aa  145 156 164 162
+    000140  aa  171 000 000 000
+    000141  aa  004 151 157 163         ios_
+    000142  aa  137 000 000 000
+    000143  aa  012 146 151 154         file_write
+    000144  aa  145 137 167 162
+    000145  aa  151 164 145 000
+    000146  aa  011 146 151 154         file_read
+    000147  aa  145 137 162 145
+    000150  aa  141 144 000 000
+    000151  aa  013 146 151 154         file_detach
+    000152  aa  145 137 144 145
+    000153  aa  164 141 143 150
+    000154  aa  013 146 151 154         file_attach
+    000155  aa  145 137 141 164
+    000156  aa  164 141 143 150
+    000157  aa  004 146 151 154         file
+    000160  aa  145 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000161  aa   000004 000000 
+    000162  55   000123 000051 
+    000163  aa   000004 000000 
+    000164  55   000123 000054 
+    000165  aa   000004 000000 
+    000166  55   000123 000057 
+    000167  aa   000004 000000 
+    000170  55   000123 000063 
+    000171  aa   000004 000000 
+    000172  55   000123 000067 
+    000173  aa   000004 000000 
+    000174  55   000123 000073 
+    000175  aa   000004 000000 
+    000176  55   000123 000077 
+    000177  aa   000004 000000 
+    000200  55   000105 000102 
+    000201  aa   000004 000000 
+    000202  55   000123 000107 
+    000203  aa   000004 000000 
+    000204  55   000123 000112 
+    000205  aa   000004 000000 
+    000206  55   000123 000115 
+    000207  aa   000004 000000 
+    000210  55   000123 000120 
+    000211  aa   000001 000000 
+    000212  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000213  5a   000125 000000 
+    000214  5a   000127 000000 
+    000215  5a   000131 000000 
+    000216  5a   000133 000000 
+    000217  5a   000135 000000 
+    000220  5a   000137 000000 
+    000221  5a   000141 000000 
+    000222  5a   000143 000000 
+    000223  5a   000145 000000 
+    000224  5a   000147 000000 
+    000225  5a   000151 000000 
+    000226  5a   000153 000000 
+    000227  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000034 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000040 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         file|file_attach
+    000011  5a   000172 0000 00
+    000012  9a   777766 0000 46         file|file_detach
+    000013  5a   000171 0000 00
+    000014  9a   777764 0000 46         file|file_read
+    000015  5a   000170 0000 00
+    000016  9a   777762 0000 46         file|file_write
+    000017  5a   000167 0000 00
+    000020  9a   777760 0000 46         ios_|no_entry
+    000021  5a   000166 0000 00
+    000022  9a   777756 0000 46         file|file_order
+    000023  5a   000165 0000 00
+    000024  9a   777754 0000 46         file|file_setsize
+    000025  5a   000164 0000 00
+    000026  9a   777752 0000 46         file|file_getsize
+    000027  5a   000163 0000 00
+    000030  9a   777750 0000 46         file|file_setdelim
+    000031  5a   000162 0000 00
+    000032  9a   777746 0000 46         file|file_getdelim
+    000033  5a   000161 0000 00
+    000034  9a   777744 0000 46         file|file_seek
+    000035  5a   000160 0000 00
+    000036  9a   777742 0000 46         file|file_tell
+    000037  5a   000157 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   257173 705133 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000145 
+    000020  aa   000000 000101 
+    000021  aa   000117 000110 
+    000022  aa   000137 000101 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000034 
+    000067  aa   175453 017246 
+    000070  aa   000000 117547 
+    000071  aa   174671 200000 
+    000072  aa   076163 160145          >spec>install>1110>file_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076146 
+    000077  aa   151154 145137 
+    000100  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                file                     file_:         20,   21,   22,   23,   25,   28,   29,   30,   31,   32,   33.
+           0    filemodule               file_:         14,   16.
+                file_attach              file_:         20.
+                file_detach              file_:         21.
+                file_getdelim            file_:         31.
+                file_getsize             file_:         29.
+           0    file_module              file_:         15,   17.
+                file_order               file_:         25.
+                file_read                file_:         22.
+                file_seek                file_:         32.
+                file_setdelim            file_:         30.
+                file_setsize             file_:         28.
+                file_tell                file_:         33.
+                file_write               file_:         23.
+                ios_                     file_:         24,   26,   27,   34,   35,   36,   37,   38,   39,   40.
+                no_entry                 file_:         24,   26,   27,   34,   35,   36,   37,   38,   39,   40.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

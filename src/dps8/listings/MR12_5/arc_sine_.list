@@ -1,0 +1,731 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>arc_sine_.alm                                                                                                                                        
+ASSEMBLED ON:	11/11/89  0947.2 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " HISTORY COMMENTS:
+                                    10  "  1) change(86-07-15,Ginter), approve(86-07-15,MCR7287),
+                                    11  "     audit(86-07-16,Mabey), install(86-07-28,MR12.0-1104):
+                                    12  "     Change by M Mabey (installed by Ginter) to normalize input with frd.
+                                    13  "                                                      END HISTORY COMMENTS
+                                    14  
+                                    15  
+    000000                          16  name	arc_sine_
+                                    17  " Modification history:
+                                    18  "	Written by H. Hoover, M. Mabey, and B. Wong, April 1985,
+                                    19  "	based on the GCOS routine '7nah'.
+                                    20  "
+                                    21  "	Modified: May 10, 1985 by M Mabey - normalize input with a frd.
+                                    22  "
+                                    23  " Function:  Approximate to single precision the arcsine or arccosine of
+                                    24  "	a value in the range [-1:1].
+                                    25  "
+                                    26  " Entry:	through the appropriately named entry point with:
+                                    27  "	EAQ = a value in the range [-1:1]
+                                    28  "	PR2 = the address of a 20 word, even-word aligned scratch area.
+                                    29  "	      12 words are used in this program and another 8 are allocated
+                                    30  "	      for the double_square_root_ routine.
+                                    31  "	PR3 = the return address.
+                                    32  "
+                                    33  " Exit:	EAQ = the desired angle.
+                                    34  "
+                                    35  " Uses:	X2, X3, X4, PR5
+                                    36  "	X2 = indicates BFP or HFP mode - all the floating point math
+                                    37  "	     routines use this register for the same purpose.
+                                    38  "	X3 = saves a return address from arcsine.
+                                    39  "         X4 = saves a return address from part_arcsine.
+                                    40  "	PR5 = a temporary
+                                    41  "	The X register usage starts at X2 because this function calls
+                                    42  "	double_square_root_ which uses registers X0 through X2.  Register X2
+                                    43  "	is used for the same purpose in both routines.
+                                    44  "
+                                    45  "	Since double_square_root_ expects the return address in PR3,
+                                    46  "	this register must be saved before the call is made.  In addition,
+                                    47  "	double_square_root_ expects PR2 to point to an even-word aligned,
+                                    48  "	8 word long working storage area.
+                                    49  
+                        000004      50  	segdef	arc_sine_radians_
+                        000000      51  	segdef	hfp_arc_sine_radians_
+                        000015      52  	segdef	arc_sine_degrees_
+                        000010      53  	segdef	hfp_arc_sine_degrees_
+                        000030      54  	segdef	arc_cosine_radians_
+                        000022      55  	segdef	hfp_arc_cosine_radians_
+                        000046      56  	segdef	arc_cosine_degrees_
+                        000036      57  	segdef	hfp_arc_cosine_degrees_
+                                    58  
+    000000                          59  	segref	math_constants_,half_pi,hfp_half_pi,hfp_one_radian,one_radian,pi,quarter_pi
+                                    60  
+                        000000      61  	equ	abs_x,0
+                        000002      62  	equ	arg_x,2
+                        000004      63  	equ	y,4
+                        000006      64  	equ	yy,6
+                        000010      65  	equ	p,8
+                        000012      66  	equ	space_used,10
+                        000010      67  	equ	pp,p
+                        000000      68  	equ	temp,abs_x
+                        000000      69  	equ	BFP,0
+                        000002      70  	equ	HFP,2
+                                    71  
+                        004264      72  	bool	P90.0H,004264	" yields HFP +90.0 under 'du' modification
+                                    73  
+    000000                          74  hfp_arc_sine_radians_:
+    000000  aa   000002 6220 00     75  	eax2	HFP		" 2 word offset for HFP constants
+    000001  0a   000056 7030 00     76  	tsx3	arcsine
+    000002  aa   000000 4710 00     77  	frd	0
+    000003  aa  3 00000 7101 00     78  	tra	pr3|0		" Return to caller
+                                    79  
+    000004                          80  arc_sine_radians_:
+    000004  aa   000000 6220 00     81  	eax2	BFP
+    000005  0a   000056 7030 00     82  	tsx3	arcsine
+    000006  aa   000000 4710 00     83  	frd	0
+    000007  aa  3 00000 7101 00     84  	tra	pr3|0		" Return to caller
+                                    85  
+    000010                          86  hfp_arc_sine_degrees_:
+    000010  aa   000002 6220 00     87  	eax2	HFP
+    000011  0a   000056 7030 00     88  	tsx3	arcsine
+    000012  4a  4 00010 4631 20     89  	dfmp	hfp_one_radian	" Convert to degrees
+    000013  aa   000000 4710 00     90  	frd	0
+    000014  aa  3 00000 7101 00     91  	tra	pr3|0		" Return to caller
+                                    92  
+    000015                          93  arc_sine_degrees_:
+    000015  aa   000000 6220 00     94  	eax2	BFP
+    000016  0a   000056 7030 00     95  	tsx3	arcsine
+    000017  4a  4 00012 4631 20     96  	dfmp	one_radian	" Convert to degrees
+    000020  aa   000000 4710 00     97  	frd	0
+    000021  aa  3 00000 7101 00     98  	tra	pr3|0		" Return to caller
+                                    99  
+    000022                         100  hfp_arc_cosine_radians_:
+    000022  aa   000002 6220 00    101  	eax2	HFP
+    000023  0a   000056 7030 00    102  	tsx3	arcsine
+    000024  aa   000000 5130 00    103  	fneg	0
+    000025  4a  4 00014 4771 20    104  	dfad	hfp_half_pi	" convert to cosine
+    000026  aa   000000 4710 00    105  	frd	0
+    000027  aa  3 00000 7101 00    106  	tra	pr3|0		" Return to caller
+                                   107  
+    000030                         108  arc_cosine_radians_:
+    000030  aa   000000 6220 00    109  	eax2	BFP
+    000031  0a   000056 7030 00    110  	tsx3	arcsine
+    000032  aa   000000 5130 00    111  	fneg	0
+    000033  4a  4 00016 4771 20    112  	dfad	half_pi		" convert to cosine
+    000034  aa   000000 4710 00    113  	frd	0
+    000035  aa  3 00000 7101 00    114  	tra	pr3|0		" Return to caller
+                                   115  
+    000036                         116  hfp_arc_cosine_degrees_:
+    000036  aa   000002 6220 00    117  	eax2	HFP
+    000037  0a   000056 7030 00    118  	tsx3	arcsine
+    000040  4a  4 00010 4631 20    119  	dfmp	hfp_one_radian	" convert to degrees
+    000041  aa   000000 5130 00    120  	fneg	0
+    000042  0a   000322 3760 00    121  	anq	kill_nine_bits	" clean out unnecessary bottom bits
+    000043  aa   004264 4750 03    122  	fad	P90.0H,du		" convert to cosine
+    000044  aa   000000 4710 00    123  	frd	0
+    000045  aa  3 00000 7101 00    124  	tra	pr3|0		" Return to caller
+                                   125  
+    000046                         126  arc_cosine_degrees_:
+    000046  aa   000000 6220 00    127  	eax2	BFP
+    000047  0a   000056 7030 00    128  	tsx3	arcsine
+    000050  4a  4 00020 4631 20    129  	dfmp	one_radian,x2	" convert to degrees
+    000051  aa   000000 5130 00    130  	fneg	0
+    000052  aa   000000 4730 00    131  	dfrd	0		" clean out unnecessary bottom bits
+    000053  aa   016550 4750 03    132  	fad	=90.0,du		" convert to cosine
+    000054  aa   000000 4710 00    133  	frd	0
+    000055  aa  3 00000 7101 00    134  	tra	pr3|0		" Return to caller
+                                   135  
+    000056                         136  arcsine:
+    000056  aa   000000 4710 00    137  	frd	0		" round and normalize input ("arg_x")
+    000057  aa  2 00002 4551 00    138  	fst	pr2|arg_x		" store sign of arg_x.
+    000060  aa   000002 6050 04    139  	tpl	2,ic		" abs_x=abs(arg_x)
+    000061  aa   000000 5130 00    140  	  fneg	0
+    000062  aa  2 00000 4551 00    141  	fst	pr2|abs_x
+                                   142  
+                                   143  " determine what range abs_x is in.  A binary search is not used as
+                                   144  " each higher range is much smaller than the previous one.  Once the
+                                   145  " range is determined, perform the appropriate polynomial scaling to
+                                   146  " get abs_x into [0, .5], and then transfer to part_arcsine.
+                                   147  " Upon return, scale the result back.
+                                   148  
+    000063  aa   000400 4250 03    149  	fcmg	=0.5,du		" is abs_x in the range [0,.5)
+    000064  0a   000070 6050 00    150  	tpl	above_bound_1	" no, find the correct range
+    000065  aa  2 00002 4311 00    151  	fld	pr2|arg_x
+    000066  0a   000154 7040 00    152  	tsx4	part_arcsine
+    000067  aa   000000 7100 13    153  	tra	0,x3		" Return to entry
+                                   154  
+    000070                         155  above_bound_1:
+    000070  0a   000252 4250 12    156  	fcmg	bound_2,x2	" is abs_x in the range [.5, .866)
+    000071  0a   000104 6050 00    157  	tpl	above_bound_2	" no, find correct range
+    000072  aa  2 00000 4611 00    158  	fmp	pr2|abs_x		" EAQ = abs_x**2
+    000073  0a   000302 4610 12    159  	fmp	two,x2		" EAQ = 2 * abs_x**2
+    000074  0a   000276 5750 12    160  	fsb	one,x2		" EAQ = 2 * abs_x**2 - 1
+    000075  0a   000154 7040 00    161  	tsx4	part_arcsine
+    000076  4a  4 00022 4771 20    162  	dfad	half_pi,x2	" EAQ = part_asin + pi/2
+    000077  aa   000400 4610 03    163  	fmp	=0.5,du		" EAQ = .5*part_asin + pi/4
+    000100  aa  2 00002 4301 00    164  	fszn	pr2|arg_x		" was arg_x negative
+    000101  aa   000000 6050 13    165  	tpl	0,x3		" no, return to entry
+    000102  aa   000000 5130 00    166  	fneg	0		" EAQ = -EAQ
+    000103  aa   000000 7100 13    167  	tra	0,x3		" Return to entry
+                                   168  
+    000104                         169  above_bound_2:
+    000104  0a   000256 4250 12    170  	fcmg	bound_3,x2	" is abs_x in the range [.866, .966)
+    000105  0a   000123 6050 00    171  	tpl	above_bound_3	" no, find correct range
+    000106  aa  2 00000 4611 00    172  	fmp	pr2|abs_x		" EAQ = abs_x**2
+    000107  aa  2 00000 4571 00    173  	dfst	pr2|temp
+    000110  0a   000306 4610 12    174  	fmp	eight,x2		" EAQ = 8*abs_x**2
+    000111  0a   000306 5750 12    175  	fsb	eight,x2		" EAQ = 8*abs_x**2 - 8
+    000112  aa  2 00000 4631 00    176  	dfmp	pr2|temp		" EAQ = 8*abs_x**4 - 8*abs_x**2
+    000113  0a   000276 4750 12    177  	fad	one,x2		" EAQ = 8*abs_x**4 - 8*abs_x**2 + 1
+    000114  0a   000154 7040 00    178  	tsx4	part_arcsine
+    000115  0a   000266 4770 12    179  	dfad	three_pi_by_two,x2	" EAQ = part_asin + 3*pi/2
+    000116  0a   000272 4630 12    180  	dfmp	one_quarter,x2	" EAQ = part_asin/4 + 3*pi/8
+    000117  aa  2 00002 4301 00    181  	fszn	pr2|arg_x		" was arg_x negative
+    000120  aa   000000 6050 13    182  	tpl	0,x3		" no, return to entry
+    000121  aa   000000 5130 00    183  	fneg	0		" EAQ = -EAQ
+    000122  aa   000000 7100 13    184  	tra	0,x3		" return to entry
+                                   185  
+    000123                         186  above_bound_3:
+    000123  0a   000262 4250 12    187  	fcmg	bound_4,x2	" is abs_x in the range [.966, 1]
+    000124  0a   000150 6054 00    188  	tpnz	arcsine_domain_error
+    000125  aa   000400 4610 03    189  	fmp	=0.5,du		" EAQ = abs_x/2
+    000126  aa   000000 5130 00    190  	fneg	0		" EAQ = - abs_x/2
+    000127  aa   000400 4750 03    191  	fad	=0.5,du		" EAQ = .5 - abs_x/2 or (1-abs_x)/2
+                                   192  
+    000130  aa  3 00000 3715 00    193  	epp5	pr3|0		" save the return address
+    000131  aa  2 00012 3521 00    194  	epp2	pr2|space_used	" increment PR2 for sqrt
+    000132  0a   000145 2730 12    195  	tsp3	square_root,x2	" call sqrt function
+    000133  aa  2 77766 3521 00    196  	epp2	pr2|-space_used	" restore PR2
+    000134  aa  5 00000 3535 00    197  	epp3	pr5|0		" restore PR3
+    000135  0a   000154 7040 00    198  	tsx4	part_arcsine	" EAQ = sqrt ((1 - abs_x)/2)
+    000136  0a   000302 4610 12    199  	fmp	two,x2		" EAQ = 2*part_asin
+    000137  aa   000000 5130 00    200  	fneg	0		" EAQ = - 2*part_asin
+    000140  4a  4 00022 4771 20    201  	dfad	half_pi,x2	" EAQ = pi/2 - 2*part_asin
+    000141  aa  2 00002 4301 00    202  	fszn	pr2|arg_x		" was arg_x negative
+    000142  aa   000000 6050 13    203  	tpl	0,x3		" no, return to entry
+    000143  aa   000000 5130 00    204  	fneg	0		" EAQ = -EAQ
+    000144  aa   000000 7100 13    205  	tra	0,x3		" return to entry
+                                   206  
+                                   207  " Transfer Table
+                                   208  
+                                   209  " We call double_square_root_ instead of square_root_ because we need
+                                   210  " the additional accuracy.  If we call the single precision version
+                                   211  " we can sometimes end up with a final result that will be wrong in the
+                                   212  " second last bit of the mantissa.
+                                   213  
+    000145                         214  square_root:
+    000145  4a  4 00024 7101 20    215  	tra	<double_square_root_>|[double_square_root_]
+    000146  aa   000000 0110 00    216  	nop
+    000147  4a  4 00026 7101 20    217  	tra	<double_square_root_>|[hfp_double_square_root_]
+                                   218  
+                                   219  
+    000150                         220  arcsine_domain_error:		" abs_x > 1
+    000150  aa   000072 2360 07    221  	ldq	58,dl
+    000151  4a  4 00030 7001 20    222  	tsx0	<call_math_error_>|[call_math_error_]
+    000152  aa   400000 4310 03    223  	fld	=0.0,du
+    000153  aa  3 00000 7101 00    224  	tra	pr3|0		" return to caller
+                                   225  
+                                   226  " This next subroutine calculates the arcsine of a value in the
+                                   227  " range [0, .5].
+                                   228  
+    000154                         229  part_arcsine:
+    000154  0a   000312 4250 12    230  	fcmg	formula_bound,x2	" Can we use a short polynomial?
+    000155  0a   000175 6040 00    231  	tmi	small_formula	" Yup.
+                                   232  
+    000156  aa  2 00004 4571 00    233  	dfst	pr2|y
+    000157  aa  2 00004 4631 00    234  	dfmp	pr2|y
+    000160  aa  2 00006 4571 00    235  	dfst	pr2|yy		" yy = y*y
+    000161  0a   000222 4630 12    236  	dfmp	p2,x2		" EAQ = yy*p2
+    000162  0a   000216 4770 12    237  	dfad	p1,x2		" EAQ = p1 + yy*p2
+    000163  aa  2 00006 4631 00    238  	dfmp	pr2|yy		" EAQ = yy*(p1 + yy*p2)
+    000164  0a   000212 4770 12    239  	dfad	p0,x2		" EAQ = p0 + yy*(p1 + yy*p2)
+    000165  aa  2 00010 4571 00    240  	dfst	pr2|p
+    000166  aa  2 00006 4331 00    241  	dfld	pr2|yy		" EAQ = yy
+    000167  0a   000242 4770 12    242  	dfad	q1,x2		" EAQ = q1 + yy
+    000170  aa  2 00006 4631 00    243  	dfmp	pr2|yy		" EAQ = yy*(q1 + yy)
+    000171  0a   000236 4770 12    244  	dfad	q0,x2		" EAQ = q0 + yy*(q1 + yy)
+    000172  aa  2 00010 5271 00    245  	dfdi	pr2|p		" EAQ = p/q
+    000173  aa  2 00004 4631 00    246  	dfmp	pr2|y		" EAQ = y*p/q
+    000174  aa   000000 7100 14    247  	tra	0,x4		" Return from part_arcsine
+                                   248  
+    000175                         249  small_formula:
+    000175  0a   000316 4250 12    250  	fcmg	epsilon,x2	" Is any calculation necessary?
+    000176  aa   000000 6040 14    251  	tmi	0,x4		" No. Small number. Just return.
+                                   252  
+    000177  aa  2 00004 4571 00    253  	dfst	pr2|y
+    000200  aa  2 00004 4631 00    254  	dfmp	pr2|y
+    000201  aa  2 00006 4571 00    255  	dfst	pr2|yy		" yy = y*y
+    000202  0a   000232 4630 12    256  	dfmp	pp1,x2		" EAQ = yy*pp1
+    000203  0a   000226 4770 12    257  	dfad	pp0,x2		" EAQ = pp0 + yy*pp1
+    000204  aa  2 00010 4571 00    258  	dfst	pr2|pp
+    000205  aa  2 00006 4331 00    259  	dfld	pr2|yy
+    000206  0a   000246 4770 12    260  	dfad	qq0,x2		" EAQ = qq0 + yy
+    000207  aa  2 00010 5271 00    261  	dfdi	pr2|pp		" EAQ = pp/qq
+    000210  aa  2 00004 4631 00    262  	dfmp	pr2|y		" EAQ = y*pp/qq
+    000211  aa   000000 7100 14    263  	tra	0,x4		" Return from part_arcsine
+                                   264  
+                                   265  
+                                   266  " Constants:  (Hex values are given in octal)
+                                   267  
+                                   268  	even
+    000212  aa   006546 503556     269  p0:	dec	.5603629044813127d01
+    000213  aa   674615 323460 
+    000214  aa   002263 241667     270  	oct	002263241667,336306551630
+    000215  aa   336306 551630 
+    000216  aa   007330 527031     271  p1:	dec	-.46145309466645d01
+    000217  aa   443310 603646 
+    000220  aa   003554 253414     272  	oct	003554253414,621544301723
+    000221  aa   621544 301723 
+    000222  aa   776773 374667     273  p2:	dec	.49559947478731d00
+    000223  aa   004024 666576 
+    000224  aa   000375 576333     274  	oct	000375576333,402012333277
+    000225  aa   402012 333277 
+    000226  aa   005344 473435     275  pp0:	dec	-2.21393498174243d00
+    000227  aa   147621 156306 
+    000230  aa   003671 116707     276  	oct	003671116707,231744233462
+    000231  aa   231744 233462 
+    000232  aa   000503 050602     277  pp1:	dec	.63101484054356d00
+    000233  aa   166633 467044 
+    000234  aa   000503 050602     278  	oct	000503050602,166633467044
+    000235  aa   166633 467044 
+    000236  aa   006546 503556     279  q0:	dec	.5603629030606043d01
+    000237  aa   502571 776373 
+    000240  aa   002263 241667     280  	oct	002263241667,241274777175
+    000241  aa   241274 777175 
+    000242  aa   007234 713661     281  q1:	dec	-.554846659934668d01
+    000243  aa   311556 204324 
+    000244  aa   003516 345730     282  	oct	003516345730,544667102152
+    000245  aa   544667 102152 
+    000246  aa   005344 473435     283  qq0:	dec	-2.21393497792717d00
+    000247  aa   251250 461715 
+    000250  aa   003671 116707     284  	oct	003671116707,252252114363
+    000251  aa   252252 114363 
+                                   285  
+    000252  aa   000673 317272     286  bound_2:	dec	.866025404d0
+    000253  aa   072755 035014 
+    000254                         287  hfp_bound_2:
+    000254  aa   000673 317272     288  	oct	000673317272,000000000000	" sin(pi/3)
+    000255  aa   000000 000000 
+    000256  aa   000756 433521     289  bound_3:	dec	.965925826d0
+    000257  aa   620404 312164 
+    000260  aa   000756 433521     290  	oct	000756433521,000000000000	" sin(5*pi/12)
+    000261  aa   000000 000000 
+    000262  aa   002400 000000     291  bound_4:	dec	1.0d0
+    000263  aa   000000 000000 
+    000264  aa   002040 000000     292  	oct	002040000000,000000000000
+    000265  aa   000000 000000 
+                                   293  
+    000266                         294  three_pi_by_two:
+    000266  aa   006455 457437     295  	dec 	.471238898038468985787763d01
+    000267  aa   631441 644324 
+    000270  aa   002226 627617     296  	oct	002226627617,714620722152
+    000271  aa   714620 722152 
+    000272                         297  one_quarter:
+    000272  aa   776400 000000     298  	dec	0.25d0
+    000273  aa   000000 000000 
+    000274  aa   000200 000000     299  	oct	000200000000,000000000000
+    000275  aa   000000 000000 
+    000276  aa   002400 000000     300  one:	dec	1.0d0
+    000277  aa   000000 000000 
+    000300  aa   002040 000000     301  	oct	002040000000,000000000000
+    000301  aa   000000 000000 
+    000302  aa   004400 000000     302  two:	dec	2.0d0
+    000303  aa   000000 000000 
+    000304  aa   002100 000000     303  	oct	002100000000,000000000000
+    000305  aa   000000 000000 
+    000306  aa   010400 000000     304  eight:	dec	8d0
+    000307  aa   000000 000000 
+    000310  aa   002400 000000     305  	oct	002400000000,000000000000
+    000311  aa   000000 000000 
+    000312                         306  formula_bound:
+    000312  aa   774413 242502     307  	dec	0.13052619d0
+    000313  aa   524446 250766 
+    000314  aa   000102 650520     308  	oct	000102650520,000000000000
+    000315  aa   000000 000000 
+    000316  aa   704471 421604     309  epsilon:	dec	5.7031627d-10
+    000317  aa   407031 702277 
+    000320  aa   762116 304341     310  	oct	762116304341,000000000000
+    000321  aa   000000 000000 
+    000322                         311  kill_nine_bits:
+    000322  aa   777777 777000     312  	oct	777777777000
+                                   313  
+                                   314  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000324  5a   000003 000000 
+    000325  5a   000124 600000 
+    000326  aa   000000 000000 
+    000327  55   000011 000002 
+    000330  5a   000002 400003 
+    000331  55   000006 000011 
+    000332  aa  011 141 162 143
+    000333  aa  137 163 151 156
+    000334  aa  145 137 000 000
+    000335  55   000022 000003 
+    000336  0a   000036 400000 
+    000337  55   000014 000003 
+    000340  aa  027 150 146 160         hfp_arc_cosine_degrees_
+    000341  aa  137 141 162 143
+    000342  aa  137 143 157 163
+    000343  aa  151 156 145 137
+    000344  aa  144 145 147 162
+    000345  aa  145 145 163 137
+    000346  55   000032 000011 
+    000347  0a   000046 400000 
+    000350  55   000025 000003 
+    000351  aa  023 141 162 143         arc_cosine_degrees_
+    000352  aa  137 143 157 163
+    000353  aa  151 156 145 137
+    000354  aa  144 145 147 162
+    000355  aa  145 145 163 137
+    000356  55   000043 000022 
+    000357  0a   000022 400000 
+    000360  55   000035 000003 
+    000361  aa  027 150 146 160         hfp_arc_cosine_radians_
+    000362  aa  137 141 162 143
+    000363  aa  137 143 157 163
+    000364  aa  151 156 145 137
+    000365  aa  162 141 144 151
+    000366  aa  141 156 163 137
+    000367  55   000053 000032 
+    000370  0a   000030 400000 
+    000371  55   000046 000003 
+    000372  aa  023 141 162 143         arc_cosine_radians_
+    000373  aa  137 143 157 163
+    000374  aa  151 156 145 137
+    000375  aa  162 141 144 151
+    000376  aa  141 156 163 137
+    000377  55   000064 000043 
+    000400  0a   000010 400000 
+    000401  55   000056 000003 
+    000402  aa  025 150 146 160         hfp_arc_sine_degrees_
+    000403  aa  137 141 162 143
+    000404  aa  137 163 151 156
+    000405  aa  145 137 144 145
+    000406  aa  147 162 145 145
+    000407  aa  163 137 000 000
+    000410  55   000074 000053 
+    000411  0a   000015 400000 
+    000412  55   000067 000003 
+    000413  aa  021 141 162 143         arc_sine_degrees_
+    000414  aa  137 163 151 156
+    000415  aa  145 137 144 145
+    000416  aa  147 162 145 145
+    000417  aa  163 137 000 000
+    000420  55   000105 000064 
+    000421  0a   000000 400000 
+    000422  55   000077 000003 
+    000423  aa  025 150 146 160         hfp_arc_sine_radians_
+    000424  aa  137 141 162 143
+    000425  aa  137 163 151 156
+    000426  aa  145 137 162 141
+    000427  aa  144 151 141 156
+    000430  aa  163 137 000 000
+    000431  55   000115 000074 
+    000432  0a   000004 400000 
+    000433  55   000110 000003 
+    000434  aa  021 141 162 143         arc_sine_radians_
+    000435  aa  137 163 151 156
+    000436  aa  145 137 162 141
+    000437  aa  144 151 141 156
+    000440  aa  163 137 000 000
+    000441  55   000002 000105 
+    000442  6a   000000 400002 
+    000443  55   000120 000003 
+    000444  aa  014 163 171 155         symbol_table
+    000445  aa  142 157 154 137
+    000446  aa  164 141 142 154
+    000447  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000450  aa   000000 000015 
+    000451  5a   000011 000000 
+    000452  5a   000032 000000 
+    000453  aa   000000 000000 
+    000454  aa   000000 000000 
+    000455  aa   000000 000000 
+    000456  aa   000000 000000 
+    000457  5a   000064 000000 
+    000460  5a   000105 000000 
+    000461  5a   000115 000000 
+    000462  5a   000022 000000 
+    000463  5a   000043 000000 
+    000464  5a   000053 000000 
+    000465  5a   000074 000000 
+
+EXTERNAL NAMES
+
+    000466  aa  020 143 141 154         call_math_error_
+    000467  aa  154 137 155 141
+    000470  aa  164 150 137 145
+    000471  aa  162 162 157 162
+    000472  aa  137 000 000 000
+    000473  aa  027 150 146 160         hfp_double_square_root_
+    000474  aa  137 144 157 165
+    000475  aa  142 154 145 137
+    000476  aa  163 161 165 141
+    000477  aa  162 145 137 162
+    000500  aa  157 157 164 137
+    000501  aa  023 144 157 165         double_square_root_
+    000502  aa  142 154 145 137
+    000503  aa  163 161 165 141
+    000504  aa  162 145 137 162
+    000505  aa  157 157 164 137
+    000506  aa  012 161 165 141         quarter_pi
+    000507  aa  162 164 145 162
+    000510  aa  137 160 151 000
+    000511  aa  002 160 151 000         pi
+    000512  aa  012 157 156 145         one_radian
+    000513  aa  137 162 141 144
+    000514  aa  151 141 156 000
+    000515  aa  016 150 146 160         hfp_one_radian
+    000516  aa  137 157 156 145
+    000517  aa  137 162 141 144
+    000520  aa  151 141 156 000
+    000521  aa  013 150 146 160         hfp_half_pi
+    000522  aa  137 150 141 154
+    000523  aa  146 137 160 151
+    000524  aa  007 150 141 154         half_pi
+    000525  aa  146 137 160 151
+    000526  aa  017 155 141 164         math_constants_
+    000527  aa  150 137 143 157
+    000530  aa  156 163 164 141
+    000531  aa  156 164 163 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000532  aa   000004 000000 
+    000533  55   000142 000142 
+    000534  aa   000004 000000 
+    000535  55   000155 000147 
+    000536  aa   000004 000000 
+    000537  55   000155 000155 
+    000540  aa   000004 000000 
+    000541  55   000202 000162 
+    000542  aa   000004 000000 
+    000543  55   000202 000165 
+    000544  aa   000004 000000 
+    000545  55   000202 000166 
+    000546  aa   000004 000000 
+    000547  55   000202 000171 
+    000550  aa   000004 000000 
+    000551  55   000202 000175 
+    000552  aa   000004 000000 
+    000553  55   000202 000200 
+    000554  aa   000001 000000 
+    000555  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000556  5a   000206 000000 
+    000557  5a   000210 000000 
+    000560  5a   000212 000000 
+    000561  5a   000226 000000 
+    000562  5a   000224 000000 
+    000563  5a   000220 000000 
+    000564  5a   000222 000000 
+    000565  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000324 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000032 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         math_constants_|hfp_one_radian
+    000011  5a   000240 0000 00
+    000012  9a   777766 0000 46         math_constants_|one_radian
+    000013  5a   000237 0000 00
+    000014  9a   777764 0000 46         math_constants_|hfp_half_pi
+    000015  5a   000236 0000 00
+    000016  9a   777762 0000 46         math_constants_|half_pi
+    000017  5a   000235 0000 00
+    000020  9a   777760 0000 46         math_constants_|one_radian
+    000021  5a   000237 0000 12
+    000022  9a   777756 0000 46         math_constants_|half_pi
+    000023  5a   000235 0000 12
+    000024  9a   777754 0000 46         double_square_root_|double_square_root_
+    000025  5a   000234 0000 00
+    000026  9a   777752 0000 46         double_square_root_|hfp_double_square_root_
+    000027  5a   000233 0000 00
+    000030  9a   777750 0000 46         call_math_error_|call_math_error_
+    000031  5a   000232 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   254345 771655 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000167 
+    000020  aa   000000 000102 
+    000021  aa   000134 000126 
+    000022  aa   000161 000102 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000040 
+    000067  aa   175453 017774 
+    000070  aa   000000 117547 
+    000071  aa   176716 000000 
+    000072  aa   076163 160145          >spec>install>1110>arc_sine_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076141 
+    000077  aa   162143 137163 
+    000100  aa   151156 145137 
+    000101  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          70    above_bound_1            arc_sine_:    150,  155.
+         104    above_bound_2            arc_sine_:    157,  169.
+         123    above_bound_3            arc_sine_:    171,  186.
+           0    abs_x                    arc_sine_:     61,   68,  141,  158,  172.
+          56    arcsine                  arc_sine_:     76,   82,   88,   95,  102,  110,  118,  128,  136.
+         150    arcsine_domain_error     arc_sine_:    188,  220.
+          46    arc_cosine_degrees_      arc_sine_:     56,  126.
+          30    arc_cosine_radians_      arc_sine_:     54,  108.
+          15    arc_sine_degrees_        arc_sine_:     52,   93.
+           4    arc_sine_radians_        arc_sine_:     50,   80.
+           2    arg_x                    arc_sine_:     62,  138,  151,  164,  181,  202.
+           0    BFP                      arc_sine_:     69,   81,   94,  109,  127.
+         252    bound_2                  arc_sine_:    156,  286.
+         256    bound_3                  arc_sine_:    170,  289.
+         262    bound_4                  arc_sine_:    187,  291.
+                call_math_error_         arc_sine_:    222.
+                double_square_root_      arc_sine_:    215,  217.
+         306    eight                    arc_sine_:    174,  175,  304.
+         316    epsilon                  arc_sine_:    250,  309.
+         312    formula_bound            arc_sine_:    230,  306.
+                half_pi                  arc_sine_:     59,  112,  162,  201.
+           2    HFP                      arc_sine_:     70,   75,   87,  101,  117.
+          36    hfp_arc_cosine_degrees_  arc_sine_:     57,  116.
+          22    hfp_arc_cosine_radians_  arc_sine_:     55,  100.
+          10    hfp_arc_sine_degrees_    arc_sine_:     53,   86.
+           0    hfp_arc_sine_radians_    arc_sine_:     51,   74.
+         254    hfp_bound_2              arc_sine_:    287.
+                hfp_double_square_root_  arc_sine_:    217.
+                hfp_half_pi              arc_sine_:     59,  104.
+                hfp_one_radian           arc_sine_:     59,   89,  119.
+         322    kill_nine_bits           arc_sine_:    121,  311.
+                math_constants_          arc_sine_:     59.
+         276    one                      arc_sine_:    160,  177,  300.
+         272    one_quarter              arc_sine_:    180,  297.
+                one_radian               arc_sine_:     59,   96,  129.
+          10    p                        arc_sine_:     65,   67,  240,  245.
+         212    p0                       arc_sine_:    239,  269.
+         216    p1                       arc_sine_:    237,  271.
+         222    p2                       arc_sine_:    236,  273.
+        4264    P90.0H                   arc_sine_:     72,  122.
+         154    part_arcsine             arc_sine_:    152,  161,  178,  198,  229.
+                pi                       arc_sine_:     59.
+          10    pp                       arc_sine_:     67,  258,  261.
+         226    pp0                      arc_sine_:    257,  275.
+         232    pp1                      arc_sine_:    256,  277.
+         236    q0                       arc_sine_:    244,  279.
+         242    q1                       arc_sine_:    242,  281.
+         246    qq0                      arc_sine_:    260,  283.
+                quarter_pi               arc_sine_:     59.
+         175    small_formula            arc_sine_:    231,  249.
+          12    space_used               arc_sine_:     66,  194,  196.
+         145    square_root              arc_sine_:    195,  214.
+           0    temp                     arc_sine_:     68,  173,  176.
+         266    three_pi_by_two          arc_sine_:    179,  294.
+         302    two                      arc_sine_:    159,  199,  302.
+           4    y                        arc_sine_:     63,  233,  234,  246,  253,  254,  262.
+           6    yy                       arc_sine_:     64,  235,  238,  241,  243,  255,  259.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

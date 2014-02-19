@@ -1,0 +1,451 @@
+ASSEMBLY LISTING OF SEGMENT >dumps>old>recomp>all_rings_util_.alm             
+ASSEMBLED ON:	10/28/82  1233.1 mst Thu
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.4  April 1981    
+ASSEMBLER CREATED:	07/17/81  1819.2 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " ***********************************************************
+                                     6  %;
+                                     7  "  ******************************************************
+                                     8  "  *                                                    *
+                                     9  "  *                                                    *
+                                    10  "  * Copyright (c) 1972 by Massachusetts Institute of   *
+                                    11  "  * Technology and Honeywell Information Systems, Inc. *
+                                    12  "  *                                                    *
+                                    13  "  *                                                    *
+                                    14  "  ******************************************************
+                                    15  
+                                    16  "
+                                    17  "	This segment contains ALM utility procedures that must
+                                    18  "	reside in all rings.
+                                    19  "
+                                    20  
+    000000                          21  	name	all_rings_util_
+                                    22  	include	stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                    23  	include	stack_header
+                                   2-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   2-2  "
+                                   2-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   2-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   2-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   2-6  
+                        000004     2-7  	equ	stack_header.old_lot_ptr,4		obsolete ptr to lot
+                        000006     2-8  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                   2-9  
+                        000010    2-10  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    2-11  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    2-12  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    2-13  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    2-14  	equ	stack_header.cur_lot_size,11		number of words (entries) in lot
+                                  2-15  
+                        000014    2-16  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    2-17  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  2-18  
+                        000020    2-19  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    2-20  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    2-21  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    2-22  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  2-23  
+                        000030    2-24  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    2-25  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    2-26  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    2-27  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  2-28  
+                        000040    2-29  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    2-30  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    2-31  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    2-32  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  2-33  
+                        000050    2-34  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    2-35  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    2-36  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    2-37  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  2-38  
+                        000060    2-39  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    2-40  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    2-41  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    2-42  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                                  2-43  
+                        000100    2-44  	equ	stack_header_end,64			length of stack header
+                                  2-45  
+                                  2-46  
+                                  2-47  
+                                  2-48  
+                                  2-49  "	The  following constant is an offset within the  pl1  operators table.
+                                  2-50  "	It  references a  transfer vector table.
+                                  2-51  
+                        000551    2-52  	bool	tv_offset,551
+                                  2-53  
+                                  2-54  
+                                  2-55  "	The  following constants are offsets within this transfer vector table.
+                                  2-56  
+                        001170    2-57  	equ	call_offset,tv_offset+271
+                        001171    2-58  	equ	push_offset,tv_offset+272
+                        001172    2-59  	equ	return_offset,tv_offset+273
+                        001173    2-60  	equ	return_no_pop_offset,tv_offset+274
+                        001174    2-61  	equ	entry_offset,tv_offset+275
+                                  2-62  
+                                  2-63  
+                                  2-64  " 	END INCLUDE FILE stack_header.incl.alm
+                                    24  
+                                    25  "
+                                    26  
+                                    27  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    28  "
+                                    29  "
+                                    30  "	get_ring_ - this entry returns the number of the current ring
+                                    31  "
+                                    32  "	declare get_ring_ entry(fixed bin(3));
+                                    33  "	call get_ring_(ring);
+                                    34  "
+                                    35  "	1. ring	the number of the current ring. (Output)
+                                    36  "
+                                    37  "
+                                    38  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    39  
+                        000000      40  	segdef	get_ring_
+    000000                          41  get_ring_:
+    000000  0a   000000 2130 00     42  	epaq	*		get ring number from effective pointer
+    000001  aa   000007 3750 07     43  	ana	=o7,dl		leave only ring number in a-reg
+    000002  aa  0 00002 7551 20     44  	sta	ap|2,*		return to caller
+    000003  aa  7 00044 7101 20     45  	short_return
+                                    46  
+                                    47  
+                                    48  
+                                    49  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    50  "
+                                    51  "
+                                    52  "	arg_count_ - this entry returns the number of arguments with which the
+                                    53  "		calling procedure was invoked.
+                                    54  "
+                                    55  "	declare arg_count_ entry(fixed bin);
+                                    56  "	call arg_count_(args);
+                                    57  "
+                                    58  "	1. args	the number of arguments. (Output)
+                                    59  "
+                                    60  "
+                                    61  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    62  
+                        000004      63  	segdef	arg_count_
+    000004                          64  arg_count_:
+    000004  aa  6 00032 2351 20     65  	lda	sp|stack_frame.arg_ptr,* get argument list header
+    000005  aa   000023 7710 00     66  	arl	18+1		shift right and divide by two
+    000006  aa  0 00002 7551 20     67  	sta	ap|2,*		store in argument
+    000007  aa  7 00044 7101 20     68  	short_return
+                                    69  
+                                    70  	end
+
+NO LITERALS
+
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000010  5a   000003 000000 
+    000011  5a   000035 600000 
+    000012  aa   000000 000000 
+    000013  55   000012 000002 
+    000014  5a   000002 400003 
+    000015  55   000006 000012 
+    000016  aa  017 141 154 154
+    000017  aa  137 162 151 156
+    000020  aa  147 163 137 165
+    000021  aa  164 151 154 137
+    000022  55   000020 000003 
+    000023  0a   000004 400000 
+    000024  55   000015 000003 
+    000025  aa  012 141 162 147         arg_count_
+    000026  aa  137 143 157 165
+    000027  aa  156 164 137 000
+    000030  55   000026 000012 
+    000031  0a   000000 400000 
+    000032  55   000023 000003 
+    000033  aa  011 147 145 164         get_ring_
+    000034  aa  137 162 151 156
+    000035  aa  147 137 000 000
+    000036  55   000002 000020 
+    000037  6a   000000 400002 
+    000040  55   000031 000003 
+    000041  aa  014 163 171 155         symbol_table
+    000042  aa  142 157 154 137
+    000043  aa  164 141 142 154
+    000044  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000045  aa   000000 000015 
+    000046  aa   000000 000000 
+    000047  aa   000000 000000 
+    000050  aa   000000 000000 
+    000051  aa   000000 000000 
+    000052  aa   000000 000000 
+    000053  5a   000020 000000 
+    000054  5a   000012 000000 
+    000055  5a   000026 000000 
+    000056  aa   000000 000000 
+    000057  aa   000000 000000 
+    000060  aa   000000 000000 
+    000061  aa   000000 000000 
+    000062  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000063  aa   000001 000000 
+    000064  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000065  aa   000000 000000 
+LINKAGE INFORMATION
+
+    000000  aa   000000 000000 
+    000001  0a   000010 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+
+SYMBOL TABLE HEADER
+
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 110172 
+    000005  aa   711315 365225 
+    000006  aa   000000 111307 
+    000007  aa   000266 303476 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000154 
+    000020  aa   000000 000136 
+    000021  aa   000000 000141 
+    000022  aa   000144 000136 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056064 
+    000030  aa   040040 101160 
+    000031  aa   162151 154040 
+    000032  aa   061071 070061 
+    000033  aa   040040 040040 
+    000034  aa   110157 154155 
+    000035  aa   163164 145144 
+    000036  aa   164056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056155 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000045 
+    000067  aa   113022 170551 
+    000070  aa   000000 111305 
+    000071  aa   542036 600000 
+    000072  aa   000114 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   000125 000042 
+    000077  aa   052721 247135 
+    000100  aa   000000 105272 
+    000101  aa   317220 200000 
+    000102  aa   076144 165155          >dumps>old>recomp>all_rings_util_.alm
+    000103  aa   160163 076157 
+    000104  aa   154144 076162 
+    000105  aa   145143 157155 
+    000106  aa   160076 141154 
+    000107  aa   154137 162151 
+    000110  aa   156147 163137 
+    000111  aa   165164 151154 
+    000112  aa   137056 141154 
+    000113  aa   155040 040040 
+    000114  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000115  aa   076151 156143 
+    000116  aa   154165 144145 
+    000117  aa   076163 164141 
+    000120  aa   143153 137146 
+    000121  aa   162141 155145 
+    000122  aa   056151 156143 
+    000123  aa   154056 141154 
+    000124  aa   155040 040040 
+    000125  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000126  aa   076151 156143 
+    000127  aa   154165 144145 
+    000130  aa   076163 164141 
+    000131  aa   143153 137150 
+    000132  aa   145141 144145 
+    000133  aa   162056 151156 
+    000134  aa   143154 056141 
+    000135  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           4    arg_count_               all_rings_util_:     63,   64.
+        1170    call_offset              stack_header:        57.
+        1174    entry_offset             stack_header:        61.
+           0    get_ring_                all_rings_util_:     40,   41.
+        1171    push_offset              stack_header:        58.
+        1173    return_no_pop_offset     stack_header:        60.
+        1172    return_offset            stack_header:        59.
+          32    stack_frame.arg_ptr      all_rings_util_:     65,
+                                         stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        42.
+          32    stack_header.bar_mode_sp       stack_header:        25.
+          36    stack_header.call_op_ptr       stack_header:        27.
+          10    stack_header.clr_ptr     stack_header:        10.
+           6    stack_header.combined_stat_ptr       stack_header:         8.
+          13    stack_header.cur_lot_size      stack_header:        14.
+          64    stack_header.ect_ptr     stack_header:        41.
+          46    stack_header.entry_op_ptr      stack_header:        32.
+          52    stack_header.isot_ptr    stack_header:        35.
+          26    stack_header.lot_ptr     stack_header:        22.
+          12    stack_header.main_proc_invoked       stack_header:        12.
+          12    stack_header.max_lot_size      stack_header:        11.
+           4    stack_header.old_lot_ptr       stack_header:         7.
+          20    stack_header.parent_ptr  stack_header:        19.
+          34    stack_header.pl1_operators_ptr       stack_header:        26.
+          40    stack_header.push_op_ptr       stack_header:        29.
+          42    stack_header.return_op_ptr     stack_header:        30.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        31.
+          62    stack_header.rnt_ptr     stack_header:        40.
+          12    stack_header.run_unit_depth    stack_header:        13.
+          54    stack_header.sct_ptr     stack_header:        36.
+          30    stack_header.signal_ptr  stack_header:        24.
+          22    stack_header.stack_begin_ptr   stack_header:        20.
+          24    stack_header.stack_end_ptr     stack_header:        21.
+          14    stack_header.system_free_ptr   stack_header:        16.
+          60    stack_header.sys_link_info_ptr       stack_header:        39.
+          50    stack_header.trans_op_tv_ptr   stack_header:        34.
+          56    stack_header.unwinder_ptr      stack_header:        37.
+          16    stack_header.user_free_ptr     stack_header:        17.
+         100    stack_header_end         stack_header:        44.
+         551    tv_offset                stack_header:        52,   57,   58,   59,   60,   61.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

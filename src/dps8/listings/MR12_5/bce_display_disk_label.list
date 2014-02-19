@@ -1,0 +1,521 @@
+	COMPILATION LISTING OF SEGMENT bce_display_disk_label
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1023.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-01-14,Fawcett), approve(86-04-11,MCR7383),
+       12*     audit(86-05-14,Farley), install(86-07-17,MR12.0-1097):
+       13*     Changed to add Subvolume support.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 bce_display_disk_label: proc (p_ss_info_ptr);
+       18 
+       19 /* Program written by Allen Ball June of '84 to display a disk label in bce. */
+       20 
+       21 /* format: style4,initcol1,indattr,declareind8,dclind4,idind35,ifthenstmt,ifthen,^indproc,delnl,insnl */
+       22 
+       23 dcl addr			         builtin;
+       24 dcl arg			         char (arg_len) based (arg_ptr);
+       25 dcl arg_count		         fixed bin;
+       26 dcl arg_len		         fixed bin (21);
+       27 dcl arg_ptr		         ptr;
+       28 dcl code			         fixed bin (35);
+       29 dcl disk_name_pvtx		         entry (char (8), fixed bin (17), fixed bin (35));
+       30 dcl com_err_		         entry options (variable);
+       31 dcl cu_$arg_count_rel	         entry (fixed bin, ptr, fixed bin (35));
+       32 dcl cu_$arg_ptr_rel		         entry (fixed bin, ptr, fixed bin (21), fixed bin (35), ptr);
+       33 dcl display_disk_label_	         entry (ptr);
+       34 dcl devname		         char (8);
+       35 dcl ioa_			         entry options (variable);
+       36 dcl me			         char (18) static options (constant) init ("display_disk_label");
+       37 dcl 1 my_label		         aligned like label;
+       38 dcl p_ss_info_ptr		         ptr parameter;
+       39 dcl pvtx			         fixed bin;
+       40 dcl read_disk_label		         entry (fixed bin, ptr, char (*), fixed bin (35));
+       41 dcl reason		         char (128);
+       42 
+       43 	ss_info_ptr = p_ss_info_ptr;
+       44 	call cu_$arg_count_rel (arg_count, ss_info.arg_list_ptr, code);
+       45 	if code ^= 0 then do;
+       46 	     call com_err_ (code, me);
+       47 	     return;
+       48 	end;
+       49 	if arg_count ^= 1 then do;
+       50 	     call ioa_ ("Usage:^/    display_disk_label {device}");
+       51 	     return;
+       52 	end;
+       53 	call cu_$arg_ptr_rel (1, arg_ptr, arg_len, code, ss_info.arg_list_ptr);
+       54 	if code ^= 0 then do;
+       55 	     call com_err_ (code, me);
+       56 	     return;
+       57 	end;
+       58 	pvtp = addr (pvt$);
+       59 	pvt_arrayp = addr (pvt.array);
+       60 
+       61 	devname = arg;
+       62 
+       63 	call disk_name_pvtx (devname, pvtx, code);	/* validate name and get the pvtx */
+       64 	if code ^= 0 then do;			/* not a valid name or valid drive */
+       65 	     call com_err_ (code, me, "^a", arg);
+       66 	     return;
+       67 	end;
+       68 
+       69 	call read_disk_label (pvtx, addr (my_label), reason, code);
+       70 	if code ^= 0 then
+       71 	     call com_err_ (code, me, "^a", reason);
+       72 
+       73 	else call display_disk_label_ (addr (my_label));
+       74 
+       75 	return;
+       76 
+       77 /* format: ^insnl */
+       78  /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+       78 
+       79  /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  2     2 
+  2     3 /****^  HISTORY COMMENTS:
+  2     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  2     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  2     6*     Add the subvolume info.
+  2     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  2    10*     dumper bit maps.
+  2    11*                                                   END HISTORY COMMENTS */
+  2    12 
+  2    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  2    14 /* Note: fsout_vol clears pad fields before writing the label */
+  2    15 
+  2    16 dcl  labelp ptr;
+  2    17 
+  2    18 dcl 1 label based (labelp) aligned,
+  2    19 
+  2    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  2    21 
+  2    22     2 gcos (5*64) fixed bin,
+  2    23 
+  2    24 /* Now we have the Multics label */
+  2    25 
+  2    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  2    27     2 version fixed bin,				/* Version 1 */
+  2    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  2    29     2 pv_name char (32),				/* Physical volume name. */
+  2    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  2    31     2 pvid bit (36),				/* Unique ID of this pack */
+  2    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  2    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  2    34     2 time_registered fixed bin (71),			/* time imported to system */
+  2    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  2    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  2    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  2    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  2    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  2    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  2    41     2 flagpad bit (33) unal,
+  2    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  2    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  2    44     2 password bit (72),				/* not yet used */
+  2    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  2    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  2    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  2    48     2 pad1 (13) fixed bin,
+  2    49     2 time_mounted fixed bin (71),			/* time mounted */
+  2    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  2    51 
+  2    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  2    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  2    54* */
+  2    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  2    56     2 pad6 fixed bin,				
+  2    57 
+  2    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  2    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  2    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  2    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  2    62     2 pad1a (2) fixed bin,
+  2    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  2    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  2    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  2    66     2 pad2 (40) fixed bin,
+  2    67     2 root,
+  2    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  2    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  2    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  2    71       3 pad7 bit (1) aligned,				
+  2    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  2    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  2    74       3 esd_state fixed bin,				/* State of esd */
+  2    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  2    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  2    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  2    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  2    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  2    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  2    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  2    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  2    83     2 pad3 (52) fixed bin,
+  2    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  2    85     2 parts (47),
+  2    86       3 part char (4),				/* Name of partition */
+  2    87       3 frec fixed bin,				/* First record */
+  2    88       3 nrec fixed bin,				/* Number of records */
+  2    89       3 pad5 fixed bin,
+  2    90     2 pad4 (5*64) fixed bin;
+  2    91 
+  2    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  2    93 
+  2    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+       79 
+       80  /*	BEGIN INCLUDE FILE ... pvt.incl.pl1 ... last modified January 1982 */
+  3     2 
+  3     3 
+  3     4 /* The physical volume table (PVT) is a wired-down table.
+  3     5*   It has one entry for each spindle present, be it for
+  3     6*   Storage System or "I/O" use.
+  3     7**/
+  3     8 
+  3     9      dcl	   pvt$		      ext,
+  3    10 	   pvtp		      ptr;
+  3    11 
+  3    12 
+  3    13      dcl	   1 pvt		      based (pvtp) aligned,
+  3    14 
+  3    15 	     2 n_entries	      fixed bin (17),	/* number of PVT entries */
+  3    16 	     2 max_n_entries      fixed bin (17),	/* max number of PVT entries */
+  3    17 	     2 n_in_use	      fixed bin (17),	/* number of PVT entries in use */
+  3    18 	     2 rwun_pvtx	      fixed bin,		/* rewind_unloading pvtx */
+  3    19 	     2 shutdown_state     fixed bin,		/* state of previous shutdown */
+  3    20 	     2 esd_state	      fixed bin,		/* state of ESD, >0 iff in ESD */
+  3    21 	     2 prev_shutdown_state fixed bin,		/* shutdown state of previous bootload */
+  3    22 	     2 prev_esd_state     fixed bin,		/* ESD state of previous bootload */
+  3    23 
+  3    24 	     2 time_of_bootload fixed bin (71),		/* Time of bootload */
+  3    25 	     2 root_lvid	      bit (36) aligned,	/* Logical volume ID of Root Logical Volume (RLV) */
+  3    26 	     2 root_pvid	      bit (36) aligned,	/* Physical volume ID of Root Physical Volume (RPV) */
+  3    27 	     2 root_pvtx	      fixed bin,		/* Index to PVTE for Root Physical Volume (RPV) */
+  3    28 	     2 root_vtocx	      fixed bin,		/* VTOCE index for root (>) */
+  3    29 	     2 disk_table_vtocx   fixed bin,		/* VTOCE index for disk table on RPV */
+  3    30 	     2 disk_table_uid     bit (36) aligned,	/* File System UID for disk_table */
+  3    31 
+  3    32 	     2 rpvs_requested     bit (1) aligned,	/* RPVS keyword given on BOOT */
+  3    33 	     2 rpv_needs_salv     bit (1) aligned,	/* RPV required (not requested) salvage */
+  3    34 	     2 rlv_needs_salv     bit (1) aligned,	/* RLV required (not requested) salvage */
+  3    35 	     2 volmap_lock_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  3    36 	     2 volmap_idle_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  3    37 	     2 vtoc_map_lock_wait_constant bit (36) aligned, /* For constructing wait event: OR pvte_rel into lower */
+  3    38 	     2 n_volmap_locks_held fixed bin (17),	/* Current number of volmap locks held */
+  3    39 	     2 n_vtoc_map_locks_held fixed bin (17),	/* Current number of VTOC Map locks held */
+  3    40 
+  3    41 	     2 last_volmap_time   fixed bin (71),	/* Time a volmap was last locked/unlocked */
+  3    42 	     2 last_vtoc_map_time fixed bin (71),	/* Time a VTOC Map was last locked/unlocked */
+  3    43 	     2 total_volmap_lock_time fixed bin (71),	/* Total time volmap's were locked (integral) */
+  3    44 	     2 total_vtoc_map_lock_time fixed bin (71),	/* Total time VTOC Maps were locked (integral) */
+  3    45 
+  3    46 	     2 n_volmap_locks     fixed bin (35),	/* Number times a volmap was locked */
+  3    47 	     2 n_vtoc_map_locks   fixed bin (35),	/* Number times a vtoc_map was locked */
+  3    48 	     2 volmap_lock_nowait_calls fixed bin (35),	/* Number calls to lock volmap, no wait */
+  3    49 	     2 volmap_lock_nowait_fails fixed bin (35),	/* Number times lock failed */
+  3    50 	     2 volmap_lock_wait_calls fixed bin (35),	/* Number calls to lock volmap, wait */
+  3    51 	     2 volmap_lock_wait_fails fixed bin (35),	/* Number times lock failed */
+  3    52 	     2 pad (2) bit (36) aligned,
+  3    53 
+  3    54 	     2 array	      fixed bin (71);	/* Array of PVTE's -- must be double-word aligned */
+  3    55 
+  3    56 
+  3    57 
+  3    58 /*	END INCLUDE FILE ...pvt.incl.pl1 */
+       80 
+       81  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4     2 
+  4     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  4     4 
+  4     5 /****^  HISTORY COMMENTS:
+  4     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  4     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  4     8*     Add the support for subvolumes
+  4     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  4    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  4    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  4    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  4    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  4    14*     Added inconsistent_dbm bit for determining the status of volume
+  4    15*     dumper bit maps.
+  4    16*                                                   END HISTORY COMMENTS */
+  4    17 
+  4    18      dcl	   pvt$array	      aligned external;
+  4    19      dcl	   pvt$max_n_entries      fixed bin external;
+  4    20 
+  4    21      dcl	   pvt_arrayp	      ptr;
+  4    22      dcl	   pvtep		      ptr;
+  4    23 
+  4    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  4    25 
+  4    26      dcl	   1 pvte		      based (pvtep) aligned,
+  4    27 
+  4    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  4    29 
+  4    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  4    31 
+  4    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  4    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  4    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  4    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  4    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  4    37 	     2 pad3	      bit (2) unaligned,
+  4    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  4    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  4    40 
+  4    41 
+  4    42 
+  4    43 	     2 devname	      char (4),		/* device name */
+  4    44 
+  4    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  4    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  4    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  4    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  4    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  4    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  4    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  4    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  4    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  4    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  4    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  4    56 	     2 scav_check_address
+  4    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  4    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  4    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  4    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  4    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  4    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  4    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  4    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  4    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  4    66 
+  4    67 
+  4    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  4    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  4    70 
+  4    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  4    72 
+  4    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  4    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  4    75 
+  4    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  4    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  4    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  4    79 	     2 records_per_cyl    fixed bin,
+  4    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  4    81 	     2 sv_name            char (2) aligned,
+  4    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  4    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  4    84 
+  4    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  4    86 	     2 pad2	      bit (18) unaligned,
+  4    87 
+  4    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  4    89 
+  4    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  4    91 
+  4    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  4    93 
+  4    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  4    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  4    96 
+  4    97 
+  4    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  4    99 
+  4   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  4   101 
+  4   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  4   103 
+  4   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  4   105 
+  4   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  4   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  4   108 
+  4   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  4   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  4   111 
+  4   112 
+  4   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  4   114 	   VOLMAP_ASYNC_READ      init (1),
+  4   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  4   116 
+  4   117 
+  4   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+       81 
+       82      end /* bce_display_disk_label */;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.2  bce_display_disk_label.pl1        >special_ldd>install>MR12.3-1114>bce_display_disk_label.pl1
+78           1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+79           2    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+80           3    05/27/82  1525.8  pvt.incl.pl1                      >ldd>include>pvt.incl.pl1
+81           4    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Multics                 500     000110 automatic       char(32)                 initial level 2 dcl 37 set ref 37*
+addr                                                   builtin function         dcl 23 ref 58 59 69 69 73 73
+arg                                    based           char                     packed unaligned dcl 24 set ref 61 65*
+arg_count                       000100 automatic       fixed bin(17,0)          dcl 25 set ref 44* 49
+arg_len                         000101 automatic       fixed bin(21,0)          dcl 26 set ref 53* 61 65 65
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 44* 53*
+arg_ptr                         000102 automatic       pointer                  dcl 27 set ref 53* 61 65
+array                    50            based           fixed bin(71,0)          level 2 dcl 3-13 set ref 59
+code                            000104 automatic       fixed bin(35,0)          dcl 28 set ref 44* 45 46* 53* 54 55* 63* 64 65* 69*
+                                                                                  70 70*
+com_err_                        000012 constant        entry                    external dcl 30 ref 46 55 65 70
+cu_$arg_count_rel               000014 constant        entry                    external dcl 31 ref 44
+cu_$arg_ptr_rel                 000016 constant        entry                    external dcl 32 ref 53
+devname                         000106 automatic       char(8)                  packed unaligned dcl 34 set ref 61* 63*
+disk_name_pvtx                  000010 constant        entry                    external dcl 29 ref 63
+display_disk_label_             000020 constant        entry                    external dcl 33 ref 73
+ioa_                            000022 constant        entry                    external dcl 35 ref 50
+label                                  based           structure                level 1 dcl 2-18
+me                              000000 constant        char(18)                 initial packed unaligned dcl 36 set ref 46* 55* 65*
+                                                                                  70*
+my_label                        000110 automatic       structure                level 1 dcl 37 set ref 69 69 73 73
+p_ss_info_ptr                          parameter       pointer                  dcl 38 ref 17 43
+pvt                                    based           structure                level 1 dcl 3-13
+pvt$                            000026 external static fixed bin(17,0)          dcl 3-9 set ref 58
+pvt_arrayp                      002156 automatic       pointer                  dcl 4-21 set ref 59*
+pvte                                   based           structure                level 1 dcl 4-26
+pvtp                            002154 automatic       pointer                  dcl 3-9 set ref 58* 59
+pvtx                            002110 automatic       fixed bin(17,0)          dcl 39 set ref 63* 69*
+read_disk_label                 000024 constant        entry                    external dcl 40 ref 69
+reason                          002111 automatic       char(128)                packed unaligned dcl 41 set ref 69* 70*
+ss_info                                based           structure                level 1 dcl 1-15
+ss_info_ptr                     002152 automatic       pointer                  dcl 1-14 set ref 43* 44 53
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 2-92
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 4-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 4-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 4-113
+labelp                                 automatic       pointer                  dcl 2-16
+pvt$array                              external static fixed bin(17,0)          dcl 4-18
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 4-19
+pvt_array                              based           structure                array level 1 dcl 4-24
+pvtep                                  automatic       pointer                  dcl 4-22
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bce_display_disk_label          000042 constant        entry                    external dcl 17
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       460         510     346         470
+Length       760     346        30         234     112           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_display_disk_label             1188 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_display_disk_label   000100 arg_count                   bce_display_disk_label
+                         000101 arg_len                     bce_display_disk_label
+                         000102 arg_ptr                     bce_display_disk_label
+                         000104 code                        bce_display_disk_label
+                         000106 devname                     bce_display_disk_label
+                         000110 my_label                    bce_display_disk_label
+                         002110 pvtx                        bce_display_disk_label
+                         002111 reason                      bce_display_disk_label
+                         002152 ss_info_ptr                 bce_display_disk_label
+                         002154 pvtp                        bce_display_disk_label
+                         002156 pvt_arrayp                  bce_display_disk_label
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      cu_$arg_count_rel             cu_$arg_ptr_rel               disk_name_pvtx
+display_disk_label_           ioa_                          read_disk_label
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000037        37 000047        43 000052        44 000056        45 000070        46 000072        47 000107
+     49 000110        50 000113        51 000127        53 000130        54 000152        55 000154        56 000171
+     58 000172        59 000175        61 000177        63 000204        64 000216        65 000220        66 000252
+     69 000253        70 000302        73 000334        75 000345
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

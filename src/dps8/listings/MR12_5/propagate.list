@@ -1,0 +1,1588 @@
+	COMPILATION LISTING OF SEGMENT propagate
+	Compiled by: Multics PL/I Compiler, Release 27d, of October 11, 1982
+	Compiled at: Honeywell LISD Phoenix, System M
+	Compiled on: 10/28/82  1217.6 mst Thu
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       12 propagate:
+       13      proc (a_iocb_ptr);
+       14 
+       15 /* Pointers. */
+       16 
+       17 dcl  (iocb_ptr, a_iocb_ptr, father_iocb_ptr) ptr;
+       18 
+       19 /* Based. */
+       20 
+  1     1 /* BEGIN INCLUDE FILE iocbx.incl.pl1 */
+  1     2 /* written 27 Dec 1973, M. G. Smith */
+  1     3 /* returns attributes removed, hashing support BIM Spring 1981 */
+  1     4 /* version made character string June 1981 BIM */
+  1     5 /* format: style2 */
+  1     6 
+  1     7      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  1     8 	     2 version	      character (4) aligned,  /* IOX1 */
+  1     9 
+  1    10 	     2 name	      char (32),		/* I/O name of this block. */
+  1    11 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  1    12 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  1    13 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  1    14 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  1    15 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  1    16 	     2 event_channel      bit (72),		/* Event channel for asynchronous I/O. */
+  1    17 	     2 detach_iocb	      entry (ptr, fixed bin (35)),
+  1    18 						/* detach_iocb(p) */
+  1    19 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed bin (35)),
+  1    20 						/* open(p,mode,not_used) */
+  1    21 	     2 close	      entry (ptr, fixed bin (35)),
+  1    22 						/* close(p) */
+  1    23 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    24 						/* get_line(p,bufptr,buflen,actlen) */
+  1    25 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    26 						/* get_chars(p,bufptr,buflen,actlen) */
+  1    27 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    28 						/* put_chars(p,bufptr,buflen) */
+  1    29 	     2 modes	      entry (ptr, char (*), char (*), fixed bin (35)),
+  1    30 						/* modes(p,newmode,oldmode) */
+  1    31 	     2 position	      entry (ptr, fixed, fixed (21), fixed bin (35)),
+  1    32 						/* position(p,u1,u2) */
+  1    33 	     2 control	      entry (ptr, char (*), ptr, fixed bin (35)),
+  1    34 						/* control(p,order,infptr) */
+  1    35 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed bin (35)),
+  1    36 						/* read_record(p,bufptr,buflen,actlen) */
+  1    37 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    38 						/* write_record(p,bufptr,buflen) */
+  1    39 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed bin (35)),
+  1    40 						/* rewrite_record(p,bufptr,buflen) */
+  1    41 	     2 delete_record      entry (ptr, fixed bin (35)),
+  1    42 						/* delete_record(p) */
+  1    43 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    44 						/* seek_key(p,key,len) */
+  1    45 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed bin (35)),
+  1    46 						/* read_key(p,key,len) */
+  1    47 	     2 read_length	      entry (ptr, fixed (21), fixed bin (35)),
+  1    48 						/* read_length(p,len) */
+  1    49 						/* Hidden information, to support SYN attachments. */
+  1    50 	     2 ios_compatibility  ptr,		/* Ptr to old DIM's IOS transfer vector. */
+  1    51 	     2 syn_inhibits	      bit (36),		/* Operations inhibited by SYN. */
+  1    52 	     2 syn_father	      ptr,		/* IOCB immediately SYNed to. */
+  1    53 	     2 syn_brother	      ptr,		/* Next IOCB SYNed as this one is. */
+  1    54 	     2 syn_son	      ptr,		/* First IOCB SYNed to this one. */
+  1    55 	     2 hash_chain_ptr     ptr;		/* Next IOCB in hash bucket */
+  1    56 
+  1    57 declare iox_$iocb_version_sentinel character (4) aligned external static;
+  1    58 
+  1    59 /* END INCLUDE FILE iocbx.incl.pl1 */
+       21 
+       22 
+       23 /* Constants. */
+       24 
+       25 
+       26 dcl  iox_$err_no_operation ext entry options (variable);
+       27 dcl  iox_$err_not_attached ext entry options (variable);
+       28 dcl  iox_$err_not_closed ext entry options (variable);
+       29 dcl  iox_$err_not_open ext entry options (variable);
+       30 dcl  iox_$err_old_dim ext entry options (variable);
+       31 dcl  open_bit bit (36) int static init ("100000000000000"b);
+       32 dcl  close_bit bit (36) int static init ("010000000000000"b);
+       33 dcl  get_line_bit bit (36) int static init ("001000000000000"b);
+       34 dcl  get_chars_bit bit (36) int static init ("000100000000000"b);
+       35 dcl  put_chars_bit bit (36) int static init ("000010000000000"b);
+       36 dcl  modes_bit bit (36) int static init ("000001000000000"b);
+       37 dcl  position_bit bit (36) int static init ("000000100000000"b);
+       38 dcl  control_bit bit (36) int static init ("000000010000000"b);
+       39 dcl  read_record_bit bit (36) int static init ("000000001000000"b);
+       40 dcl  write_record_bit bit (36) int static init ("000000000100000"b);
+       41 dcl  rewrite_record_bit bit (36) int static init ("000000000010000"b);
+       42 dcl  delete_record_bit bit (36) int static init ("000000000001000"b);
+       43 dcl  seek_key_bit bit (36) int static init ("000000000000100"b);
+       44 dcl  read_key_bit bit (36) int static init ("000000000000010"b);
+       45 dcl  read_length_bit bit (36) int static init ("000000000000001"b);
+       46 
+       47 /* Built-in. */
+       48 
+       49 dcl  null builtin;
+       50 
+       51 /* End of declarations. */
+       52 
+       53 
+       54 
+       55 
+       56 
+       57 /* Beginning of entry point ..... iox_$propagate(iocb_ptr) ..... */
+       58 
+       59 	iocb_ptr = a_iocb_ptr;
+       60 	if iocb_ptr = null () then return;
+       61 	if iocb_ptr -> iocb.version ^= iox_$iocb_version_sentinel then return;
+       62 	if iocb_ptr -> iocb.actual_iocb_ptr = iocb_ptr then do;
+       63 						/* Not a SYN attachment, ensure IOCB consistent. */
+       64 	     if iocb_ptr -> iocb.attach_descrip_ptr = null () then do;
+       65 						/* IOCB is detached. */
+       66 		iocb_ptr -> iocb.attach_data_ptr, iocb_ptr -> iocb.open_descrip_ptr,
+       67 						/* "open_data_ptr" is reset below. */
+       68 		     iocb_ptr -> iocb.ios_compatibility = null ();
+       69 		iocb_ptr -> iocb.event_channel = "0"b;
+       70 		iocb_ptr -> iocb.detach_iocb = iox_$err_not_attached;
+       71 		iocb_ptr -> iocb.open = iox_$err_not_attached;
+       72 		iocb_ptr -> iocb.modes = iox_$err_not_attached;
+       73 		iocb_ptr -> iocb.control = iox_$err_not_attached;
+       74 		end;
+       75 	     else if iocb_ptr -> iocb.open_descrip_ptr = null () then do;
+       76 						/* IOCB is closed. */
+       77 		if iocb_ptr -> iocb.open = iox_$err_not_attached | iocb_ptr -> iocb.open = iox_$err_not_closed
+       78 		then iocb_ptr -> iocb.open = iox_$err_no_operation;
+       79 		if iocb_ptr -> iocb.control = iox_$err_no_operation | iocb_ptr -> iocb.control = iox_$err_not_attached
+       80 		then iocb_ptr -> iocb.control = iox_$err_not_open;
+       81 		if iocb_ptr -> iocb.modes = iox_$err_no_operation | iocb_ptr -> iocb.modes = iox_$err_not_attached
+       82 		then iocb_ptr -> iocb.modes = iox_$err_not_open;
+       83 		end;
+       84 	     if iocb_ptr -> iocb.open_descrip_ptr = null () then do;
+       85 						/* IOCB is detached or closed. */
+       86 		iocb_ptr -> iocb.open_data_ptr = null ();
+       87 		if iocb_ptr -> iocb.close ^= iox_$err_old_dim then iocb_ptr -> iocb.close = iox_$err_not_open;
+       88 		if iocb_ptr -> iocb.get_line ^= iox_$err_old_dim then iocb_ptr -> iocb.get_line = iox_$err_not_open;
+       89 		if iocb_ptr -> iocb.get_chars ^= iox_$err_old_dim then iocb_ptr -> iocb.get_chars = iox_$err_not_open;
+       90 		if iocb_ptr -> iocb.put_chars ^= iox_$err_old_dim then iocb_ptr -> iocb.put_chars = iox_$err_not_open;
+       91 		if iocb_ptr -> iocb.position ^= iox_$err_old_dim then iocb_ptr -> iocb.position = iox_$err_not_open;
+       92 		if iocb_ptr -> iocb.read_record ^= iox_$err_old_dim
+       93 		then iocb_ptr -> iocb.read_record = iox_$err_not_open;
+       94 		if iocb_ptr -> iocb.write_record ^= iox_$err_old_dim
+       95 		then iocb_ptr -> iocb.write_record = iox_$err_not_open;
+       96 		if iocb_ptr -> iocb.rewrite_record ^= iox_$err_old_dim
+       97 		then iocb_ptr -> iocb.rewrite_record = iox_$err_not_open;
+       98 		if iocb_ptr -> iocb.delete_record ^= iox_$err_old_dim
+       99 		then iocb_ptr -> iocb.delete_record = iox_$err_not_open;
+      100 		if iocb_ptr -> iocb.seek_key ^= iox_$err_old_dim then iocb_ptr -> iocb.seek_key = iox_$err_not_open;
+      101 		if iocb_ptr -> iocb.read_key ^= iox_$err_old_dim then iocb_ptr -> iocb.read_key = iox_$err_not_open;
+      102 		if iocb_ptr -> iocb.read_length ^= iox_$err_old_dim
+      103 		then iocb_ptr -> iocb.read_length = iox_$err_not_open;
+      104 		end;
+      105 	     else do;				/* IOCB is open. */
+      106 		if iocb_ptr -> iocb.detach_iocb ^= iox_$err_old_dim
+      107 		then iocb_ptr -> iocb.detach_iocb = iox_$err_not_closed;
+      108 		if iocb_ptr -> iocb.open ^= iox_$err_old_dim then iocb_ptr -> iocb.open = iox_$err_not_closed;
+      109 		if iocb_ptr -> iocb.get_line = iox_$err_not_open
+      110 		then iocb_ptr -> iocb.get_line = iox_$err_no_operation;
+      111 		if iocb_ptr -> iocb.get_chars = iox_$err_not_open
+      112 		then iocb_ptr -> iocb.get_chars = iox_$err_no_operation;
+      113 		if iocb_ptr -> iocb.put_chars = iox_$err_not_open
+      114 		then iocb_ptr -> iocb.put_chars = iox_$err_no_operation;
+      115 		if iocb_ptr -> iocb.modes = iox_$err_not_open then iocb_ptr -> iocb.modes = iox_$err_no_operation;
+      116 		if iocb_ptr -> iocb.position = iox_$err_not_open
+      117 		then iocb_ptr -> iocb.position = iox_$err_no_operation;
+      118 		if iocb_ptr -> iocb.control = iox_$err_not_open then iocb_ptr -> iocb.control = iox_$err_no_operation;
+      119 		if iocb_ptr -> iocb.read_record = iox_$err_not_open
+      120 		then iocb_ptr -> iocb.read_record = iox_$err_no_operation;
+      121 		if iocb_ptr -> iocb.write_record = iox_$err_not_open
+      122 		then iocb_ptr -> iocb.write_record = iox_$err_no_operation;
+      123 		if iocb_ptr -> iocb.rewrite_record = iox_$err_not_open
+      124 		then iocb_ptr -> iocb.rewrite_record = iox_$err_no_operation;
+      125 		if iocb_ptr -> iocb.delete_record = iox_$err_not_open
+      126 		then iocb_ptr -> iocb.delete_record = iox_$err_no_operation;
+      127 		if iocb_ptr -> iocb.seek_key = iox_$err_not_open
+      128 		then iocb_ptr -> iocb.seek_key = iox_$err_no_operation;
+      129 		if iocb_ptr -> iocb.read_key = iox_$err_not_open
+      130 		then iocb_ptr -> iocb.read_key = iox_$err_no_operation;
+      131 		if iocb_ptr -> iocb.read_length = iox_$err_not_open
+      132 		then iocb_ptr -> iocb.read_length = iox_$err_no_operation;
+      133 		end;
+      134 	     end;
+      135 
+      136 	father_iocb_ptr = iocb_ptr;
+      137 	go to skip;
+      138 
+      139 recurse:
+      140      entry (a_iocb_ptr);
+      141 
+      142 	father_iocb_ptr = a_iocb_ptr;
+      143 
+      144 /* Propagate corrected IOCB fields to all SYN offspring. */
+      145 
+      146 skip:
+      147 	do iocb_ptr = father_iocb_ptr -> iocb.syn_son repeat iocb_ptr -> iocb.syn_brother while (iocb_ptr ^= null ());
+      148 	     iocb_ptr -> iocb.actual_iocb_ptr = father_iocb_ptr -> iocb.actual_iocb_ptr;
+      149 						/* Update each son. */
+      150 	     iocb_ptr -> iocb.open_descrip_ptr = father_iocb_ptr -> iocb.open_descrip_ptr;
+      151 	     iocb_ptr -> iocb.open_data_ptr = father_iocb_ptr -> iocb.open_data_ptr;
+      152 	     iocb_ptr -> iocb.event_channel = father_iocb_ptr -> iocb.event_channel;
+      153 	     iocb_ptr -> iocb.ios_compatibility = father_iocb_ptr -> iocb.ios_compatibility;
+      154 	     if iocb_ptr -> iocb.syn_inhibits & open_bit
+      155 	     then iocb_ptr -> iocb.open = iox_$err_no_operation;
+      156 	     else iocb_ptr -> iocb.open = father_iocb_ptr -> iocb.open;
+      157 	     if iocb_ptr -> iocb.syn_inhibits & close_bit
+      158 	     then iocb_ptr -> iocb.close = iox_$err_no_operation;
+      159 	     else iocb_ptr -> iocb.close = father_iocb_ptr -> iocb.close;
+      160 	     if iocb_ptr -> iocb.syn_inhibits & get_line_bit
+      161 	     then iocb_ptr -> iocb.get_line = iox_$err_no_operation;
+      162 	     else iocb_ptr -> iocb.get_line = father_iocb_ptr -> iocb.get_line;
+      163 	     if iocb_ptr -> iocb.syn_inhibits & get_chars_bit
+      164 	     then iocb_ptr -> iocb.get_chars = iox_$err_no_operation;
+      165 	     else iocb_ptr -> iocb.get_chars = father_iocb_ptr -> iocb.get_chars;
+      166 	     if iocb_ptr -> iocb.syn_inhibits & put_chars_bit
+      167 	     then iocb_ptr -> iocb.put_chars = iox_$err_no_operation;
+      168 	     else iocb_ptr -> iocb.put_chars = father_iocb_ptr -> iocb.put_chars;
+      169 	     if iocb_ptr -> iocb.syn_inhibits & modes_bit
+      170 	     then iocb_ptr -> iocb.modes = iox_$err_no_operation;
+      171 	     else iocb_ptr -> iocb.modes = father_iocb_ptr -> iocb.modes;
+      172 	     if iocb_ptr -> iocb.syn_inhibits & position_bit
+      173 	     then iocb_ptr -> iocb.position = iox_$err_no_operation;
+      174 	     else iocb_ptr -> iocb.position = father_iocb_ptr -> iocb.position;
+      175 	     if iocb_ptr -> iocb.syn_inhibits & control_bit
+      176 	     then iocb_ptr -> iocb.control = iox_$err_no_operation;
+      177 	     else iocb_ptr -> iocb.control = father_iocb_ptr -> iocb.control;
+      178 	     if iocb_ptr -> iocb.syn_inhibits & read_record_bit
+      179 	     then iocb_ptr -> iocb.read_record = iox_$err_no_operation;
+      180 	     else iocb_ptr -> iocb.read_record = father_iocb_ptr -> iocb.read_record;
+      181 	     if iocb_ptr -> iocb.syn_inhibits & write_record_bit
+      182 	     then iocb_ptr -> iocb.write_record = iox_$err_no_operation;
+      183 	     else iocb_ptr -> iocb.write_record = father_iocb_ptr -> iocb.write_record;
+      184 	     if iocb_ptr -> iocb.syn_inhibits & rewrite_record_bit
+      185 	     then iocb_ptr -> iocb.rewrite_record = iox_$err_no_operation;
+      186 	     else iocb_ptr -> iocb.rewrite_record = father_iocb_ptr -> iocb.rewrite_record;
+      187 	     if iocb_ptr -> iocb.syn_inhibits & delete_record_bit
+      188 	     then iocb_ptr -> iocb.delete_record = iox_$err_no_operation;
+      189 	     else iocb_ptr -> iocb.delete_record = father_iocb_ptr -> iocb.delete_record;
+      190 	     if iocb_ptr -> iocb.syn_inhibits & seek_key_bit
+      191 	     then iocb_ptr -> iocb.seek_key = iox_$err_no_operation;
+      192 	     else iocb_ptr -> iocb.seek_key = father_iocb_ptr -> iocb.seek_key;
+      193 	     if iocb_ptr -> iocb.syn_inhibits & read_key_bit
+      194 	     then iocb_ptr -> iocb.read_key = iox_$err_no_operation;
+      195 	     else iocb_ptr -> iocb.read_key = father_iocb_ptr -> iocb.read_key;
+      196 	     if iocb_ptr -> iocb.syn_inhibits & read_length_bit
+      197 	     then iocb_ptr -> iocb.read_length = iox_$err_no_operation;
+      198 	     else iocb_ptr -> iocb.read_length = father_iocb_ptr -> iocb.read_length;
+      199 	     if iocb_ptr -> iocb.syn_son ^= null then call recurse (iocb_ptr);
+      200 	end;
+      201 	return;
+      202 
+      203      end propagate;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    10/27/82  1108.3  propagate.pl1                     >dumps>old>recomp>propagate.pl1
+21           1    07/28/81  1333.4  iocbx.incl.pl1                    >ldd>include>iocbx.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_iocb_ptr                             parameter       pointer                  dcl 17 ref 12 59 139 142
+actual_iocb_ptr          12            based           pointer                  level 2 dcl 1-7 set ref 62 148* 148
+attach_data_ptr          16            based           pointer                  level 2 dcl 1-7 set ref 66*
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 1-7 ref 64
+close                    36            based           entry variable           level 2 dcl 1-7 set ref 87 87* 157* 159* 159
+close_bit                              constant        bit(36)                  initial unaligned dcl 32 ref 157
+control                  66            based           entry variable           level 2 dcl 1-7 set ref 73* 79 79 79* 118 118* 175*
+                                                                                  177* 177
+control_bit                            constant        bit(36)                  initial unaligned dcl 38 ref 175
+delete_record           106            based           entry variable           level 2 dcl 1-7 set ref 98 98* 125 125* 187* 189*
+                                                                                  189
+delete_record_bit                      constant        bit(36)                  initial unaligned dcl 42 ref 187
+detach_iocb              26            based           entry variable           level 2 dcl 1-7 set ref 70* 106 106*
+event_channel            24            based           bit(72)                  level 2 dcl 1-7 set ref 69* 152* 152
+father_iocb_ptr                 000102 automatic       pointer                  dcl 17 set ref 136* 142* 146 148 150 151 152 153 156
+                                                                                  159 162 165 168 171 174 177 180 183 186 189 192
+                                                                                  195 198
+get_chars                46            based           entry variable           level 2 dcl 1-7 set ref 89 89* 111 111* 163* 165*
+                                                                                  165
+get_chars_bit                          constant        bit(36)                  initial unaligned dcl 34 ref 163
+get_line                 42            based           entry variable           level 2 dcl 1-7 set ref 88 88* 109 109* 160* 162*
+                                                                                  162
+get_line_bit                           constant        bit(36)                  initial unaligned dcl 33 ref 160
+iocb                                   based           structure                level 1 dcl 1-7
+iocb_ptr                        000100 automatic       pointer                  dcl 17 set ref 59* 60 61 62 62 64 66 66 66 69 70 71
+                                                                                  72 73 75 77 77 77 79 79 79 81 81 81 84 86 87 87 88
+                                                                                  88 89 89 90 90 91 91 92 92 94 94 96 96 98 98 100
+                                                                                  100 101 101 102 102 106 106 108 108 109 109 111
+                                                                                  111 113 113 115 115 116 116 118 118 119 119 121
+                                                                                  121 123 123 125 125 127 127 129 129 131 131 136
+                                                                                  146* 146* 148 150 151 152 153 154 154 156 157 157
+                                                                                  159 160 160 162 163 163 165 166 166 168 169 169
+                                                                                  171 172 172 174 175 175 177 178 178 180 181 181
+                                                                                  183 184 184 186 187 187 189 190 190 192 193 193
+                                                                                  195 196 196 198 199 199* 200
+ios_compatibility       126            based           pointer                  level 2 dcl 1-7 set ref 66* 153* 153
+iox_$err_no_operation           000012 constant        entry                    external dcl 26 ref 77 79 81 109 111 113 115 116 118
+                                                                                  119 121 123 125 127 129 131 154 157 160 163 166
+                                                                                  169 172 175 178 181 184 187 190 193 196
+iox_$err_not_attached           000014 constant        entry                    external dcl 27 ref 70 71 72 73 77 79 81
+iox_$err_not_closed             000016 constant        entry                    external dcl 28 ref 77 106 108
+iox_$err_not_open               000020 constant        entry                    external dcl 29 ref 79 81 87 88 89 90 91 92 94 96 98
+                                                                                  100 101 102 109 111 113 115 116 118 119 121 123
+                                                                                  125 127 129 131
+iox_$err_old_dim                000022 constant        entry                    external dcl 30 ref 87 88 89 90 91 92 94 96 98 100
+                                                                                  101 102 106 108
+iox_$iocb_version_sentinel      000010 external static char(4)                  dcl 1-57 ref 61
+modes                    56            based           entry variable           level 2 dcl 1-7 set ref 72* 81 81 81* 115 115* 169*
+                                                                                  171* 171
+modes_bit                              constant        bit(36)                  initial unaligned dcl 36 ref 169
+null                                                   builtin function         dcl 49 ref 60 64 66 75 84 86 146 199
+open                     32            based           entry variable           level 2 dcl 1-7 set ref 71* 77 77 77* 108 108* 154*
+                                                                                  156* 156
+open_bit                               constant        bit(36)                  initial unaligned dcl 31 ref 154
+open_data_ptr            22            based           pointer                  level 2 dcl 1-7 set ref 86* 151* 151
+open_descrip_ptr         20            based           pointer                  level 2 dcl 1-7 set ref 66* 75 84 150* 150
+position                 62            based           entry variable           level 2 dcl 1-7 set ref 91 91* 116 116* 172* 174*
+                                                                                  174
+position_bit                           constant        bit(36)                  initial unaligned dcl 37 ref 172
+put_chars                52            based           entry variable           level 2 dcl 1-7 set ref 90 90* 113 113* 166* 168*
+                                                                                  168
+put_chars_bit                          constant        bit(36)                  initial unaligned dcl 35 ref 166
+read_key                116            based           entry variable           level 2 dcl 1-7 set ref 101 101* 129 129* 193* 195*
+                                                                                  195
+read_key_bit                           constant        bit(36)                  initial unaligned dcl 44 ref 193
+read_length             122            based           entry variable           level 2 dcl 1-7 set ref 102 102* 131 131* 196* 198*
+                                                                                  198
+read_length_bit                        constant        bit(36)                  initial unaligned dcl 45 ref 196
+read_record              72            based           entry variable           level 2 dcl 1-7 set ref 92 92* 119 119* 178* 180*
+                                                                                  180
+read_record_bit                        constant        bit(36)                  initial unaligned dcl 39 ref 178
+rewrite_record          102            based           entry variable           level 2 dcl 1-7 set ref 96 96* 123 123* 184* 186*
+                                                                                  186
+rewrite_record_bit                     constant        bit(36)                  initial unaligned dcl 41 ref 184
+seek_key                112            based           entry variable           level 2 dcl 1-7 set ref 100 100* 127 127* 190* 192*
+                                                                                  192
+seek_key_bit                           constant        bit(36)                  initial unaligned dcl 43 ref 190
+syn_brother             134            based           pointer                  level 2 dcl 1-7 ref 200
+syn_inhibits            130            based           bit(36)                  level 2 dcl 1-7 ref 154 157 160 163 166 169 172 175
+                                                                                  178 181 184 187 190 193 196
+syn_son                 136            based           pointer                  level 2 dcl 1-7 ref 146 199
+version                                based           char(4)                  level 2 dcl 1-7 ref 61
+write_record             76            based           entry variable           level 2 dcl 1-7 set ref 94 94* 121 121* 181* 183*
+                                                                                  183
+write_record_bit                       constant        bit(36)                  initial unaligned dcl 40 ref 181
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+propagate                       000011 constant        entry                    external dcl 12
+recurse                         001106 constant        entry                    external dcl 139 ref 199
+skip                            001117 constant        label                    dcl 146 ref 137
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1604        1630    1474        1614
+Length      2062    1474        24         216     110           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+propagate                            74 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+propagate                000100 iocb_ptr                    propagate
+                         000102 father_iocb_ptr             propagate
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_in         return              ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+iox_$err_no_operation         iox_$err_not_attached         iox_$err_not_closed           iox_$err_not_open
+iox_$err_old_dim
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+iox_$iocb_version_sentinel
+
+
+CONSTANTS
+001472  aa     077777000043
+001473  aa     000001000000
+
+000000  aa     464000000000
+
+000002  aa     000000000000
+000003  aa     000000000000
+
+000004  aa     077777000043
+000005  aa     000001000000
+
+BEGIN PROCEDURE propagate
+ENTRY TO propagate                                          STATEMENT 1 ON LINE 12
+propagate:
+     proc (a_iocb_ptr);
+
+000006  at     000001000000
+000007  ta     000006000000
+000010  da     000077300000
+000011  aa   000120 6270 00	eax7 	80
+000012  aa  7 00034 3521 20	epp2 	pr7|28,*
+000013  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000014  aa     000002000000
+000015  aa     000000000000
+						STATEMENT 1 ON LINE 59
+	iocb_ptr = a_iocb_ptr;
+
+000016  aa  6 00032 3735 20	epp7 	pr6|26,*
+000017  aa  7 00002 3715 20	epp5 	pr7|2,*		a_iocb_ptr
+000020  aa  5 00000 3715 20	epp5 	pr5|0,*		a_iocb_ptr
+000021  aa  6 00100 6515 00	spri5	pr6|64		iocb_ptr
+						STATEMENT 1 ON LINE 60
+	if iocb_ptr = null () then return;
+
+000022  aa  6 00100 2371 00	ldaq 	pr6|64		iocb_ptr
+000023  aa   777761 6770 04	eraq 	-15,ic		000004 = 077777000043 000001000000
+000024  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000025  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 61
+	if iocb_ptr -> iocb.version ^= iox_$iocb_version_sentinel then return;
+
+000026  aa  5 00000 2351 00	lda  	pr5|0		iocb.version
+000027  la  4 00010 1151 20	cmpa 	pr4|8,*		iox_$iocb_version_sentinel
+000030  aa  0 00631 6011 00	tnz  	pr0|409		return
+						STATEMENT 1 ON LINE 62
+	if iocb_ptr -> iocb.actual_iocb_ptr = iocb_ptr then do;
+
+000031  aa  5 00012 2371 00	ldaq 	pr5|10		iocb.actual_iocb_ptr
+000032  aa  6 00100 6771 00	eraq 	pr6|64		iocb_ptr
+000033  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000034  aa   001046 6010 04	tnz  	550,ic		001102
+						STATEMENT 1 ON LINE 64
+	     if iocb_ptr -> iocb.attach_descrip_ptr = null () then do;
+
+000035  aa  5 00014 2371 00	ldaq 	pr5|12		iocb.attach_descrip_ptr
+000036  aa   777746 6770 04	eraq 	-26,ic		000004 = 077777000043 000001000000
+000037  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000040  aa   000023 6010 04	tnz  	19,ic		000063
+						STATEMENT 1 ON LINE 66
+		iocb_ptr -> iocb.attach_data_ptr, iocb_ptr -> iocb.open_descrip_ptr,
+						/* "open_data_ptr" is reset below. */
+		     iocb_ptr -> iocb.ios_compatibility = null ();
+
+000041  aa   777743 3534 24	epp3 	-29,ic*
+000042  aa  5 00016 2535 00	spri3	pr5|14		iocb.attach_data_ptr
+000043  aa  5 00020 2535 00	spri3	pr5|16		iocb.open_descrip_ptr
+000044  aa  5 00126 2535 00	spri3	pr5|86		iocb.ios_compatibility
+						STATEMENT 1 ON LINE 69
+		iocb_ptr -> iocb.event_channel = "0"b;
+
+000045  aa   777735 2370 04	ldaq 	-35,ic		000002 = 000000000000 000000000000
+000046  aa  5 00024 7551 00	sta  	pr5|20		iocb.event_channel
+000047  aa  5 00025 7561 00	stq  	pr5|21		iocb.event_channel
+						STATEMENT 1 ON LINE 70
+		iocb_ptr -> iocb.detach_iocb = iox_$err_not_attached;
+
+000050  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$err_not_attached
+000051  aa  5 00026 2521 00	spri2	pr5|22		iocb.detach_iocb
+000052  aa   001420 2370 04	ldaq 	784,ic		001472 = 077777000043 000001000000
+000053  aa  5 00030 7571 00	staq 	pr5|24		iocb.detach_iocb
+						STATEMENT 1 ON LINE 71
+		iocb_ptr -> iocb.open = iox_$err_not_attached;
+
+000054  aa  5 00032 2521 00	spri2	pr5|26		iocb.open
+000055  aa  5 00034 7571 00	staq 	pr5|28		iocb.open
+						STATEMENT 1 ON LINE 72
+		iocb_ptr -> iocb.modes = iox_$err_not_attached;
+
+000056  aa  5 00056 2521 00	spri2	pr5|46		iocb.modes
+000057  aa  5 00060 7571 00	staq 	pr5|48		iocb.modes
+						STATEMENT 1 ON LINE 73
+		iocb_ptr -> iocb.control = iox_$err_not_attached;
+
+000060  aa  5 00066 2521 00	spri2	pr5|54		iocb.control
+000061  aa  5 00070 7571 00	staq 	pr5|56		iocb.control
+						STATEMENT 1 ON LINE 74
+		end;
+
+000062  aa   000131 7100 04	tra  	89,ic		000213
+						STATEMENT 1 ON LINE 75
+	     else if iocb_ptr -> iocb.open_descrip_ptr = null () then do;
+
+000063  aa  5 00020 2371 00	ldaq 	pr5|16		iocb.open_descrip_ptr
+000064  aa   777720 6770 04	eraq 	-48,ic		000004 = 077777000043 000001000000
+000065  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000066  aa   000125 6010 04	tnz  	85,ic		000213
+						STATEMENT 1 ON LINE 77
+		if iocb_ptr -> iocb.open = iox_$err_not_attached | iocb_ptr -> iocb.open = iox_$err_not_closed
+		then iocb_ptr -> iocb.open = iox_$err_no_operation;
+
+000067  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$err_not_attached
+000070  aa  6 00070 2521 00	spri2	pr6|56
+000071  aa   001401 2370 04	ldaq 	769,ic		001472 = 077777000043 000001000000
+000072  aa  6 00072 7571 00	staq 	pr6|58
+000073  aa  6 00070 2371 00	ldaq 	pr6|56
+000074  aa  5 00032 6771 00	eraq 	pr5|26		iocb.open
+000075  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000076  aa   000004 6010 04	tnz  	4,ic		000102
+000077  aa  6 00072 2371 00	ldaq 	pr6|58
+000100  aa  5 00034 6771 00	eraq 	pr5|28		iocb.open
+000101  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000102  aa   000015 6000 04	tze  	13,ic		000117
+000103  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$err_not_closed
+000104  aa  6 00070 2521 00	spri2	pr6|56
+000105  aa   001365 2370 04	ldaq 	757,ic		001472 = 077777000043 000001000000
+000106  aa  6 00072 7571 00	staq 	pr6|58
+000107  aa  6 00070 2371 00	ldaq 	pr6|56
+000110  aa  5 00032 6771 00	eraq 	pr5|26		iocb.open
+000111  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000112  aa   000004 6010 04	tnz  	4,ic		000116
+000113  aa  6 00072 2371 00	ldaq 	pr6|58
+000114  aa  5 00034 6771 00	eraq 	pr5|28		iocb.open
+000115  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000116  aa   000005 6010 04	tnz  	5,ic		000123
+000117  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000120  aa  5 00032 2521 00	spri2	pr5|26		iocb.open
+000121  aa   001351 2370 04	ldaq 	745,ic		001472 = 077777000043 000001000000
+000122  aa  5 00034 7571 00	staq 	pr5|28		iocb.open
+						STATEMENT 1 ON LINE 79
+		if iocb_ptr -> iocb.control = iox_$err_no_operation | iocb_ptr -> iocb.control = iox_$err_not_attached
+		then iocb_ptr -> iocb.control = iox_$err_not_open;
+
+000123  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000124  aa  6 00070 2521 00	spri2	pr6|56
+000125  aa   001345 2370 04	ldaq 	741,ic		001472 = 077777000043 000001000000
+000126  aa  6 00072 7571 00	staq 	pr6|58
+000127  aa  6 00070 2371 00	ldaq 	pr6|56
+000130  aa  5 00066 6771 00	eraq 	pr5|54		iocb.control
+000131  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000132  aa   000004 6010 04	tnz  	4,ic		000136
+000133  aa  6 00072 2371 00	ldaq 	pr6|58
+000134  aa  5 00070 6771 00	eraq 	pr5|56		iocb.control
+000135  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000136  aa   000015 6000 04	tze  	13,ic		000153
+000137  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$err_not_attached
+000140  aa  6 00070 2521 00	spri2	pr6|56
+000141  aa   001331 2370 04	ldaq 	729,ic		001472 = 077777000043 000001000000
+000142  aa  6 00072 7571 00	staq 	pr6|58
+000143  aa  6 00070 2371 00	ldaq 	pr6|56
+000144  aa  5 00066 6771 00	eraq 	pr5|54		iocb.control
+000145  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000146  aa   000004 6010 04	tnz  	4,ic		000152
+000147  aa  6 00072 2371 00	ldaq 	pr6|58
+000150  aa  5 00070 6771 00	eraq 	pr5|56		iocb.control
+000151  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000152  aa   000005 6010 04	tnz  	5,ic		000157
+000153  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000154  aa  5 00066 2521 00	spri2	pr5|54		iocb.control
+000155  aa   001315 2370 04	ldaq 	717,ic		001472 = 077777000043 000001000000
+000156  aa  5 00070 7571 00	staq 	pr5|56		iocb.control
+						STATEMENT 1 ON LINE 81
+		if iocb_ptr -> iocb.modes = iox_$err_no_operation | iocb_ptr -> iocb.modes = iox_$err_not_attached
+		then iocb_ptr -> iocb.modes = iox_$err_not_open;
+
+000157  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000160  aa  6 00070 2521 00	spri2	pr6|56
+000161  aa   001311 2370 04	ldaq 	713,ic		001472 = 077777000043 000001000000
+000162  aa  6 00072 7571 00	staq 	pr6|58
+000163  aa  6 00070 2371 00	ldaq 	pr6|56
+000164  aa  5 00056 6771 00	eraq 	pr5|46		iocb.modes
+000165  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000166  aa   000004 6010 04	tnz  	4,ic		000172
+000167  aa  6 00072 2371 00	ldaq 	pr6|58
+000170  aa  5 00060 6771 00	eraq 	pr5|48		iocb.modes
+000171  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000172  aa   000015 6000 04	tze  	13,ic		000207
+000173  la  4 00014 3521 20	epp2 	pr4|12,*		iox_$err_not_attached
+000174  aa  6 00070 2521 00	spri2	pr6|56
+000175  aa   001275 2370 04	ldaq 	701,ic		001472 = 077777000043 000001000000
+000176  aa  6 00072 7571 00	staq 	pr6|58
+000177  aa  6 00070 2371 00	ldaq 	pr6|56
+000200  aa  5 00056 6771 00	eraq 	pr5|46		iocb.modes
+000201  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000202  aa   000004 6010 04	tnz  	4,ic		000206
+000203  aa  6 00072 2371 00	ldaq 	pr6|58
+000204  aa  5 00060 6771 00	eraq 	pr5|48		iocb.modes
+000205  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000206  aa   000005 6010 04	tnz  	5,ic		000213
+000207  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000210  aa  5 00056 2521 00	spri2	pr5|46		iocb.modes
+000211  aa   001261 2370 04	ldaq 	689,ic		001472 = 077777000043 000001000000
+000212  aa  5 00060 7571 00	staq 	pr5|48		iocb.modes
+						STATEMENT 1 ON LINE 83
+		end;
+
+						STATEMENT 1 ON LINE 84
+	     if iocb_ptr -> iocb.open_descrip_ptr = null () then do;
+
+000213  aa  5 00020 2371 00	ldaq 	pr5|16		iocb.open_descrip_ptr
+000214  aa   777570 6770 04	eraq 	-136,ic		000004 = 077777000043 000001000000
+000215  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000216  aa   000304 6010 04	tnz  	196,ic		000522
+						STATEMENT 1 ON LINE 86
+		iocb_ptr -> iocb.open_data_ptr = null ();
+
+000217  aa   777565 2370 04	ldaq 	-139,ic		000004 = 077777000043 000001000000
+000220  aa  5 00022 7571 00	staq 	pr5|18		iocb.open_data_ptr
+						STATEMENT 1 ON LINE 87
+		if iocb_ptr -> iocb.close ^= iox_$err_old_dim then iocb_ptr -> iocb.close = iox_$err_not_open;
+
+000221  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000222  aa  6 00070 2521 00	spri2	pr6|56
+000223  aa   001247 2370 04	ldaq 	679,ic		001472 = 077777000043 000001000000
+000224  aa  6 00072 7571 00	staq 	pr6|58
+000225  aa  6 00070 2371 00	ldaq 	pr6|56
+000226  aa  5 00036 6771 00	eraq 	pr5|30		iocb.close
+000227  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000230  aa   000004 6010 04	tnz  	4,ic		000234
+000231  aa  6 00072 2371 00	ldaq 	pr6|58
+000232  aa  5 00040 6771 00	eraq 	pr5|32		iocb.close
+000233  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000234  aa   000005 6000 04	tze  	5,ic		000241
+000235  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000236  aa  5 00036 2521 00	spri2	pr5|30		iocb.close
+000237  aa   001233 2370 04	ldaq 	667,ic		001472 = 077777000043 000001000000
+000240  aa  5 00040 7571 00	staq 	pr5|32		iocb.close
+						STATEMENT 1 ON LINE 88
+		if iocb_ptr -> iocb.get_line ^= iox_$err_old_dim then iocb_ptr -> iocb.get_line = iox_$err_not_open;
+
+000241  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000242  aa  6 00070 2521 00	spri2	pr6|56
+000243  aa   001227 2370 04	ldaq 	663,ic		001472 = 077777000043 000001000000
+000244  aa  6 00072 7571 00	staq 	pr6|58
+000245  aa  6 00070 2371 00	ldaq 	pr6|56
+000246  aa  5 00042 6771 00	eraq 	pr5|34		iocb.get_line
+000247  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000250  aa   000004 6010 04	tnz  	4,ic		000254
+000251  aa  6 00072 2371 00	ldaq 	pr6|58
+000252  aa  5 00044 6771 00	eraq 	pr5|36		iocb.get_line
+000253  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000254  aa   000005 6000 04	tze  	5,ic		000261
+000255  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000256  aa  5 00042 2521 00	spri2	pr5|34		iocb.get_line
+000257  aa   001213 2370 04	ldaq 	651,ic		001472 = 077777000043 000001000000
+000260  aa  5 00044 7571 00	staq 	pr5|36		iocb.get_line
+						STATEMENT 1 ON LINE 89
+		if iocb_ptr -> iocb.get_chars ^= iox_$err_old_dim then iocb_ptr -> iocb.get_chars = iox_$err_not_open;
+
+000261  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000262  aa  6 00070 2521 00	spri2	pr6|56
+000263  aa   001207 2370 04	ldaq 	647,ic		001472 = 077777000043 000001000000
+000264  aa  6 00072 7571 00	staq 	pr6|58
+000265  aa  6 00070 2371 00	ldaq 	pr6|56
+000266  aa  5 00046 6771 00	eraq 	pr5|38		iocb.get_chars
+000267  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000270  aa   000004 6010 04	tnz  	4,ic		000274
+000271  aa  6 00072 2371 00	ldaq 	pr6|58
+000272  aa  5 00050 6771 00	eraq 	pr5|40		iocb.get_chars
+000273  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000274  aa   000005 6000 04	tze  	5,ic		000301
+000275  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000276  aa  5 00046 2521 00	spri2	pr5|38		iocb.get_chars
+000277  aa   001173 2370 04	ldaq 	635,ic		001472 = 077777000043 000001000000
+000300  aa  5 00050 7571 00	staq 	pr5|40		iocb.get_chars
+						STATEMENT 1 ON LINE 90
+		if iocb_ptr -> iocb.put_chars ^= iox_$err_old_dim then iocb_ptr -> iocb.put_chars = iox_$err_not_open;
+
+000301  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000302  aa  6 00070 2521 00	spri2	pr6|56
+000303  aa   001167 2370 04	ldaq 	631,ic		001472 = 077777000043 000001000000
+000304  aa  6 00072 7571 00	staq 	pr6|58
+000305  aa  6 00070 2371 00	ldaq 	pr6|56
+000306  aa  5 00052 6771 00	eraq 	pr5|42		iocb.put_chars
+000307  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000310  aa   000004 6010 04	tnz  	4,ic		000314
+000311  aa  6 00072 2371 00	ldaq 	pr6|58
+000312  aa  5 00054 6771 00	eraq 	pr5|44		iocb.put_chars
+000313  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000314  aa   000005 6000 04	tze  	5,ic		000321
+000315  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000316  aa  5 00052 2521 00	spri2	pr5|42		iocb.put_chars
+000317  aa   001153 2370 04	ldaq 	619,ic		001472 = 077777000043 000001000000
+000320  aa  5 00054 7571 00	staq 	pr5|44		iocb.put_chars
+						STATEMENT 1 ON LINE 91
+		if iocb_ptr -> iocb.position ^= iox_$err_old_dim then iocb_ptr -> iocb.position = iox_$err_not_open;
+
+000321  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000322  aa  6 00070 2521 00	spri2	pr6|56
+000323  aa   001147 2370 04	ldaq 	615,ic		001472 = 077777000043 000001000000
+000324  aa  6 00072 7571 00	staq 	pr6|58
+000325  aa  6 00070 2371 00	ldaq 	pr6|56
+000326  aa  5 00062 6771 00	eraq 	pr5|50		iocb.position
+000327  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000330  aa   000004 6010 04	tnz  	4,ic		000334
+000331  aa  6 00072 2371 00	ldaq 	pr6|58
+000332  aa  5 00064 6771 00	eraq 	pr5|52		iocb.position
+000333  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000334  aa   000005 6000 04	tze  	5,ic		000341
+000335  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000336  aa  5 00062 2521 00	spri2	pr5|50		iocb.position
+000337  aa   001133 2370 04	ldaq 	603,ic		001472 = 077777000043 000001000000
+000340  aa  5 00064 7571 00	staq 	pr5|52		iocb.position
+						STATEMENT 1 ON LINE 92
+		if iocb_ptr -> iocb.read_record ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.read_record = iox_$err_not_open;
+
+000341  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000342  aa  6 00070 2521 00	spri2	pr6|56
+000343  aa   001127 2370 04	ldaq 	599,ic		001472 = 077777000043 000001000000
+000344  aa  6 00072 7571 00	staq 	pr6|58
+000345  aa  6 00070 2371 00	ldaq 	pr6|56
+000346  aa  5 00072 6771 00	eraq 	pr5|58		iocb.read_record
+000347  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000350  aa   000004 6010 04	tnz  	4,ic		000354
+000351  aa  6 00072 2371 00	ldaq 	pr6|58
+000352  aa  5 00074 6771 00	eraq 	pr5|60		iocb.read_record
+000353  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000354  aa   000005 6000 04	tze  	5,ic		000361
+000355  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000356  aa  5 00072 2521 00	spri2	pr5|58		iocb.read_record
+000357  aa   001113 2370 04	ldaq 	587,ic		001472 = 077777000043 000001000000
+000360  aa  5 00074 7571 00	staq 	pr5|60		iocb.read_record
+						STATEMENT 1 ON LINE 94
+		if iocb_ptr -> iocb.write_record ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.write_record = iox_$err_not_open;
+
+000361  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000362  aa  6 00070 2521 00	spri2	pr6|56
+000363  aa   001107 2370 04	ldaq 	583,ic		001472 = 077777000043 000001000000
+000364  aa  6 00072 7571 00	staq 	pr6|58
+000365  aa  6 00070 2371 00	ldaq 	pr6|56
+000366  aa  5 00076 6771 00	eraq 	pr5|62		iocb.write_record
+000367  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000370  aa   000004 6010 04	tnz  	4,ic		000374
+000371  aa  6 00072 2371 00	ldaq 	pr6|58
+000372  aa  5 00100 6771 00	eraq 	pr5|64		iocb.write_record
+000373  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000374  aa   000005 6000 04	tze  	5,ic		000401
+000375  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000376  aa  5 00076 2521 00	spri2	pr5|62		iocb.write_record
+000377  aa   001073 2370 04	ldaq 	571,ic		001472 = 077777000043 000001000000
+000400  aa  5 00100 7571 00	staq 	pr5|64		iocb.write_record
+						STATEMENT 1 ON LINE 96
+		if iocb_ptr -> iocb.rewrite_record ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.rewrite_record = iox_$err_not_open;
+
+000401  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000402  aa  6 00070 2521 00	spri2	pr6|56
+000403  aa   001067 2370 04	ldaq 	567,ic		001472 = 077777000043 000001000000
+000404  aa  6 00072 7571 00	staq 	pr6|58
+000405  aa  6 00070 2371 00	ldaq 	pr6|56
+000406  aa  5 00102 6771 00	eraq 	pr5|66		iocb.rewrite_record
+000407  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000410  aa   000004 6010 04	tnz  	4,ic		000414
+000411  aa  6 00072 2371 00	ldaq 	pr6|58
+000412  aa  5 00104 6771 00	eraq 	pr5|68		iocb.rewrite_record
+000413  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000414  aa   000005 6000 04	tze  	5,ic		000421
+000415  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000416  aa  5 00102 2521 00	spri2	pr5|66		iocb.rewrite_record
+000417  aa   001053 2370 04	ldaq 	555,ic		001472 = 077777000043 000001000000
+000420  aa  5 00104 7571 00	staq 	pr5|68		iocb.rewrite_record
+						STATEMENT 1 ON LINE 98
+		if iocb_ptr -> iocb.delete_record ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.delete_record = iox_$err_not_open;
+
+000421  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000422  aa  6 00070 2521 00	spri2	pr6|56
+000423  aa   001047 2370 04	ldaq 	551,ic		001472 = 077777000043 000001000000
+000424  aa  6 00072 7571 00	staq 	pr6|58
+000425  aa  6 00070 2371 00	ldaq 	pr6|56
+000426  aa  5 00106 6771 00	eraq 	pr5|70		iocb.delete_record
+000427  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000430  aa   000004 6010 04	tnz  	4,ic		000434
+000431  aa  6 00072 2371 00	ldaq 	pr6|58
+000432  aa  5 00110 6771 00	eraq 	pr5|72		iocb.delete_record
+000433  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000434  aa   000005 6000 04	tze  	5,ic		000441
+000435  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000436  aa  5 00106 2521 00	spri2	pr5|70		iocb.delete_record
+000437  aa   001033 2370 04	ldaq 	539,ic		001472 = 077777000043 000001000000
+000440  aa  5 00110 7571 00	staq 	pr5|72		iocb.delete_record
+						STATEMENT 1 ON LINE 100
+		if iocb_ptr -> iocb.seek_key ^= iox_$err_old_dim then iocb_ptr -> iocb.seek_key = iox_$err_not_open;
+
+000441  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000442  aa  6 00070 2521 00	spri2	pr6|56
+000443  aa   001027 2370 04	ldaq 	535,ic		001472 = 077777000043 000001000000
+000444  aa  6 00072 7571 00	staq 	pr6|58
+000445  aa  6 00070 2371 00	ldaq 	pr6|56
+000446  aa  5 00112 6771 00	eraq 	pr5|74		iocb.seek_key
+000447  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000450  aa   000004 6010 04	tnz  	4,ic		000454
+000451  aa  6 00072 2371 00	ldaq 	pr6|58
+000452  aa  5 00114 6771 00	eraq 	pr5|76		iocb.seek_key
+000453  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000454  aa   000005 6000 04	tze  	5,ic		000461
+000455  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000456  aa  5 00112 2521 00	spri2	pr5|74		iocb.seek_key
+000457  aa   001013 2370 04	ldaq 	523,ic		001472 = 077777000043 000001000000
+000460  aa  5 00114 7571 00	staq 	pr5|76		iocb.seek_key
+						STATEMENT 1 ON LINE 101
+		if iocb_ptr -> iocb.read_key ^= iox_$err_old_dim then iocb_ptr -> iocb.read_key = iox_$err_not_open;
+
+000461  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000462  aa  6 00070 2521 00	spri2	pr6|56
+000463  aa   001007 2370 04	ldaq 	519,ic		001472 = 077777000043 000001000000
+000464  aa  6 00072 7571 00	staq 	pr6|58
+000465  aa  6 00070 2371 00	ldaq 	pr6|56
+000466  aa  5 00116 6771 00	eraq 	pr5|78		iocb.read_key
+000467  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000470  aa   000004 6010 04	tnz  	4,ic		000474
+000471  aa  6 00072 2371 00	ldaq 	pr6|58
+000472  aa  5 00120 6771 00	eraq 	pr5|80		iocb.read_key
+000473  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000474  aa   000005 6000 04	tze  	5,ic		000501
+000475  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000476  aa  5 00116 2521 00	spri2	pr5|78		iocb.read_key
+000477  aa   000773 2370 04	ldaq 	507,ic		001472 = 077777000043 000001000000
+000500  aa  5 00120 7571 00	staq 	pr5|80		iocb.read_key
+						STATEMENT 1 ON LINE 102
+		if iocb_ptr -> iocb.read_length ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.read_length = iox_$err_not_open;
+
+000501  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000502  aa  6 00070 2521 00	spri2	pr6|56
+000503  aa   000767 2370 04	ldaq 	503,ic		001472 = 077777000043 000001000000
+000504  aa  6 00072 7571 00	staq 	pr6|58
+000505  aa  6 00070 2371 00	ldaq 	pr6|56
+000506  aa  5 00122 6771 00	eraq 	pr5|82		iocb.read_length
+000507  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000510  aa   000004 6010 04	tnz  	4,ic		000514
+000511  aa  6 00072 2371 00	ldaq 	pr6|58
+000512  aa  5 00124 6771 00	eraq 	pr5|84		iocb.read_length
+000513  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000514  aa   000366 6000 04	tze  	246,ic		001102
+000515  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000516  aa  5 00122 2521 00	spri2	pr5|82		iocb.read_length
+000517  aa   000753 2370 04	ldaq 	491,ic		001472 = 077777000043 000001000000
+000520  aa  5 00124 7571 00	staq 	pr5|84		iocb.read_length
+						STATEMENT 1 ON LINE 104
+		end;
+
+000521  aa   000361 7100 04	tra  	241,ic		001102
+						STATEMENT 1 ON LINE 105
+	     else do;
+
+						STATEMENT 1 ON LINE 106
+		if iocb_ptr -> iocb.detach_iocb ^= iox_$err_old_dim
+		then iocb_ptr -> iocb.detach_iocb = iox_$err_not_closed;
+
+000522  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000523  aa  6 00070 2521 00	spri2	pr6|56
+000524  aa   000746 2370 04	ldaq 	486,ic		001472 = 077777000043 000001000000
+000525  aa  6 00072 7571 00	staq 	pr6|58
+000526  aa  6 00070 2371 00	ldaq 	pr6|56
+000527  aa  5 00026 6771 00	eraq 	pr5|22		iocb.detach_iocb
+000530  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000531  aa   000004 6010 04	tnz  	4,ic		000535
+000532  aa  6 00072 2371 00	ldaq 	pr6|58
+000533  aa  5 00030 6771 00	eraq 	pr5|24		iocb.detach_iocb
+000534  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000535  aa   000005 6000 04	tze  	5,ic		000542
+000536  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$err_not_closed
+000537  aa  5 00026 2521 00	spri2	pr5|22		iocb.detach_iocb
+000540  aa   000732 2370 04	ldaq 	474,ic		001472 = 077777000043 000001000000
+000541  aa  5 00030 7571 00	staq 	pr5|24		iocb.detach_iocb
+						STATEMENT 1 ON LINE 108
+		if iocb_ptr -> iocb.open ^= iox_$err_old_dim then iocb_ptr -> iocb.open = iox_$err_not_closed;
+
+000542  la  4 00022 3521 20	epp2 	pr4|18,*		iox_$err_old_dim
+000543  aa  6 00070 2521 00	spri2	pr6|56
+000544  aa   000726 2370 04	ldaq 	470,ic		001472 = 077777000043 000001000000
+000545  aa  6 00072 7571 00	staq 	pr6|58
+000546  aa  6 00070 2371 00	ldaq 	pr6|56
+000547  aa  5 00032 6771 00	eraq 	pr5|26		iocb.open
+000550  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000551  aa   000004 6010 04	tnz  	4,ic		000555
+000552  aa  6 00072 2371 00	ldaq 	pr6|58
+000553  aa  5 00034 6771 00	eraq 	pr5|28		iocb.open
+000554  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000555  aa   000005 6000 04	tze  	5,ic		000562
+000556  la  4 00016 3521 20	epp2 	pr4|14,*		iox_$err_not_closed
+000557  aa  5 00032 2521 00	spri2	pr5|26		iocb.open
+000560  aa   000712 2370 04	ldaq 	458,ic		001472 = 077777000043 000001000000
+000561  aa  5 00034 7571 00	staq 	pr5|28		iocb.open
+						STATEMENT 1 ON LINE 109
+		if iocb_ptr -> iocb.get_line = iox_$err_not_open
+		then iocb_ptr -> iocb.get_line = iox_$err_no_operation;
+
+000562  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000563  aa  6 00070 2521 00	spri2	pr6|56
+000564  aa   000706 2370 04	ldaq 	454,ic		001472 = 077777000043 000001000000
+000565  aa  6 00072 7571 00	staq 	pr6|58
+000566  aa  6 00070 2371 00	ldaq 	pr6|56
+000567  aa  5 00042 6771 00	eraq 	pr5|34		iocb.get_line
+000570  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000571  aa   000004 6010 04	tnz  	4,ic		000575
+000572  aa  6 00072 2371 00	ldaq 	pr6|58
+000573  aa  5 00044 6771 00	eraq 	pr5|36		iocb.get_line
+000574  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000575  aa   000005 6010 04	tnz  	5,ic		000602
+000576  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000577  aa  5 00042 2521 00	spri2	pr5|34		iocb.get_line
+000600  aa   000672 2370 04	ldaq 	442,ic		001472 = 077777000043 000001000000
+000601  aa  5 00044 7571 00	staq 	pr5|36		iocb.get_line
+						STATEMENT 1 ON LINE 111
+		if iocb_ptr -> iocb.get_chars = iox_$err_not_open
+		then iocb_ptr -> iocb.get_chars = iox_$err_no_operation;
+
+000602  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000603  aa  6 00070 2521 00	spri2	pr6|56
+000604  aa   000666 2370 04	ldaq 	438,ic		001472 = 077777000043 000001000000
+000605  aa  6 00072 7571 00	staq 	pr6|58
+000606  aa  6 00070 2371 00	ldaq 	pr6|56
+000607  aa  5 00046 6771 00	eraq 	pr5|38		iocb.get_chars
+000610  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000611  aa   000004 6010 04	tnz  	4,ic		000615
+000612  aa  6 00072 2371 00	ldaq 	pr6|58
+000613  aa  5 00050 6771 00	eraq 	pr5|40		iocb.get_chars
+000614  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000615  aa   000005 6010 04	tnz  	5,ic		000622
+000616  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000617  aa  5 00046 2521 00	spri2	pr5|38		iocb.get_chars
+000620  aa   000652 2370 04	ldaq 	426,ic		001472 = 077777000043 000001000000
+000621  aa  5 00050 7571 00	staq 	pr5|40		iocb.get_chars
+						STATEMENT 1 ON LINE 113
+		if iocb_ptr -> iocb.put_chars = iox_$err_not_open
+		then iocb_ptr -> iocb.put_chars = iox_$err_no_operation;
+
+000622  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000623  aa  6 00070 2521 00	spri2	pr6|56
+000624  aa   000646 2370 04	ldaq 	422,ic		001472 = 077777000043 000001000000
+000625  aa  6 00072 7571 00	staq 	pr6|58
+000626  aa  6 00070 2371 00	ldaq 	pr6|56
+000627  aa  5 00052 6771 00	eraq 	pr5|42		iocb.put_chars
+000630  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000631  aa   000004 6010 04	tnz  	4,ic		000635
+000632  aa  6 00072 2371 00	ldaq 	pr6|58
+000633  aa  5 00054 6771 00	eraq 	pr5|44		iocb.put_chars
+000634  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000635  aa   000005 6010 04	tnz  	5,ic		000642
+000636  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000637  aa  5 00052 2521 00	spri2	pr5|42		iocb.put_chars
+000640  aa   000632 2370 04	ldaq 	410,ic		001472 = 077777000043 000001000000
+000641  aa  5 00054 7571 00	staq 	pr5|44		iocb.put_chars
+						STATEMENT 1 ON LINE 115
+		if iocb_ptr -> iocb.modes = iox_$err_not_open then iocb_ptr -> iocb.modes = iox_$err_no_operation;
+
+000642  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000643  aa  6 00070 2521 00	spri2	pr6|56
+000644  aa   000626 2370 04	ldaq 	406,ic		001472 = 077777000043 000001000000
+000645  aa  6 00072 7571 00	staq 	pr6|58
+000646  aa  6 00070 2371 00	ldaq 	pr6|56
+000647  aa  5 00056 6771 00	eraq 	pr5|46		iocb.modes
+000650  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000651  aa   000004 6010 04	tnz  	4,ic		000655
+000652  aa  6 00072 2371 00	ldaq 	pr6|58
+000653  aa  5 00060 6771 00	eraq 	pr5|48		iocb.modes
+000654  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000655  aa   000005 6010 04	tnz  	5,ic		000662
+000656  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000657  aa  5 00056 2521 00	spri2	pr5|46		iocb.modes
+000660  aa   000612 2370 04	ldaq 	394,ic		001472 = 077777000043 000001000000
+000661  aa  5 00060 7571 00	staq 	pr5|48		iocb.modes
+						STATEMENT 1 ON LINE 116
+		if iocb_ptr -> iocb.position = iox_$err_not_open
+		then iocb_ptr -> iocb.position = iox_$err_no_operation;
+
+000662  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000663  aa  6 00070 2521 00	spri2	pr6|56
+000664  aa   000606 2370 04	ldaq 	390,ic		001472 = 077777000043 000001000000
+000665  aa  6 00072 7571 00	staq 	pr6|58
+000666  aa  6 00070 2371 00	ldaq 	pr6|56
+000667  aa  5 00062 6771 00	eraq 	pr5|50		iocb.position
+000670  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000671  aa   000004 6010 04	tnz  	4,ic		000675
+000672  aa  6 00072 2371 00	ldaq 	pr6|58
+000673  aa  5 00064 6771 00	eraq 	pr5|52		iocb.position
+000674  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000675  aa   000005 6010 04	tnz  	5,ic		000702
+000676  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000677  aa  5 00062 2521 00	spri2	pr5|50		iocb.position
+000700  aa   000572 2370 04	ldaq 	378,ic		001472 = 077777000043 000001000000
+000701  aa  5 00064 7571 00	staq 	pr5|52		iocb.position
+						STATEMENT 1 ON LINE 118
+		if iocb_ptr -> iocb.control = iox_$err_not_open then iocb_ptr -> iocb.control = iox_$err_no_operation;
+
+000702  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000703  aa  6 00070 2521 00	spri2	pr6|56
+000704  aa   000566 2370 04	ldaq 	374,ic		001472 = 077777000043 000001000000
+000705  aa  6 00072 7571 00	staq 	pr6|58
+000706  aa  6 00070 2371 00	ldaq 	pr6|56
+000707  aa  5 00066 6771 00	eraq 	pr5|54		iocb.control
+000710  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000711  aa   000004 6010 04	tnz  	4,ic		000715
+000712  aa  6 00072 2371 00	ldaq 	pr6|58
+000713  aa  5 00070 6771 00	eraq 	pr5|56		iocb.control
+000714  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000715  aa   000005 6010 04	tnz  	5,ic		000722
+000716  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000717  aa  5 00066 2521 00	spri2	pr5|54		iocb.control
+000720  aa   000552 2370 04	ldaq 	362,ic		001472 = 077777000043 000001000000
+000721  aa  5 00070 7571 00	staq 	pr5|56		iocb.control
+						STATEMENT 1 ON LINE 119
+		if iocb_ptr -> iocb.read_record = iox_$err_not_open
+		then iocb_ptr -> iocb.read_record = iox_$err_no_operation;
+
+000722  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000723  aa  6 00070 2521 00	spri2	pr6|56
+000724  aa   000546 2370 04	ldaq 	358,ic		001472 = 077777000043 000001000000
+000725  aa  6 00072 7571 00	staq 	pr6|58
+000726  aa  6 00070 2371 00	ldaq 	pr6|56
+000727  aa  5 00072 6771 00	eraq 	pr5|58		iocb.read_record
+000730  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000731  aa   000004 6010 04	tnz  	4,ic		000735
+000732  aa  6 00072 2371 00	ldaq 	pr6|58
+000733  aa  5 00074 6771 00	eraq 	pr5|60		iocb.read_record
+000734  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000735  aa   000005 6010 04	tnz  	5,ic		000742
+000736  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000737  aa  5 00072 2521 00	spri2	pr5|58		iocb.read_record
+000740  aa   000532 2370 04	ldaq 	346,ic		001472 = 077777000043 000001000000
+000741  aa  5 00074 7571 00	staq 	pr5|60		iocb.read_record
+						STATEMENT 1 ON LINE 121
+		if iocb_ptr -> iocb.write_record = iox_$err_not_open
+		then iocb_ptr -> iocb.write_record = iox_$err_no_operation;
+
+000742  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000743  aa  6 00070 2521 00	spri2	pr6|56
+000744  aa   000526 2370 04	ldaq 	342,ic		001472 = 077777000043 000001000000
+000745  aa  6 00072 7571 00	staq 	pr6|58
+000746  aa  6 00070 2371 00	ldaq 	pr6|56
+000747  aa  5 00076 6771 00	eraq 	pr5|62		iocb.write_record
+000750  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000751  aa   000004 6010 04	tnz  	4,ic		000755
+000752  aa  6 00072 2371 00	ldaq 	pr6|58
+000753  aa  5 00100 6771 00	eraq 	pr5|64		iocb.write_record
+000754  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000755  aa   000005 6010 04	tnz  	5,ic		000762
+000756  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000757  aa  5 00076 2521 00	spri2	pr5|62		iocb.write_record
+000760  aa   000512 2370 04	ldaq 	330,ic		001472 = 077777000043 000001000000
+000761  aa  5 00100 7571 00	staq 	pr5|64		iocb.write_record
+						STATEMENT 1 ON LINE 123
+		if iocb_ptr -> iocb.rewrite_record = iox_$err_not_open
+		then iocb_ptr -> iocb.rewrite_record = iox_$err_no_operation;
+
+000762  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+000763  aa  6 00070 2521 00	spri2	pr6|56
+000764  aa   000506 2370 04	ldaq 	326,ic		001472 = 077777000043 000001000000
+000765  aa  6 00072 7571 00	staq 	pr6|58
+000766  aa  6 00070 2371 00	ldaq 	pr6|56
+000767  aa  5 00102 6771 00	eraq 	pr5|66		iocb.rewrite_record
+000770  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000771  aa   000004 6010 04	tnz  	4,ic		000775
+000772  aa  6 00072 2371 00	ldaq 	pr6|58
+000773  aa  5 00104 6771 00	eraq 	pr5|68		iocb.rewrite_record
+000774  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000775  aa   000005 6010 04	tnz  	5,ic		001002
+000776  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+000777  aa  5 00102 2521 00	spri2	pr5|66		iocb.rewrite_record
+001000  aa   000472 2370 04	ldaq 	314,ic		001472 = 077777000043 000001000000
+001001  aa  5 00104 7571 00	staq 	pr5|68		iocb.rewrite_record
+						STATEMENT 1 ON LINE 125
+		if iocb_ptr -> iocb.delete_record = iox_$err_not_open
+		then iocb_ptr -> iocb.delete_record = iox_$err_no_operation;
+
+001002  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+001003  aa  6 00070 2521 00	spri2	pr6|56
+001004  aa   000466 2370 04	ldaq 	310,ic		001472 = 077777000043 000001000000
+001005  aa  6 00072 7571 00	staq 	pr6|58
+001006  aa  6 00070 2371 00	ldaq 	pr6|56
+001007  aa  5 00106 6771 00	eraq 	pr5|70		iocb.delete_record
+001010  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001011  aa   000004 6010 04	tnz  	4,ic		001015
+001012  aa  6 00072 2371 00	ldaq 	pr6|58
+001013  aa  5 00110 6771 00	eraq 	pr5|72		iocb.delete_record
+001014  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001015  aa   000005 6010 04	tnz  	5,ic		001022
+001016  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001017  aa  5 00106 2521 00	spri2	pr5|70		iocb.delete_record
+001020  aa   000452 2370 04	ldaq 	298,ic		001472 = 077777000043 000001000000
+001021  aa  5 00110 7571 00	staq 	pr5|72		iocb.delete_record
+						STATEMENT 1 ON LINE 127
+		if iocb_ptr -> iocb.seek_key = iox_$err_not_open
+		then iocb_ptr -> iocb.seek_key = iox_$err_no_operation;
+
+001022  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+001023  aa  6 00070 2521 00	spri2	pr6|56
+001024  aa   000446 2370 04	ldaq 	294,ic		001472 = 077777000043 000001000000
+001025  aa  6 00072 7571 00	staq 	pr6|58
+001026  aa  6 00070 2371 00	ldaq 	pr6|56
+001027  aa  5 00112 6771 00	eraq 	pr5|74		iocb.seek_key
+001030  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001031  aa   000004 6010 04	tnz  	4,ic		001035
+001032  aa  6 00072 2371 00	ldaq 	pr6|58
+001033  aa  5 00114 6771 00	eraq 	pr5|76		iocb.seek_key
+001034  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001035  aa   000005 6010 04	tnz  	5,ic		001042
+001036  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001037  aa  5 00112 2521 00	spri2	pr5|74		iocb.seek_key
+001040  aa   000432 2370 04	ldaq 	282,ic		001472 = 077777000043 000001000000
+001041  aa  5 00114 7571 00	staq 	pr5|76		iocb.seek_key
+						STATEMENT 1 ON LINE 129
+		if iocb_ptr -> iocb.read_key = iox_$err_not_open
+		then iocb_ptr -> iocb.read_key = iox_$err_no_operation;
+
+001042  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+001043  aa  6 00070 2521 00	spri2	pr6|56
+001044  aa   000426 2370 04	ldaq 	278,ic		001472 = 077777000043 000001000000
+001045  aa  6 00072 7571 00	staq 	pr6|58
+001046  aa  6 00070 2371 00	ldaq 	pr6|56
+001047  aa  5 00116 6771 00	eraq 	pr5|78		iocb.read_key
+001050  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001051  aa   000004 6010 04	tnz  	4,ic		001055
+001052  aa  6 00072 2371 00	ldaq 	pr6|58
+001053  aa  5 00120 6771 00	eraq 	pr5|80		iocb.read_key
+001054  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001055  aa   000005 6010 04	tnz  	5,ic		001062
+001056  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001057  aa  5 00116 2521 00	spri2	pr5|78		iocb.read_key
+001060  aa   000412 2370 04	ldaq 	266,ic		001472 = 077777000043 000001000000
+001061  aa  5 00120 7571 00	staq 	pr5|80		iocb.read_key
+						STATEMENT 1 ON LINE 131
+		if iocb_ptr -> iocb.read_length = iox_$err_not_open
+		then iocb_ptr -> iocb.read_length = iox_$err_no_operation;
+
+001062  la  4 00020 3521 20	epp2 	pr4|16,*		iox_$err_not_open
+001063  aa  6 00070 2521 00	spri2	pr6|56
+001064  aa   000406 2370 04	ldaq 	262,ic		001472 = 077777000043 000001000000
+001065  aa  6 00072 7571 00	staq 	pr6|58
+001066  aa  6 00070 2371 00	ldaq 	pr6|56
+001067  aa  5 00122 6771 00	eraq 	pr5|82		iocb.read_length
+001070  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001071  aa   000004 6010 04	tnz  	4,ic		001075
+001072  aa  6 00072 2371 00	ldaq 	pr6|58
+001073  aa  5 00124 6771 00	eraq 	pr5|84		iocb.read_length
+001074  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001075  aa   000005 6010 04	tnz  	5,ic		001102
+001076  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001077  aa  5 00122 2521 00	spri2	pr5|82		iocb.read_length
+001100  aa   000372 2370 04	ldaq 	250,ic		001472 = 077777000043 000001000000
+001101  aa  5 00124 7571 00	staq 	pr5|84		iocb.read_length
+						STATEMENT 1 ON LINE 133
+		end;
+
+						STATEMENT 1 ON LINE 134
+	     end;
+
+						STATEMENT 1 ON LINE 136
+	father_iocb_ptr = iocb_ptr;
+
+001102  aa  6 00102 6515 00	spri5	pr6|66		father_iocb_ptr
+						STATEMENT 1 ON LINE 137
+	go to skip;
+
+001103  aa   000014 7100 04	tra  	12,ic		001117
+ENTRY TO recurse                                            STATEMENT 1 ON LINE 139
+recurse:
+     entry (a_iocb_ptr);
+
+001104  ta     000006000000
+001105  da     000104300000
+001106  aa   000120 6270 00	eax7 	80
+001107  aa  7 00034 3521 20	epp2 	pr7|28,*
+001110  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001111  aa     000002000000
+001112  aa     000000000000
+						STATEMENT 1 ON LINE 142
+	father_iocb_ptr = a_iocb_ptr;
+
+001113  aa  6 00032 3735 20	epp7 	pr6|26,*
+001114  aa  7 00002 3715 20	epp5 	pr7|2,*		a_iocb_ptr
+001115  aa  5 00000 3715 20	epp5 	pr5|0,*		a_iocb_ptr
+001116  aa  6 00102 6515 00	spri5	pr6|66		father_iocb_ptr
+						STATEMENT 1 ON LINE 146
+skip:
+	do iocb_ptr = father_iocb_ptr -> iocb.syn_son repeat iocb_ptr -> iocb.syn_brother while (iocb_ptr ^= null ());
+
+001117  aa  6 00102 3715 20	epp5 	pr6|66,*		father_iocb_ptr
+001120  aa  5 00136 3715 20	epp5 	pr5|94,*		iocb.syn_son
+001121  aa  6 00100 6515 00	spri5	pr6|64		iocb_ptr
+001122  aa  6 00100 2371 00	ldaq 	pr6|64		iocb_ptr
+001123  aa   776661 6770 04	eraq 	-591,ic		000004 = 077777000043 000001000000
+001124  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001125  aa   000343 6000 04	tze  	227,ic		001470
+						STATEMENT 1 ON LINE 148
+	     iocb_ptr -> iocb.actual_iocb_ptr = father_iocb_ptr -> iocb.actual_iocb_ptr;
+
+001126  aa  6 00102 3735 20	epp7 	pr6|66,*		father_iocb_ptr
+001127  aa  7 00012 3735 20	epp7 	pr7|10,*		iocb.actual_iocb_ptr
+001130  aa  6 00100 3715 20	epp5 	pr6|64,*		iocb_ptr
+001131  aa  5 00012 6535 00	spri7	pr5|10		iocb.actual_iocb_ptr
+						STATEMENT 1 ON LINE 150
+	     iocb_ptr -> iocb.open_descrip_ptr = father_iocb_ptr -> iocb.open_descrip_ptr;
+
+001132  aa  6 00102 3535 20	epp3 	pr6|66,*		father_iocb_ptr
+001133  aa  3 00020 3535 20	epp3 	pr3|16,*		iocb.open_descrip_ptr
+001134  aa  5 00020 2535 00	spri3	pr5|16		iocb.open_descrip_ptr
+						STATEMENT 1 ON LINE 151
+	     iocb_ptr -> iocb.open_data_ptr = father_iocb_ptr -> iocb.open_data_ptr;
+
+001135  aa  6 00102 3515 20	epp1 	pr6|66,*		father_iocb_ptr
+001136  aa  1 00022 3515 20	epp1 	pr1|18,*		iocb.open_data_ptr
+001137  aa  5 00022 2515 00	spri1	pr5|18		iocb.open_data_ptr
+						STATEMENT 1 ON LINE 152
+	     iocb_ptr -> iocb.event_channel = father_iocb_ptr -> iocb.event_channel;
+
+001140  aa  6 00102 3535 20	epp3 	pr6|66,*		father_iocb_ptr
+001141  aa  3 00024 2351 00	lda  	pr3|20		iocb.event_channel
+001142  aa  3 00025 2361 00	ldq  	pr3|21		iocb.event_channel
+001143  aa  5 00024 7551 00	sta  	pr5|20		iocb.event_channel
+001144  aa  5 00025 7561 00	stq  	pr5|21		iocb.event_channel
+						STATEMENT 1 ON LINE 153
+	     iocb_ptr -> iocb.ios_compatibility = father_iocb_ptr -> iocb.ios_compatibility;
+
+001145  aa  3 00126 3735 20	epp7 	pr3|86,*		iocb.ios_compatibility
+001146  aa  5 00126 6535 00	spri7	pr5|86		iocb.ios_compatibility
+						STATEMENT 1 ON LINE 154
+	     if iocb_ptr -> iocb.syn_inhibits & open_bit
+	     then iocb_ptr -> iocb.open = iox_$err_no_operation;
+
+001147  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001150  aa   400000 3150 03	cana 	131072,du
+001151  aa   000007 6000 04	tze  	7,ic		001160
+001152  aa  6 00044 3701 20	epp4 	pr6|36,*
+001153  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001154  aa  5 00032 2521 00	spri2	pr5|26		iocb.open
+001155  aa   000315 2370 04	ldaq 	205,ic		001472 = 077777000043 000001000000
+001156  aa  5 00034 7571 00	staq 	pr5|28		iocb.open
+001157  aa   000005 7100 04	tra  	5,ic		001164
+						STATEMENT 1 ON LINE 156
+	     else iocb_ptr -> iocb.open = father_iocb_ptr -> iocb.open;
+
+001160  aa  3 00032 3521 20	epp2 	pr3|26,*		iocb.open
+001161  aa  5 00032 2521 00	spri2	pr5|26		iocb.open
+001162  aa  3 00034 3521 20	epp2 	pr3|28,*		iocb.open
+001163  aa  5 00034 2521 00	spri2	pr5|28		iocb.open
+						STATEMENT 1 ON LINE 157
+	     if iocb_ptr -> iocb.syn_inhibits & close_bit
+	     then iocb_ptr -> iocb.close = iox_$err_no_operation;
+
+001164  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001165  aa   200000 3150 03	cana 	65536,du
+001166  aa   000007 6000 04	tze  	7,ic		001175
+001167  aa  6 00044 3701 20	epp4 	pr6|36,*
+001170  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001171  aa  5 00036 2521 00	spri2	pr5|30		iocb.close
+001172  aa   000300 2370 04	ldaq 	192,ic		001472 = 077777000043 000001000000
+001173  aa  5 00040 7571 00	staq 	pr5|32		iocb.close
+001174  aa   000005 7100 04	tra  	5,ic		001201
+						STATEMENT 1 ON LINE 159
+	     else iocb_ptr -> iocb.close = father_iocb_ptr -> iocb.close;
+
+001175  aa  3 00036 3521 20	epp2 	pr3|30,*		iocb.close
+001176  aa  5 00036 2521 00	spri2	pr5|30		iocb.close
+001177  aa  3 00040 3521 20	epp2 	pr3|32,*		iocb.close
+001200  aa  5 00040 2521 00	spri2	pr5|32		iocb.close
+						STATEMENT 1 ON LINE 160
+	     if iocb_ptr -> iocb.syn_inhibits & get_line_bit
+	     then iocb_ptr -> iocb.get_line = iox_$err_no_operation;
+
+001201  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001202  aa   100000 3150 03	cana 	32768,du
+001203  aa   000007 6000 04	tze  	7,ic		001212
+001204  aa  6 00044 3701 20	epp4 	pr6|36,*
+001205  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001206  aa  5 00042 2521 00	spri2	pr5|34		iocb.get_line
+001207  aa   000263 2370 04	ldaq 	179,ic		001472 = 077777000043 000001000000
+001210  aa  5 00044 7571 00	staq 	pr5|36		iocb.get_line
+001211  aa   000005 7100 04	tra  	5,ic		001216
+						STATEMENT 1 ON LINE 162
+	     else iocb_ptr -> iocb.get_line = father_iocb_ptr -> iocb.get_line;
+
+001212  aa  3 00042 3521 20	epp2 	pr3|34,*		iocb.get_line
+001213  aa  5 00042 2521 00	spri2	pr5|34		iocb.get_line
+001214  aa  3 00044 3521 20	epp2 	pr3|36,*		iocb.get_line
+001215  aa  5 00044 2521 00	spri2	pr5|36		iocb.get_line
+						STATEMENT 1 ON LINE 163
+	     if iocb_ptr -> iocb.syn_inhibits & get_chars_bit
+	     then iocb_ptr -> iocb.get_chars = iox_$err_no_operation;
+
+001216  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001217  aa   040000 3150 03	cana 	16384,du
+001220  aa   000007 6000 04	tze  	7,ic		001227
+001221  aa  6 00044 3701 20	epp4 	pr6|36,*
+001222  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001223  aa  5 00046 2521 00	spri2	pr5|38		iocb.get_chars
+001224  aa   000246 2370 04	ldaq 	166,ic		001472 = 077777000043 000001000000
+001225  aa  5 00050 7571 00	staq 	pr5|40		iocb.get_chars
+001226  aa   000005 7100 04	tra  	5,ic		001233
+						STATEMENT 1 ON LINE 165
+	     else iocb_ptr -> iocb.get_chars = father_iocb_ptr -> iocb.get_chars;
+
+001227  aa  3 00046 3521 20	epp2 	pr3|38,*		iocb.get_chars
+001230  aa  5 00046 2521 00	spri2	pr5|38		iocb.get_chars
+001231  aa  3 00050 3521 20	epp2 	pr3|40,*		iocb.get_chars
+001232  aa  5 00050 2521 00	spri2	pr5|40		iocb.get_chars
+						STATEMENT 1 ON LINE 166
+	     if iocb_ptr -> iocb.syn_inhibits & put_chars_bit
+	     then iocb_ptr -> iocb.put_chars = iox_$err_no_operation;
+
+001233  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001234  aa   020000 3150 03	cana 	8192,du
+001235  aa   000007 6000 04	tze  	7,ic		001244
+001236  aa  6 00044 3701 20	epp4 	pr6|36,*
+001237  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001240  aa  5 00052 2521 00	spri2	pr5|42		iocb.put_chars
+001241  aa   000231 2370 04	ldaq 	153,ic		001472 = 077777000043 000001000000
+001242  aa  5 00054 7571 00	staq 	pr5|44		iocb.put_chars
+001243  aa   000005 7100 04	tra  	5,ic		001250
+						STATEMENT 1 ON LINE 168
+	     else iocb_ptr -> iocb.put_chars = father_iocb_ptr -> iocb.put_chars;
+
+001244  aa  3 00052 3521 20	epp2 	pr3|42,*		iocb.put_chars
+001245  aa  5 00052 2521 00	spri2	pr5|42		iocb.put_chars
+001246  aa  3 00054 3521 20	epp2 	pr3|44,*		iocb.put_chars
+001247  aa  5 00054 2521 00	spri2	pr5|44		iocb.put_chars
+						STATEMENT 1 ON LINE 169
+	     if iocb_ptr -> iocb.syn_inhibits & modes_bit
+	     then iocb_ptr -> iocb.modes = iox_$err_no_operation;
+
+001250  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001251  aa   010000 3150 03	cana 	4096,du
+001252  aa   000007 6000 04	tze  	7,ic		001261
+001253  aa  6 00044 3701 20	epp4 	pr6|36,*
+001254  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001255  aa  5 00056 2521 00	spri2	pr5|46		iocb.modes
+001256  aa   000214 2370 04	ldaq 	140,ic		001472 = 077777000043 000001000000
+001257  aa  5 00060 7571 00	staq 	pr5|48		iocb.modes
+001260  aa   000005 7100 04	tra  	5,ic		001265
+						STATEMENT 1 ON LINE 171
+	     else iocb_ptr -> iocb.modes = father_iocb_ptr -> iocb.modes;
+
+001261  aa  3 00056 3521 20	epp2 	pr3|46,*		iocb.modes
+001262  aa  5 00056 2521 00	spri2	pr5|46		iocb.modes
+001263  aa  3 00060 3521 20	epp2 	pr3|48,*		iocb.modes
+001264  aa  5 00060 2521 00	spri2	pr5|48		iocb.modes
+						STATEMENT 1 ON LINE 172
+	     if iocb_ptr -> iocb.syn_inhibits & position_bit
+	     then iocb_ptr -> iocb.position = iox_$err_no_operation;
+
+001265  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001266  aa   004000 3150 03	cana 	2048,du
+001267  aa   000007 6000 04	tze  	7,ic		001276
+001270  aa  6 00044 3701 20	epp4 	pr6|36,*
+001271  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001272  aa  5 00062 2521 00	spri2	pr5|50		iocb.position
+001273  aa   000177 2370 04	ldaq 	127,ic		001472 = 077777000043 000001000000
+001274  aa  5 00064 7571 00	staq 	pr5|52		iocb.position
+001275  aa   000005 7100 04	tra  	5,ic		001302
+						STATEMENT 1 ON LINE 174
+	     else iocb_ptr -> iocb.position = father_iocb_ptr -> iocb.position;
+
+001276  aa  3 00062 3521 20	epp2 	pr3|50,*		iocb.position
+001277  aa  5 00062 2521 00	spri2	pr5|50		iocb.position
+001300  aa  3 00064 3521 20	epp2 	pr3|52,*		iocb.position
+001301  aa  5 00064 2521 00	spri2	pr5|52		iocb.position
+						STATEMENT 1 ON LINE 175
+	     if iocb_ptr -> iocb.syn_inhibits & control_bit
+	     then iocb_ptr -> iocb.control = iox_$err_no_operation;
+
+001302  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001303  aa   002000 3150 03	cana 	1024,du
+001304  aa   000007 6000 04	tze  	7,ic		001313
+001305  aa  6 00044 3701 20	epp4 	pr6|36,*
+001306  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001307  aa  5 00066 2521 00	spri2	pr5|54		iocb.control
+001310  aa   000162 2370 04	ldaq 	114,ic		001472 = 077777000043 000001000000
+001311  aa  5 00070 7571 00	staq 	pr5|56		iocb.control
+001312  aa   000005 7100 04	tra  	5,ic		001317
+						STATEMENT 1 ON LINE 177
+	     else iocb_ptr -> iocb.control = father_iocb_ptr -> iocb.control;
+
+001313  aa  3 00066 3521 20	epp2 	pr3|54,*		iocb.control
+001314  aa  5 00066 2521 00	spri2	pr5|54		iocb.control
+001315  aa  3 00070 3521 20	epp2 	pr3|56,*		iocb.control
+001316  aa  5 00070 2521 00	spri2	pr5|56		iocb.control
+						STATEMENT 1 ON LINE 178
+	     if iocb_ptr -> iocb.syn_inhibits & read_record_bit
+	     then iocb_ptr -> iocb.read_record = iox_$err_no_operation;
+
+001317  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001320  aa   001000 3150 03	cana 	512,du
+001321  aa   000007 6000 04	tze  	7,ic		001330
+001322  aa  6 00044 3701 20	epp4 	pr6|36,*
+001323  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001324  aa  5 00072 2521 00	spri2	pr5|58		iocb.read_record
+001325  aa   000145 2370 04	ldaq 	101,ic		001472 = 077777000043 000001000000
+001326  aa  5 00074 7571 00	staq 	pr5|60		iocb.read_record
+001327  aa   000005 7100 04	tra  	5,ic		001334
+						STATEMENT 1 ON LINE 180
+	     else iocb_ptr -> iocb.read_record = father_iocb_ptr -> iocb.read_record;
+
+001330  aa  3 00072 3521 20	epp2 	pr3|58,*		iocb.read_record
+001331  aa  5 00072 2521 00	spri2	pr5|58		iocb.read_record
+001332  aa  3 00074 3521 20	epp2 	pr3|60,*		iocb.read_record
+001333  aa  5 00074 2521 00	spri2	pr5|60		iocb.read_record
+						STATEMENT 1 ON LINE 181
+	     if iocb_ptr -> iocb.syn_inhibits & write_record_bit
+	     then iocb_ptr -> iocb.write_record = iox_$err_no_operation;
+
+001334  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001335  aa   000400 3150 03	cana 	256,du
+001336  aa   000007 6000 04	tze  	7,ic		001345
+001337  aa  6 00044 3701 20	epp4 	pr6|36,*
+001340  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001341  aa  5 00076 2521 00	spri2	pr5|62		iocb.write_record
+001342  aa   000130 2370 04	ldaq 	88,ic		001472 = 077777000043 000001000000
+001343  aa  5 00100 7571 00	staq 	pr5|64		iocb.write_record
+001344  aa   000005 7100 04	tra  	5,ic		001351
+						STATEMENT 1 ON LINE 183
+	     else iocb_ptr -> iocb.write_record = father_iocb_ptr -> iocb.write_record;
+
+001345  aa  3 00076 3521 20	epp2 	pr3|62,*		iocb.write_record
+001346  aa  5 00076 2521 00	spri2	pr5|62		iocb.write_record
+001347  aa  3 00100 3521 20	epp2 	pr3|64,*		iocb.write_record
+001350  aa  5 00100 2521 00	spri2	pr5|64		iocb.write_record
+						STATEMENT 1 ON LINE 184
+	     if iocb_ptr -> iocb.syn_inhibits & rewrite_record_bit
+	     then iocb_ptr -> iocb.rewrite_record = iox_$err_no_operation;
+
+001351  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001352  aa   000200 3150 03	cana 	128,du
+001353  aa   000007 6000 04	tze  	7,ic		001362
+001354  aa  6 00044 3701 20	epp4 	pr6|36,*
+001355  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001356  aa  5 00102 2521 00	spri2	pr5|66		iocb.rewrite_record
+001357  aa   000113 2370 04	ldaq 	75,ic		001472 = 077777000043 000001000000
+001360  aa  5 00104 7571 00	staq 	pr5|68		iocb.rewrite_record
+001361  aa   000005 7100 04	tra  	5,ic		001366
+						STATEMENT 1 ON LINE 186
+	     else iocb_ptr -> iocb.rewrite_record = father_iocb_ptr -> iocb.rewrite_record;
+
+001362  aa  3 00102 3521 20	epp2 	pr3|66,*		iocb.rewrite_record
+001363  aa  5 00102 2521 00	spri2	pr5|66		iocb.rewrite_record
+001364  aa  3 00104 3521 20	epp2 	pr3|68,*		iocb.rewrite_record
+001365  aa  5 00104 2521 00	spri2	pr5|68		iocb.rewrite_record
+						STATEMENT 1 ON LINE 187
+	     if iocb_ptr -> iocb.syn_inhibits & delete_record_bit
+	     then iocb_ptr -> iocb.delete_record = iox_$err_no_operation;
+
+001366  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001367  aa   000100 3150 03	cana 	64,du
+001370  aa   000007 6000 04	tze  	7,ic		001377
+001371  aa  6 00044 3701 20	epp4 	pr6|36,*
+001372  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001373  aa  5 00106 2521 00	spri2	pr5|70		iocb.delete_record
+001374  aa   000076 2370 04	ldaq 	62,ic		001472 = 077777000043 000001000000
+001375  aa  5 00110 7571 00	staq 	pr5|72		iocb.delete_record
+001376  aa   000005 7100 04	tra  	5,ic		001403
+						STATEMENT 1 ON LINE 189
+	     else iocb_ptr -> iocb.delete_record = father_iocb_ptr -> iocb.delete_record;
+
+001377  aa  3 00106 3521 20	epp2 	pr3|70,*		iocb.delete_record
+001400  aa  5 00106 2521 00	spri2	pr5|70		iocb.delete_record
+001401  aa  3 00110 3521 20	epp2 	pr3|72,*		iocb.delete_record
+001402  aa  5 00110 2521 00	spri2	pr5|72		iocb.delete_record
+						STATEMENT 1 ON LINE 190
+	     if iocb_ptr -> iocb.syn_inhibits & seek_key_bit
+	     then iocb_ptr -> iocb.seek_key = iox_$err_no_operation;
+
+001403  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001404  aa   000040 3150 03	cana 	32,du
+001405  aa   000007 6000 04	tze  	7,ic		001414
+001406  aa  6 00044 3701 20	epp4 	pr6|36,*
+001407  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001410  aa  5 00112 2521 00	spri2	pr5|74		iocb.seek_key
+001411  aa   000061 2370 04	ldaq 	49,ic		001472 = 077777000043 000001000000
+001412  aa  5 00114 7571 00	staq 	pr5|76		iocb.seek_key
+001413  aa   000005 7100 04	tra  	5,ic		001420
+						STATEMENT 1 ON LINE 192
+	     else iocb_ptr -> iocb.seek_key = father_iocb_ptr -> iocb.seek_key;
+
+001414  aa  3 00112 3521 20	epp2 	pr3|74,*		iocb.seek_key
+001415  aa  5 00112 2521 00	spri2	pr5|74		iocb.seek_key
+001416  aa  3 00114 3521 20	epp2 	pr3|76,*		iocb.seek_key
+001417  aa  5 00114 2521 00	spri2	pr5|76		iocb.seek_key
+						STATEMENT 1 ON LINE 193
+	     if iocb_ptr -> iocb.syn_inhibits & read_key_bit
+	     then iocb_ptr -> iocb.read_key = iox_$err_no_operation;
+
+001420  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001421  aa   000020 3150 03	cana 	16,du
+001422  aa   000007 6000 04	tze  	7,ic		001431
+001423  aa  6 00044 3701 20	epp4 	pr6|36,*
+001424  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001425  aa  5 00116 2521 00	spri2	pr5|78		iocb.read_key
+001426  aa   000044 2370 04	ldaq 	36,ic		001472 = 077777000043 000001000000
+001427  aa  5 00120 7571 00	staq 	pr5|80		iocb.read_key
+001430  aa   000005 7100 04	tra  	5,ic		001435
+						STATEMENT 1 ON LINE 195
+	     else iocb_ptr -> iocb.read_key = father_iocb_ptr -> iocb.read_key;
+
+001431  aa  3 00116 3521 20	epp2 	pr3|78,*		iocb.read_key
+001432  aa  5 00116 2521 00	spri2	pr5|78		iocb.read_key
+001433  aa  3 00120 3521 20	epp2 	pr3|80,*		iocb.read_key
+001434  aa  5 00120 2521 00	spri2	pr5|80		iocb.read_key
+						STATEMENT 1 ON LINE 196
+	     if iocb_ptr -> iocb.syn_inhibits & read_length_bit
+	     then iocb_ptr -> iocb.read_length = iox_$err_no_operation;
+
+001435  aa  5 00130 2351 00	lda  	pr5|88		iocb.syn_inhibits
+001436  aa   000010 3150 03	cana 	8,du
+001437  aa   000007 6000 04	tze  	7,ic		001446
+001440  aa  6 00044 3701 20	epp4 	pr6|36,*
+001441  la  4 00012 3521 20	epp2 	pr4|10,*		iox_$err_no_operation
+001442  aa  5 00122 2521 00	spri2	pr5|82		iocb.read_length
+001443  aa   000027 2370 04	ldaq 	23,ic		001472 = 077777000043 000001000000
+001444  aa  5 00124 7571 00	staq 	pr5|84		iocb.read_length
+001445  aa   000005 7100 04	tra  	5,ic		001452
+						STATEMENT 1 ON LINE 198
+	     else iocb_ptr -> iocb.read_length = father_iocb_ptr -> iocb.read_length;
+
+001446  aa  3 00122 3521 20	epp2 	pr3|82,*		iocb.read_length
+001447  aa  5 00122 2521 00	spri2	pr5|82		iocb.read_length
+001450  aa  3 00124 3521 20	epp2 	pr3|84,*		iocb.read_length
+001451  aa  5 00124 2521 00	spri2	pr5|84		iocb.read_length
+						STATEMENT 1 ON LINE 199
+	     if iocb_ptr -> iocb.syn_son ^= null then call recurse (iocb_ptr);
+
+001452  aa  5 00136 2371 00	ldaq 	pr5|94		iocb.syn_son
+001453  aa   776331 6770 04	eraq 	-807,ic		000004 = 077777000043 000001000000
+001454  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001455  aa   000007 6000 04	tze  	7,ic		001464
+001456  aa  6 00100 3521 00	epp2 	pr6|64		iocb_ptr
+001457  aa  6 00110 2521 00	spri2	pr6|72
+001460  aa  6 00106 6211 00	eax1 	pr6|70
+001461  aa   004000 4310 07	fld  	2048,dl
+001462  aa   777424 3520 04	epp2 	-236,ic		001106 = 000120627000
+001463  aa  0 00621 7001 00	tsx0 	pr0|401		call_ext_in
+						STATEMENT 1 ON LINE 200
+	end;
+
+001464  aa  6 00100 3735 20	epp7 	pr6|64,*		iocb_ptr
+001465  aa  7 00134 3735 20	epp7 	pr7|92,*		iocb.syn_brother
+001466  aa  6 00100 6535 00	spri7	pr6|64		iocb_ptr
+001467  aa   777433 7100 04	tra  	-229,ic		001122
+						STATEMENT 1 ON LINE 201
+	return;
+
+001470  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 203
+     end propagate;
+
+  END PROCEDURE propagate
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

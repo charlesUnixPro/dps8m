@@ -1,0 +1,3801 @@
+	COMPILATION LISTING OF SEGMENT tape_mult_read_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-06-29_1715.15_Thu_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*        *                                                         *
+        5*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*        * Technology and Honeywell Information Systems, Inc.      *
+        7*        *                                                         *
+        8*        *********************************************************** */
+        9 
+       10 
+       11 
+       12 /****^  HISTORY COMMENTS:
+       13*  1) change(74-10-06,Silver), approve(), audit(), install():
+       14*     Written by Bill Silver.
+       15*  2) change(77-09-01,Morris), approve(), audit(), install():
+       16*     Reading algorithm completely reworked.
+       17*  3) change(81-01-02,Bush), approve(), audit(), install():
+       18*     for bootable tape labels.
+       19*  4) change(81-08-12,Bush), approve(), audit(), install():
+       20*     Pre-Mr9.0 label compatibility.
+       21*  5) change(81-12-15,Bush), approve(), audit(), install():
+       22*     Rewrote read error recovery.
+       23*  6) change(82-08-01,SKrupp), approve(), audit(), install():
+       24*     changed from tdcm_ interface to tape_ioi_.
+       25*  7) change(83-03-01,Kittlitz), approve(), audit(), install():
+       26*     added 256K segment processing ability.
+       27*  8) change(83-09-01,SKrupp), approve(), audit(), install():
+       28*     to abort read retries on unrecoverable errors that return certain
+       29*     major statuses (such as POWER_OFF or DEVICE_ATTENTION etc.).
+       30*  9) change(84-09-01,CJones), approve(), audit(), install():
+       31*     to ignore consecutive EOFs and to recognize a record with a UID less
+       32*     than the label UID as EOI.
+       33* 10) change(85-03-11,Margulies), approve(), audit(), install():
+       34*     Get rid of useless "clean the tape" repositioning. Return
+       35*     error_table_$data_loss if we lose stream.
+       36* 11) change(85-05-17,Margulies), approve(), audit(), install():
+       37*     Remove misleading dead code on data_loss.
+       38* 12) change(86-02-13,GWMay), approve(86-02-13,MCR7337), audit(86-03-11,Farley),
+       39*     install(86-03-17,MR12.0-1030):
+       40*     Changed to allow no further reading after the eor mark is found.
+       41*     Restructured the routine VALIDATE_CHARS so that the end-of-reel (eor)
+       42*     mark is always diagnosed. The code is set up to diagnose other errors
+       43*     encountered in the read first and then return the
+       44*     error_table_$end_of_information code on the next read. If there are no
+       45*     other errors, the code is returned on the first pass.
+       46* 13) change(86-09-30,GWMay), approve(86-09-30,MCR7552),
+       47*     audit(86-10-13,Martinson), install(86-10-20,MR12.0-1189):
+       48*     rewritten to eliminate useless intermediate subroutines which have lost
+       49*     their functionality over the years. Modified the record evaluation
+       50*     conditions to match on the record number of the tape record only when
+       51*     determining data loss. Moved density determination process from
+       52*     tape_mult_labeler_ to this module.  Added back the repositioning code
+       53*     with some additional retry processes that will reduce data loss errors
+       54*     considerably and give tape_mult_ much better tape reading powers.
+       55* 14) change(86-10-22,GWMay), approve(86-10-22,PBF7552),
+       56*     audit(86-11-19,Martinson), install(86-11-21,MR12.0-1223):
+       57*     added to sets of tmdb.opt.flags.begin to set allow operations to know when
+       58*     we are at the beginnning of the tape and when we are into it. changed
+       59*     things around just a little bit to make the tape complete rewinds before
+       60*     setting the next density.  Also, removed the return on bad code from below
+       61*     the call to tape_ioi to set density because, if the tape drive does not
+       62*     support the particular density we are trying to set, then it will return
+       63*     when in fact there is special handling for bad density.  the problem which
+       64*     results is that we return and incorrect error message sometimes.
+       65* 15) change(87-03-30,GWMay), approve(87-03-30,MCR7643), audit(87-03-31,Farley),
+       66*     install(87-04-28,MR12.1-1028):
+       67*     changed to not reset the valid information flag when the retry loop is
+       68*     exhausted.
+       69* 16) change(87-07-07,GWMay), approve(87-07-17,MCR7747),
+       70*     audit(87-07-07,Beattie), install(87-07-17,MR12.1-1043):
+       71*     Changed to return immediately when records are out of sequence.
+       72*                                                   END HISTORY COMMENTS */
+       73 
+       74 /* format: off */
+       75 
+       76 tape_mult_read_: proc;
+       77 
+       78 /* This program is part of the Multics standard tape I/O module, tape_mult_.*/
+       79 /* This program contains all of the read logic needed by tape_mult_.	      */
+       80 /* It implements the iox_$get_chars entry point.  It also contains an entry */
+       81 /* point for reading the label record.				      */
+       82 
+       83        dcl Piocb			ptr,
+       84 	 Ptmdb			ptr,
+       85 	 number_of_chars_requested	fixed bin (21),
+       86 	 code			fixed bin (35);
+       87 
+       88        dcl Lcallers_buffer		fixed bin (21),
+       89 	 Pcallers_buffer		ptr,
+       90 				/* never ever assign a value to     */
+       91 				/* this pointer.		      */
+       92 	 callers_buffer		char  (Lcallers_buffer)
+       93 				based (Pcallers_buffer);
+       94 
+       95        dcl Lcallers_buffer_insert	fixed bin (21),
+       96 	 Pcallers_buffer_insert	ptr,
+       97 	 callers_buffer_insert	char  (Lcallers_buffer_insert)
+       98 				based (Pcallers_buffer_insert);
+       99 
+      100        dcl Ldata_to_return		fixed bin,
+      101 	 Pdata_to_return		ptr,
+      102 	 data_to_return		char  (Ldata_to_return)
+      103 				based (Pdata_to_return);
+      104 
+      105        dcl Sentry_was_at_get_chars	bit (1) aligned,
+      106 	 Shave_a_label		bit (1) aligned,
+      107 	 Shave_next_record		bit (1) aligned,
+      108 	 Smissing_eor		bit (1) aligned,
+      109 	 Srecovery		bit (1) aligned,
+      110 	 Suser_defined_bootlabel	bit (1) aligned,
+      111 	 auto_retry_cnt		fixed bin,
+      112 	 channel_command		bit (6) aligned,
+      113 	 density_counter		fixed bin,
+      114 	 density_index		fixed bin,
+      115 	 density_index_adder	fixed bin,
+      116 	 number_of_chars_left_to_return
+      117 				fixed bin (21),
+      118            read_cnt			fixed bin,
+      119 	 reads_past_error		fixed bin,
+      120 	 rewind_cnt		fixed bin,
+      121 	 test_checksum		bit (36) aligned;
+      122 
+      123 /* constants */
+      124 
+      125        dcl DENSITY (0:2)		fixed bin 
+      126 				internal static options (constant)
+      127 				init (800, 1600, 6250),
+      128            LABEL_LEN		fixed bin internal static
+      129 				options (constant) init (48),
+      130            MAX_AUTO_RETRYS		fixed bin internal static
+      131 				options (constant) init (8),
+      132            MAX_BK_RETRYS		fixed bin internal static
+      133 				options (constant) init (2),
+      134            MAX_FWD_READS		fixed bin internal static
+      135 				options (constant) init (64),
+      136            MAX_LABEL_READS		fixed bin internal static
+      137 				options (constant) init (8),
+      138            MAX_READS_PAST_ERROR	fixed bin internal static
+      139 				options (constant) init (32),
+      140            FIVE_FILES		fixed bin internal static
+      141 				options (constant) init (5),
+      142            ONE_FILE			fixed bin internal static
+      143 				options (constant) init (1),
+      144            TWO_FILES		fixed bin internal static
+      145 				options (constant) init (2);
+      146 
+      147 /* builtins */
+      148 
+      149        dcl (addcharno, addr, bin, bit, currentsize, divide, hbound,
+      150 	  lbound, min, mod, null, string, substr, unspec)
+      151 				builtin;
+      152 	       
+      153 /* external static */
+      154 
+      155        dcl error_table_$bad_density	fixed bin (35) external static,
+      156 	 error_table_$bad_label	fixed bin (35) external static,
+      157 	 error_table_$data_improperly_terminated
+      158 				fixed bin (35) external static,
+      159            error_table_$data_loss	fixed bin (35) external static,
+      160 	 error_table_$device_attention
+      161 				fixed bin (35) external static,
+      162            error_table_$device_parity	fixed bin (35) external static,
+      163 	 error_table_$end_of_info	fixed bin (35) external static,
+      164 	 error_table_$improper_data_format
+      165 				fixed bin (35) external static,
+      166            error_table_$invalid_read	fixed bin (35) external static,
+      167 	 error_table_$no_operation	fixed bin (35) external static,
+      168 	 error_table_$null_info_ptr	fixed bin (35) external static,
+      169 	 error_table_$tape_error	fixed bin (35) external static,
+      170 	 sys_info$seg_size_256K	fixed bin (19) external static;
+      171 
+      172 /* external entries */
+      173 
+      174        dcl sub_err_			entry () options (variable),
+      175 	 tape_checksum_		ext entry (ptr, ptr);
+      176 
+      177 
+      178 /* ************************************************************************ */
+      179 
+      180 get_chars: entry (Piocb,
+      181 	        Pcallers_buffer,
+      182 	        number_of_chars_requested,
+      183 	        Lcallers_buffer,
+      184 	        code);
+      185 
+      186 /* ************************************************************************ */
+      187 
+      188        code = 0;
+      189        Sentry_was_at_get_chars = "1"b;
+      190        call get_number_of_chars_requested (Sentry_was_at_get_chars, code);
+      191        return;
+      192 
+      193 /* ************************************************************************ */
+      194 
+      195 position: entry (Piocb,
+      196 	       arg_pos_type,
+      197 	       number_of_chars_requested,
+      198 	       code);
+      199 
+      200 /* ************************************************************************ */
+      201 /*							      */
+      202 /* Although the position i/o operation is not supported externally, this    */
+      203 /* entry allows forward positioning.				      */
+      204 /*							      */
+      205 /* Usage: io switch_name position 3 {number of chars to position forward}   */
+      206 /*							      */
+      207 /* ************************************************************************ */
+      208 
+      209        dcl arg_pos_type		fixed bin;
+      210 
+      211        code = 0;
+      212 
+      213        if arg_pos_type ^= 3 then do;	/* Only type 3 supported */
+      214 	code = error_table_$no_operation;
+      215 	return;
+      216 	end;
+      217 
+      218        if number_of_chars_requested = 0 then
+      219 	return;
+      220 
+      221        Sentry_was_at_get_chars = "0"b;
+      222        call get_number_of_chars_requested (Sentry_was_at_get_chars, code);
+      223        return;
+      224 
+      225 get_number_of_chars_requested: proc (Sentry_was_at_get_chars,
+      226 			       code);
+      227 
+      228        dcl Sentry_was_at_get_chars	bit(1) aligned,
+      229 	 code			fixed bin (35);	 
+      230 
+      231        if number_of_chars_requested < 0
+      232 	| number_of_chars_requested > sys_info$seg_size_256K * 4 then do;
+      233 	if Sentry_was_at_get_chars then
+      234 	   Lcallers_buffer = 0;
+      235 	code = error_table_$no_operation;
+      236 	return;
+      237 	end;
+      238 
+      239        tmdb_ptr = Piocb -> iocb.actual_iocb_ptr -> iocb.attach_data_ptr;
+      240 
+      241        if tmdb_ptr = null then do;
+      242 	code = error_table_$null_info_ptr;
+      243 	return;
+      244 	end;
+      245 
+      246        if tmdb.opt.write_sw then do;    /* can't write & read together     */
+      247 	code = error_table_$invalid_read;
+      248 	return;
+      249 	end;
+      250 
+      251        if tmdb.work.flags.eod then do;  /* at the logical end of the tape  */
+      252 	code = error_table_$end_of_info;
+      253 	return;
+      254 	end;
+      255 
+      256        tmdb.opt.flags.begin = "0"b;	/* no longer at beginning of tape  */
+      257        channel_command = "30"b3;
+      258        if Sentry_was_at_get_chars then
+      259 	Lcallers_buffer = 0;
+      260 
+      261        number_of_chars_left_to_return = number_of_chars_requested;
+      262        mstrp = tmdb.work.curr_buf;
+      263 
+      264        /* The object of the following is to read the number of characters   */
+      265        /* requested by the caller from the mounted tape volume.             */
+      266        /* When the get_chars entrypoint is used the data is returned in work*/
+      267        /* space supplied by the caller.  If the position entrypoint is used */
+      268        /* the data is read from the tape, but not returned.		      */
+      269        /* Note that the tape record may not be the same size as the number  */
+      270        /* of characters the caller requests.  To handle this, the code reads*/
+      271        /* tape records into and internal buffer, then moves the data as     */
+      272        /* needed to the callers buffer.				      */
+      273 
+      274        do while (number_of_chars_left_to_return > 0);
+      275 
+      276 	if tmdb.work.buf_pos >= tmdb.work.rec_length  then do;
+      277 	   string (tmdb.work.flags) = "0"b;
+      278 	   read_cnt = 0;
+      279 	   reads_past_error = 0;
+      280 	   tmdb.work.buf_pos = 0;
+      281 	   tmdb.trail.tot_rec = tmdb.trail.tot_rec + 1;
+      282 	   Shave_next_record = "0"b;
+      283 				/* have tape_ioi_ do error recovery */
+      284 	   Srecovery = "1"b;
+      285 	   auto_retry_cnt = 0;
+      286 
+      287 	   call tape_ioi_$set_mode (tmdb.work.tioi_id, "recovery", 
+      288 	      addr(Srecovery), code);
+      289 	   if code ^= 0 then
+      290 	      return;
+      291 
+      292 	   do while (^Shave_next_record
+      293 		   & read_cnt < MAX_FWD_READS
+      294 		   & auto_retry_cnt < MAX_AUTO_RETRYS
+      295 		   & reads_past_error < MAX_READS_PAST_ERROR
+      296 		   & ^tmdb.work.flags.eod);
+      297 
+      298 	      Smissing_eor = "1"b;
+      299 	      tmdb.work.flags.data_loss = "0"b;
+      300 	      tmdb.work.flags.eod = "0"b;
+      301 				/* read a new mstr and set mstrp    */
+      302 	      call READ_TAPE (code);
+      303 
+      304 	      read_cnt = read_cnt + 1;
+      305 	      if tmdb.work.flags.fatal_read_error then
+      306 	         reads_past_error = reads_past_error + 1;
+      307 
+      308 	      if code = 0 then do;
+      309 	         tmdb.work.curr_buf = mstrp;
+      310 
+      311 	         call VALIDATE_RECORD (code);
+      312 	         if code = 0 then do;
+      313 
+      314 		  Smissing_eor = "0"b;
+      315 
+      316 		  /* although the record is good, it may be out of order*/
+      317 		  /* this is a data loss condition if the record number */
+      318 		  /* is greater than the number we are attempting to    */
+      319 		  /* read. For this we will back the tape up and try a  */
+      320 		  /* new set of tape hardware settings and try to read  */
+      321 		  /* the missing record.			      */
+      322                       /* This section will allow any end-of-reel record     */
+      323 		  /* to be recognized.  It does not matter if it is from*/
+      324 		  /* a previous write, we will still use it to set eot  */
+      325                       /* then report the bad uid.			      */
+      326 
+      327 		  if mstr.trail.tot_rec < tmdb.trail.tot_rec then
+      328 		     read_cnt = 0;
+      329 
+      330 		  else do;
+      331 
+      332 		     if mstr.trail.tot_rec > tmdb.trail.tot_rec then
+      333 		        tmdb.work.flags.data_loss = "1"b;
+      334 		     else		/* otherwise it is equal & is the 1 */
+      335 				/* we want.		      */
+      336 		        Shave_next_record = "1"b;
+      337 		     end;
+      338 
+      339 		  if mstr.head.admin & mstr.head.eor then
+      340 		     tmdb.work.flags.eod = "1"b;
+      341 
+      342 		  if mstr.head.uid < tmdb.work.label_uid then do;
+      343 		     tmdb.work.flags.eod = "1"b;
+      344 		     Smissing_eor = "1"b;
+      345 		     tmdb.work.flags.data_loss = "1"b;
+      346 		     end;
+      347 		  else
+      348 		     if tmdb.work.flags.data_loss then do;
+      349 		        call set_next_auto_retry_possibility (auto_retry_cnt,
+      350 			 code);
+      351 		        if code ^= 0 then
+      352 			 return;
+      353 		        if auto_retry_cnt < MAX_AUTO_RETRYS then do;
+      354 			 read_cnt = 0;
+      355 			 reads_past_error = 0;
+      356 			 tmdb.work.flags.eod = "0"b;
+      357 			 end;
+      358 		        end;
+      359 		  end;
+      360 	         end;
+      361 	      else
+      362 	         if tmdb.work.flags.fatal_read_error then		
+      363 	            reads_past_error = reads_past_error + 1;
+      364 	      end;
+      365 	   
+      366 	   if reads_past_error >= MAX_READS_PAST_ERROR then
+      367 	      code = error_table_$device_attention;
+      368 
+      369 	   if ^tmdb.work.flags.data_loss then do;
+      370 	      if read_cnt < MAX_FWD_READS then;
+      371 	      else
+      372 	         
+      373 	         code = error_table_$tape_error;
+      374 
+      375 	      if code ^= 0 then
+      376 	         return;
+      377 	      end;
+      378 
+      379 	   if tmdb.work.flags.eod then do;
+      380 	      if Smissing_eor then
+      381 	         code = error_table_$data_improperly_terminated;
+      382 	      else
+      383 	         code = error_table_$end_of_info;
+      384 	      return;
+      385 	      end;
+      386 
+      387 	   tmdb.work.rec_length = divide(mstr.head.data_bits_used, 9, 17);
+      388 
+      389 	   /* if data loss, return what we have in the buffer and then    */
+      390 	   /* start on the tape record next time through.		      */
+      391 
+      392 	   if tmdb.work.flags.data_loss then do;
+      393 	      code = error_table_$data_loss;
+      394 	      tmdb.trail.tot_rec = mstr.trail.tot_rec;
+      395 	      if Sentry_was_at_get_chars then
+      396 	         if Lcallers_buffer > 0 then
+      397 	            return;
+      398 	      end;
+      399 	   end;
+      400 
+      401 	Pdata_to_return = addcharno (addr(mstr.data), tmdb.work.buf_pos);
+      402          	Ldata_to_return = min ((tmdb.work.rec_length - tmdb.work.buf_pos), number_of_chars_left_to_return);
+      403 
+      404 	if Sentry_was_at_get_chars then do;
+      405 	   Pcallers_buffer_insert =
+      406 	      addcharno (Pcallers_buffer, Lcallers_buffer);
+      407 	   Lcallers_buffer_insert = Ldata_to_return;
+      408              callers_buffer_insert = data_to_return;
+      409 	   Lcallers_buffer = Lcallers_buffer + Ldata_to_return;
+      410 	   end;
+      411 
+      412 	number_of_chars_left_to_return =
+      413 	   number_of_chars_left_to_return - Ldata_to_return;
+      414 
+      415 	tmdb.work.buf_pos = tmdb.work.buf_pos + Ldata_to_return;
+      416           end;
+      417        return;
+      418 
+      419 set_next_auto_retry_possibility: proc (auto_retry_cnt, code);
+      420 
+      421        dcl auto_retry_cnt		fixed bin,
+      422 	 code			fixed bin (35);
+      423 
+      424        dcl completed_bsfs		fixed bin,
+      425 	 completed_fsfs		fixed bin,
+      426 	 requested_bsfs		fixed bin,
+      427 	 rx			fixed bin;
+      428 
+      429 /* This routine supplies special code that will tell the tape hardware to   */
+      430 /* use a new set of settings when reading the tape.  This way if a record   */
+      431 /* was lost in a previous read attempt, it may be readable after setting    */
+      432 /* the tape device to new tolerances.				      */
+      433 /* The tape drives currently allow seven various settings.		      */
+      434 
+      435        if channel_command = "37"b3 then do;
+      436 	auto_retry_cnt = MAX_AUTO_RETRYS;
+      437 	return;
+      438 	end;
+      439        else do;
+      440 	auto_retry_cnt = auto_retry_cnt + 1;
+      441 	channel_command = bit( bin( bin (channel_command) + 1, 6), 6);
+      442 	end;
+      443 
+      444        call tape_ioi_$stop_tape (tmdb.work.tioi_id, (0), rx, code);
+      445        if rx ^= 0 then do;
+      446 	if code = 0 then
+      447 	   code = error_table_$device_parity;
+      448 	return;
+      449 	end;
+      450 
+      451        completed_bsfs = 0;
+      452        if tmdb.work.flags.eod then
+      453 	requested_bsfs = FIVE_FILES;
+      454        else
+      455 	requested_bsfs = TWO_FILES;
+      456 
+      457        do while (requested_bsfs > 0);
+      458 	call tape_ioi_$order (tmdb.work.tioi_id, "bsf", requested_bsfs,
+      459 	   null, completed_bsfs, rx, code);
+      460 	if rx = 0 then do;
+      461 	   requested_bsfs = requested_bsfs - completed_bsfs;
+      462 	   code = 0;
+      463 	   end;
+      464 	else
+      465 	   if rx = TAPE_IO_BOT then do;
+      466 	      rx = 0;
+      467 	      requested_bsfs = 0;
+      468 	      code = 0;
+      469 	      end;
+      470 
+      471 	if code ^= 0 then
+      472 	   return;
+      473 	end;
+      474 
+      475        completed_fsfs = 0;
+      476        do while (completed_fsfs < 1);
+      477 	call tape_ioi_$order (tmdb.work.tioi_id, "fsf", ONE_FILE, null,
+      478 	   completed_fsfs, rx, code);
+      479 	if code ^= 0 then
+      480 	   return;
+      481 	end;
+      482 
+      483 				/* turn off tape_ioi_ error retry   */
+      484        if auto_retry_cnt = 1 then do;
+      485 	Srecovery = "0"b;
+      486 	call tape_ioi_$set_mode (tmdb.work.tioi_id, "recovery", 
+      487 	   addr(Srecovery), code);
+      488 	if code ^= 0 then
+      489 	   return;
+      490 	end;
+      491 				/* and control it from here	      */
+      492        call tape_ioi_$set_mode (tmdb.work.tioi_id, "cif",
+      493 	addr (channel_command), code);
+      494        return;
+      495        end set_next_auto_retry_possibility;
+      496        end get_number_of_chars_requested;
+      497 
+      498 /* ************************************************************************ */
+      499 
+      500 label: entry (Ptmdb,
+      501 	    Pcallers_buffer,
+      502 	    Lcallers_buffer,
+      503 	    code);
+      504 
+      505 /* ************************************************************************ */
+      506 /* caller: tape_mult_labeler_.		                          */
+      507 /*							      */
+      508 /* This routine will attempt to read and interpret a standard Multics	tape  */
+      509 /* label.							      */
+      510 /*							      */
+      511 /* 1) The first action is an attempt to read the tape at either the density */
+      512 /* determined when the tape was mounted by rcp_, or  if the installation    */
+      513 /* parameter that controls tape authentication is turned off, the density   */
+      514 /* supplied by the -density control argument is used.  There is a default   */
+      515 /* density of 1600 that will be used if either of the first two are not     */
+      516 /* available for use.					      */
+      517 /*							      */
+      518 /* 2) The density value "loop" is used to facilitate the following sequences*/
+      519 /* of density read trys.  The starting density (see 1) is looked up in the  */
+      520 /* DENSITY array.  Once done, a counter is established so that the densities*/
+      521 /* will be tried in the order:				      */
+      522 /*         starting density   next   next			      */
+      523 /*               800          1600   6250			      */
+      524 /*	       1600	6250    800			      */
+      525 /*	       6250	1600    800			      */
+      526 /*							      */
+      527 /* 3) After setting the density, a read is attempted.		      */
+      528 /*    If the read is successful and the record is good,		      */
+      529 /*       then we read again looking for an EOF			      */
+      530 /*       If the next read is another good label,			      */
+      531 /*          we will accept it as the label.			      */
+      532 /*							      */
+      533 /* 4) Any other conditions will cause a rewind and reread.		      */
+      534 /*							      */
+      535 /* Note:	The code will read forward 8 times looking for a label when the   */
+      536 /*        correct density is established.  It will attempt to do this 2     */
+      537 /*	times before returning an error.  When the density fails on the   */
+      538 /*	read, we will set to the next density without retrying the read.  */
+      539 /*							      */
+      540 /* ************************************************************************ */
+      541 
+      542 
+      543        code = 0;
+      544 
+      545        if Ptmdb = null then do;
+      546 	code = error_table_$null_info_ptr;
+      547 	return;
+      548 	end;
+      549 
+      550        tmdb_ptr = Ptmdb;
+      551        Lcallers_buffer = 0;
+      552        Ldata_to_return = 0;
+      553        Pdata_to_return = null;
+      554        Shave_a_label = "0"b;
+      555        string (tmdb.work.flags) = "0"b;
+      556 
+      557        do density_index = lbound (DENSITY, 1) to hbound (DENSITY, 1)
+      558 	while (tmdb.volume_density ^= DENSITY (density_index));
+      559 	end;
+      560 			
+      561        if density_index = hbound(DENSITY, 1) then
+      562 	density_index_adder = -1;	/* process densities in descending order */
+      563        else
+      564 	density_index_adder = 1;	/* process densities in ascending order */
+      565 
+      566        do density_counter = lbound (DENSITY, 1) to hbound (DENSITY, 1)
+      567 	while ((code = 0 | code = error_table_$bad_density)
+      568 	      & ^Shave_a_label
+      569 	      & ^tmdb.work.flags.eof);
+      570 
+      571 	call REWIND ((0), (0), code);
+      572 	if code ^= 0 then
+      573 	   return;
+      574 
+      575 	call tape_ioi_$order (tmdb.work.tioi_id, "den", 1, 
+      576 	   addr (DENSITY(density_index)), (0), (0), code);
+      577 
+      578 	read_cnt = MAX_LABEL_READS;
+      579 	rewind_cnt = -1;
+      580 
+      581 	do while (^tmdb.work.flags.eof & code = 0);
+      582 	   Suser_defined_bootlabel = "0"b;
+      583 	   Shave_next_record = "0"b;
+      584 
+      585 	   do while (^Shave_next_record
+      586 		  & ^tmdb.work.flags.eof
+      587 		  & read_cnt <= MAX_LABEL_READS
+      588 		  & rewind_cnt <= MAX_BK_RETRYS
+      589 		  & code ^= error_table_$bad_density);
+      590 
+      591 	      read_cnt = read_cnt + 1;
+      592 	      if read_cnt > MAX_LABEL_READS then
+      593 	         call REWIND (read_cnt, rewind_cnt, code);
+      594 	      if code ^= 0 then
+      595 	         return;
+      596 
+      597 	      call READ_TAPE (code);
+      598 	      if code = 0 then do;
+      599 	         call VALIDATE_RECORD (code);
+      600 	         if code = 0 then
+      601 		  Shave_next_record = "1"b;
+      602 	         end;
+      603 	      end;
+      604 
+      605 	   if code = 0 & ^tmdb.work.flags.eof then do;
+      606 	      Shave_a_label = "1"b;
+      607 
+      608 	      if Suser_defined_bootlabel then do;
+      609 	         Pdata_to_return = mstrp;
+      610 	         Ldata_to_return = currentsize (mst_label) * 4;
+      611 	         tmdb.head = mst_label.head;
+      612 	         tmdb.trail = mst_label.trail;
+      613 	         tmdb.head.data_bit_len = tmdb.head.data_bit_len + ((hbound (mst_label.xfer_vector, 1) * 2) * 36);
+      614 	         tmdb.work.label_version = mst_label.label_version;
+      615 	         tmdb.work.output_mode = mst_label.output_mode;
+      616 	         end;
+      617 
+      618 	      else do;
+      619 	         Pdata_to_return = addr (mstr.data);
+      620 	         Ldata_to_return = divide (mstr.head.data_bits_used, 9, 17, 0);
+      621 	         if Ldata_to_return = 0 then do;
+      622 		  if mstr.head.flags.label then
+      623 		     Ldata_to_return = LABEL_LEN;
+      624 		  else do;
+      625 		     code = error_table_$improper_data_format;
+      626 		     return;
+      627 		     end;
+      628 		  end;
+      629 
+      630 	         tmdb.head = mstr.head;
+      631 	         tmdb.trail = mstr.trail;
+      632 	         if unspec(substr(Pdata_to_return -> volume_identifier.volume_set_id, 1, 1)) ^= "777"b3 then
+      633 		  tmdb.work.label_version = 2;
+      634 	         end;
+      635 	      end;
+      636 	   end;
+      637 				/* get the next density to try      */
+      638 	density_index = mod (density_index + density_index_adder,
+      639 	   hbound(DENSITY,1) + 1);
+      640 	end;
+      641 
+      642        if rewind_cnt > MAX_BK_RETRYS | (code ^= 0) then do;
+      643 	code = error_table_$bad_label;
+      644 	return;
+      645 	end;
+      646 
+      647        Lcallers_buffer = Ldata_to_return;
+      648        callers_buffer = data_to_return;
+      649        tmdb.opt.flags.begin = "1"b;	/* set beginning og tape switch     */
+      650        return;
+      651 
+      652 READ_TAPE: proc (code);
+      653 
+      654 
+      655        dcl code			fixed bin (35);
+      656 
+      657        dcl data_len			fixed bin (21),
+      658 	 rx			fixed bin;
+      659 
+      660        code = 0;
+      661        call tape_ioi_$read (tmdb.work.tioi_id, mstrp, data_len, rx, code);   
+      662 
+      663        if rx = 0 then
+      664 	code = 0;
+      665        else
+      666 	if rx = TAPE_IO_EOF then do;
+      667 	   tmdb.work.flags.eof = "1"b;
+      668 	   code = 0;
+      669 	   end;
+      670        else
+      671 	if rx = TAPE_IO_UNRECOVERABLE_IO_ERROR then
+      672 	   tmdb.work.flags.fatal_read_error = "1"b;
+      673        else
+      674 	if rx = TAPE_IO_EOT then do;
+      675 	   tmdb.work.flags.eod = "1"b;
+      676 	   if code = 0 then
+      677 	      code = error_table_$end_of_info;
+      678 	   end;
+      679        else
+      680 	if rx = TAPE_IO_BOT then
+      681 	   tmdb.work.flags.bot = "1"b;
+      682        else do;
+      683 	call sub_err_ (0, "tape_mult_read_", ACTION_DEFAULT_RESTART,
+      684 	   null (), (0), "Unexpected tape_ioi_ result ^d on read.", rx);
+      685 	code = error_table_$device_parity;
+      686 	end;
+      687 
+      688        return;
+      689 
+      690      end READ_TAPE;
+      691 
+      692 REWIND: proc (read_cnt,
+      693 	    rewind_cnt,
+      694 	    code);
+      695 
+      696        dcl read_cnt			fixed bin,
+      697 	 rewind_cnt		fixed bin,
+      698 	 code			fixed bin (35);
+      699 
+      700        dcl rdy_status		bit (36) aligned;
+      701 
+      702        code = 0;
+      703 
+      704        call tape_ioi_$order (tioi_id, "rdy", 1, addr (rdy_status), (0), (0),
+      705 	code);
+      706 				/* Wait for device to be ready. */
+      707        if code = 0 then do;		/* Rewind the tape */
+      708 	call tape_ioi_$order (tioi_id, "rew", 1, (null), (0), (0), 
+      709 	   code);
+      710 
+      711 	if code = 0 then do;
+      712 	   call tape_ioi_$order (tioi_id, "rdy", 1, addr (rdy_status), (0),
+      713 	      (0), code);
+      714 	   rewind_cnt = rewind_cnt + 1;
+      715 	   read_cnt = 0;
+      716 	   end;
+      717 	end;
+      718 
+      719        return;
+      720        end REWIND;
+      721 
+      722 VALIDATE_RECORD: proc (code);
+      723 
+      724 /* This internal procedure is called to validate a record.  The record has  */
+      725 /* been read successfully. We want to be sure that the header and trailer   */
+      726 /* data is valid.						      */
+      727 
+      728 dcl	code		   fixed bin (35);
+      729 
+      730        code = 0;
+      731 
+      732        /* Invalid header or bootable tape label. */
+      733 
+      734        if (mstr.head.c1 ^= tmdb.head.c1)
+      735 	| (mstr.head.c2 ^= tmdb.head.c2) then do;
+      736 
+      737 	if mstr.head.c1 = label_c1 then do;
+      738 
+      739 				/* is this a bootable label record? */
+      740 	   if (mst_label.head.c1 = tmdb.head.c1)
+      741 	      & (mst_label.head.c2 = tmdb.head.c2)
+      742 	      & (mst_label.trail.c1 = tmdb.trail.c1)
+      743 	      & (mst_label.trail.c2 = tmdb.trail.c2)
+      744 	      & mst_label.head.label then do;
+      745 
+      746 	      
+      747 	      Suser_defined_bootlabel = "1"b;
+      748 	      call tape_checksum_ (addr (mst_label.head), addr (test_checksum));
+      749 
+      750 	      if mst_label.head.checksum ^= test_checksum then
+      751 	         code = error_table_$device_parity;
+      752 
+      753 	      return;
+      754 	      end;
+      755 	   end;
+      756 
+      757 	code = error_table_$device_parity;
+      758 	return;
+      759 	end;
+      760 
+      761 				/* Invalid trailer */
+      762        if (mstr.trail.c1 ^= tmdb.trail.c1)
+      763 	| (mstr.trail.c2 ^= tmdb.trail.c2) then do;
+      764 	code = error_table_$device_parity;
+      765 	return;
+      766 	end;
+      767 
+      768        call tape_checksum_ (mstrp, addr (test_checksum));
+      769 
+      770        if mstr.head.checksum ^= test_checksum then
+      771 	code = error_table_$device_parity;
+      772 
+      773        return;
+      774 
+      775      end VALIDATE_RECORD;
+      776 
+  1     1 /*	Begin  include file ... tmdb.incl.pl1
+  1     2*   *
+  1     3*   *	Created by  Bill Silver  on 10/20/74
+  1     4*   *	Modified by J. A. Bush 12/30/80 for bootable tape labels
+  1     5*   *	Modified by J. A. Bush 12/15/81 for re-write of read error recovery
+  1     6*   *      Modified 8/82 by S.Krupp for change from tdcm_ to tape_ioi_
+  1     7*   *	This include file describes the work variables used by the Multics standard
+  1     8*   *	tape I/O module, tape_mult_.  This include file must be used with the include
+  1     9*   *	file:  mstr.incl.pl1
+  1    10**/
+  1    11 
+  1    12 
+  1    13 /****^  HISTORY COMMENTS:
+  1    14*  1) change(86-10-13,GWMay), approve(86-10-13,MCR7552),
+  1    15*     audit(86-10-13,Martinson), install(86-10-20,MR12.0-1189):
+  1    16*     added fields to the tmdb structure that will add support for the use of
+  1    17*     rcp in determining the density and format of a tape.
+  1    18*                                                   END HISTORY COMMENTS */
+  1    19 
+  1    20 
+  1    21 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  1    22 dcl	tmdb_ptr		   ptr;			/* Pointer to tape_mult_ data block. */
+  1    23 
+  1    24 dcl	1 tmdb		   based (tmdb_ptr) aligned,	/* tape_mult_ data block. */
+  1    25 	  2 attach,				/* Attach description. */
+  1    26 	    3 length	   fixed bin,		/* Actual length of attach description. */
+  1    27 	    3 description	   char (64),		/* Attach description string. */
+  1    28 	  2 open,					/* Open description. */
+  1    29 	    3 length	   fixed bin,		/* Actual length of open description. */
+  1    30 	    3 description	   char (32),		/* Open description string. */
+  1    31 	  2 opt,					/* Attach options. */
+  1    32 	    3 flags,				/* Flags set from user input and options. */
+  1    33 	    ( 4 com_err	   bit (1),		/* ON => call com_err_ if there is an error. */
+  1    34 	      4 ring	   bit (1),		/* ON => use writ ring,  OFF => no write ring. */
+  1    35 	      4 system	   bit (1),		/* ON => user wants to be a system process. */
+  1    36 	      4 err_tal	   bit (1),		/* ON => user wants error report */
+  1    37 	      4 begin	   bit (1),		/* ON => begin processing tape */
+  1    38 	      4 write_sw	   bit (1),		/* ON => write allowed */
+  1    39 	      4 async_sw	   bit (1)		/* ON => user is prepared for errors to imply that previous put_chars failed. */
+  1    40 	      )		   unaligned,		/* ON => user wants error tally displayed on closing */
+  1    41 	    3 reel_name	   char (32) unal,		/* Tape reel slot ID. */
+  1    42 	    3 volume_set_id	   char (32) unal,		/* volume set name */
+  1    43 	    3 mount_mode	   char (7),		/* Mount mode: "writing" or "reading". */
+  1    44 	    3 tracks	   fixed bin,		/* Either 9 or 7. */
+  1    45 	    3 density	   fixed bin,		/* Either 1600 or 800. */
+  1    46 	    3 tbpp	   ptr,			/* If not null, ptr to temp seg containing boot program */
+  1    47 	    3 blp		   ptr,			/* Ptr to buffer containing boot label record (READ ONLY) */
+  1    48 	    3 speed	   bit (36),		/* bits are 75, 125, 200 ips */
+  1    49 	    3 comment	   char (64),		/* User comment to operator. */
+  1    50 	  2 head		   like mstr_header,	/* Dummy tape record header. */
+  1    51 	  2 trail		   like mstr_trailer,	/* Dummy tape record trailer. */
+  1    52 	  2 work,					/* Work variables used. */
+  1    53 	    3 flags,				/* Flags we need that aren't in head.flags. */
+  1    54 	    ( 4 eod	   bit (1),		/* ON => end of good data. */
+  1    55 	      4 eof	   bit (1),		/* ON => End of File. */
+  1    56 	      4 bot	   bit (1),		/* ON => beginning of tape */
+  1    57 	      4 retry_read	   bit (1),		/* ON => try reread recovery */
+  1    58 	      4 read_fwd	   bit (1),		/* ON => want to read forward (recovery) */
+  1    59                 4 fatal_read_error bit (1),                 /* ON => read error recovery failed. */
+  1    60 	      4 data_loss  bit (1)			/* ON => read something, but with evidence that we lost something */
+  1    61 	      )		   unaligned,
+  1    62 	    3 rcp_id	   bit (36),		/* Id of current tape drive attachment */
+  1    63 	    3 tioi_id	   bit (36),		/* Id of current tape_ioi_ activation */
+  1    64 	    3 label_uid	   bit (72),		/* Unique ID of label record. */
+  1    65 	    3 label_version	   fixed bin,		/* version of label, returned on read */
+  1    66 	    3 output_mode	   fixed bin,		/* output mode tape was written with */
+  1    67 	    3 buf_pos	   fixed bin,		/* Current position within current bufffer. */
+  1    68 	    3 curr_buf	   ptr,			/* Current buffer being processed. */
+  1    69 	    3 next_buf	   ptr,			/* Next buffer to be processed. */
+  1    70 	    3 rec_length	   fixed bin (21),		/* Length of data record in characters. */
+  1    71 	    3 n_full	   fixed bin,		/* Number of buffers ready to write. */
+  1    72 	    3 n_recs_to_eof	   fixed bin,		/* Num recs to write pre eof mark. */
+  1    73 	    3 n_bufs	   fixed bin,		/* Total number of buffers. */
+  1    74 	    3 bufs_per_subset  fixed bin,		/* Number of buffers per subset. */
+  1    75 	    3 buf_len	   fixed bin (21),		/* Length of a buffer. */
+  1    76 	    3 buffer	   (8) ptr,		/* Pointers to a subset of I/O buffers. */
+  1    77 	  2 meters,
+  1    78 	    3 fwd_rd_recovery  fixed bin,
+  1    79 	    3 reposition_recovery
+  1    80 			   fixed bin,
+  1    81             2 channels,
+  1    82 	    3 rcp              fixed bin(71),		/* Regular, used by rcp. */
+  1    83 	    3 ioi		   fixed bin(71),		/* Fast, used by ioi. */
+  1    84 	  2 buffer	   (1040) fixed bin (35),	/* Work buffer (currently used for label I/O). */
+  1    85 	  2 volume_density     fixed bin,                 /* either the input from -den or the value     */
+  1    86 	    
+  1    87 						/* returned by rcp_$check_attach in tape_info  */
+  1    88             2 volume_format      char (16);		/* determined by rcp_		       */
+  1    89 /*	End of include file ... tmdb.incl.pl1	*/
+      777 
+      778 
+  2     1 
+  2     2 /* Begin include file ...... mstr.incl.pl1 */
+  2     3 /* Modified 2/11/74 by N. I. Morris */
+  2     4 /* Modified 12/30/80 by J. A. Bush for bootable tape labels */
+  2     5 /* Modified 12/14/82 by J. A. Bush to add version number to the record header */
+  2     6 
+  2     7 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  2     8 dcl	mstrp		   ptr;			/* pointer to MST record */
+  2     9 
+  2    10 dcl	1 mstr		   based (mstrp) aligned,	/* Multics standard tape mstr */
+  2    11 	  2 head		   like mstr_header,	/* tape record header */
+  2    12 	  2 data		   bit (36864 refer (mstr.head.data_bit_len)),
+  2    13 						/* record body */
+  2    14 	  2 trail		   like mstr_trailer;	/* record trailer */
+  2    15 
+  2    16 dcl	1 mst_label	   based (mstrp) aligned,	/* bootable label structure */
+  2    17 	  2 xfer_vector	   (4),			/* bootload interrupt transfer vector */
+  2    18 	    3 lda_instr	   bit (36),		/* this will be a "LDA 4" instruction */
+  2    19 	    3 tra_instr	   bit (36),		/* a "TRA" instruction to start of boot pgm */
+  2    20 	  2 head		   like mstr_header,	/* standard record header */
+  2    21 	  2 vid		   like volume_identifier,	/* tape volume info */
+  2    22 	  2 fv_overlay	   (0:31),		/* overlay for fault vectors  when tape booted */
+  2    23 	    3 scu_instr	   bit (36),		/* an "SCU" instruction to address of fault_data */
+  2    24 	    3 dis_instr	   bit (36),		/* a "DIS" instruction, with Y field = to its own addr */
+  2    25 	  2 fault_data	   (8) bit (36),		/* SCU data for unexpected faults goes here */
+  2    26 	  2 boot_pgm_path	   char (168) unaligned,	/* path name of boot program */
+  2    27 	  2 userid	   char (32) unaligned,	/* Storage for Person.Project.Instance of creator of tape */
+  2    28 	  2 label_version	   fixed bin,		/* defined by LABEL_VERSION constant below */
+  2    29 	  2 output_mode	   fixed bin,		/* mode in which tape was written with */
+  2    30 	  2 boot_pgm_len	   fixed bin,		/* length in words of boot program */
+  2    31 	  2 copyright	   char (56),		/* Protection notice goes here if boot pgm is written */
+  2    32 	  2 pad		   (13) bit (36),		/* pad out to 192 (300 octal) */
+  2    33 	  2 boot_pgm	   (0 refer (mst_label.boot_pgm_len)) bit (36),
+  2    34 						/* boot program */
+  2    35 	  2 trail		   like mstr_trailer;	/* standard record trailer */
+  2    36 
+  2    37 dcl	1 mstr_header	   based aligned,		/* Multics standard tape record header */
+  2    38 	( 2 c1		   bit (36),		/* constant = 670314355245(8) */
+  2    39 	  2 uid		   bit (72),		/* unique ID */
+  2    40 	  2 rec_within_file	   fixed bin (17),		/* phys. rec. # within phys. file */
+  2    41 	  2 phy_file	   fixed bin (17),		/* phys. file # on phys. tape */
+  2    42 	  2 data_bits_used	   fixed bin (17),		/* # of bits of data in record */
+  2    43 	  2 data_bit_len	   fixed bin (17),		/* bit length of data space */
+  2    44 	  2 flags,				/* record flags */
+  2    45 	    3 admin	   bit (1),		/* admin record flag */
+  2    46 	    3 label	   bit (1),		/* label record flag */
+  2    47 	    3 eor		   bit (1),		/* end-of-reel record flag */
+  2    48 	    3 pad1	   bit (11),
+  2    49 	    3 set		   bit (1),		/* ON if any of following items set */
+  2    50 	    3 repeat	   bit (1),		/* repeated record flag */
+  2    51 	    3 padded	   bit (1),		/* record contains padding flag */
+  2    52 	    3 eot		   bit (1),		/* EOT reflector encountered flag */
+  2    53 	    3 drain	   bit (1),		/* synchronous write flag */
+  2    54 	    3 continue	   bit (1),		/* continue on next reel flag */
+  2    55 	    3 pad2	   bit (4),
+  2    56 	  2 header_version	   fixed bin (3) unsigned,	/* current header version number */
+  2    57 	  2 repeat_count	   fixed bin (8),		/* repetition count */
+  2    58 	  2 checksum	   bit (36),		/* checksum of header and trailer */
+  2    59 	  2 c2		   bit (36)
+  2    60 	  )		   unal;			/* constant = 512556146073(8) */
+  2    61 
+  2    62 dcl	1 mstr_trailer	   based aligned,		/* Multics standard tape record trailer */
+  2    63 	( 2 c1		   bit (36),		/* constant = 107463422532(8) */
+  2    64 	  2 uid		   bit (72),		/* unique ID (matches header) */
+  2    65 	  2 tot_data_bits	   fixed bin (35),		/* total data bits written on logical tape */
+  2    66 	  2 pad_pattern	   bit (36),		/* padding pattern */
+  2    67 	  2 reel_num	   fixed bin (11),		/* reel sequence # */
+  2    68 	  2 tot_file	   fixed bin (23),		/* phys. file number */
+  2    69 	  2 tot_rec	   fixed bin (35),		/* phys. record # for logical tape */
+  2    70 	  2 c2		   bit (36)
+  2    71 	  )		   unal;			/* constant = 265221631704(8) */
+  2    72 
+  2    73 dcl	1 volume_identifier	   based aligned,		/* tape volume info */
+  2    74 	( 2 installation_id	   char (32),		/* installation that created tape */
+  2    75 	  2 tape_reel_id	   char (32),		/* tape reel name */
+  2    76 	  2 volume_set_id	   char (32)
+  2    77 	  )		   unaligned;		/* name of the volume set */
+  2    78 
+  2    79 dcl	(
+  2    80 	header_c1		   init ("670314355245"b3),
+  2    81 	header_c2		   init ("512556146073"b3),
+  2    82 	trailer_c1	   init ("107463422532"b3),
+  2    83 	trailer_c2	   init ("265221631704"b3),
+  2    84 	label_c1		   init ("000004235000"b3)
+  2    85 	)		   bit (36) static;
+  2    86 
+  2    87 dcl	LABEL_VERSION	   fixed bin static options (constant) init (3);
+  2    88 						/* current label version */
+  2    89 dcl	HEADER_VERSION	   fixed bin static options (constant) init (1);
+  2    90 						/* current header version */
+  2    91 
+  2    92 /* End of include file ...... mstr.incl.pl1 */
+  2    93 
+      779 
+      780 
+  3     1 /*  START OF:	tape_ioi_result_indexes.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /* Result indexes for tape_ioi_.  */
+  3     4 /* Written 11 May 1982 by Chris Jones */
+  3     5 
+  3     6 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  3     7 dcl	TAPE_IO_BLOCK	   fixed bin static options (constant) init (-1);
+  3     8 dcl	TAPE_IO_SUCCESS	   fixed bin static options (constant) init (0);
+  3     9 dcl	TAPE_IO_USER_PROGRAM_ERROR
+  3    10 			   fixed bin static options (constant) init (1);
+  3    11 dcl	TAPE_IO_UNRECOVERABLE_IO_ERROR
+  3    12 			   fixed bin static options (constant) init (2);
+  3    13 dcl	TAPE_IO_RECOVERABLE_IO_ERROR
+  3    14 			   fixed bin static options (constant) init (3);
+  3    15 dcl	TAPE_IO_EOF	   fixed bin static options (constant) init (4);
+  3    16 dcl	TAPE_IO_EOT	   fixed bin static options (constant) init (5);
+  3    17 dcl	TAPE_IO_BOT	   fixed bin static options (constant) init (6);
+  3    18 dcl	TAPE_IO_RECOVERABLE_IO_ERROR_AND_EOT
+  3    19 			   fixed bin static options (constant) init (7);
+  3    20 dcl	TAPE_IO_CODE_ALERT	   fixed bin static options (constant) init (8);
+  3    21 
+  3    22 /*  END OF:	tape_ioi_result_indexes.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      781 
+      782 
+  4     1 /*  START OF:	tape_ioi_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4     2 
+  4     3 /* Written 22 April 1982 by Chris Jones */
+  4     4 /* Modified September 1983 by Chris Jones for reserve_buffer and release_buffer */
+  4     5 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  4     6 
+  4     7 /* call   tape_ioi_$activate     (rsc_ptr, tioi_info_ptr, tioi_id, code); */
+  4     8 dcl	tape_ioi_$activate	   entry (ptr, ptr, bit (36) aligned, fixed bin (35));
+  4     9 
+  4    10 /* call   tape_ioi_$allocate_buffers (tioi_id, req_length, req_number, act_length, act_number, buffer_ptrs, code); */
+  4    11 dcl	tape_ioi_$allocate_buffers
+  4    12 			   entry (bit (36) aligned, fixed bin (21), fixed bin, fixed bin (21), fixed bin,
+  4    13 			   dim (*) ptr, fixed bin (35));
+  4    14 
+  4    15 /* call   tape_ioi_$allocate_work_area (tioi_id, req_size, act_size, work_area_ptr, code); */
+  4    16 dcl	tape_ioi_$allocate_work_area
+  4    17 			   entry (bit (36) aligned, fixed bin (19), fixed bin (19), ptr, fixed bin (35));
+  4    18 
+  4    19 /* call   tape_ioi_$buffer_status (tioi_id, buffer_ptr, tbs_ptr, code); */
+  4    20 dcl	tape_ioi_$buffer_status
+  4    21 			   entry (bit (36) aligned, ptr, ptr, fixed bin (35));
+  4    22 
+  4    23 /* call   tape_ioi_$check_order  (tioi_id, ocount, rx, code); */
+  4    24 dcl	tape_ioi_$check_order  entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+  4    25 
+  4    26 /* call   tape_ioi_$check_read   (tioi_id, buffer_ptr, data_len, rx, code); */
+  4    27 dcl	tape_ioi_$check_read   entry (bit (36) aligned, ptr, fixed bin (21), fixed bin, fixed bin (35));
+  4    28 
+  4    29 /* call   tape_ioi_$check_write  (tioi_id, buffer_ptr, rx, code); */
+  4    30 dcl	tape_ioi_$check_write  entry (bit (36) aligned, ptr, fixed bin, fixed bin (35));
+  4    31 
+  4    32 /* call   tape_ioi_$deactivate   (tioi_id, error_ptr, code); */
+  4    33 dcl	tape_ioi_$deactivate   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    34 
+  4    35 /* call   tape_ioi_$deallocate   (tioi_id, code); */
+  4    36 dcl	tape_ioi_$deallocate   entry (bit (36) aligned, fixed bin (35));
+  4    37 
+  4    38 /* call   tape_ioi_$deallocate_buffers   (tioi_id, code); */
+  4    39 dcl	tape_ioi_$deallocate_buffers
+  4    40 			   entry (bit (36) aligned, fixed bin (35));
+  4    41 
+  4    42 /* call   tape_ioi_$get_mode     (tioi_id, mode, data_ptr, code); */
+  4    43 dcl	tape_ioi_$get_mode	   entry (bit (36) aligned, char (*), ptr, fixed bin (35));
+  4    44 
+  4    45 /* call	tape_ioi_$get_statistics (tioi_id, tec_ptr, code); */
+  4    46 dcl	tape_ioi_$get_statistics
+  4    47 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    48 
+  4    49 /* call   tape_ioi_$hardware_status (tioi_id, ths_ptr, code); */
+  4    50 dcl	tape_ioi_$hardware_status
+  4    51 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    52 
+  4    53 /* call   tape_ioi_$list_buffers (tioi_id, state, buffer_ptrs, num_buffers, code); */
+  4    54 dcl	tape_ioi_$list_buffers entry (bit (36) aligned, fixed bin, dim (*) ptr, fixed bin, fixed bin (35));
+  4    55 
+  4    56 /* call   tape_ioi_$order        (tioi_id, order, count, data_ptr, ocount, rx, code); */
+  4    57 dcl	tape_ioi_$order	   entry (bit (36) aligned, char (4), fixed bin, ptr, fixed bin, fixed bin, fixed bin (35));
+  4    58 
+  4    59 /* call   tape_ioi_$queue_order  (tioi_id, order, count, data_ptr, code); */
+  4    60 dcl	tape_ioi_$queue_order  entry (bit (36) aligned, char (4), fixed bin, ptr, fixed bin (35));
+  4    61 
+  4    62 /* call   tape_ioi_$queue_read   (tioi_id, buffer_ptr, code); */
+  4    63 dcl	tape_ioi_$queue_read   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    64 
+  4    65 /* call   tape_ioi_$queue_write  (tioi_id, buffer_ptr, data_len, code); */
+  4    66 dcl	tape_ioi_$queue_write  entry (bit (36) aligned, ptr, fixed bin (21), fixed bin (35));
+  4    67 
+  4    68 /* call   tape_ioi_$read         (tioi_id, buffer_ptr, data_len, rx, code); */
+  4    69 dcl	tape_ioi_$read	   entry (bit (36) aligned, ptr, fixed bin (21), fixed bin, fixed bin (35));
+  4    70 
+  4    71 /* call	tape_ioi_$release_buffer (tioi_id, buffer_ptr, code); */
+  4    72 dcl	tape_ioi_$release_buffer
+  4    73 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    74 
+  4    75 /* call	tape_ioi_$reserve_buffer (tioi_id, buffer_ptr, code); */
+  4    76 dcl	tape_ioi_$reserve_buffer
+  4    77 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    78 
+  4    79 /* call	tape_ioi_$reset_statistics (tioi_id, code); */
+  4    80 dcl	tape_ioi_$reset_statistics
+  4    81 			   entry (bit (36) aligned, fixed bin (35));
+  4    82 
+  4    83 /* call   tape_ioi_$set_buffer_ready (tioi_id, buffer_ptr, code); */
+  4    84 dcl	tape_ioi_$set_buffer_ready
+  4    85 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  4    86 
+  4    87 /* call   tape_ioi_$set_mode     (tioi_id, mode, data_ptr, code); */
+  4    88 dcl	tape_ioi_$set_mode	   entry (bit (36) aligned, char (*), ptr, fixed bin (35));
+  4    89 
+  4    90 /* call   tape_ioi_$stop_tape    (tioi_id, count, rx, code); */
+  4    91 dcl	tape_ioi_$stop_tape	   entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+  4    92 
+  4    93 /* call   tape_ioi_$write        (tioi_id, write_buffer_ptrs, data_len, buffer_ptr, rx, code); */
+  4    94 dcl	tape_ioi_$write	   entry (bit (36) aligned, (*) ptr, fixed bin (21), ptr, fixed bin, fixed bin (35));
+  4    95 
+  4    96 /*  END OF:	tape_ioi_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      783 
+      784 
+  5     1 /* BEGIN INCLUDE FILE ..... iocb.incl.pl1 ..... 13 Feb 1975, M. Asherman */
+  5     2 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+  5     3*      version number to IOX2. */
+  5     4 /* format: style2 */
+  5     5 
+  5     6      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+  5     7 	     2 version	      character (4) aligned,	/* IOX2 */
+  5     8 	     2 name	      char (32),		/* I/O name of this block. */
+  5     9 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+  5    10 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+  5    11 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+  5    12 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+  5    13 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+  5    14 	     2 reserved	      bit (72),		/* Reserved for future use. */
+  5    15 	     2 detach_iocb	      entry (ptr, fixed (35)),/* detach_iocb(p,s) */
+  5    16 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed (35)),
+  5    17 						/* open(p,mode,not_used,s) */
+  5    18 	     2 close	      entry (ptr, fixed (35)),/* close(p,s) */
+  5    19 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  5    20 						/* get_line(p,bufptr,buflen,actlen,s) */
+  5    21 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  5    22 						/* get_chars(p,bufptr,buflen,actlen,s) */
+  5    23 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed (35)),
+  5    24 						/* put_chars(p,bufptr,buflen,s) */
+  5    25 	     2 modes	      entry (ptr, char (*), char (*), fixed (35)),
+  5    26 						/* modes(p,newmode,oldmode,s) */
+  5    27 	     2 position	      entry (ptr, fixed, fixed (21), fixed (35)),
+  5    28 						/* position(p,u1,u2,s) */
+  5    29 	     2 control	      entry (ptr, char (*), ptr, fixed (35)),
+  5    30 						/* control(p,order,infptr,s) */
+  5    31 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+  5    32 						/* read_record(p,bufptr,buflen,actlen,s) */
+  5    33 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed (35)),
+  5    34 						/* write_record(p,bufptr,buflen,s) */
+  5    35 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed (35)),
+  5    36 						/* rewrite_record(p,bufptr,buflen,s) */
+  5    37 	     2 delete_record      entry (ptr, fixed (35)),/* delete_record(p,s) */
+  5    38 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  5    39 						/* seek_key(p,key,len,s) */
+  5    40 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+  5    41 						/* read_key(p,key,len,s) */
+  5    42 	     2 read_length	      entry (ptr, fixed (21), fixed (35)),
+  5    43 						/* read_length(p,len,s) */
+  5    44 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+  5    45 						/* open_file(p,mode,desc,not_used,s) */
+  5    46 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+  5    47 						/* close_file(p,desc,s) */
+  5    48 	     2 detach	      entry (ptr, char (*), fixed bin (35));
+  5    49 						/* detach(p,desc,s) */
+  5    50 
+  5    51      declare iox_$iocb_version_sentinel
+  5    52 			      character (4) aligned external static;
+  5    53 
+  5    54 /* END INCLUDE FILE ..... iocb.incl.pl1 ..... */
+      785 
+      786 
+  6     1 /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  6     2 /* format: style3 */
+  6     3 
+  6     4 /* These constants are to be used for the flags argument of sub_err_ */
+  6     5 /* They are just "string (condition_info_header.action_flags)" */
+  6     6 
+  6     7 declare	(
+  6     8 	ACTION_CAN_RESTART	init (""b),
+  6     9 	ACTION_CANT_RESTART init ("1"b),
+  6    10 	ACTION_DEFAULT_RESTART
+  6    11 			init ("01"b),
+  6    12 	ACTION_QUIET_RESTART
+  6    13 			init ("001"b),
+  6    14 	ACTION_SUPPORT_SIGNAL
+  6    15 			init ("0001"b)
+  6    16 	)		bit (36) aligned internal static options (constant);
+  6    17 
+  6    18 /* End include file */
+      787 
+      788      end tape_mult_read_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    06/29/00  1715.1  tape_mult_read_.pl1               >udd>sm>ds>w>ml>tape_mult_read_.pl1
+777          1    10/21/86  1351.7  tmdb.incl.pl1                     >ldd>incl>tmdb.incl.pl1
+779          2    12/20/82  1213.8  mstr.incl.pl1                     >ldd>incl>mstr.incl.pl1
+781          3    12/01/82  1139.8  tape_ioi_result_indexes.incl.pl1  >ldd>incl>tape_ioi_result_indexes.incl.pl1
+783          4    09/16/83  1210.4  tape_ioi_dcls.incl.pl1            >ldd>incl>tape_ioi_dcls.incl.pl1
+785          5    05/20/83  1946.4  iocb.incl.pl1                     >ldd>incl>iocb.incl.pl1
+787          6    04/16/82  1058.1  sub_err_flags.incl.pl1            >ldd>incl>sub_err_flags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_DEFAULT_RESTART          000000 constant        bit(36)                  initial dcl 6-7 set ref 683*
+DENSITY                         000002 constant        fixed bin(17,0)          initial array dcl 125 set ref 557 557 557 561 566
+                                                                                  566 575 575 638
+FIVE_FILES                             constant        fixed bin(17,0)          initial dcl 125 ref 452
+LABEL_LEN                              constant        fixed bin(17,0)          initial dcl 125 ref 622
+Lcallers_buffer                        parameter       fixed bin(21,0)          dcl 88 set ref 180 233* 258* 395 405 409* 409 500
+                                                                                  551* 647* 648
+Lcallers_buffer_insert          000100 automatic       fixed bin(21,0)          dcl 95 set ref 407* 408
+Ldata_to_return                 000104 automatic       fixed bin(17,0)          dcl 100 set ref 402* 407 408 409 412 415 552* 610*
+                                                                                  620* 621 622* 647 648
+MAX_AUTO_RETRYS                        constant        fixed bin(17,0)          initial dcl 125 ref 292 353 436
+MAX_BK_RETRYS                          constant        fixed bin(17,0)          initial dcl 125 ref 585 642
+MAX_FWD_READS                          constant        fixed bin(17,0)          initial dcl 125 ref 292 370
+MAX_LABEL_READS                        constant        fixed bin(17,0)          initial dcl 125 ref 578 585 592
+MAX_READS_PAST_ERROR                   constant        fixed bin(17,0)          initial dcl 125 ref 292 366
+ONE_FILE                        000025 constant        fixed bin(17,0)          initial dcl 125 set ref 477*
+Pcallers_buffer                        parameter       pointer                  dcl 88 ref 180 405 500 648
+Pcallers_buffer_insert          000102 automatic       pointer                  dcl 95 set ref 405* 408
+Pdata_to_return                 000106 automatic       pointer                  dcl 100 set ref 401* 408 553* 609* 619* 632 648
+Piocb                                  parameter       pointer                  dcl 83 ref 180 195 239
+Ptmdb                                  parameter       pointer                  dcl 83 ref 500 545 550
+Sentry_was_at_get_chars                parameter       bit(1)                   dcl 228 in procedure "get_number_of_chars_requested"
+                                                                                  ref 225 233 258 395 404
+Sentry_was_at_get_chars         000110 automatic       bit(1)                   dcl 105 in procedure "tape_mult_read_" set ref 189*
+                                                                                  190* 221* 222*
+Shave_a_label                   000111 automatic       bit(1)                   dcl 105 set ref 554* 566 606*
+Shave_next_record               000112 automatic       bit(1)                   dcl 105 set ref 282* 292 334* 583* 585 600*
+Smissing_eor                    000113 automatic       bit(1)                   dcl 105 set ref 298* 314* 344* 380
+Srecovery                       000114 automatic       bit(1)                   dcl 105 set ref 284* 287 287 485* 486 486
+Suser_defined_bootlabel         000115 automatic       bit(1)                   dcl 105 set ref 582* 608 747*
+TAPE_IO_BOT                            constant        fixed bin(17,0)          initial dcl 3-17 ref 464 679
+TAPE_IO_EOF                            constant        fixed bin(17,0)          initial dcl 3-15 ref 665
+TAPE_IO_EOT                            constant        fixed bin(17,0)          initial dcl 3-16 ref 673
+TAPE_IO_UNRECOVERABLE_IO_ERROR         constant        fixed bin(17,0)          initial dcl 3-11 ref 670
+TWO_FILES                              constant        fixed bin(17,0)          initial dcl 125 ref 454
+actual_iocb_ptr          12            based           pointer                  level 2 dcl 5-6 ref 239
+addcharno                                              builtin function         dcl 149 ref 401 405
+addr                                                   builtin function         dcl 149 ref 287 287 401 486 486 492 492 575 575 619
+                                                                                  704 704 712 712 748 748 748 748 768 768
+admin                     5            based           bit(1)                   level 4 packed packed unaligned dcl 2-10 ref 339
+arg_pos_type                           parameter       fixed bin(17,0)          dcl 209 ref 195 213
+attach_data_ptr          16            based           pointer                  level 2 dcl 5-6 ref 239
+auto_retry_cnt                  000116 automatic       fixed bin(17,0)          dcl 105 in procedure "tape_mult_read_" set ref 285*
+                                                                                  292 349* 353
+auto_retry_cnt                         parameter       fixed bin(17,0)          dcl 421 in procedure
+                                                                                  "set_next_auto_retry_possibility" set ref 419 436*
+                                                                                  440* 440 484
+begin                    32(04)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref
+                                                                                  256* 649*
+bin                                                    builtin function         dcl 149 ref 441 441
+bit                                                    builtin function         dcl 149 ref 441
+boot_pgm_len            244            based           fixed bin(17,0)          level 2 dcl 2-16 ref 610 612 740 740
+bot                     126(02)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref
+                                                                                  679*
+buf_pos                 135            based           fixed bin(17,0)          level 3 dcl 1-24 set ref 276 280* 401 402 415* 415
+c1                                     based           bit(36)                  level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 734
+                                                                                  737
+c1                      105            based           bit(36)                  level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  734 740
+c1                      115            based           bit(36)                  level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  740 762
+c1                                     based           bit(36)                  level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 762
+c1                                     based           bit(36)                  level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  ref 740
+c1                       10            based           bit(36)                  level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  set ref 740
+c2                        7            based           bit(36)                  level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 734
+c2                       17            based           bit(36)                  level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  set ref 740
+c2                                     based           bit(36)                  level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 762
+c2                      114            based           bit(36)                  level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  734 740
+c2                      124            based           bit(36)                  level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  740 762
+c2                                     based           bit(36)                  level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  ref 740
+callers_buffer                         based           char                     packed unaligned dcl 88 set ref 648*
+callers_buffer_insert                  based           char                     packed unaligned dcl 95 set ref 408*
+channel_command                 000117 automatic       bit(6)                   dcl 105 set ref 257* 435 441* 441 492 492
+checksum                 16            based           bit(36)                  level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  set ref 750
+checksum                  6            based           bit(36)                  level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 770
+code                                   parameter       fixed bin(35,0)          dcl 228 in procedure "get_number_of_chars_requested"
+                                                                                  set ref 225 235* 242* 247* 252* 287* 289 302* 308
+                                                                                  311* 312 349* 351 366* 371* 375 380* 382* 393*
+code                                   parameter       fixed bin(35,0)          dcl 655 in procedure "READ_TAPE" set ref 652 660*
+                                                                                  661* 663* 668* 676 676* 685*
+code                                   parameter       fixed bin(35,0)          dcl 696 in procedure "REWIND" set ref 692 702* 704*
+                                                                                  707 708* 711 712*
+code                                   parameter       fixed bin(35,0)          dcl 83 in procedure "tape_mult_read_" set ref 180
+                                                                                  188* 190* 195 211* 214* 222* 500 543* 546* 566 566
+                                                                                  571* 572 575* 581 585 592* 594 597* 598 599* 600
+                                                                                  605 625* 642 643*
+code                                   parameter       fixed bin(35,0)          dcl 728 in procedure "VALIDATE_RECORD" set ref 722
+                                                                                  730* 750* 757* 764* 770*
+code                                   parameter       fixed bin(35,0)          dcl 421 in procedure
+                                                                                  "set_next_auto_retry_possibility" set ref 419 444*
+                                                                                  446 446* 458* 462* 468* 471 477* 479 486* 488 492*
+completed_bsfs                  000154 automatic       fixed bin(17,0)          dcl 424 set ref 451* 458* 461
+completed_fsfs                  000155 automatic       fixed bin(17,0)          dcl 424 set ref 475* 476 477*
+curr_buf                136            based           pointer                  level 3 dcl 1-24 set ref 262 309*
+currentsize                                            builtin function         dcl 149 ref 610
+data                     10            based           bit                      level 2 dcl 2-10 set ref 401 619
+data_bit_len            111(18)        based           fixed bin(17,0)          level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  613* 613
+data_bit_len              4(18)        based           fixed bin(17,0)          level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 327
+                                                                                  332 394 401 619 631 762 762
+data_bits_used            4            based           fixed bin(17,0)          level 3 packed packed unaligned dcl 2-10 ref 387 620
+data_len                        000166 automatic       fixed bin(21,0)          dcl 657 set ref 661*
+data_loss               126(06)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref
+                                                                                  299* 332* 345* 347 369 392
+data_to_return                         based           char                     packed unaligned dcl 100 ref 408 648
+density_counter                 000120 automatic       fixed bin(17,0)          dcl 105 set ref 566*
+density_index                   000121 automatic       fixed bin(17,0)          dcl 105 set ref 557* 557* 561 575 575 638* 638
+density_index_adder             000122 automatic       fixed bin(17,0)          dcl 105 set ref 561* 563* 638
+divide                                                 builtin function         dcl 149 ref 387 620
+eod                     126            based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 251
+                                                                                  292 300* 339* 343* 356* 379 452 675*
+eof                     126(01)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 566
+                                                                                  581 585 605 667*
+eor                       5(02)        based           bit(1)                   level 4 packed packed unaligned dcl 2-10 ref 339
+error_table_$bad_density        000010 external static fixed bin(35,0)          dcl 155 ref 566 585
+error_table_$bad_label          000012 external static fixed bin(35,0)          dcl 155 ref 643
+error_table_$data_improperly_terminated
+                                000014 external static fixed bin(35,0)          dcl 155 ref 380
+error_table_$data_loss          000016 external static fixed bin(35,0)          dcl 155 ref 393
+error_table_$device_attention   000020 external static fixed bin(35,0)          dcl 155 ref 366
+error_table_$device_parity      000022 external static fixed bin(35,0)          dcl 155 ref 446 685 750 757 764 770
+error_table_$end_of_info        000024 external static fixed bin(35,0)          dcl 155 ref 252 382 676
+error_table_$improper_data_format
+                                000026 external static fixed bin(35,0)          dcl 155 ref 625
+error_table_$invalid_read       000030 external static fixed bin(35,0)          dcl 155 ref 247
+error_table_$no_operation       000032 external static fixed bin(35,0)          dcl 155 ref 214 235
+error_table_$null_info_ptr      000034 external static fixed bin(35,0)          dcl 155 ref 242 546
+error_table_$tape_error         000036 external static fixed bin(35,0)          dcl 155 ref 371
+fatal_read_error        126(05)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 305
+                                                                                  361 670*
+flags                   126            based           structure                level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_" set ref 277* 555*
+flags                     5            based           structure                level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_"
+flags                    15            based           structure                level 3 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+flags                    32            based           structure                level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_"
+hbound                                                 builtin function         dcl 149 ref 557 561 566 613 638
+head                                   based           structure                level 2 in structure "mstr" dcl 2-10 in procedure
+                                                                                  "tape_mult_read_" ref 630
+head                    105            based           structure                level 2 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_" set ref 611* 630*
+head                     10            based           structure                level 2 in structure "mst_label" dcl 2-16
+                                                                                  in procedure "tape_mult_read_" set ref 611 748 748
+iocb                                   based           structure                level 1 dcl 5-6
+label                     5(01)        based           bit(1)                   level 4 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 622
+label                    15(01)        based           bit(1)                   level 4 in structure "mst_label" packed packed
+                                                                                  unaligned dcl 2-16 in procedure "tape_mult_read_"
+                                                                                  set ref 740
+label_c1                        000001 constant        bit(36)                  initial packed unaligned dcl 2-79 ref 737
+label_uid               131            based           bit(72)                  level 3 dcl 1-24 ref 342
+label_version           133            based           fixed bin(17,0)          level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_" set ref 614* 632*
+label_version           242            based           fixed bin(17,0)          level 2 in structure "mst_label" dcl 2-16
+                                                                                  in procedure "tape_mult_read_" ref 614
+lbound                                                 builtin function         dcl 149 ref 557 566
+min                                                    builtin function         dcl 149 ref 402
+mod                                                    builtin function         dcl 149 ref 638
+mst_label                              based           structure                level 1 dcl 2-16 set ref 610
+mstr                                   based           structure                level 1 dcl 2-10
+mstr_header                            based           structure                level 1 dcl 2-37
+mstr_trailer                           based           structure                level 1 dcl 2-62
+mstrp                           000132 automatic       pointer                  dcl 2-8 set ref 262* 309 327 332 339 339 342 387 394
+                                                                                  401 609 610 611 612 613 614 615 619 620 622 630
+                                                                                  631 661* 734 734 737 740 740 740 740 740 748 748
+                                                                                  750 762 762 768* 770
+null                                                   builtin function         dcl 149 ref 241 458 458 477 477 545 553 683 683 708
+number_of_chars_left_to_return  000123 automatic       fixed bin(21,0)          dcl 105 set ref 261* 274 402 412* 412
+number_of_chars_requested              parameter       fixed bin(21,0)          dcl 83 ref 180 195 218 231 231 261
+opt                      32            based           structure                level 2 dcl 1-24
+output_mode             134            based           fixed bin(17,0)          level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_" set ref 615*
+output_mode             243            based           fixed bin(17,0)          level 2 in structure "mst_label" dcl 2-16
+                                                                                  in procedure "tape_mult_read_" ref 615
+rdy_status                      000176 automatic       bit(36)                  dcl 700 set ref 704 704 712 712
+read_cnt                        000124 automatic       fixed bin(17,0)          dcl 105 in procedure "tape_mult_read_" set ref 278*
+                                                                                  292 304* 304 327* 354* 370 578* 585 591* 591 592
+                                                                                  592*
+read_cnt                               parameter       fixed bin(17,0)          dcl 696 in procedure "REWIND" set ref 692 715*
+reads_past_error                000125 automatic       fixed bin(17,0)          dcl 105 set ref 279* 292 305* 305 355* 361* 361 366
+rec_length              142            based           fixed bin(21,0)          level 3 dcl 1-24 set ref 276 387* 402
+requested_bsfs                  000156 automatic       fixed bin(17,0)          dcl 424 set ref 452* 454* 457 458* 461* 461 467*
+rewind_cnt                             parameter       fixed bin(17,0)          dcl 696 in procedure "REWIND" set ref 692 714* 714
+rewind_cnt                      000126 automatic       fixed bin(17,0)          dcl 105 in procedure "tape_mult_read_" set ref 579*
+                                                                                  585 592* 642
+rx                              000157 automatic       fixed bin(17,0)          dcl 424 in procedure
+                                                                                  "set_next_auto_retry_possibility" set ref 444* 445
+                                                                                  458* 460 464 466* 477*
+rx                              000167 automatic       fixed bin(17,0)          dcl 657 in procedure "READ_TAPE" set ref 661* 663
+                                                                                  665 670 673 679 683*
+string                                                 builtin function         dcl 149 set ref 277* 555*
+sub_err_                        000042 constant        entry                    external dcl 174 ref 683
+substr                                                 builtin function         dcl 149 ref 632
+sys_info$seg_size_256K          000040 external static fixed bin(19,0)          dcl 155 ref 231
+tape_checksum_                  000044 constant        entry                    external dcl 174 ref 748 768
+tape_ioi_$order                 000046 constant        entry                    external dcl 4-57 ref 458 477 575 704 708 712
+tape_ioi_$read                  000050 constant        entry                    external dcl 4-69 ref 661
+tape_ioi_$set_mode              000052 constant        entry                    external dcl 4-88 ref 287 486 492
+tape_ioi_$stop_tape             000054 constant        entry                    external dcl 4-91 ref 444
+test_checksum                   000127 automatic       bit(36)                  dcl 105 set ref 748 748 750 768 768 770
+tioi_id                 130            based           bit(36)                  level 3 dcl 1-24 set ref 287* 444* 458* 477* 486*
+                                                                                  492* 575* 661* 704* 708* 712*
+tmdb                                   based           structure                level 1 dcl 1-24
+tmdb_ptr                        000130 automatic       pointer                  dcl 1-22 set ref 239* 241 246 251 256 262 276 276
+                                                                                  277 280 281 281 287 292 299 300 305 309 327 332
+                                                                                  332 339 342 343 345 347 356 361 369 379 387 392
+                                                                                  394 401 402 402 415 415 444 452 458 477 486 492
+                                                                                  550* 555 557 566 575 581 585 605 611 612 613 613
+                                                                                  614 615 630 631 632 649 661 667 670 675 679 704
+                                                                                  708 712 734 734 740 740 740 740 762 762
+tot_rec                                based           fixed bin(35,0)          level 3 in structure "mstr" packed packed unaligned
+                                                                                  dcl 2-10 in procedure "tape_mult_read_" ref 327
+                                                                                  332 394
+tot_rec                 123            based           fixed bin(35,0)          level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_read_" set ref
+                                                                                  281* 281 327 332 394*
+trail                                  based           structure                level 2 in structure "mstr" dcl 2-10 in procedure
+                                                                                  "tape_mult_read_" ref 631
+trail                                  based           structure                level 2 in structure "mst_label" dcl 2-16
+                                                                                  in procedure "tape_mult_read_" ref 612
+trail                   115            based           structure                level 2 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_read_" set ref 612* 631*
+uid                       1            based           bit(72)                  level 3 packed packed unaligned dcl 2-10 ref 342
+unspec                                                 builtin function         dcl 149 ref 632
+volume_density         2216            based           fixed bin(17,0)          level 2 dcl 1-24 ref 557
+volume_identifier                      based           structure                level 1 dcl 2-73
+volume_set_id            20            based           char(32)                 level 2 packed packed unaligned dcl 2-73 ref 632
+work                    126            based           structure                level 2 dcl 1-24
+write_sw                 32(05)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 ref 246
+xfer_vector                            based           structure                array level 2 dcl 2-16 ref 613
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CANT_RESTART                    internal static bit(36)                  initial dcl 6-7
+ACTION_CAN_RESTART                     internal static bit(36)                  initial dcl 6-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 6-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 6-7
+HEADER_VERSION                         internal static fixed bin(17,0)          initial dcl 2-89
+LABEL_VERSION                          internal static fixed bin(17,0)          initial dcl 2-87
+TAPE_IO_BLOCK                          internal static fixed bin(17,0)          initial dcl 3-7
+TAPE_IO_CODE_ALERT                     internal static fixed bin(17,0)          initial dcl 3-20
+TAPE_IO_RECOVERABLE_IO_ERROR           internal static fixed bin(17,0)          initial dcl 3-13
+TAPE_IO_RECOVERABLE_IO_ERROR_AND_EOT   internal static fixed bin(17,0)          initial dcl 3-18
+TAPE_IO_SUCCESS                        internal static fixed bin(17,0)          initial dcl 3-8
+TAPE_IO_USER_PROGRAM_ERROR             internal static fixed bin(17,0)          initial dcl 3-9
+header_c1                              internal static bit(36)                  initial packed unaligned dcl 2-79
+header_c2                              internal static bit(36)                  initial packed unaligned dcl 2-79
+iox_$iocb_version_sentinel             external static char(4)                  dcl 5-51
+tape_ioi_$activate              000000 constant        entry                    external dcl 4-8
+tape_ioi_$allocate_buffers      000000 constant        entry                    external dcl 4-11
+tape_ioi_$allocate_work_area    000000 constant        entry                    external dcl 4-16
+tape_ioi_$buffer_status         000000 constant        entry                    external dcl 4-20
+tape_ioi_$check_order           000000 constant        entry                    external dcl 4-24
+tape_ioi_$check_read            000000 constant        entry                    external dcl 4-27
+tape_ioi_$check_write           000000 constant        entry                    external dcl 4-30
+tape_ioi_$deactivate            000000 constant        entry                    external dcl 4-33
+tape_ioi_$deallocate            000000 constant        entry                    external dcl 4-36
+tape_ioi_$deallocate_buffers    000000 constant        entry                    external dcl 4-39
+tape_ioi_$get_mode              000000 constant        entry                    external dcl 4-43
+tape_ioi_$get_statistics        000000 constant        entry                    external dcl 4-46
+tape_ioi_$hardware_status       000000 constant        entry                    external dcl 4-50
+tape_ioi_$list_buffers          000000 constant        entry                    external dcl 4-54
+tape_ioi_$queue_order           000000 constant        entry                    external dcl 4-60
+tape_ioi_$queue_read            000000 constant        entry                    external dcl 4-63
+tape_ioi_$queue_write           000000 constant        entry                    external dcl 4-66
+tape_ioi_$release_buffer        000000 constant        entry                    external dcl 4-72
+tape_ioi_$reserve_buffer        000000 constant        entry                    external dcl 4-76
+tape_ioi_$reset_statistics      000000 constant        entry                    external dcl 4-80
+tape_ioi_$set_buffer_ready      000000 constant        entry                    external dcl 4-84
+tape_ioi_$write                 000000 constant        entry                    external dcl 4-94
+trailer_c1                             internal static bit(36)                  initial packed unaligned dcl 2-79
+trailer_c2                             internal static bit(36)                  initial packed unaligned dcl 2-79
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+READ_TAPE                       001607 constant        entry                    internal dcl 652 ref 302 597
+REWIND                          001760 constant        entry                    internal dcl 692 ref 571 592
+VALIDATE_RECORD                 002122 constant        entry                    internal dcl 722 ref 311 599
+get_chars                       000066 constant        entry                    external dcl 180
+get_number_of_chars_requested   000612 constant        entry                    internal dcl 225 ref 190 222
+label                           000163 constant        entry                    external dcl 500
+position                        000121 constant        entry                    external dcl 195
+set_next_auto_retry_possibility 001306 constant        entry                    internal dcl 419 ref 349
+tape_mult_read_                 000053 constant        entry                    external dcl 76
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2544        2622    2264        2554
+Length      3150    2264        56         312     257           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+tape_mult_read_                     337 external procedure  is an external procedure.  
+get_number_of_chars_requested           internal procedure  shares stack frame of external procedure tape_mult_read_.  
+set_next_auto_retry_possibility
+                                        internal procedure  shares stack frame of external procedure tape_mult_read_.  
+READ_TAPE                               internal procedure  shares stack frame of external procedure tape_mult_read_.  
+REWIND                                  internal procedure  shares stack frame of external procedure tape_mult_read_.  
+VALIDATE_RECORD                         internal procedure  shares stack frame of external procedure tape_mult_read_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+tape_mult_read_          000100 Lcallers_buffer_insert      tape_mult_read_
+                         000102 Pcallers_buffer_insert      tape_mult_read_
+                         000104 Ldata_to_return             tape_mult_read_
+                         000106 Pdata_to_return             tape_mult_read_
+                         000110 Sentry_was_at_get_chars     tape_mult_read_
+                         000111 Shave_a_label               tape_mult_read_
+                         000112 Shave_next_record           tape_mult_read_
+                         000113 Smissing_eor                tape_mult_read_
+                         000114 Srecovery                   tape_mult_read_
+                         000115 Suser_defined_bootlabel     tape_mult_read_
+                         000116 auto_retry_cnt              tape_mult_read_
+                         000117 channel_command             tape_mult_read_
+                         000120 density_counter             tape_mult_read_
+                         000121 density_index               tape_mult_read_
+                         000122 density_index_adder         tape_mult_read_
+                         000123 number_of_chars_left_to_return
+                                                            tape_mult_read_
+                         000124 read_cnt                    tape_mult_read_
+                         000125 reads_past_error            tape_mult_read_
+                         000126 rewind_cnt                  tape_mult_read_
+                         000127 test_checksum               tape_mult_read_
+                         000130 tmdb_ptr                    tape_mult_read_
+                         000132 mstrp                       tape_mult_read_
+                         000154 completed_bsfs              set_next_auto_retry_possibility
+                         000155 completed_fsfs              set_next_auto_retry_possibility
+                         000156 requested_bsfs              set_next_auto_retry_possibility
+                         000157 rx                          set_next_auto_retry_possibility
+                         000166 data_len                    READ_TAPE
+                         000167 rx                          READ_TAPE
+                         000176 rdy_status                  REWIND
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+sub_err_                      tape_checksum_                tape_ioi_$order               tape_ioi_$read
+tape_ioi_$set_mode            tape_ioi_$stop_tape
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_density      error_table_$bad_label        error_table_$data_improperly_terminated
+error_table_$data_loss        error_table_$device_attention error_table_$device_parity    error_table_$end_of_info
+error_table_$improper_data_format                           error_table_$invalid_read     error_table_$no_operation
+error_table_$null_info_ptr    error_table_$tape_error       sys_info$seg_size_256K
+
+
+CONSTANTS
+002261  aa     377777777777
+
+002262  aa     773777777777
+
+002263  aa     757777777777
+
+000000  aa     200000000000
+
+000001  aa     000004235000
+
+000002  aa     000000001440
+000003  aa     000000003100
+000004  aa     000000014152
+
+000005  aa  162 145 167 040	rew 
+
+000006  aa  162 144 171 040	rdy 
+
+000007  aa     524000000047
+
+000010  aa     524000000017
+
+000011  aa     404000000005
+
+000012  aa     524000000003
+
+000013  aa  143 151 146 000	cif
+
+000014  aa  146 163 146 040	fsf 
+
+000015  aa  142 163 146 040	bsf 
+
+000016  aa     524000000010
+
+000017  aa     514000000044
+
+000020  aa     514000000001
+
+000021  aa  144 145 156 040	den 
+
+000022  aa     404000000021
+
+000023  aa     404000000043
+
+000024  aa     404000000025
+
+000025  aa     000000000001
+
+000026  aa     464000000000
+
+000030  aa  162 145 143 157	reco
+000031  aa  166 145 162 171	very
+
+000032  aa     077777000043
+000033  aa     000001000000
+
+000034  aa  164 141 160 145	tape
+000035  aa  137 155 165 154	_mul
+000036  aa  164 137 162 145	t_re
+000037  aa  141 144 137 000	ad_
+
+000040  aa  125 156 145 170	Unex
+000041  aa  160 145 143 164	pect
+000042  aa  145 144 040 164	ed t
+000043  aa  141 160 145 137	ape_
+000044  aa  151 157 151 137	ioi_
+000045  aa  040 162 145 163	 res
+000046  aa  165 154 164 040	ult 
+000047  aa  136 144 040 157	^d o
+000050  aa  156 040 162 145	n re
+000051  aa  141 144 056 000	ad.
+
+BEGIN PROCEDURE tape_mult_read_
+ENTRY TO tape_mult_read_                                    STATEMENT 1 ON LINE 76
+tape_mult_read_: proc;
+
+000052  da     000232200000
+000053  aa   000540 6270 00	eax7 	352
+000054  aa  7 00034 3521 20	epp2 	pr7|28,*
+000055  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000056  aa     000000000000
+000057  aa     000000000000
+						STATEMENT 1 ON LINE 180
+get_chars: entry (Piocb,
+	        Pcallers_buffer,
+	        number_of_chars_requested,
+	        Lcallers_buffer,
+	        code);
+
+000060  aa   000020 7100 04	tra  	16,ic		000100
+ENTRY TO get_chars                                          STATEMENT 1 ON LINE 180
+get_chars: entry (Piocb,
+	        Pcallers_buffer,
+	        number_of_chars_requested,
+	        Lcallers_buffer,
+	        code);
+
+000061  at     000005000026
+000062  tt     000026000024
+000063  tt     000024000023
+000064  ta     000061000000
+000065  da     000240300000
+000066  aa   000540 6270 00	eax7 	352
+000067  aa  7 00034 3521 20	epp2 	pr7|28,*
+000070  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000071  aa     000012000000
+000072  aa     000000000000
+000073  aa  6 00032 3735 20	epp7 	pr6|26,*
+000074  aa  7 00010 3715 20	epp5 	pr7|8,*
+000075  aa  6 00136 6515 00	spri5	pr6|94
+000076  aa  7 00012 3535 20	epp3 	pr7|10,*
+000077  aa  6 00134 2535 00	spri3	pr6|92
+						STATEMENT 1 ON LINE 188
+       code = 0;
+
+000100  aa  6 00134 4501 20	stz  	pr6|92,*		code
+						STATEMENT 1 ON LINE 189
+       Sentry_was_at_get_chars = "1"b;
+
+000101  aa   400000 2350 03	lda  	131072,du
+000102  aa  6 00110 7551 00	sta  	pr6|72		Sentry_was_at_get_chars
+						STATEMENT 1 ON LINE 190
+       call get_number_of_chars_requested (Sentry_was_at_get_chars, code);
+
+000103  aa  6 00110 3521 00	epp2 	pr6|72		Sentry_was_at_get_chars
+000104  aa  6 00210 2521 00	spri2	pr6|136
+000105  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000106  aa  6 00212 2521 00	spri2	pr6|138
+000107  aa  6 00206 3521 00	epp2 	pr6|134
+000110  aa   010000 4310 07	fld  	4096,dl
+000111  aa  2 00000 7571 00	staq 	pr2|0
+000112  aa   000500 6700 04	tsp4 	320,ic		000612
+						STATEMENT 1 ON LINE 191
+       return;
+
+000113  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO position                                           STATEMENT 1 ON LINE 195
+position: entry (Piocb,
+	       arg_pos_type,
+	       number_of_chars_requested,
+	       code);
+
+000114  at     000004000026
+000115  tt     000022000024
+000116  ta     000023000000
+000117  ta     000114000000
+000120  da     000246300000
+000121  aa   000540 6270 00	eax7 	352
+000122  aa  7 00034 3521 20	epp2 	pr7|28,*
+000123  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000124  aa     000010000000
+000125  aa     000000000000
+000126  aa  6 00032 3735 20	epp7 	pr6|26,*
+000127  aa  7 00010 3715 20	epp5 	pr7|8,*
+000130  aa  6 00134 6515 00	spri5	pr6|92
+						STATEMENT 1 ON LINE 211
+       code = 0;
+
+000131  aa  6 00134 4501 20	stz  	pr6|92,*		code
+						STATEMENT 1 ON LINE 213
+       if arg_pos_type ^= 3 then do;
+
+000132  aa  6 00032 3735 20	epp7 	pr6|26,*
+000133  aa  7 00004 2361 20	ldq  	pr7|4,*		arg_pos_type
+000134  aa   000003 1160 07	cmpq 	3,dl
+000135  aa   000005 6000 04	tze  	5,ic		000142
+						STATEMENT 1 ON LINE 214
+	code = error_table_$no_operation;
+
+000136  aa  6 00044 3701 20	epp4 	pr6|36,*
+000137  la  4 00032 2361 20	ldq  	pr4|26,*		error_table_$no_operation
+000140  aa  6 00134 7561 20	stq  	pr6|92,*		code
+						STATEMENT 1 ON LINE 215
+	return;
+
+000141  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 216
+	end;
+
+						STATEMENT 1 ON LINE 218
+       if number_of_chars_requested = 0 then
+	return;
+
+000142  aa  7 00006 2361 20	ldq  	pr7|6,*		number_of_chars_requested
+000143  aa  0 00631 6001 00	tze  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 221
+       Sentry_was_at_get_chars = "0"b;
+
+000144  aa  6 00110 4501 00	stz  	pr6|72		Sentry_was_at_get_chars
+						STATEMENT 1 ON LINE 222
+       call get_number_of_chars_requested (Sentry_was_at_get_chars, code);
+
+000145  aa  6 00110 3521 00	epp2 	pr6|72		Sentry_was_at_get_chars
+000146  aa  6 00210 2521 00	spri2	pr6|136
+000147  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000150  aa  6 00212 2521 00	spri2	pr6|138
+000151  aa  6 00206 3521 00	epp2 	pr6|134
+000152  aa   010000 4310 07	fld  	4096,dl
+000153  aa  2 00000 7571 00	staq 	pr2|0
+000154  aa   000436 6700 04	tsp4 	286,ic		000612
+						STATEMENT 1 ON LINE 223
+       return;
+
+000155  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO label                                              STATEMENT 1 ON LINE 500
+label: entry (Ptmdb,
+	    Pcallers_buffer,
+	    Lcallers_buffer,
+	    code);
+
+000156  at     000004000026
+000157  tt     000026000024
+000160  ta     000023000000
+000161  ta     000156000000
+000162  da     000253300000
+000163  aa   000540 6270 00	eax7 	352
+000164  aa  7 00034 3521 20	epp2 	pr7|28,*
+000165  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000166  aa     000010000000
+000167  aa     000000000000
+000170  aa  6 00032 3735 20	epp7 	pr6|26,*
+000171  aa  7 00006 3715 20	epp5 	pr7|6,*
+000172  aa  6 00136 6515 00	spri5	pr6|94
+000173  aa  7 00010 3535 20	epp3 	pr7|8,*
+000174  aa  6 00134 2535 00	spri3	pr6|92
+						STATEMENT 1 ON LINE 543
+       code = 0;
+
+000175  aa  6 00134 4501 20	stz  	pr6|92,*		code
+						STATEMENT 1 ON LINE 545
+       if Ptmdb = null then do;
+
+000176  aa  6 00032 3735 20	epp7 	pr6|26,*
+000177  aa  7 00002 2371 20	ldaq 	pr7|2,*		Ptmdb
+000200  aa   777632 6770 04	eraq 	-102,ic		000032 = 077777000043 000001000000
+000201  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000202  aa   000005 6010 04	tnz  	5,ic		000207
+						STATEMENT 1 ON LINE 546
+	code = error_table_$null_info_ptr;
+
+000203  aa  6 00044 3701 20	epp4 	pr6|36,*
+000204  la  4 00034 2361 20	ldq  	pr4|28,*		error_table_$null_info_ptr
+000205  aa  6 00134 7561 20	stq  	pr6|92,*		code
+						STATEMENT 1 ON LINE 547
+	return;
+
+000206  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 548
+	end;
+
+						STATEMENT 1 ON LINE 550
+       tmdb_ptr = Ptmdb;
+
+000207  aa  7 00002 3715 20	epp5 	pr7|2,*		Ptmdb
+000210  aa  5 00000 3715 20	epp5 	pr5|0,*		Ptmdb
+000211  aa  6 00130 6515 00	spri5	pr6|88		tmdb_ptr
+						STATEMENT 1 ON LINE 551
+       Lcallers_buffer = 0;
+
+000212  aa  6 00136 4501 20	stz  	pr6|94,*		Lcallers_buffer
+						STATEMENT 1 ON LINE 552
+       Ldata_to_return = 0;
+
+000213  aa  6 00104 4501 00	stz  	pr6|68		Ldata_to_return
+						STATEMENT 1 ON LINE 553
+       Pdata_to_return = null;
+
+000214  aa   777616 2370 04	ldaq 	-114,ic		000032 = 077777000043 000001000000
+000215  aa  6 00106 7571 00	staq 	pr6|70		Pdata_to_return
+						STATEMENT 1 ON LINE 554
+       Shave_a_label = "0"b;
+
+000216  aa  6 00111 4501 00	stz  	pr6|73		Shave_a_label
+						STATEMENT 1 ON LINE 555
+       string (tmdb.work.flags) = "0"b;
+
+000217  aa  5 00126 4501 00	stz  	pr5|86
+						STATEMENT 1 ON LINE 557
+       do density_index = lbound (DENSITY, 1) to hbound (DENSITY, 1)
+	while (tmdb.volume_density ^= DENSITY (density_index));
+
+000220  aa  6 00121 4501 00	stz  	pr6|81		density_index
+000221  aa   000000 0110 03	nop  	0,du
+000222  aa  6 00121 2361 00	ldq  	pr6|81		density_index
+000223  aa   000002 1160 07	cmpq 	2,dl
+000224  aa   000010 6054 04	tpnz 	8,ic		000234
+000225  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000226  aa  7 02216 2361 00	ldq  	pr7|1166		tmdb.volume_density
+000227  aa  6 00121 7271 00	lxl7 	pr6|81		density_index
+000230  ta   000002 1160 17	cmpq 	2,7
+000231  aa   000003 6000 04	tze  	3,ic		000234
+						STATEMENT 1 ON LINE 559
+	end;
+
+000232  aa  6 00121 0541 00	aos  	pr6|81		density_index
+000233  aa   777767 7100 04	tra  	-9,ic		000222
+						STATEMENT 1 ON LINE 561
+       if density_index = hbound(DENSITY, 1) then
+	density_index_adder = -1;
+
+000234  aa  6 00121 2361 00	ldq  	pr6|81		density_index
+000235  aa   000002 1160 07	cmpq 	2,dl
+000236  aa   000004 6010 04	tnz  	4,ic		000242
+000237  aa   000001 3360 07	lcq  	1,dl
+000240  aa  6 00122 7561 00	stq  	pr6|82		density_index_adder
+000241  aa   000003 7100 04	tra  	3,ic		000244
+						STATEMENT 1 ON LINE 563
+       else
+	density_index_adder = 1;
+
+000242  aa   000001 2360 07	ldq  	1,dl
+000243  aa  6 00122 7561 00	stq  	pr6|82		density_index_adder
+						STATEMENT 1 ON LINE 566
+       do density_counter = lbound (DENSITY, 1) to hbound (DENSITY, 1)
+	while ((code = 0 | code = error_table_$bad_density)
+	      & ^Shave_a_label
+	      & ^tmdb.work.flags.eof);
+
+000244  aa  6 00120 4501 00	stz  	pr6|80		density_counter
+000245  aa   000000 0110 03	nop  	0,du
+000246  aa  6 00120 2361 00	ldq  	pr6|80		density_counter
+000247  aa   000002 1160 07	cmpq 	2,dl
+000250  aa   000314 6054 04	tpnz 	204,ic		000564
+000251  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000252  aa   000004 6000 04	tze  	4,ic		000256
+000253  aa  6 00044 3701 20	epp4 	pr6|36,*
+000254  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$bad_density
+000255  aa   000307 6010 04	tnz  	199,ic		000564
+000256  aa  6 00111 2351 00	lda  	pr6|73		Shave_a_label
+000257  aa   000305 6010 04	tnz  	197,ic		000564
+000260  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000261  aa  7 00126 2351 00	lda  	pr7|86		tmdb.eof
+000262  aa   200000 3150 03	cana 	65536,du
+000263  aa   000301 6010 04	tnz  	193,ic		000564
+						STATEMENT 1 ON LINE 571
+	call REWIND ((0), (0), code);
+
+000264  aa  6 00216 4501 00	stz  	pr6|142
+000265  aa  6 00217 4501 00	stz  	pr6|143
+000266  aa  6 00216 3521 00	epp2 	pr6|142
+000267  aa  6 00222 2521 00	spri2	pr6|146
+000270  aa  6 00217 3521 00	epp2 	pr6|143
+000271  aa  6 00224 2521 00	spri2	pr6|148
+000272  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000273  aa  6 00226 2521 00	spri2	pr6|150
+000274  aa  6 00220 3521 00	epp2 	pr6|144
+000275  aa   014000 4310 07	fld  	6144,dl
+000276  aa  2 00000 7571 00	staq 	pr2|0
+000277  aa   001461 6700 04	tsp4 	817,ic		001760
+						STATEMENT 1 ON LINE 572
+	if code ^= 0 then
+	   return;
+
+000300  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000301  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 575
+	call tape_ioi_$order (tmdb.work.tioi_id, "den", 1, 
+	   addr (DENSITY(density_index)), (0), (0), code);
+
+000302  aa   777517 2350 04	lda  	-177,ic		000021 = 144145156040
+000303  aa  6 00217 7551 00	sta  	pr6|143
+000304  aa   000001 2360 07	ldq  	1,dl
+000305  aa  6 00216 7561 00	stq  	pr6|142
+000306  aa  6 00121 7271 00	lxl7 	pr6|81		density_index
+000307  ta   000002 3734 17	epp7 	2,7
+000310  aa  6 00232 6535 00	spri7	pr6|154
+000311  aa  6 00234 4501 00	stz  	pr6|156
+000312  aa  6 00235 4501 00	stz  	pr6|157
+000313  aa  6 00130 3715 20	epp5 	pr6|88,*		tmdb_ptr
+000314  aa  5 00130 3521 00	epp2 	pr5|88		tmdb.tioi_id
+000315  aa  6 00240 2521 00	spri2	pr6|160
+000316  aa  6 00217 3521 00	epp2 	pr6|143
+000317  aa  6 00242 2521 00	spri2	pr6|162
+000320  aa  6 00216 3521 00	epp2 	pr6|142
+000321  aa  6 00244 2521 00	spri2	pr6|164
+000322  aa  6 00232 3521 00	epp2 	pr6|154
+000323  aa  6 00246 2521 00	spri2	pr6|166
+000324  aa  6 00234 3521 00	epp2 	pr6|156
+000325  aa  6 00250 2521 00	spri2	pr6|168
+000326  aa  6 00235 3521 00	epp2 	pr6|157
+000327  aa  6 00252 2521 00	spri2	pr6|170
+000330  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000331  aa  6 00254 2521 00	spri2	pr6|172
+000332  aa  6 00236 6211 00	eax1 	pr6|158
+000333  aa   034000 4310 07	fld  	14336,dl
+000334  aa  6 00044 3701 20	epp4 	pr6|36,*
+000335  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+000336  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 578
+	read_cnt = MAX_LABEL_READS;
+
+000337  aa   000010 2360 07	ldq  	8,dl
+000340  aa  6 00124 7561 00	stq  	pr6|84		read_cnt
+						STATEMENT 1 ON LINE 579
+	rewind_cnt = -1;
+
+000341  aa   000001 3360 07	lcq  	1,dl
+000342  aa  6 00126 7561 00	stq  	pr6|86		rewind_cnt
+						STATEMENT 1 ON LINE 581
+	do while (^tmdb.work.flags.eof & code = 0);
+
+000343  aa   000000 0110 03	nop  	0,du
+000344  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000345  aa  7 00126 2351 00	lda  	pr7|86		tmdb.eof
+000346  aa   200000 3150 03	cana 	65536,du
+000347  aa   000204 6010 04	tnz  	132,ic		000553
+000350  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000351  aa   000202 6010 04	tnz  	130,ic		000553
+						STATEMENT 1 ON LINE 582
+	   Suser_defined_bootlabel = "0"b;
+
+000352  aa  6 00115 4501 00	stz  	pr6|77		Suser_defined_bootlabel
+						STATEMENT 1 ON LINE 583
+	   Shave_next_record = "0"b;
+
+000353  aa  6 00112 4501 00	stz  	pr6|74		Shave_next_record
+						STATEMENT 1 ON LINE 585
+	   do while (^Shave_next_record
+		  & ^tmdb.work.flags.eof
+		  & read_cnt <= MAX_LABEL_READS
+		  & rewind_cnt <= MAX_BK_RETRYS
+		  & code ^= error_table_$bad_density);
+
+000354  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000355  aa  7 00126 2351 00	lda  	pr7|86		tmdb.eof
+000356  aa   000001 7350 00	als  	1
+000357  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000360  aa  0 00002 6751 00	era  	pr0|2		= 400000000000
+000361  aa  6 00235 7551 00	sta  	pr6|157
+000362  aa   000060 6000 04	tze  	48,ic		000442
+000363  aa  6 00112 2351 00	lda  	pr6|74		Shave_next_record
+000364  aa   000056 6010 04	tnz  	46,ic		000442
+000365  aa  6 00124 2361 00	ldq  	pr6|84		read_cnt
+000366  aa   000010 1160 07	cmpq 	8,dl
+000367  aa   000053 6054 04	tpnz 	43,ic		000442
+000370  aa  6 00126 2361 00	ldq  	pr6|86		rewind_cnt
+000371  aa   000002 1160 07	cmpq 	2,dl
+000372  aa   000050 6054 04	tpnz 	40,ic		000442
+000373  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000374  aa  6 00044 3701 20	epp4 	pr6|36,*
+000375  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$bad_density
+000376  aa   000044 6000 04	tze  	36,ic		000442
+						STATEMENT 1 ON LINE 591
+	      read_cnt = read_cnt + 1;
+
+000377  aa  6 00124 0541 00	aos  	pr6|84		read_cnt
+						STATEMENT 1 ON LINE 592
+	      if read_cnt > MAX_LABEL_READS then
+	         call REWIND (read_cnt, rewind_cnt, code);
+
+000400  aa  6 00124 2361 00	ldq  	pr6|84		read_cnt
+000401  aa   000010 1160 07	cmpq 	8,dl
+000402  aa   000013 6044 04	tmoz 	11,ic		000415
+000403  aa  6 00124 3521 00	epp2 	pr6|84		read_cnt
+000404  aa  6 00222 2521 00	spri2	pr6|146
+000405  aa  6 00126 3521 00	epp2 	pr6|86		rewind_cnt
+000406  aa  6 00224 2521 00	spri2	pr6|148
+000407  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000410  aa  6 00226 2521 00	spri2	pr6|150
+000411  aa  6 00220 3521 00	epp2 	pr6|144
+000412  aa   014000 4310 07	fld  	6144,dl
+000413  aa  2 00000 7571 00	staq 	pr2|0
+000414  aa   001344 6700 04	tsp4 	740,ic		001760
+						STATEMENT 1 ON LINE 594
+	      if code ^= 0 then
+	         return;
+
+000415  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000416  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 597
+	      call READ_TAPE (code);
+
+000417  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000420  aa  6 00210 2521 00	spri2	pr6|136
+000421  aa  6 00206 3521 00	epp2 	pr6|134
+000422  aa   004000 4310 07	fld  	2048,dl
+000423  aa  2 00000 7571 00	staq 	pr2|0
+000424  aa   001163 6700 04	tsp4 	627,ic		001607
+						STATEMENT 1 ON LINE 598
+	      if code = 0 then do;
+
+000425  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000426  aa   777726 6010 04	tnz  	-42,ic		000354
+						STATEMENT 1 ON LINE 599
+	         call VALIDATE_RECORD (code);
+
+000427  aa  6 00134 3521 20	epp2 	pr6|92,*		code
+000430  aa  6 00210 2521 00	spri2	pr6|136
+000431  aa  6 00206 3521 00	epp2 	pr6|134
+000432  aa   004000 4310 07	fld  	2048,dl
+000433  aa  2 00000 7571 00	staq 	pr2|0
+000434  aa   001466 6700 04	tsp4 	822,ic		002122
+						STATEMENT 1 ON LINE 600
+	         if code = 0 then
+		  Shave_next_record = "1"b;
+
+000435  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000436  aa   777716 6010 04	tnz  	-50,ic		000354
+000437  aa   400000 2350 03	lda  	131072,du
+000440  aa  6 00112 7551 00	sta  	pr6|74		Shave_next_record
+						STATEMENT 1 ON LINE 602
+	         end;
+
+						STATEMENT 1 ON LINE 603
+	      end;
+
+000441  aa   777713 7100 04	tra  	-53,ic		000354
+						STATEMENT 1 ON LINE 605
+	   if code = 0 & ^tmdb.work.flags.eof then do;
+
+000442  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000443  aa   777701 6010 04	tnz  	-63,ic		000344
+000444  aa  6 00235 2351 00	lda  	pr6|157
+000445  aa   777677 6000 04	tze  	-65,ic		000344
+						STATEMENT 1 ON LINE 606
+	      Shave_a_label = "1"b;
+
+000446  aa   400000 2350 03	lda  	131072,du
+000447  aa  6 00111 7551 00	sta  	pr6|73		Shave_a_label
+						STATEMENT 1 ON LINE 608
+	      if Suser_defined_bootlabel then do;
+
+000450  aa  6 00115 2351 00	lda  	pr6|77		Suser_defined_bootlabel
+000451  aa   000034 6000 04	tze  	28,ic		000505
+						STATEMENT 1 ON LINE 609
+	         Pdata_to_return = mstrp;
+
+000452  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+000453  aa  6 00106 6515 00	spri5	pr6|70		Pdata_to_return
+						STATEMENT 1 ON LINE 610
+	         Ldata_to_return = currentsize (mst_label) * 4;
+
+000454  aa  5 00244 2361 00	ldq  	pr5|164		mst_label.boot_pgm_len
+000455  aa   000310 0760 07	adq  	200,dl
+000456  aa   000002 7360 00	qls  	2
+000457  aa  6 00104 7561 00	stq  	pr6|68		Ldata_to_return
+						STATEMENT 1 ON LINE 611
+	         tmdb.head = mst_label.head;
+
+000460  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000461  aa  5 00010 00 0040	desc9a	pr5|8,32		mst_label.head
+000462  aa  7 00105 00 0040	desc9a	pr7|69,32		tmdb.head
+						STATEMENT 1 ON LINE 612
+	         tmdb.trail = mst_label.trail;
+
+000463  aa  5 00244 7271 00	lxl7 	pr5|164		mst_label.boot_pgm_len
+000464  aa  5 00300 3535 17	epp3 	pr5|192,7		mst_label.trail
+000465  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000466  aa  3 00000 00 0040	desc9a	pr3|0,32		mst_label.trail
+000467  aa  7 00115 00 0040	desc9a	pr7|77,32		tmdb.trail
+						STATEMENT 1 ON LINE 613
+	         tmdb.head.data_bit_len = tmdb.head.data_bit_len + ((hbound (mst_label.xfer_vector, 1) * 2) * 36);
+
+000470  aa  7 00111 2351 00	lda  	pr7|73		tmdb.data_bit_len
+000471  aa   000022 7350 00	als  	18
+000472  aa   000066 7330 00	lrs  	54
+000473  aa  6 00235 7561 00	stq  	pr6|157		tmdb.data_bit_len
+000474  aa   000010 2360 07	ldq  	8,dl
+000475  aa   000044 4020 07	mpy  	36,dl
+000476  aa  6 00235 0331 00	adl  	pr6|157		tmdb.data_bit_len
+000477  aa  7 00111 5521 14	stbq 	pr7|73,14		tmdb.data_bit_len
+						STATEMENT 1 ON LINE 614
+	         tmdb.work.label_version = mst_label.label_version;
+
+000500  aa  5 00242 2361 00	ldq  	pr5|162		mst_label.label_version
+000501  aa  7 00133 7561 00	stq  	pr7|91		tmdb.label_version
+						STATEMENT 1 ON LINE 615
+	         tmdb.work.output_mode = mst_label.output_mode;
+
+000502  aa  5 00243 2361 00	ldq  	pr5|163		mst_label.output_mode
+000503  aa  7 00134 7561 00	stq  	pr7|92		tmdb.output_mode
+						STATEMENT 1 ON LINE 616
+	         end;
+
+000504  aa   777640 7100 04	tra  	-96,ic		000344
+						STATEMENT 1 ON LINE 618
+	      else do;
+
+						STATEMENT 1 ON LINE 619
+	         Pdata_to_return = addr (mstr.data);
+
+000505  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+000506  aa  5 00010 3715 00	epp5 	pr5|8		mstr.data
+000507  aa  6 00106 6515 00	spri5	pr6|70		Pdata_to_return
+						STATEMENT 1 ON LINE 620
+	         Ldata_to_return = divide (mstr.head.data_bits_used, 9, 17, 0);
+
+000510  aa  6 00132 3535 20	epp3 	pr6|90,*		mstrp
+000511  aa  3 00004 2351 00	lda  	pr3|4		mstr.data_bits_used
+000512  aa   000066 7330 00	lrs  	54
+000513  aa   000011 5060 07	div  	9,dl
+000514  aa  6 00104 7561 00	stq  	pr6|68		Ldata_to_return
+						STATEMENT 1 ON LINE 621
+	         if Ldata_to_return = 0 then do;
+
+000515  aa   000013 6010 04	tnz  	11,ic		000530
+						STATEMENT 1 ON LINE 622
+		  if mstr.head.flags.label then
+		     Ldata_to_return = LABEL_LEN;
+
+000516  aa  3 00005 2351 00	lda  	pr3|5		mstr.label
+000517  aa   200000 3150 03	cana 	65536,du
+000520  aa   000004 6000 04	tze  	4,ic		000524
+000521  aa   000060 2360 07	ldq  	48,dl
+000522  aa  6 00104 7561 00	stq  	pr6|68		Ldata_to_return
+000523  aa   000005 7100 04	tra  	5,ic		000530
+						STATEMENT 1 ON LINE 624
+		  else do;
+
+						STATEMENT 1 ON LINE 625
+		     code = error_table_$improper_data_format;
+
+000524  aa  6 00044 3701 20	epp4 	pr6|36,*
+000525  la  4 00026 2361 20	ldq  	pr4|22,*		error_table_$improper_data_format
+000526  aa  6 00134 7561 20	stq  	pr6|92,*		code
+						STATEMENT 1 ON LINE 626
+		     return;
+
+000527  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 627
+		     end;
+
+						STATEMENT 1 ON LINE 628
+		  end;
+
+						STATEMENT 1 ON LINE 630
+	         tmdb.head = mstr.head;
+
+000530  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000531  aa  3 00000 00 0040	desc9a	pr3|0,32		mstr.head
+000532  aa  7 00105 00 0040	desc9a	pr7|69,32		tmdb.head
+						STATEMENT 1 ON LINE 631
+	         tmdb.trail = mstr.trail;
+
+000533  aa  3 00004 2351 00	lda  	pr3|4		mstr.data_bit_len
+000534  aa   000022 7350 00	als  	18
+000535  aa   000066 7330 00	lrs  	54
+000536  aa   000043 0760 07	adq  	35,dl
+000537  aa   000044 5060 07	div  	36,dl
+000540  aa  3 00010 3515 06	epp1 	pr3|8,ql		mstr.trail
+000541  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000542  aa  1 00000 00 0040	desc9a	pr1|0,32		mstr.trail
+000543  aa  7 00115 00 0040	desc9a	pr7|77,32		tmdb.trail
+						STATEMENT 1 ON LINE 632
+	         if unspec(substr(Pdata_to_return -> volume_identifier.volume_set_id, 1, 1)) ^= "777"b3 then
+		  tmdb.work.label_version = 2;
+
+000544  aa  5 00020 2351 00	lda  	pr5|16
+000545  aa  0 00022 3771 00	anaq 	pr0|18		= 777000000000 000000000000
+000546  aa   777000 1150 03	cmpa 	261632,du
+000547  aa   777575 6000 04	tze  	-131,ic		000344
+000550  aa   000002 2360 07	ldq  	2,dl
+000551  aa  7 00133 7561 00	stq  	pr7|91		tmdb.label_version
+						STATEMENT 1 ON LINE 634
+	         end;
+
+						STATEMENT 1 ON LINE 635
+	      end;
+
+						STATEMENT 1 ON LINE 636
+	   end;
+
+000552  aa   777572 7100 04	tra  	-134,ic		000344
+						STATEMENT 1 ON LINE 638
+	density_index = mod (density_index + density_index_adder,
+	   hbound(DENSITY,1) + 1);
+
+000553  aa   000003 2360 07	ldq  	3,dl
+000554  aa  6 00235 7561 00	stq  	pr6|157
+000555  aa  6 00121 2361 00	ldq  	pr6|81		density_index
+000556  aa  6 00122 0761 00	adq  	pr6|82		density_index_adder
+000557  aa  6 00235 3521 00	epp2 	pr6|157
+000560  aa  0 00704 7001 00	tsx0 	pr0|452		mdfx1
+000561  aa  6 00121 7561 00	stq  	pr6|81		density_index
+						STATEMENT 1 ON LINE 640
+	end;
+
+000562  aa  6 00120 0541 00	aos  	pr6|80		density_counter
+000563  aa   777463 7100 04	tra  	-205,ic		000246
+						STATEMENT 1 ON LINE 642
+       if rewind_cnt > MAX_BK_RETRYS | (code ^= 0) then do;
+
+000564  aa  6 00126 2361 00	ldq  	pr6|86		rewind_cnt
+000565  aa   000002 1160 07	cmpq 	2,dl
+000566  aa   000003 6054 04	tpnz 	3,ic		000571
+000567  aa  6 00134 2361 20	ldq  	pr6|92,*		code
+000570  aa   000005 6000 04	tze  	5,ic		000575
+						STATEMENT 1 ON LINE 643
+	code = error_table_$bad_label;
+
+000571  aa  6 00044 3701 20	epp4 	pr6|36,*
+000572  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$bad_label
+000573  aa  6 00134 7561 20	stq  	pr6|92,*		code
+						STATEMENT 1 ON LINE 644
+	return;
+
+000574  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 645
+	end;
+
+						STATEMENT 1 ON LINE 647
+       Lcallers_buffer = Ldata_to_return;
+
+000575  aa  6 00104 2361 00	ldq  	pr6|68		Ldata_to_return
+000576  aa  6 00136 7561 20	stq  	pr6|94,*		Lcallers_buffer
+						STATEMENT 1 ON LINE 648
+       callers_buffer = data_to_return;
+
+000577  aa  6 00032 3735 20	epp7 	pr6|26,*
+000600  aa  7 00004 3715 20	epp5 	pr7|4,*		Pcallers_buffer
+000601  aa  5 00000 3715 20	epp5 	pr5|0,*		Pcallers_buffer
+000602  aa  6 00106 3535 20	epp3 	pr6|70,*		Pdata_to_return
+000603  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000604  aa  3 00000 00 0006	desc9a	pr3|0,ql		data_to_return
+000605  aa  5 00000 00 0006	desc9a	pr5|0,ql		callers_buffer
+						STATEMENT 1 ON LINE 649
+       tmdb.opt.flags.begin = "1"b;
+
+000606  aa   020000 2350 03	lda  	8192,du
+000607  aa  6 00130 3515 20	epp1 	pr6|88,*		tmdb_ptr
+000610  aa  1 00032 2551 00	orsa 	pr1|26		tmdb.begin
+						STATEMENT 1 ON LINE 650
+       return;
+
+000611  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 788
+     end tape_mult_read_;
+
+BEGIN PROCEDURE get_number_of_chars_requested
+ENTRY TO get_number_of_chars_requested                      STATEMENT 1 ON LINE 225
+get_number_of_chars_requested: proc (Sentry_was_at_get_chars,
+			       code);
+
+000612  aa  6 00140 6501 00	spri4	pr6|96
+000613  aa  6 00142 2521 00	spri2	pr6|98
+						STATEMENT 1 ON LINE 231
+       if number_of_chars_requested < 0
+	| number_of_chars_requested > sys_info$seg_size_256K * 4 then do;
+
+000614  aa  6 00032 3735 20	epp7 	pr6|26,*
+000615  aa  7 00006 2361 20	ldq  	pr7|6,*		number_of_chars_requested
+000616  aa   000006 6040 04	tmi  	6,ic		000624
+000617  aa  6 00044 3701 20	epp4 	pr6|36,*
+000620  la  4 00040 2361 20	ldq  	pr4|32,*		sys_info$seg_size_256K
+000621  aa   000002 7360 00	qls  	2
+000622  aa  7 00006 1161 20	cmpq 	pr7|6,*		number_of_chars_requested
+000623  aa   000011 6050 04	tpl  	9,ic		000634
+						STATEMENT 1 ON LINE 233
+	if Sentry_was_at_get_chars then
+	   Lcallers_buffer = 0;
+
+000624  aa  2 00002 2351 20	lda  	pr2|2,*		Sentry_was_at_get_chars
+000625  aa   400000 3150 03	cana 	131072,du
+000626  aa   000002 6000 04	tze  	2,ic		000630
+000627  aa  6 00136 4501 20	stz  	pr6|94,*		Lcallers_buffer
+						STATEMENT 1 ON LINE 235
+	code = error_table_$no_operation;
+
+000630  aa  6 00044 3701 20	epp4 	pr6|36,*
+000631  la  4 00032 2361 20	ldq  	pr4|26,*		error_table_$no_operation
+000632  aa  2 00004 7561 20	stq  	pr2|4,*		code
+						STATEMENT 1 ON LINE 236
+	return;
+
+000633  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 237
+	end;
+
+						STATEMENT 1 ON LINE 239
+       tmdb_ptr = Piocb -> iocb.actual_iocb_ptr -> iocb.attach_data_ptr;
+
+000634  aa  7 00002 3715 20	epp5 	pr7|2,*		Piocb
+000635  aa  5 00000 3715 20	epp5 	pr5|0,*		Piocb
+000636  aa  5 00012 3535 20	epp3 	pr5|10,*		iocb.actual_iocb_ptr
+000637  aa  3 00016 3515 20	epp1 	pr3|14,*		iocb.attach_data_ptr
+000640  aa  6 00130 2515 00	spri1	pr6|88		tmdb_ptr
+						STATEMENT 1 ON LINE 241
+       if tmdb_ptr = null then do;
+
+000641  aa  6 00130 2371 00	ldaq 	pr6|88		tmdb_ptr
+000642  aa   777170 6770 04	eraq 	-392,ic		000032 = 077777000043 000001000000
+000643  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000644  aa   000004 6010 04	tnz  	4,ic		000650
+						STATEMENT 1 ON LINE 242
+	code = error_table_$null_info_ptr;
+
+000645  la  4 00034 2361 20	ldq  	pr4|28,*		error_table_$null_info_ptr
+000646  aa  2 00004 7561 20	stq  	pr2|4,*		code
+						STATEMENT 1 ON LINE 243
+	return;
+
+000647  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 244
+	end;
+
+						STATEMENT 1 ON LINE 246
+       if tmdb.opt.write_sw then do;
+
+000650  aa  1 00032 2351 00	lda  	pr1|26		tmdb.write_sw
+000651  aa   010000 3150 03	cana 	4096,du
+000652  aa   000004 6000 04	tze  	4,ic		000656
+						STATEMENT 1 ON LINE 247
+	code = error_table_$invalid_read;
+
+000653  la  4 00030 2361 20	ldq  	pr4|24,*		error_table_$invalid_read
+000654  aa  2 00004 7561 20	stq  	pr2|4,*		code
+						STATEMENT 1 ON LINE 248
+	return;
+
+000655  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 249
+	end;
+
+						STATEMENT 1 ON LINE 251
+       if tmdb.work.flags.eod then do;
+
+000656  aa  1 00126 2351 00	lda  	pr1|86		tmdb.eod
+000657  aa   400000 3150 03	cana 	131072,du
+000660  aa   000004 6000 04	tze  	4,ic		000664
+						STATEMENT 1 ON LINE 252
+	code = error_table_$end_of_info;
+
+000661  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$end_of_info
+000662  aa  2 00004 7561 20	stq  	pr2|4,*		code
+						STATEMENT 1 ON LINE 253
+	return;
+
+000663  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 254
+	end;
+
+						STATEMENT 1 ON LINE 256
+       tmdb.opt.flags.begin = "0"b;
+
+000664  aa   001377 2350 04	lda  	767,ic		002263 = 757777777777
+000665  aa  1 00032 3551 00	ansa 	pr1|26		tmdb.begin
+						STATEMENT 1 ON LINE 257
+       channel_command = "30"b3;
+
+000666  aa   300000 2350 03	lda  	98304,du
+000667  aa  6 00117 7551 00	sta  	pr6|79		channel_command
+						STATEMENT 1 ON LINE 258
+       if Sentry_was_at_get_chars then
+	Lcallers_buffer = 0;
+
+000670  aa  2 00002 2351 20	lda  	pr2|2,*		Sentry_was_at_get_chars
+000671  aa   400000 3150 03	cana 	131072,du
+000672  aa   000002 6000 04	tze  	2,ic		000674
+000673  aa  6 00136 4501 20	stz  	pr6|94,*		Lcallers_buffer
+						STATEMENT 1 ON LINE 261
+       number_of_chars_left_to_return = number_of_chars_requested;
+
+000674  aa  7 00006 2361 20	ldq  	pr7|6,*		number_of_chars_requested
+000675  aa  6 00123 7561 00	stq  	pr6|83		number_of_chars_left_to_return
+						STATEMENT 1 ON LINE 262
+       mstrp = tmdb.work.curr_buf;
+
+000676  aa  1 00136 3535 20	epp3 	pr1|94,*		tmdb.curr_buf
+000677  aa  6 00132 2535 00	spri3	pr6|90		mstrp
+						STATEMENT 1 ON LINE 274
+       do while (number_of_chars_left_to_return > 0);
+
+000700  aa  6 00123 2361 00	ldq  	pr6|83		number_of_chars_left_to_return
+000701  aa   000404 6044 04	tmoz 	260,ic		001305
+						STATEMENT 1 ON LINE 276
+	if tmdb.work.buf_pos >= tmdb.work.rec_length  then do;
+
+000702  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000703  aa  7 00135 2361 00	ldq  	pr7|93		tmdb.buf_pos
+000704  aa  7 00142 1161 00	cmpq 	pr7|98		tmdb.rec_length
+000705  aa   000340 6040 04	tmi  	224,ic		001245
+						STATEMENT 1 ON LINE 277
+	   string (tmdb.work.flags) = "0"b;
+
+000706  aa  7 00126 4501 00	stz  	pr7|86
+						STATEMENT 1 ON LINE 278
+	   read_cnt = 0;
+
+000707  aa  6 00124 4501 00	stz  	pr6|84		read_cnt
+						STATEMENT 1 ON LINE 279
+	   reads_past_error = 0;
+
+000710  aa  6 00125 4501 00	stz  	pr6|85		reads_past_error
+						STATEMENT 1 ON LINE 280
+	   tmdb.work.buf_pos = 0;
+
+000711  aa  7 00135 4501 00	stz  	pr7|93		tmdb.buf_pos
+						STATEMENT 1 ON LINE 281
+	   tmdb.trail.tot_rec = tmdb.trail.tot_rec + 1;
+
+000712  aa  7 00123 2351 00	lda  	pr7|83		tmdb.tot_rec
+000713  aa   000044 7330 00	lrs  	36
+000714  aa   000001 0330 07	adl  	1,dl
+000715  aa  7 00123 7561 00	stq  	pr7|83		tmdb.tot_rec
+						STATEMENT 1 ON LINE 282
+	   Shave_next_record = "0"b;
+
+000716  aa  6 00112 4501 00	stz  	pr6|74		Shave_next_record
+						STATEMENT 1 ON LINE 284
+	   Srecovery = "1"b;
+
+000717  aa   400000 2350 03	lda  	131072,du
+000720  aa  6 00114 7551 00	sta  	pr6|76		Srecovery
+						STATEMENT 1 ON LINE 285
+	   auto_retry_cnt = 0;
+
+000721  aa  6 00116 4501 00	stz  	pr6|78		auto_retry_cnt
+						STATEMENT 1 ON LINE 287
+	   call tape_ioi_$set_mode (tmdb.work.tioi_id, "recovery", 
+	      addr(Srecovery), code);
+
+000722  aa   777106 2370 04	ldaq 	-442,ic		000030 = 162145143157 166145162171
+000723  aa  6 00256 7571 00	staq 	pr6|174
+000724  aa  6 00114 3715 00	epp5 	pr6|76		Srecovery
+000725  aa  6 00260 6515 00	spri5	pr6|176
+000726  aa  7 00130 3521 00	epp2 	pr7|88		tmdb.tioi_id
+000727  aa  6 00264 2521 00	spri2	pr6|180
+000730  aa  6 00256 3521 00	epp2 	pr6|174
+000731  aa  6 00266 2521 00	spri2	pr6|182
+000732  aa  6 00260 3521 00	epp2 	pr6|176
+000733  aa  6 00270 2521 00	spri2	pr6|184
+000734  aa  6 00142 3535 20	epp3 	pr6|98,*
+000735  aa  3 00004 3521 20	epp2 	pr3|4,*		code
+000736  aa  6 00272 2521 00	spri2	pr6|186
+000737  aa   777060 3520 04	epp2 	-464,ic		000017 = 514000000044
+000740  aa  6 00274 2521 00	spri2	pr6|188
+000741  aa   777055 3520 04	epp2 	-467,ic		000016 = 524000000010
+000742  aa  6 00276 2521 00	spri2	pr6|190
+000743  aa   777063 3520 04	epp2 	-461,ic		000026 = 464000000000
+000744  aa  6 00300 2521 00	spri2	pr6|192
+000745  aa   777056 3520 04	epp2 	-466,ic		000023 = 404000000043
+000746  aa  6 00302 2521 00	spri2	pr6|194
+000747  aa  6 00262 6211 00	eax1 	pr6|178
+000750  aa   020000 4310 07	fld  	8192,dl
+000751  aa  6 00044 3701 20	epp4 	pr6|36,*
+000752  la  4 00052 3521 20	epp2 	pr4|42,*		tape_ioi_$set_mode
+000753  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 289
+	   if code ^= 0 then
+	      return;
+
+000754  aa  6 00142 3735 20	epp7 	pr6|98,*
+000755  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+000756  aa   000002 6000 04	tze  	2,ic		000760
+000757  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 292
+	   do while (^Shave_next_record
+		   & read_cnt < MAX_FWD_READS
+		   & auto_retry_cnt < MAX_AUTO_RETRYS
+		   & reads_past_error < MAX_READS_PAST_ERROR
+		   & ^tmdb.work.flags.eod);
+
+000760  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+000761  aa  7 00126 2351 00	lda  	pr7|86		tmdb.eod
+000762  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000763  aa  6 00304 7551 00	sta  	pr6|196		tmdb.eod
+000764  aa  6 00112 2351 00	lda  	pr6|74		Shave_next_record
+000765  aa   000162 6010 04	tnz  	114,ic		001147
+000766  aa  6 00124 2361 00	ldq  	pr6|84		read_cnt
+000767  aa   000100 1160 07	cmpq 	64,dl
+000770  aa   000157 6050 04	tpl  	111,ic		001147
+000771  aa  6 00116 2361 00	ldq  	pr6|78		auto_retry_cnt
+000772  aa   000010 1160 07	cmpq 	8,dl
+000773  aa   000154 6050 04	tpl  	108,ic		001147
+000774  aa  6 00125 2361 00	ldq  	pr6|85		reads_past_error
+000775  aa   000040 1160 07	cmpq 	32,dl
+000776  aa   000151 6050 04	tpl  	105,ic		001147
+000777  aa  6 00304 2351 00	lda  	pr6|196		tmdb.eod
+001000  aa   000147 6010 04	tnz  	103,ic		001147
+						STATEMENT 1 ON LINE 298
+	      Smissing_eor = "1"b;
+
+001001  aa   400000 2350 03	lda  	131072,du
+001002  aa  6 00113 7551 00	sta  	pr6|75		Smissing_eor
+						STATEMENT 1 ON LINE 299
+	      tmdb.work.flags.data_loss = "0"b;
+
+001003  aa   001257 2350 04	lda  	687,ic		002262 = 773777777777
+001004  aa  7 00126 3551 00	ansa 	pr7|86		tmdb.data_loss
+						STATEMENT 1 ON LINE 300
+	      tmdb.work.flags.eod = "0"b;
+
+001005  aa   001254 2350 04	lda  	684,ic		002261 = 377777777777
+001006  aa  7 00126 3551 00	ansa 	pr7|86		tmdb.eod
+						STATEMENT 1 ON LINE 302
+	      call READ_TAPE (code);
+
+001007  aa  6 00142 3715 20	epp5 	pr6|98,*
+001010  aa  5 00004 3521 20	epp2 	pr5|4,*		code
+001011  aa  6 00264 2521 00	spri2	pr6|180
+001012  aa  6 00262 3521 00	epp2 	pr6|178
+001013  aa   004000 4310 07	fld  	2048,dl
+001014  aa  2 00000 7571 00	staq 	pr2|0
+001015  aa   000572 6700 04	tsp4 	378,ic		001607
+						STATEMENT 1 ON LINE 304
+	      read_cnt = read_cnt + 1;
+
+001016  aa  6 00124 0541 00	aos  	pr6|84		read_cnt
+						STATEMENT 1 ON LINE 305
+	      if tmdb.work.flags.fatal_read_error then
+	         reads_past_error = reads_past_error + 1;
+
+001017  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001020  aa  7 00126 2351 00	lda  	pr7|86		tmdb.fatal_read_error
+001021  aa   000005 7350 00	als  	5
+001022  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+001023  aa  6 00305 7551 00	sta  	pr6|197		tmdb.fatal_read_error
+001024  aa   000002 6000 04	tze  	2,ic		001026
+001025  aa  6 00125 0541 00	aos  	pr6|85		reads_past_error
+						STATEMENT 1 ON LINE 308
+	      if code = 0 then do;
+
+001026  aa  6 00142 3715 20	epp5 	pr6|98,*
+001027  aa  5 00004 2361 20	ldq  	pr5|4,*		code
+001030  aa   000113 6010 04	tnz  	75,ic		001143
+						STATEMENT 1 ON LINE 309
+	         tmdb.work.curr_buf = mstrp;
+
+001031  aa  6 00132 3535 20	epp3 	pr6|90,*		mstrp
+001032  aa  7 00136 2535 00	spri3	pr7|94		tmdb.curr_buf
+						STATEMENT 1 ON LINE 311
+	         call VALIDATE_RECORD (code);
+
+001033  aa  5 00004 3521 20	epp2 	pr5|4,*		code
+001034  aa  6 00264 2521 00	spri2	pr6|180
+001035  aa  6 00262 3521 00	epp2 	pr6|178
+001036  aa   004000 4310 07	fld  	2048,dl
+001037  aa  2 00000 7571 00	staq 	pr2|0
+001040  aa   001062 6700 04	tsp4 	562,ic		002122
+						STATEMENT 1 ON LINE 312
+	         if code = 0 then do;
+
+001041  aa  6 00142 3735 20	epp7 	pr6|98,*
+001042  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001043  aa   777715 6010 04	tnz  	-51,ic		000760
+						STATEMENT 1 ON LINE 314
+		  Smissing_eor = "0"b;
+
+001044  aa  6 00113 4501 00	stz  	pr6|75		Smissing_eor
+						STATEMENT 1 ON LINE 327
+		  if mstr.trail.tot_rec < tmdb.trail.tot_rec then
+		     read_cnt = 0;
+
+001045  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+001046  aa  5 00004 2351 00	lda  	pr5|4		mstr.data_bit_len
+001047  aa   000022 7350 00	als  	18
+001050  aa   000066 7330 00	lrs  	54
+001051  aa   000043 0760 07	adq  	35,dl
+001052  aa   000044 5060 07	div  	36,dl
+001053  aa  6 00306 7561 00	stq  	pr6|198
+001054  aa  5 00016 2361 06	ldq  	pr5|14,ql		mstr.tot_rec
+001055  aa  6 00130 3535 20	epp3 	pr6|88,*		tmdb_ptr
+001056  aa  3 00123 1161 00	cmpq 	pr3|83		tmdb.tot_rec
+001057  aa   000003 6050 04	tpl  	3,ic		001062
+001060  aa  6 00124 4501 00	stz  	pr6|84		read_cnt
+001061  aa   000007 7100 04	tra  	7,ic		001070
+						STATEMENT 1 ON LINE 330
+		  else do;
+
+						STATEMENT 1 ON LINE 332
+		     if mstr.trail.tot_rec > tmdb.trail.tot_rec then
+		        tmdb.work.flags.data_loss = "1"b;
+
+001062  aa   000004 6044 04	tmoz 	4,ic		001066
+001063  aa   004000 2350 03	lda  	2048,du
+001064  aa  3 00126 7511 20	stca 	pr3|86,20		tmdb.data_loss
+001065  aa   000003 7100 04	tra  	3,ic		001070
+						STATEMENT 1 ON LINE 334
+		     else		/* otherwise it is equal & is the 1 */
+				/* we want.		      */
+		        Shave_next_record = "1"b;
+
+001066  aa   400000 2350 03	lda  	131072,du
+001067  aa  6 00112 7551 00	sta  	pr6|74		Shave_next_record
+						STATEMENT 1 ON LINE 337
+		     end;
+
+						STATEMENT 1 ON LINE 339
+		  if mstr.head.admin & mstr.head.eor then
+		     tmdb.work.flags.eod = "1"b;
+
+001070  aa  5 00005 2351 00	lda  	pr5|5		mstr.eor
+001071  aa   500000 3750 03	ana  	163840,du
+001072  aa   500000 1150 03	cmpa 	163840,du
+001073  aa   000003 6010 04	tnz  	3,ic		001076
+001074  aa   400000 2350 03	lda  	131072,du
+001075  aa  3 00126 2551 00	orsa 	pr3|86		tmdb.eod
+						STATEMENT 1 ON LINE 342
+		  if mstr.head.uid < tmdb.work.label_uid then do;
+
+001076  aa  5 00001 2351 00	lda  	pr5|1		mstr.uid
+001077  aa  5 00002 2361 00	ldq  	pr5|2		mstr.uid
+001100  aa  3 00131 1151 00	cmpa 	pr3|89		tmdb.label_uid
+001101  aa   000002 6010 04	tnz  	2,ic		001103
+001102  aa  3 00132 1161 00	cmpq 	pr3|90		tmdb.label_uid
+001103  aa   000010 6030 04	trc  	8,ic		001113
+						STATEMENT 1 ON LINE 343
+		     tmdb.work.flags.eod = "1"b;
+
+001104  aa   400000 2350 03	lda  	131072,du
+001105  aa  3 00126 2551 00	orsa 	pr3|86		tmdb.eod
+						STATEMENT 1 ON LINE 344
+		     Smissing_eor = "1"b;
+
+001106  aa   400000 2350 03	lda  	131072,du
+001107  aa  6 00113 7551 00	sta  	pr6|75		Smissing_eor
+						STATEMENT 1 ON LINE 345
+		     tmdb.work.flags.data_loss = "1"b;
+
+001110  aa   004000 2350 03	lda  	2048,du
+001111  aa  3 00126 7511 20	stca 	pr3|86,20		tmdb.data_loss
+						STATEMENT 1 ON LINE 346
+		     end;
+
+001112  aa   777646 7100 04	tra  	-90,ic		000760
+						STATEMENT 1 ON LINE 347
+		  else
+		     if tmdb.work.flags.data_loss then do;
+
+001113  aa  3 00126 2351 00	lda  	pr3|86		tmdb.data_loss
+001114  aa   004000 3150 03	cana 	2048,du
+001115  aa   777643 6000 04	tze  	-93,ic		000760
+						STATEMENT 1 ON LINE 349
+		        call set_next_auto_retry_possibility (auto_retry_cnt,
+			 code);
+
+001116  aa  6 00116 3521 00	epp2 	pr6|78		auto_retry_cnt
+001117  aa  6 00264 2521 00	spri2	pr6|180
+001120  aa  7 00004 3521 20	epp2 	pr7|4,*		code
+001121  aa  6 00266 2521 00	spri2	pr6|182
+001122  aa  6 00262 3521 00	epp2 	pr6|178
+001123  aa   010000 4310 07	fld  	4096,dl
+001124  aa  2 00000 7571 00	staq 	pr2|0
+001125  aa   000161 6700 04	tsp4 	113,ic		001306
+						STATEMENT 1 ON LINE 351
+		        if code ^= 0 then
+			 return;
+
+001126  aa  6 00142 3735 20	epp7 	pr6|98,*
+001127  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001130  aa   000002 6000 04	tze  	2,ic		001132
+001131  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 353
+		        if auto_retry_cnt < MAX_AUTO_RETRYS then do;
+
+001132  aa  6 00116 2361 00	ldq  	pr6|78		auto_retry_cnt
+001133  aa   000010 1160 07	cmpq 	8,dl
+001134  aa   777624 6050 04	tpl  	-108,ic		000760
+						STATEMENT 1 ON LINE 354
+			 read_cnt = 0;
+
+001135  aa  6 00124 4501 00	stz  	pr6|84		read_cnt
+						STATEMENT 1 ON LINE 355
+			 reads_past_error = 0;
+
+001136  aa  6 00125 4501 00	stz  	pr6|85		reads_past_error
+						STATEMENT 1 ON LINE 356
+			 tmdb.work.flags.eod = "0"b;
+
+001137  aa   001122 2350 04	lda  	594,ic		002261 = 377777777777
+001140  aa  6 00130 3715 20	epp5 	pr6|88,*		tmdb_ptr
+001141  aa  5 00126 3551 00	ansa 	pr5|86		tmdb.eod
+						STATEMENT 1 ON LINE 357
+			 end;
+
+						STATEMENT 1 ON LINE 358
+		        end;
+
+						STATEMENT 1 ON LINE 359
+		  end;
+
+						STATEMENT 1 ON LINE 360
+	         end;
+
+001142  aa   777616 7100 04	tra  	-114,ic		000760
+						STATEMENT 1 ON LINE 361
+	      else
+	         if tmdb.work.flags.fatal_read_error then		
+	            reads_past_error = reads_past_error + 1;
+
+001143  aa   400000 3150 03	cana 	131072,du
+001144  aa   777614 6000 04	tze  	-116,ic		000760
+001145  aa  6 00125 0541 00	aos  	pr6|85		reads_past_error
+						STATEMENT 1 ON LINE 364
+	      end;
+
+001146  aa   777612 7100 04	tra  	-118,ic		000760
+						STATEMENT 1 ON LINE 366
+	   if reads_past_error >= MAX_READS_PAST_ERROR then
+	      code = error_table_$device_attention;
+
+001147  aa  6 00125 2361 00	ldq  	pr6|85		reads_past_error
+001150  aa   000040 1160 07	cmpq 	32,dl
+001151  aa   000005 6040 04	tmi  	5,ic		001156
+001152  aa  6 00044 3701 20	epp4 	pr6|36,*
+001153  la  4 00020 2361 20	ldq  	pr4|16,*		error_table_$device_attention
+001154  aa  6 00142 3715 20	epp5 	pr6|98,*
+001155  aa  5 00004 7561 20	stq  	pr5|4,*		code
+						STATEMENT 1 ON LINE 369
+	   if ^tmdb.work.flags.data_loss then do;
+
+001156  aa  7 00126 2351 00	lda  	pr7|86		tmdb.data_loss
+001157  aa   000006 7350 00	als  	6
+001160  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+001161  aa  6 00305 7551 00	sta  	pr6|197		tmdb.data_loss
+001162  aa   000015 6010 04	tnz  	13,ic		001177
+						STATEMENT 1 ON LINE 370
+	      if read_cnt < MAX_FWD_READS then;
+
+001163  aa  6 00124 2361 00	ldq  	pr6|84		read_cnt
+001164  aa   000100 1160 07	cmpq 	64,dl
+001165  aa   000002 6050 04	tpl  	2,ic		001167
+001166  aa   000005 7100 04	tra  	5,ic		001173
+						STATEMENT 1 ON LINE 371
+	      else
+	         
+	         code = error_table_$tape_error;
+
+001167  aa  6 00044 3701 20	epp4 	pr6|36,*
+001170  la  4 00036 2361 20	ldq  	pr4|30,*		error_table_$tape_error
+001171  aa  6 00142 3715 20	epp5 	pr6|98,*
+001172  aa  5 00004 7561 20	stq  	pr5|4,*		code
+						STATEMENT 1 ON LINE 375
+	      if code ^= 0 then
+	         return;
+
+001173  aa  6 00142 3715 20	epp5 	pr6|98,*
+001174  aa  5 00004 2361 20	ldq  	pr5|4,*		code
+001175  aa   000002 6000 04	tze  	2,ic		001177
+001176  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 377
+	      end;
+
+						STATEMENT 1 ON LINE 379
+	   if tmdb.work.flags.eod then do;
+
+001177  aa  6 00304 2351 00	lda  	pr6|196		tmdb.eod
+001200  aa   000015 6000 04	tze  	13,ic		001215
+						STATEMENT 1 ON LINE 380
+	      if Smissing_eor then
+	         code = error_table_$data_improperly_terminated;
+
+001201  aa  6 00113 2351 00	lda  	pr6|75		Smissing_eor
+001202  aa   000006 6000 04	tze  	6,ic		001210
+001203  aa  6 00044 3701 20	epp4 	pr6|36,*
+001204  la  4 00014 2361 20	ldq  	pr4|12,*		error_table_$data_improperly_terminated
+001205  aa  6 00142 3715 20	epp5 	pr6|98,*
+001206  aa  5 00004 7561 20	stq  	pr5|4,*		code
+001207  aa   000005 7100 04	tra  	5,ic		001214
+						STATEMENT 1 ON LINE 382
+	      else
+	         code = error_table_$end_of_info;
+
+001210  aa  6 00044 3701 20	epp4 	pr6|36,*
+001211  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$end_of_info
+001212  aa  6 00142 3715 20	epp5 	pr6|98,*
+001213  aa  5 00004 7561 20	stq  	pr5|4,*		code
+						STATEMENT 1 ON LINE 384
+	      return;
+
+001214  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 385
+	      end;
+
+						STATEMENT 1 ON LINE 387
+	   tmdb.work.rec_length = divide(mstr.head.data_bits_used, 9, 17);
+
+001215  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+001216  aa  5 00004 2351 00	lda  	pr5|4		mstr.data_bits_used
+001217  aa   000066 7330 00	lrs  	54
+001220  aa   000011 5060 07	div  	9,dl
+001221  aa  7 00142 7561 00	stq  	pr7|98		tmdb.rec_length
+						STATEMENT 1 ON LINE 392
+	   if tmdb.work.flags.data_loss then do;
+
+001222  aa  6 00305 2351 00	lda  	pr6|197		tmdb.data_loss
+001223  aa   000022 6000 04	tze  	18,ic		001245
+						STATEMENT 1 ON LINE 393
+	      code = error_table_$data_loss;
+
+001224  aa  6 00044 3701 20	epp4 	pr6|36,*
+001225  la  4 00016 2361 20	ldq  	pr4|14,*		error_table_$data_loss
+001226  aa  6 00142 3535 20	epp3 	pr6|98,*
+001227  aa  3 00004 7561 20	stq  	pr3|4,*		code
+						STATEMENT 1 ON LINE 394
+	      tmdb.trail.tot_rec = mstr.trail.tot_rec;
+
+001230  aa  5 00004 2351 00	lda  	pr5|4		mstr.data_bit_len
+001231  aa   000022 7350 00	als  	18
+001232  aa   000066 7330 00	lrs  	54
+001233  aa   000043 0760 07	adq  	35,dl
+001234  aa   000044 5060 07	div  	36,dl
+001235  aa  5 00016 2361 06	ldq  	pr5|14,ql		mstr.tot_rec
+001236  aa  7 00123 7561 00	stq  	pr7|83		tmdb.tot_rec
+						STATEMENT 1 ON LINE 395
+	      if Sentry_was_at_get_chars then
+	         if Lcallers_buffer > 0 then
+	            return;
+
+001237  aa  3 00002 2351 20	lda  	pr3|2,*		Sentry_was_at_get_chars
+001240  aa   400000 3150 03	cana 	131072,du
+001241  aa   000004 6000 04	tze  	4,ic		001245
+001242  aa  6 00136 2361 20	ldq  	pr6|94,*		Lcallers_buffer
+001243  aa   000002 6044 04	tmoz 	2,ic		001245
+001244  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 398
+	      end;
+
+						STATEMENT 1 ON LINE 399
+	   end;
+
+						STATEMENT 1 ON LINE 401
+	Pdata_to_return = addcharno (addr(mstr.data), tmdb.work.buf_pos);
+
+001245  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+001246  aa  5 00010 3715 00	epp5 	pr5|8		mstr.data
+001247  aa  7 00135 2361 00	ldq  	pr7|93		tmdb.buf_pos
+001250  aa  5 00000 5005 06	a9bd 	pr5|0,ql
+001251  aa  6 00106 6515 00	spri5	pr6|70		Pdata_to_return
+						STATEMENT 1 ON LINE 402
+         	Ldata_to_return = min ((tmdb.work.rec_length - tmdb.work.buf_pos), number_of_chars_left_to_return);
+
+001252  aa  7 00142 2361 00	ldq  	pr7|98		tmdb.rec_length
+001253  aa  7 00135 1761 00	sbq  	pr7|93		tmdb.buf_pos
+001254  aa  6 00123 1161 00	cmpq 	pr6|83		number_of_chars_left_to_return
+001255  aa   000002 6040 04	tmi  	2,ic		001257
+001256  aa  6 00123 2361 00	ldq  	pr6|83		number_of_chars_left_to_return
+001257  aa  6 00104 7561 00	stq  	pr6|68		Ldata_to_return
+						STATEMENT 1 ON LINE 404
+	if Sentry_was_at_get_chars then do;
+
+001260  aa  6 00142 3535 20	epp3 	pr6|98,*
+001261  aa  3 00002 2351 20	lda  	pr3|2,*		Sentry_was_at_get_chars
+001262  aa   400000 3150 03	cana 	131072,du
+001263  aa   000015 6000 04	tze  	13,ic		001300
+						STATEMENT 1 ON LINE 405
+	   Pcallers_buffer_insert =
+	      addcharno (Pcallers_buffer, Lcallers_buffer);
+
+001264  aa  6 00032 3515 20	epp1 	pr6|26,*
+001265  aa  1 00004 3521 20	epp2 	pr1|4,*		Pcallers_buffer
+001266  aa  2 00000 3521 20	epp2 	pr2|0,*		Pcallers_buffer
+001267  aa  6 00136 2361 20	ldq  	pr6|94,*		Lcallers_buffer
+001270  aa  2 00000 5005 06	a9bd 	pr2|0,ql
+001271  aa  6 00102 2521 00	spri2	pr6|66		Pcallers_buffer_insert
+						STATEMENT 1 ON LINE 407
+	   Lcallers_buffer_insert = Ldata_to_return;
+
+001272  aa  6 00104 2361 00	ldq  	pr6|68		Ldata_to_return
+001273  aa  6 00100 7561 00	stq  	pr6|64		Lcallers_buffer_insert
+						STATEMENT 1 ON LINE 408
+             callers_buffer_insert = data_to_return;
+
+001274  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+001275  aa  5 00000 00 0006	desc9a	pr5|0,ql		data_to_return
+001276  aa  2 00000 00 0006	desc9a	pr2|0,ql		callers_buffer_insert
+						STATEMENT 1 ON LINE 409
+	   Lcallers_buffer = Lcallers_buffer + Ldata_to_return;
+
+001277  aa  6 00136 0561 20	asq  	pr6|94,*		Lcallers_buffer
+						STATEMENT 1 ON LINE 410
+	   end;
+
+						STATEMENT 1 ON LINE 412
+	number_of_chars_left_to_return =
+	   number_of_chars_left_to_return - Ldata_to_return;
+
+001300  aa  6 00104 3361 00	lcq  	pr6|68		Ldata_to_return
+001301  aa  6 00123 0561 00	asq  	pr6|83		number_of_chars_left_to_return
+						STATEMENT 1 ON LINE 415
+	tmdb.work.buf_pos = tmdb.work.buf_pos + Ldata_to_return;
+
+001302  aa  6 00104 2361 00	ldq  	pr6|68		Ldata_to_return
+001303  aa  7 00135 0561 00	asq  	pr7|93		tmdb.buf_pos
+						STATEMENT 1 ON LINE 416
+          end;
+
+001304  aa   777374 7100 04	tra  	-260,ic		000700
+						STATEMENT 1 ON LINE 417
+       return;
+
+001305  aa  6 00140 6101 00	rtcd 	pr6|96
+						STATEMENT 1 ON LINE 496
+       end get_number_of_chars_requested;
+
+BEGIN PROCEDURE set_next_auto_retry_possibility
+ENTRY TO set_next_auto_retry_possibility                    STATEMENT 1 ON LINE 419
+set_next_auto_retry_possibility: proc (auto_retry_cnt, code);
+
+001306  aa  6 00146 6501 00	spri4	pr6|102
+001307  aa  6 00150 2521 00	spri2	pr6|104
+						STATEMENT 1 ON LINE 435
+       if channel_command = "37"b3 then do;
+
+001310  aa  6 00117 2351 00	lda  	pr6|79		channel_command
+001311  aa   370000 1150 03	cmpa 	126976,du
+001312  aa   000004 6010 04	tnz  	4,ic		001316
+						STATEMENT 1 ON LINE 436
+	auto_retry_cnt = MAX_AUTO_RETRYS;
+
+001313  aa   000010 2360 07	ldq  	8,dl
+001314  aa  2 00002 7561 20	stq  	pr2|2,*		auto_retry_cnt
+						STATEMENT 1 ON LINE 437
+	return;
+
+001315  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 438
+	end;
+
+						STATEMENT 1 ON LINE 439
+       else do;
+
+						STATEMENT 1 ON LINE 440
+	auto_retry_cnt = auto_retry_cnt + 1;
+
+001316  aa  2 00002 0541 20	aos  	pr2|2,*		auto_retry_cnt
+						STATEMENT 1 ON LINE 441
+	channel_command = bit( bin( bin (channel_command) + 1, 6), 6);
+
+001317  aa   000102 7730 00	lrl  	66
+001320  aa   000001 0330 07	adl  	1,dl
+001321  aa   000003 6050 04	tpl  	3,ic		001324
+001322  aa  0 00110 6761 00	erq  	pr0|72		= 777777777777
+001323  aa   000001 0760 07	adq  	1,dl
+001324  aa   000102 7370 00	lls  	66
+001325  aa  6 00117 7551 00	sta  	pr6|79		channel_command
+						STATEMENT 1 ON LINE 442
+	end;
+
+						STATEMENT 1 ON LINE 444
+       call tape_ioi_$stop_tape (tmdb.work.tioi_id, (0), rx, code);
+
+001326  aa  6 00307 4501 00	stz  	pr6|199
+001327  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001330  aa  7 00130 3521 00	epp2 	pr7|88		tmdb.tioi_id
+001331  aa  6 00312 2521 00	spri2	pr6|202
+001332  aa  6 00307 3521 00	epp2 	pr6|199
+001333  aa  6 00314 2521 00	spri2	pr6|204
+001334  aa  6 00157 3521 00	epp2 	pr6|111		rx
+001335  aa  6 00316 2521 00	spri2	pr6|206
+001336  aa  6 00150 3715 20	epp5 	pr6|104,*
+001337  aa  5 00004 3521 20	epp2 	pr5|4,*		code
+001340  aa  6 00320 2521 00	spri2	pr6|208
+001341  aa  6 00310 6211 00	eax1 	pr6|200
+001342  aa   020000 4310 07	fld  	8192,dl
+001343  aa  6 00044 3701 20	epp4 	pr6|36,*
+001344  la  4 00054 3521 20	epp2 	pr4|44,*		tape_ioi_$stop_tape
+001345  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 445
+       if rx ^= 0 then do;
+
+001346  aa  6 00157 2361 00	ldq  	pr6|111		rx
+001347  aa   000010 6000 04	tze  	8,ic		001357
+						STATEMENT 1 ON LINE 446
+	if code = 0 then
+	   code = error_table_$device_parity;
+
+001350  aa  6 00150 3735 20	epp7 	pr6|104,*
+001351  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001352  aa   000004 6010 04	tnz  	4,ic		001356
+001353  aa  6 00044 3701 20	epp4 	pr6|36,*
+001354  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+001355  aa  7 00004 7561 20	stq  	pr7|4,*		code
+						STATEMENT 1 ON LINE 448
+	return;
+
+001356  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 449
+	end;
+
+						STATEMENT 1 ON LINE 451
+       completed_bsfs = 0;
+
+001357  aa  6 00154 4501 00	stz  	pr6|108		completed_bsfs
+						STATEMENT 1 ON LINE 452
+       if tmdb.work.flags.eod then
+	requested_bsfs = FIVE_FILES;
+
+001360  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001361  aa  7 00126 2351 00	lda  	pr7|86		tmdb.eod
+001362  aa   400000 3150 03	cana 	131072,du
+001363  aa   000004 6000 04	tze  	4,ic		001367
+001364  aa   000005 2360 07	ldq  	5,dl
+001365  aa  6 00156 7561 00	stq  	pr6|110		requested_bsfs
+001366  aa   000003 7100 04	tra  	3,ic		001371
+						STATEMENT 1 ON LINE 454
+       else
+	requested_bsfs = TWO_FILES;
+
+001367  aa   000002 2360 07	ldq  	2,dl
+001370  aa  6 00156 7561 00	stq  	pr6|110		requested_bsfs
+						STATEMENT 1 ON LINE 457
+       do while (requested_bsfs > 0);
+
+001371  aa   000000 0110 03	nop  	0,du
+001372  aa  6 00156 2361 00	ldq  	pr6|110		requested_bsfs
+001373  aa   000054 6044 04	tmoz 	44,ic		001447
+						STATEMENT 1 ON LINE 458
+	call tape_ioi_$order (tmdb.work.tioi_id, "bsf", requested_bsfs,
+	   null, completed_bsfs, rx, code);
+
+001374  aa   776421 2350 04	lda  	-751,ic		000015 = 142163146040
+001375  aa  6 00307 7551 00	sta  	pr6|199
+001376  aa   776434 3734 24	epp7 	-740,ic*
+001377  aa  6 00322 6535 00	spri7	pr6|210
+001400  aa  6 00130 3715 20	epp5 	pr6|88,*		tmdb_ptr
+001401  aa  5 00130 3521 00	epp2 	pr5|88		tmdb.tioi_id
+001402  aa  6 00326 2521 00	spri2	pr6|214
+001403  aa  6 00307 3521 00	epp2 	pr6|199
+001404  aa  6 00330 2521 00	spri2	pr6|216
+001405  aa  6 00156 3521 00	epp2 	pr6|110		requested_bsfs
+001406  aa  6 00332 2521 00	spri2	pr6|218
+001407  aa  6 00322 3521 00	epp2 	pr6|210
+001410  aa  6 00334 2521 00	spri2	pr6|220
+001411  aa  6 00154 3521 00	epp2 	pr6|108		completed_bsfs
+001412  aa  6 00336 2521 00	spri2	pr6|222
+001413  aa  6 00157 3521 00	epp2 	pr6|111		rx
+001414  aa  6 00340 2521 00	spri2	pr6|224
+001415  aa  6 00150 3535 20	epp3 	pr6|104,*
+001416  aa  3 00004 3521 20	epp2 	pr3|4,*		code
+001417  aa  6 00342 2521 00	spri2	pr6|226
+001420  aa  6 00324 6211 00	eax1 	pr6|212
+001421  aa   034000 4310 07	fld  	14336,dl
+001422  aa  6 00044 3701 20	epp4 	pr6|36,*
+001423  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+001424  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 460
+	if rx = 0 then do;
+
+001425  aa  6 00157 2361 00	ldq  	pr6|111		rx
+001426  aa   000006 6010 04	tnz  	6,ic		001434
+						STATEMENT 1 ON LINE 461
+	   requested_bsfs = requested_bsfs - completed_bsfs;
+
+001427  aa  6 00154 3361 00	lcq  	pr6|108		completed_bsfs
+001430  aa  6 00156 0561 00	asq  	pr6|110		requested_bsfs
+						STATEMENT 1 ON LINE 462
+	   code = 0;
+
+001431  aa  6 00150 3735 20	epp7 	pr6|104,*
+001432  aa  7 00004 4501 20	stz  	pr7|4,*		code
+						STATEMENT 1 ON LINE 463
+	   end;
+
+001433  aa   000007 7100 04	tra  	7,ic		001442
+						STATEMENT 1 ON LINE 464
+	else
+	   if rx = TAPE_IO_BOT then do;
+
+001434  aa   000006 1160 07	cmpq 	6,dl
+001435  aa   000005 6010 04	tnz  	5,ic		001442
+						STATEMENT 1 ON LINE 466
+	      rx = 0;
+
+001436  aa  6 00157 4501 00	stz  	pr6|111		rx
+						STATEMENT 1 ON LINE 467
+	      requested_bsfs = 0;
+
+001437  aa  6 00156 4501 00	stz  	pr6|110		requested_bsfs
+						STATEMENT 1 ON LINE 468
+	      code = 0;
+
+001440  aa  6 00150 3735 20	epp7 	pr6|104,*
+001441  aa  7 00004 4501 20	stz  	pr7|4,*		code
+						STATEMENT 1 ON LINE 469
+	      end;
+
+						STATEMENT 1 ON LINE 471
+	if code ^= 0 then
+	   return;
+
+001442  aa  6 00150 3735 20	epp7 	pr6|104,*
+001443  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001444  aa   777726 6000 04	tze  	-42,ic		001372
+001445  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 473
+	end;
+
+001446  aa   777724 7100 04	tra  	-44,ic		001372
+						STATEMENT 1 ON LINE 475
+       completed_fsfs = 0;
+
+001447  aa  6 00155 4501 00	stz  	pr6|109		completed_fsfs
+						STATEMENT 1 ON LINE 476
+       do while (completed_fsfs < 1);
+
+001450  aa  6 00155 2361 00	ldq  	pr6|109		completed_fsfs
+001451  aa   000001 1160 07	cmpq 	1,dl
+001452  aa   000037 6050 04	tpl  	31,ic		001511
+						STATEMENT 1 ON LINE 477
+	call tape_ioi_$order (tmdb.work.tioi_id, "fsf", ONE_FILE, null,
+	   completed_fsfs, rx, code);
+
+001453  aa   776341 2350 04	lda  	-799,ic		000014 = 146163146040
+001454  aa  6 00307 7551 00	sta  	pr6|199
+001455  aa   776355 3734 24	epp7 	-787,ic*
+001456  aa  6 00322 6535 00	spri7	pr6|210
+001457  aa  6 00130 3715 20	epp5 	pr6|88,*		tmdb_ptr
+001460  aa  5 00130 3521 00	epp2 	pr5|88		tmdb.tioi_id
+001461  aa  6 00326 2521 00	spri2	pr6|214
+001462  aa  6 00307 3521 00	epp2 	pr6|199
+001463  aa  6 00330 2521 00	spri2	pr6|216
+001464  aa   776341 3520 04	epp2 	-799,ic		000025 = 000000000001
+001465  aa  6 00332 2521 00	spri2	pr6|218
+001466  aa  6 00322 3521 00	epp2 	pr6|210
+001467  aa  6 00334 2521 00	spri2	pr6|220
+001470  aa  6 00155 3521 00	epp2 	pr6|109		completed_fsfs
+001471  aa  6 00336 2521 00	spri2	pr6|222
+001472  aa  6 00157 3521 00	epp2 	pr6|111		rx
+001473  aa  6 00340 2521 00	spri2	pr6|224
+001474  aa  6 00150 3535 20	epp3 	pr6|104,*
+001475  aa  3 00004 3521 20	epp2 	pr3|4,*		code
+001476  aa  6 00342 2521 00	spri2	pr6|226
+001477  aa  6 00324 6211 00	eax1 	pr6|212
+001500  aa   034000 4310 07	fld  	14336,dl
+001501  aa  6 00044 3701 20	epp4 	pr6|36,*
+001502  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+001503  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 479
+	if code ^= 0 then
+	   return;
+
+001504  aa  6 00150 3735 20	epp7 	pr6|104,*
+001505  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001506  aa   777742 6000 04	tze  	-30,ic		001450
+001507  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 481
+	end;
+
+001510  aa   777740 7100 04	tra  	-32,ic		001450
+						STATEMENT 1 ON LINE 484
+       if auto_retry_cnt = 1 then do;
+
+001511  aa  6 00150 3735 20	epp7 	pr6|104,*
+001512  aa  7 00002 2361 20	ldq  	pr7|2,*		auto_retry_cnt
+001513  aa   000001 1160 07	cmpq 	1,dl
+001514  aa   000040 6010 04	tnz  	32,ic		001554
+						STATEMENT 1 ON LINE 485
+	Srecovery = "0"b;
+
+001515  aa  6 00114 4501 00	stz  	pr6|76		Srecovery
+						STATEMENT 1 ON LINE 486
+	call tape_ioi_$set_mode (tmdb.work.tioi_id, "recovery", 
+	   addr(Srecovery), code);
+
+001516  aa   776312 2370 04	ldaq 	-822,ic		000030 = 162145143157 166145162171
+001517  aa  6 00322 7571 00	staq 	pr6|210
+001520  aa  6 00114 3715 00	epp5 	pr6|76		Srecovery
+001521  aa  6 00344 6515 00	spri5	pr6|228
+001522  aa  6 00130 3535 20	epp3 	pr6|88,*		tmdb_ptr
+001523  aa  3 00130 3521 00	epp2 	pr3|88		tmdb.tioi_id
+001524  aa  6 00350 2521 00	spri2	pr6|232
+001525  aa  6 00322 3521 00	epp2 	pr6|210
+001526  aa  6 00352 2521 00	spri2	pr6|234
+001527  aa  6 00344 3521 00	epp2 	pr6|228
+001530  aa  6 00354 2521 00	spri2	pr6|236
+001531  aa  7 00004 3521 20	epp2 	pr7|4,*		code
+001532  aa  6 00356 2521 00	spri2	pr6|238
+001533  aa   776264 3520 04	epp2 	-844,ic		000017 = 514000000044
+001534  aa  6 00360 2521 00	spri2	pr6|240
+001535  aa   776261 3520 04	epp2 	-847,ic		000016 = 524000000010
+001536  aa  6 00362 2521 00	spri2	pr6|242
+001537  aa   776267 3520 04	epp2 	-841,ic		000026 = 464000000000
+001540  aa  6 00364 2521 00	spri2	pr6|244
+001541  aa   776262 3520 04	epp2 	-846,ic		000023 = 404000000043
+001542  aa  6 00366 2521 00	spri2	pr6|246
+001543  aa  6 00346 6211 00	eax1 	pr6|230
+001544  aa   020000 4310 07	fld  	8192,dl
+001545  aa  6 00044 3701 20	epp4 	pr6|36,*
+001546  la  4 00052 3521 20	epp2 	pr4|42,*		tape_ioi_$set_mode
+001547  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 488
+	if code ^= 0 then
+	   return;
+
+001550  aa  6 00150 3735 20	epp7 	pr6|104,*
+001551  aa  7 00004 2361 20	ldq  	pr7|4,*		code
+001552  aa   000002 6000 04	tze  	2,ic		001554
+001553  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 490
+	end;
+
+						STATEMENT 1 ON LINE 492
+       call tape_ioi_$set_mode (tmdb.work.tioi_id, "cif",
+	addr (channel_command), code);
+
+001554  aa   776237 2350 04	lda  	-865,ic		000013 = 143151146000
+001555  aa  6 00307 7551 00	sta  	pr6|199
+001556  aa  6 00117 3715 00	epp5 	pr6|79		channel_command
+001557  aa  6 00344 6515 00	spri5	pr6|228
+001560  aa  6 00130 3535 20	epp3 	pr6|88,*		tmdb_ptr
+001561  aa  3 00130 3521 00	epp2 	pr3|88		tmdb.tioi_id
+001562  aa  6 00350 2521 00	spri2	pr6|232
+001563  aa  6 00307 3521 00	epp2 	pr6|199
+001564  aa  6 00352 2521 00	spri2	pr6|234
+001565  aa  6 00344 3521 00	epp2 	pr6|228
+001566  aa  6 00354 2521 00	spri2	pr6|236
+001567  aa  7 00004 3521 20	epp2 	pr7|4,*		code
+001570  aa  6 00356 2521 00	spri2	pr6|238
+001571  aa   776226 3520 04	epp2 	-874,ic		000017 = 514000000044
+001572  aa  6 00360 2521 00	spri2	pr6|240
+001573  aa   776217 3520 04	epp2 	-881,ic		000012 = 524000000003
+001574  aa  6 00362 2521 00	spri2	pr6|242
+001575  aa   776231 3520 04	epp2 	-871,ic		000026 = 464000000000
+001576  aa  6 00364 2521 00	spri2	pr6|244
+001577  aa   776224 3520 04	epp2 	-876,ic		000023 = 404000000043
+001600  aa  6 00366 2521 00	spri2	pr6|246
+001601  aa  6 00346 6211 00	eax1 	pr6|230
+001602  aa   020000 4310 07	fld  	8192,dl
+001603  aa  6 00044 3701 20	epp4 	pr6|36,*
+001604  la  4 00052 3521 20	epp2 	pr4|42,*		tape_ioi_$set_mode
+001605  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 494
+       return;
+
+001606  aa  6 00146 6101 00	rtcd 	pr6|102
+						STATEMENT 1 ON LINE 495
+       end set_next_auto_retry_possibility;
+
+  END PROCEDURE set_next_auto_retry_possibility
+  END PROCEDURE get_number_of_chars_requested
+BEGIN PROCEDURE READ_TAPE
+ENTRY TO READ_TAPE                                          STATEMENT 1 ON LINE 652
+READ_TAPE: proc (code);
+
+001607  aa  6 00160 6501 00	spri4	pr6|112
+001610  aa  6 00162 2521 00	spri2	pr6|114
+						STATEMENT 1 ON LINE 660
+       code = 0;
+
+001611  aa  2 00002 4501 20	stz  	pr2|2,*		code
+						STATEMENT 1 ON LINE 661
+       call tape_ioi_$read (tmdb.work.tioi_id, mstrp, data_len, rx, code);
+
+001612  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001613  aa  7 00130 3521 00	epp2 	pr7|88		tmdb.tioi_id
+001614  aa  6 00372 2521 00	spri2	pr6|250
+001615  aa  6 00132 3521 00	epp2 	pr6|90		mstrp
+001616  aa  6 00374 2521 00	spri2	pr6|252
+001617  aa  6 00166 3521 00	epp2 	pr6|118		data_len
+001620  aa  6 00376 2521 00	spri2	pr6|254
+001621  aa  6 00167 3521 00	epp2 	pr6|119		rx
+001622  aa  6 00400 2521 00	spri2	pr6|256
+001623  aa  6 00162 3715 20	epp5 	pr6|114,*
+001624  aa  5 00002 3521 20	epp2 	pr5|2,*		code
+001625  aa  6 00402 2521 00	spri2	pr6|258
+001626  aa  6 00370 6211 00	eax1 	pr6|248
+001627  aa   024000 4310 07	fld  	10240,dl
+001630  aa  6 00044 3701 20	epp4 	pr6|36,*
+001631  la  4 00050 3521 20	epp2 	pr4|40,*		tape_ioi_$read
+001632  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 663
+       if rx = 0 then
+	code = 0;
+
+001633  aa  6 00167 2361 00	ldq  	pr6|119		rx
+001634  aa   000004 6010 04	tnz  	4,ic		001640
+001635  aa  6 00162 3735 20	epp7 	pr6|114,*
+001636  aa  7 00002 4501 20	stz  	pr7|2,*		code
+001637  aa   000120 7100 04	tra  	80,ic		001757
+						STATEMENT 1 ON LINE 665
+       else
+	if rx = TAPE_IO_EOF then do;
+
+001640  aa   000004 1160 07	cmpq 	4,dl
+001641  aa   000007 6010 04	tnz  	7,ic		001650
+						STATEMENT 1 ON LINE 667
+	   tmdb.work.flags.eof = "1"b;
+
+001642  aa   200000 2350 03	lda  	65536,du
+001643  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001644  aa  7 00126 2551 00	orsa 	pr7|86		tmdb.eof
+						STATEMENT 1 ON LINE 668
+	   code = 0;
+
+001645  aa  6 00162 3715 20	epp5 	pr6|114,*
+001646  aa  5 00002 4501 20	stz  	pr5|2,*		code
+						STATEMENT 1 ON LINE 669
+	   end;
+
+001647  aa   000110 7100 04	tra  	72,ic		001757
+						STATEMENT 1 ON LINE 670
+       else
+	if rx = TAPE_IO_UNRECOVERABLE_IO_ERROR then
+	   tmdb.work.flags.fatal_read_error = "1"b;
+
+001650  aa   000002 1160 07	cmpq 	2,dl
+001651  aa   000005 6010 04	tnz  	5,ic		001656
+001652  aa   010000 2350 03	lda  	4096,du
+001653  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001654  aa  7 00126 2551 00	orsa 	pr7|86		tmdb.fatal_read_error
+001655  aa   000102 7100 04	tra  	66,ic		001757
+						STATEMENT 1 ON LINE 673
+       else
+	if rx = TAPE_IO_EOT then do;
+
+001656  aa   000005 1160 07	cmpq 	5,dl
+001657  aa   000013 6010 04	tnz  	11,ic		001672
+						STATEMENT 1 ON LINE 675
+	   tmdb.work.flags.eod = "1"b;
+
+001660  aa   400000 2350 03	lda  	131072,du
+001661  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001662  aa  7 00126 2551 00	orsa 	pr7|86		tmdb.eod
+						STATEMENT 1 ON LINE 676
+	   if code = 0 then
+	      code = error_table_$end_of_info;
+
+001663  aa  6 00162 3715 20	epp5 	pr6|114,*
+001664  aa  5 00002 2361 20	ldq  	pr5|2,*		code
+001665  aa   000072 6010 04	tnz  	58,ic		001757
+001666  aa  6 00044 3701 20	epp4 	pr6|36,*
+001667  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$end_of_info
+001670  aa  5 00002 7561 20	stq  	pr5|2,*		code
+						STATEMENT 1 ON LINE 678
+	   end;
+
+001671  aa   000066 7100 04	tra  	54,ic		001757
+						STATEMENT 1 ON LINE 679
+       else
+	if rx = TAPE_IO_BOT then
+	   tmdb.work.flags.bot = "1"b;
+
+001672  aa   000006 1160 07	cmpq 	6,dl
+001673  aa   000005 6010 04	tnz  	5,ic		001700
+001674  aa   100000 2350 03	lda  	32768,du
+001675  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+001676  aa  7 00126 2551 00	orsa 	pr7|86		tmdb.bot
+001677  aa   000060 7100 04	tra  	48,ic		001757
+						STATEMENT 1 ON LINE 682
+       else do;
+
+						STATEMENT 1 ON LINE 683
+	call sub_err_ (0, "tape_mult_read_", ACTION_DEFAULT_RESTART,
+	   null (), (0), "Unexpected tape_ioi_ result ^d on read.", rx);
+
+001700  aa  6 00404 4501 00	stz  	pr6|260
+001701  aa   776133 2370 04	ldaq 	-933,ic		000034 = 164141160145 137155165154
+001702  aa  6 00370 7571 00	staq 	pr6|248
+001703  aa   776133 2370 04	ldaq 	-933,ic		000036 = 164137162145 141144137000
+001704  aa  6 00372 7571 00	staq 	pr6|250
+001705  aa   776125 3734 24	epp7 	-939,ic*
+001706  aa  6 00406 6535 00	spri7	pr6|262
+001707  aa  6 00405 4501 00	stz  	pr6|261
+001710  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001711  aa   776130 00 0050	desc9a	-936,40		000040 = 125156145170
+001712  aa  6 00410 00 0050	desc9a	pr6|264,40
+001713  aa  6 00404 3521 00	epp2 	pr6|260
+001714  aa  6 00424 2521 00	spri2	pr6|276
+001715  aa  6 00370 3521 00	epp2 	pr6|248
+001716  aa  6 00426 2521 00	spri2	pr6|278
+001717  aa   776061 3520 04	epp2 	-975,ic		000000 = 200000000000
+001720  aa  6 00430 2521 00	spri2	pr6|280
+001721  aa  6 00406 3521 00	epp2 	pr6|262
+001722  aa  6 00432 2521 00	spri2	pr6|282
+001723  aa  6 00405 3521 00	epp2 	pr6|261
+001724  aa  6 00434 2521 00	spri2	pr6|284
+001725  aa  6 00410 3521 00	epp2 	pr6|264
+001726  aa  6 00436 2521 00	spri2	pr6|286
+001727  aa  6 00167 3521 00	epp2 	pr6|119		rx
+001730  aa  6 00440 2521 00	spri2	pr6|288
+001731  aa   776060 3520 04	epp2 	-976,ic		000011 = 404000000005
+001732  aa  6 00442 2521 00	spri2	pr6|290
+001733  aa  6 00452 2521 00	spri2	pr6|298
+001734  aa   776054 3520 04	epp2 	-980,ic		000010 = 524000000017
+001735  aa  6 00444 2521 00	spri2	pr6|292
+001736  aa   776061 3520 04	epp2 	-975,ic		000017 = 514000000044
+001737  aa  6 00446 2521 00	spri2	pr6|294
+001740  aa   776066 3520 04	epp2 	-970,ic		000026 = 464000000000
+001741  aa  6 00450 2521 00	spri2	pr6|296
+001742  aa   776045 3520 04	epp2 	-987,ic		000007 = 524000000047
+001743  aa  6 00454 2521 00	spri2	pr6|300
+001744  aa   776056 3520 04	epp2 	-978,ic		000022 = 404000000021
+001745  aa  6 00456 2521 00	spri2	pr6|302
+001746  aa  6 00422 6211 00	eax1 	pr6|274
+001747  aa   034000 4310 07	fld  	14336,dl
+001750  aa  6 00044 3701 20	epp4 	pr6|36,*
+001751  la  4 00042 3521 20	epp2 	pr4|34,*		sub_err_
+001752  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 685
+	code = error_table_$device_parity;
+
+001753  aa  6 00044 3701 20	epp4 	pr6|36,*
+001754  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+001755  aa  6 00162 3735 20	epp7 	pr6|114,*
+001756  aa  7 00002 7561 20	stq  	pr7|2,*		code
+						STATEMENT 1 ON LINE 686
+	end;
+
+						STATEMENT 1 ON LINE 688
+       return;
+
+001757  aa  6 00160 6101 00	rtcd 	pr6|112
+						STATEMENT 1 ON LINE 690
+     end READ_TAPE;
+
+  END PROCEDURE READ_TAPE
+BEGIN PROCEDURE REWIND
+ENTRY TO REWIND                                             STATEMENT 1 ON LINE 692
+REWIND: proc (read_cnt,
+	    rewind_cnt,
+	    code);
+
+001760  aa  6 00170 6501 00	spri4	pr6|120
+001761  aa  6 00172 2521 00	spri2	pr6|122
+						STATEMENT 1 ON LINE 702
+       code = 0;
+
+001762  aa  2 00006 4501 20	stz  	pr2|6,*		code
+						STATEMENT 1 ON LINE 704
+       call tape_ioi_$order (tioi_id, "rdy", 1, addr (rdy_status), (0), (0),
+	code);
+
+001763  aa   776023 2350 04	lda  	-1005,ic		000006 = 162144171040
+001764  aa  6 00460 7551 00	sta  	pr6|304
+001765  aa   000001 2360 07	ldq  	1,dl
+001766  aa  6 00461 7561 00	stq  	pr6|305
+001767  aa  6 00176 3735 00	epp7 	pr6|126		rdy_status
+001770  aa  6 00462 6535 00	spri7	pr6|306
+001771  aa  6 00464 4501 00	stz  	pr6|308
+001772  aa  6 00465 4501 00	stz  	pr6|309
+001773  aa  6 00130 3715 20	epp5 	pr6|88,*		tmdb_ptr
+001774  aa  5 00130 3521 00	epp2 	pr5|88		tmdb.tioi_id
+001775  aa  6 00470 2521 00	spri2	pr6|312
+001776  aa  6 00460 3521 00	epp2 	pr6|304
+001777  aa  6 00472 2521 00	spri2	pr6|314
+002000  aa  6 00461 3521 00	epp2 	pr6|305
+002001  aa  6 00474 2521 00	spri2	pr6|316
+002002  aa  6 00462 3521 00	epp2 	pr6|306
+002003  aa  6 00476 2521 00	spri2	pr6|318
+002004  aa  6 00464 3521 00	epp2 	pr6|308
+002005  aa  6 00500 2521 00	spri2	pr6|320
+002006  aa  6 00465 3521 00	epp2 	pr6|309
+002007  aa  6 00502 2521 00	spri2	pr6|322
+002010  aa  6 00172 3535 20	epp3 	pr6|122,*
+002011  aa  3 00006 3521 20	epp2 	pr3|6,*		code
+002012  aa  6 00504 2521 00	spri2	pr6|324
+002013  aa  6 00466 6211 00	eax1 	pr6|310
+002014  aa   034000 4310 07	fld  	14336,dl
+002015  aa  6 00044 3701 20	epp4 	pr6|36,*
+002016  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+002017  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 707
+       if code = 0 then do;
+
+002020  aa  6 00172 3735 20	epp7 	pr6|122,*
+002021  aa  7 00006 2361 20	ldq  	pr7|6,*		code
+002022  aa   000077 6010 04	tnz  	63,ic		002121
+						STATEMENT 1 ON LINE 708
+	call tape_ioi_$order (tioi_id, "rew", 1, (null), (0), (0), 
+	   code);
+
+002023  aa   775762 2350 04	lda  	-1038,ic		000005 = 162145167040
+002024  aa  6 00465 7551 00	sta  	pr6|309
+002025  aa   000001 2360 07	ldq  	1,dl
+002026  aa  6 00464 7561 00	stq  	pr6|308
+002027  aa   776003 3714 24	epp5 	-1021,ic*
+002030  aa  6 00462 6515 00	spri5	pr6|306
+002031  aa  6 00461 4501 00	stz  	pr6|305
+002032  aa  6 00460 4501 00	stz  	pr6|304
+002033  aa  6 00130 3535 20	epp3 	pr6|88,*		tmdb_ptr
+002034  aa  3 00130 3521 00	epp2 	pr3|88		tmdb.tioi_id
+002035  aa  6 00470 2521 00	spri2	pr6|312
+002036  aa  6 00465 3521 00	epp2 	pr6|309
+002037  aa  6 00472 2521 00	spri2	pr6|314
+002040  aa  6 00464 3521 00	epp2 	pr6|308
+002041  aa  6 00474 2521 00	spri2	pr6|316
+002042  aa  6 00462 3521 00	epp2 	pr6|306
+002043  aa  6 00476 2521 00	spri2	pr6|318
+002044  aa  6 00461 3521 00	epp2 	pr6|305
+002045  aa  6 00500 2521 00	spri2	pr6|320
+002046  aa  6 00460 3521 00	epp2 	pr6|304
+002047  aa  6 00502 2521 00	spri2	pr6|322
+002050  aa  7 00006 3521 20	epp2 	pr7|6,*		code
+002051  aa  6 00504 2521 00	spri2	pr6|324
+002052  aa  6 00466 6211 00	eax1 	pr6|310
+002053  aa   034000 4310 07	fld  	14336,dl
+002054  aa  6 00044 3701 20	epp4 	pr6|36,*
+002055  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+002056  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 711
+	if code = 0 then do;
+
+002057  aa  6 00172 3735 20	epp7 	pr6|122,*
+002060  aa  7 00006 2361 20	ldq  	pr7|6,*		code
+002061  aa   000040 6010 04	tnz  	32,ic		002121
+						STATEMENT 1 ON LINE 712
+	   call tape_ioi_$order (tioi_id, "rdy", 1, addr (rdy_status), (0),
+	      (0), code);
+
+002062  aa   775724 2350 04	lda  	-1068,ic		000006 = 162144171040
+002063  aa  6 00460 7551 00	sta  	pr6|304
+002064  aa   000001 2360 07	ldq  	1,dl
+002065  aa  6 00461 7561 00	stq  	pr6|305
+002066  aa  6 00176 3715 00	epp5 	pr6|126		rdy_status
+002067  aa  6 00462 6515 00	spri5	pr6|306
+002070  aa  6 00464 4501 00	stz  	pr6|308
+002071  aa  6 00465 4501 00	stz  	pr6|309
+002072  aa  6 00130 3535 20	epp3 	pr6|88,*		tmdb_ptr
+002073  aa  3 00130 3521 00	epp2 	pr3|88		tmdb.tioi_id
+002074  aa  6 00470 2521 00	spri2	pr6|312
+002075  aa  6 00460 3521 00	epp2 	pr6|304
+002076  aa  6 00472 2521 00	spri2	pr6|314
+002077  aa  6 00461 3521 00	epp2 	pr6|305
+002100  aa  6 00474 2521 00	spri2	pr6|316
+002101  aa  6 00462 3521 00	epp2 	pr6|306
+002102  aa  6 00476 2521 00	spri2	pr6|318
+002103  aa  6 00464 3521 00	epp2 	pr6|308
+002104  aa  6 00500 2521 00	spri2	pr6|320
+002105  aa  6 00465 3521 00	epp2 	pr6|309
+002106  aa  6 00502 2521 00	spri2	pr6|322
+002107  aa  7 00006 3521 20	epp2 	pr7|6,*		code
+002110  aa  6 00504 2521 00	spri2	pr6|324
+002111  aa  6 00466 6211 00	eax1 	pr6|310
+002112  aa   034000 4310 07	fld  	14336,dl
+002113  aa  6 00044 3701 20	epp4 	pr6|36,*
+002114  la  4 00046 3521 20	epp2 	pr4|38,*		tape_ioi_$order
+002115  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 714
+	   rewind_cnt = rewind_cnt + 1;
+
+002116  aa  6 00172 3735 20	epp7 	pr6|122,*
+002117  aa  7 00004 0541 20	aos  	pr7|4,*		rewind_cnt
+						STATEMENT 1 ON LINE 715
+	   read_cnt = 0;
+
+002120  aa  7 00002 4501 20	stz  	pr7|2,*		read_cnt
+						STATEMENT 1 ON LINE 716
+	   end;
+
+						STATEMENT 1 ON LINE 717
+	end;
+
+						STATEMENT 1 ON LINE 719
+       return;
+
+002121  aa  6 00170 6101 00	rtcd 	pr6|120
+						STATEMENT 1 ON LINE 720
+       end REWIND;
+
+  END PROCEDURE REWIND
+BEGIN PROCEDURE VALIDATE_RECORD
+ENTRY TO VALIDATE_RECORD                                    STATEMENT 1 ON LINE 722
+VALIDATE_RECORD: proc (code);
+
+002122  aa  6 00200 6501 00	spri4	pr6|128
+002123  aa  6 00202 2521 00	spri2	pr6|130
+						STATEMENT 1 ON LINE 730
+       code = 0;
+
+002124  aa  2 00002 4501 20	stz  	pr2|2,*		code
+						STATEMENT 1 ON LINE 734
+       if (mstr.head.c1 ^= tmdb.head.c1)
+	| (mstr.head.c2 ^= tmdb.head.c2) then do;
+
+002125  aa  6 00132 2351 20	lda  	pr6|90,*		mstr.c1
+002126  aa  6 00130 3735 20	epp7 	pr6|88,*		tmdb_ptr
+002127  aa  7 00105 1151 00	cmpa 	pr7|69		tmdb.c1
+002130  aa   000005 6010 04	tnz  	5,ic		002135
+002131  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+002132  aa  5 00007 2351 00	lda  	pr5|7		mstr.c2
+002133  aa  7 00114 1151 00	cmpa 	pr7|76		tmdb.c2
+002134  aa   000061 6000 04	tze  	49,ic		002215
+						STATEMENT 1 ON LINE 737
+	if mstr.head.c1 = label_c1 then do;
+
+002135  aa  6 00132 2351 20	lda  	pr6|90,*		mstr.c1
+002136  aa   775643 1150 04	cmpa 	-1117,ic		000001 = 000004235000
+002137  aa   000052 6010 04	tnz  	42,ic		002211
+						STATEMENT 1 ON LINE 740
+	   if (mst_label.head.c1 = tmdb.head.c1)
+	      & (mst_label.head.c2 = tmdb.head.c2)
+	      & (mst_label.trail.c1 = tmdb.trail.c1)
+	      & (mst_label.trail.c2 = tmdb.trail.c2)
+	      & mst_label.head.label then do;
+
+002140  aa  6 00132 3715 20	epp5 	pr6|90,*		mstrp
+002141  aa  5 00010 2351 00	lda  	pr5|8		mst_label.c1
+002142  aa  7 00105 1151 00	cmpa 	pr7|69		tmdb.c1
+002143  aa   000046 6010 04	tnz  	38,ic		002211
+002144  aa  5 00017 2351 00	lda  	pr5|15		mst_label.c2
+002145  aa  7 00114 1151 00	cmpa 	pr7|76		tmdb.c2
+002146  aa   000043 6010 04	tnz  	35,ic		002211
+002147  aa  5 00244 7271 00	lxl7 	pr5|164		mst_label.boot_pgm_len
+002150  aa  5 00300 2351 17	lda  	pr5|192,7		mst_label.c1
+002151  aa  7 00115 1151 00	cmpa 	pr7|77		tmdb.c1
+002152  aa   000037 6010 04	tnz  	31,ic		002211
+002153  aa  5 00307 2351 17	lda  	pr5|199,7		mst_label.c2
+002154  aa  7 00124 1151 00	cmpa 	pr7|84		tmdb.c2
+002155  aa   000034 6010 04	tnz  	28,ic		002211
+002156  aa  5 00015 2351 00	lda  	pr5|13		mst_label.label
+002157  aa   200000 3150 03	cana 	65536,du
+002160  aa   000031 6000 04	tze  	25,ic		002211
+						STATEMENT 1 ON LINE 747
+	      Suser_defined_bootlabel = "1"b;
+
+002161  aa   400000 2350 03	lda  	131072,du
+002162  aa  6 00115 7551 00	sta  	pr6|77		Suser_defined_bootlabel
+						STATEMENT 1 ON LINE 748
+	      call tape_checksum_ (addr (mst_label.head), addr (test_checksum));
+
+002163  aa  5 00010 3535 00	epp3 	pr5|8		mst_label.head
+002164  aa  6 00506 2535 00	spri3	pr6|326
+002165  aa  6 00127 3515 00	epp1 	pr6|87		test_checksum
+002166  aa  6 00510 2515 00	spri1	pr6|328
+002167  aa  6 00506 3521 00	epp2 	pr6|326
+002170  aa  6 00514 2521 00	spri2	pr6|332
+002171  aa  6 00510 3521 00	epp2 	pr6|328
+002172  aa  6 00516 2521 00	spri2	pr6|334
+002173  aa  6 00512 6211 00	eax1 	pr6|330
+002174  aa   010000 4310 07	fld  	4096,dl
+002175  aa  6 00044 3701 20	epp4 	pr6|36,*
+002176  la  4 00044 3521 20	epp2 	pr4|36,*		tape_checksum_
+002177  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 750
+	      if mst_label.head.checksum ^= test_checksum then
+	         code = error_table_$device_parity;
+
+002200  aa  6 00132 3735 20	epp7 	pr6|90,*		mstrp
+002201  aa  7 00016 2351 00	lda  	pr7|14		mst_label.checksum
+002202  aa  6 00127 1151 00	cmpa 	pr6|87		test_checksum
+002203  aa   000005 6000 04	tze  	5,ic		002210
+002204  aa  6 00044 3701 20	epp4 	pr6|36,*
+002205  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+002206  aa  6 00202 3715 20	epp5 	pr6|130,*
+002207  aa  5 00002 7561 20	stq  	pr5|2,*		code
+						STATEMENT 1 ON LINE 753
+	      return;
+
+002210  aa  6 00200 6101 00	rtcd 	pr6|128
+						STATEMENT 1 ON LINE 754
+	      end;
+
+						STATEMENT 1 ON LINE 755
+	   end;
+
+						STATEMENT 1 ON LINE 757
+	code = error_table_$device_parity;
+
+002211  aa  6 00044 3701 20	epp4 	pr6|36,*
+002212  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+002213  aa  2 00002 7561 20	stq  	pr2|2,*		code
+						STATEMENT 1 ON LINE 758
+	return;
+
+002214  aa  6 00200 6101 00	rtcd 	pr6|128
+						STATEMENT 1 ON LINE 759
+	end;
+
+						STATEMENT 1 ON LINE 762
+       if (mstr.trail.c1 ^= tmdb.trail.c1)
+	| (mstr.trail.c2 ^= tmdb.trail.c2) then do;
+
+002215  aa  5 00004 2351 00	lda  	pr5|4		mstr.data_bit_len
+002216  aa   000022 7350 00	als  	18
+002217  aa   000066 7330 00	lrs  	54
+002220  aa   000043 0760 07	adq  	35,dl
+002221  aa   000044 5060 07	div  	36,dl
+002222  aa  6 00520 7561 00	stq  	pr6|336
+002223  aa  5 00010 2351 06	lda  	pr5|8,ql		mstr.c1
+002224  aa  7 00115 1151 00	cmpa 	pr7|77		tmdb.c1
+002225  aa   000004 6010 04	tnz  	4,ic		002231
+002226  aa  5 00017 2351 06	lda  	pr5|15,ql		mstr.c2
+002227  aa  7 00124 1151 00	cmpa 	pr7|84		tmdb.c2
+002230  aa   000005 6000 04	tze  	5,ic		002235
+						STATEMENT 1 ON LINE 764
+	code = error_table_$device_parity;
+
+002231  aa  6 00044 3701 20	epp4 	pr6|36,*
+002232  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+002233  aa  2 00002 7561 20	stq  	pr2|2,*		code
+						STATEMENT 1 ON LINE 765
+	return;
+
+002234  aa  6 00200 6101 00	rtcd 	pr6|128
+						STATEMENT 1 ON LINE 766
+	end;
+
+						STATEMENT 1 ON LINE 768
+       call tape_checksum_ (mstrp, addr (test_checksum));
+
+002235  aa  6 00127 3535 00	epp3 	pr6|87		test_checksum
+002236  aa  6 00510 2535 00	spri3	pr6|328
+002237  aa  6 00132 3521 00	epp2 	pr6|90		mstrp
+002240  aa  6 00514 2521 00	spri2	pr6|332
+002241  aa  6 00510 3521 00	epp2 	pr6|328
+002242  aa  6 00516 2521 00	spri2	pr6|334
+002243  aa  6 00512 6211 00	eax1 	pr6|330
+002244  aa   010000 4310 07	fld  	4096,dl
+002245  aa  6 00044 3701 20	epp4 	pr6|36,*
+002246  la  4 00044 3521 20	epp2 	pr4|36,*		tape_checksum_
+002247  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 770
+       if mstr.head.checksum ^= test_checksum then
+	code = error_table_$device_parity;
+
+002250  aa  6 00132 3735 20	epp7 	pr6|90,*		mstrp
+002251  aa  7 00006 2351 00	lda  	pr7|6		mstr.checksum
+002252  aa  6 00127 1151 00	cmpa 	pr6|87		test_checksum
+002253  aa   000005 6000 04	tze  	5,ic		002260
+002254  aa  6 00044 3701 20	epp4 	pr6|36,*
+002255  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$device_parity
+002256  aa  6 00202 3715 20	epp5 	pr6|130,*
+002257  aa  5 00002 7561 20	stq  	pr5|2,*		code
+						STATEMENT 1 ON LINE 773
+       return;
+
+002260  aa  6 00200 6101 00	rtcd 	pr6|128
+						STATEMENT 1 ON LINE 775
+     end VALIDATE_RECORD;
+
+  END PROCEDURE VALIDATE_RECORD
+  END PROCEDURE tape_mult_read_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

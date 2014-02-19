@@ -1,0 +1,345 @@
+	COMPILATION LISTING OF SEGMENT log_initiate_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1024.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 log_initiate_:
+        9      procedure (P_dname, P_ename, P_max_tries, P_log_segment_ptr, P_code);
+       10 
+       11 /* *	LOG_INITIATE_
+       12*   *
+       13*   *	This procedure is the user-ring log initiation procedure. It 
+       14*   *	attempts to initiate the log segment, and sleeps for a second 
+       15*   *	if it can't do it, or if the log segment appears to be 
+       16*   *	uninitialized. The one-second wait is repeated P_max_tries 
+       17*   *	times, at which point it gives up.
+       18*   *
+       19*   *	Modification history:
+       20*   *	1984-05-04, W. Olin Sibert: after Benson's log_mgr_
+       21*   *	1984-12-21, WOS: Changed to return pointer when log not initilized
+       22*   */
+       23 
+       24 declare	P_dname char (*) parameter;
+       25 declare	P_ename char (*) parameter;
+       26 declare	P_max_tries fixed bin parameter;
+       27 declare	P_log_segment_ptr pointer parameter;
+       28 declare	P_code fixed bin (35) parameter;
+       29 
+       30 declare	retry_count fixed bin;
+       31 declare	code fixed bin (35);
+       32 
+       33 declare	error_table_$log_uninitialized fixed bin (35) external static;
+       34 
+       35 declare	hcs_$terminate_noname entry (pointer, fixed bin (35));
+       36 declare	initiate_file_ entry (char (*), char (*), bit (*), pointer, fixed bin (24), fixed bin (35));
+       37 declare	timer_manager_$sleep entry (fixed bin (71), bit (2));
+       38 
+       39 declare	RELATIVE_MICROSECONDS bit (2) internal static options (constant) init ("10"b);
+       40 declare	ONE_QUARTER_SECOND fixed bin (71) internal static options (constant) init (250000);
+       41 
+       42 declare	cleanup condition;
+       43 
+       44 declare	null builtin;
+       45 
+       46 /* */
+       47 
+       48 	log_segment_ptr = null ();
+       49 	P_log_segment_ptr = null ();
+       50 
+       51 	on condition (cleanup) begin;			/* The cleanup handler is particularly important because */
+       52 	     if (log_segment_ptr ^= null ()) then		/* this procedure can wait for a long time */
+       53 		call hcs_$terminate_noname (log_segment_ptr, (0));
+       54 	     end;
+       55 
+       56 	call initiate_file_ (P_dname, P_ename, R_ACCESS, log_segment_ptr, (0), code);
+       57 	if (code ^= 0) then call finished (code);
+       58 
+       59 /* Now we waits for the log segment header to be initialized. If log_initiate_
+       60*   gets called at all, the assumption is that some other process has already
+       61*   initialized, or is initializing, the log segment, and all we must do is
+       62*   wait a bit. If we have to initialize it ourselves, we would have called
+       63*   log_create_, instead. */
+       64 
+       65 	do retry_count = 1 to P_max_tries;
+       66 	     if (log_segment.version = LOG_SEGMENT_VERSION_1) then do;
+       67 		P_log_segment_ptr = log_segment_ptr;
+       68 		call finished (0);
+       69 		end;
+       70 
+       71 	     if (retry_count < P_max_tries) then	/* Don't wait if we won't have another chance */
+       72 		call timer_manager_$sleep (ONE_QUARTER_SECOND, RELATIVE_MICROSECONDS);
+       73 	     end;
+       74 
+       75 /* It didn't get initialized in time. Terminate it, and give up. */
+       76 
+       77 	P_log_segment_ptr = log_segment_ptr;
+       78 	call finished (error_table_$log_uninitialized);
+       79 
+       80 /* */
+       81 
+       82 finished:
+       83      procedure (P_return_code);
+       84 
+       85 declare	P_return_code fixed bin (35) parameter;
+       86 
+       87 
+       88 	P_code = P_return_code;
+       89 	goto MAIN_RETURN;
+       90 
+       91 	end finished;
+       92 
+       93 
+       94 
+       95 MAIN_RETURN:					/* Only exit from this program */
+       96 	return;
+       97 
+       98  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+       98 
+       99  /* BEGIN INCLUDE FILE ... log_segment.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  2     2 
+  2     3 declare   log_segment_ptr               pointer;
+  2     4 declare   log_segment_max_size          fixed bin (18);
+  2     5 declare   LOG_SEGMENT_VERSION_1         char (8) internal static options (constant) init ("SysLog01");
+  2     6 
+  2     7 
+  2     8 declare 1 log_segment                   aligned based (log_segment_ptr),
+  2     9           2 header                      aligned like log_segment_header,
+  2    10           2 data                        dim (log_segment_max_size refer (log_segment.max_size)) bit (36) aligned;
+  2    11 
+  2    12 
+  2    13 declare 1 log_segment_header            aligned based,
+  2    14           2 version                     char (8) unaligned, /* LOG_SEGMENT_VERSION_1 */
+  2    15           2 time_created                fixed bin (71),     /* When the segment header was initialized */
+  2    16           2 previous_log_dir            char (168) unaligned, /* Directory containing previous log segment */
+  2    17 
+  2    18           2 limits,
+  2    19             3 first_sequence            fixed bin (35),     /* First and last sequence numbers / time stamps */
+  2    20             3 last_sequence             fixed bin (35),     /* of messages in the log. These may be slightly */
+  2    21             3 first_time                fixed bin (71),     /* incorrect due to lockless updating strategy */
+  2    22             3 last_time                 fixed bin (71),
+  2    23 
+  2    24           2 alloc_info,                                     /* Complex STACQ hack for allocating and assigning */
+  2    25             3 word_1                    fixed bin (18),     /* sequence numbers locklessly. See log_segment_ */
+  2    26             3 word_2                    bit (36) aligned,   /* for details of strategy */
+  2    27           2 max_size                    fixed bin (18),     /* Total words in data area */
+  2    28 
+  2    29           2 listeners_registered        bit (1) aligned,    /* Set if ANY processes were ever registered-- it's only */
+  2    30           2 listener_bootload_time      fixed bin (71),     /* kept here for efficiency. The bootload time is used to */
+  2    31                                                             /* detect all the dead listeners after a reboot */
+  2    32           2 listener (25),                                  /* Processes waiting for messages in the log */
+  2    33             3 process_id                bit (36) aligned,
+  2    34             3 event_channel             fixed bin (71) unaligned, /* Saves space-- allows 3-word entries */
+  2    35 
+  2    36           2 last_wakeup_time            fixed bin (71),     /* When last wakeup was sent */
+  2    37           2 wakeup_delta                fixed bin (71),     /* Wakeups sent no more than once per this interval */
+  2    38 
+  2    39           2 pad (6)                     fixed bin (71);     /* Pad header to 150 words */
+  2    40 
+  2    41 
+  2    42 declare   LOG_SEGMENT_NEW_MESSAGE           init ("777111555333"b3) bit (36) aligned internal static options (constant);
+  2    43 declare   LOG_SEGMENT_COMPLETE_MESSAGE      init ("666000444222"b3) bit (36) aligned internal static options (constant);
+  2    44 
+  2    45 /* END INCLUDE FILE ... log_segment.incl.pl1 */
+       99 
+      100 
+      101 	end log_initiate_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.0  log_initiate_.pl1                 >spec>install>1111>log_initiate_.pl1
+98           1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+99           2    12/04/84  2124.9  log_segment.incl.pl1              >ldd>include>log_segment.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+LOG_SEGMENT_VERSION_1           000000 constant        char(8)                  initial packed unaligned dcl 2-5 ref 66
+ONE_QUARTER_SECOND              000002 constant        fixed bin(71,0)          initial dcl 40 set ref 71*
+P_code                                 parameter       fixed bin(35,0)          dcl 28 set ref 8 88*
+P_dname                                parameter       char                     packed unaligned dcl 24 set ref 8 56*
+P_ename                                parameter       char                     packed unaligned dcl 25 set ref 8 56*
+P_log_segment_ptr                      parameter       pointer                  dcl 27 set ref 8 49* 67* 77*
+P_max_tries                            parameter       fixed bin(17,0)          dcl 26 ref 8 65 71
+P_return_code                          parameter       fixed bin(35,0)          dcl 85 ref 82 88
+RELATIVE_MICROSECONDS           000004 constant        bit(2)                   initial packed unaligned dcl 39 set ref 71*
+R_ACCESS                        000004 constant        bit(3)                   initial packed unaligned dcl 1-11 set ref 56*
+cleanup                         000102 stack reference condition                dcl 42 ref 51
+code                            000101 automatic       fixed bin(35,0)          dcl 31 set ref 56* 57 57*
+error_table_$log_uninitialized  000010 external static fixed bin(35,0)          dcl 33 set ref 78*
+hcs_$terminate_noname           000012 constant        entry                    external dcl 35 ref 52
+header                                 based           structure                level 2 dcl 2-8
+initiate_file_                  000014 constant        entry                    external dcl 36 ref 56
+log_segment                            based           structure                level 1 dcl 2-8
+log_segment_header                     based           structure                level 1 dcl 2-13
+log_segment_ptr                 000110 automatic       pointer                  dcl 2-3 set ref 48* 52 52* 56* 66 67 77
+null                                                   builtin function         dcl 44 ref 48 49 52
+retry_count                     000100 automatic       fixed bin(17,0)          dcl 30 set ref 65* 71*
+timer_manager_$sleep            000016 constant        entry                    external dcl 37 ref 71
+version                                based           char(8)                  level 3 packed packed unaligned dcl 2-8 ref 66
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+LOG_SEGMENT_COMPLETE_MESSAGE           internal static bit(36)                  initial dcl 2-43
+LOG_SEGMENT_NEW_MESSAGE                internal static bit(36)                  initial dcl 2-42
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+log_segment_max_size                   automatic       fixed bin(18,0)          dcl 2-4
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MAIN_RETURN                     000224 constant        label                    dcl 95 set ref 89
+finished                        000225 constant        entry                    internal dcl 82 ref 57 68 78
+log_initiate_                   000025 constant        entry                    external dcl 8
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       346         366     244         356
+Length       572     244        20         170     101           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_initiate_                       112 external procedure  is an external procedure.  
+on unit on line 51                   72 on unit               
+finished                                internal procedure  shares stack frame of external procedure log_initiate_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+log_initiate_            000100 retry_count                 log_initiate_
+                         000101 code                        log_initiate_
+                         000110 log_segment_ptr             log_initiate_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          enable_op           ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+hcs_$terminate_noname         initiate_file_                timer_manager_$sleep
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$log_uninitialized
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000020        48 000045        49 000047        51 000051        52 000065        54 000103        56 000104
+     57 000144        65 000150        66 000161        67 000166        68 000170        71 000173        73 000210
+     77 000212        78 000215        95 000224        82 000225        88 000227        89 000232
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

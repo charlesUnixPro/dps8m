@@ -1,0 +1,240 @@
+	COMPILATION LISTING OF SEGMENT bootload_disk_post
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1010.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bootload_disk_post: proc (coreadd, errcode);
+        9 
+       10 /* Routine to post bootload disk i/o completions.
+       11*Written in June 1983 by Keith Loepere. */
+       12 
+       13 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       14 
+       15 dcl  addr			        builtin;
+       16 dcl  coreadd		        fixed bin (26) parameter; /* mem addr i/o finished into */
+       17 dcl  errcode		        fixed bin (35) parameter; /* word of flags signalling successful/bad i/o */
+       18 dcl  i			        fixed bin;		/* loop counter */
+       19 dcl  sys_info$initialization_state    fixed bin ext;
+       20 dcl  syserr		        entry options (variable);
+       21 
+       22 	if sys_info$initialization_state ^= 1 then go to crash;
+       23 	disk_post_area_ptr = addr (bootload_disk_post_seg$);
+       24 	do i = 1 to disk_post_area.number;
+       25 	     if disk_post_area.buffer_coreadd (i) = coreadd then do;
+       26 		if disk_post_area.disk_complete (i) then go to crash;
+       27 		disk_post_area.disk_complete (i) = "1"b;
+       28 		disk_post_area.disk_error_code = errcode;
+       29 		return;
+       30 	     end;
+       31 	end;
+       32 crash:	call syserr (CRASH, "bootload_disk_post: Attempt to post non-requested i/o completion.");
+       33 	return;
+       34 
+  1     1 /* BEGIN include file bootload_post_area.incl.pl1 */
+  1     2 
+  1     3 /* Area used for posting completion of disk i/o for bootload Multics
+  1     4*operations (save, restore and pack copy). */
+  1     5 
+  1     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  1     7 
+  1     8 dcl  bootload_disk_post_seg$	        aligned ext;
+  1     9 
+  1    10 dcl  1 disk_buffer_post	        aligned based (disk_buffer_post_ptr),
+  1    11        2 buffer_coreadd	        fixed bin (26),
+  1    12        2 disk_complete	        bit (1),		/* disk i/o complete */
+  1    13        2 disk_error_code	        fixed bin (35);
+  1    14 
+  1    15 dcl  disk_buffer_post_ptr	        ptr;
+  1    16 dcl  1 disk_post_area	        aligned based (disk_post_area_ptr),
+  1    17        2 number		        fixed bin,
+  1    18        2 posted		        (0 refer (disk_post_area.number)) aligned like disk_buffer_post;
+  1    19 dcl  disk_post_area_ptr	        ptr;
+  1    20 
+  1    21 /* END include file bootload_post_area.incl.pl1 */
+       35 
+       36 
+  2     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       37 
+       38 
+       39 
+       40 /* BEGIN MESSAGE DOCUMENTATION
+       41*
+       42*  Message:
+       43*  bootload_disk_post: Attempt to post non-requested i/o completion.
+       44*
+       45*  S: $crash
+       46*
+       47*  T: $init
+       48*
+       49*  M: disk_control detected an i/o completion that Bootload Multics does
+       50*  not believe it requested.
+       51*
+       52*  A: Reboot.
+       53*
+       54*  END MESSAGE DOCUMENTATION */
+       55 
+       56      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  bootload_disk_post.pl1            >spec>install>1111>bootload_disk_post.pl1
+35           1    07/11/84  0937.3  bootload_post_area.incl.pl1       >ldd>include>bootload_post_area.incl.pl1
+37           2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000003 constant        fixed bin(17,0)          initial dcl 2-7 set ref 32*
+addr                                                   builtin function         dcl 15 ref 23
+bootload_disk_post_seg$         000014 external static fixed bin(17,0)          dcl 1-8 set ref 23
+buffer_coreadd            1            based           fixed bin(26,0)          array level 3 dcl 1-16 ref 25
+coreadd                                parameter       fixed bin(26,0)          dcl 16 ref 8 25
+disk_buffer_post                       based           structure                level 1 dcl 1-10
+disk_complete             2            based           bit(1)                   array level 3 dcl 1-16 set ref 26 27*
+disk_error_code           3            based           fixed bin(35,0)          array level 3 dcl 1-16 set ref 28*
+disk_post_area                         based           structure                level 1 dcl 1-16
+disk_post_area_ptr              000102 automatic       pointer                  dcl 1-19 set ref 23* 24 25 26 27 28
+errcode                                parameter       fixed bin(35,0)          dcl 17 ref 8 28
+i                               000100 automatic       fixed bin(17,0)          dcl 18 set ref 24* 25 26 27*
+number                                 based           fixed bin(17,0)          level 2 dcl 1-16 ref 24 28
+posted                    1            based           structure                array level 2 dcl 1-16
+sys_info$initialization_state   000010 external static fixed bin(17,0)          dcl 19 ref 22
+syserr                          000012 constant        entry                    external dcl 20 ref 32
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 2-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 2-7
+disk_buffer_post_ptr                   automatic       pointer                  dcl 1-15
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bootload_disk_post              000032 constant        entry                    external dcl 8
+crash                           000110 constant        label                    dcl 32 set ref 22 26
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       212         230     131         222
+Length       434     131        16         170      60           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bootload_disk_post                  100 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bootload_disk_post       000100 i                           bootload_disk_post
+                         000102 disk_post_area_ptr          bootload_disk_post
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bootload_disk_post_seg$       sys_info$initialization_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000026        22 000037        23 000042        24 000044        25 000053        26 000062        27 000065
+     28 000067        29 000105        31 000106        32 000110        33 000130
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,592 @@
+	COMPILATION LISTING OF SEGMENT deact_proc
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1003.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 deact_proc: proc;
+       14 
+       15 /* Changed by E Stone to remove destroy entry and to convert to v2 on 05/74 */
+       16 /* Modified 05/78 by J. A. Bush to add cleanup for processor testing */
+       17 /* Modified September 1981 by J. Bongiovanni for tc_util */
+       18 
+       19 dcl  code fixed bin (35);
+       20 
+       21 dcl  save_ring fixed bin (3),				/* validation level */
+       22     (sstp, pds_astep) ptr,
+       23      name char (32) aligned;
+       24 
+       25 dcl  delentry$dfile entry (char (*) aligned, char (*) aligned, fixed bin (35)),
+       26      del_dir_tree entry (char (*) aligned, char (*) aligned, fixed bin (35)),
+       27      unique_chars_ entry (bit (*) aligned) returns (char (15) aligned),
+       28      level$get entry returns (fixed bin (3)),
+       29      level$set entry (fixed bin (3)),
+       30      pxss$stop_wakeup entry (bit (36) aligned, fixed bin),
+       31      tc_util$process_status entry (ptr),
+       32      pxss$empty_t ext entry (ptr),
+       33      deactivate_segs ext entry (ptr),
+       34      reconfig$destroy_cpu_test_env entry,
+       35      ioam_$process_release entry (bit (36) aligned);
+       36 
+       37 dcl  error_table_$action_not_performed fixed bin (35) ext,
+       38      sst_seg$ fixed bin ext;
+       39 
+       40 dcl (addr, ptr) builtin;
+       41 
+       42 dcl 1 process_info based (pi_ptr) aligned,		/* structure used to transfer accounting data */
+       43     2 processid bit (36),
+       44     2 page_faults fixed bin (35),
+       45     2 aptep ptr,
+       46     2 ex_state fixed bin,
+       47     2 mp_state fixed bin,
+       48     2 last_block_time fixed bin (71),
+       49     2 cpu_time_used fixed bin (71),
+       50     2 paging_measure fixed bin (71),
+       51     2 virtual_cpu_time fixed bin (71),
+       52     2 reserved fixed bin (71);
+       53 
+       54 dcl 1 info aligned like process_info;
+       55 
+       56 
+       57 
+       58 
+       59 
+       60 	/*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  1     2 
+  1     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  1     4 
+  1     5 dcl  aptep pointer;
+  1     6 
+  1     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  1     8     2 thread unaligned,				/* List thread */
+  1     9       3 fp bit (18),				/* Forward pointer */
+  1    10       3 bp bit (18),				/* Backward pointer */
+  1    11     2 flags unaligned,				/* Flags and miscellaneous */
+  1    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  1    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  1    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  1    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  1    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  1    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  1    18       3 eligible bit (1),				/* ON if process is eligible */
+  1    19       3 idle bit (1),				/* ON if  this is an idle process */
+  1    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  1    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  1    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  1    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  1    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  1    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  1    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  1    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  1    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  1    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  1    30       3 state bit (18),				/* execution state */
+  1    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  1    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  1    33 						/* bit 18-35: sequential number */
+  1    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  1    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  1    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  1    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  1    38 
+  1    39 /* * * * * * * * */
+  1    40 
+  1    41     2 ipc_pointers unaligned,
+  1    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  1    43       3 pad3 bit (18),
+  1    44     2 ips_message bit (36),				/* IPS signals pending */
+  1    45     2 asteps unaligned,				/* relative ASTE pointers */
+  1    46       3 pds bit (18),				/* PDS (per-process) */
+  1    47       3 dseg bit (18),				/* DSEG (per-process) */
+  1    48       3 prds bit (18),				/* PRDS (per-processor) */
+  1    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  1    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  1    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  1    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  1    53 
+  1    54 /* * * * * * * * */
+  1    55 
+  1    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  1    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  1    58     2 flags2 unaligned,
+  1    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  1    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  1    61       3 pad7 bit (7),
+  1    62       3 batch bit (1),				/* ON if absentee */
+  1    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  1    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  1    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  1    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  1    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  1    68 
+  1    69 /* * * * * * */
+  1    70 
+  1    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  1    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  1    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  1    74     2 deadline fixed bin (71),			/* time of next run */
+  1    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  1    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  1    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  1    78*						/* reaches this (units = 1/1024 sec) */
+  1    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  1    80     2 access_authorization bit (72),			/* authorization of this process */
+  1    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  1    82 
+  1    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  1    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  1    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  1    86 
+  1    87 /*  Cells used to drive and instrument finite-state model for response time
+  1    88*    measurement. Maintained by meter_response_time */
+  1    89 
+  1    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  1    91     2 pad18 bit (18) unaligned,
+  1    92     2 number_processing fixed bin (35),			/* Number interactions */
+  1    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  1    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  1    95 
+  1    96 /* * * * * * */
+  1    97 
+  1    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  1    99 
+  1   100 /*  End of cells for finite-state model */
+  1   101 
+  1   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  1   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  1   104     2 pad4 bit (28) unaligned,
+  1   105     2 ipc_r_offset fixed bin (18) unsigned,
+  1   106     2 ipc_r_factor fixed bin (35) unsigned,
+  1   107     2 apad (10) fixed bin (35);
+  1   108 
+  1   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+       60 
+  2     1 /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  2     2 /* format: style4 */
+  2     3 
+  2     4 /* Information about system controllers */
+  2     5 
+  2     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  2     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  2     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  2     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  2    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  2    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  2    12          3 mbz bit (3) unaligned,
+  2    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  2    14        2 info aligned,
+  2    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  2    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  2    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  2    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  2    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  2    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  2    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  2    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  2    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  2    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  2    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  2    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  2    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  2    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  2    29          3 mbz bit (13) unaligned,
+  2    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  2    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  2    32 
+  2    33 /* Information about CPUs */
+  2    34 
+  2    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  2    36        (
+  2    37        2 online bit (1),				/* "1"b if CPU is online */
+  2    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  2    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  2    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  2    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  2    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  2    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  2    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  2    45        2 mbz1 bit (6),
+  2    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  2    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  2    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  2    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  2    50        2 mbz2 bit (12),
+  2    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  2    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  2    53        2 controller_port fixed bin (3) unsigned
+  2    54        ) unaligned;					/* Port on controller */
+  2    55 
+  2    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  2    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  2    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  2    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  2    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  2    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  2    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  2    63        2 pad bit (12) unaligned;
+  2    64 
+  2    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  2    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  2    67        2 cow,
+  2    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  2    69          3 mbz1 bit (13) unaligned,
+  2    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  2    71          3 mbz2 bit (2) unaligned,
+  2    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  2    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  2    74          3 mbz3 bit (3) unaligned,
+  2    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  2    76 
+  2    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  2    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  2    79        2 pad bit (12) unal,
+  2    80        2 tag bit (6) unal;				/* Better be zero. */
+  2    81 
+  2    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  2    83        2 pad bit (36) aligned,
+  2    84        2 cow,					/* Connect operand word, in odd location. */
+  2    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  2    86          3 mbz1 bit (13) unaligned,
+  2    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  2    88          3 mbz2 bit (9) unaligned,
+  2    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  2    90 
+  2    91 /* MASKS and PATTERNS */
+  2    92 
+  2    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  2    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  2    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  2    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  2    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  2    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  2    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  2   100 
+  2   101 /* CAM and CACHE clear info */
+  2   102 
+  2   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  2   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  2   105 
+  2   106 /* MASKING INSTRUCTIONS & POINTERS */
+  2   107 
+  2   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  2   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  2   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  2   111 
+  2   112 /* MISCELLANEOUS */
+  2   113 
+  2   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  2   115        (
+  2   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  2   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  2   118        2 pad1 bit (4),
+  2   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  2   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  2   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  2   122        2 mask_cpu fixed bin (5)
+  2   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  2   124 
+  2   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  2   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  2   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  2   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  2   129 
+  2   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  2   131 
+  2   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  2   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  2   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  2   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  2   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  2   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  2   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  2   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  2   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  2   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  2   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  2   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  2   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  2   145 
+  2   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  2   147 
+  2   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  2   149 
+  2   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  2   151 
+  2   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  2   153 
+  2   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  2   155 						/* Which ports have expanders */
+  2   156 
+  2   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  2   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  2   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  2   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  2   161 
+  2   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  2   163 
+  2   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  2   165 						/* Controller size on config card */
+  2   166 
+  2   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  2   168 
+  2   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  2   170 						/* PTWs for SCAS pages */
+  2   171 
+  2   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  2   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  2   174 
+  2   175 
+  2   176 dcl  (
+  2   177      IOM_PORT init (1),
+  2   178      CPU_PORT init (2),
+  2   179      BULK_PORT init (3)
+  2   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  2   181 
+  2   182 
+  2   183 /* END INCLUDE FILE scs.incl.pl1 */
+       61 
+       62 
+       63 /*  */
+       64 
+       65 /* The entry destroy_process_begin initiates the destruction of a process by stopping it
+       66*   in such a way that when the process stops it will send a wakeup to the process specified
+       67*   in apte.term_processid. The wakeup will be over the channel apte.term_channel. When the wakeup
+       68*   is received by the driving process (Answering Service?) the entry destroy_process_finish
+       69*   is called to return the final process statistics and to clean up the APT entry.
+       70*   As a final step destroy_process_finish deletes the process directory of the
+       71*   process just destroyed. */
+       72 
+       73 destroy_process_begin: entry (pi_ptr, code);
+       74 
+       75 dcl  pi_ptr ptr;
+       76 
+       77 	info.processid = pi_ptr -> process_info.processid; /* get ID OF PROCESS TO STOP */
+       78 	call pxss$stop_wakeup (info.processid, info.ex_state); /* stop it */
+       79 	if info.ex_state = 0 then code = error_table_$action_not_performed;
+       80 	else code = 0;				/* return non-zero code only if already stopped */
+       81 	return;
+       82 
+       83 /* * * * * * * *  * * * * * * * * * * * * * * * */
+       84 
+       85 destroy_process_finish: entry (pi_ptr, code);
+       86 
+       87 	info.processid = pi_ptr -> process_info.processid; /* get the process ID */
+       88 	call tc_util$process_status (addr (info));		/* get the goods for the process */
+       89 						/* check for stopped process */
+       90 	if ^((info.ex_state = 5) & (info.mp_state = 1)) then do;
+       91 	     code = error_table_$action_not_performed;	/* return non-zero code only if not stopped */
+       92 	     return;
+       93 	end;
+       94 	sstp = addr (sst_seg$);
+       95 	pds_astep = ptr (sstp, info.aptep -> apte.asteps.pds); /* get pointer to pds for the process */
+       96 	call deactivate_segs (pds_astep);		/* deactivate the process */
+       97 	info.aptep -> apte.lock_id = ""b;		/* clear out the lock id */
+       98 	info.aptep -> apte.processid = ""b;		/* and the process id */
+       99 	call pxss$empty_t (info.aptep);		/* give back the APT entry */
+      100 	call ioam_$process_release (info.processid);	/* free any devices assigned to this process */
+      101 	if scs$reconfig_lock = info.processid then	/* is this process testing a processor? */
+      102 	     call reconfig$destroy_cpu_test_env;	/* release CPU and SCU resources */
+      103 	name = unique_chars_ (info.processid);		/* get the PDIR name */
+      104 	save_ring = level$get ();			/* get (save) the validation level */
+      105 	call level$set (0);				/* do del_dir_tree from ring 0 */
+      106 	call del_dir_tree (">process_dir_dir", name, code);
+      107 	if code = 0 then
+      108 	     call delentry$dfile (">process_dir_dir", name, code);
+      109 	call level$set (save_ring);			/* restore validation level */
+      110 	pi_ptr -> process_info = info;		/* copy back accounting information */
+      111 	return;
+      112 
+      113      end deact_proc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  deact_proc.pl1                    >spec>install>1111>deact_proc.pl1
+60           1    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+61           2    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 40 ref 88 88 94
+apte                                   based           structure                level 1 dcl 1-7
+aptep                     2     000116 automatic       pointer                  level 2 dcl 54 set ref 95 97 98 99*
+asteps                   12            based           structure                level 2 packed packed unaligned dcl 1-7
+code                                   parameter       fixed bin(35,0)          dcl 19 set ref 73 79* 80* 85 91* 106* 107 107*
+deactivate_segs                 000030 constant        entry                    external dcl 25 ref 96
+del_dir_tree                    000012 constant        entry                    external dcl 25 ref 106
+delentry$dfile                  000010 constant        entry                    external dcl 25 ref 107
+error_table_$action_not_performed
+                                000036 external static fixed bin(35,0)          dcl 37 ref 79 91
+ex_state                  4     000116 automatic       fixed bin(17,0)          level 2 dcl 54 set ref 78* 79 90
+info                            000116 automatic       structure                level 1 dcl 54 set ref 88 88 110
+ioam_$process_release           000034 constant        entry                    external dcl 25 ref 100
+level$get                       000016 constant        entry                    external dcl 25 ref 104
+level$set                       000020 constant        entry                    external dcl 25 ref 105 109
+lock_id                  15            based           bit(36)                  level 2 dcl 1-7 set ref 97*
+mp_state                  5     000116 automatic       fixed bin(17,0)          level 2 dcl 54 set ref 90
+name                            000106 automatic       char(32)                 dcl 21 set ref 103* 106* 107*
+pds                      12            based           bit(18)                  level 3 packed packed unaligned dcl 1-7 ref 95
+pds_astep                       000104 automatic       pointer                  dcl 21 set ref 95* 96*
+pi_ptr                                 parameter       pointer                  dcl 75 ref 73 77 85 87 110
+process_info                           based           structure                level 1 dcl 42 set ref 110*
+processid                 3            based           bit(36)                  level 2 in structure "apte" dcl 1-7 in procedure
+                                                                                  "deact_proc" set ref 98*
+processid                              based           bit(36)                  level 2 in structure "process_info" dcl 42
+                                                                                  in procedure "deact_proc" set ref 77 87
+processid                       000116 automatic       bit(36)                  level 2 in structure "info" dcl 54 in procedure
+                                                                                  "deact_proc" set ref 77* 78* 87* 100* 101 103*
+ptr                                                    builtin function         dcl 40 ref 95
+pxss$empty_t                    000026 constant        entry                    external dcl 25 ref 99
+pxss$stop_wakeup                000022 constant        entry                    external dcl 25 ref 78
+reconfig$destroy_cpu_test_env   000032 constant        entry                    external dcl 25 ref 101
+save_ring                       000100 automatic       fixed bin(3,0)           dcl 21 set ref 104* 109*
+scs$reconfig_lock               000042 external static bit(36)                  dcl 2-133 ref 101
+sst_seg$                        000040 external static fixed bin(17,0)          dcl 37 set ref 94
+sstp                            000102 automatic       pointer                  dcl 21 set ref 94* 95
+tc_util$process_status          000024 constant        entry                    external dcl 25 ref 88
+unique_chars_                   000014 constant        entry                    external dcl 25 ref 103
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 2-176
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 2-176
+IOM_PORT                               internal static fixed bin(17,0)          initial dcl 2-176
+aptep                                  automatic       pointer                  dcl 1-5
+scs$bos_processor_tag                  external static fixed bin(3,0)           dcl 2-137
+scs$bos_restart_flags                  external static bit(8)                   dcl 2-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 2-103
+scs$cam_wait                           external static bit(8)                   dcl 2-104
+scs$cfg_data                           external static fixed bin(71,0)          array dcl 2-150
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 2-152
+scs$connect_lock                       external static bit(36)                  dcl 2-132
+scs$controller_config_size             external static fixed bin(14,0)          array dcl 2-164
+scs$controller_data                    external static structure                array level 1 dcl 2-6
+scs$cow                                external static structure                array level 1 dcl 2-65
+scs$cow_ptrs                           external static structure                array level 1 dcl 2-77
+scs$cpu_test_mask                      external static bit(72)                  dcl 2-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 2-99
+scs$cycle_priority_template            external static bit(7)                   dcl 2-172
+scs$expanded_ports                     external static bit(1)                   array packed unaligned dcl 2-154
+scs$fast_cam_pending                   external static bit(36)                  array dcl 2-140
+scs$faults_initialized                 external static bit(1)                   dcl 2-138
+scs$idle_aptep                         external static pointer                  array packed unaligned dcl 2-130
+scs$interrupt_controller               external static fixed bin(3,0)           dcl 2-141
+scs$mask_ptr                           external static pointer                  array packed unaligned dcl 2-110
+scs$nprocessors                        external static fixed bin(17,0)          dcl 2-136
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 2-97
+scs$open_level                         external static bit(72)                  dcl 2-94
+scs$port_addressing_word               external static bit(3)                   array dcl 2-148
+scs$port_data                          external static structure                array level 1 dcl 2-56
+scs$processor                          external static bit(8)                   dcl 2-143
+scs$processor_data                     external static structure                array level 1 dcl 2-35
+scs$processor_data_switch_value        external static bit(36)                  dcl 2-162
+scs$processor_start_int_no             external static fixed bin(5,0)           dcl 2-142
+scs$processor_start_mask               external static bit(72)                  dcl 2-95
+scs$processor_start_pattern            external static bit(36)                  dcl 2-98
+scs$processor_start_wait               external static bit(8)                   dcl 2-144
+scs$processor_switch_compare           external static bit(36)                  array dcl 2-159
+scs$processor_switch_data              external static bit(36)                  array dcl 2-157
+scs$processor_switch_mask              external static bit(36)                  array dcl 2-160
+scs$processor_switch_template          external static bit(36)                  array dcl 2-158
+scs$processor_test_data                external static structure                level 1 dcl 2-114
+scs$read_mask                          external static bit(36)                  array dcl 2-109
+scs$reconfig_general_cow               external static structure                level 1 dcl 2-82
+scs$reconfig_locker_id                 external static char(32)                 dcl 2-167
+scs$scas_page_table                    external static bit(36)                  array dcl 2-169
+scs$set_cycle_switches                 external static bit(1)                   dcl 2-173
+scs$set_mask                           external static bit(36)                  array dcl 2-108
+scs$sys_level                          external static bit(72)                  dcl 2-93
+scs$sys_trouble_pending                external static bit(1)                   dcl 2-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 2-146
+scs$trouble_flags                      external static bit(8)                   dcl 2-134
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+deact_proc                      000014 constant        entry                    external dcl 13
+destroy_process_begin           000026 constant        entry                    external dcl 73
+destroy_process_finish          000063 constant        entry                    external dcl 85
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       552         616     327         562
+Length      1036     327        44         204     222           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+deact_proc                          128 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+deact_proc               000100 save_ring                   deact_proc
+                         000102 sstp                        deact_proc
+                         000104 pds_astep                   deact_proc
+                         000106 name                        deact_proc
+                         000116 info                        deact_proc
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+deactivate_segs               del_dir_tree                  delentry$dfile                ioam_$process_release
+level$get                     level$set                     pxss$empty_t                  pxss$stop_wakeup
+reconfig$destroy_cpu_test_env tc_util$process_status        unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           scs$reconfig_lock             sst_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000013        73 000021        77 000033        78 000037        79 000047        80 000056        81 000060
+     85 000061        87 000070        88 000074        90 000105        91 000113        92 000117        94 000120
+     95 000123        96 000131        97 000137        98 000141        99 000142       100 000151       101 000160
+    103 000170       104 000210       105 000217       106 000227       107 000257       109 000311       110 000320
+    111 000326
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

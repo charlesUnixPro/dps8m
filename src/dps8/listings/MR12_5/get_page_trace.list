@@ -1,0 +1,155 @@
+	COMPILATION LISTING OF SEGMENT get_page_trace
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 07/03/84  0819.1 mst Tue
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 get_page_trace:	proc(dp);				/* entry to return the system trace information */
+       12 
+       13 dcl  dp ptr,
+       14      copy (n) fixed bin based,
+       15      addr builtin,
+       16      n fixed bin (18);
+       17 
+       18 dcl 1 pds$trace ext aligned,
+       19     2 next bit (18),				/* index to next useable cell of trace */
+       20     2 count bit (18);				/* twice the count of entries in the array */
+       21 
+       22 	n = fixed ( pds$trace.count, 18 ) + 8;			/* get the number of entries (times 2) */
+       23 					/* add in number of words of header of trace */
+       24 
+       25 	dp -> copy = addr(pds$trace) -> copy;		/* copy the trace data */
+       26 
+       27 	return;
+       28 
+       29 end get_page_trace;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    07/02/84  1135.6  get_page_trace.pl1                >dumps>old>h>get_page_trace.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 13 ref 25
+copy                                   based           fixed bin(17,0)          array dcl 13 set ref 25* 25
+count                     1     000010 external static bit(18)                  level 2 dcl 18 set ref 22
+dp                                     parameter       pointer                  dcl 13 ref 11 25
+n                               000100 automatic       fixed bin(18,0)          dcl 13 set ref 22* 25
+pds$trace                       000010 external static structure                level 1 dcl 18 set ref 25
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+get_page_trace                  000004 constant        entry                    external dcl 11
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+fixed                                                  builtin function         ref 22
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0        62          74      27          72
+Length       236      27        12         126      33           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+get_page_trace                       65 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+get_page_trace           000100 n                           get_page_trace
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return              ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pds$trace
+
+
+CONSTANTS
+000000  aa     464000000000
+
+BEGIN PROCEDURE get_page_trace
+ENTRY TO get_page_trace                                     STATEMENT 1 ON LINE 11
+get_page_trace:	proc(dp);
+
+000001  at     000001000000
+000002  ta     000001000000
+000003  da     000027300000
+000004  aa   000120 6270 00	eax7 	80
+000005  aa  7 00034 3521 20	epp2 	pr7|28,*
+000006  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000007  aa     000002000000
+000010  aa     000000000000
+						STATEMENT 1 ON LINE 22
+	n = fixed ( pds$trace.count, 18 ) + 8;
+
+000011  la  4 00010 3735 20	epp7 	pr4|8,*
+000012  aa  7 00001 2351 00	lda  	pr7|1		pds$trace.count
+000013  aa   000066 7730 00	lrl  	54
+000014  aa   000010 0760 07	adq  	8,dl
+000015  aa  6 00100 7561 00	stq  	pr6|64		n
+						STATEMENT 1 ON LINE 25
+	dp -> copy = addr(pds$trace) -> copy;
+
+000016  aa   000002 7360 00	qls  	2
+000017  aa  6 00032 3715 20	epp5 	pr6|26,*
+000020  aa  5 00002 3535 20	epp3 	pr5|2,*		dp
+000021  aa  3 00000 3535 20	epp3 	pr3|0,*		dp
+000022  la  4 00010 3515 20	epp1 	pr4|8,*		copy
+000023  aa  000 140 100 540	mlr  	(pr,rl),(pr,rl),fill(000)
+000024  aa  1 00000 00 0006	desc9a	pr1|0,ql		copy
+000025  aa  3 00000 00 0006	desc9a	pr3|0,ql		copy
+						STATEMENT 1 ON LINE 27
+	return;
+
+000026  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 29
+end get_page_trace;
+
+  END PROCEDURE get_page_trace
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

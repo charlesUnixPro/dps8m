@@ -1,0 +1,948 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1112>fast_hc_ipc.alm                                                                                                                                      
+ASSEMBLED ON:	11/11/89  0925.4 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+    000000                          11  	name	fast_hc_ipc
+                                    12  "
+                                    13  "	Coded by B. Greenberg 10/11/78 for shared stack_0.
+                                    14  "	Stupid bug fixed by C. Hornig, December 1979.
+                                    15  "	Changed by E. Donner Jan 81 for new ipc
+                                    16  "	Truncation of stacks 1/82 BIM
+                                    17  "	Modified 1984-11-13 by E. Swenson to remove support for obsolete
+                                    18  "	  hcs_$sfblock entrypoint.
+                                    19  "
+                                    20  	include	stack_frame
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE ... stack_frame.incl.alm   6/72 RBS
+                                   1-3  "
+                                   1-4  " Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr
+                                   1-5  " Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager_bit & main_proc_bit
+                                   1-6  " Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr
+                                   1-7  "
+                        000020     1-8  	equ	stack_frame.prev_sp,16
+                        000020     1-9  	equ	stack_frame.condition_word,16
+                        000022    1-10  	equ	stack_frame.next_sp,18
+                        000022    1-11  	equ	stack_frame.signaller_word,18
+                        000024    1-12  	equ	stack_frame.return_ptr,20
+                        000026    1-13  	equ	stack_frame.entry_ptr,22
+                        000030    1-14  	equ	stack_frame.operator_ptr,24
+                        000030    1-15  	equ	stack_frame.lp_ptr,24
+                        000032    1-16  	equ	stack_frame.arg_ptr,26
+                        000034    1-17  	equ	stack_frame.static_ptr,28
+                        000035    1-18  	equ	stack_frame.support_ptr,29	" only used by fortran I/O
+                        000036    1-19  	equ	stack_frame.on_unit_rel_ptrs,30
+                        000037    1-20  	equ	stack_frame.operator_ret_ptr,31
+                        000037    1-21  	equ	stack_frame.translator_id,31
+                        000040    1-22  	equ	stack_frame.regs,32
+                        000060    1-23  	equ	stack_frame.min_length,48
+                        000020    1-24  	equ	stack_frame.flag_word,16
+                        020000    1-25  	bool	stack_frame.main_proc_bit,020000	(DL)
+                        010000    1-26  	bool	stack_frame.run_unit_manager,010000	(DL)
+                        004000    1-27  	bool	stack_frame.signal_bit,004000		(DL)
+                        002000    1-28  	bool	stack_frame.crawl_out_bit,002000	(DL)
+                        001000    1-29  	bool	stack_frame.signaller_bit,001000	(DL)
+                        000400    1-30  	bool	stack_frame.link_trap_bit,000400	(DL)
+                        000200    1-31  	bool	stack_frame.support_bit,000200	(DL)
+                        000100    1-32  	bool	stack_frame.condition_bit,000100	(DL)
+                                  1-33  
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  ... stack_frame.incl.alm
+                                  1-36  "
+                                    21  	include	stack_header
+                                   2-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   2-2  "
+                                   2-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   2-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   2-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   2-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   2-7  
+                                   2-8  " HISTORY COMMENTS:
+                                   2-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  2-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  2-11  "     added the heap_header_ptr definition
+                                  2-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  2-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  2-14  "     Modified to support control point management.  These changes were
+                                  2-15  "     actually made in February 1985 by G. Palter.
+                                  2-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  2-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  2-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  2-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  2-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  2-21  "     cpm_data_ptr (ITS pair).
+                                  2-22  "                                                      END HISTORY COMMENTS
+                                  2-23  
+                        000004    2-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    2-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  2-26  
+                        000010    2-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    2-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    2-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    2-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    2-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    2-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    2-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    2-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  2-35  
+                        000020    2-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    2-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    2-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    2-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  2-40  
+                        000030    2-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    2-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    2-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    2-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  2-45  
+                        000040    2-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    2-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    2-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    2-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  2-50  
+                        000050    2-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    2-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    2-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    2-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  2-55  
+                        000060    2-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    2-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    2-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    2-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    2-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    2-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    2-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    2-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    2-64  	equ	stack_header_end,64			length of stack header
+                                  2-65  
+                                  2-66  
+                                  2-67  
+                                  2-68  
+                        000000    2-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    2-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  2-71  
+                                  2-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  2-73  "	It  references a  transfer vector table.
+                                  2-74  
+                        000551    2-75  	bool	tv_offset,551
+                                  2-76  
+                                  2-77  
+                                  2-78  "	The  following constants are offsets within this transfer vector table.
+                                  2-79  
+                        001170    2-80  	equ	call_offset,tv_offset+271
+                        001171    2-81  	equ	push_offset,tv_offset+272
+                        001172    2-82  	equ	return_offset,tv_offset+273
+                        001173    2-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    2-84  	equ	entry_offset,tv_offset+275
+                                  2-85  
+                                  2-86  
+                                  2-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                    22  "
+                                    23  "	Pseudo-frame in real PDS
+                                    24  "
+                                    25  
+                        000000      26  	equ	ipcv.ap,0		Arg ptr to ring <n>
+                        000001      27  	equ	ipcv.retsw,1	Switch to return
+                        000002      28  	equ	ipcv.save_entry_ret,2 X6 save.
+                        000003      29  	equ	ipcv.truncated_stacks,3 Note for metering
+                        000004      30  	equ	ipcv.chan,4	Fast channel ID save.
+                        000006      31  	equ	ipcv.block_start_steps,6 sst$steps before block
+                        000007      32  	equ	ipcv.stk_temp,7    
+                                    33  
+                                    34  "
+                                    35  "	Stack vars for call to PL/I IPC.
+                                    36  "
+                                    37  	tempd	argl(1)
+                                    38  
+                                    39  	macro	erifnot
+                              1     40  	t&1	&U.erifnot
+                              2     41  	lda	&2
+                              3     42  	sta	ap|4,*
+                              4     43  	short_return
+                              5     44  &U.erifnot:
+                              6     45  	&end
+                        000042      46  	segdef	ipc_f_block,ipc_block,read_events
+                                    47  
+                                    48  
+                                    49  "
+                                    50  "
+                                    51  "	fast_hc_ipc$f_block (fast block call)
+                                    52  "
+                                    53  "	This entry returns only when a wakeup is received, either for a
+                                    54  "	fast channel or for a regular channel.  It also calls hc_ipc.
+                                    55  "	It returns information about which fast channel received a wakeup
+                                    56  "	and whether any messages were emptied from the ITT into the ECT.
+                                    57  "
+                                    58  "	dcl fast_hc_ipc$f_block entry (bit (36) aligned, bit (1) aligned);
+                                    59  "
+                                    60  "	call fast_hc_ipc$f_block (fast_channel_events, messages_allocated_in_ect);
+                                    61  "
+                                    62  "	where fast_channel_events indicates on which fast channels are
+                                    63  "	wakeups pending. The other bits in the string are untouched.(input/output)
+                                    64  "	and messages_allocated_in ect = "1"b if any messages were allocated
+                                    65  "	for validation ring (output)
+                                    66  "
+                                    67  "
+    000000                          68  ipc_f_block:
+    000000  aa  7 00046 2721 20     69  	getlp
+    000001  4a  4 00014 3715 20     70  	epplb	pds$ipc_vars
+    000002  4a  4 00016 7211 20     71  	lxl1	pds$validation_level
+    000003  4a  4 00020 2351 20     72  	lda	pds$events_pending
+    000004  4a  4 00022 3751 20     73  	ana	pds$event_masks-1,x1 test for events, this ring
+    000005  aa  5 00001 7551 00     74  	sta	lb|ipcv.retsw	store the need to return
+    000006  4a  4 00024 2351 20     75  	lda	pds$ring_events	see whats doing there
+    000007  aa   777777 7350 11     76  	als	-1,x1
+    000010  aa   400000 3750 03     77  	ana	=o400000,du	(messages from other ring)
+    000011  aa  5 00001 2551 00     78  	orsa	lb|ipcv.retsw
+    000012                          79  sfb_readevents_merge:
+    000012  aa  0 00004 4501 20     80  	stz	ap|4,*		assume don't call regular.
+    000013  aa  5 00000 5401 00     81  	sprpap	lb|ipcv.ap	save ap
+    000014  0a   000047 7060 00     82  	tsx6	common		go blocked or get messages
+    000015  4a  4 00020 2351 20     83  	lda	pds$events_pending	have called tc.
+    000016  4a  4 00022 3751 20     84  	ana	pds$event_masks-1,x1
+    000017  aa  5 00001 2551 00     85  	orsa	lb|ipcv.retsw	now have stuff for this ring.
+    000020  4a  4 00020 6551 20     86  	ersa	pds$events_pending	now turn off some fast events.
+    000021  aa  5 00000 7601 00     87  	lprpap	lb|ipcv.ap
+    000022  aa  0 00002 2551 20     88  	orsa	ap|2,*		store to guy's arg.
+    000023  0a   000146 7050 00     89  	tsx5	check_full_block	dredge out the old cruft
+    000024  aa  5 00000 7601 00     90  	lprpap	lb|ipcv.ap
+    000025  aa   400000 2350 03     91  	lda	=o400000,du
+    000026  aa  0 00004 7551 20     92  	sta	ap|4,*		tell caller to call regular.
+    000027                          93  short_return:
+    000027  aa  7 00044 7101 20     94  	short_return
+                                    95  
+                                    96  "
+                                    97  "
+                                    98  "	ipc_block$fast_hc_ipc 
+                                    99  "
+                                   100  "	This entry goes blocked until the caller receives a wakeup.
+                                   101  "	It then calls hc_ipc.
+                                   102  "
+                                   103  "	dcl fast_hc_ipc$ipc_block entry ();
+                                   104  "
+                                   105  "	call fast_hc_ipc$ipc_block ();
+                                   106  "
+                                   107  "
+    000030                         108  ipc_block:
+    000030  aa  7 00046 2721 20    109  	getlp
+    000031  4a  4 00014 3715 20    110  	epplb	pds$ipc_vars
+    000032  aa  5 00001 4501 00    111  	stz	lb|ipcv.retsw
+    000033  4a  4 00016 7211 20    112  	lxl1	pds$validation_level
+    000034  0a   000047 7060 00    113  	tsx6	common
+    000035  4a  4 00020 2351 20    114  	lda	pds$events_pending
+    000036  4a  4 00022 3751 20    115  	ana	pds$event_masks-1,x1 check fast events
+    000037  aa  5 00001 2551 00    116  	orsa	lb|ipcv.retsw	set up to return, have fast evs.
+    000040  0a   000146 7050 00    117  	tsx5	check_full_block	get some events
+    000041  aa  7 00044 7101 20    118  	short_return
+                                   119  
+                                   120  
+                                   121  "
+                                   122  "
+                                   123  "	fast_hc_ipc$read_events
+                                   124  "
+                                   125  "	This entry is similiar to fast_hc_ipc$f_block except that
+                                   126  "	it does not go blocked but checks whether a wakeup has arrived.
+                                   127  "
+                                   128  "	dcl fast_hc_ipc$read_events entry (bit (36) aligned, bit (1) aligned);
+                                   129  "
+                                   130  "	call fast_hc_ipc$read_events (fast_channel_events, messages_allocated_in_ect);
+                                   131  "
+                                   132  "
+    000042                         133  read_events:
+    000042  aa  7 00046 2721 20    134  	getlp
+    000043  4a  4 00014 3715 20    135  	epplb	pds$ipc_vars
+    000044  aa  5 00001 5541 00    136  	stc1	lb|ipcv.retsw	want to return
+    000045  4a  4 00016 7211 20    137  	lxl1	pds$validation_level
+    000046  0a   000012 7100 00    138  	tra	sfb_readevents_merge join common code
+                                   139  	
+                                   140  
+    000047  0a   000115 3520 00    141  common:	eppbp	fast_block_return
+    000050  4a  4 00026 5421 20    142  	sprpbp	pds$ipc_block_return
+    000051  aa  5 00002 7461 00    143  	stx6	lb|ipcv.save_entry_ret
+    000052  aa  5 00003 4501 00    144  	stz	lb|ipcv.truncated_stacks " presumed untouched
+    000053  aa  5 00007 4501 00    145  	stz	lb|ipcv.stk_temp         " records whether we blocked
+    000054  aa  5 00001 2341 00    146  	szn	lb|ipcv.retsw
+    000055  4a  4 00030 6011 20    147  	tnz	pxss$fast_ipc_get_event
+                                   148  
+                                   149  " Here we have decided to have pxss block us.
+                                   150  
+    000056  aa  5 00007 0541 00    151  	aos	lb|ipcv.stk_temp       " we blocked
+                                   152  
+                                   153  " We truncate stacks if it would save us something
+                                   154  
+    000057  4a  4 00032 2341 20    155  	szn	tc_data$stk_truncate
+    000060  0a   000112 6000 00    156  	tze	no_truncation	" disabled
+    000061  4a  4 00034 2341 20    157  	szn	tc_data$stk_truncate_always
+    000062  0a   000071 6010 00    158  	tnz	truncate
+    000063  4a  4 00036 2341 20    159  	szn	tc_data$post_purge_switch
+    000064  0a   000071 6010 00    160  	tnz	truncate		" always truncate if postpurge
+                                   161  
+    000065  4a  4 00040 2351 20    162  	lda	sst$nused		" now many pages?
+    000066  aa   000022 7350 00    163  	als	18		" in units of s**-18
+    000067  4a  4 00042 1151 20    164  	cmpa	pds$avg_block_steps
+    000070  0a   000112 6050 00    165  	tpl	no_truncation	" stack pages probably will not be
+                                   166  				" evicted.
+    000071                         167  truncate:
+    000071  aa  5 00003 0541 00    168  	aos	lb|ipcv.truncated_stacks " note
+                                   169  	
+    000072  4a  4 00044 3731 20    170  	epbpsb	pds$stack_0_ptr,*
+    000073  aa   000060 6270 00    171  	push
+    000074  aa  7 00040 2721 20
+                                   172  
+    000075  0a   000177 2370 00    173  	ldaq	argl_header
+    000076  aa  6 00050 7571 00    174  	staq	argl 
+                                   175  
+    000077  aa  6 00000 2541 00    176  	call	truncate_stacks$truncate_stacks(argl)
+    000100  aa  6 00050 3501 00
+    000101  4a  4 00010 3521 20
+    000102  aa  6 00040 7531 00
+    000103  aa  7 00036 6701 20
+    000104  aa  6 00000 1731 00
+    000105  aa  6 00040 0731 00
+    000106  aa  6 00020 3521 20    177  	eppbp	sp|stack_frame.prev_sp,*
+    000107  aa   000000 0110 03    178  	even
+    000110                         179  	inhibit   on	<+ + + + + + + + + + + + + + + + + + + + + + + +>
+                                   180  
+    000110  aa  7 00024 6523 00    181  	sprisp	sb|stack_header.stack_end_ptr 
+    000111  aa  2 00000 3723 00    182  	eppsp	bp|0		pop stack
+    000112                         183  	inhibit	off       <- - - - - - - - - - - - - - - - - - - - - - - ->
+                                   184  
+    000112                         185  no_truncation:
+    000112  4a  4 00046 2351 20    186  	lda	sst$steps
+    000113  aa  5 00006 7551 00    187  	sta	lb|ipcv.block_start_steps " Save for averaging
+    000114  4a  4 00050 7101 20    188  	tra	pxss$fast_ipc_block       " all args in pds vars
+                                   189  
+                                   190  "	PXSS returns with SB set to stack_0.
+                                   191  
+    000115                         192  fast_block_return:
+    000115  aa  7 00046 2721 20    193  	getlp			" relies on SB
+    000116  4a  4 00014 3715 20    194  	epplb	pds$ipc_vars
+    000117  4a  4 00016 7211 20    195  	lxl1	pds$validation_level
+    000120  aa  5 00002 2261 00    196  	ldx6	lb|ipcv.save_entry_ret
+    000121  aa  5 00003 7221 00    197  	lxl2	lb|ipcv.truncated_stacks  " for offset
+    000122  aa  5 00007 2341 00    198  	szn	lb|ipcv.stk_temp	      " did we block?
+    000123  aa   000000 6000 16    199  	tze	0,x6		      " NO. return to caller of
+                                   200  				      " common at this point.
+                                   201  " If post_purge is on meters are not valuable
+    000124  4a  4 00046 2361 20    202  	ldq	sst$steps
+    000125  aa  5 00006 1761 00    203  	sbq	lb|ipcv.block_start_steps
+    000126  4a  4 00036 2341 20    204  	szn	tc_data$post_purge_switch
+    000127  0a   000135 6010 00    205  	tnz	truncate_meter_done
+                                   206  
+    000130  4a  4 00040 1161 20    207  	cmpq	sst$nused		" should we have truncated?
+    000131  0a   000134 6020 00    208  	tnc	truncate_incorrect
+                                   209  
+                                   210  " the layout in the sst is
+                                   211  
+                                   212  "  stk_truncate_should_didnt
+                                   213  "  stk_truncate_should_did
+                                   214  "  stk_truncate_shouldnt_didnt
+                                   215  "  stk_truncate_shouldnt_did
+                                   216  "
+                                   217  " and x2 is 1 iff we truncated
+                                   218  
+    000132  4a  4 00052 0541 20    219  	aos	sst$stk_truncate_should_didnt,x2
+    000133  0a   000135 7100 00    220  	tra	truncate_meter_done
+    000134                         221  truncate_incorrect:
+    000134  4a  4 00054 0541 20    222  	aos	sst$stk_truncate_shouldnt_didnt,x2
+    000135                         223  truncate_meter_done:
+                                   224  
+                                   225  "
+                                   226  "  new_average = factor*new_value + (1-factor)*old_value
+                                   227  "
+                                   228  "
+    000135  aa   000022 7360 00    229  	qls	18		" in units of 2**-18
+    000136  4a  4 00056 4021 20    230  	mpy	tc_data$stk_trunc_avg_f1
+    000137  aa  5 00006 7571 00    231  	staq	lb|ipcv.block_start_steps " use stk_temp as well
+    000140  4a  4 00042 2361 20    232  	ldq	pds$avg_block_steps   " fb 35, 18
+    000141  4a  4 00060 4021 20    233  	mpy	tc_data$stk_trunc_avg_f2  " always 1-f1
+    000142  aa  5 00006 0771 00    234  	adaq	lb|ipcv.block_start_steps
+    000143  aa   000022 7330 00    235  	lrs	18		  " rescale to 2**-18
+    000144  4a  4 00042 7561 20    236  	stq	pds$avg_block_steps
+                                   237  
+    000145  aa   000000 7100 16    238  	tra	0,x6		return 
+                                   239  
+                                   240  
+    000146                         241  check_full_block:
+    000146  4a  4 00044 3731 20    242  	epbpsb	pds$stack_0_ptr,*
+    000147  aa   000060 6270 00    243  	push
+    000150  aa  7 00040 2721 20
+    000151  0a   000177 2370 00    244  	ldaq	argl_header
+    000152  aa  6 00050 7571 00    245  	staq	argl
+    000153  aa  6 00000 2541 00    246  	call	hc_ipc$full_block(argl)
+    000154  aa  6 00050 3501 00
+    000155  4a  4 00012 3521 20
+    000156  aa  6 00040 7531 00
+    000157  aa  7 00036 6701 20
+    000160  aa  6 00000 1731 00
+    000161  aa  6 00040 0731 00
+    000162  aa  6 00020 3521 20    247  	eppbp	sp|stack_frame.prev_sp,*
+    000163  aa   000000 0110 03    248  	even
+    000164                         249  	inhibit	on
+    000164  aa  7 00024 6523 00    250  	sprisp	sb|stack_header.stack_end_ptr 
+    000165  aa  2 00000 3723 00    251  	eppsp	bp|0		pop stack
+    000166                         252  	inhibit	off
+    000166  aa   400000 2350 03    253  	lda	=o400000,du
+    000167  aa   777777 7710 11    254  	arl	-1,x1
+    000170  4a  4 00024 3151 20    255  	cana	pds$ring_events	anything for this ring?
+    000171  0a   000174 6000 00    256  	tze	retj		no, try it all again or return.
+    000172  4a  4 00024 6551 20    257  	ersa	pds$ring_events	turn off this message ...
+    000173  aa   000000 7100 15    258  	tra	0,5		set return switches, regular-callers, etc.
+    000174  aa  5 00001 2341 00    259  retj:	szn	lb|ipcv.retsw	Should we return or try more?
+    000175  0a   000047 6000 00    260  	tze	common		Loop, re_using x6.
+    000176  aa  7 00044 7101 20    261  	short_return
+                                   262  
+                                   263  "
+    000177                         264  argl_header:
+    000177  aa   000000 000004     265  	zero	0,4
+    000200  aa   000000 000000     266  	zero	0,0
+                                   267  
+                                   268  
+                                   269  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000202  5a   000003 000000 
+    000203  5a   000042 600000 
+    000204  aa   000000 000000 
+    000205  55   000011 000002 
+    000206  5a   000002 400003 
+    000207  55   000006 000011 
+    000210  aa  013 146 141 163
+    000211  aa  164 137 150 143
+    000212  aa  137 151 160 143
+    000213  55   000017 000003 
+    000214  0a   000042 400000 
+    000215  55   000014 000003 
+    000216  aa  013 162 145 141         read_events
+    000217  aa  144 137 145 166
+    000220  aa  145 156 164 163
+    000221  55   000025 000011 
+    000222  0a   000030 400000 
+    000223  55   000022 000003 
+    000224  aa  011 151 160 143         ipc_block
+    000225  aa  137 142 154 157
+    000226  aa  143 153 000 000
+    000227  55   000033 000017 
+    000230  0a   000000 400000 
+    000231  55   000030 000003 
+    000232  aa  013 151 160 143         ipc_f_block
+    000233  aa  137 146 137 142
+    000234  aa  154 157 143 153
+    000235  55   000002 000025 
+    000236  6a   000000 400002 
+    000237  55   000036 000003 
+    000240  aa  014 163 171 155         symbol_table
+    000241  aa  142 157 154 137
+    000242  aa  164 141 142 154
+    000243  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000244  aa   000000 000015 
+    000245  aa   000000 000000 
+    000246  aa   000000 000000 
+    000247  5a   000017 000000 
+    000250  aa   000000 000000 
+    000251  5a   000011 000000 
+    000252  5a   000025 000000 
+    000253  5a   000033 000000 
+    000254  aa   000000 000000 
+    000255  aa   000000 000000 
+    000256  aa   000000 000000 
+    000257  aa   000000 000000 
+    000260  aa   000000 000000 
+    000261  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000262  aa  020 163 164 153         stk_trunc_avg_f2
+    000263  aa  137 164 162 165
+    000264  aa  156 143 137 141
+    000265  aa  166 147 137 146
+    000266  aa  062 000 000 000
+    000267  aa  020 163 164 153         stk_trunc_avg_f1
+    000270  aa  137 164 162 165
+    000271  aa  156 143 137 141
+    000272  aa  166 147 137 146
+    000273  aa  061 000 000 000
+    000274  aa  033 163 164 153         stk_truncate_shouldnt_didnt
+    000275  aa  137 164 162 165
+    000276  aa  156 143 141 164
+    000277  aa  145 137 163 150
+    000300  aa  157 165 154 144
+    000301  aa  156 164 137 144
+    000302  aa  151 144 156 164
+    000303  aa  031 163 164 153         stk_truncate_should_didnt
+    000304  aa  137 164 162 165
+    000305  aa  156 143 141 164
+    000306  aa  145 137 163 150
+    000307  aa  157 165 154 144
+    000310  aa  137 144 151 144
+    000311  aa  156 164 000 000
+    000312  aa  016 146 141 163         fast_ipc_block
+    000313  aa  164 137 151 160
+    000314  aa  143 137 142 154
+    000315  aa  157 143 153 000
+    000316  aa  005 163 164 145         steps
+    000317  aa  160 163 000 000
+    000320  aa  013 163 164 141         stack_0_ptr
+    000321  aa  143 153 137 060
+    000322  aa  137 160 164 162
+    000323  aa  017 141 166 147         avg_block_steps
+    000324  aa  137 142 154 157
+    000325  aa  143 153 137 163
+    000326  aa  164 145 160 163
+    000327  aa  005 156 165 163         nused
+    000330  aa  145 144 000 000
+    000331  aa  003 163 163 164         sst
+    000332  aa  021 160 157 163         post_purge_switch
+    000333  aa  164 137 160 165
+    000334  aa  162 147 145 137
+    000335  aa  163 167 151 164
+    000336  aa  143 150 000 000
+    000337  aa  023 163 164 153         stk_truncate_always
+    000340  aa  137 164 162 165
+    000341  aa  156 143 141 164
+    000342  aa  145 137 141 154
+    000343  aa  167 141 171 163
+    000344  aa  014 163 164 153         stk_truncate
+    000345  aa  137 164 162 165
+    000346  aa  156 143 141 164
+    000347  aa  145 000 000 000
+    000350  aa  007 164 143 137         tc_data
+    000351  aa  144 141 164 141
+    000352  aa  022 146 141 163         fast_ipc_get_event
+    000353  aa  164 137 151 160
+    000354  aa  143 137 147 145
+    000355  aa  164 137 145 166
+    000356  aa  145 156 164 000
+    000357  aa  004 160 170 163         pxss
+    000360  aa  163 000 000 000
+    000361  aa  020 151 160 143         ipc_block_return
+    000362  aa  137 142 154 157
+    000363  aa  143 153 137 162
+    000364  aa  145 164 165 162
+    000365  aa  156 000 000 000
+    000366  aa  013 162 151 156         ring_events
+    000367  aa  147 137 145 166
+    000370  aa  145 156 164 163
+    000371  aa  013 145 166 145         event_masks
+    000372  aa  156 164 137 155
+    000373  aa  141 163 153 163
+    000374  aa  016 145 166 145         events_pending
+    000375  aa  156 164 163 137
+    000376  aa  160 145 156 144
+    000377  aa  151 156 147 000
+    000400  aa  020 166 141 154         validation_level
+    000401  aa  151 144 141 164
+    000402  aa  151 157 156 137
+    000403  aa  154 145 166 145
+    000404  aa  154 000 000 000
+    000405  aa  010 151 160 143         ipc_vars
+    000406  aa  137 166 141 162
+    000407  aa  163 000 000 000
+    000410  aa  003 160 144 163         pds
+    000411  aa  012 146 165 154         full_block
+    000412  aa  154 137 142 154
+    000413  aa  157 143 153 000
+    000414  aa  006 150 143 137         hc_ipc
+    000415  aa  151 160 143 000
+    000416  aa  017 164 162 165         truncate_stacks
+    000417  aa  156 143 141 164
+    000420  aa  145 137 163 164
+    000421  aa  141 143 153 163
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000422  aa   000004 000000 
+    000423  55   000146 000060 
+    000424  aa   000004 000000 
+    000425  55   000146 000065 
+    000426  aa   000004 000000 
+    000427  55   000127 000072 
+    000430  aa   000004 000000 
+    000431  55   000127 000101 
+    000432  aa   000004 000000 
+    000433  55   000155 000110 
+    000434  aa   000004 000000 
+    000435  55   000127 000114 
+    000436  aa   000004 000000 
+    000437  55   000206 000116 
+    000440  aa   000004 000000 
+    000441  55   000206 000121 
+    000442  aa   000004 000000 
+    000443  55   000127 000125 
+    000444  aa   000004 000000 
+    000445  55   000146 000130 
+    000446  aa   000004 000000 
+    000447  55   000146 000135 
+    000450  aa   000004 000000 
+    000451  55   000146 000142 
+    000452  aa   000004 000000 
+    000453  55   000155 000150 
+    000454  aa   000004 000000 
+    000455  55   000206 000157 
+    000456  aa   000004 000000 
+    000457  55   000206 000164 
+    000460  aa   000004 000000 
+    000461  55   000206 000167 
+    000462  aa   000004 000000 
+    000463  55   000206 000172 
+    000464  aa   000004 000000 
+    000465  55   000206 000176 
+    000466  aa   000004 000000 
+    000467  55   000206 000203 
+    000470  aa   000004 000000 
+    000471  55   000212 000207 
+    000472  aa   000004 000000 
+    000473  55   000214 000214 
+    000474  aa   000001 000000 
+    000475  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000476  5a   000220 000000 
+    000477  5a   000222 000000 
+    000500  5a   000224 000000 
+    000501  5a   000226 000000 
+    000502  5a   000230 000000 
+    000503  5a   000232 000000 
+    000504  5a   000234 000000 
+    000505  5a   000236 000000 
+    000506  5a   000240 000000 
+    000507  5a   000242 000000 
+    000510  5a   000244 000000 
+    000511  5a   000246 000000 
+    000512  5a   000250 000000 
+    000513  5a   000252 000000 
+    000514  5a   000254 000000 
+    000515  5a   000256 777777 
+    000516  5a   000260 000000 
+    000517  5a   000262 000000 
+    000520  5a   000264 000000 
+    000521  5a   000266 000000 
+    000522  5a   000270 000000 
+    000523  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000202 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000062 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         truncate_stacks|truncate_stacks
+    000011  5a   000320 0000 00
+    000012  9a   777766 0000 46         hc_ipc|full_block
+    000013  5a   000317 0000 00
+    000014  9a   777764 0000 46         pds|ipc_vars
+    000015  5a   000316 0000 00
+    000016  9a   777762 0000 46         pds|validation_level
+    000017  5a   000315 0000 00
+    000020  9a   777760 0000 46         pds|events_pending
+    000021  5a   000314 0000 00
+    000022  9a   777756 0000 46         pds|event_masks
+    000023  5a   000313 0000 11
+    000024  9a   777754 0000 46         pds|ring_events
+    000025  5a   000312 0000 00
+    000026  9a   777752 0000 46         pds|ipc_block_return
+    000027  5a   000311 0000 00
+    000030  9a   777750 0000 46         pxss|fast_ipc_get_event
+    000031  5a   000310 0000 00
+    000032  9a   777746 0000 46         tc_data|stk_truncate
+    000033  5a   000307 0000 00
+    000034  9a   777744 0000 46         tc_data|stk_truncate_always
+    000035  5a   000306 0000 00
+    000036  9a   777742 0000 46         tc_data|post_purge_switch
+    000037  5a   000305 0000 00
+    000040  9a   777740 0000 46         sst|nused
+    000041  5a   000304 0000 00
+    000042  9a   777736 0000 46         pds|avg_block_steps
+    000043  5a   000303 0000 00
+    000044  9a   777734 0000 46         pds|stack_0_ptr
+    000045  5a   000302 0000 20
+    000046  9a   777732 0000 46         sst|steps
+    000047  5a   000301 0000 00
+    000050  9a   777730 0000 46         pxss|fast_ipc_block
+    000051  5a   000300 0000 00
+    000052  9a   777726 0000 46         sst|stk_truncate_should_didnt
+    000053  5a   000277 0000 12
+    000054  9a   777724 0000 46         sst|stk_truncate_shouldnt_didnt
+    000055  5a   000276 0000 12
+    000056  9a   777722 0000 46         tc_data|stk_trunc_avg_f1
+    000057  5a   000275 0000 00
+    000060  9a   777720 0000 46         tc_data|stk_trunc_avg_f2
+    000061  5a   000274 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   242564 714414 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000230 
+    000020  aa   000000 000135 
+    000021  aa   000167 000155 
+    000022  aa   000220 000135 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000003 
+    000066  aa   000102 000042 
+    000067  aa   175453 021140 
+    000070  aa   000000 117547 
+    000071  aa   210454 400000 
+    000072  aa   000113 000041 
+    000073  aa   052721 247134 
+    000074  aa   000000 105272 
+    000075  aa   317215 400000 
+    000076  aa   000124 000042 
+    000077  aa   147777 464111 
+    000100  aa   000000 115000 
+    000101  aa   507463 000000 
+    000102  aa   076163 160145          >spec>install>1112>fast_hc_ipc.alm
+    000103  aa   143076 151156 
+    000104  aa   163164 141154 
+    000105  aa   154076 061061 
+    000106  aa   061062 076146 
+    000107  aa   141163 164137 
+    000110  aa   150143 137151 
+    000111  aa   160143 056141 
+    000112  aa   154155 040040 
+    000113  aa   076154 144144          >ldd>include>stack_frame.incl.alm
+    000114  aa   076151 156143 
+    000115  aa   154165 144145 
+    000116  aa   076163 164141 
+    000117  aa   143153 137146 
+    000120  aa   162141 155145 
+    000121  aa   056151 156143 
+    000122  aa   154056 141154 
+    000123  aa   155040 040040 
+    000124  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000125  aa   076151 156143 
+    000126  aa   154165 144145 
+    000127  aa   076163 164141 
+    000130  aa   143153 137150 
+    000131  aa   145141 144145 
+    000132  aa   162056 151156 
+    000133  aa   143154 056141 
+    000134  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          50    argl                     fast_hc_ipc:   37,  174,  176,  245,  246.
+         177    argl_header              fast_hc_ipc:  173,  244,  264.
+                avg_block_steps          fast_hc_ipc:  164,  232,  236.
+        1170    call_offset              stack_header:        80.
+         146    check_full_block         fast_hc_ipc:   89,  117,  241.
+          47    common                   fast_hc_ipc:   82,  113,  141,  260.
+        1174    entry_offset             stack_header:        84.
+                events_pending           fast_hc_ipc:   72,   83,   86,  114.
+                event_masks              fast_hc_ipc:   73,   84,  115.
+         115    fast_block_return        fast_hc_ipc:  141,  192.
+                fast_ipc_block           fast_hc_ipc:  188.
+                fast_ipc_get_event       fast_hc_ipc:  147.
+                full_block               fast_hc_ipc:  246.
+                hc_ipc                   fast_hc_ipc:  246.
+           0    ipcv.ap                  fast_hc_ipc:   26,   81,   87,   90.
+           6    ipcv.block_start_steps   fast_hc_ipc:   31,  187,  203,  231,  234.
+           4    ipcv.chan                fast_hc_ipc:   30.
+           1    ipcv.retsw               fast_hc_ipc:   27,   74,   78,   85,  111,  116,  136,  146,  259.
+           2    ipcv.save_entry_ret      fast_hc_ipc:   28,  143,  196.
+           7    ipcv.stk_temp            fast_hc_ipc:   32,  145,  151,  198.
+           3    ipcv.truncated_stacks    fast_hc_ipc:   29,  144,  168,  197.
+          30    ipc_block                fast_hc_ipc:   46,  108.
+                ipc_block_return         fast_hc_ipc:  142.
+           0    ipc_f_block              fast_hc_ipc:   46,   68.
+                ipc_vars                 fast_hc_ipc:   70,  110,  135,  194.
+         112    no_truncation            fast_hc_ipc:  156,  165,  185.
+                nused                    fast_hc_ipc:  162,  207.
+                pds                      fast_hc_ipc:   70,   71,   72,   73,   75,   83,   84,   86,  110,  112,  114,  115,
+                                                       135,  137,  142,  164,  170,  194,  195,  232,  236,  242,  255,  257.
+                post_purge_switch        fast_hc_ipc:  159,  204.
+        1171    push_offset              stack_header:        81.
+                pxss                     fast_hc_ipc:  147,  188.
+          42    read_events              fast_hc_ipc:   46,  133.
+         174    retj                     fast_hc_ipc:  256,  259.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+                ring_events              fast_hc_ipc:   75,  255,  257.
+          12    sfb_readevents_merge     fast_hc_ipc:   79,  138.
+          27    short_return             fast_hc_ipc:   93.
+                sst                      fast_hc_ipc:  162,  186,  202,  207,  219,  222.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+                stack_0_ptr              fast_hc_ipc:  170,  242.
+          32    stack_frame.arg_ptr      stack_frame:   16.
+         100    stack_frame.condition_bit      stack_frame:   32.
+          20    stack_frame.condition_word     stack_frame:    9.
+        2000    stack_frame.crawl_out_bit      stack_frame:   28.
+          26    stack_frame.entry_ptr    stack_frame:   13.
+          20    stack_frame.flag_word    stack_frame:   24.
+         400    stack_frame.link_trap_bit      stack_frame:   30.
+          30    stack_frame.lp_ptr       stack_frame:   15.
+       20000    stack_frame.main_proc_bit      stack_frame:   25.
+          60    stack_frame.min_length   stack_frame:   23.
+          22    stack_frame.next_sp      stack_frame:   10.
+          36    stack_frame.on_unit_rel_ptrs   stack_frame:   19.
+          30    stack_frame.operator_ptr       stack_frame:   14.
+          37    stack_frame.operator_ret_ptr   stack_frame:   20.
+          20    stack_frame.prev_sp      fast_hc_ipc:  177,  247,
+                                         stack_frame:    8.
+          40    stack_frame.regs         stack_frame:   22.
+          24    stack_frame.return_ptr   stack_frame:   12.
+       10000    stack_frame.run_unit_manager   stack_frame:   26.
+        1000    stack_frame.signaller_bit      stack_frame:   29.
+          22    stack_frame.signaller_word     stack_frame:   11.
+        4000    stack_frame.signal_bit   stack_frame:   27.
+          34    stack_frame.static_ptr   stack_frame:   17.
+         200    stack_frame.support_bit  stack_frame:   31.
+          35    stack_frame.support_ptr  stack_frame:   18.
+          37    stack_frame.translator_id      stack_frame:   21.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   stack_header:        37.
+          24    stack_header.stack_end_ptr     fast_hc_ipc:  181,  250,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+                steps                    fast_hc_ipc:  186,  202.
+                stk_truncate             fast_hc_ipc:  155.
+                stk_truncate_always      fast_hc_ipc:  157.
+                stk_truncate_shouldnt_didnt    fast_hc_ipc:  222.
+                stk_truncate_should_didnt      fast_hc_ipc:  219.
+                stk_trunc_avg_f1         fast_hc_ipc:  230.
+                stk_trunc_avg_f2         fast_hc_ipc:  233.
+                tc_data                  fast_hc_ipc:  155,  157,  159,  204,  230,  233.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+          71    truncate                 fast_hc_ipc:  158,  160,  167.
+         134    truncate_incorrect       fast_hc_ipc:  208,  221.
+         135    truncate_meter_done      fast_hc_ipc:  205,  220,  223.
+                truncate_stacks          fast_hc_ipc:  176.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+                validation_level         fast_hc_ipc:   71,  112,  137,  195.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

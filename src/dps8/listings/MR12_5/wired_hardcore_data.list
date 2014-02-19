@@ -1,0 +1,274 @@
+	COMPILATION LISTING OF SEGMENT !BBBJZjXmgmNFPL
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1100.4 mst Sat
+	    Options: table map
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*   *                                                         *
+        5*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*   *                                                         *
+        7*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*   * Technology and Honeywell Information Systems, Inc.      *
+        9*   *                                                         *
+       10*   *********************************************************** */
+       11 
+       12 
+       13 wired_hardcore_data:
+       14      procedure;
+       15 
+       16 /*  wired_hardcore_data - this segment  contains wired data used by Multics hardcore
+       17*   Converted from alm to cds 6/5/80 by  J. A. Bush
+       18*   wire_pages constant added 6/5/80 by J. A. Bush
+       19*   Modified by J. A. Bush 08/26/80 for the DPS8/70M CPU
+       20*   Modified by J. Bongiovanni 1/81 to add fault counters
+       21*   Modified by J. A. Bush 5/08/81 to make per_system saving of history regs the default
+       22*   Modified by J. Bongiovanni 2/82 to add trap_invalid_masked
+       23*   Modified by C. Hornig March 1982 to add contiguous_io_buffers.
+       24*   Modified by R. Coppola October 1983 to add per processor cache counters
+       25*	        and make fault counters per-processor.
+       26*   Modified by Keith Loepere November 1983 for abort_request.
+       27*   Modified by Chris Jones August 1984 to remove contiguous_io_buffers.
+       28**/
+       29 
+       30 /* Automatic */
+       31 
+       32 dcl  code fixed bin (35);
+       33 dcl  1 cdsa aligned like cds_args;
+       34 
+       35 /* Entries */
+       36 
+       37 dcl  com_err_ entry () options (variable);
+       38 dcl  create_data_segment_ entry (ptr, fixed bin (35));
+       39 
+       40 /* Builtins */
+       41 
+       42 dcl  (addr, null, size, string) builtin;
+       43 
+       44 dcl  1 wired_hardcore_data aligned,			/* pl1 structure defining wired_hardcore_data  */
+       45        2 system_page_size fixed bin,			/* size of a page in 36 bit words */
+       46        2 wire_pages fixed bin,			/* number of pages wired by pmut$wire_and_mask */
+       47        2 global_hregs bit (1) aligned,			/* per-system flag to save history regs */
+       48        2 abort_request bit (1) aligned,			/* set by ocdcm_ when an unsolicited request is hit -
+       49*						This bit causes bce programs to possibly abort. */
+       50        2 trap_invalid_masked bit (1) aligned,		/* per-system flag to crash on masked-in-user-ring */
+       51        2 debug_check_options (16) fixed bin,		/* used to store options specified on the DEBG config card */
+       52        2  cpu_a_flt_ctr_array (0:127) fixed bin (35),	/* per-cpu counters of faults  (refer to fault_table in fim) */
+       53        2  cpu_b_flt_ctr_array (0:127) fixed bin (35),
+       54        2  cpu_c_flt_ctr_array (0:127) fixed bin (35),
+       55        2  cpu_d_flt_ctr_array (0:127) fixed bin (35),
+       56        2  cpu_e_flt_ctr_array (0:127) fixed bin (35),
+       57        2  cpu_f_flt_ctr_array (0:127) fixed bin (35),
+       58        2  cpu_g_flt_ctr_array (0:127) fixed bin (35),
+       59        2  cpu_h_flt_ctr_array (0:127) fixed bin (35),
+       60        2  cpu_a_cache_err_ctr_array (18) fixed bin (35),	/* per-cpu counters of cache directory and duplicate directory errors */
+       61        2  cpu_b_cache_err_ctr_array (18) fixed bin (35),
+       62        2  cpu_c_cache_err_ctr_array (18) fixed bin (35),
+       63        2  cpu_d_cache_err_ctr_array (18) fixed bin (35),
+       64        2  cpu_e_cache_err_ctr_array (18) fixed bin (35),
+       65        2  cpu_f_cache_err_ctr_array (18) fixed bin (35),
+       66        2  cpu_g_cache_err_ctr_array (18) fixed bin (35),
+       67        2  cpu_h_cache_err_ctr_array (18) fixed bin (35);
+       68 
+       69 
+       70 
+       71           unspec (wired_hardcore_data) = ""b;		/* Clear it out */
+       72 
+       73 	wired_hardcore_data.system_page_size = 1024;	/* page size in 36  bit words */
+       74 	wired_hardcore_data.wire_pages = 4;		/* pmut$wire_and_mask now wires 4 pages */
+       75 	wired_hardcore_data.global_hregs = "1"b;	/* default is to save hregs per-system */
+       76 
+       77 /* Now set up call to create data base */
+       78 
+       79 	cdsa.sections (1).p = addr (wired_hardcore_data);
+       80 	cdsa.sections (1).len = size (wired_hardcore_data);
+       81 	cdsa.sections (1).struct_name = "wired_hardcore_data";
+       82 
+       83 	cdsa.seg_name = "wired_hardcore_data";
+       84 	cdsa.num_exclude_names = 0;
+       85 	cdsa.exclude_array_ptr = null ();
+       86 
+       87 	string (cdsa.switches) = "0"b;
+       88 	cdsa.switches.have_text = "1"b;
+       89 
+       90 	call create_data_segment_ (addr (cdsa), code);
+       91 	if code ^= 0 then call com_err_ (code, "wired_hardcore_data");
+       92 	return;
+       93 
+  1     1 /* BEGIN INCLUDE FILE cds_args.incl.pl1 */
+  1     2 
+  1     3 dcl 1 cds_args based aligned,
+  1     4     2 sections (2),
+  1     5       3 p ptr,					/* pointer to data for text/static section */
+  1     6       3 len fixed bin (18),				/* size of text/static section */
+  1     7       3 struct_name char (32),			/* name of declared structure for this section */
+  1     8     2 seg_name char (32),				/* name to create segment by */
+  1     9     2 num_exclude_names fixed bin,			/* number of names in exclude array */
+  1    10     2 exclude_array_ptr ptr,				/* pointer to array of exclude names */
+  1    11     2 switches,					/* control switches */
+  1    12       3 defs_in_link bit (1) unal,			/* says put defs in linkage */
+  1    13       3 separate_static bit (1) unal,			/* says separate static section is wanted */
+  1    14       3 have_text bit (1) unal,			/* ON if text section given */
+  1    15       3 have_static bit (1) unal,			/* ON if static section given */
+  1    16       3 pad bit (32) unal;
+  1    17 
+  1    18 dcl  exclude_names (1) char (32) based;			/* pointed to be cds_args.exclude_array_ptr */
+  1    19 
+  1    20 /* END INCLUDE FILE cds_args.incl.pl1 */
+       94 
+       95 
+       96      end wired_hardcore_data;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.9  !BBBJZjXmgmNFPL.pl1               >spec>install>1110>wired_hardcore_data.cds
+94           1    04/01/76  2209.5  cds_args.incl.pl1                 >ldd>include>cds_args.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 42 ref 79 90 90
+cds_args                               based           structure                level 1 dcl 1-3
+cdsa                            000102 automatic       structure                level 1 dcl 33 set ref 90 90
+code                            000100 automatic       fixed bin(35,0)          dcl 32 set ref 90* 91 91*
+com_err_                        000012 constant        entry                    external dcl 37 ref 91
+create_data_segment_            000014 constant        entry                    external dcl 38 ref 90
+exclude_array_ptr        42     000102 automatic       pointer                  level 2 dcl 33 set ref 85*
+global_hregs              2     000147 automatic       bit(1)                   level 2 dcl 44 set ref 75*
+have_text                44(02) 000102 automatic       bit(1)                   level 3 packed packed unaligned dcl 33 set ref 88*
+len                       2     000102 automatic       fixed bin(18,0)          array level 3 dcl 33 set ref 80*
+null                                                   builtin function         dcl 42 ref 85
+num_exclude_names        40     000102 automatic       fixed bin(17,0)          level 2 dcl 33 set ref 84*
+p                               000102 automatic       pointer                  array level 3 dcl 33 set ref 79*
+sections                        000102 automatic       structure                array level 2 dcl 33
+seg_name                 30     000102 automatic       char(32)                 level 2 dcl 33 set ref 83*
+size                                                   builtin function         dcl 42 ref 80
+string                                                 builtin function         dcl 42 set ref 87*
+struct_name               3     000102 automatic       char(32)                 array level 3 dcl 33 set ref 81*
+switches                 44     000102 automatic       structure                level 2 dcl 33 set ref 87*
+system_page_size                000147 automatic       fixed bin(17,0)          level 2 dcl 44 set ref 73*
+wire_pages                1     000147 automatic       fixed bin(17,0)          level 2 dcl 44 set ref 74*
+wired_hardcore_data             000147 automatic       structure                level 1 dcl 44 set ref 71* 79 80
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+exclude_names                          based           char(32)                 array packed unaligned dcl 1-18
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+wired_hardcore_data             000012 constant        entry                    external dcl 13
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+unspec                                                 builtin function         ref 71
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       166         204     111         176
+Length      1642     111        16        1421      54           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+wired_hardcore_data                1310 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+wired_hardcore_data      000100 code                        wired_hardcore_data
+                         000102 cdsa                        wired_hardcore_data
+                         000147 wired_hardcore_data         wired_hardcore_data
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      create_data_segment_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000011        71 000017        73 000023        74 000025        75 000027        79 000031        80 000033
+     81 000035        83 000040        84 000043        85 000044        87 000046        88 000047        90 000051
+     91 000063        92 000110
+
+
+Object Segment >spec>install>1110>wired_hardcore_data
+Created on 11/11/89  1100.5 mst Sat
+by Hirneisen.SysMaint.a
+using create_data_segment_, Version II of Thursday, November 20, 1986
+
+        Object    Text    Defs    Link    Symb  Static
+Start        0       0    2246    2564    2574    2574
+Length    3073    2246     316      10     263       0
+
+
+24 Definitions:
+
+
+segname:    wired_hardcore_data
+
+text|3          abort_request
+text|2025       cpu_a_cache_err_ctr_array
+text|25         cpu_a_flt_ctr_array
+text|2047       cpu_b_cache_err_ctr_array
+text|225        cpu_b_flt_ctr_array
+text|2071       cpu_c_cache_err_ctr_array
+text|425        cpu_c_flt_ctr_array
+text|2113       cpu_d_cache_err_ctr_array
+text|625        cpu_d_flt_ctr_array
+text|2135       cpu_e_cache_err_ctr_array
+text|1025       cpu_e_flt_ctr_array
+text|2157       cpu_f_cache_err_ctr_array
+text|1225       cpu_f_flt_ctr_array
+text|2201       cpu_g_cache_err_ctr_array
+text|1425       cpu_g_flt_ctr_array
+text|2223       cpu_h_cache_err_ctr_array
+text|1625       cpu_h_flt_ctr_array
+text|5          debug_check_options
+text|2          global_hregs
+symb|0          symbol_table
+text|0          system_page_size
+text|4          trap_invalid_masked
+text|1          wire_pages
+
+
+No Links.
+
+
+
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

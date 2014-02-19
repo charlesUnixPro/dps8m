@@ -1,0 +1,228 @@
+	COMPILATION LISTING OF SEGMENT bce_query
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1013.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* Question asking utility for bootload command environment */
+        9 /* This is like a VERY simple command_query_ */
+       10 /* BIM 10/82 */
+       11 /* Modified by Keith Loepere in 8/83 for new bce switches */
+       12 
+       13 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       14 
+       15 /* declare bce_query entry options (variable) */
+       16 /* call bce_query (answer, cs, arg1, arg2, arg3, ...) */
+       17 /* Where:             */
+       18 /*         answer   (Output) is a NONvarying string */
+       19 /*         cs       (Input) is the control string */
+       20 /*         argN     (Input) are the ioa args */
+       21 
+       22 /* If only one argument is given, then this is equivalent to get_line */
+       23 /* The entry bce_query$get_line is a direct way of asking for that */
+       24 
+       25 /* declare bce_query$yes_no entry options (variable) */
+       26 /* call bce_query$yes_no (yes_or_no, cs, arg1, ..., argN) */
+       27 
+       28 /* declare bce_query$get_line entry (char (*)); */
+       29 /* call bce_query$get_line (response); */
+       30 
+       31 bce_query:
+       32      procedure (Answer) /* options (variable) */;
+       33 
+       34 declare  arg_count_			  entry returns (fixed bin);
+       35 declare  cu_$arg_list_ptr		  entry returns (pointer);
+       36 declare  ioa_$general_rs		  entry (ptr, fixed bin, fixed bin, char (*), fixed bin (21), bit (1) aligned,
+       37 				  bit (1) aligned);
+       38 declare  bce_data$error_put_chars	  ext entry (ptr, ptr, fixed bin, fixed bin (35)) variable;
+       39 declare  bce_data$get_line		  ext entry (ptr, ptr, fixed bin, fixed bin, fixed bin (35)) variable;
+       40 
+       41 declare  Answer			  char (*);
+       42 declare  Yes_No			  bit (1);
+       43 
+       44 declare  requery 			  char (25) static options (constant) init ("Please answer yes or no: ");
+       45 
+       46 declare  buffer			  char (256);
+       47 declare  used			  fixed bin (21);
+       48 declare  yes_no			  bit (1);
+       49 declare  just_get			  bit (1) aligned;
+       50 declare  n_read			  fixed bin;
+       51 declare  (substr, length, addr)	  builtin;
+       52 
+       53 declare  arg_list_ptr		  pointer;
+       54 
+       55 
+       56 	yes_no = "0"b;
+       57 	just_get = (arg_count_ () < 2);
+       58 	go to COMMON;
+       59 
+       60 
+       61 get_line:
+       62      entry (Answer);
+       63 
+       64 	yes_no = "0"b;
+       65 	just_get = "1"b;
+       66 	go to COMMON;
+       67 
+       68 yes_no:
+       69      entry (Yes_No);
+       70 
+       71 	yes_no = "1"b;
+       72 	just_get = (arg_count_ () < 2);
+       73 
+       74 COMMON:
+       75 	arg_list_ptr = cu_$arg_list_ptr ();
+       76 	if ^just_get
+       77 	then do;
+       78 	     buffer = "";
+       79 	     call ioa_$general_rs (arg_list_ptr, 2, 3, buffer, used, "0"b, "0"b);
+       80 	     call bce_data$error_put_chars (addr (bce_data$error_put_chars), addr (buffer), (used), (0));
+       81 	end;
+       82 
+       83 	buffer = "";				/* wont hurt if ^yes_no */
+       84 
+       85 	if yes_no
+       86 	then do while (buffer = "");
+       87 	     call bce_data$get_line (addr (bce_data$get_line), addr (buffer), length (buffer), n_read, (0));
+       88 	     buffer = substr (buffer, 1, n_read - 1 /* strip NL*/);
+       89 	     if buffer = "yes" | buffer = "y"
+       90 	     then go to RETURN_YES;
+       91 	     else if buffer = "no" | buffer = "n"
+       92 	     then go to RETURN_NO;
+       93 	     call bce_data$error_put_chars (addr (bce_data$error_put_chars), addr (requery), length (requery), (0));
+       94 	     buffer = "";
+       95 	end;
+       96 
+       97 /* Here on only if ^yes_no */
+       98 
+       99 	Answer = "";
+      100 	buffer = "";
+      101 	call bce_data$get_line (addr (bce_data$get_line), addr (buffer), length (buffer), n_read, (0));
+      102 	Answer = substr (buffer, 1, n_read - 1 /* strip NL */);
+      103 	return;
+      104 
+      105 RETURN_YES:
+      106 	Yes_No = "1"b;
+      107 	return;
+      108 RETURN_NO:
+      109 	Yes_No = "0"b;
+      110 	return;
+      111      end bce_query;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.1  bce_query.pl1                     >special_ldd>install>MR12.3-1114>bce_query.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Answer                                 parameter       char                     packed unaligned dcl 41 set ref 31 61 99* 102*
+Yes_No                                 parameter       bit(1)                   packed unaligned dcl 42 set ref 68 105* 108*
+addr                                                   builtin function         dcl 51 ref 80 80 80 80 87 87 87 87 93 93 93 93 101
+                                                                                  101 101 101
+arg_count_                      000010 constant        entry                    external dcl 34 ref 57 72
+arg_list_ptr                    000204 automatic       pointer                  dcl 53 set ref 74* 79*
+bce_data$error_put_chars        000016 external static entry variable           dcl 38 set ref 80 80 80 93 93 93
+bce_data$get_line               000020 external static entry variable           dcl 39 set ref 87 87 87 101 101 101
+buffer                          000100 automatic       char(256)                packed unaligned dcl 46 set ref 78* 79* 80 80 83* 85
+                                                                                  87 87 87 87 88* 88 89 89 91 91 94* 100* 101 101
+                                                                                  101 101 102
+cu_$arg_list_ptr                000012 constant        entry                    external dcl 35 ref 74
+ioa_$general_rs                 000014 constant        entry                    external dcl 36 ref 79
+just_get                        000202 automatic       bit(1)                   dcl 49 set ref 57* 65* 72* 76
+length                                                 builtin function         dcl 51 ref 87 87 93 93 101 101
+n_read                          000203 automatic       fixed bin(17,0)          dcl 50 set ref 87* 88 101* 102
+requery                         000000 constant        char(25)                 initial packed unaligned dcl 44 set ref 93 93 93 93
+substr                                                 builtin function         dcl 51 ref 88 102
+used                            000200 automatic       fixed bin(21,0)          dcl 47 set ref 79* 80
+yes_no                          000201 automatic       bit(1)                   packed unaligned dcl 48 set ref 56* 64* 71* 85
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+COMMON                          000117 constant        label                    dcl 74 ref 58 66
+RETURN_NO                       000417 constant        label                    dcl 108 ref 91
+RETURN_YES                      000411 constant        label                    dcl 105 ref 89
+bce_query                       000022 constant        entry                    external dcl 31
+get_line                        000053 constant        entry                    external dcl 61
+yes_no                          000075 constant        entry                    external dcl 68
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       532         554     430         542
+Length       736     430        22         146     102           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_query                           178 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_query                000100 buffer                      bce_query
+                         000200 used                        bce_query
+                         000201 yes_no                      bce_query
+                         000202 just_get                    bce_query
+                         000203 n_read                      bce_query
+                         000204 arg_list_ptr                bce_query
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_l_a               call_ent_var        call_ext_out_desc   call_ext_out        return_mac          ext_entry
+ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+arg_count_                    cu_$arg_list_ptr              ioa_$general_rs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bce_data$error_put_chars      bce_data$get_line
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     31 000017        56 000035        57 000036        58 000050        61 000051        64 000066        65 000067
+     66 000071        68 000072        71 000102        72 000104        74 000117        76 000126        78 000130
+     79 000133        80 000201        83 000225        85 000230        87 000236        88 000264        89 000271
+     91 000301        93 000311        94 000335        95 000340        99 000341       100 000347       101 000352
+    102 000400       103 000410       105 000411       107 000416       108 000417       110 000424
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

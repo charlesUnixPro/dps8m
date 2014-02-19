@@ -1,0 +1,275 @@
+ASSEMBLY LISTING OF SEGMENT >special_ldd>hard>41-5>datmk_util_.alm                 
+ASSEMBLED ON:	01/22/85  1142.5 mst Tue
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.6  November 1982 
+ASSEMBLER CREATED:	09/21/83  1227.3 mst Wed
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     6  " * Technology and Honeywell Information Systems, Inc.      *
+                                     7  " *                                                         *
+                                     8  " ***********************************************************
+                                     9  
+                                    10  " DATMK_UTIL - Utility Routines for Multics DATMK_.
+                                    11  "	6/25/68 - Noel I. Morris
+                                    12  "	8/12/75 - Steve Webber to use only one linkage block
+                                    13  
+                                    14  
+    000000                          15  	name	datmk_util_
+                                    16  
+                                    17  
+                                    18  
+                                    19  
+                                    20  " 
+                                    21  " ADD_LINKAGE_DEFINITION - Add Definition to Linkage Section.
+                                    22  
+                                    23  " Calling Sequence:
+                                    24  "	call add_linkage_definition (link_ptr, symbol_ptr, value, code)
+                                    25  "
+                                    26  " Where:
+                                    27  "	link_ptr		= pointer to linkage section.
+                                    28  "	symbol_ptr	= character string containing symbol
+                                    29  "			  to be added.
+                                    30  "	value		= fixed bin (18) variable containing
+                                    31  "			  value of symbol to be added.
+                                    32  "	code		= error code-- set on goto for loop
+                                    33  "
+                                    34  " NOTE:
+                                    35  "	It is assumed that the character string "symbol" has
+                                    36  "	an offset of 9 bits and that it points to an "ACC"
+                                    37  "	type character string.  Any other type of string
+                                    38  "	will produce unpredictable results.
+                                    39  "
+                                    40  
+                                    41  
+                        000000      42  	segdef	add_linkage_definition
+                                    43  
+    000000                          44  add_linkage_definition:
+                                    45  
+    000000  aa  0 00010 4501 20     46  	stz	ap|8,*		clear error code
+    000001  aa  0 00002 3521 20     47  	eppbp	ap|2,*		bp -> linkage pointer
+    000002  aa  2 00000 3521 20     48  	eppbp	bp|0,*		bp -> linkage segment
+    000003  aa  2 00000 2131 00     49  	epaq	bp|0		segno of linkage in AU
+    000004  aa   000000 6200 01     50  	eax0	0,au		move segno to x0
+    000005  aa  2 00000 1001 00     51  	cmpx0	bp|0		see if defs in linage
+    000006  0a   000036 6010 00     52  	tnz	error		no, error
+                                    53  
+    000007  aa  2 00006 7211 00     54  	lxl1	bp|6		x1 contains length of this linkage block
+    000010  aa  2 77777 3715 11     55  	epplb	bp|-1,1		get ptr to new definition
+    000011  aa  5 00000 4501 00     56  	stz	lb|0		clear definition header
+    000012  aa  5 00001 4501 00     57  	stz	lb|1		..
+                                    58  
+    000013  aa  0 00006 7201 20     59  	lxl0	ap|6,*		pick up value of new definition
+    000014  aa  5 00001 7401 00     60  	stx0	lb|1		and set "value" of new definition
+                                    61  
+    000015  aa  0 00004 3535 20     62  	eppbb	ap|4,*		bb -> pointer to string
+    000016  aa  3 00000 3535 20     63  	eppbb	bb|0,*		bb -> symbol
+    000017  aa  3 00000 2351 00     64  	lda	bb|0		pick up first word of symbol
+    000020  aa   000033 7710 00     65  	arl	27		leave only ACC count
+    000021  aa   000001 0350 07     66  	adla	1,dl		add in count character
+    000022  aa  0 00140 1005 40     67  	mlr	(pr,rl),(pr,rl),fill(0)
+    000023  aa   300000 000005      68  	desc9a	bb|0,al
+    000024  aa   500002 000005      69  	desc9a	lb|2,al
+                                    70  
+    000025  aa   000003 6350 05     71  	eaa	3,al		get words in this definition
+    000026  aa   000002 7710 00     72  	arl	2		divide by 4 for word count
+    000027  aa  5 00003 6201 01     73  	eax0	lb|3,au		get pointer to word after linkage section
+    000030  aa  2 77777 4501 10     74  	stz	bp|-1,0		zero last word in lankage section
+                                    75  				"(first word of last def)
+    000031  aa  2 00006 4401 00     76  	sxl0	bp|6		update length of linkage section in header
+    000032  aa  2 00001 1201 00     77  	sblx0	bp|1		relocate pointer to rel-def
+    000033  aa   777777 6200 10     78  	eax0	-1,0		zero order indexing
+    000034  aa  5 00000 7401 00     79  	stx0	lb|0		store pointer to last def in new def
+                                    80  
+    000035  aa  7 00044 7101 20     81  	short_return
+                                    82  
+    000036  aa  0 00010 0541 20     83  error:	aos	ap|8,*
+    000037  aa  7 00044 7101 20     84  	short_return
+                                    85  
+                                    86  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000040  5a   000003 000000 
+    000041  5a   000031 600000 
+    000042  aa   000000 000000 
+    000043  55   000011 000002 
+    000044  5a   000002 400003 
+    000045  55   000006 000011 
+    000046  aa  013 144 141 164
+    000047  aa  155 153 137 165
+    000050  aa  164 151 154 137
+    000051  55   000022 000003 
+    000052  0a   000000 400000 
+    000053  55   000014 000003 
+    000054  aa  026 141 144 144         add_linkage_definition
+    000055  aa  137 154 151 156
+    000056  aa  153 141 147 145
+    000057  aa  137 144 145 146
+    000060  aa  151 156 151 164
+    000061  aa  151 157 156 000
+    000062  55   000002 000011 
+    000063  6a   000000 400002 
+    000064  55   000025 000003 
+    000065  aa  014 163 171 155         symbol_table
+    000066  aa  142 157 154 137
+    000067  aa  164 141 142 154
+    000070  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000071  aa   000000 000015 
+    000072  aa   000000 000000 
+    000073  aa   000000 000000 
+    000074  aa   000000 000000 
+    000075  5a   000011 000000 
+    000076  aa   000000 000000 
+    000077  aa   000000 000000 
+    000100  5a   000022 000000 
+    000101  aa   000000 000000 
+    000102  aa   000000 000000 
+    000103  aa   000000 000000 
+    000104  aa   000000 000000 
+    000105  aa   000000 000000 
+    000106  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000107  aa   000001 000000 
+    000110  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000111  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000040 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 112143 
+    000005  aa   305203 523135 
+    000006  aa   000000 113312 
+    000007  aa   121226 662301 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000121 
+    000020  aa   000000 000104 
+    000021  aa   000000 000110 
+    000022  aa   000113 000104 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056066 
+    000030  aa   040040 116157 
+    000031  aa   166145 155142 
+    000032  aa   145162 040061 
+    000033  aa   071070 062040 
+    000034  aa   107112 157150 
+    000035  aa   156163 157156 
+    000036  aa   056123 171163 
+    000037  aa   115141 151156 
+    000040  aa   164056 155040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000046 
+    000067  aa   133055 174031 
+    000070  aa   000000 113312 
+    000071  aa   045261 600000 
+    000072  aa   076163 160145          >special_ldd>hard>41-5>datmk_util_.alm
+    000073  aa   143151 141154 
+    000074  aa   137154 144144 
+    000075  aa   076150 141162 
+    000076  aa   144076 064061 
+    000077  aa   055065 076144 
+    000100  aa   141164 155153 
+    000101  aa   137165 164151 
+    000102  aa   154137 056141 
+    000103  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    add_linkage_definition   datmk_util_:   42,   44.
+          36    error                    datmk_util_:   52,   83.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

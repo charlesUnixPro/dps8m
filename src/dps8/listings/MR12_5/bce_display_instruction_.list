@@ -1,0 +1,872 @@
+	COMPILATION LISTING OF SEGMENT bce_display_instruction_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1019.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 bce_display_instruction_ : proc (P_data_ptr, P_count, P_label);
+        9 
+       10 /* prints an instruction using no more than P_count words starting at 
+       11*P_data_ptr with label P_label.  Update P_count to how many words dumped.
+       12*
+       13*   an instruction may be several words long
+       14*
+       15*   James R. Davis 20 May 79
+       16*   Modified 21 Sept 79 to print address and raw words, too. JRD
+       17*
+       18*   Stolen from print_instructions_ by Keith Loepere. 
+       19*   It differs from print_instructions_ in that:
+       20*   1) It doesn't take a i/o switch argument.
+       21*   2) It needs a label for the display (the wordno of the pointer supplied is
+       22*      meaningless).
+       23*   3) It displays only one instruction at a time.
+       24*
+       25*   FEATURES that it would be nice to put in someday:
+       26*   decoding the special tags (used by puls1, puls2 s9bd, s6bd, s4bd,
+       27*   sbd,stba,stbq,stca and stcq)
+       28*
+       29*   showing either the address of the operand (for a tra, or pl1_operators_ ref) or i$
+       30*   the contents of the word addressed - one or two words, depending
+       31**/
+       32 /* Fixed not to print more than P_count words despite multi-word instructions 09/01/83 S. Herbst */
+       33 
+       34 dcl  P_data_ptr ptr parameter;			/* input: to probe_info structure */
+       35 dcl  P_count fixed bin parameter;			/* input/output: number of instructions to print */
+       36 dcl  P_label fixed bin (26) parameter;			/* label (- => none) */
+       37 
+       38 /* the following variables are used globally throughout - but not altered */
+       39 
+       40 dcl  ip ptr;					/* to current instruction's first word */
+       41 dcl  op_index fixed bin;				/* the op code, an index into instruction info tables */
+       42 dcl  op_code char (6) aligned;			/* mnemonic name of op_index */
+       43 dcl  number_of_words fixed bin;			/* number of words in current instruction */
+       44 dcl  COLUMN_SPACING fixed bin internal static options (constant) init (8); /* bewteen op_code and address */
+       45 
+       46 dcl (addrel, char, divide, hbound, lbound, min) builtin;
+       47 
+       48 dcl (ioa_$rsnnl, ioa_, ioa_$nnl) entry options (variable);
+       49 
+       50 dcl 1 instr_pr aligned based (ip),
+       51     2 address unal,
+       52       3 pr fixed bin (3) unsigned unal,
+       53       3 offset fixed bin (14) unal,
+       54     2 opcode fixed bin (10) unsigned unal,
+       55     2 inhibit bit (1) unal,
+       56     2 use_pr bit (1) unal,
+       57     2 tag fixed bin (6) unsigned unal;
+       58 
+       59 dcl 1 instr aligned based (ip),
+       60     2 address unal,
+       61       3 offset fixed bin (17),
+       62     2 opcode fixed bin (10) unsigned unal,
+       63     2 inhibit bit (1) unal,
+       64     2 use_pr bit (1) unal,
+       65     2 tag fixed bin (6) unsigned unal;
+       66 
+  1     1 /* BEGIN INCLUDE FILE ... op_mnemonic_format.incl.pl1
+  1     2*
+  1     3*   James R. Davis 20 May 79 */
+  1     4 
+  1     5 dcl 1 op_mnemonic_$op_mnemonic (0:1023) external static aligned,
+  1     6       2 opcode char (6) unal,
+  1     7       2 dtype  fixed bin (2) unal,	/* 0 = alpha, 1 = bit, 2 = numeric */
+  1     8       2 num_desc fixed bin (5) unal,
+  1     9       2 num_words fixed bin (8) unal;
+  1    10 
+  1    11 dcl  modifier (0:63) char (3) aligned int static options (constant) init (
+  1    12      " ", "au", "qu", "du", "ic", "al", "ql", "dl",
+  1    13      "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7",
+  1    14      "*", "au*", "qu*", "...", "ic*", "al*", "ql*", "...",
+  1    15      "x0*", "x1*", "x2*", "x3*", "x4*", "x5*", "x6*", "x7*",
+  1    16      "f", "itp", "...", "its", "sd", "scr", "f2", "f3",
+  1    17      "ci", "i", "sc", "ad", "di", "dic", "id", "idc",
+  1    18      "*n", "*au", "*qu", "*du", "*ic", "*al", "*ql", "*dl",
+  1    19      "*x0", "*x1", "*x2", "*x3", "*x4", "*x5", "*x6", "*x7");
+  1    20 
+  1    21 /* Note: if num_words = 1, then num_desc is a flag
+  1    22*   if non0, the tag field of the instruction is to be interpreted specially
+  1    23*   for example, stba or stca
+  1    24**/
+  1    25 /* END INCLUDE FILE op_mnemonic_format.incl.pl1 */
+       67 
+       68 
+       69 
+       70 	ip = P_data_ptr;
+       71 
+       72 	op_index = ip -> instr.opcode;
+       73 	op_code = op_mnemonic_$op_mnemonic (op_index).opcode;
+       74 	number_of_words = op_mnemonic_$op_mnemonic (op_index).num_words;
+       75 	
+       76 	if number_of_words > 1			/* must be EIS */
+       77 	then call disassemble_eis;
+       78 	else if is_repeat_instr (op_code)
+       79 	then call disassemble_repeat;
+       80 	else call disassemble_normal;
+       81 
+       82 	P_count = number_of_words;
+       83 	return;
+       84 
+       85 
+       86 
+       87 disassemble_normal: proc;
+       88 
+       89 	     call print_addr_and_raw (ip, 0);
+       90 	     call ioa_ ("   ^a^vt^a^[,^a^]",
+       91 		op_code,
+       92 		COLUMN_SPACING,
+       93 		address_field (ip, (ip -> instr.use_pr)),
+       94 		instr.tag ^= 0, tag_field ((instr.tag)));
+       95 
+       96 /* add code to print what is pointed to */
+       97 
+       98 	end disassemble_normal;
+       99 
+      100 
+      101 
+      102 
+      103 disassemble_repeat: proc ;
+      104 
+      105 	     call print_addr_and_raw (ip, 0);
+      106 	     call ioa_ ("   ^a^[a^]^[b^]^[^vt^d^;x^vt^s^],^d^[,tze^]^,tmi^]^[,tpl^]^[,trc^]^[tnc^]",
+      107 		op_code,
+      108 		ip -> repeat_instr.a,
+      109 		ip -> repeat_instr.b,
+      110 		ip -> repeat_instr.use_tally, COLUMN_SPACING, ip -> repeat_instr.tally,
+      111 		ip -> repeat_instr.delta,
+      112 		ip -> repeat_instr.zero_on,
+      113 		ip -> repeat_instr.zero_off,
+      114 		ip -> repeat_instr.neg_on,
+      115 		ip -> repeat_instr.neg_off,
+      116 		ip -> repeat_instr.carry_on,		/* CSNY ? */
+      117 		ip -> repeat_instr.carry_off);
+      118 
+      119 dcl 1 repeat_instr aligned based,
+      120     2 tally fixed bin (8) unsigned unal,
+      121     2 a bit (1) unal,
+      122     2 b bit (1) unal,
+      123     2 use_tally bit (1) unal,
+      124     2 term_conditions unal,
+      125       3 zero_on bit (1) unal,
+      126       3 zero_off bit (1) unal,
+      127       3 neg_on bit (1) unal,
+      128       3 neg_off bit (1) unal,
+      129       3 carry_on bit (1) unal,
+      130       3 carry_off bit (1) unal,
+      131     2 process_overflow bit (1) unal,
+      132     2 opcode fixed bin (10) unsigned unal,
+      133     2 pad bit (2) unal,
+      134     2 delta fixed bin (6) unsigned unal;
+      135 
+      136 	end disassemble_repeat;
+      137 
+      138 disassemble_eis: proc;
+      139 
+      140 dcl  data_type fixed bin;
+      141 dcl  ndesc fixed bin;				/* how many descriptors  it has */
+      142 dcl (ALPHA_TYPE init (0), BIT_TYPE init (1), OTHER_TYPE init (2)) fixed bin internal static options (constant);
+      143 dcl  dp ptr;					/* to a descriptor */
+      144 dcl  descx fixed bin;				/* index as we step over descriptors */
+      145 
+      146 dcl 1 eis_instr_all_descs aligned based (ip),
+      147     2 pad1 bit (2) unal,
+      148     2 mf3 unal like mod_factor,
+      149     2 enablefault bit (1) unal,
+      150     2 pad2 bit (1) unal,
+      151     2 mf2 unal like mod_factor,
+      152     2 pad3 bit (11) unal,
+      153     2 mf1 unal like mod_factor;
+      154 
+      155 dcl 1 mod_factor aligned based,
+      156     2 ext_base bit (1) unal,				/* there is a pr number in address */
+      157     2 length_in_reg bit (1) unal,			/* the length of the operand is in a reg */
+      158     2 indirect_descriptor bit (1) unal,			/* the descriptor is an indirect ptr */
+      159     2 tag fixed bin (4) unsigned unal;
+      160 
+      161 dcl 1 eis_args_info (3) aligned like mod_factor;
+      162 
+      163 	     ndesc = op_mnemonic_$op_mnemonic (op_index).num_desc;
+      164 	     data_type = op_mnemonic_$op_mnemonic (op_index).dtype;
+      165 	     if data_type > OTHER_TYPE then data_type = OTHER_TYPE;
+      166 
+      167 	     eis_args_info (1) = eis_instr_all_descs.mf1;
+      168 	     eis_args_info (2) = eis_instr_all_descs.mf2;
+      169 	     eis_args_info (3) = eis_instr_all_descs.mf3;
+      170 
+      171 	     call print_addr_and_raw (ip, 0);
+      172 	     call print_instr_word;
+      173 
+      174 	     number_of_words = min (number_of_words, P_count);
+      175 	     dp = ip;
+      176 	     do descx = 1 to number_of_words -1;
+      177 		dp = addrel (dp, 1);
+      178 		call print_addr_and_raw (dp, descx);
+      179 
+      180 /* CASE on what kind of descriptor we have */
+      181 
+      182 		if descx > ndesc			/* it is an arg, not a desc */
+      183 		then call print_ind_desc (dp, eis_args_info (descx));
+      184 		else if eis_args_info (descx).indirect_descriptor
+      185 		then call print_ind_desc (dp, eis_args_info (descx));
+      186 		else if desc_is_obscure (op_code, descx) /* abnormal type, such as MOP ptr of mvne */
+      187 		then call print_obscure_desc (dp, eis_args_info (descx));
+      188 		else if data_type = ALPHA_TYPE
+      189 		then call print_alpha_desc (dp, eis_args_info (descx));
+      190 		else if data_type = BIT_TYPE
+      191 		then call print_bit_desc (dp, eis_args_info (descx));
+      192 		else call print_numeric_desc (dp, eis_args_info (descx));
+      193 	     end;					/* of loop over all descriptors */
+      194 
+      195 
+      196 
+      197 
+      198 print_instr_word: proc;
+      199 
+      200 dcl  descx fixed bin;
+      201 dcl  need_comma bit (1) aligned;
+      202 dcl  line char (256) varying;				/* holds output as built */
+      203 dcl  HT char (1) internal static options (constant) init ("	");
+      204 
+      205 dcl 1 eis_alpha_fill based (ip),
+      206     2 field bit (9) unal,
+      207     2 pad bit (27) unal;
+      208 
+      209 dcl 1 eis_bit_fill based (ip),
+      210     2 field bit (1) unal,
+      211     2 pad bit (4) unal,
+      212     2 bolr fixed bin (4) unsigned unal,
+      213     2 pad1 bit (27) unal;
+      214 
+      215 dcl 1 eis_numeric_fill aligned based (dp),
+      216     2 pad bit (10) unal,
+      217     2 round bit (1) unal,
+      218     2 pad2 bit (25) unal;
+      219 
+      220 dcl  bool_word (0:15) char (6) internal static options (constant) init
+      221     ("clear", "and", "02", "03", "04", "05", "xor", "or",
+      222      "10", "11", "12", "13", "invert", "15", "nand", "set");
+      223 
+      224 		line = op_code;
+      225 		line = line || HT;
+      226 
+      227 		do descx = 1 to ndesc;
+      228 		     line = line || "(";
+      229 		     need_comma = "0"b;
+      230 
+      231 		     if eis_args_info (descx).ext_base
+      232 		     then call add_option ("pr");
+      233 		     if eis_args_info (descx).length_in_reg
+      234 		     then call add_option ("rl");
+      235 		     if eis_args_info (descx).indirect_descriptor
+      236 		     then call add_option ("id");
+      237 		     if eis_args_info (descx).tag ^= 0
+      238 		     then call add_option (tag_field ((eis_args_info (descx).tag)));
+      239 		     line = line || ")";
+      240 
+      241 		     if descx < ndesc		/* more to come */
+      242 		     then line = line || ",";
+      243 		end;				/* of loop over all MFs */
+      244 
+      245 		if eis_instr_all_descs.enablefault then line = line || ",enablefault";
+      246 
+      247 		if data_type = ALPHA_TYPE
+      248 		then do;
+      249 		     if has_fill (op_code)
+      250 		     then do;
+      251 			line = line || ",fill(";
+      252 			line = line || octalize (eis_alpha_fill.field);
+      253 			line = line || ")";
+      254 		     end;
+      255 		     else if has_mask (op_code)
+      256 		     then do;
+      257 			line = line || ",mask(";
+      258 			line = line || octalize (eis_alpha_fill.field);
+      259 			line = line || ")";
+      260 		     end;				/* mask */
+      261 		end;				/* ALPHA type */
+      262 		else if data_type = BIT_TYPE
+      263 		then do;
+      264 		     line = line || ", fill (";
+      265 		     line = line || char (eis_bit_fill.field);
+      266 		     line = line || ")";
+      267 
+      268 		     if has_boolean (op_code) then do;
+      269 			line = line || ", bool (";
+      270 			line = line || bool_word (eis_bit_fill.bolr);
+      271 			line = line || ")";
+      272 		     end;				/* bolr hacking */
+      273 		end;				/* BIT type */
+      274 		else do;
+      275 		     if eis_numeric_fill.round
+      276 		     then line = line || ", round";
+      277 		end;				/* NUMERIC */
+      278 
+      279 		call ioa_ ("   ^a", line);
+      280 		return;
+      281 
+      282 add_option:	proc (c2);
+      283 dcl  c2 char (2) aligned parameter;
+      284 
+      285 		     if need_comma			/* we have previously written in this MF, need a separator */
+      286 		     then line = line || ",";
+      287 		     need_comma = "1"b;
+      288 		     line = line || c2;
+      289 		end add_option;
+      290 
+      291 
+      292 octalize:		proc (b9) returns (char (3) aligned);
+      293 dcl  c3 char (3) aligned;
+      294 dcl  b9 bit (9) parameter;
+      295 
+      296 		     call ioa_$rsnnl ("^.3b", c3, (0), b9);
+      297 		     return (c3);
+      298 		end octalize;
+      299 
+      300 
+      301 	     end print_instr_word;
+      302 
+      303 
+      304 /* here are internal procedures to print the various kinds of descriptors-
+      305*   obscure (which isn't nearly as clever as it ought to be)
+      306*   indirect
+      307*   alphanumeric
+      308*   bit
+      309*   numeric
+      310*
+      311**/
+      312 
+      313 print_obscure_desc: proc (descp, mf);
+      314 
+      315 dcl  descp ptr parameter;
+      316 dcl 1 mf aligned parameter like mod_factor;
+      317 
+      318 		call ioa_ ("   too obscure a descriptor too decode");
+      319 
+      320 	     end print_obscure_desc;
+      321 
+      322 
+      323 print_ind_desc: proc (descp, mf);
+      324 
+      325 dcl  descp ptr aligned parameter;
+      326 dcl 1 mf aligned parameter like mod_factor;
+      327 
+      328 		call ioa_ ("   arg^vt^a^[,^a^]",
+      329 		     COLUMN_SPACING,
+      330 		     address_field (descp, (mf.ext_base)),
+      331 		     descp -> instr.tag ^= 0, tag_field ((descp -> instr.tag)));
+      332 
+      333 	     end print_ind_desc;
+      334 
+      335 
+      336 
+      337 print_alpha_desc: proc (descp, mf);
+      338 
+      339 dcl  descp ptr aligned parameter;
+      340 dcl 1 mf aligned parameter like mod_factor;
+      341 
+      342 dcl  alpha_types (0:3) char (1) internal static options (constant) init ("9", "6", "4", "?");
+      343 dcl  NINE_BIT fixed bin internal static options (constant) init (0);
+      344 
+      345 dcl 1 alpha_desc aligned based (descp),
+      346     2 y bit (18) unal,
+      347     2 char_no fixed bin (3) unsigned unal,
+      348     2 type_code fixed bin (2) unsigned unal,
+      349     2 pad bit (1) unal,
+      350     2 length fixed bin (12) unsigned unal;
+      351 
+      352 		call ioa_ ("   desc^aa^vt^a(^[^d^s^;^s^d^]),^[^a^s^;^s^d^]",
+      353 		     alpha_types (type_code),
+      354 		     COLUMN_SPACING,
+      355 		     address_field (descp, (mf.ext_base)),
+      356 		     alpha_desc.type_code = NINE_BIT, divide (char_no, 2, 17, 0), char_no,
+      357 		     mf.length_in_reg, tag_field ((alpha_desc.length)), alpha_desc.length);
+      358 
+      359 	     end print_alpha_desc;
+      360 
+      361 
+      362 print_bit_desc: proc (descp, mf);
+      363 
+      364 dcl  descp ptr aligned parameter;
+      365 dcl 1 mf aligned parameter like mod_factor;
+      366 
+      367 dcl 1 bit_desc aligned based (descp),
+      368     2 y bit (18) unal,
+      369     2 char_no fixed bin (2) unsigned unal,
+      370     2 bit_no fixed bin (4) unsigned unal,
+      371     2 length fixed bin (12) unsigned unal;
+      372 
+      373 		call ioa_ ("   descb^vt^a(^d),^[^a^s^;^s^d^]",
+      374 		     COLUMN_SPACING,
+      375 		     address_field (descp, (mf.ext_base)),
+      376 		     char_no * 9 + bit_no,
+      377 		     mf.length_in_reg,
+      378 		     tag_field ((bit_desc.length)),
+      379 		     bit_desc.length);
+      380 
+      381 	     end print_bit_desc;
+      382 
+      383 
+      384 print_numeric_desc: proc (descp, mf);
+      385 
+      386 dcl  descp ptr aligned parameter;			/* aren't you getting bored? */
+      387 dcl 1 mf aligned parameter like mod_factor;
+      388 
+      389 dcl  sign_name (0:3) char (2) aligned internal static options (constant) init ("fl", "ls", "ts", "ns");
+      390 
+      391 dcl 1 numeric_desc aligned based (descp),
+      392     2 y bit (18) unal,
+      393     2 char_no fixed bin (3) unsigned unal,
+      394     2 type4 bit (1) unal,
+      395     2 sign_type fixed bin (2) unsigned unal,
+      396     2 scale_factor fixed bin (5) unal,
+      397     2 length fixed bin (6) unsigned unal;
+      398 
+      399 		call ioa_ ("   desc^[4^;9^]^a^vt^a(^[^d^s^;^s^d^]),^[^a^s^;^s^d^]^[,^d^]",
+      400 		     numeric_desc.type4,		/* which type ? */
+      401 		     sign_name (numeric_desc.sign_type),
+      402 		     COLUMN_SPACING,
+      403 		     address_field (descp, (mf.ext_base)),
+      404 		     type4, numeric_desc.length, divide (numeric_desc.length, 2, 17, 0),
+      405 		     mf.length_in_reg, tag_field ((numeric_desc.length)), numeric_desc.length,
+      406 		     scale_factor ^= 0, scale_factor);
+      407 
+      408 	     end print_numeric_desc;
+      409 
+      410 
+      411 desc_is_obscure: proc (op_name, desc_no) returns (bit (1) aligned);
+      412 
+      413 /* for certain ops, one of the descriptors will not be of the expected type */
+      414 
+      415 dcl  op_name char (6) aligned parameter;
+      416 dcl  desc_no fixed bin parameter;			/* input, which desc */
+      417 
+      418 		return (
+      419 		     (op_name = "btd" & desc_no = 1) |
+      420 		     (op_name = "dtb" & desc_no = 2) |
+      421 		     (op_name = "mvne" & desc_no = 2)
+      422 		     );
+      423 	     end desc_is_obscure;
+      424 	end disassemble_eis;
+      425 
+      426 
+      427 /* miscellaneous useful things */
+      428 
+      429 
+      430 print_addr_and_raw: proc (p, label_offset);
+      431 dcl  label_offset fixed bin parameter;
+      432 dcl  p ptr parameter;
+      433 dcl  based_word bit (36) aligned based (p);
+      434 	     call ioa_$nnl ("^[^9o  ^;^s^]^w",
+      435 		P_label >= 0, P_label + label_offset, based_word);
+      436 	end print_addr_and_raw;
+      437 
+      438 address_field: proc (p, use_pr) returns (char (10) aligned);
+      439 dcl  p ptr aligned parameter;				/* to instruction */
+      440 dcl  use_pr bit (1) aligned parameter;			/* which format is it ? */
+      441 dcl  rs char (9) aligned;
+      442 	     call ioa_$rsnnl ("^[pr^d|^d^s^;^s^s^d^]", rs, (0),
+      443 		use_pr, p -> instr_pr.address.pr, p -> instr_pr.address.offset,
+      444 		p -> instr.address.offset);
+      445 	     return (rs);
+      446 
+      447 	end address_field;
+      448 
+      449 
+      450 
+      451 tag_field: proc (tag) returns (char (3) aligned);
+      452 
+      453 /* this proc exists to isolate references to the modifier data base -
+      454*   hope to make it part of op_mnemonic some day */
+      455 
+      456 dcl  tag fixed bin parameter;
+      457 
+      458 	     if tag < lbound (modifier, 1) | tag > hbound (modifier, 1)
+      459 	     then return ("bad");
+      460 	     else return (modifier (tag));
+      461 	end tag_field;
+      462 
+      463 
+      464 /* predicates on instruction types */
+      465 
+      466 is_repeat_instr: proc (op_name) returns (bit (1) aligned);
+      467 dcl  op_name char (6) aligned parameter;
+      468 
+      469 	     return (op_name = "rpd" | op_name = "rpl" | op_name = "rpt");
+      470 
+      471 has_fill:	     entry (op_name) returns (bit (1) aligned);
+      472 
+      473 	     return (op_name = "cmpc" | op_name = "mlr" | op_name = "mvt");
+      474 
+      475 has_boolean:   entry (op_name) returns (bit (1) aligned);
+      476 
+      477 	     return (op_name = "csl" | op_name = "csr" | op_name = "sztl" | op_name = "sztr");
+      478 
+      479 has_mask:	     entry (op_name) returns (bit (1) aligned);
+      480 
+      481 	     return (op_name = "scm");
+      482 
+      483 
+      484 	end;					/* is_XXXXX_instr */
+      485 
+      486 
+      487      end bce_display_instruction_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.6  bce_display_instruction_.pl1      >special_ldd>install>MR12.3-1114>bce_display_instruction_.pl1
+67           1    11/26/79  1320.6  op_mnemonic_format.incl.pl1       >ldd>include>op_mnemonic_format.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALPHA_TYPE                             constant        fixed bin(17,0)          initial dcl 142 ref 188 247
+BIT_TYPE                               constant        fixed bin(17,0)          initial dcl 142 ref 190 262
+COLUMN_SPACING                  000204 constant        fixed bin(17,0)          initial dcl 44 set ref 90* 106* 328* 352* 373* 399*
+HT                              003162 constant        char(1)                  initial packed unaligned dcl 203 ref 225
+NINE_BIT                               constant        fixed bin(17,0)          initial dcl 343 ref 352
+OTHER_TYPE                             constant        fixed bin(17,0)          initial dcl 142 ref 165 165
+P_count                                parameter       fixed bin(17,0)          dcl 35 set ref 8 82* 174
+P_data_ptr                             parameter       pointer                  dcl 34 ref 8 70
+P_label                                parameter       fixed bin(26,0)          dcl 36 ref 8 434 434
+a                         0(08)        based           bit(1)                   level 2 packed packed unaligned dcl 119 set ref 106*
+addrel                                                 builtin function         dcl 46 ref 177
+address                                based           structure                level 2 in structure "instr" packed packed unaligned
+                                                                                  dcl 59 in procedure "bce_display_instruction_"
+address                                based           structure                level 2 in structure "instr_pr" packed packed
+                                                                                  unaligned dcl 50 in procedure
+                                                                                  "bce_display_instruction_"
+alpha_desc                             based           structure                level 1 dcl 345
+alpha_types                     000004 constant        char(1)                  initial array packed unaligned dcl 342 set ref 352*
+b                         0(09)        based           bit(1)                   level 2 packed packed unaligned dcl 119 set ref 106*
+b9                                     parameter       bit(9)                   packed unaligned dcl 294 set ref 292 296*
+based_word                             based           bit(36)                  dcl 433 set ref 434*
+bit_desc                               based           structure                level 1 dcl 367
+bit_no                    0(20)        based           fixed bin(4,0)           level 2 packed packed unsigned unaligned dcl 367 ref
+                                                                                  373
+bolr                      0(05)        based           fixed bin(4,0)           level 2 packed packed unsigned unaligned dcl 209 ref
+                                                                                  270
+bool_word                       000005 constant        char(6)                  initial array packed unaligned dcl 220 ref 270
+c2                                     parameter       char(2)                  dcl 283 ref 282 288
+c3                              000272 automatic       char(3)                  dcl 293 set ref 296* 297
+carry_off                 0(16)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+carry_on                  0(15)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+char                                                   builtin function         dcl 46 ref 265
+char_no                   0(18)        based           fixed bin(2,0)           level 2 in structure "bit_desc" packed packed
+                                                                                  unsigned unaligned dcl 367 in procedure
+                                                                                  "print_bit_desc" ref 373
+char_no                   0(18)        based           fixed bin(3,0)           level 2 in structure "alpha_desc" packed packed
+                                                                                  unsigned unaligned dcl 345 in procedure
+                                                                                  "print_alpha_desc" set ref 352 352 352*
+data_type                       000132 automatic       fixed bin(17,0)          dcl 140 set ref 164* 165 165* 188 190 247 262
+delta                     0(30)        based           fixed bin(6,0)           level 2 packed packed unsigned unaligned dcl 119 set
+                                                                                  ref 106*
+desc_no                                parameter       fixed bin(17,0)          dcl 416 ref 411 418 418 418
+descp                                  parameter       pointer                  dcl 364 in procedure "print_bit_desc" set ref 362
+                                                                                  373* 373* 373 373 373 373 373
+descp                                  parameter       pointer                  dcl 386 in procedure "print_numeric_desc" set ref
+                                                                                  384 399 399 399* 399* 399 399 399 399 399 399 399
+                                                                                  399 399
+descp                                  parameter       pointer                  dcl 315 in procedure "print_obscure_desc" ref 313
+descp                                  parameter       pointer                  dcl 325 in procedure "print_ind_desc" set ref 323
+                                                                                  328* 328* 328 328 328
+descp                                  parameter       pointer                  dcl 339 in procedure "print_alpha_desc" set ref 337
+                                                                                  352 352* 352* 352 352 352 352 352 352 352
+descx                           000136 automatic       fixed bin(17,0)          dcl 144 in procedure "disassemble_eis" set ref 176*
+                                                                                  178* 182 182 184 184 186* 186 188 190 192*
+descx                           000152 automatic       fixed bin(17,0)          dcl 200 in procedure "print_instr_word" set ref 227*
+                                                                                  231 233 235 237 237 237 241*
+divide                                                 builtin function         dcl 46 ref 352 352 399 399
+dp                              000134 automatic       pointer                  dcl 143 set ref 175* 177* 177 178* 182* 184* 186*
+                                                                                  188* 190* 192* 275
+dtype                     1(18) 000016 external static fixed bin(2,0)           array level 2 packed packed unaligned dcl 1-5 ref
+                                                                                  164
+eis_alpha_fill                         based           structure                level 1 packed packed unaligned dcl 205
+eis_args_info                   000137 automatic       structure                array level 1 dcl 161 set ref 167* 168* 169* 182*
+                                                                                  184* 186* 188* 190* 192*
+eis_bit_fill                           based           structure                level 1 packed packed unaligned dcl 209
+eis_instr_all_descs                    based           structure                level 1 dcl 146
+eis_numeric_fill                       based           structure                level 1 dcl 215
+enablefault               0(09)        based           bit(1)                   level 2 packed packed unaligned dcl 146 ref 245
+ext_base                        000137 automatic       bit(1)                   array level 2 in structure "eis_args_info" packed
+                                                                                  packed unaligned dcl 161 in procedure
+                                                                                  "disassemble_eis" set ref 231
+ext_base                               parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 340 in procedure "print_alpha_desc" ref 352
+                                                                                  352
+ext_base                               parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 387 in procedure "print_numeric_desc" ref 399
+                                                                                  399
+ext_base                               parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 326 in procedure "print_ind_desc" ref 328 328
+ext_base                               parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 365 in procedure "print_bit_desc" ref 373 373
+field                                  based           bit(1)                   level 2 in structure "eis_bit_fill" packed packed
+                                                                                  unaligned dcl 209 in procedure "print_instr_word"
+                                                                                  ref 265
+field                                  based           bit(9)                   level 2 in structure "eis_alpha_fill" packed packed
+                                                                                  unaligned dcl 205 in procedure "print_instr_word"
+                                                                                  set ref 252* 258*
+hbound                                                 builtin function         dcl 46 ref 458
+indirect_descriptor       0(02) 000137 automatic       bit(1)                   array level 2 packed packed unaligned dcl 161 set
+                                                                                  ref 184 235
+instr                                  based           structure                level 1 dcl 59
+instr_pr                               based           structure                level 1 dcl 50
+ioa_                            000012 constant        entry                    external dcl 48 ref 90 106 279 318 328 352 373 399
+ioa_$nnl                        000014 constant        entry                    external dcl 48 ref 434
+ioa_$rsnnl                      000010 constant        entry                    external dcl 48 ref 296 442
+ip                              000100 automatic       pointer                  dcl 40 set ref 70* 72 89* 90* 90 90* 90 90 90 90
+                                                                                  105* 106 106 106 106 106 106 106 106 106 106 106
+                                                                                  167 168 169 171* 175 245 252 258 265 270
+label_offset                           parameter       fixed bin(17,0)          dcl 431 ref 430 434
+lbound                                                 builtin function         dcl 46 ref 458
+length                    0(24)        based           fixed bin(12,0)          level 2 in structure "bit_desc" packed packed
+                                                                                  unsigned unaligned dcl 367 in procedure
+                                                                                  "print_bit_desc" set ref 373 373 373*
+length                    0(24)        based           fixed bin(12,0)          level 2 in structure "alpha_desc" packed packed
+                                                                                  unsigned unaligned dcl 345 in procedure
+                                                                                  "print_alpha_desc" set ref 352 352 352*
+length                    0(30)        based           fixed bin(6,0)           level 2 in structure "numeric_desc" packed packed
+                                                                                  unsigned unaligned dcl 391 in procedure
+                                                                                  "print_numeric_desc" set ref 399* 399 399 399 399
+                                                                                  399*
+length_in_reg             0(01)        parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 340 in procedure "print_alpha_desc" set ref
+                                                                                  352*
+length_in_reg             0(01)        parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 365 in procedure "print_bit_desc" set ref 373*
+length_in_reg             0(01)        parameter       bit(1)                   level 2 in structure "mf" packed packed unaligned
+                                                                                  dcl 387 in procedure "print_numeric_desc" set ref
+                                                                                  399*
+length_in_reg             0(01) 000137 automatic       bit(1)                   array level 2 in structure "eis_args_info" packed
+                                                                                  packed unaligned dcl 161 in procedure
+                                                                                  "disassemble_eis" set ref 233
+line                            000154 automatic       varying char(256)        dcl 202 set ref 224* 225* 225 228* 228 239* 239 241*
+                                                                                  241 245* 245 251* 251 252* 252 253* 253 257* 257
+                                                                                  258* 258 259* 259 264* 264 265* 265 266* 266 269*
+                                                                                  269 270* 270 271* 271 275* 275 279* 285* 285 288*
+                                                                                  288
+mf                                     parameter       structure                level 1 dcl 340 in procedure "print_alpha_desc" set
+                                                                                  ref 337
+mf                                     parameter       structure                level 1 dcl 365 in procedure "print_bit_desc" set
+                                                                                  ref 362
+mf                                     parameter       structure                level 1 dcl 326 in procedure "print_ind_desc" ref
+                                                                                  323
+mf                                     parameter       structure                level 1 dcl 316 in procedure "print_obscure_desc"
+                                                                                  ref 313
+mf                                     parameter       structure                level 1 dcl 387 in procedure "print_numeric_desc"
+                                                                                  set ref 384
+mf1                       0(29)        based           structure                level 2 packed packed unaligned dcl 146 ref 167
+mf2                       0(11)        based           structure                level 2 packed packed unaligned dcl 146 ref 168
+mf3                       0(02)        based           structure                level 2 packed packed unaligned dcl 146 ref 169
+min                                                    builtin function         dcl 46 ref 174
+mod_factor                             based           structure                level 1 dcl 155
+modifier                        000035 constant        char(3)                  initial array dcl 1-11 ref 458 458 460
+ndesc                           000133 automatic       fixed bin(17,0)          dcl 141 set ref 163* 182 227 241
+need_comma                      000153 automatic       bit(1)                   dcl 201 set ref 229* 285 287*
+neg_off                   0(14)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+neg_on                    0(13)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+num_desc                  1(21) 000016 external static fixed bin(5,0)           array level 2 packed packed unaligned dcl 1-5 ref
+                                                                                  163
+num_words                 1(27) 000016 external static fixed bin(8,0)           array level 2 packed packed unaligned dcl 1-5 ref 74
+number_of_words                 000106 automatic       fixed bin(17,0)          dcl 43 set ref 74* 76 82 174* 174 176
+numeric_desc                           based           structure                level 1 dcl 391
+offset                                 based           fixed bin(17,0)          level 3 in structure "instr" packed packed unaligned
+                                                                                  dcl 59 in procedure "bce_display_instruction_" set
+                                                                                  ref 442*
+offset                    0(03)        based           fixed bin(14,0)          level 3 in structure "instr_pr" packed packed
+                                                                                  unaligned dcl 50 in procedure
+                                                                                  "bce_display_instruction_" set ref 442*
+op_code                         000104 automatic       char(6)                  dcl 42 set ref 73* 78* 90* 106* 186* 224 249* 255*
+                                                                                  268*
+op_index                        000102 automatic       fixed bin(17,0)          dcl 41 set ref 72* 73 74 163 164
+op_mnemonic_$op_mnemonic        000016 external static structure                array level 1 dcl 1-5
+op_name                                parameter       char(6)                  dcl 467 in procedure "is_repeat_instr" ref 466 469
+                                                                                  469 469 471 473 473 473 475 477 477 477 477 479
+                                                                                  481
+op_name                                parameter       char(6)                  dcl 415 in procedure "desc_is_obscure" ref 411 418
+                                                                                  418 418
+opcode                          000016 external static char(6)                  array level 2 in structure
+                                                                                  "op_mnemonic_$op_mnemonic" packed packed unaligned
+                                                                                  dcl 1-5 in procedure "bce_display_instruction_"
+                                                                                  ref 73
+opcode                    0(18)        based           fixed bin(10,0)          level 2 in structure "instr" packed packed unsigned
+                                                                                  unaligned dcl 59 in procedure
+                                                                                  "bce_display_instruction_" ref 72
+p                                      parameter       pointer                  dcl 432 in procedure "print_addr_and_raw" ref 430
+                                                                                  434
+p                                      parameter       pointer                  dcl 439 in procedure "address_field" ref 438 442 442
+                                                                                  442
+pr                                     based           fixed bin(3,0)           level 3 packed packed unsigned unaligned dcl 50 set
+                                                                                  ref 442*
+repeat_instr                           based           structure                level 1 dcl 119
+round                     0(10)        based           bit(1)                   level 2 packed packed unaligned dcl 215 ref 275
+rs                              000354 automatic       char(9)                  dcl 441 set ref 442* 445
+scale_factor              0(24)        based           fixed bin(5,0)           level 2 packed packed unaligned dcl 391 set ref 399
+                                                                                  399*
+sign_name                       000000 constant        char(2)                  initial array dcl 389 set ref 399*
+sign_type                 0(22)        based           fixed bin(2,0)           level 2 packed packed unsigned unaligned dcl 391 ref
+                                                                                  399
+tag                       0(30)        based           fixed bin(6,0)           level 2 in structure "instr" packed packed unsigned
+                                                                                  unaligned dcl 59 in procedure
+                                                                                  "bce_display_instruction_" ref 90 90 90 328 328
+                                                                                  328
+tag                       0(03) 000137 automatic       fixed bin(4,0)           array level 2 in structure "eis_args_info" packed
+                                                                                  packed unsigned unaligned dcl 161 in procedure
+                                                                                  "disassemble_eis" set ref 237 237 237
+tag                                    parameter       fixed bin(17,0)          dcl 456 in procedure "tag_field" ref 451 458 458 460
+tally                                  based           fixed bin(8,0)           level 2 packed packed unsigned unaligned dcl 119 set
+                                                                                  ref 106*
+term_conditions           0(11)        based           structure                level 2 packed packed unaligned dcl 119
+type4                     0(21)        based           bit(1)                   level 2 packed packed unaligned dcl 391 set ref 399*
+                                                                                  399*
+type_code                 0(21)        based           fixed bin(2,0)           level 2 packed packed unsigned unaligned dcl 345 ref
+                                                                                  352 352
+use_pr                    0(29)        based           bit(1)                   level 2 in structure "instr" packed packed unaligned
+                                                                                  dcl 59 in procedure "bce_display_instruction_" ref
+                                                                                  90 90
+use_pr                                 parameter       bit(1)                   dcl 440 in procedure "address_field" set ref 438
+                                                                                  442*
+use_tally                 0(10)        based           bit(1)                   level 2 packed packed unaligned dcl 119 set ref 106*
+zero_off                  0(12)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+zero_on                   0(11)        based           bit(1)                   level 3 packed packed unaligned dcl 119 set ref 106*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+add_option                      001572 constant        entry                    internal dcl 282 ref 231 233 235 237
+address_field                   002537 constant        entry                    internal dcl 438 ref 90 90 328 328 352 352 373 373
+                                                                                  399 399
+bce_display_instruction_        000376 constant        entry                    external dcl 8
+desc_is_obscure                 002417 constant        entry                    internal dcl 411 ref 186
+disassemble_eis                 000652 constant        entry                    internal dcl 138 ref 76
+disassemble_normal              000447 constant        entry                    internal dcl 87 ref 80
+disassemble_repeat              000531 constant        entry                    internal dcl 103 ref 78
+has_boolean                     002736 constant        entry                    internal dcl 475 ref 268
+has_fill                        002676 constant        entry                    internal dcl 471 ref 249
+has_mask                        003006 constant        entry                    internal dcl 479 ref 255
+is_repeat_instr                 002637 constant        entry                    internal dcl 466 ref 78
+octalize                        001623 constant        entry                    internal dcl 292 ref 252 258
+print_addr_and_raw              002471 constant        entry                    internal dcl 430 ref 89 105 171 178
+print_alpha_desc                001767 constant        entry                    internal dcl 337 ref 188
+print_bit_desc                  002127 constant        entry                    internal dcl 362 ref 190
+print_ind_desc                  001702 constant        entry                    internal dcl 323 ref 182 184
+print_instr_word                001133 constant        entry                    internal dcl 198 ref 172
+print_numeric_desc              002242 constant        entry                    internal dcl 384 ref 192
+print_obscure_desc              001663 constant        entry                    internal dcl 313 ref 186
+tag_field                       002623 constant        entry                    internal dcl 451 ref 90 90 237 237 328 328 352 352
+                                                                                  373 373 399 399
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3246        3266    3166        3256
+Length      3474    3166        20         171      60           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_display_instruction_            915 external procedure  is an external procedure.  
+disassemble_normal                      internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+disassemble_repeat                      internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+disassemble_eis                         internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_instr_word                        internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+add_option                              internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+octalize                                internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_obscure_desc                      internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_ind_desc                          internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_alpha_desc                        internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_bit_desc                          internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_numeric_desc                      internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+desc_is_obscure                         internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+print_addr_and_raw                      internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+address_field                           internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+tag_field                               internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+is_repeat_instr                         internal procedure  shares stack frame of external procedure bce_display_instruction_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_display_instruction_ 000100 ip                          bce_display_instruction_
+                         000102 op_index                    bce_display_instruction_
+                         000104 op_code                     bce_display_instruction_
+                         000106 number_of_words             bce_display_instruction_
+                         000132 data_type                   disassemble_eis
+                         000133 ndesc                       disassemble_eis
+                         000134 dp                          disassemble_eis
+                         000136 descx                       disassemble_eis
+                         000137 eis_args_info               disassemble_eis
+                         000152 descx                       print_instr_word
+                         000153 need_comma                  print_instr_word
+                         000154 line                        print_instr_word
+                         000272 c3                          octalize
+                         000354 rs                          address_field
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             r_ge_a              call_ext_out_desc   return_mac          ext_entry
+any_to_any_truncate_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ioa_                          ioa_$nnl                      ioa_$rsnnl
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+op_mnemonic_$op_mnemonic
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000372        70 000403        72 000407        73 000413        74 000422        76 000427        78 000433
+     80 000442        82 000443        83 000446        87 000447        89 000450        90 000453        98 000530
+    103 000531       105 000532       106 000535       136 000651       138 000652       163 000653       164 000664
+    165 000670       167 000674       168 000720       169 000744       171 000770       172 000773       174 000774
+    175 001002       176 001004       177 001013       178 001016       182 001020       184 001034       186 001050
+    188 001067       190 001103       192 001117       193 001130       424 001132       198 001133       224 001134
+    225 001142       227 001151       228 001161       229 001170       231 001171       233 001201       235 001211
+    237 001221       239 001236       241 001245       243 001257       245 001261       247 001276       249 001300
+    251 001305       252 001317       253 001341       254 001350       255 001351       257 001356       258 001370
+    259 001412       261 001421       262 001422       264 001424       265 001436       266 001455       268 001464
+    269 001471       270 001503       271 001525       273 001534       275 001535       279 001552       280 001571
+    282 001572       285 001574       287 001605       288 001607       289 001622       292 001623       296 001625
+    297 001656       313 001663       318 001665       320 001701       323 001702       328 001704       333 001766
+    337 001767       352 001771       359 002126       362 002127       373 002131       381 002241       384 002242
+    399 002244       408 002416       411 002417       418 002421       430 002471       434 002473       436 002536
+    438 002537       442 002541       445 002615       451 002623       458 002625       460 002634       466 002637
+    469 002641       471 002676       473 002700       475 002736       477 002740       479 003006       481 003010
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

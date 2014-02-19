@@ -1,0 +1,1197 @@
+	COMPILATION LISTING OF SEGMENT parse_tty_name_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1111.30_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,^ifthendo */
+       14 parse_tty_name_:
+       15      proc (name, fno, type, ano, chno);
+       16 
+       17 /* This procedure hides in one place all knowledge of how to change
+       18*   a tty channel name into an FNP number and adaptor and channel numbers. */
+       19 
+       20 /* Coded May 1976 by Mike Grady */
+       21 /* Modified July 1978 by Larry Johnson for new style tty names */
+       22 /* Modified May 1981 by Robert Coren to recognize COLTS channel (X.c000) */
+       23 
+       24 dcl  name char (*),
+       25      (fno, ano, chno) fixed bin,
+       26      code fixed bin (35),
+       27      type bit (1);
+       28 dcl  tag char (1);
+       29 
+       30 dcl  i fixed bin;
+       31 dcl  temp char (3);
+       32 
+       33 dcl  TAGS char (8) int static options (constant) init ("abcdefgh");
+       34 
+       35 dcl  cv_dec_check_ entry (char (*), fixed bin (35)) returns (fixed bin);
+       36 
+       37 dcl  (bin, divide, index, mod, substr, verify) builtin;
+       38 
+       39 
+       40 	i = index (name, ".");			/* Check for presence of a period */
+       41 	if i = 0
+       42 	then do;					/* No period indicates old name */
+       43 	     ano = index ("012345678ABCDEFGHIJKLMNOPQRSTUVWXYZ*", substr (name, 4, 1));
+       44 	     if ano = 0
+       45 	     then do;
+       46 err:
+       47 		fno = -1;
+       48 		return;
+       49 	     end;
+       50 	     ano = ano - 1;
+       51 	     fno = divide (ano, 9, 17, 0) + 1;
+       52 	     ano = mod (ano, 9);
+       53 	     if ano > 5
+       54 	     then do;
+       55 		ano = ano - 6;
+       56 		type = "1"b;
+       57 	     end;
+       58 	     else type = "0"b;
+       59 
+       60 	     chno = cv_dec_check_ (substr (name, 5, 2), code);
+       61 	     if code ^= 0
+       62 	     then go to err;
+       63 	end;
+       64 
+       65 	else do;					/* New style name */
+       66 	     if i < 2
+       67 	     then go to err;			/* Must be x. */
+       68 	     call parse_fnp_name_ (substr (name, 1, i - 1), fno);
+       69 	     if fno < 0
+       70 	     then go to err;
+       71 	     if substr (name, i + 1, 1) = "l"
+       72 	     then type = "0"b;
+       73 	     else if substr (name, i + 1, 1) = "h"
+       74 	     then type = "1"b;
+       75 	     else if substr (name, i + 1, 1) = "c"	/* COLTS executive pseudo-channel */
+       76 	     then do;
+       77 		if substr (name, i + 2) ^= "000"	/* this is the only form allowed */
+       78 		then go to err;
+       79 		;
+       80 		type = "1"b;			/* pretend it's HSLA */
+       81 		ano = 7;				/* we will force line number of 1777(8) */
+       82 		chno = 63;
+       83 		return;
+       84 	     end;
+       85 	     else go to err;
+       86 	     temp = substr (name, i + 2, 3);		/* Rest is digits: adapter and sub-chan */
+       87 	     if temp ^= substr (name, i + 2)
+       88 	     then go to err;			/* Extra chars somewhere */
+       89 	     if verify (temp, "0123456789") ^= 0
+       90 	     then go to err;
+       91 	     ano = bin (substr (temp, 1, 1));
+       92 	     if ano > 5
+       93 	     then go to err;
+       94 	     if ano > 2 & type
+       95 	     then go to err;
+       96 	     chno = bin (substr (temp, 2, 2));
+       97 	end;
+       98 
+       99 	return;
+      100 
+      101 /* Entry for comparing two tty channel names for equality */
+      102 /* It compares old and new style names as equal */
+      103 
+      104 compare_tty_name_:
+      105      entry (name1, name2) returns (bit (1));
+      106 
+      107 dcl  (name1, name2) char (*);
+      108 dcl  (fnp1, fnp2, adp1, adp2, chn1, chn2) fixed bin;
+      109 dcl  (hsla1, hsla2) bit (1);
+      110 
+      111 	if name1 = name2
+      112 	then return ("1"b);
+      113 	call parse_tty_name_ (name1, fnp1, hsla1, adp1, chn1);
+      114 	if fnp1 = -1
+      115 	then return ("0"b);
+      116 	call parse_tty_name_ (name2, fnp2, hsla2, adp2, chn2);
+      117 	if fnp2 = -1
+      118 	then return ("0"b);
+      119 	return (fnp1 = fnp2 & hsla1 = hsla2 & adp1 = adp2 & chn1 = chn2);
+      120 
+      121 /* entry to "parse" an fnp name */
+      122 /* the intention is that this be the only place in the system that knows the format of fnp names */
+      123 
+      124 parse_fnp_name_:
+      125      entry (name, fno);
+      126 
+      127 	tag = substr (name, 1, 1);
+      128 	if tag ^= name
+      129 	then go to err;
+      130 	fno = index ("abcdefgh", tag);
+      131 	if fno = 0
+      132 	then go to err;
+      133 	return;
+      134 
+      135 /* this entry, given the number returned by parse_fnp_name_, returns the fnp's name */
+      136 
+      137 get_fnp_name_:
+      138      entry (fno) returns (char (32));
+      139 
+      140 	if fno < 1 | fno > length (TAGS)
+      141 	then return ("?");
+      142 	else return (substr (TAGS, fno, 1));
+      143 
+      144      end parse_tty_name_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1111.3  parse_tty_name_.pl1               >udd>sm>ds>w>ml>parse_tty_name_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+TAGS                            000000 constant        char(8)                  initial packed unaligned dcl 33 ref 140 142
+adp1                            000106 automatic       fixed bin(17,0)          dcl 108 set ref 113* 119
+adp2                            000107 automatic       fixed bin(17,0)          dcl 108 set ref 116* 119
+ano                                    parameter       fixed bin(17,0)          dcl 24 set ref 14 43* 44 50* 50 51 52* 52 53 55* 55
+                                                                                  81* 91* 92 94
+bin                                                    builtin function         dcl 37 ref 91 96
+chn1                            000110 automatic       fixed bin(17,0)          dcl 108 set ref 113* 119
+chn2                            000111 automatic       fixed bin(17,0)          dcl 108 set ref 116* 119
+chno                                   parameter       fixed bin(17,0)          dcl 24 set ref 14 60* 82* 96*
+code                            000100 automatic       fixed bin(35,0)          dcl 24 set ref 60* 61
+cv_dec_check_                   000010 constant        entry                    external dcl 35 ref 60
+divide                                                 builtin function         dcl 37 ref 51
+fno                                    parameter       fixed bin(17,0)          dcl 24 set ref 14 46* 51* 68* 69 124 130* 131 137
+                                                                                  140 140 142
+fnp1                            000104 automatic       fixed bin(17,0)          dcl 108 set ref 113* 114 119
+fnp2                            000105 automatic       fixed bin(17,0)          dcl 108 set ref 116* 117 119
+hsla1                           000112 automatic       bit(1)                   packed unaligned dcl 109 set ref 113* 119
+hsla2                           000113 automatic       bit(1)                   packed unaligned dcl 109 set ref 116* 119
+i                               000102 automatic       fixed bin(17,0)          dcl 30 set ref 40* 41 66 68 68 71 73 75 77 86 87
+index                                                  builtin function         dcl 37 ref 40 43 130
+mod                                                    builtin function         dcl 37 ref 52
+name                                   parameter       char                     packed unaligned dcl 24 ref 14 40 43 60 60 68 68 71
+                                                                                  73 75 77 86 87 124 127 128
+name1                                  parameter       char                     packed unaligned dcl 107 set ref 104 111 113*
+name2                                  parameter       char                     packed unaligned dcl 107 set ref 104 111 116*
+substr                                                 builtin function         dcl 37 ref 43 60 60 68 68 71 73 75 77 86 87 91 96
+                                                                                  127 142
+tag                             000101 automatic       char(1)                  packed unaligned dcl 28 set ref 127* 128 130
+temp                            000103 automatic       char(3)                  packed unaligned dcl 31 set ref 86* 87 89 91 96
+type                                   parameter       bit(1)                   packed unaligned dcl 24 set ref 14 56* 58* 71* 73*
+                                                                                  80* 94
+verify                                                 builtin function         dcl 37 ref 89
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+compare_tty_name_               000426 constant        entry                    external dcl 104
+err                             000111 constant        label                    dcl 46 ref 61 66 69 75 77 87 89 92 94 128 131
+get_fnp_name_                   001005 constant        entry                    external dcl 137
+parse_fnp_name_                 000722 constant        entry                    external dcl 124 ref 68
+parse_tty_name_                 000043 constant        entry                    external dcl 14 ref 113 116
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+length                                                 builtin function         ref 140
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1364        1376    1302        1374
+Length      1552    1302        12         137      62           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+parse_tty_name_                     261 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+parse_tty_name_          000100 code                        parse_tty_name_
+                         000101 tag                         parse_tty_name_
+                         000102 i                           parse_tty_name_
+                         000103 temp                        parse_tty_name_
+                         000104 fnp1                        parse_tty_name_
+                         000105 fnp2                        parse_tty_name_
+                         000106 adp1                        parse_tty_name_
+                         000107 adp2                        parse_tty_name_
+                         000110 chn1                        parse_tty_name_
+                         000111 chn2                        parse_tty_name_
+                         000112 hsla1                       parse_tty_name_
+                         000113 hsla2                       parse_tty_name_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     call_ext_in_desc    call_ext_out_desc   return_mac          mdfx1
+signal_op           shorten_stack       ext_entry           ext_entry_desc      any_to_any_truncate_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cv_dec_check_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+CONSTANTS
+001075  aa  777 777 777 777	ÿÿÿÿ
+001076  aa  777 777 777 777	ÿÿÿÿ
+001077  aa  777 777 777 777	ÿÿÿÿ
+001100  aa  777 777 777 777	ÿÿÿÿ
+001101  aa  777 777 777 777	ÿÿÿÿ
+001102  aa  777 777 777 777	ÿÿÿÿ
+001103  aa  777 777 777 777	ÿÿÿÿ
+001104  aa  777 777 777 777	ÿÿÿÿ
+001105  aa  777 777 777 777	ÿÿÿÿ
+001106  aa  777 777 777 777	ÿÿÿÿ
+001107  aa  777 777 777 777	ÿÿÿÿ
+001110  aa  777 777 777 777	ÿÿÿÿ
+001111  aa  000 000 000 000	    
+001112  aa  000 000 000 000	    
+001113  aa  000 000 777 777	  ÿÿ
+001114  aa  777 777 777 777	ÿÿÿÿ
+001115  aa  777 777 777 777	ÿÿÿÿ
+001116  aa  777 777 777 777	ÿÿÿÿ
+001117  aa  777 777 777 777	ÿÿÿÿ
+001120  aa  777 777 777 777	ÿÿÿÿ
+001121  aa  777 777 777 777	ÿÿÿÿ
+001122  aa  777 777 777 777	ÿÿÿÿ
+001123  aa  777 777 777 777	ÿÿÿÿ
+001124  aa  777 777 777 777	ÿÿÿÿ
+001125  aa  777 777 777 777	ÿÿÿÿ
+001126  aa  777 777 777 777	ÿÿÿÿ
+001127  aa  777 777 777 777	ÿÿÿÿ
+001130  aa  777 777 777 777	ÿÿÿÿ
+001131  aa  777 777 777 777	ÿÿÿÿ
+001132  aa  777 777 777 777	ÿÿÿÿ
+001133  aa  777 777 777 777	ÿÿÿÿ
+001134  aa  777 777 777 777	ÿÿÿÿ
+001135  aa  777 777 777 777	ÿÿÿÿ
+001136  aa  777 777 777 777	ÿÿÿÿ
+001137  aa  777 777 777 777	ÿÿÿÿ
+001140  aa  777 777 777 777	ÿÿÿÿ
+001141  aa  777 777 777 777	ÿÿÿÿ
+001142  aa  777 777 777 777	ÿÿÿÿ
+001143  aa  777 777 777 777	ÿÿÿÿ
+001144  aa  777 777 777 777	ÿÿÿÿ
+001145  aa  777 777 777 777	ÿÿÿÿ
+001146  aa  777 777 777 777	ÿÿÿÿ
+001147  aa  777 777 777 777	ÿÿÿÿ
+001150  aa  777 777 777 777	ÿÿÿÿ
+001151  aa  777 777 777 777	ÿÿÿÿ
+001152  aa  777 777 777 777	ÿÿÿÿ
+001153  aa  777 777 777 777	ÿÿÿÿ
+001154  aa  777 777 777 777	ÿÿÿÿ
+001155  aa  777 777 777 777	ÿÿÿÿ
+001156  aa  777 777 777 777	ÿÿÿÿ
+001157  aa  777 777 777 777	ÿÿÿÿ
+001160  aa  777 777 777 777	ÿÿÿÿ
+001161  aa  777 777 777 777	ÿÿÿÿ
+001162  aa  777 777 777 777	ÿÿÿÿ
+001163  aa  777 777 777 777	ÿÿÿÿ
+001164  aa  777 777 777 777	ÿÿÿÿ
+001165  aa  777 777 777 777	ÿÿÿÿ
+001166  aa  777 777 777 777	ÿÿÿÿ
+001167  aa  777 777 777 777	ÿÿÿÿ
+001170  aa  777 777 777 777	ÿÿÿÿ
+001171  aa  777 777 777 777	ÿÿÿÿ
+001172  aa  777 777 777 777	ÿÿÿÿ
+001173  aa  777 777 777 777	ÿÿÿÿ
+001174  aa  777 777 777 777	ÿÿÿÿ
+001175  aa  777 777 777 777	ÿÿÿÿ
+001176  aa  777 777 777 777	ÿÿÿÿ
+001177  aa  777 777 777 777	ÿÿÿÿ
+001200  aa  777 777 777 777	ÿÿÿÿ
+001201  aa  777 777 777 777	ÿÿÿÿ
+001202  aa  777 777 777 777	ÿÿÿÿ
+001203  aa  777 777 777 777	ÿÿÿÿ
+001204  aa  777 777 777 777	ÿÿÿÿ
+001205  aa  777 777 777 777	ÿÿÿÿ
+001206  aa  777 777 777 777	ÿÿÿÿ
+001207  aa  777 777 777 777	ÿÿÿÿ
+001210  aa  777 777 777 777	ÿÿÿÿ
+001211  aa  777 777 777 777	ÿÿÿÿ
+001212  aa  777 777 777 777	ÿÿÿÿ
+001213  aa  777 777 777 777	ÿÿÿÿ
+001214  aa  777 777 777 777	ÿÿÿÿ
+001215  aa  777 777 777 777	ÿÿÿÿ
+001216  aa  777 777 777 777	ÿÿÿÿ
+001217  aa  777 777 777 777	ÿÿÿÿ
+001220  aa  777 777 777 777	ÿÿÿÿ
+001221  aa  777 777 777 777	ÿÿÿÿ
+001222  aa  777 777 777 777	ÿÿÿÿ
+001223  aa  777 777 777 777	ÿÿÿÿ
+001224  aa  777 777 777 777	ÿÿÿÿ
+001225  aa  777 777 777 777	ÿÿÿÿ
+001226  aa  777 777 777 777	ÿÿÿÿ
+001227  aa  777 777 777 777	ÿÿÿÿ
+001230  aa  777 777 777 777	ÿÿÿÿ
+001231  aa  777 777 777 777	ÿÿÿÿ
+001232  aa  777 777 777 777	ÿÿÿÿ
+001233  aa  777 777 777 777	ÿÿÿÿ
+001234  aa  777 777 777 777	ÿÿÿÿ
+001235  aa  777 777 777 777	ÿÿÿÿ
+001236  aa  777 777 777 777	ÿÿÿÿ
+001237  aa  777 777 777 777	ÿÿÿÿ
+001240  aa  777 777 777 777	ÿÿÿÿ
+001241  aa  777 777 777 777	ÿÿÿÿ
+001242  aa  777 777 777 777	ÿÿÿÿ
+001243  aa  777 777 777 777	ÿÿÿÿ
+001244  aa  777 777 777 777	ÿÿÿÿ
+001245  aa  777 777 777 777	ÿÿÿÿ
+001246  aa  777 777 777 777	ÿÿÿÿ
+001247  aa  777 777 777 777	ÿÿÿÿ
+001250  aa  777 777 777 777	ÿÿÿÿ
+001251  aa  777 777 777 777	ÿÿÿÿ
+001252  aa  777 777 777 777	ÿÿÿÿ
+001253  aa  777 777 777 777	ÿÿÿÿ
+001254  aa  777 777 777 777	ÿÿÿÿ
+001255  aa  777 777 777 777	ÿÿÿÿ
+001256  aa  777 777 777 777	ÿÿÿÿ
+001257  aa  777 777 777 777	ÿÿÿÿ
+001260  aa  777 777 777 777	ÿÿÿÿ
+001261  aa  777 777 777 777	ÿÿÿÿ
+001262  aa  777 777 777 777	ÿÿÿÿ
+001263  aa  777 777 777 777	ÿÿÿÿ
+001264  aa  777 777 777 777	ÿÿÿÿ
+001265  aa  777 777 777 777	ÿÿÿÿ
+001266  aa  777 777 777 777	ÿÿÿÿ
+001267  aa  777 777 777 777	ÿÿÿÿ
+001270  aa  777 777 777 777	ÿÿÿÿ
+001271  aa  777 777 777 777	ÿÿÿÿ
+001272  aa  777 777 777 777	ÿÿÿÿ
+001273  aa  777 777 777 777	ÿÿÿÿ
+001274  aa  777 777 777 777	ÿÿÿÿ
+
+000000  aa  141 142 143 144	abcd
+000001  aa  145 146 147 150	efgh
+
+001275  aa  077 000 000 000	?
+
+001276  aa  060 000 000 000	0
+
+001300  aa  061 000 000 000	1
+
+000002  aa  060 060 060 000	000
+
+000003  aa     524000000000
+
+000004  aa     404000000043
+
+000005  aa     524000000002
+
+001277  aa     777777777777
+
+000006  aa     404000000021
+
+000007  aa     526077777777
+
+000010  aa     526000000040
+
+000011  aa     516000000001
+
+001301  aa     000000000011
+
+000012  aa  141 142 143 144	abcd
+000013  aa  145 146 147 150	efgh
+
+000014  aa  060 061 062 063	0123
+000015  aa  064 065 066 067	4567
+000016  aa  070 071 000 000	89
+
+000017  aa  162 145 164 165	retu
+000020  aa  162 156 137 143	rn_c
+000021  aa  157 156 166 145	onve
+000022  aa  162 163 151 157	rsio
+000023  aa  156 137 145 162	n_er
+000024  aa  162 157 162 000	ror
+
+000025  aa  060 061 062 063	0123
+000026  aa  064 065 066 067	4567
+000027  aa  070 101 102 103	8ABC
+000030  aa  104 105 106 107	DEFG
+000031  aa  110 111 112 113	HIJK
+000032  aa  114 115 116 117	LMNO
+000033  aa  120 121 122 123	PQRS
+000034  aa  124 125 126 127	TUVW
+000035  aa  130 131 132 052	XYZ*
+
+BEGIN PROCEDURE parse_tty_name_
+ENTRY TO parse_tty_name_                                    STATEMENT 1 ON LINE 14
+parse_tty_name_:
+     proc (name, fno, type, ano, chno);
+
+000036  at     000005000007
+000037  tt     000006000011
+000040  tt     000006000006
+000041  ta     000036000000
+000042  da     000030300000
+000043  aa   000420 6270 00	eax7 	272
+000044  aa  7 00034 3521 20	epp2 	pr7|28,*
+000045  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000046  aa     000012000000
+000047  aa     000000000000
+000050  aa  6 00042 3735 20	epp7 	pr6|34,*
+000051  aa  7 00000 2361 20	ldq  	pr7|0,*
+000052  aa   000002 6040 04	tmi  	2,ic		000054
+000053  aa   777777 3760 07	anq  	262143,dl
+000054  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000055  aa  6 00120 7561 00	stq  	pr6|80
+000056  aa  6 00032 3715 20	epp5 	pr6|26,*
+000057  aa  5 00004 3535 20	epp3 	pr5|4,*
+000060  aa  6 00116 2535 00	spri3	pr6|78
+000061  aa   000002 2360 07	ldq  	2,dl
+000062  aa  6 00114 7561 00	stq  	pr6|76
+						STATEMENT 1 ON LINE 40
+	i = index (name, ".");
+
+000063  aa  5 00002 3515 20	epp1 	pr5|2,*
+000064  aa  6 00120 2351 00	lda  	pr6|80
+000065  aa  000 003 124 540	scm  	(pr,rl),(du),mask(000)
+000066  aa  1 00000 00 0005	desc9a	pr1|0,al		name
+000067  aa   056000 00 0001	desc9a	23552,1
+000070  aa  6 00056 0001 00	arg  	pr6|46
+000071  aa  6 00056 2361 00	ldq  	pr6|46
+000072  aa   000002 6070 04	ttf  	2,ic		000074
+000073  aa   000001 3360 07	lcq  	1,dl
+000074  aa   000001 0760 07	adq  	1,dl
+000075  aa  6 00102 7561 00	stq  	pr6|66		i
+						STATEMENT 1 ON LINE 41
+	if i = 0
+	then do;
+
+000076  aa   000105 6010 04	tnz  	69,ic		000203
+						STATEMENT 1 ON LINE 43
+	     ano = index ("012345678ABCDEFGHIJKLMNOPQRSTUVWXYZ*", substr (name, 4, 1));
+
+000077  aa  000 100 124 404	scm  	(ic),(pr),mask(000)
+000100  aa   777726 00 0044	desc9a	-42,36		000025 = 060061062063
+000101  aa  1 00000 60 0001	desc9a	pr1|0(3),1	name
+000102  aa  6 00056 0001 00	arg  	pr6|46
+000103  aa  6 00056 2361 00	ldq  	pr6|46
+000104  aa   000002 6070 04	ttf  	2,ic		000106
+000105  aa   000001 3360 07	lcq  	1,dl
+000106  aa   000001 0760 07	adq  	1,dl
+000107  aa  5 00010 7561 20	stq  	pr5|8,*		ano
+						STATEMENT 1 ON LINE 44
+	     if ano = 0
+	     then do;
+
+000110  aa   000015 6010 04	tnz  	13,ic		000125
+						STATEMENT 1 ON LINE 46
+err:
+		fno = -1;
+
+000111  aa   000001 3360 07	lcq  	1,dl
+000112  aa  6 00116 7561 20	stq  	pr6|78,*		fno
+						STATEMENT 1 ON LINE 48
+		return;
+
+000113  aa  6 00114 2361 00	ldq  	pr6|76
+000114  aa   000005 6010 04	tnz  	5,ic		000121
+000115  aa   000027 7260 07	lxl6 	23,dl
+000116  aa   777701 3520 04	epp2 	-63,ic		000017 = 162145164165
+000117  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000120  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000121  aa   000001 1160 07	cmpq 	1,dl
+000122  aa   000002 6010 04	tnz  	2,ic		000124
+000123  aa   777772 7100 04	tra  	-6,ic		000115
+000124  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 49
+	     end;
+
+						STATEMENT 1 ON LINE 50
+	     ano = ano - 1;
+
+000125  aa   000001 3360 07	lcq  	1,dl
+000126  aa  5 00010 0561 20	asq  	pr5|8,*		ano
+						STATEMENT 1 ON LINE 51
+	     fno = divide (ano, 9, 17, 0) + 1;
+
+000127  aa  5 00010 2361 20	ldq  	pr5|8,*		ano
+000130  aa   000011 5060 07	div  	9,dl
+000131  aa   000001 0760 07	adq  	1,dl
+000132  aa  3 00000 7561 00	stq  	pr3|0		fno
+						STATEMENT 1 ON LINE 52
+	     ano = mod (ano, 9);
+
+000133  aa  5 00010 2361 20	ldq  	pr5|8,*		ano
+000134  aa   001145 3520 04	epp2 	613,ic		001301 = 000000000011
+000135  aa  0 00704 7001 00	tsx0 	pr0|452		mdfx1
+000136  aa  5 00010 7561 20	stq  	pr5|8,*		ano
+						STATEMENT 1 ON LINE 53
+	     if ano > 5
+	     then do;
+
+000137  aa   000005 1160 07	cmpq 	5,dl
+000140  aa   000010 6044 04	tmoz 	8,ic		000150
+						STATEMENT 1 ON LINE 55
+		ano = ano - 6;
+
+000141  aa   000006 3360 07	lcq  	6,dl
+000142  aa  5 00010 0561 20	asq  	pr5|8,*		ano
+						STATEMENT 1 ON LINE 56
+		type = "1"b;
+
+000143  aa  5 00006 3735 20	epp7 	pr5|6,*
+000144  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000145  aa   000000 00 0000	descb	0,0
+000146  aa  7 00000 00 0001	descb	pr7|0,1		type
+						STATEMENT 1 ON LINE 57
+	     end;
+
+000147  aa   000005 7100 04	tra  	5,ic		000154
+						STATEMENT 1 ON LINE 58
+	     else type = "0"b;
+
+000150  aa  5 00006 3735 20	epp7 	pr5|6,*
+000151  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000152  aa   000000 00 0000	descb	0,0
+000153  aa  7 00000 00 0001	descb	pr7|0,1		type
+						STATEMENT 1 ON LINE 60
+	     chno = cv_dec_check_ (substr (name, 5, 2), code);
+
+000154  aa  6 00121 4501 00	stz  	pr6|81
+000155  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000156  aa  1 00001 00 0002	desc9a	pr1|1,2		name
+000157  aa  6 00121 00 0002	desc9a	pr6|81,2
+000160  aa  6 00121 3521 00	epp2 	pr6|81
+000161  aa  6 00124 2521 00	spri2	pr6|84
+000162  aa  6 00100 3521 00	epp2 	pr6|64		code
+000163  aa  6 00126 2521 00	spri2	pr6|86
+000164  aa  5 00012 3521 20	epp2 	pr5|10,*		chno
+000165  aa  6 00130 2521 00	spri2	pr6|88
+000166  aa   777617 3520 04	epp2 	-113,ic		000005 = 524000000002
+000167  aa  6 00132 2521 00	spri2	pr6|90
+000170  aa   777614 3520 04	epp2 	-116,ic		000004 = 404000000043
+000171  aa  6 00134 2521 00	spri2	pr6|92
+000172  aa   777614 3520 04	epp2 	-116,ic		000006 = 404000000021
+000173  aa  6 00136 2521 00	spri2	pr6|94
+000174  aa  6 00122 6211 00	eax1 	pr6|82
+000175  aa   014000 4310 07	fld  	6144,dl
+000176  la  4 00010 3521 20	epp2 	pr4|8,*		cv_dec_check_
+000177  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 61
+	     if code ^= 0
+	     then go to err;
+
+000200  aa  6 00100 2361 00	ldq  	pr6|64		code
+000201  aa   777710 6010 04	tnz  	-56,ic		000111
+						STATEMENT 1 ON LINE 63
+	end;
+
+000202  aa   000206 7100 04	tra  	134,ic		000410
+						STATEMENT 1 ON LINE 65
+	else do;
+
+						STATEMENT 1 ON LINE 66
+	     if i < 2
+	     then go to err;
+
+000203  aa   000002 1160 07	cmpq 	2,dl
+000204  aa   777705 6040 04	tmi  	-59,ic		000111
+						STATEMENT 1 ON LINE 68
+	     call parse_fnp_name_ (substr (name, 1, i - 1), fno);
+
+000205  aa   000001 1760 07	sbq  	1,dl
+000206  aa  6 00140 7561 00	stq  	pr6|96
+000207  aa   524000 2760 03	orq  	174080,du
+000210  aa  6 00121 7561 00	stq  	pr6|81
+000211  aa  6 00140 2361 00	ldq  	pr6|96
+000212  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000213  aa  6 00124 2521 00	spri2	pr6|84
+000214  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000215  aa  1 00000 00 0006	desc9a	pr1|0,ql		name
+000216  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000217  aa  3 00000 3521 00	epp2 	pr3|0		fno
+000220  aa  6 00126 2521 00	spri2	pr6|86
+000221  aa  6 00121 3521 00	epp2 	pr6|81
+000222  aa  6 00130 2521 00	spri2	pr6|88
+000223  aa   777563 3520 04	epp2 	-141,ic		000006 = 404000000021
+000224  aa  6 00132 2521 00	spri2	pr6|90
+000225  aa  6 00122 6211 00	eax1 	pr6|82
+000226  aa   010000 4310 07	fld  	4096,dl
+000227  aa   000473 3520 04	epp2 	315,ic		000722 = 000420627000
+000230  aa  0 00620 7001 00	tsx0 	pr0|400		call_ext_in_desc
+						STATEMENT 1 ON LINE 69
+	     if fno < 0
+	     then go to err;
+
+000231  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000232  aa  6 00116 2361 20	ldq  	pr6|78,*		fno
+000233  aa   777656 6040 04	tmi  	-82,ic		000111
+						STATEMENT 1 ON LINE 71
+	     if substr (name, i + 1, 1) = "l"
+	     then type = "0"b;
+
+000234  aa  6 00102 7271 00	lxl7 	pr6|66		i
+000235  aa  6 00032 3735 20	epp7 	pr6|26,*
+000236  aa  7 00002 3715 20	epp5 	pr7|2,*
+000237  aa  000 100 100 517	mlr  	(pr,x7),(pr),fill(000)
+000240  aa  5 00000 00 0001	desc9a	pr5|0,1		name
+000241  aa  6 00121 00 0004	desc9a	pr6|81,4		name
+000242  aa  6 00121 2351 00	lda  	pr6|81		name
+000243  aa   154000 1150 03	cmpa 	55296,du
+000244  aa   000006 6010 04	tnz  	6,ic		000252
+000245  aa  7 00006 3535 20	epp3 	pr7|6,*
+000246  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000247  aa   000000 00 0000	descb	0,0
+000250  aa  3 00000 00 0001	descb	pr3|0,1		type
+000251  aa   000046 7100 04	tra  	38,ic		000317
+						STATEMENT 1 ON LINE 73
+	     else if substr (name, i + 1, 1) = "h"
+	     then type = "1"b;
+
+000252  aa   150000 1150 03	cmpa 	53248,du
+000253  aa   000006 6010 04	tnz  	6,ic		000261
+000254  aa  7 00006 3535 20	epp3 	pr7|6,*
+000255  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000256  aa   000000 00 0000	descb	0,0
+000257  aa  3 00000 00 0001	descb	pr3|0,1		type
+000260  aa   000037 7100 04	tra  	31,ic		000317
+						STATEMENT 1 ON LINE 75
+	     else if substr (name, i + 1, 1) = "c"	/* COLTS executive pseudo-channel */
+	     then do;
+
+000261  aa   143000 1150 03	cmpa 	50688,du
+000262  aa   777627 6010 04	tnz  	-105,ic		000111
+						STATEMENT 1 ON LINE 77
+		if substr (name, i + 2) ^= "000"	/* this is the only form allowed */
+		then go to err;
+
+000263  aa  6 00102 2361 00	ldq  	pr6|66		i
+000264  aa   000001 0760 07	adq  	1,dl
+000265  aa  6 00121 7561 00	stq  	pr6|81
+000266  aa  6 00120 2361 00	ldq  	pr6|80
+000267  aa  6 00121 1761 00	sbq  	pr6|81
+000270  aa  6 00102 2351 00	lda  	pr6|66		i
+000271  aa  040 004 106 545	cmpc 	(pr,rl,al),(ic),fill(040)
+000272  aa  5 00000 20 0006	desc9a	pr5|0(1),ql	name
+000273  aa   777511 00 0003	desc9a	-183,3		000002 = 060060060000
+000274  aa   777615 6010 04	tnz  	-115,ic		000111
+						STATEMENT 1 ON LINE 80
+		type = "1"b;
+
+000275  aa  7 00006 3535 20	epp3 	pr7|6,*
+000276  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000277  aa   000000 00 0000	descb	0,0
+000300  aa  3 00000 00 0001	descb	pr3|0,1		type
+						STATEMENT 1 ON LINE 81
+		ano = 7;
+
+000301  aa   000007 2360 07	ldq  	7,dl
+000302  aa  7 00010 7561 20	stq  	pr7|8,*		ano
+						STATEMENT 1 ON LINE 82
+		chno = 63;
+
+000303  aa   000077 2360 07	ldq  	63,dl
+000304  aa  7 00012 7561 20	stq  	pr7|10,*		chno
+						STATEMENT 1 ON LINE 83
+		return;
+
+000305  aa  6 00114 2361 00	ldq  	pr6|76
+000306  aa   000005 6010 04	tnz  	5,ic		000313
+000307  aa   000027 7260 07	lxl6 	23,dl
+000310  aa   777507 3520 04	epp2 	-185,ic		000017 = 162145164165
+000311  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000312  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000313  aa   000001 1160 07	cmpq 	1,dl
+000314  aa   000002 6010 04	tnz  	2,ic		000316
+000315  aa   777772 7100 04	tra  	-6,ic		000307
+000316  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 84
+	     end;
+
+						STATEMENT 1 ON LINE 86
+	     temp = substr (name, i + 2, 3);
+
+000317  aa  6 00103 4501 00	stz  	pr6|67		temp
+000320  aa  6 00102 2361 00	ldq  	pr6|66		i
+000321  aa  040 100 100 506	mlr  	(pr,ql),(pr),fill(040)
+000322  aa  5 00000 20 0003	desc9a	pr5|0(1),3	name
+000323  aa  6 00103 00 0003	desc9a	pr6|67,3		temp
+						STATEMENT 1 ON LINE 87
+	     if temp ^= substr (name, i + 2)
+	     then go to err;
+
+000324  aa   000001 0760 07	adq  	1,dl
+000325  aa  6 00121 7561 00	stq  	pr6|81
+000326  aa  6 00120 2361 00	ldq  	pr6|80
+000327  aa  6 00121 1761 00	sbq  	pr6|81
+000330  aa  6 00102 2351 00	lda  	pr6|66		i
+000331  aa  040 145 106 500	cmpc 	(pr),(pr,rl,al),fill(040)
+000332  aa  6 00103 00 0003	desc9a	pr6|67,3		temp
+000333  aa  5 00000 20 0006	desc9a	pr5|0(1),ql	name
+000334  aa   777555 6010 04	tnz  	-147,ic		000111
+						STATEMENT 1 ON LINE 89
+	     if verify (temp, "0123456789") ^= 0
+	     then go to err;
+
+000335  aa  000 000 164 500	tct  	(pr)
+000336  aa  6 00103 00 0003	desc9a	pr6|67,3		temp
+000337  aa   000540 0000 04	arg  	352,ic		001075 = 777777777777
+000340  aa  6 00056 0001 00	arg  	pr6|46
+000341  aa  6 00056 2361 00	ldq  	pr6|46
+000342  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000343  aa   000002 6070 04	ttf  	2,ic		000345
+000344  aa   000001 3360 07	lcq  	1,dl
+000345  aa   000001 0760 07	adq  	1,dl
+000346  aa   777543 6010 04	tnz  	-157,ic		000111
+						STATEMENT 1 ON LINE 91
+	     ano = bin (substr (temp, 1, 1));
+
+000347  aa  6 00103 3535 00	epp3 	pr6|67		temp
+000350  aa   000001 2360 07	ldq  	1,dl
+000351  aa   000053 7270 07	lxl7 	43,dl
+000352  aa  6 00142 3515 00	epp1 	pr6|98
+000353  aa   000107 2350 07	lda  	71,dl
+000354  aa   000004 7260 07	lxl6 	4,dl
+000355  aa  6 00144 3715 00	epp5 	pr6|100
+000356  aa  0 01257 7001 00	tsx0 	pr0|687		any_to_any_truncate_
+000357  aa  6 00142 2371 00	ldaq 	pr6|98
+000360  aa  6 00032 3735 20	epp7 	pr6|26,*
+000361  aa  7 00010 7561 20	stq  	pr7|8,*		ano
+						STATEMENT 1 ON LINE 92
+	     if ano > 5
+	     then go to err;
+
+000362  aa   000005 1160 07	cmpq 	5,dl
+000363  aa   777526 6054 04	tpnz 	-170,ic		000111
+						STATEMENT 1 ON LINE 94
+	     if ano > 2 & type
+	     then go to err;
+
+000364  aa   000002 1160 07	cmpq 	2,dl
+000365  aa   000006 6044 04	tmoz 	6,ic		000373
+000366  aa  7 00006 3715 20	epp5 	pr7|6,*
+000367  aa  000 000 066 500	cmpb 	(pr),(),fill(0)
+000370  aa  5 00000 00 0001	descb	pr5|0,1		type
+000371  aa   000000 00 0000	descb	0,0
+000372  aa   777517 6010 04	tnz  	-177,ic		000111
+						STATEMENT 1 ON LINE 96
+	     chno = bin (substr (temp, 2, 2));
+
+000373  aa   000001 7270 07	lxl7 	1,dl
+000374  aa  6 00103 3535 00	epp3 	pr6|67		temp
+000375  aa  3 00000 5005 17	a9bd 	pr3|0,7
+000376  aa   000002 2360 07	ldq  	2,dl
+000377  aa   000053 7270 07	lxl7 	43,dl
+000400  aa  6 00402 3515 00	epp1 	pr6|258
+000401  aa   000107 2350 07	lda  	71,dl
+000402  aa   000004 7260 07	lxl6 	4,dl
+000403  aa  6 00144 3715 00	epp5 	pr6|100
+000404  aa  0 01257 7001 00	tsx0 	pr0|687		any_to_any_truncate_
+000405  aa  6 00402 2371 00	ldaq 	pr6|258
+000406  aa  6 00032 3735 20	epp7 	pr6|26,*
+000407  aa  7 00012 7561 20	stq  	pr7|10,*		chno
+						STATEMENT 1 ON LINE 97
+	end;
+
+						STATEMENT 1 ON LINE 99
+	return;
+
+000410  aa  6 00114 2361 00	ldq  	pr6|76
+000411  aa   000005 6010 04	tnz  	5,ic		000416
+000412  aa   000027 7260 07	lxl6 	23,dl
+000413  aa   777404 3520 04	epp2 	-252,ic		000017 = 162145164165
+000414  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000415  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000416  aa   000001 1160 07	cmpq 	1,dl
+000417  aa   000002 6010 04	tnz  	2,ic		000421
+000420  aa   777772 7100 04	tra  	-6,ic		000412
+000421  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO compare_tty_name_                                  STATEMENT 1 ON LINE 104
+compare_tty_name_:
+     entry (name1, name2) returns (bit (1));
+
+000422  at     000003000007
+000423  tt     000007000011
+000424  ta     000422000000
+000425  da     000040320000
+000426  aa   000420 6270 00	eax7 	272
+000427  aa  7 00034 3521 20	epp2 	pr7|28,*
+000430  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000431  aa     000006000000
+000432  aa     000000000000
+000433  aa  6 00042 3735 20	epp7 	pr6|34,*
+000434  aa  7 00000 2361 20	ldq  	pr7|0,*
+000435  aa   000002 6040 04	tmi  	2,ic		000437
+000436  aa   777777 3760 07	anq  	262143,dl
+000437  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000440  aa  6 00120 7561 00	stq  	pr6|80
+000441  aa  7 00002 2361 20	ldq  	pr7|2,*
+000442  aa   000002 6040 04	tmi  	2,ic		000444
+000443  aa   777777 3760 07	anq  	262143,dl
+000444  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000445  aa  6 00404 7561 00	stq  	pr6|260
+000446  aa   000001 2360 07	ldq  	1,dl
+000447  aa  6 00114 7561 00	stq  	pr6|76
+						STATEMENT 1 ON LINE 111
+	if name1 = name2
+	then return ("1"b);
+
+000450  aa  6 00032 3735 20	epp7 	pr6|26,*
+000451  aa  7 00002 3715 20	epp5 	pr7|2,*
+000452  aa  7 00004 3535 20	epp3 	pr7|4,*
+000453  aa  6 00120 2351 00	lda  	pr6|80
+000454  aa  6 00404 2361 00	ldq  	pr6|260
+000455  aa  040 140 106 540	cmpc 	(pr,rl),(pr,rl),fill(040)
+000456  aa  5 00000 00 0005	desc9a	pr5|0,al		name1
+000457  aa  3 00000 00 0006	desc9a	pr3|0,ql		name2
+000460  aa   000022 6010 04	tnz  	18,ic		000502
+000461  aa  6 00114 2361 00	ldq  	pr6|76
+000462  aa   000005 6010 04	tnz  	5,ic		000467
+000463  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000464  aa   000615 00 0001	desc9a	397,1		001300 = 061000000000
+000465  aa  3 00000 00 0040	desc9a	pr3|0,32
+000466  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000467  aa   000001 1160 07	cmpq 	1,dl
+000470  aa   000006 6010 04	tnz  	6,ic		000476
+000471  aa  7 00006 3515 20	epp1 	pr7|6,*
+000472  aa  403 100 060 400	csl  	(),(pr),fill(1),bool(move)
+000473  aa   000000 00 0000	descb	0,0
+000474  aa  1 00000 00 0001	descb	pr1|0,1
+000475  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000476  aa   000027 7260 07	lxl6 	23,dl
+000477  aa   777320 3520 04	epp2 	-304,ic		000017 = 162145164165
+000500  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000501  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 113
+	call parse_tty_name_ (name1, fnp1, hsla1, adp1, chn1);
+
+000502  aa  7 00002 3521 20	epp2 	pr7|2,*		name1
+000503  aa  6 00146 2521 00	spri2	pr6|102
+000504  aa  6 00104 3521 00	epp2 	pr6|68		fnp1
+000505  aa  6 00150 2521 00	spri2	pr6|104
+000506  aa  6 00112 3521 00	epp2 	pr6|74		hsla1
+000507  aa  6 00152 2521 00	spri2	pr6|106
+000510  aa  6 00106 3521 00	epp2 	pr6|70		adp1
+000511  aa  6 00154 2521 00	spri2	pr6|108
+000512  aa  6 00110 3521 00	epp2 	pr6|72		chn1
+000513  aa  6 00156 2521 00	spri2	pr6|110
+000514  aa  6 00042 3515 20	epp1 	pr6|34,*
+000515  aa  1 00000 3521 20	epp2 	pr1|0,*
+000516  aa  6 00160 2521 00	spri2	pr6|112
+000517  aa   777267 3520 04	epp2 	-329,ic		000006 = 404000000021
+000520  aa  6 00162 2521 00	spri2	pr6|114
+000521  aa  6 00166 2521 00	spri2	pr6|118
+000522  aa  6 00170 2521 00	spri2	pr6|120
+000523  aa   777266 3520 04	epp2 	-330,ic		000011 = 516000000001
+000524  aa  6 00164 2521 00	spri2	pr6|116
+000525  aa  6 00144 6211 00	eax1 	pr6|100
+000526  aa   024000 4310 07	fld  	10240,dl
+000527  aa   777314 3520 04	epp2 	-308,ic		000043 = 000420627000
+000530  aa  0 00620 7001 00	tsx0 	pr0|400		call_ext_in_desc
+						STATEMENT 1 ON LINE 114
+	if fnp1 = -1
+	then return ("0"b);
+
+000531  aa  6 00104 2361 00	ldq  	pr6|68		fnp1
+000532  aa   000545 1160 04	cmpq 	357,ic		001277 = 777777777777
+000533  aa   000025 6010 04	tnz  	21,ic		000560
+000534  aa  6 00114 2361 00	ldq  	pr6|76
+000535  aa   000007 6010 04	tnz  	7,ic		000544
+000536  aa  6 00032 3735 20	epp7 	pr6|26,*
+000537  aa  7 00004 3715 20	epp5 	pr7|4,*
+000540  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000541  aa   000536 00 0001	desc9a	350,1		001276 = 060000000000
+000542  aa  5 00000 00 0040	desc9a	pr5|0,32
+000543  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000544  aa   000001 1160 07	cmpq 	1,dl
+000545  aa   000007 6010 04	tnz  	7,ic		000554
+000546  aa  6 00032 3735 20	epp7 	pr6|26,*
+000547  aa  7 00006 3715 20	epp5 	pr7|6,*
+000550  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000551  aa   000000 00 0000	descb	0,0
+000552  aa  5 00000 00 0001	descb	pr5|0,1
+000553  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000554  aa   000027 7260 07	lxl6 	23,dl
+000555  aa   777242 3520 04	epp2 	-350,ic		000017 = 162145164165
+000556  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000557  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 116
+	call parse_tty_name_ (name2, fnp2, hsla2, adp2, chn2);
+
+000560  aa  6 00032 3735 20	epp7 	pr6|26,*
+000561  aa  7 00004 3521 20	epp2 	pr7|4,*		name2
+000562  aa  6 00146 2521 00	spri2	pr6|102
+000563  aa  6 00105 3521 00	epp2 	pr6|69		fnp2
+000564  aa  6 00150 2521 00	spri2	pr6|104
+000565  aa  6 00113 3521 00	epp2 	pr6|75		hsla2
+000566  aa  6 00152 2521 00	spri2	pr6|106
+000567  aa  6 00107 3521 00	epp2 	pr6|71		adp2
+000570  aa  6 00154 2521 00	spri2	pr6|108
+000571  aa  6 00111 3521 00	epp2 	pr6|73		chn2
+000572  aa  6 00156 2521 00	spri2	pr6|110
+000573  aa  6 00042 3715 20	epp5 	pr6|34,*
+000574  aa  5 00002 3521 20	epp2 	pr5|2,*
+000575  aa  6 00160 2521 00	spri2	pr6|112
+000576  aa   777210 3520 04	epp2 	-376,ic		000006 = 404000000021
+000577  aa  6 00162 2521 00	spri2	pr6|114
+000600  aa  6 00166 2521 00	spri2	pr6|118
+000601  aa  6 00170 2521 00	spri2	pr6|120
+000602  aa   777207 3520 04	epp2 	-377,ic		000011 = 516000000001
+000603  aa  6 00164 2521 00	spri2	pr6|116
+000604  aa  6 00144 6211 00	eax1 	pr6|100
+000605  aa   024000 4310 07	fld  	10240,dl
+000606  aa   777235 3520 04	epp2 	-355,ic		000043 = 000420627000
+000607  aa  0 00620 7001 00	tsx0 	pr0|400		call_ext_in_desc
+						STATEMENT 1 ON LINE 117
+	if fnp2 = -1
+	then return ("0"b);
+
+000610  aa  6 00105 2361 00	ldq  	pr6|69		fnp2
+000611  aa   000466 1160 04	cmpq 	310,ic		001277 = 777777777777
+000612  aa   000025 6010 04	tnz  	21,ic		000637
+000613  aa  6 00114 2361 00	ldq  	pr6|76
+000614  aa   000007 6010 04	tnz  	7,ic		000623
+000615  aa  6 00032 3735 20	epp7 	pr6|26,*
+000616  aa  7 00004 3715 20	epp5 	pr7|4,*
+000617  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000620  aa   000457 00 0001	desc9a	303,1		001276 = 060000000000
+000621  aa  5 00000 00 0040	desc9a	pr5|0,32
+000622  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000623  aa   000001 1160 07	cmpq 	1,dl
+000624  aa   000007 6010 04	tnz  	7,ic		000633
+000625  aa  6 00032 3735 20	epp7 	pr6|26,*
+000626  aa  7 00006 3715 20	epp5 	pr7|6,*
+000627  aa  003 100 060 400	csl  	(),(pr),fill(0),bool(move)
+000630  aa   000000 00 0000	descb	0,0
+000631  aa  5 00000 00 0001	descb	pr5|0,1
+000632  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000633  aa   000027 7260 07	lxl6 	23,dl
+000634  aa   777163 3520 04	epp2 	-397,ic		000017 = 162145164165
+000635  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000636  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 119
+	return (fnp1 = fnp2 & hsla1 = hsla2 & adp1 = adp2 & chn1 = chn2);
+
+000637  aa  6 00110 2361 00	ldq  	pr6|72		chn1
+000640  aa  6 00111 1161 00	cmpq 	pr6|73		chn2
+000641  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000642  aa  6 00121 7551 00	sta  	pr6|81
+000643  aa  6 00106 2361 00	ldq  	pr6|70		adp1
+000644  aa  6 00107 1161 00	cmpq 	pr6|71		adp2
+000645  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000646  aa  6 00140 7551 00	sta  	pr6|96
+000647  aa  6 00113 2351 00	lda  	pr6|75		hsla2
+000650  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000651  aa  6 00141 7551 00	sta  	pr6|97		hsla2
+000652  aa  6 00112 2351 00	lda  	pr6|74		hsla1
+000653  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000654  aa  6 00141 1151 00	cmpa 	pr6|97		hsla2
+000655  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000656  aa  6 00141 7551 00	sta  	pr6|97
+000657  aa  6 00104 2361 00	ldq  	pr6|68		fnp1
+000660  aa  6 00105 1161 00	cmpq 	pr6|69		fnp2
+000661  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000662  aa  6 00141 3751 00	ana  	pr6|97
+000663  aa  6 00140 3751 00	ana  	pr6|96
+000664  aa  6 00121 3751 00	ana  	pr6|81
+000665  aa  6 00121 7551 00	sta  	pr6|81
+000666  aa  6 00114 2361 00	ldq  	pr6|76
+000667  aa   000013 6010 04	tnz  	11,ic		000702
+000670  aa  6 00121 3535 00	epp3 	pr6|81
+000671  aa   000001 2360 07	ldq  	1,dl
+000672  aa   000046 7270 07	lxl7 	38,dl
+000673  aa  6 00032 3735 20	epp7 	pr6|26,*
+000674  aa  7 00004 3515 20	epp1 	pr7|4,*
+000675  aa   000040 2350 07	lda  	32,dl
+000676  aa   000053 7260 07	lxl6 	43,dl
+000677  aa  6 00144 3715 00	epp5 	pr6|100
+000700  aa  0 01257 7001 00	tsx0 	pr0|687		any_to_any_truncate_
+000701  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000702  aa   000001 1160 07	cmpq 	1,dl
+000703  aa   000007 6010 04	tnz  	7,ic		000712
+000704  aa  6 00032 3735 20	epp7 	pr6|26,*
+000705  aa  7 00006 3715 20	epp5 	pr7|6,*
+000706  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+000707  aa  6 00121 00 0001	descb	pr6|81,1
+000710  aa  5 00000 00 0001	descb	pr5|0,1
+000711  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000712  aa   000027 7260 07	lxl6 	23,dl
+000713  aa   777104 3520 04	epp2 	-444,ic		000017 = 162145164165
+000714  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000715  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO parse_fnp_name_                                    STATEMENT 1 ON LINE 124
+parse_fnp_name_:
+     entry (name, fno);
+
+000716  at     000002000007
+000717  ta     000006000000
+000720  ta     000716000000
+000721  da     000047300000
+000722  aa   000420 6270 00	eax7 	272
+000723  aa  7 00034 3521 20	epp2 	pr7|28,*
+000724  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000725  aa     000004000000
+000726  aa     000000000000
+000727  aa  6 00042 3735 20	epp7 	pr6|34,*
+000730  aa  7 00000 2361 20	ldq  	pr7|0,*
+000731  aa   000002 6040 04	tmi  	2,ic		000733
+000732  aa   777777 3760 07	anq  	262143,dl
+000733  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000734  aa  6 00120 7561 00	stq  	pr6|80
+000735  aa  6 00032 3715 20	epp5 	pr6|26,*
+000736  aa  5 00004 3535 20	epp3 	pr5|4,*
+000737  aa  6 00116 2535 00	spri3	pr6|78
+000740  aa   000002 2360 07	ldq  	2,dl
+000741  aa  6 00114 7561 00	stq  	pr6|76
+						STATEMENT 1 ON LINE 127
+	tag = substr (name, 1, 1);
+
+000742  aa  6 00101 4501 00	stz  	pr6|65		tag
+000743  aa  6 00032 3735 20	epp7 	pr6|26,*
+000744  aa  7 00002 3715 20	epp5 	pr7|2,*
+000745  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+000746  aa  5 00000 00 0001	desc9a	pr5|0,1		name
+000747  aa  6 00101 00 0001	desc9a	pr6|65,1		tag
+						STATEMENT 1 ON LINE 128
+	if tag ^= name
+	then go to err;
+
+000750  aa  6 00120 2351 00	lda  	pr6|80
+000751  aa  040 140 106 500	cmpc 	(pr),(pr,rl),fill(040)
+000752  aa  6 00101 00 0001	desc9a	pr6|65,1		tag
+000753  aa  5 00000 00 0005	desc9a	pr5|0,al		name
+000754  aa   777135 6010 04	tnz  	-419,ic		000111
+						STATEMENT 1 ON LINE 130
+	fno = index ("abcdefgh", tag);
+
+000755  aa  000 100 124 404	scm  	(ic),(pr),mask(000)
+000756  aa   777035 00 0010	desc9a	-483,8		000012 = 141142143144
+000757  aa  6 00101 00 0001	desc9a	pr6|65,1		tag
+000760  aa  6 00056 0001 00	arg  	pr6|46
+000761  aa  6 00056 2361 00	ldq  	pr6|46
+000762  aa   000002 6070 04	ttf  	2,ic		000764
+000763  aa   000001 3360 07	lcq  	1,dl
+000764  aa   000001 0760 07	adq  	1,dl
+000765  aa  6 00116 7561 20	stq  	pr6|78,*		fno
+						STATEMENT 1 ON LINE 131
+	if fno = 0
+	then go to err;
+
+000766  aa   777123 6000 04	tze  	-429,ic		000111
+						STATEMENT 1 ON LINE 133
+	return;
+
+000767  aa  6 00114 2361 00	ldq  	pr6|76
+000770  aa   000005 6010 04	tnz  	5,ic		000775
+000771  aa   000027 7260 07	lxl6 	23,dl
+000772  aa   777025 3520 04	epp2 	-491,ic		000017 = 162145164165
+000773  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+000774  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+000775  aa   000001 1160 07	cmpq 	1,dl
+000776  aa   000002 6010 04	tnz  	2,ic		001000
+000777  aa   777772 7100 04	tra  	-6,ic		000771
+001000  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO get_fnp_name_                                      STATEMENT 1 ON LINE 137
+get_fnp_name_:
+     entry (fno) returns (char (32));
+
+001001  at     000002000006
+001002  ta     000010000000
+001003  ta     001001000000
+001004  da     000056320000
+001005  aa   000420 6270 00	eax7 	272
+001006  aa  7 00034 3521 20	epp2 	pr7|28,*
+001007  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001010  aa     000004000000
+001011  aa     000000000000
+001012  aa  6 00032 3735 20	epp7 	pr6|26,*
+001013  aa  7 00002 3715 20	epp5 	pr7|2,*
+001014  aa  6 00116 6515 00	spri5	pr6|78
+001015  aa  6 00114 4501 00	stz  	pr6|76
+						STATEMENT 1 ON LINE 140
+	if fno < 1 | fno > length (TAGS)
+	then return ("?");
+
+001016  aa  6 00116 2361 20	ldq  	pr6|78,*		fno
+001017  aa   000001 1160 07	cmpq 	1,dl
+001020  aa   000003 6040 04	tmi  	3,ic		001023
+001021  aa   000010 1160 07	cmpq 	8,dl
+001022  aa   000017 6044 04	tmoz 	15,ic		001041
+001023  aa  6 00114 2361 00	ldq  	pr6|76
+001024  aa   000007 6010 04	tnz  	7,ic		001033
+001025  aa  6 00032 3735 20	epp7 	pr6|26,*
+001026  aa  7 00004 3715 20	epp5 	pr7|4,*
+001027  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+001030  aa   000246 00 0001	desc9a	166,1		001275 = 077000000000
+001031  aa  5 00000 00 0040	desc9a	pr5|0,32
+001032  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+001033  aa   000001 1160 07	cmpq 	1,dl
+001034  aa   000001 6010 04	tnz  	1,ic		001035
+001035  aa   000027 7260 07	lxl6 	23,dl
+001036  aa   776761 3520 04	epp2 	-527,ic		000017 = 162145164165
+001037  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+001040  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 142
+	else return (substr (TAGS, fno, 1));
+
+001041  aa  6 00114 2361 00	ldq  	pr6|76
+001042  aa   000010 6010 04	tnz  	8,ic		001052
+001043  aa  6 00032 3735 20	epp7 	pr6|26,*
+001044  aa  7 00004 3715 20	epp5 	pr7|4,*
+001045  aa  6 00116 7271 20	lxl7 	pr6|78,*		fno
+001046  aa  040 100 100 417	mlr  	(x7),(pr),fill(040)
+001047  ta   777777 60 0001	desc9a	-1(3),1
+001050  aa  5 00000 00 0040	desc9a	pr5|0,32
+001051  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+001052  aa   000001 1160 07	cmpq 	1,dl
+001053  aa   000016 6010 04	tnz  	14,ic		001071
+001054  aa  6 00116 7271 20	lxl7 	pr6|78,*		fno
+001055  aa   000003 6270 17	eax7 	3,7
+001056  ta   777777 3534 00	epp3 	-1
+001057  aa  3 00000 5005 17	a9bd 	pr3|0,7
+001060  aa   000001 2360 07	ldq  	1,dl
+001061  aa   000053 7270 07	lxl7 	43,dl
+001062  aa  6 00032 3735 20	epp7 	pr6|26,*
+001063  aa  7 00006 3515 20	epp1 	pr7|6,*
+001064  aa   000001 2350 07	lda  	1,dl
+001065  aa   000047 7260 07	lxl6 	39,dl
+001066  aa  6 00144 3715 00	epp5 	pr6|100
+001067  aa  0 01257 7001 00	tsx0 	pr0|687		any_to_any_truncate_
+001070  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+001071  aa   000027 7260 07	lxl6 	23,dl
+001072  aa   776725 3520 04	epp2 	-555,ic		000017 = 162145164165
+001073  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+001074  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 144
+     end parse_tty_name_;
+
+  END PROCEDURE parse_tty_name_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,372 @@
+	COMPILATION LISTING OF SEGMENT bce_command_processor_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1008.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* Simple command line parser extracted from command_processor_ */
+        9 /* BIM 10/82 */
+       10 /* This does not have to be as ruthlessly efficient as the */
+       11 /* real command processor. */
+       12 
+       13 /* format: style2 */
+       14 
+       15 bce_command_processor_:
+       16      procedure (Line, Command_finder, Info_ptr, Code);
+       17 
+       18 	declare Line		 character (*);
+       19 	declare Command_finder	 entry (pointer, character (*), fixed binary (35)) returns (entry) variable;
+       20 	declare Info_ptr		 pointer;
+       21 	declare Code		 fixed binary (35);
+       22 
+       23 /* Remaining declarations */
+       24 
+       25 	dcl     1 arg_list		 aligned,		/* the argument list being constructed */
+       26 		2 twice_n_arguments	 fixed binary (18) unaligned unsigned,
+       27 		2 tag		 bit (18) unaligned initial ("000004"b3),
+       28 						/* PL/1 */
+       29 		2 twice_n_descriptors
+       30 				 fixed binary (18) unaligned unsigned,
+       31 		2 arg_ptrs	 (32) pointer,
+       32 		2 descriptor_ptrs	 (32) pointer;
+       33 
+       34 	dcl     1 descriptors	 (32) aligned,	/* descriptions of above arguments */
+       35 		2 bits		 bit (12) unaligned,/* flag(1), type(6), packed(1), ndims(4) */
+       36 		2 size		 fixed binary (24) unaligned unsigned;
+       37 
+       38 	dcl     descriptor_ptrs_for_move
+       39 				 bit (72 * n_arguments) aligned based;
+       40 						/* to move descriptor pointers to proper place in arglist */
+       41 
+       42 	dcl     reading_command_name	 bit (1) aligned;	/* ON => picking up command name, not an argument */
+       43 	dcl     end_of_command	 bit (1) aligned;	/* ON => reached the end of a command */
+       44 
+       45 	dcl     n_arguments		 fixed binary;	/* # of arguments for this command */
+       46 
+       47 	dcl     (token_lth, next_start)
+       48 				 fixed binary (21);
+       49 
+       50 	dcl     command_name	 character (command_name_lth) unaligned based (command_name_ptr);
+       51 	dcl     command_name_ptr	 pointer;		/* -> name of the command to invoke */
+       52 	dcl     command_name_lth	 fixed binary;
+       53 	dcl     command_entry_ptr	 pointer;		/* -> the actual command to be run */
+       54 	dcl     line_lth		 fixed binary (21);
+       55 	dcl     line_ptr		 pointer;
+       56 	dcl     line		 char (line_lth) based (line_ptr);
+       57 	dcl     start		 fixed binary;
+       58 	dcl     command_entry	 entry (pointer) variable;
+       59 	dcl     forbid_semicolons	 bit (1) aligned;
+       60 
+       61 	dcl     error_table_$cp_reserved_syntax
+       62 				 external static fixed binary (35);
+       63 	dcl     error_table_$too_many_args
+       64 				 external static fixed binary (35);
+       65 
+       66 	dcl     cu_$generate_call	 entry (entry, pointer);
+       67 
+       68 
+       69 
+       70 	dcl     BREAKS		 character (12) static options (constant) initial (";()[]""|
+       71 	 ");						/* command language break characters and NL, HT, SP, VT, FF */
+       72 
+       73 	dcl     TOKEN_BREAKS	 character (6) static options (constant) initial ("""
+       74 	 ");						/* breaks for tokens only: " NL HT SP VT FF */
+       75 
+       76 	dcl     SIMPLE_BREAKS	 character (6) static options (constant) initial (";
+       77 	 ");						/* ; and whitespace (NL HT SP VT FF) */
+       78 
+       79 	dcl     NON_SIMPLE_BREAKS	 character (6) static options (constant) initial ("()[]""|");
+       80 	dcl     NON_SIMPLE_BREAKS_SEMI character (7) static options (constant) initial ("()[]""|;");
+       81 						/* characters requiring special processing */
+       82 
+       83 	dcl     COMMAND_BREAKS	 character (2) static options (constant) initial (";
+       84 ");						/* characters which separate command invocations (;, NL) */
+       85 
+       86 
+       87 
+       88 /* bce_command_processor_: proc (Line, Command_finder, Code) */
+       89 
+       90 	ss_info_ptr = Info_ptr;
+       91 	forbid_semicolons = ss_info.forbid_semicolons;
+       92 	line_ptr = addr (Line);
+       93 	line_lth = length (Line);			/* first estimate */
+       94 
+       95 	line_lth = length (rtrim (line, SIMPLE_BREAKS));
+       96 	start = verify (line, SIMPLE_BREAKS);
+       97 	if start = 0				/* null command line */
+       98 	then do;
+       99 		Code = 100;			/* just like everything else ... */
+      100 		return;
+      101 	     end;
+      102 
+      103 	if (forbid_semicolons & search (line, NON_SIMPLE_BREAKS_SEMI) ^= 0)
+      104 	     | (^forbid_semicolons & search (line, NON_SIMPLE_BREAKS) ^= 0)
+      105 	then do;
+      106 		Code = error_table_$cp_reserved_syntax;
+      107 		return;
+      108 	     end;
+      109 	do while (start <= line_lth);
+      110 
+      111 
+      112 	     reading_command_name = "1"b;
+      113 	     end_of_command = "0"b;
+      114 	     n_arguments = 0;
+      115 
+      116 	     do while (^end_of_command);
+      117 
+      118 		token_lth = search (substr (line, start), SIMPLE_BREAKS) - 1;
+      119 
+      120 		if token_lth = -1
+      121 		then /* rest of the command line */
+      122 		     token_lth = line_lth - start + 1;	/* break is one beyond the end */
+      123 
+      124 		if reading_command_name
+      125 		then do;
+      126 			command_name_ptr = addr (substr (line, start, 1));
+      127 			command_name_lth = token_lth;
+      128 			reading_command_name = "0"b;
+      129 		     end;
+      130 		else do;
+      131 			n_arguments = n_arguments + 1;
+      132 			if n_arguments > hbound (arg_list.arg_ptrs, 1)
+      133 			then do;
+      134 				Code = error_table_$too_many_args;
+      135 				return;
+      136 			     end;
+      137 			arg_list.arg_ptrs (n_arguments) = addr (substr (line, start, 1));
+      138 			arg_list.descriptor_ptrs (n_arguments) = addr (descriptors (n_arguments));
+      139 			descriptors (n_arguments).bits = "5260"b3;
+      140 						/* unaligned, nonvarying string */
+      141 			descriptors (n_arguments).size = token_lth;
+      142 		     end;
+      143 
+      144 		start = start + token_lth;		/* skip over token to delimiters */
+      145 
+      146 		if (start > line_lth)
+      147 		then end_of_command = "1"b;		/* entire line used */
+      148 
+      149 		else do;				/* search for next token and check for end of a command
+      150*						   invocation (semi-colon or new-line in delimiters) */
+      151 			next_start = verify (substr (line, start), SIMPLE_BREAKS);
+      152 			if (next_start = 0)
+      153 			then do;			/* rest of line is delimiters */
+      154 				next_start = line_lth - start + 2;
+      155 				end_of_command = "1"b;
+      156 			     end;
+      157 			else end_of_command =
+      158 				(search (substr (line, start, (next_start - 1)), COMMAND_BREAKS) ^= 0);
+      159 			start = start + next_start - 1;
+      160 		     end;
+      161 	     end;
+      162 
+      163 	     arg_list.twice_n_arguments, arg_list.twice_n_descriptors = 2 * n_arguments;
+      164 
+      165 	     if n_arguments < hbound (arg_list.arg_ptrs, 1)
+      166 	     then /* need to move descriptor pointers down */
+      167 		addr (arg_list.arg_ptrs (n_arguments + 1)) -> descriptor_ptrs_for_move =
+      168 		     addr (arg_list.descriptor_ptrs) -> descriptor_ptrs_for_move;
+      169 
+      170 	     command_entry = Command_finder (Info_ptr, command_name, Code);
+      171 	     if Code ^= 0
+      172 	     then return;
+      173 	     ss_info.arg_list_ptr = addr (arg_list);
+      174 	     call command_entry (addr (ss_info));
+      175 	end;
+      176 
+  1     1 /* Begin include file bce_subsystem_info_.incl.pl1 BIM 11/82 */
+  1     2 
+  1     3 /* format: style3 */
+  1     4 
+  1     5 /* Deleted unused items, Keith Loepere, 5/84 */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-04-22,Farley), approve(86-07-18,MCR7439),
+  1    10*     audit(86-10-08,Fawcett), install(86-10-20,MR12.0-1189):
+  1    11*     Added request_handling_opr_aborts flag for save/restore.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 declare	ss_info_ptr	pointer;
+  1    15 declare	1 ss_info		aligned based (ss_info_ptr),
+  1    16 	  2 request_table_ptr
+  1    17 			pointer,
+  1    18 	  2 abort_label	label,
+  1    19 	  2 name		char (32) unaligned,
+  1    20 	  2 arg_list_ptr	pointer,
+  1    21 	  2 info_ptr	pointer,
+  1    22 	  2 flags           aligned,
+  1    23 	    3 forbid_semicolons bit (1) unaligned,
+  1    24 	    3 request_handling_opr_aborts bit (1) unaligned;
+  1    25 
+  1    26 /* End include file bce_subsystem_info_ */
+      177 
+      178 
+      179      end bce_command_processor_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.9  bce_command_processor_.pl1        >spec>install>1110>bce_command_processor_.pl1
+177          1    10/21/86  1251.6  bce_subsystem_info_.incl.pl1      >ldd>include>bce_subsystem_info_.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+COMMAND_BREAKS                         constant        char(2)                  initial packed unaligned dcl 83 ref 157
+Code                                   parameter       fixed bin(35,0)          dcl 21 set ref 15 99* 106* 134* 170* 171
+Command_finder                         parameter       entry variable           dcl 19 ref 15 170
+Info_ptr                               parameter       pointer                  dcl 20 set ref 15 90 170*
+Line                                   parameter       char                     packed unaligned dcl 18 set ref 15 92 93
+NON_SIMPLE_BREAKS               000002 constant        char(6)                  initial packed unaligned dcl 79 ref 103
+NON_SIMPLE_BREAKS_SEMI          000000 constant        char(7)                  initial packed unaligned dcl 80 ref 103
+SIMPLE_BREAKS                   000004 constant        char(6)                  initial packed unaligned dcl 76 ref 95 96 118 151
+arg_list                        000100 automatic       structure                level 1 dcl 25 set ref 173
+arg_list_ptr             16            based           pointer                  level 2 dcl 1-15 set ref 173*
+arg_ptrs                  2     000100 automatic       pointer                  array level 2 dcl 25 set ref 132 137* 165 165
+bits                            000302 automatic       bit(12)                  array level 2 packed packed unaligned dcl 34 set ref
+                                                                                  139*
+command_entry                   000360 automatic       entry variable           dcl 58 set ref 170* 174
+command_name                           based           char                     packed unaligned dcl 50 set ref 170*
+command_name_lth                000352 automatic       fixed bin(17,0)          dcl 52 set ref 127* 170 170
+command_name_ptr                000350 automatic       pointer                  dcl 51 set ref 126* 170
+descriptor_ptrs         102     000100 automatic       pointer                  array level 2 dcl 25 set ref 138* 165
+descriptor_ptrs_for_move               based           bit                      dcl 38 set ref 165* 165
+descriptors                     000302 automatic       structure                array level 1 dcl 34 set ref 138
+end_of_command                  000343 automatic       bit(1)                   dcl 43 set ref 113* 116 146* 155* 157*
+error_table_$cp_reserved_syntax 000010 external static fixed bin(35,0)          dcl 61 ref 106
+error_table_$too_many_args      000012 external static fixed bin(35,0)          dcl 63 ref 134
+flags                    22            based           structure                level 2 dcl 1-15
+forbid_semicolons        22            based           bit(1)                   level 3 in structure "ss_info" packed packed
+                                                                                  unaligned dcl 1-15 in procedure
+                                                                                  "bce_command_processor_" set ref 91
+forbid_semicolons               000364 automatic       bit(1)                   dcl 59 in procedure "bce_command_processor_" set ref
+                                                                                  91* 103 103
+line                                   based           char                     packed unaligned dcl 56 set ref 95 96 103 103 118
+                                                                                  126 137 151 157
+line_lth                        000353 automatic       fixed bin(21,0)          dcl 54 set ref 93* 95* 95 96 103 103 109 118 120 126
+                                                                                  137 146 151 154 157
+line_ptr                        000354 automatic       pointer                  dcl 55 set ref 92* 95 96 103 103 118 126 137 151 157
+n_arguments                     000344 automatic       fixed bin(17,0)          dcl 45 set ref 114* 131* 131 132 137 138 138 139 141
+                                                                                  163 165 165 165 165
+next_start                      000346 automatic       fixed bin(21,0)          dcl 47 set ref 151* 152 154* 157 159
+reading_command_name            000342 automatic       bit(1)                   dcl 42 set ref 112* 124 128*
+size                      0(12) 000302 automatic       fixed bin(24,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 34 set ref 141*
+ss_info                                based           structure                level 1 dcl 1-15 set ref 174 174
+ss_info_ptr                     000366 automatic       pointer                  dcl 1-14 set ref 90* 91 173 174 174
+start                           000356 automatic       fixed bin(17,0)          dcl 57 set ref 96* 97 109 118 120 126 137 144* 144
+                                                                                  146 151 154 157 159* 159
+tag                       0(18) 000100 automatic       bit(18)                  initial level 2 packed packed unaligned dcl 25 set
+                                                                                  ref 25*
+token_lth                       000345 automatic       fixed bin(21,0)          dcl 47 set ref 118* 120 120* 127 141 144
+twice_n_arguments               000100 automatic       fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 25 set
+                                                                                  ref 163*
+twice_n_descriptors       1     000100 automatic       fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 25 set
+                                                                                  ref 163*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BREAKS                                 internal static char(12)                 initial packed unaligned dcl 70
+TOKEN_BREAKS                           internal static char(6)                  initial packed unaligned dcl 73
+command_entry_ptr                      automatic       pointer                  dcl 53
+cu_$generate_call               000000 constant        entry                    external dcl 66
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+bce_command_processor_          000020 constant        entry                    external dcl 15
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 92 126 137 138 165 165 173 174 174
+hbound                                                 builtin function         ref 132 165
+length                                                 builtin function         ref 93 95
+rtrim                                                  builtin function         ref 95
+search                                                 builtin function         ref 103 103 118 157
+substr                                                 builtin function         ref 118 126 137 151 157
+verify                                                 builtin function         ref 96 151
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1672        1706    1617        1702
+Length      2100    1617        14         155      52           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_command_processor_              278 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_command_processor_   000100 arg_list                    bce_command_processor_
+                         000302 descriptors                 bce_command_processor_
+                         000342 reading_command_name        bce_command_processor_
+                         000343 end_of_command              bce_command_processor_
+                         000344 n_arguments                 bce_command_processor_
+                         000345 token_lth                   bce_command_processor_
+                         000346 next_start                  bce_command_processor_
+                         000350 command_name_ptr            bce_command_processor_
+                         000352 command_name_lth            bce_command_processor_
+                         000353 line_lth                    bce_command_processor_
+                         000354 line_ptr                    bce_command_processor_
+                         000356 start                       bce_command_processor_
+                         000360 command_entry               bce_command_processor_
+                         000364 forbid_semicolons           bce_command_processor_
+                         000366 ss_info_ptr                 bce_command_processor_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ent_var_desc   call_ent_var        return_mac          ext_entry_desc
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$cp_reserved_syntax                             error_table_$too_many_args
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000013        25 000033        90 000035        91 000041        92 000044        93 000046        95 000050
+     96 000061        97 000074        99 000075       100 000077       103 000100       106 000132       107 000134
+    109 000135       112 000141       113 000143       114 000144       116 000145       118 000150       120 000170
+    124 000176       126 000200       127 000204       128 000205       129 000206       131 000207       132 000210
+    134 000213       135 000217       137 000220       138 000225       139 000230       141 000233       144 000237
+    146 000240       151 000246       152 000265       154 000266       155 000272       156 000274       157 000275
+    159 000311       161 000315       163 000316       165 000326       170 000342       171 000376       173 000401
+    174 000404       175 000414       179 000415
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

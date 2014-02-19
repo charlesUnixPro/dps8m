@@ -1,0 +1,611 @@
+	COMPILATION LISTING OF SEGMENT rcp_force_unassign_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0948.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 rcp_force_unassign_: procedure;
+       14 
+       15 /*	This program implements the rcp_sys_$unassign_device
+       16*   *	and rcp_sys_$unassign_process entries.
+       17*   *	Created on 12/09/74 by Bill Silver.
+       18*   *      Modified 841009 to interface to rcp_control_ instead of
+       19*   *         rcp_initializer_... -M. M. Pozzo
+       20*   *
+       21*   *	This program contains the following entry points:
+       22*   *	     1.	unassign_device  -	Unassign a device regardless of process.
+       23*   *	     2.	unassign_process -	Unassign all resources assigned to a process.
+       24**/
+       25 
+       26 /*		ARGUMENT  DATA		*/
+       27 
+       28 	dcl     arg_device_name	 char (*);	/* (I) Device name. */
+       29 	dcl     arg_ecode		 fixed bin (35);	/* (O) error_table_ code. */
+       30 	dcl     arg_process_id	 bit (36) aligned;	/* (I) Process ID. */
+       31 
+       32 
+       33 /*		AUTOMATIC  DATA		*/
+       34 
+       35 	dcl     device_offset	 bit (18) aligned;
+       36 	dcl     lock_flag		 bit (1) aligned;	/* ON => RCS locked. */
+       37 	dcl     process_flag	 bit (1) aligned;	/* ON => using process ID. */
+       38 	dcl     process_id		 bit (36) aligned;	/* Process ID. */
+       39 	dcl     volume_offset	 bit (18) aligned;
+       40 
+       41 	dcl     operation		 bit (36) aligned;	/* Operation being requested of rcp_control_. */
+       42 	dcl     device_name		 char (32);	/* Device name. */
+       43 
+       44 	dcl     caller_level	 fixed bin;	/* Caller's validation level. */
+       45 	dcl     bump_message	 fixed bin (71);	/* Cell for device preempt message */
+       46 	dcl     ecode		 fixed bin (35);	/* error_table_ code. */
+       47 	dcl     error_count		 fixed bin (17);	/* error count for device attachments. */
+       48 	dcl     i			 fixed bin;
+       49 
+       50 
+       51 /*		CONSTANT DATA		*/
+       52 
+       53 	dcl     BUMP_MESSAGE	 char (8) static options (constant) init ("RCP_BUMP");
+       54 
+       55 /*		EXTERNAL ENTRIES CALLED	*/
+       56 
+       57 	dcl     cleanup		 condition;	/* Used to set up cleanup handler. */
+       58 
+       59 	dcl     (addr, rel, unspec)	 builtin;
+       60 
+       61 	dcl     error_table_$invalid_state fixed bin (35) external;
+       62 	dcl     error_table_$force_unassign fixed bin (35) external;
+       63 	dcl     error_table_$resource_unknown fixed bin (35) external;
+       64 
+       65 	dcl     access_operations_$rcp_unassign bit (36) aligned ext static;
+       66 
+       67 	dcl     cu_$level_get	 entry (fixed bin);
+       68 	dcl     cu_$level_set	 entry (fixed bin);
+       69 	dcl     get_ring_		 entry returns (fixed bin);
+       70 	dcl     hcs_$wakeup		 entry (bit (36) aligned, fixed bin (71), fixed bin (71), fixed bin (35));
+       71 	dcl     rcp_control_	 entry (bit (36) aligned, bit (18) aligned, bit (18) aligned, char (*),
+       72 				 fixed bin (17), bit (36) aligned, fixed bin (35));
+       73 	dcl     rcp_detach_$force_detach entry (ptr);
+       74 	dcl     rcp_lock_$lock	 entry (ptr, fixed bin (35));
+       75 	dcl     rcp_lock_$unlock	 entry (ptr);
+       76 	dcl     rcp_pointers_$com_seg	 entry returns (ptr);
+       77 
+       78 unassign_device: entry (arg_device_name, arg_ecode);
+       79 
+       80 /*	This entry point implements the rcp_sys_$unassign_device entry point.
+       81*   *	We will call rcp_control_ to unassign the specified device.
+       82*   *	If the device is attached we will detach it.  We will free any RCS
+       83*   *	entries used by this device.
+       84**/
+       85 	call SETUP;				/* Perform initialization. */
+       86 	on cleanup begin;				/* Cleanup if any trouble. */
+       87 		call CLEANUP;			/* Unlock lock and reset validation level. */
+       88 	     end;
+       89 	call cu_$level_set (get_ring_ ());		/* Set validation level to RCP level. */
+       90 
+       91 	device_name = arg_device_name;		/* Copy device name argument. */
+       92 
+       93 	call FREE_ENTRIES;				/* Clean up everything in RCS for device. */
+       94 	if ecode ^= 0
+       95 	then goto DEVICE_RETURN;
+       96 
+       97 	detailed_operation.force = "1"b;
+       98 
+       99 	call rcp_control_ (operation, volume_offset, device_offset,
+      100 	     device_name, error_count, process_id, ecode);
+      101 
+      102 DEVICE_RETURN:
+      103 	call cu_$level_set (caller_level);
+      104 	arg_ecode = ecode;
+      105 	return;
+      106 
+      107 /* 	*/
+      108 unassign_process: entry (arg_process_id, arg_ecode);
+      109 
+      110 /*	This entry point implements the rcp_sys_$unassign_process entry point.
+      111*   *	This entry point will call rcp_initializer_ to unassign everything that
+      112*   *	is assigned to the specified process.  We will detach any attached
+      113*   *	devices and free all RCS entries.
+      114**/
+      115 	call SETUP;
+      116 	on cleanup begin;
+      117 		call CLEANUP;
+      118 	     end;
+      119 	call cu_$level_set (get_ring_ ());
+      120 
+      121 	process_id = arg_process_id;			/* Copy argument. */
+      122 	process_flag = "1"b;			/* Using process ID not device name. */
+      123 
+      124 	call FREE_ENTRIES;				/* Clean up everything in RCS for process. */
+      125 	if ecode ^= 0
+      126 	then goto PROCESS_RETURN;
+      127 
+      128 	detailed_operation.process = "1"b;
+      129 	call rcp_control_ (operation, volume_offset, device_offset,
+      130 	     device_name, error_count, process_id, ecode);
+      131 PROCESS_RETURN:
+      132 	call cu_$level_set (caller_level);
+      133 	arg_ecode = ecode;
+      134 	return;
+      135 
+      136 /* 	*/
+      137 FREE_ENTRIES: procedure;
+      138 
+      139 /*	This procedure will test all of the RCS entries.  It will
+      140*   *	look for entries that it should make free.
+      141**/
+      142 
+      143 	lock_flag = "1"b;				/* RCS now locked. */
+      144 	call rcp_lock_$lock (lock_info_ptr, ecode);
+      145 	if ecode ^= 0				/* Any trouble locking RCS? */
+      146 	then return;				/* Yes. */
+      147 
+      148 	do i = 1 to rcs.num_entries;			/* Look at all existing RCS entries. */
+      149 	     rcse_ptr = addr (rcs.entry (i));		/* Get pointer to rcs entry. */
+      150 	     call FREE_ENTRY;			/* See if we should free this entry. */
+      151 	end;
+      152 
+      153 	call rcp_lock_$unlock (lock_info_ptr);
+      154 	lock_flag = "0"b;				/* RCS no longer locked. */
+      155 
+      156      end FREE_ENTRIES;
+      157 
+      158 /* 	*/
+      159 FREE_ENTRY: procedure;
+      160 
+      161 /*	This procedure is called to see if we should free the specified RCS entry.
+      162*   *	We will not free it if it is already free or if it does not match the
+      163*   *	specified device name or process ID.  If this entry is an attachment entry
+      164*   *	that has actually been attached then we will detach it.
+      165**/
+      166 	if rcse.free_off ^= "0"b			/* Is entry free? */
+      167 	then return;				/* Yes, nothing to do. */
+      168 
+      169 	if process_flag				/* Are we looking for process IDs? */
+      170 	then if rcse.process_id ^= process_id
+      171 	     then return;				/* Yes, but we didn't find one that matched. */
+      172 	     else ;				/* Yes, and this one matches. */
+      173 	else if rcse.device_name ^= device_name
+      174 	then return;				/* No, device name, but no match. */
+      175 
+      176 	rcse.state = 0;				/* Put the device in an invalid state. */
+      177 	if process_flag then
+      178 	     rcse.ecode = error_table_$invalid_state;	/* Note the invalid state. */
+      179 	else rcse.ecode = error_table_$force_unassign;
+      180 
+      181 	if rcse.kind = 1				/* If attachment we must detach. */
+      182 	then call rcp_detach_$force_detach (rcse_ptr);
+      183 
+      184 /*	We have found an entry that we want to make free.  We cannot just call
+      185*   *	rcp_rcse_$free because we already have RCS locked and because we are
+      186*   *	probably not running in the process that had assigned this entry.
+      187*   *	If we are deleting all entries of a process we will add this entry to
+      188*   *	the free list since we can assume that process' own entry lists are
+      189*   *	gone or are at least no longer valid.  However, if we are just deleting
+      190*   *	an entry for some device it is possible that this entry is still on a
+      191*   *	process list.  Changing the state of the entry is all that we should do.
+      192**/
+      193 	if process_flag				/* Using a process ID? */
+      194 	then do;					/* Yes, free entry ourselves. */
+      195 		rcse.free_off = rcs.first_free_off;
+      196 		rcse.process_id = "0"b;
+      197 		rcse.state = 0;
+      198 		rcs.first_free_off = rel (rcse_ptr);
+      199 	     end;
+      200 	else do;					/* Send wakeup to cause process attach to fail. */
+      201 		unspec (bump_message) = unspec (BUMP_MESSAGE);
+      202 		call hcs_$wakeup (rcse.process_id, rcse.event_id, bump_message, ecode);
+      203 	     end;
+      204 
+      205      end FREE_ENTRY;
+      206 
+      207 /* 	*/
+      208 SETUP: procedure;
+      209 
+      210 /*	This procedure is called to set up the data we will need in
+      211*   *	the cleanup handler.
+      212**/
+      213 
+      214 	device_offset = ""b;
+      215 	process_flag = ""b;
+      216 	process_id = ""b;
+      217 	volume_offset = ""b;
+      218 	device_name = "";
+      219 	operation = access_operations_$rcp_unassign;
+      220 	ops_ptr = addr (addr (operation) -> encoded_access_op.detailed_operation);
+      221 	error_count = 0;
+      222 
+      223 	rcs_ptr = rcp_pointers_$com_seg ();
+      224 	lock_info_ptr = addr (rcs.lock_info);		/* Needed to lock and unlock RCS. */
+      225 	lock_flag = "0"b;				/* Lock not locked yet. */
+      226 
+      227 	call cu_$level_get (caller_level);		/* Get caller's validation level. */
+      228 
+      229      end SETUP;
+      230 
+      231 CLEANUP: procedure;
+      232 
+      233 /*	This procedure is called from the cleanup handlers.
+      234*   *	We must reset the validation level to the caller's level.
+      235*   *	If we now have RCS locked we must unlock it.
+      236**/
+      237 	if lock_flag				/* Is RCS locked? */
+      238 	then call rcp_lock_$unlock (lock_info_ptr);
+      239 
+      240 	call cu_$level_set (caller_level);
+      241 
+      242      end CLEANUP;
+      243 
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      244 
+      245 
+  2     1 /* begin include file - access_audit_encoded_op.incl.pl1 */
+  2     2 
+  2     3 dcl 1 encoded_access_op	aligned based,
+  2     4       2 audit_type	unal,
+  2     5         3 object_type	fixed bin (4) uns unal,
+  2     6         3 access_type	fixed bin (2) uns unal,
+  2     7       2 operation_index	fixed bin (12) uns unal,
+  2     8       2 detailed_operation	fixed bin (18) uns unal;
+  2     9 
+  2    10 /* object_type = Seg, Dir, Rcp, Admin, Special, Other
+  2    11*   access_type = None, Modify_Acl, Modify, Read
+  2    12*   operation_index is the index of this code in
+  2    13*     access_operations_$oper_codes and the index of
+  2    14*     the text descriptor in access_operations_$text_offest_table
+  2    15*     (see access_operations_.incl.pl1)
+  2    16*   detailed_operation is additional info inserted by the
+  2    17*     caller of the subsystem performing the operation
+  2    18**/
+  2    19 
+  2    20 /* end include file - access_audit_encoded_op.incl.pl1 */
+      246 
+      247 
+  3     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3     2 /*  BEGIN include rcp_ops.incl.pl1  */
+  3     3 
+  3     4 /* Written 02/27/85 by Chris Jones, Maria Pozzo */
+  3     5 
+  3     6 dcl	ops_ptr		   ptr;
+  3     7 
+  3     8 dcl	1 detailed_operation   unaligned based (ops_ptr),
+  3     9 	  2 given,
+  3    10 	    3 potential_attributes
+  3    11 			   bit (1),
+  3    12 	    3 desired_attributes
+  3    13 			   bit (1),
+  3    14 	    3 potential_aim_range
+  3    15 			   bit (1),
+  3    16 	    3 aim_range	   bit (1),
+  3    17 	    3 owner	   bit (1),
+  3    18 	    3 acs_path	   bit (1),
+  3    19 	    3 location	   bit (1),
+  3    20 	    3 comment	   bit (1),
+  3    21 	    3 charge_type	   bit (1),
+  3    22 	    3 usage_lock	   bit (1),
+  3    23 	    3 release_lock	   bit (1),
+  3    24 	    3 user_alloc	   bit (1),
+  3    25 	  2 priv_gate_call	   bit (1),
+  3    26 	  2 search	   bit (1),
+  3    27 	  2 force		   bit (1),
+  3    28 	  2 process	   bit (1),
+  3    29 	  2 owner		   bit (1),
+  3    30 	  2 pad		   bit (1);
+  3    31 
+      248 
+      249 
+      250      end rcp_force_unassign_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.9  rcp_force_unassign_.pl1           >spec>install>1111>rcp_force_unassign_.pl1
+244          1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+246          2    01/30/85  1523.9  access_audit_encoded_op.incl.pl1  >ldd>include>access_audit_encoded_op.incl.pl1
+248          3    03/15/85  0953.1  rcp_ops.incl.pl1                  >ldd>include>rcp_ops.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BUMP_MESSAGE                    000000 constant        char(8)                  initial packed unaligned dcl 53 ref 201
+access_operations_$rcp_unassign 000014 external static bit(36)                  dcl 65 ref 219
+addr                                                   builtin function         dcl 59 ref 149 220 220 224
+arg_device_name                        parameter       char                     packed unaligned dcl 28 ref 78 91
+arg_ecode                              parameter       fixed bin(35,0)          dcl 29 set ref 78 104* 108 133*
+arg_process_id                         parameter       bit(36)                  dcl 30 ref 108 121
+bump_message                    000120 automatic       fixed bin(71,0)          dcl 45 set ref 201* 202*
+caller_level                    000116 automatic       fixed bin(17,0)          dcl 44 set ref 102* 131* 227* 240*
+cleanup                         000126 stack reference condition                dcl 57 ref 86 116
+cu_$level_get                   000016 constant        entry                    external dcl 67 ref 227
+cu_$level_set                   000020 constant        entry                    external dcl 68 ref 89 102 119 131 240
+detailed_operation        0(18)        based           fixed bin(18,0)          level 2 in structure "encoded_access_op" packed
+                                                                                  packed unsigned unaligned dcl 2-3 in procedure
+                                                                                  "rcp_force_unassign_" set ref 220
+detailed_operation                     based           structure                level 1 packed packed unaligned dcl 3-8 in procedure
+                                                                                  "rcp_force_unassign_"
+device_name                            based           char(8)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_force_unassign_" ref 173
+device_name                     000106 automatic       char(32)                 packed unaligned dcl 42 in procedure
+                                                                                  "rcp_force_unassign_" set ref 91* 99* 129* 173
+                                                                                  218*
+device_offset                   000100 automatic       bit(18)                  dcl 35 set ref 99* 129* 214*
+ecode                           000122 automatic       fixed bin(35,0)          dcl 46 in procedure "rcp_force_unassign_" set ref 94
+                                                                                  99* 104 125 129* 133 144* 145 202*
+ecode                    53            based           fixed bin(35,0)          level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_force_unassign_" set ref 177* 179*
+encoded_access_op                      based           structure                level 1 dcl 2-3
+entry                   110            based           structure                array level 2 dcl 1-30 set ref 149
+error_count                     000123 automatic       fixed bin(17,0)          dcl 47 set ref 99* 129* 221*
+error_table_$force_unassign     000012 external static fixed bin(35,0)          dcl 62 ref 179
+error_table_$invalid_state      000010 external static fixed bin(35,0)          dcl 61 ref 177
+event_id                 40            based           fixed bin(71,0)          level 2 dcl 1-55 set ref 202*
+first_free_off          107            based           bit(18)                  level 2 dcl 1-30 set ref 195 198*
+force                     0(14)        based           bit(1)                   level 2 packed packed unaligned dcl 3-8 set ref 97*
+free_off                 26            based           bit(18)                  level 2 dcl 1-55 set ref 166 195*
+get_ring_                       000022 constant        entry                    external dcl 69 ref 89 89 119 119
+hcs_$wakeup                     000024 constant        entry                    external dcl 70 ref 202
+i                               000124 automatic       fixed bin(17,0)          dcl 48 set ref 148* 149*
+kind                     25            based           fixed bin(17,0)          level 2 dcl 1-55 ref 181
+lock_flag                       000101 automatic       bit(1)                   dcl 36 set ref 143* 154* 225* 237
+lock_info                              based           structure                level 1 dcl 1-46 in procedure "rcp_force_unassign_"
+lock_info                              based           structure                level 2 in structure "rcs" dcl 1-30 in procedure
+                                                                                  "rcp_force_unassign_" set ref 224
+lock_info_ptr                   000134 automatic       pointer                  dcl 1-22 set ref 144* 153* 224* 237*
+num_entries             106            based           fixed bin(17,0)          level 2 dcl 1-30 ref 148
+operation                       000105 automatic       bit(36)                  dcl 41 set ref 99* 129* 219* 220
+ops_ptr                         000142 automatic       pointer                  dcl 3-6 set ref 97 128 220*
+process                   0(15)        based           bit(1)                   level 2 packed packed unaligned dcl 3-8 set ref 128*
+process_flag                    000102 automatic       bit(1)                   dcl 37 set ref 122* 169 177 193 215*
+process_id                      000103 automatic       bit(36)                  dcl 38 in procedure "rcp_force_unassign_" set ref
+                                                                                  99* 121* 129* 169 216*
+process_id               42            based           bit(36)                  level 2 in structure "rcse" dcl 1-55 in procedure
+                                                                                  "rcp_force_unassign_" set ref 169 196* 202*
+rcp_control_                    000026 constant        entry                    external dcl 71 ref 99 129
+rcp_detach_$force_detach        000030 constant        entry                    external dcl 73 ref 181
+rcp_lock_$lock                  000032 constant        entry                    external dcl 74 ref 144
+rcp_lock_$unlock                000034 constant        entry                    external dcl 75 ref 153 237
+rcp_pointers_$com_seg           000036 constant        entry                    external dcl 76 ref 223
+rcs                                    based           structure                level 1 dcl 1-30
+rcs_ptr                         000136 automatic       pointer                  dcl 1-23 set ref 148 149 195 198 223* 224
+rcse                                   based           structure                level 1 dcl 1-55
+rcse_ptr                        000140 automatic       pointer                  dcl 1-24 set ref 149* 166 169 173 176 177 179 181
+                                                                                  181* 195 196 197 198 202 202
+rel                                                    builtin function         dcl 59 ref 198
+state                    24            based           fixed bin(17,0)          level 2 dcl 1-55 set ref 176* 197*
+unspec                                                 builtin function         dcl 59 set ref 201* 201
+volume_offset                   000104 automatic       bit(18)                  dcl 39 set ref 99* 129* 217*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+based_rcp_id                           based           structure                level 1 dcl 1-26
+error_table_$resource_unknown          external static fixed bin(35,0)          dcl 63
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CLEANUP                         000544 constant        entry                    internal dcl 231 ref 87 117
+DEVICE_RETURN                   000157 constant        label                    dcl 102 ref 94
+FREE_ENTRIES                    000332 constant        entry                    internal dcl 137 ref 93 124
+FREE_ENTRY                      000401 constant        entry                    internal dcl 159 ref 150
+PROCESS_RETURN                  000317 constant        label                    dcl 131 ref 125
+SETUP                           000502 constant        entry                    internal dcl 208 ref 85 115
+rcp_force_unassign_             000015 constant        entry                    external dcl 13
+unassign_device                 000027 constant        entry                    external dcl 78
+unassign_process                000176 constant        entry                    external dcl 108
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1020        1060     573        1030
+Length      1334     573        40         237     225           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_force_unassign_                 180 external procedure  is an external procedure.  
+on unit on line 86                   64 on unit               
+on unit on line 116                  64 on unit               
+FREE_ENTRIES                            internal procedure  shares stack frame of external procedure rcp_force_unassign_.  
+FREE_ENTRY                              internal procedure  shares stack frame of external procedure rcp_force_unassign_.  
+SETUP                                   internal procedure  shares stack frame of external procedure rcp_force_unassign_.  
+CLEANUP                              68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_force_unassign_      000100 device_offset               rcp_force_unassign_
+                         000101 lock_flag                   rcp_force_unassign_
+                         000102 process_flag                rcp_force_unassign_
+                         000103 process_id                  rcp_force_unassign_
+                         000104 volume_offset               rcp_force_unassign_
+                         000105 operation                   rcp_force_unassign_
+                         000106 device_name                 rcp_force_unassign_
+                         000116 caller_level                rcp_force_unassign_
+                         000120 bump_message                rcp_force_unassign_
+                         000122 ecode                       rcp_force_unassign_
+                         000123 error_count                 rcp_force_unassign_
+                         000124 i                           rcp_force_unassign_
+                         000134 lock_info_ptr               rcp_force_unassign_
+                         000136 rcs_ptr                     rcp_force_unassign_
+                         000140 rcse_ptr                    rcp_force_unassign_
+                         000142 ops_ptr                     rcp_force_unassign_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_other      return_mac          enable_op           ext_entry
+ext_entry_desc      int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$level_get                 cu_$level_set                 get_ring_                     hcs_$wakeup
+rcp_control_                  rcp_detach_$force_detach      rcp_lock_$lock                rcp_lock_$unlock
+rcp_pointers_$com_seg
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_unassign                             error_table_$force_unassign   error_table_$invalid_state
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000014        78 000022        85 000042        86 000043        87 000057        88 000064        89 000065
+     91 000103        93 000111        94 000112        97 000114        99 000120       102 000157       104 000166
+    105 000171       108 000172       115 000203       116 000204       117 000220       118 000225       119 000226
+    121 000244       122 000247       124 000251       125 000252       128 000254       129 000260       131 000317
+    133 000326       134 000331       137 000332       143 000333       144 000335       145 000346       148 000351
+    149 000361       150 000365       151 000366       153 000370       154 000377       156 000400       159 000401
+    166 000402       169 000406       172 000414       173 000415       176 000422       177 000424       179 000432
+    181 000435       193 000446       195 000450       196 000454       197 000455       198 000456       199 000460
+    201 000461       202 000463       205 000501       208 000502       214 000503       215 000504       216 000505
+    217 000506       218 000507       219 000512       220 000515       221 000521       223 000522       224 000530
+    225 000532       227 000533       229 000542       231 000543       237 000551       240 000562       242 000572
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

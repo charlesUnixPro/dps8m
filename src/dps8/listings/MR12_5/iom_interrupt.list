@@ -1,0 +1,1490 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>iom_interrupt.alm                                                                                                                                    
+ASSEMBLED ON:	11/11/89  0952.0 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " iom_interrupt:  IOM interrupt handler
+                                    13  " Stolen from iom_manager and ii November 1980 by C. Hornig
+                                    14  " Added loop protocol for IOM switch checking, January 1985 by M. Pandolf
+                                    15  "	see iom_connect$connect_and_identify for the other half of the protocol
+                                    16  
+    000000                          17  	name	iom_interrupt
+                                    18  
+                        000022      19  	segdef	interrupt_entry	" interrupt vector transfers here
+                        000000      20  	segdef	iilink		" ITS ptr to linkage section
+                        000002      21  	segdef	prds_prs		" ITS ptr to space for spri
+                        000004      22  	segdef	prds_scu		" ITS ptr to space for SCU
+                                    23  
+                                    24  	tempd	hlr_arglist(4)	" argument list for interrupt handler
+                                    25  	tempd	time		" time handler called
+                                    26  	tempd	imw_save		" current IMW for scan
+                                    27  	temp	int_level		" interrupt level for handler (1 3 5 7)
+                                    28  	temp	index		" index for this channel
+                                    29  	temp	chantab_base	" offset in chantab for this IOM
+                                    30  	temp	device		" offset in per_device for this channel
+                                    31  	temp	chx		" channel index from chantab
+                                    32  	temp	int_count		" handlers called this time around
+                                    33  
+                                    34  " Index register conventions:
+                                    35  
+                                    36  "	X0 - internal subroutine calls.
+                                    37  "	X1 - index into devtab.
+                                    38  "	X2 - index into mailbox.
+                                    39  "	X3 - Used to index iomd.per_iom.
+                                    40  "	X4 - interrupt cell #.
+                                    41  "	X5 - interrupt level #.
+                                    42  "	X6 - index in status queue
+                                    43  
+                                    44  " Pointer Register Conventions:
+                                    45  
+                                    46  "	AP -> machine conditions
+                                    47  "	AB -> inetrnal calls
+                                    48  "	BP -> <iom_data>|0
+                                    49  "	BB -> mailbox for this IOM.
+                                    50  "	LP -> linkage section
+                                    51  "	LB -> status queue
+                                    52  
+                                    53  
+                                    54  " These are initialized by initialize_faults
+                                    55  
+                                    56  	even
+    000000  aa   077777 000043      57  iilink:	its	-1,1		" our LP
+    000001  aa   000001 000000 
+    000002  aa   077777 000043      58  prds_prs:	its	-1,1		" where to store PRs
+    000003  aa   000001 000000 
+    000004  aa   077777 000043      59  prds_scu:	its	-1,1		" and CU info
+    000005  aa   000001 000000 
+                                    60  
+    000006                          61  three_args_nd:
+    000006  aa   000006 000004      62  	zero	6,4
+    000007  aa   000000 000000      63  zero:	zero	0
+                                    64  
+    000010                          65  push_value:
+    000010  aa   000100 6270 00     66  	push
+    000011  aa  7 00040 2721 20
+                                    67  
+    000012                          68  chanpos:				" table of chantab offsets
+    000012  aa   000000 000040      69  	zero	0,0*4*per_iom_size+32
+    000013  aa   000000 000240      70  	zero	0,1*4*per_iom_size+32
+    000014  aa   000000 000440      71  	zero	0,2*4*per_iom_size+32
+    000015  aa   000000 000640      72  	zero	0,3*4*per_iom_size+32
+    000016  aa   000000 000000      73  	zero	0,0*4*per_iom_size
+    000017  aa   000000 000200      74  	zero	0,1*4*per_iom_size
+    000020  aa   000000 000400      75  	zero	0,2*4*per_iom_size
+    000021  aa   000000 000600      76  	zero	0,3*4*per_iom_size
+                                    77  " 
+                                    78  " This entry is transferred to by the interrupt vector.
+                                    79  " It is responsible for calling the interrupt handlers of various DIM's
+                                    80  " for which interrupts have been stored in the IMW array.
+                                    81  " It calls the interrupt routine as follows:
+                                    82  "	call int_proc (idx, int_level, data_word)
+                                    83  " where int_level (1 3 5 7) corresponds to the level passed by the channel
+                                    84  " to the IOM and data_word in the system fault or special status word.
+                                    85  
+    000022                          86  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+><+>
+                                    87  
+    000022                          88  interrupt_entry:
+    000022  aa   777760 2542 24     89  	spri	prds_prs-*,ic*	" save pointer registers
+    000023  aa   777757 3522 24     90  	eppbp	prds_prs-*,ic*	" ab -> machine conditions
+    000024  aa  2 00020 7533 00     91  	sreg	bp|mc.regs	" save registers
+    000025  aa  2 00034 7273 00     92  	lxl7	bp|mc.scu.indicators_word
+    000026  aa   000040 3072 03     93  	canx7	scu.ir.mif,du	" check for EIS
+    000027  aa   000002 6002 04     94  	tze	2,ic		" so we can save
+    000030  aa  2 00050 4477 00     95  	spl	bp|mc.eis_info	" the pointers and lengths
+                                    96  
+    000031  aa   777747 3702 24     97  	epplp	iilink-*,ic*	" set up LP
+                                    98  
+    000032  4a  4 00010 7003 20     99  	tsx0	fim_util$v_time_init " meter virtual time
+                                   100  
+    000033  4a  4 00012 7003 20    101  	tsx0	fim_util$check_interrupt " make sure we're not not prds
+                                   102  
+    000034  4a  4 00014 7003 20    103  	tsx0	fim_util$check_mct	" go save M.C.s and hregs
+                                   104  				" if trace is on
+    000035  aa   000000 0112 00    105  	nop			" return ic +1
+                                   106  
+                                   107  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   108  "
+                                   109  "	Establish a stack frame and mask interrupts.
+                                   110  "
+    000036  4a  4 00016 3733 20    111  	epbpsb	prds$		" use prds
+    000037  aa   777751 2272 04    112  	ldx7	push_value-*,ic	" get size of stack frame
+    000040  4a  4 00020 7003 20    113  	tsx0	fim_util$push_stack	" push the frame
+                                   114  
+    000041  4a  4 00022 7003 20    115  	tsx0	fim_util$set_mask	" mask to sys level
+                                   116  
+    000042                         117  	inhibit	off	<-><-><-><-><-><-><-><-><-><-><-><->
+                                   118  
+    000042  4a  4 00024 7001 20    119  	tsx0	fim_util$reset_mode_reg
+                                   120  				" turn on hist regs and cache
+    000043  aa  2 00031 2361 00    121  	ldq	bp|mc.scu.fault_data_word
+    000044  aa   000076 3760 07    122  	anq	scu.fi_num_mask,dl	" get the interrupt number
+    000045  aa   000001 7720 00    123  	qrl	scu.fi_num_shift
+    000046  aa   000000 6240 06    124  	eax4	0,ql		" interrupt cell in X4
+                                   125  " 
+    000047  aa   000007 3760 07    126  	anq	=7,dl		" get base channel table position
+    000050  0a   000012 2350 06    127  	lda	chanpos,ql
+    000051  aa  6 00066 7551 00    128  	sta	chantab_base	" save it for later
+                                   129  
+    000052  aa   000000 6350 14    130  	eaa	0,x4		" get interrupt cell
+    000053  aa   000024 7710 00    131  	arl	18+2		" interrupt level in AL
+    000054  aa   000001 2750 07    132  	ora	=1,dl		" always odd
+    000055  aa  6 00064 7551 00    133  	sta	int_level		" save for handler
+                                   134  
+    000056  aa   777730 2370 04    135  	ldaq	three_args_nd-*,ic	" Build argument list for handler
+    000057  aa  6 00050 7571 00    136  	staq	hlr_arglist	" call handler (index, int_level, ""b)
+    000060  aa  6 00065 3715 00    137  	epplb	index
+    000061  aa  6 00052 6515 00    138  	sprilb	hlr_arglist+2
+    000062  aa  6 00064 3715 00    139  	epplb	int_level
+    000063  aa  6 00054 6515 00    140  	sprilb	hlr_arglist+4
+    000064  aa   777723 3714 04    141  	epplb	zero-*,ic
+    000065  aa  6 00056 6515 00    142  	sprilb	hlr_arglist+6
+                                   143  "
+                                   144  "	set up to search IMW area
+                                   145  "
+    000066  4a  4 00026 3521 20    146  	eppbp	iom_data$
+    000067  aa  6 00071 4501 00    147  	stz	int_count		" no interrupts yet
+                                   148  
+                                   149  "
+                                   150  "	wait until any IOM switch checking is completed
+                                   151  "
+                                   152  
+    000070                         153  imw_wait:
+    000070  aa   000000 0110 03    154  	odd
+    000071  aa  2 00004 0341 00    155  	ldac	bp|iom_data.imw_lock
+    000072  aa   777777 6000 04    156  	tze	-1,ic		" loop while lock in transition
+    000073  0a   000076 6050 00    157  	tpl	imw_read
+    000074  aa  2 00004 7551 00    158  	sta	bp|iom_data.imw_lock" restore -1 into lock
+    000075  0a   000070 7100 00    159  	tra	imw_wait		" and continue looping
+                                   160  
+    000076                         161  imw_read:
+    000076  aa  2 00005 0541 00    162  	aos	bp|iom_data.n_intr_procs " bump number of cpus handling interrupts
+    000077  aa  2 00004 0541 00    163  	aos	bp|iom_data.imw_lock " was 0 from ldac, now is 1
+                                   164  
+    000100  4a  4 00030 0341 20    165  	ldac	iom_mailbox$+iom_mailbox_seg.imw_array_word,x4
+    000101  aa   000064 6000 04    166  	tze	null_int-*,ic	" no IMW bit set
+                                   167  
+    000102  aa   000000 2360 03    168  	ldq	0,du		" make a fake float number
+    000103  aa   000000 4110 03    169  	lde	0,du
+    000104  aa   000001 7730 00    170  	lrl	1
+    000105  aa   000003 7100 04    171  	tra	imw_begin-*,ic	" start scanning
+                                   172  
+                                   173  " Scan the IMW for any bits on and process these interrupts.
+                                   174  
+    000106                         175  imw_retry:
+    000106  aa  6 00062 4331 00    176  	dfld	imw_save		" get back remaining bits
+    000107  0a   000166 6000 00    177  	tze	interrupt_return	" no bits left
+                                   178  
+    000110                         179  imw_begin:
+    000110  aa   000000 6340 07    180  	ldi	0,dl		" clear hex and overflow bits
+    000111  aa   000000 5730 00    181  	fno
+    000112  aa   200000 6750 03    182  	era	=o200000,du	" clear the bit
+    000113  aa  6 00062 4571 00    183  	dfst	imw_save
+                                   184  
+    000114  aa  6 00062 2351 00    185  	lda	imw_save		" get channel number
+    000115  aa   000034 7310 00    186  	ars	36-8		" in AL
+    000116  aa   000000 5310 00    187  	neg	0
+    000117  aa  6 00066 0751 00    188  	ada	chantab_base	" add chantab offset
+    000120  aa  6 00065 7551 00    189  	sta	index		" store in case of error
+                                   190  
+    000121  aa  0 00100 1015 05    191  	mrl	(pr,al),(pr),fill(0) " Reference the channel table.
+    000122  aa   200060 000001     192  	desc9a	bp|iom_data.per_iom+per_iom.chantab_word,1
+    000123  aa   600070 000004     193  	desc9a	chx,4		" Word will be leading zero padded.
+                                   194  
+    000124  aa  6 00050 3501 00    195  	eppap	hlr_arglist
+                                   196  
+    000125  aa  6 00070 2361 00    197  	ldq	chx		" chx in QL
+    000126  aa   000031 6000 04    198  	tze	invalid_int-*,ic	" Ignore interrupt if channel not assigned.
+    000127  aa   000050 4020 07    199  	mpy	per_device_size,dl
+    000130  aa   777730 6210 06    200  	eax1	-per_device_size,ql	" index into per_device
+                                   201  
+    000131  aa  2 00266 2351 11    202  	lda	bp|iom_data.per_device+per_device.flags,x1
+                                   203  				" is there a handler?
+    000132  aa   400000 3150 03    204  	cana	per_device.in_use,du
+    000133  aa   000024 6000 04    205  	tze	invalid_int-*,ic	" Return if no handler assigned.
+                                   206  
+    000134  aa  2 00267 2351 11    207  	lda	bp|iom_data.per_device+per_device.index,x1
+    000135  aa  6 00065 7551 00    208  	sta	index		" save the handler's index
+    000136  aa  6 00067 7411 00    209  	stx1	device		" save per_device index for ext. call
+                                   210  
+    000137  4a  4 00032 6331 20    211  	rccl	sys_info$clock_,*	" Get int_time now.
+    000140  aa  6 00060 7571 00    212  	staq	time		" And save it.
+                                   213  
+    000141  aa  2 00262 3521 31    214  	short_call bp|iom_data.per_device+per_device.handler,x1*
+    000142  aa  7 00036 6701 20
+    000143  aa  6 00030 3701 20
+                                   215  				" Call handler.
+                                   216  
+    000144  4a  4 00032 6331 20    217  	rccl	sys_info$clock_,*	" Get int_time again.
+    000145  aa  6 00060 1771 00    218  	sbaq	time		" Compute delta.
+                                   219  
+    000146  4a  4 00026 3521 20    220  	eppbp	iom_data$		" re-establish addressability
+    000147  aa  6 00067 2211 00    221  	ldx1	device		" restore per_device offset
+    000150  aa  2 00306 0771 11    222  	adaq	bp|iom_data.per_device+per_device.interrupt_time,x1
+    000151  aa  2 00306 7571 11    223  	staq	bp|iom_data.per_device+per_device.interrupt_time,x1
+    000152  aa  2 00304 2371 11    224  	ldaq	bp|iom_data.per_device+per_device.interrupts,x1
+    000153  aa   000001 0330 07    225  	adl	=1,dl		" update meters
+    000154  aa  2 00304 7571 11    226  	staq	bp|iom_data.per_device+per_device.interrupts,x1
+    000155  aa  6 00071 0541 00    227  	aos	int_count		" count interrupts
+                                   228  
+    000156  aa   777730 7100 04    229  	tra	imw_retry-*,ic	" find more interrupts
+                                   230  
+                                   231  
+    000157                         232  invalid_int:
+    000157  aa  2 00035 0541 00    233  	aos	bp|iom_data.invalid_interrupts
+                                   234  				" meter unexpected interrupts
+    000160  4a  4 00034 3521 20    235  	short_call iom_error$invalid_interrupt
+    000161  aa  7 00036 6701 20
+    000162  aa  6 00030 3701 20
+                                   236  				" and tell the world
+    000163  4a  4 00026 3521 20    237  	eppbp	iom_data$		" re-establish addressability
+    000164  aa   777722 7100 04    238  	tra	imw_retry-*,ic	" find more channels
+                                   239  " 
+    000165                         240  null_int:				" meter interrupts with null IMW
+    000165  aa  2 00036 0541 00    241  	aos	bp|iom_data.null_interrupts
+                                   242  
+    000166                         243  interrupt_return:
+    000166  aa  6 00071 2351 00    244  	lda	int_count		" meter multiple interrupts
+    000167  aa   000001 1150 07    245  	cmpa	=1,dl
+    000170  aa   000002 6044 04    246  	tmoz	2,ic
+    000171  aa  2 00037 0541 00    247  	aos	bp|iom_data.multiple_interrupts
+                                   248  
+    000172  4a  4 00036 2371 20    249  	ldaq	tc_data$interrupt_count
+    000173  aa   000001 0330 07    250  	adl	1,dl		" count interrupts
+    000174  4a  4 00036 7571 20    251  	staq	tc_data$interrupt_count
+                                   252  
+                                   253  	odd
+    000175  aa  2 00004 0341 00    254  	ldac	bp|iom_data.imw_lock
+    000176  aa   777777 6000 04    255  	tze	-1,ic		" loop while lock in transition
+                                   256  
+    000177  aa   000001 3360 07    257  	lcq	1,dl		" decrement count of cpus in interrupt handler
+    000200  aa  2 00005 0561 00    258  	asq	bp|iom_data.n_intr_procs
+                                   259  
+    000201  aa  2 00004 7551 00    260  	sta	bp|iom_data.imw_lock
+                                   261  
+                                   262  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   263  "
+                                   264  "	Relinquish stack frame and open interrupt mask.
+                                   265  "
+    000202  aa   777600 3520 24    266  	eppbp	prds_prs-*,ic*	" restore MC ptr
+                                   267  
+    000203  4a  4 00040 7001 20    268  	tsx0	fim_util$restore_mask
+    000204                         269  	inhibit	on	<+><+><+><+><+><+><+><+><+><+><+><+>
+                                   270  
+    000204  aa  6 00000 3733 00    271  	epbpsb	sp|0		get ptr to base of stack
+    000205  aa  7 00024 6523 00    272  	sprisp	sb|stack_header.stack_end_ptr  pop our stack frame
+                                   273  
+                                   274  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   275  "
+                                   276  "	Perform interrupt metering and exit.
+                                   277  "
+    000206  aa  2 00046 2373 00    278  	ldaq	bp|mc.fault_time	" get fault time
+    000207  aa   777777 3752 07    279  	ana	=o777777,dl	" clear CPU type
+    000210  4a  4 00042 7573 20    280  	staq	prds$iitemp	" save for now
+    000211  4a  4 00032 6333 20    281  	rccl	sys_info$clock_,*	" read the clock
+    000212  4a  4 00042 1773 20    282  	sbaq	prds$iitemp	" compute real time spent
+    000213  4a  4 00044 0773 20    283  	adaq	tc_data$interrupt_time " add in to total
+    000214  4a  4 00044 7573 20    284  	staq	tc_data$interrupt_time "	..
+                                   285  
+                                   286  	odd
+    000215  4a  4 00046 7003 20    287  	tsx0	fim_util$v_time_calc " compute virtual time
+                                   288  
+    000216  aa  2 00034 7213 00    289  	lxl1	bp|mc.scu.indicators_word
+    000217  aa   000040 3012 03    290  	canx1	scu.ir.mif,du	" check for EIS if not don't reload pl
+    000220  aa   000002 6002 04    291  	tze	2,ic
+    000221  aa  2 00050 4677 00    292  	lpl	bp|mc.eis_info	restore pointers and lengths
+    000222  aa  2 00020 0733 00    293  	lreg	bp|mc.regs	and registers
+    000223  aa   777557 1732 24    294  	lpri	prds_prs-*,ic*	restore prs
+    000224  aa   777560 6132 24    295  	rcu	prds_scu-*,ic*	and dismiss the interrupt
+                                   296  " 
+                                   297  	include	iom_data
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE iom_data.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 03/22/85  1256.2 est Fri by convert_include_file,
+                                   1-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   1-8  
+                                   1-9  	"Made from >pool>m>CLJones>d>rcf>iom_data.incl.pl1,
+                                  1-10  	"   modified 03/22/85  1256.1 est Fri
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure iom_data
+                                  1-14  "
+                                  1-15  
+                        000000    1-16  	equ	iom_data.n_devices,0
+                        000001    1-17  	equ	iom_data.stop_lpw,1
+                        000002    1-18  	equ	iom_data.stop_dcw,2
+                        000003    1-19  	equ	iom_data.stop_scw,3
+                        000004    1-20  	equ	iom_data.imw_lock,4
+                        000005    1-21  	equ	iom_data.n_intr_procs,5
+                        000010    1-22  	equ	iom_data.stop_status,8	" DOUBLE
+                        000012    1-23  	equ	iom_data.rfh1,10
+                        000020    1-24  	equ	iom_data.stop_ext_status,16	" DOUBLE
+                        000035    1-25  	equ	iom_data.invalid_interrupts,29
+                        000036    1-26  	equ	iom_data.null_interrupts,30
+                        000037    1-27  	equ	iom_data.multiple_interrupts,31
+                        000040    1-28  	equ	iom_data.per_iom,32		" LEVEL 2
+                                  1-29  
+                        000240    1-30  	equ	iom_data.per_device,160	" LEVEL 2
+                                  1-31  
+                                  1-32  
+                                  1-33  "
+                                  1-34  "	Structure per_iom
+                                  1-35  "
+                        000040    1-36  	equ	per_iom_size,32
+                                  1-37  
+                        000000    1-38  	equ	per_iom.lock,0
+                        000001    1-39  	equ	per_iom.flags,1		" LEVEL 2
+                                  1-40  
+                        400000    1-41  	bool	per_iom.configured,400000	" DU
+                        200000    1-42  	bool	per_iom.on_line,200000	" DU
+                                  1-43  
+                        000002    1-44  	equ	per_iom.model,2
+                        000003    1-45  	equ	per_iom.port,3
+                        000004    1-46  	equ	per_iom.connect_time,4	" DOUBLE
+                        000006    1-47  	equ	per_iom.connect_lpw,6
+                        000007    1-48  	equ	per_iom.cow,7
+                        000010    1-49  	equ	per_iom.special_chx,8
+                        000011    1-50  	equ	per_iom.fault_chx,9
+                        000016    1-51  	equ	per_iom.abandoned_connects,14
+                        000017    1-52  	equ	per_iom.reconnects,15
+                                  1-53  
+                        000020    1-54  	equ	per_iom.chantab_word,16
+                        000033    1-55  	equ	per_iom.chantab_shift,27
+                        000777    1-56  	bool	per_iom.chantab_mask,000777
+                                  1-57  
+                                  1-58  "
+                                  1-59  "	Structure per_device
+                                  1-60  "
+                        000050    1-61  	equ	per_device_size,40
+                                  1-62  
+                                  1-63  
+                        000000    1-64  	equ	per_device.status,0		" DOUBLE
+                        000002    1-65  	equ	per_device.rfh1,2
+                        000010    1-66  	equ	per_device.ext_status,8	" DOUBLE
+                        000020    1-67  	equ	per_device.iom,16
+                        000021    1-68  	equ	per_device.channel,17
+                        000022    1-69  	equ	per_device.handler,18
+                        000026    1-70  	equ	per_device.flags,22		" LEVEL 2
+                                  1-71  
+                        400000    1-72  	bool	per_device.in_use,400000	" DU
+                        200000    1-73  	bool	per_device.queue_status,200000 " DU
+                        100000    1-74  	bool	per_device.on_line,100000	" DU
+                                  1-75  
+                        000027    1-76  	equ	per_device.index,23
+                        000030    1-77  	equ	per_device.pcw,24		" DOUBLE
+                        000032    1-78  	equ	per_device.lpw,26		" DOUBLE
+                        000034    1-79  	equ	per_device.scw,28
+                        000036    1-80  	equ	per_device.status_queue_ptr,30
+                        000040    1-81  	equ	per_device.connect_time,32	" DOUBLE
+                        000042    1-82  	equ	per_device.connects,34	" DOUBLE
+                        000044    1-83  	equ	per_device.interrupts,36	" DOUBLE
+                        000046    1-84  	equ	per_device.interrupt_time,38	" DOUBLE
+                                  1-85  
+                                  1-86  "
+                                  1-87  "	Structure iom_mailbox_seg
+                                  1-88  "
+                        002200    1-89  	equ	iom_mailbox_seg_size,1152
+                                  1-90  
+                        000000    1-91  	equ	iom_mailbox_seg.imw_array_word,0
+                        000004    1-92  	equ	iom_mailbox_seg.imw_array_shift,4
+                                  1-93  
+                        000040    1-94  	equ	iom_mailbox_seg.system_fault,32 " LEVEL 2
+                                  1-95  
+                        000120    1-96  	equ	iom_mailbox_seg.special_status,80 " LEVEL 2
+                                  1-97  
+                        000200    1-98  	equ	iom_mailbox_seg.iom_mailbox,128 " LEVEL 2
+                                  1-99  
+                                 1-100  
+                                 1-101  "
+                                 1-102  "	Structure status_queue
+                                 1-103  "
+                        000014   1-104  	equ	status_queue_size,12
+                                 1-105  
+                        000000   1-106  	equ	status_queue.status,0
+                                 1-107  
+                                 1-108  "
+                                 1-109  "	Structure iom_mailbox
+                                 1-110  "
+                        000400   1-111  	equ	iom_mailbox_size,256
+                                 1-112  
+                        000000   1-113  	equ	iom_mailbox.channel_mailbox,0	" LEVEL 2
+                                 1-114  
+                                 1-115  
+                                 1-116  "
+                                 1-117  "	Structure channel_mailbox
+                                 1-118  "
+                        000004   1-119  	equ	channel_mailbox_size,4
+                                 1-120  
+                        000000   1-121  	equ	channel_mailbox.lpw,0	" DOUBLE
+                        000002   1-122  	equ	channel_mailbox.scw,2
+                        000003   1-123  	equ	channel_mailbox.dcw,3
+                                 1-124  
+                        000001   1-125  	equ	system_fault_channel,1	" MANIFEST
+                        000002   1-126  	equ	connect_channel,2		" MANIFEST
+                        000006   1-127  	equ	special_status_channel,6	" MANIFEST
+                                 1-128  
+                                 1-129       "END INCLUDE FILE iom_data.incl.alm
+                                   298  	include	mc
+                                   2-1  "
+                                   2-2  "	BEGIN INCLUDE FILE  mc.incl.alm  6/72 SHW
+                                   2-3  "	Modified 8/80 by J. A. Bush for dps8/70M CPU
+                                   2-4  "
+                                   2-5  
+                                   2-6  "	General layout of data items.
+                                   2-7  
+                        000000     2-8  	equ	mc.prs,0		pointer registers
+                        000020     2-9  	equ	mc.regs,16	registers
+                        000030    2-10  	equ	mc.scu,24		SCU data
+                        000050    2-11  	equ	mc.eis_info,40	pointers and lengths for EIS
+                                  2-12  
+                                  2-13  "	Temporary storage for software
+                                  2-14  
+                        000040    2-15  	equ	mc.mask,32	system controller mask at time of fault
+                        000042    2-16  	equ	mc.ips_temp,34	temporary storage for IPS info
+                        000043    2-17  	equ	mc.errcode,35	error code
+                        000044    2-18  	equ	mc.fim_temp,36	temporary to hold fault index and unique index
+                        000045    2-19  	equ	mc.fault_reg,37	fault register
+                        000046    2-20  	equ	mc.fault_time,38	time of fault
+                        000046    2-21  	equ	mc.cpu_type_word,38	CPU type from  rsw (2). overlays part of time word
+                        300000    2-22  	bool	mc.cpu_type_mask,300000 DU
+                        000046    2-23  	equ	mc.ext_fault_reg,38	ext fault reg for dps8. overlays part of time word
+                        077774    2-24  	bool	mc.ext_fault_reg_mask,77774 DU
+                        000003    2-25  	equ	mc.cpu_type_shift,3 positions to shift right or left
+                                  2-26  
+                                  2-27  
+                                  2-28  
+                                  2-29  "	SCU  DATA
+                                  2-30  
+                                  2-31  "	WORD  (0)		PROCEDURE POINTER REGISTER
+                                  2-32  
+                        000030    2-33  	equ	mc.scu.ppr.prr_word,24	Procedure Ring Register
+                        000000    2-34  	equ	scu.ppr.prr_word,0
+                        700000    2-35  	bool	scu.ppr.prr_mask,700000	DU
+                        000041    2-36  	equ	scu.ppr.prr_shift,33
+                                  2-37  
+                        000030    2-38  	equ	mc.scu.ppr.psr_word,24	Procedure Segment Register
+                        000000    2-39  	equ	scu.ppr.psr_word,0
+                        077777    2-40  	bool	scu.ppr.psr_mask,077777	DU
+                        000022    2-41  	equ	scu.ppr.psr_shift,18
+                                  2-42  
+                        000030    2-43  	equ	mc.scu.ppr.p_word,24	Procedure Privileged Bit
+                        000000    2-44  	equ	scu.ppr.p_word,0
+                        400000    2-45  	bool	scu.ppr.p,400000		DL
+                                  2-46  
+                                  2-47  "	  APPENDING UNIT STATUS
+                        000030    2-48  	equ	mc.scu.apu_stat_word,24	APPENDING UNIT STATUS
+                        000000    2-49  	equ	scu.apu_stat_word,0		
+                                  2-50  
+                        200000    2-51  	bool	scu.apu.xsf,200000		DL - Ext Seg Flag - IT mod.
+                        100000    2-52  	bool	scu.apu.sdwm,100000		DL - Match in SDW Ass. Mem.
+                        040000    2-53  	bool	scu.apu.sd_on,040000	DL - SDW Ass. Mem.  ON
+                        020000    2-54  	bool	scu.apu.ptwm,020000		DL - Match in PTW Ass. Mem.
+                        010000    2-55  	bool	scu.apu.pt_on,010000	DL - PTW Ass. Mem.  ON
+                        004000    2-56  	bool	scu.apu.pi_ap,004000	DL - Instr fetch or Append cycle
+                        002000    2-57  	bool	scu.apu.dsptw,002000	DL - Fetch of DSPTW
+                        001000    2-58  	bool	scu.apu.sdwnp,001000	DL - Fetch of SDW non-paged
+                        000400    2-59  	bool	scu.apu.sdwp,000400		DL - Fetch of SDW paged
+                        000200    2-60  	bool	scu.apu.ptw,000200		DL - Fetch of PTW
+                        000100    2-61  	bool	scu.apu.ptw2,000100		DL - Fetch of pre-paged  PTW
+                        000040    2-62  	bool	scu.apu.fap,000040		DL - Fetch of final address paged
+                        000020    2-63  	bool	scu.apu.fanp,000020		DL - Fetch final address non-paged
+                        000010    2-64  	bool	scu.apu.fabs,000010		DL - Fetch of final address absolute
+                                  2-65  
+                        000030    2-66  	equ	mc.scu.fault_cntr_word,24	Num of retrys of EIS instructions.
+                        000000    2-67  	equ	scu.fault_cntr_word,0	
+                                  2-68  
+                        000007    2-69  	bool	scu.fault_cntr_mask,000007
+                                  2-70  
+                                  2-71  
+                                  2-72  "	WORD  (1)		FAULT DATA
+                                  2-73  
+                        000031    2-74  	equ	mc.scu.fault_data_word,25	FAULT  DATA
+                        000001    2-75  	equ	scu.fault_data_word,1
+                                  2-76  
+                        400000    2-77  	bool	scu.fd.iro,400000		DU - Illegal Ring Order
+                        200000    2-78  	bool	scu.fd.oeb,200000		DU - Not In Execute Bracket
+                        100000    2-79  	bool	scu.fd.e_off,100000		DU - No  Execute
+                        040000    2-80  	bool	scu.fd.orb,040000		DU - Not In Read Bracket
+                        020000    2-81  	bool	scu.fd.r_off,020000		DU - No  Read
+                        010000    2-82  	bool	scu.fd.owb,010000		DU - Not In Write Bracket
+                        004000    2-83  	bool	scu.fd.w_off,004000		DU - No  Write
+                        002000    2-84  	bool	scu.fd.no_ga,002000		DU - Not A Gate
+                        001000    2-85  	bool	scu.fd.ocb,001000		DU - Not in  Call Bracket
+                        000400    2-86  	bool	scu.fd.ocall,000400		DU - Outward Call
+                        000200    2-87  	bool	scu.fd.boc,000200		DU - Bad Outward Call
+                        000100    2-88  	bool	scu.fd.inret,000100		DU - Inward Return
+                        000040    2-89  	bool	scu.fd.crt,000040		DU - Cross  Ring Transfer
+                        000020    2-90  	bool	scu.fd.ralr,000020		DU - Ring   Alarm
+                        000010    2-91  	bool	scu.fd.am_er,000010		DU - Assoc. Mem. Fault
+                        000004    2-92  	bool	scu.fd.oosb,000004		DU - Out Of Bounds
+                        000002    2-93  	bool	scu.fd.paru,000002		DU - Parity Upper
+                        000001    2-94  	bool	scu.fd.parl,000001		DU - Parity Lower
+                                  2-95  
+                        400000    2-96  	bool	scu.fd.onc_1,400000		DL - Op Not Complete
+                        200000    2-97  	bool	scu.fd.onc_2,200000		DL - Op Not Complete
+                                  2-98  
+                                  2-99  "  	  GROUP II  FAULT DATA
+                        400000   2-100  	bool	scu.fd.isn,400000		DU - Illegal Segment Number
+                        200000   2-101  	bool	scu.fd.ioc,200000		DU - Illegal Op Code
+                        100000   2-102  	bool	scu.fd.ia_im,100000		DU - Illegal Addr - Modifier
+                        040000   2-103  	bool	scu.fd.isp,040000		DU - Illegal Slave Procedure
+                        020000   2-104  	bool	scu.fd.ipr,020000		DU - Illegal Procedure
+                        010000   2-105  	bool	scu.fd.nea,010000		DU - Non Existent Address
+                        004000   2-106  	bool	scu.fd.oobb,004000		DU - Out Of  Bounds
+                                 2-107  
+                        000031   2-108  	equ	mc.scu.port_stat_word,25	PORT STATUS
+                        000001   2-109  	equ	scu.port_stat_word,1
+                                 2-110  
+                        170000   2-111  	bool	scu.ial_mask,170000		DL - Illegal Action Lines
+                        000014   2-112  	equ	scu.ial_shift,12
+                                 2-113  
+                        007000   2-114  	bool	scu.iac_mask,007000		DL - Illegal Action Channel
+                        000011   2-115  	equ	scu.iac_shift,9
+                                 2-116  
+                        000700   2-117  	bool	scu.con_chan_mask,000700	DL - Connect Channel
+                        000006   2-118  	equ	scu.con_chan_shift,6
+                                 2-119  
+                        000076   2-120  	bool	scu.fi_num_mask,000076	DL - Fault / Interrupt  Number
+                        000001   2-121  	equ	scu.fi_num_shift,1
+                                 2-122  
+                        000001   2-123  	bool	scu.fi_flag_mask,000001	DL - Fault / Interrupt  Flag
+                                 2-124  
+                                 2-125  
+                                 2-126  "	WORD  (2)		TEMPORARY POINTER REGISTER
+                                 2-127  
+                        000032   2-128  	equ	mc.scu.tpr.trr_word,26	Temporary Ring Register
+                        000002   2-129  	equ	scu.tpr.trr_word,2
+                        700000   2-130  	bool	scu.tpr.trr_mask,700000	DU
+                        000041   2-131  	equ	scu.tpr.trr_shift,33
+                                 2-132  
+                        000032   2-133  	equ	mc.scu.tpr.tsr_word,26	Temporary Segment Register
+                        000002   2-134  	equ	scu.tpr.tsr_word,2
+                        077777   2-135  	bool	scu.tpr.tsr_mask,077777	DU
+                        000022   2-136  	equ	scu.tpr.tsr_shift,18
+                                 2-137  
+                        000032   2-138  	equ	mc.scu.cpu_no_word,26	CPU  Number
+                        000002   2-139  	equ	scu.cpu_no_word,2
+                                 2-140  
+                        000700   2-141  	bool	scu.cpu_no_mask,000700	DL
+                        000006   2-142  	equ	scu.cpu_shift,6
+                                 2-143  
+                        000032   2-144  	equ	mc.scu.delta_word,26	Tally Modification DELTA
+                        000002   2-145  	equ	scu.delta_word,2
+                                 2-146  
+                        000077   2-147  	bool	scu.delta_mask,000077	DL
+                                 2-148  
+                                 2-149  
+                                 2-150  "	WORD  (3)		TSR STATUS
+                                 2-151  
+                        000033   2-152  	equ	mc.scu.tsr_stat_word,27	TSR STATUS for 1,2, and 3
+                        000003   2-153  	equ	scu.tsr_stat_word,3		Word Instructions
+                                 2-154  
+                        777700   2-155  	bool	scu.tsr_stat_mask,777700	DL - All of Status
+                        000006   2-156  	equ	scu.tsr_stat_shift,6
+                                 2-157  
+                        740000   2-158  	bool	scu.tsna_mask,740000	DL - Word 1 Status
+                        700000   2-159  	bool	scu.tsna.prn_mask,700000	DL - Word 1 PR num
+                        000017   2-160  	equ	scu.tsna.prn_shift,15
+                        040000   2-161  	bool	scu.tsna.prv,040000		DL - Word 1 PR valid bit
+                                 2-162  
+                        036000   2-163  	bool	scu.tsnb_mask,036000	DL - Word 2 Status
+                        034000   2-164  	bool	scu.tsnb.prn_mask,034000	DL - Word 2 PR num
+                        000013   2-165  	equ	scu.tsnb.prn_shift,11
+                        002000   2-166  	bool	scu.tsnb.prv,002000		DL - Word 2 PR valid bit
+                                 2-167  
+                        000013   2-168  	bool	scu.tsnc_mask,0013		DL - Word 3 Status
+                        001600   2-169  	bool 	scu.tsnc.prn_mask,001600	DL - Word 3 PR num
+                        000007   2-170  	equ	scu.tsnc.prn_shift,7
+                        000100   2-171  	bool	scu.tsnc.prv,000100		DL - Word 3 PR valid bit
+                                 2-172  
+                                 2-173  
+                        000033   2-174  	equ	mc.scu.tpr.tbr_word,27	TPR.TBR  Field
+                        000003   2-175  	equ	scu.tpr.tbr_word,3
+                                 2-176  
+                        000077   2-177  	bool	scu.tpr.tbr_mask,000077	DL
+                                 2-178  
+                                 2-179  
+                                 2-180  "	WORD  (4)		INSTRUCTION COUNTER
+                                 2-181  
+                        000034   2-182  	equ	mc.scu.ilc_word,28		INSTRUCTION  COUNTER
+                        000004   2-183  	equ	scu.ilc_word,4
+                        000022   2-184  	equ	scu.ilc_shift,18
+                                 2-185  
+                        000034   2-186  	equ	mc.scu.indicators_word,28	INDICATOR  REGISTERS
+                        000004   2-187  	equ	scu.indicators_word,4
+                                 2-188  
+                        400000   2-189  	bool	scu.ir.zero,400000		DL - Zero  Indicator
+                        200000   2-190  	bool	scu.ir.neg,200000		DL - Negative Indicator
+                        100000   2-191  	bool	scu.ir.carry,100000		DL - Carry Indicator
+                        040000   2-192  	bool	scu.ir.ovfl,040000		DL - Overflow Indicator
+                        020000   2-193  	bool	scu.ir.eovf,020000		DL - Exponent Overflow  Ind
+                        010000   2-194  	bool	scu.ir.eufl,010000		DL - Exponent Underflow Ind
+                        004000   2-195  	bool	scu.ir.oflm,004000		DL - Overflow Mask Indicator
+                        002000   2-196  	bool	scu.ir.tro,002000		DL - Tally Runout  Indicator
+                        001000   2-197  	bool	scu.ir.par,001000		DL - Parity  Indicator
+                        000400   2-198  	bool	scu.ir.parm,000400		DL - Parity  Mask  Indicator
+                        000200   2-199  	bool	scu.ir.bm,000200			DL - Bar  Mode  Indicator
+                        000100   2-200  	bool	scu.ir.tru,000100		DL - Truncation Indicator
+                        000040   2-201  	bool	scu.ir.mif,000040		DL - Multiword  Indicator
+                        000020   2-202  	bool	scu.ir.abs,000020		DL - Absolute   Indicator
+                        000010   2-203  	bool	scu.ir.hex,000010		DL - Hexadecimal Indicator
+                                 2-204  
+                                 2-205  "	WORD  (5)		COMPUTED ADDRESS
+                                 2-206  
+                        000035   2-207  	equ	mc.scu.ca_word,29		COMPUTED  ADDRESS
+                        000005   2-208  	equ	scu.ca_word,5
+                        000022   2-209  	equ	scu.ca_shift,18
+                                 2-210  
+                        000035   2-211  	equ	mc.scu.cu_stat_word,29	CONTROL UNIT STATUS
+                        000005   2-212  	equ	scu.cu_stat_word,5
+                                 2-213  
+                        400000   2-214  	bool	scu.cu.rf,400000		DL - Repeat First
+                                 2-215  "					On First Cycle of Repeat Inst.
+                        200000   2-216  	bool	scu.cu.rpt,200000		DL - Repeat Instruction
+                        100000   2-217  	bool	scu.cu.rd,100000		DL - Repeat Double Instr.
+                        040000   2-218  	bool	scu.cu.rl,040000		DL - Repeat Link   Instr.
+                                 2-219  
+                        020000   2-220  	bool	scu.cu.pot,020000		DL - IT Modification
+                        010000   2-221  	bool	scu.cu.pon,010000		DL - Return Type Instruction
+                                 2-222  
+                        004000   2-223  	bool	scu.cu.xde,004000		DL - XDE from Even Location
+                        002000   2-224  	bool	scu.cu.xdo,002000		DL - XDE from Odd  Location
+                                 2-225  
+                        001000   2-226  	bool	scu.cu.poa,001000		DL - Operand Preparation
+                        000400   2-227  	bool	scu.cu.rfi,000400		DL - Tells CPU to refetch instruction
+                                 2-228  "	This Bit  Not Used    (000200)
+                        000100   2-229  	bool	scu.cu.if,000100		DL - Fault occurred during instruction fetch
+                                 2-230  
+                        000035   2-231  	equ	mc.scu.cpu_tag_word,29	Computed Tag Field
+                        000005   2-232  	equ	scu.cpu_tag_word,5
+                                 2-233  
+                        000007   2-234  	bool	scu.cpu_tag_mask,000007	DL
+                                 2-235  
+                                 2-236  
+                                 2-237  "	WORDS  (6,7)	INSTRUCTIONS
+                                 2-238  
+                        000036   2-239  	equ	scu.even_inst_word,30	Even Instruction
+                                 2-240  
+                        000037   2-241  	equ	scu.odd_inst_word,31	Odd  Instruction
+                                 2-242  
+                                 2-243  
+                                 2-244  "	END INCLUDE FILE incl.alm
+                                   299  	include	stack_header
+                                   3-1  "	BEGIN INCLUDE FILE ... stack_header.incl.alm  3/72  Bill Silver
+                                   3-2  "
+                                   3-3  "	modified 7/76 by M. Weaver for *system links and more system use of areas
+                                   3-4  "	modified 3/77 by M. Weaver  to add rnt_ptr
+                                   3-5  "	modified 7/77 by S. Webber to add run_unit_depth and assign_linkage_ptr
+                                   3-6  "	modified 6/83 by J. Ives to add trace_frames and in_trace.
+                                   3-7  
+                                   3-8  " HISTORY COMMENTS:
+                                   3-9  "  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+                                  3-10  "     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+                                  3-11  "     added the heap_header_ptr definition
+                                  3-12  "  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+                                  3-13  "     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+                                  3-14  "     Modified to support control point management.  These changes were
+                                  3-15  "     actually made in February 1985 by G. Palter.
+                                  3-16  "  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+                                  3-17  "     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+                                  3-18  "     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+                                  3-19  "     bit pad after cur_lot_size for the cpm_enabled. This was done to save
+                                  3-20  "     some space int the stack header and change the cpd_ptr unal to
+                                  3-21  "     cpm_data_ptr (ITS pair).
+                                  3-22  "                                                      END HISTORY COMMENTS
+                                  3-23  
+                        000004    3-24  	equ	stack_header.cpm_data_ptr,4		ptr to control point for this stack
+                        000006    3-25  	equ	stack_header.combined_stat_ptr,6	ptr to separate static area
+                                  3-26  
+                        000010    3-27  	equ	stack_header.clr_ptr,8		ptr to area containing linkage sections
+                        000012    3-28  	equ	stack_header.max_lot_size,10		number of words allowed in lot (DU)
+                        000012    3-29  	equ	stack_header.main_proc_invoked,10	nonzero if main proc was invoked in run unit (DL)
+                        000012    3-30  	equ	stack_header.run_unit_depth,10	number of active run units stacked (DL)
+                        000013    3-31  	equ	stack_header.cur_lot_size,11		DU number of words (entries) in lot
+                        000013    3-32            equ	stack_header.cpm_enabled,11		DL  non-zero if control point management is enabled
+                        000014    3-33  	equ	stack_header.system_free_ptr,12	ptr to system storage area
+                        000016    3-34  	equ	stack_header.user_free_ptr,14		ptr to user storage area
+                                  3-35  
+                        000020    3-36  	equ	stack_header.parent_ptr,16		ptr to parent stack or null
+                        000022    3-37  	equ	stack_header.stack_begin_ptr,18	ptr to first stack frame
+                        000024    3-38  	equ	stack_header.stack_end_ptr,20		ptr to next useable stack frame
+                        000026    3-39  	equ	stack_header.lot_ptr,22		ptr to the lot for the current ring
+                                  3-40  
+                        000030    3-41  	equ	stack_header.signal_ptr,24		ptr to signal proc for current ring
+                        000032    3-42  	equ	stack_header.bar_mode_sp,26		value of sp before entering bar mode
+                        000034    3-43  	equ	stack_header.pl1_operators_ptr,28	ptr: pl1_operators_$operator_table
+                        000036    3-44  	equ	stack_header.call_op_ptr,30		ptr to standard call operator
+                                  3-45  
+                        000040    3-46  	equ	stack_header.push_op_ptr,32		ptr to standard push operator
+                        000042    3-47  	equ	stack_header.return_op_ptr,34		ptr to standard return operator
+                        000044    3-48  	equ	stack_header.ret_no_pop_op_ptr,36	ptr: stand. return/ no pop operator
+                        000046    3-49  	equ	stack_header.entry_op_ptr,38		ptr to standard entry operator
+                                  3-50  
+                        000050    3-51  	equ	stack_header.trans_op_tv_ptr,40	ptr to table of translator operator ptrs
+                        000052    3-52  	equ	stack_header.isot_ptr,42		pointer to ISOT
+                        000054    3-53  	equ	stack_header.sct_ptr,44		pointer to System Condition Table
+                        000056    3-54  	equ	stack_header.unwinder_ptr,46		pointer to unwinder for current ring
+                                  3-55  
+                        000060    3-56  	equ	stack_header.sys_link_info_ptr,48	ptr to *system link name table
+                        000062    3-57  	equ	stack_header.rnt_ptr,50		ptr to reference name table
+                        000064    3-58  	equ	stack_header.ect_ptr,52		ptr to event channel table
+                        000066    3-59  	equ	stack_header.assign_linkage_ptr,54	ptr to area for hcs_$assign_linkage calls
+                        000070    3-60  	equ	stack_header.heap_header_ptr,56	ptr to heap header.
+                        000072    3-61  	equ	stack_header.trace_frames,58		stack of trace_catch_ frames
+                        000073    3-62  	equ	stach_header.trace_top_ptr,59		trace pointer
+                        000074    3-63  	equ	stack_header.in_trace,60		trace antirecurse bit
+                        000100    3-64  	equ	stack_header_end,64			length of stack header
+                                  3-65  
+                                  3-66  
+                                  3-67  
+                                  3-68  
+                        000000    3-69  	equ	trace_frames.count,0		number of trace frames on stack
+                        000001    3-70  	equ	trace_frames.top_ptr,1		packed pointer to top one
+                                  3-71  
+                                  3-72  "	The  following constant is an offset within the  pl1  operators table.
+                                  3-73  "	It  references a  transfer vector table.
+                                  3-74  
+                        000551    3-75  	bool	tv_offset,551
+                                  3-76  
+                                  3-77  
+                                  3-78  "	The  following constants are offsets within this transfer vector table.
+                                  3-79  
+                        001170    3-80  	equ	call_offset,tv_offset+271
+                        001171    3-81  	equ	push_offset,tv_offset+272
+                        001172    3-82  	equ	return_offset,tv_offset+273
+                        001173    3-83  	equ	return_no_pop_offset,tv_offset+274
+                        001174    3-84  	equ	entry_offset,tv_offset+275
+                                  3-85  
+                                  3-86  
+                                  3-87  " 	END INCLUDE FILE stack_header.incl.alm
+                                   300  
+                                   301  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000226  5a   000003 000000 
+    000227  5a   000051 600000 
+    000230  aa   000000 000000 
+    000231  55   000012 000002 
+    000232  5a   000002 400003 
+    000233  55   000006 000012 
+    000234  aa  015 151 157 155
+    000235  aa  137 151 156 164
+    000236  aa  145 162 162 165
+    000237  aa  160 164 000 000
+    000240  55   000020 000003 
+    000241  0a   000004 400000 
+    000242  55   000015 000003 
+    000243  aa  010 160 162 144         prds_scu
+    000244  aa  163 137 163 143
+    000245  aa  165 000 000 000
+    000246  55   000026 000012 
+    000247  0a   000002 400000 
+    000250  55   000023 000003 
+    000251  aa  010 160 162 144         prds_prs
+    000252  aa  163 137 160 162
+    000253  aa  163 000 000 000
+    000254  55   000033 000020 
+    000255  0a   000000 400000 
+    000256  55   000031 000003 
+    000257  aa  006 151 151 154         iilink
+    000260  aa  151 156 153 000
+    000261  55   000042 000026 
+    000262  0a   000022 400000 
+    000263  55   000036 000003 
+    000264  aa  017 151 156 164         interrupt_entry
+    000265  aa  145 162 162 165
+    000266  aa  160 164 137 145
+    000267  aa  156 164 162 171
+    000270  55   000002 000033 
+    000271  6a   000000 400002 
+    000272  55   000045 000003 
+    000273  aa  014 163 171 155         symbol_table
+    000274  aa  142 157 154 137
+    000275  aa  164 141 142 154
+    000276  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000277  aa   000000 000015 
+    000300  aa   000000 000000 
+    000301  aa   000000 000000 
+    000302  aa   000000 000000 
+    000303  aa   000000 000000 
+    000304  5a   000026 000000 
+    000305  5a   000033 000000 
+    000306  5a   000042 000000 
+    000307  aa   000000 000000 
+    000310  aa   000000 000000 
+    000311  aa   000000 000000 
+    000312  aa   000000 000000 
+    000313  5a   000012 000000 
+    000314  5a   000020 000000 
+
+EXTERNAL NAMES
+
+    000315  aa  013 166 137 164         v_time_calc
+    000316  aa  151 155 145 137
+    000317  aa  143 141 154 143
+    000320  aa  016 151 156 164         interrupt_time
+    000321  aa  145 162 162 165
+    000322  aa  160 164 137 164
+    000323  aa  151 155 145 000
+    000324  aa  006 151 151 164         iitemp
+    000325  aa  145 155 160 000
+    000326  aa  014 162 145 163         restore_mask
+    000327  aa  164 157 162 145
+    000330  aa  137 155 141 163
+    000331  aa  153 000 000 000
+    000332  aa  017 151 156 164         interrupt_count
+    000333  aa  145 162 162 165
+    000334  aa  160 164 137 143
+    000335  aa  157 165 156 164
+    000336  aa  007 164 143 137         tc_data
+    000337  aa  144 141 164 141
+    000340  aa  021 151 156 166         invalid_interrupt
+    000341  aa  141 154 151 144
+    000342  aa  137 151 156 164
+    000343  aa  145 162 162 165
+    000344  aa  160 164 000 000
+    000345  aa  011 151 157 155         iom_error
+    000346  aa  137 145 162 162
+    000347  aa  157 162 000 000
+    000350  aa  006 143 154 157         clock_
+    000351  aa  143 153 137 000
+    000352  aa  010 163 171 163         sys_info
+    000353  aa  137 151 156 146
+    000354  aa  157 000 000 000
+    000355  aa  013 151 157 155         iom_mailbox
+    000356  aa  137 155 141 151
+    000357  aa  154 142 157 170
+    000360  aa  010 151 157 155         iom_data
+    000361  aa  137 144 141 164
+    000362  aa  141 000 000 000
+    000363  aa  016 162 145 163         reset_mode_reg
+    000364  aa  145 164 137 155
+    000365  aa  157 144 145 137
+    000366  aa  162 145 147 000
+    000367  aa  010 163 145 164         set_mask
+    000370  aa  137 155 141 163
+    000371  aa  153 000 000 000
+    000372  aa  012 160 165 163         push_stack
+    000373  aa  150 137 163 164
+    000374  aa  141 143 153 000
+    000375  aa  004 160 162 144         prds
+    000376  aa  163 000 000 000
+    000377  aa  011 143 150 145         check_mct
+    000400  aa  143 153 137 155
+    000401  aa  143 164 000 000
+    000402  aa  017 143 150 145         check_interrupt
+    000403  aa  143 153 137 151
+    000404  aa  156 164 145 162
+    000405  aa  162 165 160 164
+    000406  aa  013 166 137 164         v_time_init
+    000407  aa  151 155 145 137
+    000410  aa  151 156 151 164
+    000411  aa  010 146 151 155         fim_util
+    000412  aa  137 165 164 151
+    000413  aa  154 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000414  aa   000004 000000 
+    000415  55   000163 000067 
+    000416  aa   000004 000000 
+    000417  55   000110 000072 
+    000420  aa   000004 000000 
+    000421  55   000147 000076 
+    000422  aa   000004 000000 
+    000423  55   000163 000100 
+    000424  aa   000004 000000 
+    000425  55   000110 000104 
+    000426  aa   000004 000000 
+    000427  55   000117 000112 
+    000430  aa   000004 000000 
+    000431  55   000124 000122 
+    000432  aa   000003 000000 
+    000433  5a   000127 000000 
+    000434  aa   000003 000000 
+    000435  5a   000132 000000 
+    000436  aa   000004 000000 
+    000437  55   000163 000135 
+    000440  aa   000004 000000 
+    000441  55   000163 000141 
+    000442  aa   000004 000000 
+    000443  55   000163 000144 
+    000444  aa   000003 000000 
+    000445  5a   000147 000000 
+    000446  aa   000004 000000 
+    000447  55   000163 000151 
+    000450  aa   000004 000000 
+    000451  55   000163 000154 
+    000452  aa   000004 000000 
+    000453  55   000163 000160 
+    000454  aa   000001 000000 
+    000455  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000456  5a   000166 000000 
+    000457  5a   000170 000000 
+    000460  5a   000172 000000 
+    000461  5a   000174 000000 
+    000462  5a   000176 000000 
+    000463  5a   000200 000000 
+    000464  5a   000202 000000 
+    000465  5a   000204 000000 
+    000466  5a   000206 000000 
+    000467  5a   000210 000000 
+    000470  5a   000212 000000 
+    000471  5a   000214 000000 
+    000472  5a   000216 000000 
+    000473  5a   000220 000000 
+    000474  5a   000222 000000 
+    000475  5a   000224 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000226 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000050 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         fim_util|v_time_init
+    000011  5a   000247 0000 00
+    000012  9a   777766 0000 46         fim_util|check_interrupt
+    000013  5a   000246 0000 00
+    000014  9a   777764 0000 46         fim_util|check_mct
+    000015  5a   000245 0000 00
+    000016  9a   777762 0000 46         prds|       
+    000017  5a   000244 0000 00
+    000020  9a   777760 0000 46         fim_util|push_stack
+    000021  5a   000243 0000 00
+    000022  9a   777756 0000 46         fim_util|set_mask
+    000023  5a   000242 0000 00
+    000024  9a   777754 0000 46         fim_util|reset_mode_reg
+    000025  5a   000241 0000 00
+    000026  9a   777752 0000 46         iom_data|       
+    000027  5a   000240 0000 00
+    000030  9a   777750 0000 46         iom_mailbox|       
+    000031  5a   000237 0000 14
+    000032  9a   777746 0000 46         sys_info|clock_
+    000033  5a   000236 0000 20
+    000034  9a   777744 0000 46         iom_error|invalid_interrupt
+    000035  5a   000235 0000 00
+    000036  9a   777742 0000 46         tc_data|interrupt_count
+    000037  5a   000234 0000 00
+    000040  9a   777740 0000 46         fim_util|restore_mask
+    000041  5a   000233 0000 00
+    000042  9a   777736 0000 46         prds|iitemp
+    000043  5a   000232 0000 00
+    000044  9a   777734 0000 46         tc_data|interrupt_time
+    000045  5a   000231 0000 00
+    000046  9a   777732 0000 46         fim_util|v_time_calc
+    000047  5a   000230 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   256501 107756 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000232 
+    000020  aa   000000 000146 
+    000021  aa   000175 000164 
+    000022  aa   000222 000146 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000004 
+    000066  aa   000106 000044 
+    000067  aa   175453 017333 
+    000070  aa   000000 117547 
+    000071  aa   175037 400000 
+    000072  aa   000117 000036 
+    000073  aa   134547 161111 
+    000074  aa   000000 113455 
+    000075  aa   515111 200000 
+    000076  aa   000127 000030 
+    000077  aa   123154 505731 
+    000100  aa   000000 112316 
+    000101  aa   133412 600000 
+    000102  aa   000135 000042 
+    000103  aa   147777 464111 
+    000104  aa   000000 115000 
+    000105  aa   507463 000000 
+    000106  aa   076163 160145          >spec>install>1110>iom_interrupt.alm
+    000107  aa   143076 151156 
+    000110  aa   163164 141154 
+    000111  aa   154076 061061 
+    000112  aa   061060 076151 
+    000113  aa   157155 137151 
+    000114  aa   156164 145162 
+    000115  aa   162165 160164 
+    000116  aa   056141 154155 
+    000117  aa   076154 144144          >ldd>include>iom_data.incl.alm
+    000120  aa   076151 156143 
+    000121  aa   154165 144145 
+    000122  aa   076151 157155 
+    000123  aa   137144 141164 
+    000124  aa   141056 151156 
+    000125  aa   143154 056141 
+    000126  aa   154155 040040 
+    000127  aa   076154 144144          >ldd>include>mc.incl.alm
+    000130  aa   076151 156143 
+    000131  aa   154165 144145 
+    000132  aa   076155 143056 
+    000133  aa   151156 143154 
+    000134  aa   056141 154155 
+    000135  aa   076154 144144          >ldd>include>stack_header.incl.alm
+    000136  aa   076151 156143 
+    000137  aa   154165 144145 
+    000140  aa   076163 164141 
+    000141  aa   143153 137150 
+    000142  aa   145141 144145 
+    000143  aa   162056 151156 
+    000144  aa   143154 056141 
+    000145  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+        1170    call_offset              stack_header:        80.
+           3    channel_mailbox.dcw      iom_data:     123.
+           0    channel_mailbox.lpw      iom_data:     121.
+           2    channel_mailbox.scw      iom_data:     122.
+           4    channel_mailbox_size     iom_data:     119.
+          12    chanpos                  iom_interrupt:       68,  127.
+          66    chantab_base             iom_interrupt:       29,  128,  188.
+                check_interrupt          iom_interrupt:      101.
+                check_mct                iom_interrupt:      103.
+          70    chx                      iom_interrupt:       31,  193,  197.
+                clock_                   iom_interrupt:      211,  217,  281.
+           2    connect_channel          iom_data:     126.
+          67    device                   iom_interrupt:       30,  209,  221.
+        1174    entry_offset             stack_header:        84.
+                fim_util                 iom_interrupt:       99,  101,  103,  113,  115,  119,  268,  287.
+          50    hlr_arglist              iom_interrupt:       24,  136,  138,  140,  142,  195.
+           0    iilink                   iom_interrupt:       20,   57,   97.
+                iitemp                   iom_interrupt:      280,  282.
+         110    imw_begin                iom_interrupt:      171,  179.
+          76    imw_read                 iom_interrupt:      157,  161.
+         106    imw_retry                iom_interrupt:      175,  229,  238.
+          62    imw_save                 iom_interrupt:       26,  176,  183,  185.
+          70    imw_wait                 iom_interrupt:      153,  159.
+          65    index                    iom_interrupt:       28,  137,  189,  208.
+                interrupt_count          iom_interrupt:      249,  251.
+          22    interrupt_entry          iom_interrupt:       19,   88.
+         166    interrupt_return         iom_interrupt:      177,  243.
+                interrupt_time           iom_interrupt:      283,  284.
+          71    int_count                iom_interrupt:       32,  147,  227,  244.
+          64    int_level                iom_interrupt:       27,  133,  139.
+         157    invalid_int              iom_interrupt:      198,  205,  232.
+                invalid_interrupt        iom_interrupt:      235.
+                iom_data                 iom_interrupt:      146,  220,  237.
+           4    iom_data.imw_lock        iom_interrupt:      155,  158,  163,  254,  260,
+                                         iom_data:      20.
+          35    iom_data.invalid_interrupts    iom_interrupt:      233,
+                                               iom_data:      25.
+          37    iom_data.multiple_interrupts   iom_interrupt:      247,
+                                               iom_data:      27.
+          36    iom_data.null_interrupts       iom_interrupt:      241,
+                                               iom_data:      26.
+           0    iom_data.n_devices       iom_data:      16.
+           5    iom_data.n_intr_procs    iom_interrupt:      162,  258,
+                                         iom_data:      21.
+         240    iom_data.per_device      iom_interrupt:      202,  207,  214,  222,  223,  224,  226,
+                                         iom_data:      30.
+          40    iom_data.per_iom         iom_interrupt:      192,
+                                         iom_data:      28.
+          12    iom_data.rfh1            iom_data:      23.
+           2    iom_data.stop_dcw        iom_data:      18.
+          20    iom_data.stop_ext_status       iom_data:      24.
+           1    iom_data.stop_lpw        iom_data:      17.
+           3    iom_data.stop_scw        iom_data:      19.
+          10    iom_data.stop_status     iom_data:      22.
+                iom_error                iom_interrupt:      235.
+                iom_mailbox              iom_interrupt:      165.
+           0    iom_mailbox.channel_mailbox    iom_data:     113.
+           4    iom_mailbox_seg.imw_array_shift      iom_data:      92.
+           0    iom_mailbox_seg.imw_array_word       iom_interrupt:      165,
+                                                     iom_data:      91.
+         200    iom_mailbox_seg.iom_mailbox    iom_data:      98.
+         120    iom_mailbox_seg.special_status       iom_data:      96.
+          40    iom_mailbox_seg.system_fault   iom_data:      94.
+        2200    iom_mailbox_seg_size     iom_data:      89.
+         400    iom_mailbox_size         iom_data:     111.
+      300000    mc.cpu_type_mask         mc:            22.
+           3    mc.cpu_type_shift        mc:            25.
+          46    mc.cpu_type_word         mc:            21.
+          50    mc.eis_info              iom_interrupt:       95,  292,
+                                         mc:            11.
+          43    mc.errcode               mc:            17.
+          46    mc.ext_fault_reg         mc:            23.
+       77774    mc.ext_fault_reg_mask    mc:            24.
+          45    mc.fault_reg             mc:            19.
+          46    mc.fault_time            iom_interrupt:      278,
+                                         mc:            20.
+          44    mc.fim_temp              mc:            18.
+          42    mc.ips_temp              mc:            16.
+          40    mc.mask                  mc:            15.
+           0    mc.prs                   mc:             8.
+          20    mc.regs                  iom_interrupt:       91,  293,
+                                         mc:             9.
+          30    mc.scu                   mc:            10.
+          30    mc.scu.apu_stat_word     mc:            48.
+          35    mc.scu.ca_word           mc:           207.
+          32    mc.scu.cpu_no_word       mc:           138.
+          35    mc.scu.cpu_tag_word      mc:           231.
+          35    mc.scu.cu_stat_word      mc:           211.
+          32    mc.scu.delta_word        mc:           144.
+          30    mc.scu.fault_cntr_word   mc:            66.
+          31    mc.scu.fault_data_word   iom_interrupt:      121,
+                                         mc:            74.
+          34    mc.scu.ilc_word          mc:           182.
+          34    mc.scu.indicators_word   iom_interrupt:       92,  289,
+                                         mc:           186.
+          31    mc.scu.port_stat_word    mc:           108.
+          30    mc.scu.ppr.prr_word      mc:            33.
+          30    mc.scu.ppr.psr_word      mc:            38.
+          30    mc.scu.ppr.p_word        mc:            43.
+          33    mc.scu.tpr.tbr_word      mc:           174.
+          32    mc.scu.tpr.trr_word      mc:           128.
+          32    mc.scu.tpr.tsr_word      mc:           133.
+          33    mc.scu.tsr_stat_word     mc:           152.
+         165    null_int                 iom_interrupt:      166,  240.
+          21    per_device.channel       iom_data:      68.
+          42    per_device.connects      iom_data:      82.
+          40    per_device.connect_time  iom_data:      81.
+          10    per_device.ext_status    iom_data:      66.
+          26    per_device.flags         iom_interrupt:      202,
+                                         iom_data:      70.
+          22    per_device.handler       iom_interrupt:      214,
+                                         iom_data:      69.
+          27    per_device.index         iom_interrupt:      207,
+                                         iom_data:      76.
+          44    per_device.interrupts    iom_interrupt:      224,  226,
+                                         iom_data:      83.
+          46    per_device.interrupt_time      iom_interrupt:      222,  223,
+                                               iom_data:      84.
+      400000    per_device.in_use        iom_interrupt:      204,
+                                         iom_data:      72.
+          20    per_device.iom           iom_data:      67.
+          32    per_device.lpw           iom_data:      78.
+      100000    per_device.on_line       iom_data:      74.
+          30    per_device.pcw           iom_data:      77.
+      200000    per_device.queue_status  iom_data:      73.
+           2    per_device.rfh1          iom_data:      65.
+          34    per_device.scw           iom_data:      79.
+           0    per_device.status        iom_data:      64.
+          36    per_device.status_queue_ptr    iom_data:      80.
+          50    per_device_size          iom_interrupt:      199,  200,
+                                         iom_data:      61.
+          16    per_iom.abandoned_connects     iom_data:      51.
+         777    per_iom.chantab_mask     iom_data:      56.
+          33    per_iom.chantab_shift    iom_data:      55.
+          20    per_iom.chantab_word     iom_interrupt:      192,
+                                         iom_data:      54.
+      400000    per_iom.configured       iom_data:      41.
+           6    per_iom.connect_lpw      iom_data:      47.
+           4    per_iom.connect_time     iom_data:      46.
+           7    per_iom.cow              iom_data:      48.
+          11    per_iom.fault_chx        iom_data:      50.
+           1    per_iom.flags            iom_data:      39.
+           0    per_iom.lock             iom_data:      38.
+           2    per_iom.model            iom_data:      44.
+      200000    per_iom.on_line          iom_data:      42.
+           3    per_iom.port             iom_data:      45.
+          17    per_iom.reconnects       iom_data:      52.
+          10    per_iom.special_chx      iom_data:      49.
+          40    per_iom_size             iom_interrupt:       69,   70,   71,   72,   73,   74,   75,   76,
+                                         iom_data:      36.
+                prds                     iom_interrupt:      111,  280,  282.
+           2    prds_prs                 iom_interrupt:       21,   58,   89,   90,  266,  294.
+           4    prds_scu                 iom_interrupt:       22,   59,  295.
+        1171    push_offset              stack_header:        81.
+                push_stack               iom_interrupt:      113.
+          10    push_value               iom_interrupt:       65,  112.
+                reset_mode_reg           iom_interrupt:      119.
+                restore_mask             iom_interrupt:      268.
+        1173    return_no_pop_offset     stack_header:        83.
+        1172    return_offset            stack_header:        82.
+        2000    scu.apu.dsptw            mc:            57.
+          10    scu.apu.fabs             mc:            64.
+          20    scu.apu.fanp             mc:            63.
+          40    scu.apu.fap              mc:            62.
+        4000    scu.apu.pi_ap            mc:            56.
+         200    scu.apu.ptw              mc:            60.
+         100    scu.apu.ptw2             mc:            61.
+       20000    scu.apu.ptwm             mc:            54.
+       10000    scu.apu.pt_on            mc:            55.
+      100000    scu.apu.sdwm             mc:            52.
+        1000    scu.apu.sdwnp            mc:            58.
+         400    scu.apu.sdwp             mc:            59.
+       40000    scu.apu.sd_on            mc:            53.
+      200000    scu.apu.xsf              mc:            51.
+           0    scu.apu_stat_word        mc:            49.
+          22    scu.ca_shift             mc:           209.
+           5    scu.ca_word              mc:           208.
+         700    scu.con_chan_mask        mc:           117.
+           6    scu.con_chan_shift       mc:           118.
+         700    scu.cpu_no_mask          mc:           141.
+           2    scu.cpu_no_word          mc:           139.
+           6    scu.cpu_shift            mc:           142.
+           7    scu.cpu_tag_mask         mc:           234.
+           5    scu.cpu_tag_word         mc:           232.
+         100    scu.cu.if                mc:           229.
+        1000    scu.cu.poa               mc:           226.
+       10000    scu.cu.pon               mc:           221.
+       20000    scu.cu.pot               mc:           220.
+      100000    scu.cu.rd                mc:           217.
+      400000    scu.cu.rf                mc:           214.
+         400    scu.cu.rfi               mc:           227.
+       40000    scu.cu.rl                mc:           218.
+      200000    scu.cu.rpt               mc:           216.
+        4000    scu.cu.xde               mc:           223.
+        2000    scu.cu.xdo               mc:           224.
+           5    scu.cu_stat_word         mc:           212.
+          77    scu.delta_mask           mc:           147.
+           2    scu.delta_word           mc:           145.
+          36    scu.even_inst_word       mc:           239.
+           7    scu.fault_cntr_mask      mc:            69.
+           0    scu.fault_cntr_word      mc:            67.
+           1    scu.fault_data_word      mc:            75.
+          10    scu.fd.am_er             mc:            91.
+         200    scu.fd.boc               mc:            87.
+          40    scu.fd.crt               mc:            89.
+      100000    scu.fd.e_off             mc:            79.
+      100000    scu.fd.ia_im             mc:           102.
+         100    scu.fd.inret             mc:            88.
+      200000    scu.fd.ioc               mc:           101.
+       20000    scu.fd.ipr               mc:           104.
+      400000    scu.fd.iro               mc:            77.
+      400000    scu.fd.isn               mc:           100.
+       40000    scu.fd.isp               mc:           103.
+       10000    scu.fd.nea               mc:           105.
+        2000    scu.fd.no_ga             mc:            84.
+         400    scu.fd.ocall             mc:            86.
+        1000    scu.fd.ocb               mc:            85.
+      200000    scu.fd.oeb               mc:            78.
+      400000    scu.fd.onc_1             mc:            96.
+      200000    scu.fd.onc_2             mc:            97.
+        4000    scu.fd.oobb              mc:           106.
+           4    scu.fd.oosb              mc:            92.
+       40000    scu.fd.orb               mc:            80.
+       10000    scu.fd.owb               mc:            82.
+           1    scu.fd.parl              mc:            94.
+           2    scu.fd.paru              mc:            93.
+          20    scu.fd.ralr              mc:            90.
+       20000    scu.fd.r_off             mc:            81.
+        4000    scu.fd.w_off             mc:            83.
+           1    scu.fi_flag_mask         mc:           123.
+          76    scu.fi_num_mask          iom_interrupt:      122,
+                                         mc:           120.
+           1    scu.fi_num_shift         iom_interrupt:      123,
+                                         mc:           121.
+        7000    scu.iac_mask             mc:           114.
+          11    scu.iac_shift            mc:           115.
+      170000    scu.ial_mask             mc:           111.
+          14    scu.ial_shift            mc:           112.
+          22    scu.ilc_shift            mc:           184.
+           4    scu.ilc_word             mc:           183.
+           4    scu.indicators_word      mc:           187.
+          20    scu.ir.abs               mc:           202.
+         200    scu.ir.bm                mc:           199.
+      100000    scu.ir.carry             mc:           191.
+       20000    scu.ir.eovf              mc:           193.
+       10000    scu.ir.eufl              mc:           194.
+          10    scu.ir.hex               mc:           203.
+          40    scu.ir.mif               iom_interrupt:       93,  290,
+                                         mc:           201.
+      200000    scu.ir.neg               mc:           190.
+        4000    scu.ir.oflm              mc:           195.
+       40000    scu.ir.ovfl              mc:           192.
+        1000    scu.ir.par               mc:           197.
+         400    scu.ir.parm              mc:           198.
+        2000    scu.ir.tro               mc:           196.
+         100    scu.ir.tru               mc:           200.
+      400000    scu.ir.zero              mc:           189.
+          37    scu.odd_inst_word        mc:           241.
+           1    scu.port_stat_word       mc:           109.
+      400000    scu.ppr.p                mc:            45.
+      700000    scu.ppr.prr_mask         mc:            35.
+          41    scu.ppr.prr_shift        mc:            36.
+           0    scu.ppr.prr_word         mc:            34.
+       77777    scu.ppr.psr_mask         mc:            40.
+          22    scu.ppr.psr_shift        mc:            41.
+           0    scu.ppr.psr_word         mc:            39.
+           0    scu.ppr.p_word           mc:            44.
+          77    scu.tpr.tbr_mask         mc:           177.
+           3    scu.tpr.tbr_word         mc:           175.
+      700000    scu.tpr.trr_mask         mc:           130.
+          41    scu.tpr.trr_shift        mc:           131.
+           2    scu.tpr.trr_word         mc:           129.
+       77777    scu.tpr.tsr_mask         mc:           135.
+          22    scu.tpr.tsr_shift        mc:           136.
+           2    scu.tpr.tsr_word         mc:           134.
+      700000    scu.tsna.prn_mask        mc:           159.
+          17    scu.tsna.prn_shift       mc:           160.
+       40000    scu.tsna.prv             mc:           161.
+      740000    scu.tsna_mask            mc:           158.
+       34000    scu.tsnb.prn_mask        mc:           164.
+          13    scu.tsnb.prn_shift       mc:           165.
+        2000    scu.tsnb.prv             mc:           166.
+       36000    scu.tsnb_mask            mc:           163.
+        1600    scu.tsnc.prn_mask        mc:           169.
+           7    scu.tsnc.prn_shift       mc:           170.
+         100    scu.tsnc.prv             mc:           171.
+          13    scu.tsnc_mask            mc:           168.
+      777700    scu.tsr_stat_mask        mc:           155.
+           6    scu.tsr_stat_shift       mc:           156.
+           3    scu.tsr_stat_word        mc:           153.
+                set_mask                 iom_interrupt:      115.
+           6    special_status_channel   iom_data:     127.
+          73    stach_header.trace_top_ptr     stack_header:        62.
+          66    stack_header.assign_linkage_ptr      stack_header:        59.
+          32    stack_header.bar_mode_sp       stack_header:        42.
+          36    stack_header.call_op_ptr       stack_header:        44.
+          10    stack_header.clr_ptr     stack_header:        27.
+           6    stack_header.combined_stat_ptr       stack_header:        25.
+           4    stack_header.cpm_data_ptr      stack_header:        24.
+          13    stack_header.cpm_enabled       stack_header:        32.
+          13    stack_header.cur_lot_size      stack_header:        31.
+          64    stack_header.ect_ptr     stack_header:        58.
+          46    stack_header.entry_op_ptr      stack_header:        49.
+          70    stack_header.heap_header_ptr   stack_header:        60.
+          74    stack_header.in_trace    stack_header:        63.
+          52    stack_header.isot_ptr    stack_header:        52.
+          26    stack_header.lot_ptr     stack_header:        39.
+          12    stack_header.main_proc_invoked       stack_header:        29.
+          12    stack_header.max_lot_size      stack_header:        28.
+          20    stack_header.parent_ptr  stack_header:        36.
+          34    stack_header.pl1_operators_ptr       stack_header:        43.
+          40    stack_header.push_op_ptr       stack_header:        46.
+          42    stack_header.return_op_ptr     stack_header:        47.
+          44    stack_header.ret_no_pop_op_ptr       stack_header:        48.
+          62    stack_header.rnt_ptr     stack_header:        57.
+          12    stack_header.run_unit_depth    stack_header:        30.
+          54    stack_header.sct_ptr     stack_header:        53.
+          30    stack_header.signal_ptr  stack_header:        41.
+          22    stack_header.stack_begin_ptr   stack_header:        37.
+          24    stack_header.stack_end_ptr     iom_interrupt:      272,
+                                               stack_header:        38.
+          14    stack_header.system_free_ptr   stack_header:        33.
+          60    stack_header.sys_link_info_ptr       stack_header:        56.
+          72    stack_header.trace_frames      stack_header:        61.
+          50    stack_header.trans_op_tv_ptr   stack_header:        51.
+          56    stack_header.unwinder_ptr      stack_header:        54.
+          16    stack_header.user_free_ptr     stack_header:        34.
+         100    stack_header_end         stack_header:        64.
+           0    status_queue.status      iom_data:     106.
+          14    status_queue_size        iom_data:     104.
+           1    system_fault_channel     iom_data:     125.
+                sys_info                 iom_interrupt:      211,  217,  281.
+                tc_data                  iom_interrupt:      249,  251,  283,  284.
+           6    three_args_nd            iom_interrupt:       61,  135.
+          60    time                     iom_interrupt:       25,  212,  218.
+           0    trace_frames.count       stack_header:        69.
+           1    trace_frames.top_ptr     stack_header:        70.
+         551    tv_offset                stack_header:        75,   80,   81,   82,   83,   84.
+                v_time_calc              iom_interrupt:      287.
+                v_time_init              iom_interrupt:       99.
+           7    zero                     iom_interrupt:       63,  141.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

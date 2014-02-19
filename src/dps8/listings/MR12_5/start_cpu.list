@@ -1,0 +1,1910 @@
+	COMPILATION LISTING OF SEGMENT start_cpu
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1027.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-10-23,Fawcett), approve(86-10-23,MCR7517),
+       12*     audit(86-10-30,Beattie), install(86-11-03,MR12.0-1206):
+       13*     Changed to remove the word BOS from Error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 /* START_CPU - Start Up a Processor.
+       18*   Last Modified: (Date and Reason)
+       19*   10/04/83 by Keith Loepere for paged idle_dsegs.
+       20*   04/09/84 by Chris Jones to update config deck to its partition when changed.
+       21*   04/09/82 by J. Bongiovanni to check data switches on non-bootload CPU
+       22*   12/30/81 by J. A. Bush to interagate cpu switches when cpu types are different
+       23*   11/11/81 by J. A. Bush to not check ID PROM on the bootload CPU
+       24*   10/22/81 by J. Bongiovanni for set_procs_required
+       25*   03/05/81 by J. Bongiovanni to set segment bound and access for prds
+       26*   on non-bootload CPUs
+       27*   09/08/80 by J. A. Bush for the DPS8/70M CPU
+       28*   02/05/79 by B. Greenberg for port expanders.
+       29*   02/05/76 by Steve Webber & Noel Morris as part of reconfiguration rewrite
+       30*   08/12/71 by Richard H. Gumpertz to take out the call to move subroutine
+       31*   7/14/72 by Craig Jensen to convert for the follow-on 645.
+       32**/
+       33 
+       34 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       35 start_cpu:
+       36      proc (tag, rcode);
+       37 
+       38 dcl	tag		   fixed bin (3),
+       39 	rcode		   fixed bin (35);
+       40 
+       41 dcl	abs_ptr		   ptr,			/* pointer to abs_seg$ */
+       42 	prds_sdwp		   ptr,			/* pointer to SDW for new prds */
+       43 	prds_sdw		   bit (72) aligned,	/* SDW for new prds */
+       44 	prds_astep	   ptr,			/* AST entry pointer for new prds */
+       45 	prds_no		   fixed bin (18),		/* segment number of prds */
+       46 	pdp		   ptr,			/* pointer to processor data for new CPU */
+       47 	old_pdp		   ptr,			/* pointer to processor data for CPU losing mask */
+       48 	old_tag		   fixed bin (3),		/* tag of CPU losing mask */
+       49 	found_mask	   bit (1) aligned,		/* "1"b when CPU with mask found */
+       50 	ptp		   ptr,			/* temporary for wire_and_mask */
+       51 	mask_temp		   fixed bin (71),		/* temporary for wire_and_mask */
+       52 	int_vec_save	   bit (36) aligned,	/* for saving interrupt vector */
+       53 	trouble_save	   bit (36) aligned,	/* for saving trouble fault vector */
+       54 	startup_save	   bit (36) aligned,	/* for saving startup fault vector */
+       55 	onc_save		   bit (36) aligned,	/* for saving onc fault vector */
+       56 	lockup_save	   bit (36) aligned,	/* for saving lockup fault vector */
+       57 	i		   fixed bin,		/* iteration variable */
+       58 	abs_seg_p		   ptr,			/* pointer to abs_seg */
+       59 	fv_iv_p		   ptr,			/* pointer to fault/interrupt vector template */
+       60 	switch_rel	   fixed bin (18),		/* place in template for switch readings */
+       61 	switchp		   ptr,			/* pointer to switch readings */
+       62 	rsw1_68p		   ptr,			/* points to rsw1 data for L68, for switch checking */
+       63 	rsw1_8p		   ptr,			/* points to rsw1 data for DPS8M, for switch checking */
+       64 	rsw4p		   ptr,			/* points to rsw4 data for switch checking */
+       65 	cmpp		   ptr,			/* points to rsw1 discrepancy data for switch checking */
+       66 	trgp		   ptr,			/* points to add target rsw1 data, for switch checking */
+       67 	(tbase, tsize)	   fixed bin (24),		/* port base and size in words, for switch checking */
+       68 	L68_prt_sze	   fixed bin (24),		/* used for computing true port size of L68 port */
+       69 	found		   bit (1) aligned,		/* useful flag */
+       70 	dps8_add		   bit (1) aligned,		/* cpu type flag for switch checking */
+       71 	remember		   (0:7) fixed bin,		/* base of controllers with vector template */
+       72 	base		   fixed bin,		/* base address of controller */
+       73 	tcode		   fixed bin (35),		/* temporary for error code */
+       74 	cpu_mask		   bit (8) aligned,		/* for set_procs_required */
+       75 	cpu_model		   char (13) aligned,	/* storage for cpu model number (from ID PROM) */
+       76 	cpu_serial	   char (13) aligned,	/* storage for cpu serial number (from ID PROM) */
+       77 	cpu_ship_date	   char (8) aligned;	/* storage for cpu ship date (from ID PROM) */
+       78 
+       79 dcl	1 tsdw		   (0:7) aligned like sdw,	/* for saving abs_seg SDW's */
+       80 	1 tsdw1		   aligned like sdw,	/* automatic copy of SDW */
+       81 	fv_iv_copy	   (2048) fixed bin based (fv_iv_p),
+       82 						/* for copying vector template */
+       83 	based_switches	   (0:4) bit (36) aligned based (switchp);
+       84 						/* for checking switch readings */
+       85 
+       86 
+       87 dcl	LETTERS		   char (8) static options (constant) init ("ABCDEFGH");
+       88 
+       89 dcl	abs_seg$		   ext,
+       90 	sst_seg$		   ext,
+       91 	idle_dsegs$	   (0:8 * 1024 - 1 /* max size */) bit (72) aligned ext,
+       92 	prds$		   ext,
+       93 	dseg$		   ext,
+       94 	fault_vector$	   ext,
+       95 	pds$processid	   bit (36) aligned ext,
+       96 	prds$idle_ptr	   ptr ext,
+       97 	prds$processor_tag	   fixed bin (3) ext,
+       98 	prds$processor_pattern bit (8) aligned ext,
+       99 	tc_data$prds_length	   fixed bin (18) ext,
+      100 	tc_data$ncpu	   fixed bin ext,
+      101 	fv_iv_template$fv_iv_template
+      102 			   ext,
+      103 	fv_iv_template$rsw_data
+      104 			   (4) bit (36) aligned ext,
+      105 	init_processor$wait_flag
+      106 			   fixed bin (35) ext,
+      107 	init_processor$new_dbr fixed bin (71) ext,
+      108 	init_processor$first_tra
+      109 			   bit (36) aligned ext,
+      110 	init_processor$trouble_tra
+      111 			   bit (36) aligned ext,
+      112 	init_processor$startup_tra
+      113 			   bit (36) aligned ext,
+      114 	init_processor$onc_tra bit (36) aligned ext,
+      115 	init_processor$lockup_tra
+      116 			   bit (36) aligned ext,
+      117 	init_processor$controller_data
+      118 			   bit (8) aligned ext,
+      119 	sys_info$system_type   fixed bin ext;
+      120 
+      121 dcl	init_processor$start_bootload_cpu
+      122 			   entry,
+      123 	stop_cpu$destroy_1	   entry (fixed bin (3), fixed bin (35)),
+      124 	scr_util$reassign_mask entry (fixed bin (3), fixed bin (3)),
+      125 	scr_util$set_mask	   entry (fixed bin (3), fixed bin (3), bit (72) aligned),
+      126 	scr_util$set_port_enable
+      127 			   entry (fixed bin (3), bit (1) unal),
+      128 	scr_util$update_export_xipmsk
+      129 			   entry (fixed bin (3)),
+      130 	scr_util$set_export_enable
+      131 			   entry (fixed bin (3), fixed bin (3), bit (1) aligned),
+      132 	mask_instruction$smcm  entry returns (bit (36) aligned),
+      133 	mask_instruction$rmcm  entry returns (bit (36) aligned),
+      134 	config_$find_2	   entry (char (4) aligned, fixed bin, ptr),
+      135 	config_$update	   entry (),
+      136 	syserr		   entry options (variable),
+      137 	syserr$error_code	   entry options (variable),
+      138 	privileged_mode_ut$swap_sdw
+      139 			   entry (ptr, ptr),
+      140 	privileged_mode_ut$smic
+      141 			   entry (bit (36) aligned),
+      142 	privileged_mode_ut$cioc
+      143 			   entry (ptr),
+      144 	privileged_mode_ut$wire_and_mask
+      145 			   entry (fixed bin (71), ptr),
+      146 	privileged_mode_ut$unwire_unmask
+      147 			   entry (fixed bin (71), ptr),
+      148 	privileged_mode_ut$read_id_prom
+      149 			   entry (char (*) aligned, fixed bin),
+      150 	validate_cpu_card	   entry (fixed bin (3), ptr),
+      151 	wire_proc$wire_me	   entry,
+      152 	get_ptrs_$given_astep  entry (ptr) returns (bit (72)),
+      153 	wire_proc$unwire_me	   entry,
+      154 	set_procs_required	   entry (bit (8) aligned, fixed bin (35)),
+      155 	pc_wired$wire_wait	   entry (ptr, fixed bin, fixed bin),
+      156 	pc_abs$remove_core	   entry (fixed bin, fixed bin, fixed bin (35)),
+      157 	freecore		   entry (fixed bin),
+      158 	prds_init		   entry (ptr, fixed bin (3), ptr),
+      159 	pxss$thread_in_idle	   entry (ptr);
+      160 
+      161 dcl	1 pdata		   like scs$processor_data based (pdp) aligned;
+      162 						/* single element of processor data */
+      163 dcl	1 opdata		   like scs$processor_data based (old_pdp) aligned;
+      164 						/* Old interrupt CPU's pdata */
+      165 
+      166 dcl	(addr, baseno, bin, bit, bool, divide, fixed, ptr, rel, stac, stacq, string, substr, unspec)
+      167 			   builtin;
+      168 
+      169 	abs_ptr = addr (abs_seg$);			/* set pointer to abs_seg$ */
+      170 	prds_sdwp = addr (prds_sdw);
+      171 
+      172 	fgbxp = addr (flagbox$);			/* Get pointer to flagbox. */
+      173 
+      174 
+      175 /* Fill in APT entry for idle process. */
+      176 
+      177 	aptep = scs$idle_aptep (tag);			/* get pointer to previously allocated APTE */
+      178 	apte.processid = rel (aptep) || (6)"101"b;	/* set process ID */
+      179 	apte.flags.loaded = "1"b;			/* loaded and elegible */
+      180 	apte.flags.eligible = "1"b;
+      181 	apte.flags.idle = "1"b;			/* it is idle proc */
+      182 	apte.flags.default_procs_required = "0"b;	/* not system default */
+      183 	apte.procs_required = "0"b;
+      184 	substr (apte.procs_required, tag + 1, 1) = "1"b;	/* the CPU we want */
+      185 	apte.flags.state = bit (bin (2, 18));		/* set state to ready */
+      186 	apte.timax = 16000000;			/* low priority */
+      187 	call pxss$thread_in_idle (aptep);		/* thread entry into ready list */
+      188 
+      189 
+      190 /* Initialize PRDS. */
+      191 
+      192 	if tag = scs$bos_processor_tag then
+      193 	     prds$idle_ptr = aptep;
+      194 	else do;					/* cpu is not bootload-cpu */
+      195 	     prds_astep = ptr (addr (sst_seg$), apte.prds);
+      196 	     prds_sdw = get_ptrs_$given_astep (prds_astep);
+      197 	     addr (prds_sdw) -> sdw.access = addr (dseg$) -> sdwa.access (fixed (baseno (addr (prds$)), 18));
+      198 	     addr (prds_sdw) -> sdw.bound = bit (divide (tc_data$prds_length - 1, 16, 14), 14);
+      199 	     call pc_wired$wire_wait (prds_astep, 0, divide (tc_data$prds_length + 1023, 1024, 17, 0));
+      200 						/* wire down prds */
+      201 	     prds_no = bin (baseno (addr (prds$)), 18);
+      202 	     do i = 0 to tag - 1;
+      203 		if scs$processor_data (i).offline | scs$processor_data (i).online then
+      204 		     if sys_info$system_type = ADP_SYSTEM then
+      205 			prds_no = prds_no + 1024;
+      206 		     else prds_no = prds_no + 512;	/* size of dsegs reserved for them */
+      207 	     end;
+      208 	     idle_dsegs$ (prds_no) = prds_sdw;
+      209 	     call privileged_mode_ut$swap_sdw (abs_ptr, prds_sdwp);
+      210 						/* abs_seg is the new prds. */
+      211 	     call prds_init (abs_ptr, tag, aptep);	/* Initialize prds. */
+      212 	end;
+      213 
+      214 /* Assign a system controller mask to the processor. */
+      215 
+      216 	pdp = addr (scs$processor_data (tag));		/* Get pointer to processor data. */
+      217 	found_mask = "0"b;				/* Initialize flag. */
+      218 	if ^pdata.interrupt_cpu then do;		/* If processor does not have a mask ... */
+      219 	     do old_tag = 0 to 7 while (^found_mask);
+      220 		old_pdp = addr (scs$processor_data (old_tag));
+      221 						/* Get pointer to other processor data. */
+      222 		if opdata.interrupt_cpu &		/* If this one gets interrupts and not BCE CPU ... */
+      223 		     (old_tag ^= scs$bos_processor_tag) then do;
+      224 		     found_mask = "1"b;		/* Got a candidate. */
+      225 
+      226 		     if opdata.online then do;	/* If candidate is running now ... */
+      227 			cpu_mask = "0"b;
+      228 			substr (cpu_mask, old_tag + 1, 1) = "1"b;
+      229 			call set_procs_required (cpu_mask, tcode);
+      230 						/* Run on that CPU */
+      231 			if tcode ^= 0 then do;	/* Shouldn't happen */
+      232 			     rcode = rcerr_sprq_failed;
+      233 			     return;		/* Give up */
+      234 			end;
+      235 			call wire_proc$wire_me;	/* Don't allow page faults. */
+      236 			call privileged_mode_ut$wire_and_mask (mask_temp, ptp);
+      237 		     end;				/* Don't allow interrupts. */
+      238 		     opdata.interrupt_cpu = "0"b;	/* Take interrupts away from candidate. */
+      239 		     scs$mask_ptr (old_tag) = scs$mask_ptr (tag);
+      240 						/* Set mask pointer to simulated cell. */
+      241 		     scs$set_mask (old_tag) = scs$set_mask (tag);
+      242 						/* Make SMCM into STAQ. */
+      243 		     scs$read_mask (old_tag) = scs$read_mask (tag);
+      244 						/* Make RMCM into LDAQ. */
+      245 		     if opdata.online then do;	/* If we wired and masked before ... */
+      246 			call privileged_mode_ut$unwire_unmask (mask_temp, ptp);
+      247 			call wire_proc$unwire_me;
+      248 			call set_procs_required ("0"b, (0));
+      249 		     end;
+      250 		     if opdata.expanded_port & opdata.online then
+      251 			call scr_util$update_export_xipmsk ((opdata.controller_port));
+      252 		     call scr_util$reassign_mask (old_tag, tag);
+      253 						/* Reassign the mask now. */
+      254 		end;
+      255 	     end;
+      256 
+      257 	     if ^found_mask then			/* If no mask was found for new processor ... */
+      258 		call scr_util$reassign_mask (-1, tag);	/* There must be a spare mask. */
+      259 
+      260 	     scs$mask_ptr (tag) = addr (scs$port_addressing_word (scs$interrupt_controller));
+      261 						/* Set pointer for masking. */
+      262 	     scs$set_mask (tag) = mask_instruction$smcm ();
+      263 						/* Set SMCM instruction. */
+      264 	     scs$read_mask (tag) = mask_instruction$rmcm ();
+      265 						/* Set RMCM instruction. */
+      266 	     pdata.interrupt_cpu = "1"b;		/* We can now take interrupt on this CPU. */
+      267 	end;
+      268 
+      269 /* Set up expected switch readings for processor. */
+      270 
+      271 	rswp = addr (scs$processor_switch_template (2));	/* Get pointer to expected data. */
+      272 	dps_rsw_2.cpu_num = tag;			/* Set correct processor ID. */
+      273 
+      274 /* Try to get the processor running. */
+      275 
+      276 	init_processor$new_dbr = apte.dbr;		/* Set DBR value for new idle process. */
+      277 
+      278 	if tag ^= scs$bos_processor_tag then do;	/* If not the bootload CPU ... */
+      279 
+      280 /* Lay down dummy fault and interrupt vectors in any SCU's we can */
+      281 
+      282 	     remember = 0;				/* array is cleared */
+      283 	     string (tsdw1) = "0"b;
+      284 	     tsdw1.df = "1"b;
+      285 	     tsdw1.read = "1"b;
+      286 	     tsdw1.write = "1"b;
+      287 	     tsdw1.bound = bit (bin (127, 14), 14);
+      288 	     tsdw1.unpaged = "1"b;
+      289 	     abs_seg_p = addr (abs_seg$);
+      290 	     fv_iv_p = addr (fv_iv_template$fv_iv_template);
+      291 
+      292 	     do i = 0 to 7;
+      293 		base = scs$controller_data (i).base;
+      294 		if (base ^= 0) & scs$controller_data (i).online then do;
+      295 		     call pc_abs$remove_core (base, 2, tcode);
+      296 		     if tcode = 0 then do;		/* we got the pages */
+      297 			tsdw (i) = tsdw1;
+      298 			tsdw (i).add = bit (bin (base * 1024, 24), 24);
+      299 			call privileged_mode_ut$swap_sdw (abs_seg_p, addr (tsdw (i)));
+      300 			abs_seg_p -> fv_iv_copy = fv_iv_p -> fv_iv_copy;
+      301 			remember (i) = base;
+      302 		     end;
+      303 		end;
+      304 	     end;
+      305 
+      306 /* Mask interrupts for new processor and enable all controller ports to new processor. */
+      307 
+      308 	     call scr_util$set_mask (scs$interrupt_controller, (pdata.controller_port), scs$sys_level);
+      309 						/* Allow no interrupts. */
+      310 	     call scr_util$set_port_enable ((pdata.controller_port), "1"b);
+      311 						/* Set port enaobled on all controllers. */
+      312 	     if pdata.expanded_port then do;		/* Update port expander bits */
+      313 		call scr_util$set_export_enable ((pdata.controller_port), (pdata.expander_port), "1"b);
+      314 		call scr_util$update_export_xipmsk ((pdata.controller_port));
+      315 						/* Make mask from pdata.interrupt_cpu's */
+      316 	     end;
+      317 
+      318 /* Initialize variables in init_processor. */
+      319 
+      320 	     init_processor$wait_flag = rcerr_addcpu_no_response;
+      321 						/* Set flag to await processor startup. */
+      322 	     init_processor$controller_data = "0"b;	/* Clear controller bits. */
+      323 	     do i = 0 to 7;				/* Set bit for each online controller. */
+      324 		substr (init_processor$controller_data, i + 1, 1) = scs$controller_data (i).online;
+      325 	     end;
+      326 
+      327 /* Send connects to make all other processors suspend normal operation. */
+      328 
+      329 	     call privileged_mode_ut$wire_and_mask (mask_temp, ptp);
+      330 	     call wire_proc$wire_me;			/* Take no interrupts or page faults here. */
+      331 
+      332 	     do while (^stac (addr (scs$connect_lock), pds$processid));
+      333 	     end;					/* Lock up the connect lock. */
+      334 
+      335 	     scs$processor_start_wait = scs$processor & ^prds$processor_pattern;
+      336 						/* Stop all other processors. */
+      337 	     do i = 0 to 7;				/* Loop through all processors. */
+      338 		old_pdp = addr (scs$processor_data (i));/* Get pointer to data for processor. */
+      339 		if (i ^= prds$processor_tag) & old_pdp -> pdata.online then
+      340 		     call privileged_mode_ut$cioc (addr (scs$cow (i).cow));
+      341 						/* Send connects to other processors. */
+      342 	     end;
+      343 
+      344 	     do while (scs$processor_start_wait);	/* Wait for other processors to respond. */
+      345 	     end;
+      346 
+      347 /* Set up fault and interrupt vectors for starting CPU. */
+      348 
+      349 	     fvp = addr (fault_vector$);		/* Get pointer to fault vector. */
+      350 	     int_vec_save = fv.ipair (scs$processor_start_int_no).scu;
+      351 	     fv.ipair (scs$processor_start_int_no).scu = init_processor$first_tra;
+      352 						/* Set up TRA for CPU start interrupt. */
+      353 	     trouble_save = fv.fpair (FAULT_NO_TRB).scu;
+      354 	     fv.fpair (FAULT_NO_TRB).scu = init_processor$trouble_tra;
+      355 						/* Set up TRA for trouble fault. */
+      356 	     startup_save = fv.fpair (FAULT_NO_SUF).scu;
+      357 	     fv.fpair (FAULT_NO_SUF).scu = init_processor$startup_tra;
+      358 						/* Set up TRA for startup fault. */
+      359 	     onc_save = fv.fpair (FAULT_NO_ONC).scu;
+      360 	     fv.fpair (FAULT_NO_ONC).scu = init_processor$onc_tra;
+      361 						/* Set up TRA for onc fault. */
+      362 	     lockup_save = fv.fpair (FAULT_NO_LUF).scu;
+      363 	     fv.fpair (FAULT_NO_LUF).scu = init_processor$lockup_tra;
+      364 						/* Set up TRA for lockup fault. */
+      365 
+      366 /* Send processor start interrupt, open processor's mask, and wait for it to respond. */
+      367 
+      368 	     call privileged_mode_ut$smic (scs$processor_start_pattern);
+      369 						/* Send interrupt to start processor. */
+      370 	     call scr_util$set_mask (scs$interrupt_controller, (pdata.controller_port), scs$processor_start_mask);
+      371 						/* Let new CPU get the interrupt. */
+      372 to_loop:
+      373 	     do i = 1 to 5000 while (init_processor$wait_flag = rcerr_addcpu_no_response);
+      374 	     end;					/* Wait for flag to change. */
+      375 	     rcode = init_processor$wait_flag;		/* Get error code, if any. */
+      376 
+      377 /* If init_processor returns a bad switch code, this could be because we are attempting to add a processor that
+      378*   is of a different type (i.e.  L68 vs DPS8M or vis-a-versa) than what the scs$processor_switch_template was set up
+      379*   from (usally the bootload processor).  When this happens, the values of the rsw (1) memory size and the assignment
+      380*   switches must be computed for equality, since there values on the L68 and DPS8M processors are potentially
+      381*   different.  This is also true of the interlace info bits (rsw (2) bits 0 - 3 for the DPS8M, rsw (4) for the L68). */
+      382 
+      383 	     if rcode = rcerr_addcpu_bad_switches then do;
+      384 		scs$processor_switch_compare = scs$processor_switch_compare & scs$processor_switch_mask;
+      385 		cmpp = addr (scs$processor_switch_compare (2));
+      386 						/* look at rsw 2 descrepencies */
+      387 		if cmpp -> dps8_rsw_2.cpu_type ^= 0 &	/* if adding a different kind of cpu */
+      388 		     scs$processor_switch_compare (3) = "0"b then do;
+      389 						/* no rsw3 data on mixed system */
+      390 		     if dps_rsw_2.cpu_type = 0 then do; /* template cpu is L68, cpu we are adding is dps8 */
+      391 			dps8_add = "1"b;		/* set switch indicating adding dps8 */
+      392 			rsw4p = addr (scs$processor_switch_template (4));
+      393 						/* set rsw 4 ptr */
+      394 			rsw1_68p = addr (scs$processor_switch_template (1));
+      395 						/* set L68 rsw1 ptr */
+      396 			rsw1_8p = addr (scs$processor_switch_data (1));
+      397 						/* set dps8 rsw1 ptr */
+      398 			switchp = addr (scs$processor_switch_data (2));
+      399 						/* set dps8 rsw2 ptr */
+      400 		     end;
+      401 		     else do;			/* template cpu is dps8, cpu we are adding is L68 */
+      402 			dps8_add = "0"b;		/* set switch indicating not adding dps8 */
+      403 			rsw4p = addr (scs$processor_switch_data (4));
+      404 						/* set rsw 4 ptr */
+      405 			rsw1_68p = addr (scs$processor_switch_data (1));
+      406 						/* set L68 rsw1 ptr */
+      407 			rsw1_8p = addr (scs$processor_switch_template (1));
+      408 						/* set dps8 rsw1 ptr */
+      409 			switchp = addr (scs$processor_switch_template (2));
+      410 						/* set dps8 rsw2 ptr */
+      411 			rswp = addr (scs$processor_switch_data (2));
+      412 						/* set L68 rsw2 ptr */
+      413 		     end;
+      414 		     cmpp = addr (scs$processor_switch_compare (1));
+      415 						/* set compare ptr */
+      416 		     trgp = addr (scs$processor_switch_data (1));
+      417 						/* set add target RSW1 ptr */
+      418 		     found = "0"b;
+      419 		     do i = 0 to 3;			/* go through each port */
+      420 			if scs$controller_data (i).online |
+      421 						/* check port only if mem */
+      422 			     scs$controller_data (i).offline then do;
+      423 						/* card in config deck */
+      424 			     L68_prt_sze = dps_mem_size_table (rsw1_68p -> rsw_1_3.port_info (i).mem_size);
+      425 			     if rsw4p -> rsw_4.port_info (i).half then
+      426 						/* if half switch is on... */
+      427 				L68_prt_sze = divide (L68_prt_sze, 2, 24, 0);
+      428 						/* divide patch plug size by 2 */
+      429 			     if L68_prt_sze ^= dps8_mem_size_table (rsw1_8p -> rsw_1_3.port_info (i).mem_size) then
+      430 				found = "1"b;	/* memory sizes are not = */
+      431 			     else cmpp -> rsw_1_3.port_info (i).mem_size = 0;
+      432 						/* reset compare data in case other switch error */
+      433 			     tbase = scs$controller_data (i).base * 1024;
+      434 						/* get abs base */
+      435 			     if dps8_add then	/* get target memory size */
+      436 				tsize = dps8_mem_size_table (trgp -> rsw_1_3.port_info (i).mem_size);
+      437 			     else tsize = dps_mem_size_table (trgp -> rsw_1_3.port_info (i).mem_size);
+      438 
+      439 			     if trgp -> rsw_1_3.port_info (i).port_assignment
+      440 				^= bit (divide (tbase, tsize, 3, 0), 3) then
+      441 				found = "1"b;	/* port assignment switch error */
+      442 			     else cmpp -> rsw_1_3.port_info (i).port_assignment = "0"b;
+      443 						/* reset compare data in case other switch error */
+      444 			end;
+      445 			else do;			/* memory not there, reset compare data */
+      446 			     cmpp -> rsw_1_3.port_info (i).mem_size = 0;
+      447 			     cmpp -> rsw_1_3.port_info (i).port_assignment = "0"b;
+      448 			end;
+      449 			if cmpp -> rsw_1_3.port_info (i).port_enable then
+      450 			     found = "1"b;		/* port_enable  not set correctly */
+      451 			if cmpp -> rsw_1_3.port_info (i).initialize_enable then
+      452 			     found = "1"b;		/* initialize enable not set correctly */
+      453 			if cmpp -> rsw_1_3.port_info (i).interlace_enable then
+      454 			     found = "1"b;		/* interlace enable not set correctly */
+      455 			if rsw1_68p -> rsw_1_3.port_info (i).interlace_enable then
+      456 			     if rsw4p -> rsw_4.port_info (i).four ^= switchp -> dps8_rsw_2.interlace_info (i) then
+      457 				found = "1"b;	/* interlace types not equal */
+      458 		     end;
+      459 		     if ^found then do;		/* no error, return to init_processor */
+      460 			init_processor$wait_flag = rcerr_addcpu_no_response;
+      461 						/* allow init_processor to continue */
+      462 			go to to_loop;		/* and wait for completion */
+      463 		     end;
+      464 		end;
+      465 		init_processor$wait_flag = -1;	/* allow init_processor to die in a DIS */
+      466 	     end;
+      467 
+      468 
+      469 /* Restore original fault and interrupt vector contents. */
+      470 
+      471 	     fv.ipair (scs$processor_start_int_no).scu = int_vec_save;
+      472 	     fv.fpair (FAULT_NO_TRB).scu = trouble_save;	/* Restore fault and interrupt vectors. */
+      473 	     fv.fpair (FAULT_NO_SUF).scu = startup_save;
+      474 	     fv.fpair (FAULT_NO_ONC).scu = onc_save;
+      475 	     fv.fpair (FAULT_NO_LUF).scu = lockup_save;
+      476 
+      477 	     if ^stacq (scs$connect_lock, (36)"0"b, scs$connect_lock) then
+      478 		;				/* just reset lock, null then cluse */
+      479 
+      480 	     call wire_proc$unwire_me;		/* Can unwire now. */
+      481 	     call privileged_mode_ut$unwire_unmask (mask_temp, ptp);
+      482 
+      483 /* Perform error checking. */
+      484 
+      485 	     if rcode = rcerr_addcpu_no_response then do; /* If CPU did not respond ... */
+      486 		switch_rel = bin (rel (addr (fv_iv_template$rsw_data)), 18) - bin (rel (fv_iv_p), 18);
+      487 		switchp = ptr (abs_seg_p, switch_rel);	/* See if CPU responded in another controller. */
+      488 		found = "0"b;			/* Clear switch. */
+      489 		do i = 0 to 7 while (^found);		/* Search the base of all controllers. */
+      490 		     if remember (i) ^= 0 then do;
+      491 			call privileged_mode_ut$swap_sdw (abs_seg_p, addr (tsdw (i)));
+      492 			if unspec (based_switches) then do;
+      493 			     scs$processor_switch_compare =
+      494 				bool (scs$processor_switch_template, based_switches, "0110"b);
+      495 			     scs$processor_switch_compare =
+      496 				scs$processor_switch_compare & scs$processor_switch_mask;
+      497 			     rcode = rcerr_addcpu_bad_switches;
+      498 						/* Change the error code. */
+      499 			     init_processor$wait_flag = -1;
+      500 						/* allow init_processor to die in a DIS */
+      501 			     found = "1"b;
+      502 			end;
+      503 		     end;
+      504 		end;
+      505 	     end;
+      506 
+      507 /* Now give back the double pages we borrowed */
+      508 
+      509 	     do i = 0 to 7;
+      510 		base = remember (i);
+      511 		if base > 0 then do;
+      512 		     call freecore (base);
+      513 		     call freecore (base + 1);
+      514 		end;
+      515 	     end;
+      516 
+      517 	     string (tsdw1) = "0"b;
+      518 	     call privileged_mode_ut$swap_sdw (abs_seg_p, addr (tsdw1));
+      519 	     if rcode ^= 0 then do;			/* If an error occurred ... */
+      520 		call stop_cpu$destroy_1 (tag, tcode);	/* Clean up the mess we made. */
+      521 		return;
+      522 	     end;
+      523 	end;					/* Mask the discrepancy data. */
+      524 
+      525 /* If initializing the bootload CPU, make simple call out. */
+      526 
+      527 	else do;					/* If bootload CPU ... */
+      528 	     call init_processor$start_bootload_cpu;	/* Start up idle process. */
+      529 	     fgbx.hc_dbr = unspec (apte.dbr);		/* Place idle process DBR in flagbox. */
+      530 	end;
+      531 
+      532 /* Update the config card for this processor. */
+      533 
+      534 	call config_$find_2 (CPU_CARD_WORD, tag + 1, cpu_cardp);
+      535 						/* Find correct CPU card. */
+      536 	cpu_card.state = "on  ";			/* Set correct processor state. */
+      537 	call config_$update ();
+      538 	scs$nprocessors = scs$nprocessors + 1;		/* Count number of CPU's. */
+      539 	tc_data$ncpu = tc_data$ncpu + 1;
+      540 	rswp = addr (scs$processor_switch_data (2));	/*  lets look at cpu type */
+      541 	pdata.cpu_type = dps_rsw_2.cpu_type;		/* copy cpu type to processor data */
+      542 	call validate_cpu_card (tag, rswp);		/* validate cpu type and model */
+      543 
+      544 	if tag ^= scs$bos_processor_tag then do;	/* If not during system initialization ... */
+      545 	     call syserr (ANNOUNCE, "start_cpu: Added CPU ^a.", substr (LETTERS, tag + 1, 1));
+      546 	     if pdata.cpu_type > 0 then		/* if DPS8 cpu... */
+      547 		if addr (scs$processor_switch_data (2)) -> dps8_rsw_2.id_prom then do;
+      548 						/* and id prom present */
+      549 		     cpu_mask = "0"b;
+      550 		     substr (cpu_mask, tag + 1, 1) = "1"b;
+      551 		     call set_procs_required (cpu_mask, tcode);
+      552 						/* Run on that CPU. */
+      553 		     if tcode ^= 0 then
+      554 			call syserr$error_code (CRASH, tcode, "start_cpu: Unable to run on CPU ^a",
+      555 			     substr (LETTERS, tag + 1, 1));
+      556 		     call privileged_mode_ut$read_id_prom (cpu_model, 0);
+      557 						/* get cpu model from ID PROM */
+      558 		     call privileged_mode_ut$read_id_prom (cpu_serial, 13);
+      559 						/* get cpu serial # from ID PROM */
+      560 		     call privileged_mode_ut$read_id_prom (cpu_ship_date, 26);
+      561 						/* get ship date from ID PROM */
+      562 		     call set_procs_required ("0"b, (0));
+      563 		     call syserr (LOG, "start_cpu: CPU ^a: Model #: ^a; Serial #: ^a; Ship date: ^a.",
+      564 			substr (LETTERS, tag + 1, 1), cpu_model, cpu_serial, cpu_ship_date);
+      565 						/* log info from ID PROM */
+      566 		end;
+      567 	     if scs$processor_switch_data (0) ^= scs$processor_data_switch_value then
+      568 		call syserr (ANNOUNCE, "start_cpu: CPU ^a data switches are ^w, should be ^w",
+      569 		     substr (LETTERS, tag + 1, 1), scs$processor_switch_data (0), scs$processor_data_switch_value);
+      570 	end;
+      571 	rcode = 0;
+      572 	return;
+      573 
+  1     1 
+  1     2 /* Begin include file ...... rcerr.incl.pl1 */
+  1     3 /* These are the reconfiguration error codes. */
+  1     4 /*	Created 4/5/76 by Noel I. Morris	*/
+  1     5 /* Modified 5/25/78 by J. A. Bush to add ISOLTS  reconfig error codes */
+  1     6 /* Modified 5/79 by BSG for port expander */
+  1     7 
+  1     8 
+  1     9 /****^  HISTORY COMMENTS:
+  1    10*  1) change(88-07-27,Farley), approve(88-10-05,MCR7968),
+  1    11*     audit(88-10-10,Beattie), install(88-10-14,MR12.2-1166):
+  1    12*     Added new rcerr_addscu_memoverlap error code.
+  1    13*                                                   END HISTORY COMMENTS */
+  1    14 
+  1    15 
+  1    16 dcl (rcerr_addcpu_no_response init (1),			/* no response from CPU */
+  1    17      rcerr_addcpu_bad_switches init (2),		/* CPU config switches set improperly */
+  1    18      rcerr_addcpu_trouble init (3),			/* trouble fault adding CPU */
+  1    19      rcerr_addcpu_startup init (4),			/* startup fault adding CPU */
+  1    20      rcerr_addcpu_lockup init (5),			/* lockup fault adding CPU */
+  1    21      rcerr_addcpu_gcos init (6),			/* attempt to add processor in GCOS mode */
+  1    22      rcerr_addcpu_amoff init (7),			/* attempt to add processor with assoc mem off */
+  1    23      rcerr_addcpu_enable init (8)			/* controller port for CPU not enabled */
+  1    24      ) fixed bin static options (constant);
+  1    25 
+  1    26 dcl (rcerr_delcpu_no_stop init (1),			/* CPU did not stop running */
+  1    27      rcerr_delcpu_last init (2),			/* attempt to delete last CPU */
+  1    28      rcerr_delcpu_no_good_blcpu init (3)		/* no suitable bootload CPU left */
+  1    29      ) fixed bin static options (constant);
+  1    30 
+  1    31 dcl (rcerr_addscu_size init (1),			/* memory size discrepancy */
+  1    32      rcerr_addscu_dup_mask init (2),			/* duplicate mask assignment */
+  1    33      rcerr_addscu_no_mask init (3),			/* no mask assigned to CPU */
+  1    34      rcerr_addscu_bad_mask init (4),			/* mask assigned to non-CPU port */
+  1    35      rcerr_addscu_fault init (5),			/* fault trying to add controller */
+  1    36      rcerr_addscu_switches init (6),			/* some active module has incorrect switches */
+  1    37      rcerr_addscu_enable init (7),			/* some active module not enabled */
+  1    38      rcerr_addscu_manual init (8),			/* 4MW SCU is in manual mode */
+  1    39      rcerr_addscu_oldexpand init (9),			/* Adding 6000 SCU with port expander */
+  1    40      rcerr_addscu_bigconfig init (10),			/* SCU has less memory than config cards say */
+  1    41      rcerr_addscu_memoverlap init (11)			/* SCU has possible memory address overlap */
+  1    42      ) fixed bin static options (constant);
+  1    43 
+  1    44 dcl (rcerr_delmain_nomem init (1),			/* not enough main memory left */
+  1    45      rcerr_delmain_abs_wired init (2)			/* abs wired pages in memory */
+  1    46      ) fixed bin static options (constant);
+  1    47 
+  1    48 dcl (rcerr_locked init (12),				/* database already locked */
+  1    49      rcerr_online init (13),				/* device already online */
+  1    50      rcerr_no_config init (14),			/* device not in configuration */
+  1    51      rcerr_not_online init (15),			/* device not online */
+  1    52      rcerr_range init (16),				/* request is out of range */
+  1    53      rcerr_sprq_failed init (17)			/* could not set CPU required */
+  1    54 
+  1    55      ) fixed bin static options (constant);
+  1    56 
+  1    57 dcl (rcerr_isolts_locked init (1),			/* reconfig_lock locked to another process */
+  1    58      rcerr_isolts_illegal_cpu init (2),			/* illegal cpu tag */
+  1    59      rcerr_isolts_cpu_online init (3),			/* requested cpu is online */
+  1    60      rcerr_isolts_no_config init (4),			/* requested cpu is not configured */
+  1    61      rcerr_isolts_two_scu init (5),			/* Must have at least two SCUs to run ISOLTS */
+  1    62      rcerr_isolts_illegal_scu init (6),			/* illegal scu tag */
+  1    63      rcerr_isolts_bootload_scu init (7),		/* requested scu is the bootload memory */
+  1    64      rcerr_isolts_scu_not init (8),			/* requested scu is not configured */
+  1    65      rcerr_isolts_not init (9),			/* requesting process is not ISOLTS process */
+  1    66      rcerr_isolts_wrong_cell init (10),			/* interrupt answered in correct scu but wrong cell */
+  1    67      rcerr_isolts_wrong_scu init (11),			/* interrupt answered in wrong scu */
+  1    68      rcerr_isolts_wrong_scu_cell init (12),		/* interrupt answered in wrong scu on wrong cell */
+  1    69      rcerr_isolts_no_response init (13),		/* No response to a processor start interrupt */
+  1    70      rcerr_isolts_bad_switches init (14),		/* read switch data is not in expected format */
+  1    71      rcerr_isolts_lda_fail init (15),			/* A LDA 2 did not operate correctly */
+  1    72      rcerr_isolts_no_str_flt init (16),			/* No store falt when a LDA 64k was executed */
+  1    73      rcerr_isolts_no_mask init (17)			/* No mask set for test cpu */
+  1    74      ) fixed bin static options (constant);
+  1    75 
+  1    76 dcl 1 switch_w1 aligned based,			/* template for switch word 1, when containing diagnostic info */
+  1    77    (2 cell fixed bin (5),				/* interrupt cell being used */
+  1    78     2 errtag fixed bin (5),				/* tag of scu in error */
+  1    79     2 valid bit (1),				/* if on then offset field is valid */
+  1    80     2 pad bit (5),
+  1    81     2 offset bit (18)) unaligned;			/* offset of error if any */
+  1    82 
+  1    83 /* End of include file ...... rcerr.incl.pl1 */
+  1    84 
+      574 
+      575 
+  2     1 /* BEGIN INCLUDE FILE ... config_cpu_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  2     2 /* format: style4 */
+  2     3 
+  2     4 dcl  cpu_cardp pointer;				/* pointer to CPU card */
+  2     5 
+  2     6 dcl  1 cpu_card aligned based (cpu_cardp),		/* CPU card declaration */
+  2     7        2 word char (4),				/* "cpu" */
+  2     8        2 tag fixed bin (3),				/* CPU tag from switches, plus one */
+  2     9        2 port fixed bin (3),				/* Controller port for CPU */
+  2    10        2 state char (4),				/* "on", "off", "shut", or "test" */
+  2    11        2 type char (4),				/* "l68", "dps", "dps8" */
+  2    12 
+  2    13        2 model fixed bin,				/* 60., 80., or 70. */
+  2    14        2 cache_size fixed bin,			/* either 0. 2. 8. 16. or 32. */
+  2    15        2 expander_port fixed bin (3),			/* If present, indicates expander sub-port */
+  2    16 
+  2    17        2 pad (7) bit (36) aligned,			/* Pad to 15 fields */
+  2    18 
+  2    19        2 type_word aligned,
+  2    20          3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  2    21          3 pad1 bit (4) unaligned,
+  2    22          3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  2    23 
+  2    24 dcl  CPU_CARD_WORD char (4) aligned internal static options (constant) init ("cpu");
+  2    25 
+  2    26 /* END INCLUDE FILE ... config_cpu_card.incl.pl1 */
+      576 
+      577 
+  3     1 /* BEGIN INCLUDE FILE ... flagbox.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(87-02-26,Farley), approve(87-04-15,MCR7661),
+  3     6*     audit(87-04-21,Fawcett), install(87-04-28,MR12.1-1028):
+  3     7*     Added io_reconfig flag to inhibit BCE from attempting an emergency
+  3     8*     shutdown when the data in memory could be corrupted.
+  3     9*                                                   END HISTORY COMMENTS */
+  3    10 
+  3    11 
+  3    12 /* last modified 5/3/77 by Noel I. Morris	*/
+  3    13 /* Modified 8/79 by R.J.C. Kissel to add FNP blast message. */
+  3    14 /* Modified 7/82 BIM for recognizable sentinel field */
+  3    15 /* Modified for bootload Multics flagbox starting in 8/83 by Keith Loepere. */
+  3    16 
+  3    17 /* The contents of this segment are data shared by Multics and bce.
+  3    18*   This entity occupies the locations within the toehold starting at 40o
+  3    19*   (not counting the toehold_used spacer at the beginning). */
+  3    20 
+  3    21 dcl  flagbox$ ext;
+  3    22 dcl  fgbxp ptr;
+  3    23 
+  3    24 dcl 1 fgbx based (fgbxp) aligned,
+  3    25     2 toehold_used (32) bit (36) aligned,		/* flagbox seg now mapped onto all of first page of toehold -
+  3    26*						This is what was unused before. */
+  3    27     2 flags (36) bit (1) unal,			/* communications switches */
+  3    28     2 slt_segno bit (18),				/* segment # of the SLT */
+  3    29     2 pad1 fixed bin,
+  3    30     2 rtb,					/* return to bce info */
+  3    31      (3 ssenb bit (1),				/* "1"b if storage system enabled */
+  3    32       3 call_bce bit (1),				/* "1"b if bce called by operator */
+  3    33       3 shut bit (1),				/* "1"b if bce called after shutdown */
+  3    34       3 mess bit (1),				/* "1"b if message has been provided */
+  3    35       3 alert bit (1),				/* "1"b if audible alarm to be sounded */
+  3    36       3 breakpoint bit (1),				/* "1"b is breakpoint caused call to bce */
+  3    37       3 manual_crash bit (1),				/* either manual entry or execute fault */
+  3    38       3 io_reconfig bit (1),				/* "1"b if I/O reconfiguration */
+  3    39 						/* could cause memory corruption */
+  3    40       3 pad bit (21),
+  3    41       3 bce_entry fixed bin (6) uns) unal,		/* type of entry into bce
+  3    42*						   00o => Multics entry
+  3    43*						   20o => manual entry
+  3    44*						   40o => esd entry */
+  3    45     2 sentinel char (32) aligned,			/* set by bce (for now) */
+  3    46     2 sst_sdw bit (72),				/* set by init_sst */
+  3    47     2 hc_dbr bit (72),				/* set by start_cpu, idle DBR */
+  3    48     2 message char (64),				/* message for return to bce */
+  3    49     2 return_to_bce_command char (128) unal;		/* command to run upon crash/shutdown */
+  3    50 
+  3    51 declare FLAGBOX_SENTINEL char (32) init ("Flagbox & Toehold Valid") int static options (constant);
+  3    52 
+  3    53 /* END INCLUDE FILE ... flagbox.incl.pl1 */
+      578 
+      579 
+  4     1 /* BEGIN INCLUDE FILE scs.incl.pl1 ... March 1983 */
+  4     2 /* format: style4 */
+  4     3 
+  4     4 /* Information about system controllers */
+  4     5 
+  4     6 dcl  1 scs$controller_data (0:7) aligned ext,		/* per-controller info */
+  4     7        2 size fixed bin (17) unaligned,			/* size (in 1024 word blocks) of this controller */
+  4     8        2 base fixed bin (17) unaligned,			/* abs address (0 mod 1024) for base of this controller */
+  4     9        2 eima_data (4) unaligned,			/* EIMA information for this controller */
+  4    10          3 mask_available bit (1) unaligned,		/* ON if corresponding mask exists */
+  4    11          3 mask_assigned bit (1) unaligned,		/* ON if mask assigned to a port */
+  4    12          3 mbz bit (3) unaligned,
+  4    13          3 mask_assignment fixed bin (3) unaligned,	/* port to which mask is assigned */
+  4    14        2 info aligned,
+  4    15          3 online bit (1) unaligned,			/* ON if controller is online */
+  4    16          3 offline bit (1) unaligned,			/* ON if controller is offline but can be added */
+  4    17          3 store_a_online bit (1) unaligned,		/* ON if store A is online */
+  4    18          3 store_a1_online bit (1) unaligned,		/* ON if store A1 is online */
+  4    19          3 store_b_online bit (1) unaligned,		/* ON if store B is online */
+  4    20          3 store_b1_online bit (1) unaligned,		/* ON if store B1 is online */
+  4    21          3 store_b_is_lower bit (1) unaligned,		/* ON if store B is lower */
+  4    22          3 ext_interlaced bit (1) unaligned,		/* ON if this SCU is interlaced with other SCU */
+  4    23          3 int_interlaced bit (1) unaligned,		/* ON if this SCU is internally interlaced */
+  4    24          3 four_word bit (1) unaligned,			/* ON if external interlace is 4-word */
+  4    25          3 cyclic_priority (7) bit (1) unaligned,		/* Cyclic priority for adjacent ports */
+  4    26          3 type bit (4) unaligned,			/* Model number for this controller */
+  4    27          3 abs_wired bit (1) unaligned,			/* ON if controller can have abs_wired pages */
+  4    28          3 program bit (1) unaligned,			/* PROGRAM/MANUAL switch setting */
+  4    29          3 mbz bit (13) unaligned,
+  4    30        2 lower_store_size fixed bin (17) unaligned,	/* size (in 1024 word blocks) of lower store */
+  4    31        2 upper_store_size fixed bin (17) unaligned;	/* size (in 1024 word blocks) of upper store */
+  4    32 
+  4    33 /* Information about CPUs */
+  4    34 
+  4    35 dcl  1 scs$processor_data (0:7) aligned ext,		/* information about CPUs in the system */
+  4    36        (
+  4    37        2 online bit (1),				/* "1"b if CPU is online */
+  4    38        2 offline bit (1),				/* "1"b if CPU is offline but can be added */
+  4    39        2 release_mask bit (1),			/* "1"b is this CPU is to give up its mask */
+  4    40        2 accept_mask bit (1),				/* "1"b if this CPU is to grap mask in idle loop */
+  4    41        2 delete_cpu bit (1),				/* "1"b if this CPU is to delete itself */
+  4    42        2 interrupt_cpu bit (1),			/* "1"b if this CPU takes hardware interrupts */
+  4    43        2 halted_cpu bit (1),				/* "1"b if this CPU has stopped itself (going to BOS) */
+  4    44        2 cpu_type fixed bin (2) unsigned,		/*  0 => DPS or L68, 1 => DPS8 */
+  4    45        2 mbz1 bit (6),
+  4    46        2 cache_size fixed bin (3) unsigned,		/* 0 = No cache; 1 = L68 2K cache;
+  4    47*						   2 = DPS8 8K cache; 3 = DPS8 VS&SC 8K cache;
+  4    48*						   4 = DPS8 VS&SC 16K cache; 5 = DPS8 VS&SC 32K cache
+  4    49*						   7 = ignore cache size (set by ISOLTS reconfig) */
+  4    50        2 mbz2 bit (12),
+  4    51        2 expanded_port bit (1),			/* "1"b = on expanded port */
+  4    52        2 expander_port fixed bin (2) unsigned,		/* The actual expander port */
+  4    53        2 controller_port fixed bin (3) unsigned
+  4    54        ) unaligned;					/* Port on controller */
+  4    55 
+  4    56 dcl  1 scs$port_data (0:7) aligned external static,	/* Info about what is connected to each SCU port */
+  4    57        2 assigned fixed bin (4) unsigned unaligned,	/* Type of device on this port		*/
+  4    58        2 expander_port bit (1) unaligned,		/* "1"b => this port has a port expander */
+  4    59        2 expanded_cpu (0:3) bit (1) unaligned,		/* "1"b => this expander port has a CPU attached */
+  4    60        2 iom_number fixed bin (3) unsigned unaligned,	/* IOM number of IOM attached to this port */
+  4    61        2 cpu_number (0:3) fixed bin (3) unsigned unaligned, /* CPU number of CPU(s) attached to this port */
+  4    62 						/* cpu_number (0) is only one if expander_port is "0"b */
+  4    63        2 pad bit (12) unaligned;
+  4    64 
+  4    65 dcl  1 scs$cow (0:7) aligned external,			/* Actual connect words */
+  4    66        2 pad bit (36) aligned,			/* Expander COW's must be odd-word */
+  4    67        2 cow,
+  4    68          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  4    69          3 mbz1 bit (13) unaligned,
+  4    70          3 expander_command bit (3) unaligned,		/* Expander command. */
+  4    71          3 mbz2 bit (2) unaligned,
+  4    72          3 expanded_port bit (1) unaligned,		/* "1"b = on expanded port */
+  4    73          3 expander_port fixed bin (3) unsigned unaligned,	/* Port on expander for cioc */
+  4    74          3 mbz3 bit (3) unaligned,
+  4    75          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  4    76 
+  4    77 dcl  1 scs$cow_ptrs (0:7) external aligned,		/* Pointers to COW's */
+  4    78        2 rel_cow_ptr bit (18) unal,			/* Relative pointer to COW */
+  4    79        2 pad bit (12) unal,
+  4    80        2 tag bit (6) unal;				/* Better be zero. */
+  4    81 
+  4    82 dcl  1 scs$reconfig_general_cow aligned external,		/* Used during reconfig ops. */
+  4    83        2 pad bit (36) aligned,
+  4    84        2 cow,					/* Connect operand word, in odd location. */
+  4    85          3 sub_mask bit (8) unaligned,			/* Expander sub-port mask */
+  4    86          3 mbz1 bit (13) unaligned,
+  4    87          3 expander_command bit (3) unaligned,		/* Expander command. */
+  4    88          3 mbz2 bit (9) unaligned,
+  4    89          3 controller_port fixed bin (3) unaligned unsigned;/* controller port for this CPU */
+  4    90 
+  4    91 /* MASKS and PATTERNS */
+  4    92 
+  4    93 dcl  scs$sys_level bit (72) aligned ext;		/* mask used while handling I/O interrupts */
+  4    94 dcl  scs$open_level bit (72) aligned ext;		/* mask used during normal operation */
+  4    95 dcl  scs$processor_start_mask bit (72) aligned ext;	/* mask used when starting up a CPU */
+  4    96 dcl  scs$cpu_test_mask bit (72) aligned ext;		/* mask used for ISOLTS CPU testing */
+  4    97 dcl  scs$number_of_masks fixed bin ext;			/* number of masks (starting at sys_level) */
+  4    98 dcl  scs$processor_start_pattern bit (36) aligned ext;	/* SMIC pattern used to send processor start interrupt */
+  4    99 dcl  scs$cpu_test_pattern bit (36) aligned ext;		/* SMIC pattern used for ISOLTS processor testing */
+  4   100 
+  4   101 /* CAM and CACHE clear info */
+  4   102 
+  4   103 dcl  scs$cam_pair fixed bin (71) ext;			/* instructions XEDd when CAMing and clearing CACHE */
+  4   104 dcl  scs$cam_wait bit (8) aligned ext;			/* Used when evicting pages from main memory */
+  4   105 
+  4   106 /* MASKING INSTRUCTIONS & POINTERS */
+  4   107 
+  4   108 dcl  scs$set_mask (0:7) bit (36) aligned ext;		/* instructions to set mask (STAQ or SMCM) */
+  4   109 dcl  scs$read_mask (0:7) bit (36) aligned ext;		/* instructions to read mask (LDAQ or RMCM) */
+  4   110 dcl  scs$mask_ptr (0:7) ptr unaligned ext;		/* pointers for real or simulated masks */
+  4   111 
+  4   112 /* MISCELLANEOUS */
+  4   113 
+  4   114 dcl  1 scs$processor_test_data aligned ext,		/* info used for cpu testing */
+  4   115        (
+  4   116        2 active bit (1),				/* = "1"b if cpu currently under test */
+  4   117        2 scu_state bit (2),				/* state of scu being used for testing (see definition below) */
+  4   118        2 pad1 bit (4),
+  4   119        2 req_mem fixed bin (10),			/* dedicated memory required to test this cpu */
+  4   120        2 cpu_tag fixed bin (5),			/* tag of cpu under test */
+  4   121        2 scu_tag fixed bin (5),			/* tag of scu being used for cpu testing */
+  4   122        2 mask_cpu fixed bin (5)
+  4   123        ) unaligned;					/* tag of active cpu that has mask asigned to above scu */
+  4   124 
+  4   125 /* scu_state = "00"b => SCU defined by scs$processor_test_data.scu_tag not yet effected */
+  4   126 /* scu_state = "01"b => all core removed from SCU, port mask not yet changed */
+  4   127 /* scu_state = "10"b => all core removed from SCU, port mask changed */
+  4   128 /* scu_state = "11"b => only 64k at base of SCU being used for testing, original port mask restored */
+  4   129 
+  4   130 dcl  scs$idle_aptep (0:7) ptr unaligned ext;		/* pointer to idle process APTE for each processor */
+  4   131 
+  4   132 dcl  scs$connect_lock bit (36) aligned ext;		/* lock for sending connects */
+  4   133 dcl  scs$reconfig_lock bit (36) aligned ext;		/* Lock used during reconfiguration */
+  4   134 dcl  scs$trouble_flags bit (8) aligned ext;		/* checkoff flags for sys_trouble stopping */
+  4   135 dcl  scs$bos_restart_flags bit (8) aligned ext;		/* checkoff flags for restarting after sys_trouble */
+  4   136 dcl  scs$nprocessors fixed bin ext;			/* number of runnung processors */
+  4   137 dcl  scs$bos_processor_tag fixed bin (3) ext;		/* CPU tag of processor running BOS */
+  4   138 dcl  scs$faults_initialized bit (1) aligned ext;		/* ON after faults have been enabled */
+  4   139 dcl  scs$sys_trouble_pending bit (1) aligned ext;		/* sys_trouble event is pending in the system */
+  4   140 dcl  scs$fast_cam_pending (0:7) bit (36) aligned ext;	/* checkoff cells for cam connect		*/
+  4   141 dcl  scs$interrupt_controller fixed bin (3) ext;		/* port number of low order controller */
+  4   142 dcl  scs$processor_start_int_no fixed bin (5) ext;	/* interrupt cell for starting a processor */
+  4   143 dcl  scs$processor bit (8) aligned ext;			/* bits ON for online CPUs */
+  4   144 dcl  scs$processor_start_wait bit (8) aligned ext;	/* checkoff flags for waiting for new processor */
+  4   145 
+  4   146 dcl  scs$trouble_dbrs (0:7) fixed bin (71);		/* DBR values at system crash time */
+  4   147 
+  4   148 dcl  scs$port_addressing_word (0:7) bit (3) aligned ext;	/* active module port number for each controller */
+  4   149 
+  4   150 dcl  scs$cfg_data (0:7) fixed bin (71) aligned ext;	/* RSCR-CFG data from each controller */
+  4   151 
+  4   152 dcl  scs$cfg_data_save fixed bin (71) aligned ext;	/* RSCR-CFG save area for ISOLTS CPU testing */
+  4   153 
+  4   154 dcl  scs$expanded_ports bit (1) unaligned dim (0:7) external;
+  4   155 						/* Which ports have expanders */
+  4   156 
+  4   157 dcl  scs$processor_switch_data (0:4) bit (36) aligned ext;	/* raw data from RSW 0 thru 4 */
+  4   158 dcl  scs$processor_switch_template (0:4) bit (36) aligned ext; /* expected data from RSW 0 thru 4 */
+  4   159 dcl  scs$processor_switch_compare (0:4) bit (36) aligned ext; /* discrepancies from expected data */
+  4   160 dcl  scs$processor_switch_mask (0:4) bit (36) aligned ext;	/* masks for comparing switch data */
+  4   161 
+  4   162 dcl  scs$processor_data_switch_value bit (36) aligned ext;	/* Correct value for CPU data switches */
+  4   163 
+  4   164 dcl  scs$controller_config_size (0:7) fixed bin (14) aligned ext;
+  4   165 						/* Controller size on config card */
+  4   166 
+  4   167 dcl  scs$reconfig_locker_id char (32) aligned ext;	/* process group ID of process doing reconfiguration */
+  4   168 
+  4   169 dcl  scs$scas_page_table (0:31) bit (36) aligned external static;
+  4   170 						/* PTWs for SCAS pages */
+  4   171 
+  4   172 dcl  scs$cycle_priority_template bit (7) aligned ext;	/* template for setting anti-hog switches	*/
+  4   173 dcl  scs$set_cycle_switches bit (1) aligned ext;		/* flag to set ant-hog switches		*/
+  4   174 
+  4   175 
+  4   176 dcl  (
+  4   177      IOM_PORT init (1),
+  4   178      CPU_PORT init (2),
+  4   179      BULK_PORT init (3)
+  4   180      ) fixed bin int static options (constant);		/* values for scs$port_data.assigned		*/
+  4   181 
+  4   182 
+  4   183 /* END INCLUDE FILE scs.incl.pl1 */
+      580 
+      581 
+  5     1 /* ***********************************************************
+  5     2*   *                                                         *
+  5     3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+  5     4*   *                                                         *
+  5     5*   *********************************************************** */
+  5     6 /* Begin include file ...... rsw.incl.pl1
+  5     7*   Modified 3/26/77 by Noel I. Morris
+  5     8*   Modified 9/03/80 by J. A. Bush for the DPS8/70M CPU
+  5     9*   Modified 3/24/82 by J. A. Bush to allow the L68 CPU to address 4MW/port */
+  5    10 
+  5    11 dcl  rswp ptr;
+  5    12 
+  5    13 dcl 1 dps_rsw_2 aligned based (rswp),			/* rsw 2 template for DPS and L68 CPUs */
+  5    14    (2 pad1 bit (4),
+  5    15     2 cpu_type fixed bin (2) unsigned,			/* 0 = L68 or DPS, 1 = DPS8 */
+  5    16     2 fault_base bit (7),				/* high order bits of fault vector */
+  5    17     2 pad2 bit (6),
+  5    18     2 dps_option bit (1),				/* "1"b => DPS CPU, "0"b => L68 CPU */
+  5    19     2 pad3 bit (7),
+  5    20     2 cache2 bit (1),				/* "1"b => 2k cache installed, "0"b => no cache */
+  5    21     2 ext_gcos bit (1),				/* "1"b => ext gcos option installed */
+  5    22     2 id bit (4),					/* CPU ID - "1110"b => L68 */
+  5    23     2 cpu_num fixed bin (3) unsigned) unaligned;		/* processor number */
+  5    24 
+  5    25 dcl 1 dps8_rsw_2 aligned based (rswp),			/* rsw 2 template for DPS8 CPUs */
+  5    26    (2 interlace_info (0:3) bit (1),			/* if interlace enabled; "0"b => 4-word, "1"b => 2-word */
+  5    27     2 cpu_type fixed bin (2) unsigned,			/* 0 = L68 or DPS, 1 = DPS8 */
+  5    28     2 fault_base bit (7),				/* high order bits of fault vector */
+  5    29     2 id_prom bit (1),				/* "1"b => id_prom present */
+  5    30     2 pad1 bit (5),
+  5    31     2 dps_option bit (1),				/* always "1"b for DPS8 CPU */
+  5    32     2 cache8 bit (1),				/* "1"b => 8k cache installed, "0"b => no cache */
+  5    33     2 pad2 bit (2),
+  5    34     2 multics_cpu bit (1),				/* always "1"b for Multics cpu */
+  5    35     2 pad3 bit (5),
+  5    36     2 cpu_speed bit (4),				/* cpu speed options */
+  5    37     2 cpu_num fixed bin (3) unsigned) unaligned;		/* processor number */
+  5    38 
+  5    39 dcl 1 rsw_1_3 aligned based (rswp),			/* rsw 3 only valid on DPS and L68 CPUs */
+  5    40    (2 port_info (0:3),				/* controller port information */
+  5    41       3 port_assignment bit (3),			/* port address assignment */
+  5    42       3 port_enable bit (1),				/* "1"b => port enabled */
+  5    43       3 initialize_enable bit (1),			/* "1"b => system initialize enabled */
+  5    44       3 interlace_enable bit (1),			/* "1"b => port is interlaced with neighbor */
+  5    45       3 mem_size fixed bin (3) unsigned) unaligned;	/* encoded memory size on port */
+  5    46 
+  5    47 dcl 1 rsw_4 aligned based (rswp),			/* rsw 4 only valid on DPS and L68 CPUs */
+  5    48    (2 pad1 bit (13),
+  5    49     2 port_info (0:7),				/* additional controller port information */
+  5    50       3 four bit (1),				/* "0"b => 4-word interlace - "1"b => 2-word interlace */
+  5    51       3 half bit (1),				/* "1"b => only half of memory on controller in use */
+  5    52     2 pad2 bit (7)) unaligned;
+  5    53 
+  5    54 dcl  dps_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS and L68 memory sizes */
+  5    55     (32768, 65536, 4194304, 131072, 524288, 1048576, 2097152, 262144);
+  5    56 
+  5    57 /* Note that the third array element above, is changed incompatibly in MR10.0.
+  5    58*   In previous releases, this array element was used to decode a port size of
+  5    59*   98304 (96K). With MR10.0 it is now possible to address 4MW per CPU port, by
+  5    60*   installing  FCO # PHAF183 and using a group 10 patch plug, on L68 and DPS CPUs.
+  5    61**/
+  5    62 
+  5    63 dcl  dps8_mem_size_table (0:7) fixed bin (24) static options (constant) init /* DPS8 memory sizes */
+  5    64     (32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304);
+  5    65 
+  5    66 dcl  rsw_valid (0:1) fixed bin static options (constant) init (5, 3); /* # of rsw valid per cpu type */
+  5    67 
+  5    68 /* End of include file ...... rsw.incl.pl1 */
+      582 
+      583 
+  6     1 /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  6     2 
+  6     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  6     4 
+  6     5 dcl  aptep pointer;
+  6     6 
+  6     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  6     8     2 thread unaligned,				/* List thread */
+  6     9       3 fp bit (18),				/* Forward pointer */
+  6    10       3 bp bit (18),				/* Backward pointer */
+  6    11     2 flags unaligned,				/* Flags and miscellaneous */
+  6    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  6    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  6    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  6    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  6    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  6    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  6    18       3 eligible bit (1),				/* ON if process is eligible */
+  6    19       3 idle bit (1),				/* ON if  this is an idle process */
+  6    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  6    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  6    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  6    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  6    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  6    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  6    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  6    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  6    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  6    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  6    30       3 state bit (18),				/* execution state */
+  6    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  6    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  6    33 						/* bit 18-35: sequential number */
+  6    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  6    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  6    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  6    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  6    38 
+  6    39 /* * * * * * * * */
+  6    40 
+  6    41     2 ipc_pointers unaligned,
+  6    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  6    43       3 pad3 bit (18),
+  6    44     2 ips_message bit (36),				/* IPS signals pending */
+  6    45     2 asteps unaligned,				/* relative ASTE pointers */
+  6    46       3 pds bit (18),				/* PDS (per-process) */
+  6    47       3 dseg bit (18),				/* DSEG (per-process) */
+  6    48       3 prds bit (18),				/* PRDS (per-processor) */
+  6    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  6    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  6    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  6    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  6    53 
+  6    54 /* * * * * * * * */
+  6    55 
+  6    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  6    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  6    58     2 flags2 unaligned,
+  6    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  6    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  6    61       3 pad7 bit (7),
+  6    62       3 batch bit (1),				/* ON if absentee */
+  6    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  6    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  6    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  6    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  6    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  6    68 
+  6    69 /* * * * * * */
+  6    70 
+  6    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  6    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  6    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  6    74     2 deadline fixed bin (71),			/* time of next run */
+  6    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  6    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  6    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  6    78*						/* reaches this (units = 1/1024 sec) */
+  6    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  6    80     2 access_authorization bit (72),			/* authorization of this process */
+  6    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  6    82 
+  6    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  6    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  6    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  6    86 
+  6    87 /*  Cells used to drive and instrument finite-state model for response time
+  6    88*    measurement. Maintained by meter_response_time */
+  6    89 
+  6    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  6    91     2 pad18 bit (18) unaligned,
+  6    92     2 number_processing fixed bin (35),			/* Number interactions */
+  6    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  6    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  6    95 
+  6    96 /* * * * * * */
+  6    97 
+  6    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  6    99 
+  6   100 /*  End of cells for finite-state model */
+  6   101 
+  6   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  6   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  6   104     2 pad4 bit (28) unaligned,
+  6   105     2 ipc_r_offset fixed bin (18) unsigned,
+  6   106     2 ipc_r_factor fixed bin (35) unsigned,
+  6   107     2 apad (10) fixed bin (35);
+  6   108 
+  6   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      584 
+      585 
+  7     1 /* BEGIN INCLUDE FILE ... sdw.incl.pl1 ... last modified 12 May 1976 */
+  7     2 
+  7     3 dcl  sdwp ptr;
+  7     4 
+  7     5 dcl 1 sdw based (sdwp) aligned,			/* Segment Descriptor Word */
+  7     6 
+  7     7    (2 add bit (24),					/* main memory address of page table */
+  7     8     2 (r1, r2, r3) bit (3),				/* ring brackets for the segment */
+  7     9     2 df bit (1),					/* directed fault bit (0 => fault) */
+  7    10     2 df_no bit (2),				/* directed fault number */
+  7    11 
+  7    12     2 pad1 bit (1),
+  7    13     2 bound bit (14),				/* boundary field (in 16 word blocks) */
+  7    14     2 access,					/* access bits */
+  7    15       3 read bit (1),				/* read permission bit */
+  7    16       3 execute bit (1),				/* execute permission bit */
+  7    17       3 write bit (1),				/* write permission bit */
+  7    18       3 privileged bit (1),				/* privileged bit */
+  7    19     2 unpaged bit (1),				/* segment is unpaged if this is 1 */
+  7    20     2 entry_bound_sw bit (1),				/* if this is 0 the entry bound is checked by hardware */
+  7    21     2 cache bit (1),				/* cache enable bit */
+  7    22     2 entry_bound bit (14)) unaligned;			/* entry bound */
+  7    23 
+  7    24 dcl 1 sdwa (0: 1) based (sdwp) aligned like sdw;		/* SDW array (descriptor segment) */
+  7    25 
+  7    26 /* END INCLUDE FILE  sdw.incl.pl1 */
+      586 
+      587 
+  8     1 
+  8     2 /* BEGIN INCLUDE FILE ... fault_vector.incl.pl1 ... last modified February 1981 */
+  8     3 
+  8     4 dcl  fvp ptr;					/* pointer to the fault and interrupt vectors */
+  8     5 
+  8     6 dcl 1 fv based (fvp) aligned,				/* fault and interrupt vectors */
+  8     7     2 ipair (0: 31),				/* interrupt pairs */
+  8     8       3 scu bit (36),				/* SCU instruction */
+  8     9       3 tra bit (36),				/* TRA instruction */
+  8    10     2 fpair (0: 31),				/* fault pairs */
+  8    11       3 scu bit (36),				/* SCU instruction */
+  8    12       3 tra bit (36),				/* TRA instruction */
+  8    13     2 i_tra_ptr (0: 31) ptr,				/* ITS pair for interrupt TRA instruction */
+  8    14     2 i_scu_ptr (0: 31) ptr,				/* ITS pair for interrupt SCU instruction */
+  8    15     2 f_tra_ptr (0: 31) ptr,				/* ITS pairs for fault TRA instruction */
+  8    16     2 f_scu_ptr (0: 31) ptr;				/* ITS pairs for fault SCU instruction */
+  8    17 
+  8    18 /* Fault Types by fault number								*/
+  8    19 	
+  8    20    dcl (FAULT_NO_SDF  init (0),			/* Shutdown 				*/
+  8    21         FAULT_NO_STR  init (1),			/* Store 				*/
+  8    22         FAULT_NO_MME  init (2),			/* Master Mode Entry 1			*/
+  8    23         FAULT_NO_F1   init (3),			/* Fault Tag 1				*/
+  8    24         FAULT_NO_TRO  init (4),			/* Timer Runout				*/
+  8    25         FAULT_NO_CMD  init (5),			/* Command				*/
+  8    26         FAULT_NO_DRL  init (6),			/* Derail					*/
+  8    27         FAULT_NO_LUF  init (7),			/* Lockup					*/
+  8    28         FAULT_NO_CON  init (8),			/* Connect				*/
+  8    29         FAULT_NO_PAR  init (9),			/* Parity					*/
+  8    30         FAULT_NO_IPR  init (10),			/* Illegal Procedure			*/
+  8    31         FAULT_NO_ONC  init (11),			/* Operation Not Complete			*/
+  8    32         FAULT_NO_SUF  init (12),			/* Startup				*/
+  8    33         FAULT_NO_OFL  init (13),			/* Overflow				*/
+  8    34         FAULT_NO_DIV  init (14),			/* Divide Check				*/
+  8    35         FAULT_NO_EXF  init (15),			/* Execute				*/
+  8    36         FAULT_NO_DF0  init (16),			/* Directed Fault 0 (Segment Fault)		*/
+  8    37         FAULT_NO_DF1  init (17),			/* Directed Fault 1 (Page Fault)		*/
+  8    38         FAULT_NO_DF2  init (18),			/* Directed Fault 2				*/
+  8    39         FAULT_NO_DF3  init (19),			/* Directed Fault 3				*/
+  8    40         FAULT_NO_ACV  init (20),			/* Access Violation				*/
+  8    41         FAULT_NO_MME2 init (21),			/* Master Mode Entry 2			*/
+  8    42         FAULT_NO_MME3 init (22),			/* Master Mode Entry 3			*/
+  8    43         FAULT_NO_MME4 init (23),			/* Master Mode Entry 4			*/
+  8    44         FAULT_NO_F2   init (24),			/* Fault Tag 2 (Linkage Fault)		*/
+  8    45         FAULT_NO_F3   init (25),			/* Fault Tag 3				*/
+  8    46 						/* Fault Numbers 26-30 unassigned 		*/
+  8    47         FAULT_NO_TRB  init (31)			/* Trouble				*/
+  8    48 	
+  8    49                                 ) fixed bin (17) int static options (constant);
+  8    50 	
+  8    51 
+  8    52 
+  8    53 /* END INCLUDE FILE ... fault_vector.incl.pl1 */
+  8    54 
+      588 
+      589 
+  9     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  9     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  9     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  9     4 
+  9     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  9     6 
+  9     7 dcl (
+  9     8 
+  9     9 /* The following constants define the message action codes.  This indicates
+  9    10*how a message is to be handled.  */
+  9    11 
+  9    12      SYSERR_CRASH_SYSTEM	init (1),			
+  9    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  9    14 
+  9    15      SYSERR_TERMINATE_PROCESS	init (2),
+  9    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  9    17 
+  9    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  9    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  9    20 
+  9    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  9    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  9    23 
+  9    24      SYSERR_LOG_OR_PRINT	init (4),
+  9    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  9    26 
+  9    27      SYSERR_LOG_OR_DISCARD	init (5),
+  9    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  9    29 
+  9    30 
+  9    31 /* The following constants are added to the normal severities to indicate
+  9    32*different sorting classes of messages.  */
+  9    33 
+  9    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  9    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  9    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  9    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  9    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  9    39 	) fixed bin internal static options (constant);
+  9    40 
+  9    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      590 
+      591 
+ 10     1 /* BEGIN INCLUDE FILE ... system_types.incl.pl1 ... 03/23/81 ... W. Olin Sibert */
+ 10     2 
+ 10     3 dcl  L68_SYSTEM	fixed bin (17) internal static options (constant) init (1);
+ 10     4 dcl  ADP_SYSTEM	fixed bin (17) internal static options (constant) init (2);
+ 10     5 
+ 10     6 dcl  SYSTEM_TYPE_NAME (2) char (8) internal static options (constant) init
+ 10     7     ("Level68", "ADP");
+ 10     8 
+ 10     9 /* END INCLUDE FILE ... system_types.incl.pl1 */
+      592 
+      593 
+      594 /* BEGIN MESSAGE DOCUMENTATION
+      595*
+      596*   Message:
+      597*   start_cpu: Added CPU CPUTAG
+      598*
+      599*   S: $info
+      600*
+      601*   T: In response to an operator "rcf add cpu CPUTAG" command, or at bootload
+      602*   time.
+      603*
+      604*   M: The system has successfully added the CPU whose tag is CPUTAG to the
+      605*   configuration.
+      606*
+      607*   A: $ignore
+      608*
+      609*   Message:
+      610*   start_cpu: CPU CPUTAG: Model #: MODEL; Serial #: SERIAL; Ship date: YY/MM/DD.
+      611*
+      612*   S: $log
+      613*
+      614*   T: When a DPS8 CPU, whose tag is CPUTAG is added to the system.
+      615*
+      616*   M: The MODEL, SERIAL and YY/MM/DD information is read from the DPS8 cpu's ID PROM.
+      617*   It is intended to be used as historical information
+      618*   for identifing CPUs, regardless of what their current tag is assigned as.
+      619*
+      620*   A: $ignore
+      621*
+      622*   Message:
+      623*   start_cpu: CPU CPUTAG data switches are XXXXXXXXXXXX, should be YYYYYYYYYYYY
+      624*
+      625*   S: $info
+      626*
+      627*   T: In response to an "rcf add cpu CPUTAG" command
+      628*
+      629*   M: The data switches on the CPU indicated are not set properly. The proper
+      630*   value is given.
+      631*
+      632*   A: The incorrect value will prevent returning to BCE on that CPU by means
+      633*   of EXECUTE SWITCHES. Certain incorrect values will activate software
+      634*   debugging traps. The switches should be corrected. This can be done
+      635*   while the CPU is running.
+      636*
+      637*   Message:
+      638*   start_cpu: Unable to run on CPU x ERRORMESSAGE
+      639*
+      640*   S: $crash
+      641*
+      642*   T: In response to an "rcf add cpu CPUTAG" command or at bootload
+      643*
+      644*   M: After adding a CPU, the system was unable to run on that CPU.
+      645*   This indicates hardware or software failure.
+      646*
+      647*   A: $recover
+      648*
+      649*   END MESSAGE DOCUMENTATION */
+      650      end start_cpu;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  start_cpu.pl1                     >spec>install>1110>start_cpu.pl1
+574          1    10/18/88  1206.7  rcerr.incl.pl1                    >ldd>include>rcerr.incl.pl1
+576          2    10/14/83  0957.2  config_cpu_card.incl.pl1          >ldd>include>config_cpu_card.incl.pl1
+578          3    04/30/87  1513.7  flagbox.incl.pl1                  >ldd>include>flagbox.incl.pl1
+580          4    10/12/83  0943.5  scs.incl.pl1                      >ldd>include>scs.incl.pl1
+582          5    06/10/82  1045.2  rsw.incl.pl1                      >ldd>include>rsw.incl.pl1
+584          6    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+586          7    09/14/76  0759.8  sdw.incl.pl1                      >ldd>include>sdw.incl.pl1
+588          8    06/22/81  1815.3  fault_vector.incl.pl1             >ldd>include>fault_vector.incl.pl1
+590          9    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+592         10    06/19/81  2115.0  system_types.incl.pl1             >ldd>include>system_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ADP_SYSTEM                             constant        fixed bin(17,0)          initial dcl 10-4 ref 203
+ANNOUNCE                        000036 constant        fixed bin(17,0)          initial dcl 9-7 set ref 545* 567*
+CPU_CARD_WORD                   000020 constant        char(4)                  initial dcl 2-24 set ref 534*
+CRASH                           000043 constant        fixed bin(17,0)          initial dcl 9-7 set ref 553*
+FAULT_NO_LUF                           constant        fixed bin(17,0)          initial dcl 8-20 ref 362 363 475
+FAULT_NO_ONC                           constant        fixed bin(17,0)          initial dcl 8-20 ref 359 360 474
+FAULT_NO_SUF                           constant        fixed bin(17,0)          initial dcl 8-20 ref 356 357 473
+FAULT_NO_TRB                           constant        fixed bin(17,0)          initial dcl 8-20 ref 353 354 472
+L68_prt_sze                     000156 automatic       fixed bin(24,0)          dcl 41 set ref 424* 425* 425 429
+LETTERS                         000022 constant        char(8)                  initial packed unaligned dcl 87 ref 545 545 553 553
+                                                                                  563 563 567 567
+LOG                             000037 constant        fixed bin(17,0)          initial dcl 9-7 set ref 563*
+abs_ptr                         000100 automatic       pointer                  dcl 41 set ref 169* 209* 211*
+abs_seg$                        000010 external static fixed bin(17,0)          dcl 89 set ref 169 289
+abs_seg_p                       000132 automatic       pointer                  dcl 41 set ref 289* 299* 300 487 491* 518*
+access                    1(15)        based           structure                array level 2 in structure "sdwa" packed packed
+                                                                                  unaligned dcl 7-24 in procedure "start_cpu" ref
+                                                                                  197
+access                    1(15) 000226 automatic       structure                level 2 in structure "tsdw1" packed packed unaligned
+                                                                                  dcl 79 in procedure "start_cpu"
+access                    1(15)        based           structure                level 2 in structure "sdw" packed packed unaligned
+                                                                                  dcl 7-5 in procedure "start_cpu" set ref 197*
+add                             000206 automatic       bit(24)                  array level 2 packed packed unaligned dcl 79 set ref
+                                                                                  298*
+addr                                                   builtin function         dcl 166 ref 169 170 172 195 197 197 197 198 201 216
+                                                                                  220 260 271 289 290 299 299 332 338 339 339 349
+                                                                                  385 392 394 396 398 403 405 407 409 411 414 416
+                                                                                  486 491 491 518 518 540 546
+apte                                   based           structure                level 1 dcl 6-7
+aptep                           000236 automatic       pointer                  dcl 6-5 set ref 177* 178 178 179 180 181 182 183 184
+                                                                                  185 186 187* 192 195 211* 276 529
+asteps                   12            based           structure                level 2 packed packed unaligned dcl 6-7
+base                            000171 automatic       fixed bin(17,0)          dcl 41 in procedure "start_cpu" set ref 293* 294
+                                                                                  295* 298 301 510* 511 512* 513
+base                      0(18) 000162 external static fixed bin(17,0)          array level 2 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 4-6 in procedure
+                                                                                  "start_cpu" ref 293 433
+based_switches                         based           bit(36)                  array dcl 79 ref 492 493
+baseno                                                 builtin function         dcl 166 ref 197 201
+bin                                                    builtin function         dcl 166 ref 185 201 287 298 486 486
+bit                                                    builtin function         dcl 166 ref 185 198 287 298 439
+bool                                                   builtin function         dcl 166 ref 493
+bound                     1(01)        based           bit(14)                  level 2 in structure "sdw" packed packed unaligned
+                                                                                  dcl 7-5 in procedure "start_cpu" set ref 198*
+bound                     1(01) 000226 automatic       bit(14)                  level 2 in structure "tsdw1" packed packed unaligned
+                                                                                  dcl 79 in procedure "start_cpu" set ref 287*
+cmpp                            000150 automatic       pointer                  dcl 41 set ref 385* 387 414* 431 442 446 447 449 451
+                                                                                  453
+config_$find_2                  000110 constant        entry                    external dcl 121 ref 534
+config_$update                  000112 constant        entry                    external dcl 121 ref 537
+controller_port           0(33)        based           fixed bin(3,0)           level 2 in structure "pdata" packed packed unsigned
+                                                                                  unaligned dcl 161 in procedure "start_cpu" ref 308
+                                                                                  310 313 314 370
+controller_port           0(33)        based           fixed bin(3,0)           level 2 in structure "opdata" packed packed unsigned
+                                                                                  unaligned dcl 163 in procedure "start_cpu" ref 250
+cow                       1     000166 external static structure                array level 2 dcl 4-65 set ref 339 339
+cpu_card                               based           structure                level 1 dcl 2-6
+cpu_cardp                       000230 automatic       pointer                  dcl 2-4 set ref 534* 536
+cpu_mask                        000173 automatic       bit(8)                   dcl 41 set ref 227* 228* 229* 549* 550* 551*
+cpu_model                       000174 automatic       char(13)                 dcl 41 set ref 556* 563*
+cpu_num                   0(33)        based           fixed bin(3,0)           level 2 packed packed unsigned unaligned dcl 5-13
+                                                                                  set ref 272*
+cpu_serial                      000200 automatic       char(13)                 dcl 41 set ref 558* 563*
+cpu_ship_date                   000204 automatic       char(8)                  dcl 41 set ref 560* 563*
+cpu_type                  0(04)        based           fixed bin(2,0)           level 2 in structure "dps8_rsw_2" packed packed
+                                                                                  unsigned unaligned dcl 5-25 in procedure
+                                                                                  "start_cpu" ref 387
+cpu_type                  0(07)        based           fixed bin(2,0)           level 2 in structure "pdata" packed packed unsigned
+                                                                                  unaligned dcl 161 in procedure "start_cpu" set ref
+                                                                                  541* 546
+cpu_type                  0(04)        based           fixed bin(2,0)           level 2 in structure "dps_rsw_2" packed packed
+                                                                                  unsigned unaligned dcl 5-13 in procedure
+                                                                                  "start_cpu" ref 390 541
+dbr                      44            based           fixed bin(71,0)          level 2 dcl 6-7 ref 276 529
+default_procs_required
+                          1(10)        based           bit(1)                   level 3 packed packed unaligned dcl 6-7 set ref 182*
+df                        0(33) 000226 automatic       bit(1)                   level 2 packed packed unaligned dcl 79 set ref 284*
+divide                                                 builtin function         dcl 166 ref 198 199 199 425 439
+dps8_add                        000160 automatic       bit(1)                   dcl 41 set ref 391* 402* 435
+dps8_mem_size_table             000000 constant        fixed bin(24,0)          initial array dcl 5-63 ref 429 435
+dps8_rsw_2                             based           structure                level 1 dcl 5-25
+dps_mem_size_table              000010 constant        fixed bin(24,0)          initial array dcl 5-54 ref 424 437
+dps_rsw_2                              based           structure                level 1 dcl 5-13
+dseg$                           000020 external static fixed bin(17,0)          dcl 89 set ref 197
+eligible                  1(06)        based           bit(1)                   level 3 packed packed unaligned dcl 6-7 set ref 180*
+expanded_port             0(30)        based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 161 in procedure "start_cpu" ref 312
+expanded_port             0(30)        based           bit(1)                   level 2 in structure "opdata" packed packed
+                                                                                  unaligned dcl 163 in procedure "start_cpu" ref 250
+expander_port             0(31)        based           fixed bin(2,0)           level 2 packed packed unsigned unaligned dcl 161 ref
+                                                                                  313
+fault_vector$                   000022 external static fixed bin(17,0)          dcl 89 set ref 349
+fgbx                                   based           structure                level 1 dcl 3-24
+fgbxp                           000232 automatic       pointer                  dcl 3-22 set ref 172* 529
+fixed                                                  builtin function         dcl 166 ref 197
+flagbox$                        000160 external static fixed bin(17,0)          dcl 3-21 set ref 172
+flags                     1            based           structure                level 2 packed packed unaligned dcl 6-7
+found                           000157 automatic       bit(1)                   dcl 41 set ref 418* 429* 439* 449* 451* 453* 455*
+                                                                                  459 488* 489 501*
+found_mask                      000117 automatic       bit(1)                   dcl 41 set ref 217* 219 224* 257
+four                      0(13)        based           bit(1)                   array level 3 packed packed unaligned dcl 5-47 ref
+                                                                                  455
+fpair                   100            based           structure                array level 2 dcl 8-6
+freecore                        000152 constant        entry                    external dcl 121 ref 512 513
+fv                                     based           structure                level 1 dcl 8-6
+fv_iv_copy                             based           fixed bin(17,0)          array dcl 79 set ref 300* 300
+fv_iv_p                         000134 automatic       pointer                  dcl 41 set ref 290* 300 486
+fv_iv_template$fv_iv_template   000040 external static fixed bin(17,0)          dcl 89 set ref 290
+fv_iv_template$rsw_data         000042 external static bit(36)                  array dcl 89 set ref 486
+fvp                             000240 automatic       pointer                  dcl 8-4 set ref 349* 350 351 353 354 356 357 359 360
+                                                                                  362 363 471 472 473 474 475
+get_ptrs_$given_astep           000140 constant        entry                    external dcl 121 ref 196
+half                      0(14)        based           bit(1)                   array level 3 packed packed unaligned dcl 5-47 ref
+                                                                                  425
+hc_dbr                   56            based           bit(72)                  level 2 dcl 3-24 set ref 529*
+i                               000131 automatic       fixed bin(17,0)          dcl 41 set ref 202* 203 203* 292* 293 294 297 298
+                                                                                  299 299 301* 323* 324 324* 337* 338 339 339 339*
+                                                                                  372* 419* 420 420 424 425 429 431 433 435 437 439
+                                                                                  442 446 447 449 451 453 455 455 455* 489* 490 491
+                                                                                  491* 509* 510*
+id_prom                   0(13)        based           bit(1)                   level 2 packed packed unaligned dcl 5-25 ref 546
+idle                      1(07)        based           bit(1)                   level 3 packed packed unaligned dcl 6-7 set ref 181*
+idle_dsegs$                     000014 external static bit(72)                  array dcl 89 set ref 208*
+info                      2     000162 external static structure                array level 2 dcl 4-6
+init_processor$controller_data  000062 external static bit(8)                   dcl 89 set ref 322* 324*
+init_processor$first_tra        000050 external static bit(36)                  dcl 89 ref 351
+init_processor$lockup_tra       000060 external static bit(36)                  dcl 89 ref 363
+init_processor$new_dbr          000046 external static fixed bin(71,0)          dcl 89 set ref 276*
+init_processor$onc_tra          000056 external static bit(36)                  dcl 89 ref 360
+init_processor$start_bootload_cpu
+                                000066 constant        entry                    external dcl 121 ref 528
+init_processor$startup_tra      000054 external static bit(36)                  dcl 89 ref 357
+init_processor$trouble_tra      000052 external static bit(36)                  dcl 89 ref 354
+init_processor$wait_flag        000044 external static fixed bin(35,0)          dcl 89 set ref 320* 372 375 460* 465* 499*
+initialize_enable         0(04)        based           bit(1)                   array level 3 packed packed unaligned dcl 5-39 ref
+                                                                                  451
+int_vec_save                    000124 automatic       bit(36)                  dcl 41 set ref 350* 471
+interlace_enable          0(05)        based           bit(1)                   array level 3 packed packed unaligned dcl 5-39 ref
+                                                                                  453 455
+interlace_info                         based           bit(1)                   array level 2 packed packed unaligned dcl 5-25 ref
+                                                                                  455
+interrupt_cpu             0(05)        based           bit(1)                   level 2 in structure "opdata" packed packed
+                                                                                  unaligned dcl 163 in procedure "start_cpu" set ref
+                                                                                  222 238*
+interrupt_cpu             0(05)        based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 161 in procedure "start_cpu" set ref 218 266*
+ipair                                  based           structure                array level 2 dcl 8-6
+loaded                    1(05)        based           bit(1)                   level 3 packed packed unaligned dcl 6-7 set ref 179*
+lockup_save                     000130 automatic       bit(36)                  dcl 41 set ref 362* 475
+mask_instruction$rmcm           000106 constant        entry                    external dcl 121 ref 264
+mask_instruction$smcm           000104 constant        entry                    external dcl 121 ref 262
+mask_temp                       000122 automatic       fixed bin(71,0)          dcl 41 set ref 236* 246* 329* 481*
+mem_size                  0(06)        based           fixed bin(3,0)           array level 3 packed packed unsigned unaligned
+                                                                                  dcl 5-39 set ref 424 429 431* 435 437 446*
+offline                   2(01) 000162 external static bit(1)                   array level 3 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 4-6 in procedure
+                                                                                  "start_cpu" ref 420
+offline                   0(01) 000164 external static bit(1)                   array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unaligned dcl 4-35 in procedure
+                                                                                  "start_cpu" set ref 203
+old_pdp                         000114 automatic       pointer                  dcl 41 set ref 220* 222 226 238 245 250 250 250 338*
+                                                                                  339
+old_tag                         000116 automatic       fixed bin(3,0)           dcl 41 set ref 219* 220 222 228 239 241 243 252*
+onc_save                        000127 automatic       bit(36)                  dcl 41 set ref 359* 474
+online                    2     000162 external static bit(1)                   array level 3 in structure "scs$controller_data"
+                                                                                  packed packed unaligned dcl 4-6 in procedure
+                                                                                  "start_cpu" ref 294 324 420
+online                                 based           bit(1)                   level 2 in structure "pdata" packed packed unaligned
+                                                                                  dcl 161 in procedure "start_cpu" ref 339
+online                                 based           bit(1)                   level 2 in structure "opdata" packed packed
+                                                                                  unaligned dcl 163 in procedure "start_cpu" ref 226
+                                                                                  245 250
+online                          000164 external static bit(1)                   array level 2 in structure "scs$processor_data"
+                                                                                  packed packed unaligned dcl 4-35 in procedure
+                                                                                  "start_cpu" set ref 203
+opdata                                 based           structure                level 1 dcl 163
+pc_abs$remove_core              000150 constant        entry                    external dcl 121 ref 295
+pc_wired$wire_wait              000146 constant        entry                    external dcl 121 ref 199
+pdata                                  based           structure                level 1 dcl 161
+pdp                             000112 automatic       pointer                  dcl 41 set ref 216* 218 266 308 310 312 313 313 314
+                                                                                  370 541 546
+pds$processid                   000024 external static bit(36)                  dcl 89 ref 332
+port_assignment                        based           bit(3)                   array level 3 packed packed unaligned dcl 5-39 set
+                                                                                  ref 439 442* 447*
+port_enable               0(03)        based           bit(1)                   array level 3 packed packed unaligned dcl 5-39 ref
+                                                                                  449
+port_info                              based           structure                array level 2 in structure "rsw_1_3" packed packed
+                                                                                  unaligned dcl 5-39 in procedure "start_cpu"
+port_info                 0(13)        based           structure                array level 2 in structure "rsw_4" packed packed
+                                                                                  unaligned dcl 5-47 in procedure "start_cpu"
+prds                     13            based           bit(18)                  level 3 packed packed unaligned dcl 6-7 ref 195
+prds$                           000016 external static fixed bin(17,0)          dcl 89 set ref 197 201
+prds$idle_ptr                   000026 external static pointer                  dcl 89 set ref 192*
+prds$processor_pattern          000032 external static bit(8)                   dcl 89 ref 335
+prds$processor_tag              000030 external static fixed bin(3,0)           dcl 89 ref 339
+prds_astep                      000106 automatic       pointer                  dcl 41 set ref 195* 196* 199*
+prds_init                       000154 constant        entry                    external dcl 121 ref 211
+prds_no                         000110 automatic       fixed bin(18,0)          dcl 41 set ref 201* 203* 203 206* 206 208
+prds_sdw                        000104 automatic       bit(72)                  dcl 41 set ref 170 196* 197 198 208
+prds_sdwp                       000102 automatic       pointer                  dcl 41 set ref 170* 209*
+privileged_mode_ut$cioc         000124 constant        entry                    external dcl 121 ref 339
+privileged_mode_ut$read_id_prom 000132 constant        entry                    external dcl 121 ref 556 558 560
+privileged_mode_ut$smic         000122 constant        entry                    external dcl 121 ref 368
+privileged_mode_ut$swap_sdw     000120 constant        entry                    external dcl 121 ref 209 299 491 518
+privileged_mode_ut$unwire_unmask
+                                000130 constant        entry                    external dcl 121 ref 246 481
+privileged_mode_ut$wire_and_mask
+                                000126 constant        entry                    external dcl 121 ref 236 329
+processid                 3            based           bit(36)                  level 2 dcl 6-7 set ref 178*
+procs_required           63            based           bit(8)                   level 2 packed packed unaligned dcl 6-7 set ref 183*
+                                                                                  184*
+ptp                             000120 automatic       pointer                  dcl 41 set ref 236* 246* 329* 481*
+ptr                                                    builtin function         dcl 166 ref 195 487
+pxss$thread_in_idle             000156 constant        entry                    external dcl 121 ref 187
+rcerr_addcpu_bad_switches              constant        fixed bin(17,0)          initial dcl 1-16 ref 383 497
+rcerr_addcpu_no_response               constant        fixed bin(17,0)          initial dcl 1-16 ref 320 372 460 485
+rcerr_sprq_failed                      constant        fixed bin(17,0)          initial dcl 1-48 ref 232
+rcode                                  parameter       fixed bin(35,0)          dcl 38 set ref 35 232* 375* 383 485 497* 519 571*
+read                      1(15) 000226 automatic       bit(1)                   level 3 packed packed unaligned dcl 79 set ref 285*
+rel                                                    builtin function         dcl 166 ref 178 486 486
+remember                        000161 automatic       fixed bin(17,0)          array dcl 41 set ref 282* 301* 490 510
+rsw1_68p                        000142 automatic       pointer                  dcl 41 set ref 394* 405* 424 455
+rsw1_8p                         000144 automatic       pointer                  dcl 41 set ref 396* 407* 429
+rsw4p                           000146 automatic       pointer                  dcl 41 set ref 392* 403* 425 455
+rsw_1_3                                based           structure                level 1 dcl 5-39
+rsw_4                                  based           structure                level 1 dcl 5-47
+rswp                            000234 automatic       pointer                  dcl 5-11 set ref 271* 272 390 411* 540* 541 542*
+scr_util$reassign_mask          000072 constant        entry                    external dcl 121 ref 252 257
+scr_util$set_export_enable      000102 constant        entry                    external dcl 121 ref 313
+scr_util$set_mask               000074 constant        entry                    external dcl 121 ref 308 370
+scr_util$set_port_enable        000076 constant        entry                    external dcl 121 ref 310
+scr_util$update_export_xipmsk   000100 constant        entry                    external dcl 121 ref 250 314
+scs$bos_processor_tag           000212 external static fixed bin(3,0)           dcl 4-137 ref 192 222 278 544
+scs$connect_lock                000206 external static bit(36)                  dcl 4-132 set ref 332 477 477
+scs$controller_data             000162 external static structure                array level 1 dcl 4-6
+scs$cow                         000166 external static structure                array level 1 dcl 4-65
+scs$idle_aptep                  000204 external static pointer                  array packed unaligned dcl 4-130 ref 177
+scs$interrupt_controller        000214 external static fixed bin(3,0)           dcl 4-141 set ref 260 308* 370*
+scs$mask_ptr                    000202 external static pointer                  array packed unaligned dcl 4-110 set ref 239* 239
+                                                                                  260*
+scs$nprocessors                 000210 external static fixed bin(17,0)          dcl 4-136 set ref 538* 538
+scs$port_addressing_word        000224 external static bit(3)                   array dcl 4-148 set ref 260
+scs$processor                   000220 external static bit(8)                   dcl 4-143 ref 335
+scs$processor_data              000164 external static structure                array level 1 dcl 4-35 set ref 216 220 338
+scs$processor_data_switch_value 000236 external static bit(36)                  dcl 4-162 set ref 567 567*
+scs$processor_start_int_no      000216 external static fixed bin(5,0)           dcl 4-142 ref 350 351 471
+scs$processor_start_mask        000172 external static bit(72)                  dcl 4-95 set ref 370*
+scs$processor_start_pattern     000174 external static bit(36)                  dcl 4-98 set ref 368*
+scs$processor_start_wait        000222 external static bit(8)                   dcl 4-144 set ref 335* 344
+scs$processor_switch_compare    000232 external static bit(36)                  array dcl 4-159 set ref 384* 384 385 387 414 493*
+                                                                                  495* 495
+scs$processor_switch_data       000226 external static bit(36)                  array dcl 4-157 set ref 396 398 403 405 411 416 540
+                                                                                  546 567 567*
+scs$processor_switch_mask       000234 external static bit(36)                  array dcl 4-160 ref 384 495
+scs$processor_switch_template   000230 external static bit(36)                  array dcl 4-158 set ref 271 392 394 407 409 493
+scs$read_mask                   000200 external static bit(36)                  array dcl 4-109 set ref 243* 243 264*
+scs$set_mask                    000176 external static bit(36)                  array dcl 4-108 set ref 241* 241 262*
+scs$sys_level                   000170 external static bit(72)                  dcl 4-93 set ref 308*
+scu                     100            based           bit(36)                  array level 3 in structure "fv" dcl 8-6 in procedure
+                                                                                  "start_cpu" set ref 353 354* 356 357* 359 360* 362
+                                                                                  363* 472* 473* 474* 475*
+scu                                    based           bit(36)                  array level 3 in structure "fv" dcl 8-6 in procedure
+                                                                                  "start_cpu" set ref 350 351* 471*
+sdw                                    based           structure                level 1 dcl 7-5
+sdwa                                   based           structure                array level 1 dcl 7-24
+set_procs_required              000144 constant        entry                    external dcl 121 ref 229 248 551 562
+sst_seg$                        000012 external static fixed bin(17,0)          dcl 89 set ref 195
+stac                                                   builtin function         dcl 166 ref 332
+stacq                                                  builtin function         dcl 166 ref 477
+startup_save                    000126 automatic       bit(36)                  dcl 41 set ref 356* 473
+state                     3            based           char(4)                  level 2 in structure "cpu_card" dcl 2-6 in procedure
+                                                                                  "start_cpu" set ref 536*
+state                     1(18)        based           bit(18)                  level 3 in structure "apte" packed packed unaligned
+                                                                                  dcl 6-7 in procedure "start_cpu" set ref 185*
+stop_cpu$destroy_1              000070 constant        entry                    external dcl 121 ref 520
+string                                                 builtin function         dcl 166 set ref 283* 517*
+substr                                                 builtin function         dcl 166 set ref 184* 228* 324* 545 545 550* 553 553
+                                                                                  563 563 567 567
+switch_rel                      000136 automatic       fixed bin(18,0)          dcl 41 set ref 486* 487
+switchp                         000140 automatic       pointer                  dcl 41 set ref 398* 409* 455 487* 492 493
+sys_info$system_type            000064 external static fixed bin(17,0)          dcl 89 ref 203
+syserr                          000114 constant        entry                    external dcl 121 ref 545 563 567
+syserr$error_code               000116 constant        entry                    external dcl 121 ref 553
+tag                                    parameter       fixed bin(3,0)           dcl 38 set ref 35 177 184 192 202 211* 216 239 241
+                                                                                  243 252* 257* 260 262 264 272 278 520* 534 542*
+                                                                                  544 545 545 550 553 553 563 563 567 567
+tbase                           000154 automatic       fixed bin(24,0)          dcl 41 set ref 433* 439
+tc_data$ncpu                    000036 external static fixed bin(17,0)          dcl 89 set ref 539* 539
+tc_data$prds_length             000034 external static fixed bin(18,0)          dcl 89 ref 198 199 199
+tcode                           000172 automatic       fixed bin(35,0)          dcl 41 set ref 229* 231 295* 296 520* 551* 553 553*
+timax                     7            based           fixed bin(35,0)          level 2 dcl 6-7 set ref 186*
+trgp                            000152 automatic       pointer                  dcl 41 set ref 416* 435 437 439
+trouble_save                    000125 automatic       bit(36)                  dcl 41 set ref 353* 472
+tsdw                            000206 automatic       structure                array level 1 dcl 79 set ref 297* 299 299 491 491
+tsdw1                           000226 automatic       structure                level 1 dcl 79 set ref 283* 297 517* 518 518
+tsize                           000155 automatic       fixed bin(24,0)          dcl 41 set ref 435* 437* 439
+unpaged                   1(19) 000226 automatic       bit(1)                   level 2 packed packed unaligned dcl 79 set ref 288*
+unspec                                                 builtin function         dcl 166 ref 492 529
+validate_cpu_card               000134 constant        entry                    external dcl 121 ref 542
+wire_proc$unwire_me             000142 constant        entry                    external dcl 121 ref 247 480
+wire_proc$wire_me               000136 constant        entry                    external dcl 121 ref 235 330
+write                     1(17) 000226 automatic       bit(1)                   level 3 packed packed unaligned dcl 79 set ref 286*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 9-7
+BULK_PORT                              internal static fixed bin(17,0)          initial dcl 4-176
+CPU_PORT                               internal static fixed bin(17,0)          initial dcl 4-176
+FAULT_NO_ACV                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_CMD                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_CON                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DF0                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DF1                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DF2                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DF3                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DIV                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_DRL                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_EXF                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_F1                            internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_F2                            internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_F3                            internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_IPR                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_MME                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_MME2                          internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_MME3                          internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_MME4                          internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_OFL                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_PAR                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_SDF                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_STR                           internal static fixed bin(17,0)          initial dcl 8-20
+FAULT_NO_TRO                           internal static fixed bin(17,0)          initial dcl 8-20
+FLAGBOX_SENTINEL                       internal static char(32)                 initial packed unaligned dcl 3-51
+IOM_PORT                               internal static fixed bin(17,0)          initial dcl 4-176
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 9-7
+L68_SYSTEM                             internal static fixed bin(17,0)          initial dcl 10-3
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 9-7
+SYSTEM_TYPE_NAME                       internal static char(8)                  initial array packed unaligned dcl 10-6
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 9-7
+rcerr_addcpu_amoff                     internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addcpu_enable                    internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addcpu_gcos                      internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addcpu_lockup                    internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addcpu_startup                   internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addcpu_trouble                   internal static fixed bin(17,0)          initial dcl 1-16
+rcerr_addscu_bad_mask                  internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_bigconfig                 internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_dup_mask                  internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_enable                    internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_fault                     internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_manual                    internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_memoverlap                internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_no_mask                   internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_oldexpand                 internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_size                      internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_addscu_switches                  internal static fixed bin(17,0)          initial dcl 1-31
+rcerr_delcpu_last                      internal static fixed bin(17,0)          initial dcl 1-26
+rcerr_delcpu_no_good_blcpu             internal static fixed bin(17,0)          initial dcl 1-26
+rcerr_delcpu_no_stop                   internal static fixed bin(17,0)          initial dcl 1-26
+rcerr_delmain_abs_wired                internal static fixed bin(17,0)          initial dcl 1-44
+rcerr_delmain_nomem                    internal static fixed bin(17,0)          initial dcl 1-44
+rcerr_isolts_bad_switches              internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_bootload_scu              internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_cpu_online                internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_illegal_cpu               internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_illegal_scu               internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_lda_fail                  internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_locked                    internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_no_config                 internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_no_mask                   internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_no_response               internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_no_str_flt                internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_not                       internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_scu_not                   internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_two_scu                   internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_wrong_cell                internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_wrong_scu                 internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_isolts_wrong_scu_cell            internal static fixed bin(17,0)          initial dcl 1-57
+rcerr_locked                           internal static fixed bin(17,0)          initial dcl 1-48
+rcerr_no_config                        internal static fixed bin(17,0)          initial dcl 1-48
+rcerr_not_online                       internal static fixed bin(17,0)          initial dcl 1-48
+rcerr_online                           internal static fixed bin(17,0)          initial dcl 1-48
+rcerr_range                            internal static fixed bin(17,0)          initial dcl 1-48
+rsw_valid                              internal static fixed bin(17,0)          initial array dcl 5-66
+scs$bos_restart_flags                  external static bit(8)                   dcl 4-135
+scs$cam_pair                           external static fixed bin(71,0)          dcl 4-103
+scs$cam_wait                           external static bit(8)                   dcl 4-104
+scs$cfg_data                           external static fixed bin(71,0)          array dcl 4-150
+scs$cfg_data_save                      external static fixed bin(71,0)          dcl 4-152
+scs$controller_config_size             external static fixed bin(14,0)          array dcl 4-164
+scs$cow_ptrs                           external static structure                array level 1 dcl 4-77
+scs$cpu_test_mask                      external static bit(72)                  dcl 4-96
+scs$cpu_test_pattern                   external static bit(36)                  dcl 4-99
+scs$cycle_priority_template            external static bit(7)                   dcl 4-172
+scs$expanded_ports                     external static bit(1)                   array packed unaligned dcl 4-154
+scs$fast_cam_pending                   external static bit(36)                  array dcl 4-140
+scs$faults_initialized                 external static bit(1)                   dcl 4-138
+scs$number_of_masks                    external static fixed bin(17,0)          dcl 4-97
+scs$open_level                         external static bit(72)                  dcl 4-94
+scs$port_data                          external static structure                array level 1 dcl 4-56
+scs$processor_test_data                external static structure                level 1 dcl 4-114
+scs$reconfig_general_cow               external static structure                level 1 dcl 4-82
+scs$reconfig_lock                      external static bit(36)                  dcl 4-133
+scs$reconfig_locker_id                 external static char(32)                 dcl 4-167
+scs$scas_page_table                    external static bit(36)                  array dcl 4-169
+scs$set_cycle_switches                 external static bit(1)                   dcl 4-173
+scs$sys_trouble_pending                external static bit(1)                   dcl 4-139
+scs$trouble_dbrs                       automatic       fixed bin(71,0)          array dcl 4-146
+scs$trouble_flags                      external static bit(8)                   dcl 4-134
+sdwp                                   automatic       pointer                  dcl 7-3
+switch_w1                              based           structure                level 1 dcl 1-76
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+start_cpu                       000127 constant        entry                    external dcl 35
+to_loop                         001324 constant        label                    dcl 372 ref 462
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3652        4112    2574        3662
+Length      4660    2574       240         532    1055           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+start_cpu                           258 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+start_cpu                000100 abs_ptr                     start_cpu
+                         000102 prds_sdwp                   start_cpu
+                         000104 prds_sdw                    start_cpu
+                         000106 prds_astep                  start_cpu
+                         000110 prds_no                     start_cpu
+                         000112 pdp                         start_cpu
+                         000114 old_pdp                     start_cpu
+                         000116 old_tag                     start_cpu
+                         000117 found_mask                  start_cpu
+                         000120 ptp                         start_cpu
+                         000122 mask_temp                   start_cpu
+                         000124 int_vec_save                start_cpu
+                         000125 trouble_save                start_cpu
+                         000126 startup_save                start_cpu
+                         000127 onc_save                    start_cpu
+                         000130 lockup_save                 start_cpu
+                         000131 i                           start_cpu
+                         000132 abs_seg_p                   start_cpu
+                         000134 fv_iv_p                     start_cpu
+                         000136 switch_rel                  start_cpu
+                         000140 switchp                     start_cpu
+                         000142 rsw1_68p                    start_cpu
+                         000144 rsw1_8p                     start_cpu
+                         000146 rsw4p                       start_cpu
+                         000150 cmpp                        start_cpu
+                         000152 trgp                        start_cpu
+                         000154 tbase                       start_cpu
+                         000155 tsize                       start_cpu
+                         000156 L68_prt_sze                 start_cpu
+                         000157 found                       start_cpu
+                         000160 dps8_add                    start_cpu
+                         000161 remember                    start_cpu
+                         000171 base                        start_cpu
+                         000172 tcode                       start_cpu
+                         000173 cpu_mask                    start_cpu
+                         000174 cpu_model                   start_cpu
+                         000200 cpu_serial                  start_cpu
+                         000204 cpu_ship_date               start_cpu
+                         000206 tsdw                        start_cpu
+                         000226 tsdw1                       start_cpu
+                         000230 cpu_cardp                   start_cpu
+                         000232 fgbxp                       start_cpu
+                         000234 rswp                        start_cpu
+                         000236 aptep                       start_cpu
+                         000240 fvp                         start_cpu
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          stac_mac            ext_entry           stacq_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+config_$find_2                config_$update                freecore                      get_ptrs_$given_astep
+init_processor$start_bootload_cpu                           mask_instruction$rmcm         mask_instruction$smcm
+pc_abs$remove_core            pc_wired$wire_wait            prds_init                     privileged_mode_ut$cioc
+privileged_mode_ut$read_id_prom                             privileged_mode_ut$smic       privileged_mode_ut$swap_sdw
+privileged_mode_ut$unwire_unmask                            privileged_mode_ut$wire_and_mask
+pxss$thread_in_idle           scr_util$reassign_mask        scr_util$set_export_enable    scr_util$set_mask
+scr_util$set_port_enable      scr_util$update_export_xipmsk set_procs_required            stop_cpu$destroy_1
+syserr                        syserr$error_code             validate_cpu_card             wire_proc$unwire_me
+wire_proc$wire_me
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+abs_seg$                      dseg$                         fault_vector$                 flagbox$
+fv_iv_template$fv_iv_template fv_iv_template$rsw_data       idle_dsegs$
+init_processor$controller_data                              init_processor$first_tra      init_processor$lockup_tra
+init_processor$new_dbr        init_processor$onc_tra        init_processor$startup_tra    init_processor$trouble_tra
+init_processor$wait_flag      pds$processid                 prds$                         prds$idle_ptr
+prds$processor_pattern        prds$processor_tag            scs$bos_processor_tag         scs$connect_lock
+scs$controller_data           scs$cow                       scs$idle_aptep                scs$interrupt_controller
+scs$mask_ptr                  scs$nprocessors               scs$port_addressing_word      scs$processor
+scs$processor_data            scs$processor_data_switch_value                             scs$processor_start_int_no
+scs$processor_start_mask      scs$processor_start_pattern   scs$processor_start_wait      scs$processor_switch_compare
+scs$processor_switch_data     scs$processor_switch_mask     scs$processor_switch_template scs$read_mask
+scs$set_mask                  scs$sys_level                 sst_seg$                      sys_info$system_type
+tc_data$ncpu                  tc_data$prds_length
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     35 000123       169 000134       170 000136       172 000140       177 000142       178 000146       179 000153
+    180 000155       181 000157       182 000161       183 000163       184 000165       185 000170       186 000175
+    187 000177       192 000205       195 000215       196 000224       197 000237       198 000260       199 000273
+    201 000313       202 000321       203 000332       206 000344       207 000346       208 000350       209 000360
+    211 000370       216 000404       217 000411       218 000412       219 000415       220 000423       222 000426
+    224 000433       226 000435       227 000440       228 000441       229 000444       231 000454       232 000456
+    233 000461       235 000462       236 000467       238 000500       239 000502       241 000510       243 000512
+    245 000514       246 000517       247 000527       248 000534       250 000550       252 000566       255 000600
+    257 000602       260 000620       262 000626       264 000635       266 000646       271 000650       272 000654
+    276 000661       278 000664       282 000667       283 000700       284 000702       285 000704       286 000706
+    287 000710       288 000720       289 000722       290 000725       292 000727       293 000733       294 000742
+    295 000750       296 000764       297 000766       298 000774       299 001005       300 001020       301 001026
+    304 001031       308 001033       310 001051       312 001067       313 001072       314 001116       320 001130
+    322 001133       323 001134       324 001141       325 001152       329 001154       330 001165       332 001172
+    333 001201       335 001202       337 001206       338 001213       339 001216       342 001235       344 001237
+    345 001243       349 001244       350 001246       351 001252       353 001254       354 001257       356 001261
+    357 001264       359 001266       360 001271       362 001273       363 001276       368 001300       370 001306
+    372 001324       374 001335       375 001337       383 001343       384 001345       385 001363       387 001365
+    390 001373       391 001377       392 001401       394 001404       396 001407       398 001412       400 001415
+    402 001416       403 001417       405 001422       407 001425       409 001430       411 001433       414 001436
+    416 001441       418 001444       419 001445       420 001451       424 001460       425 001473       429 001506
+    431 001524       433 001530       435 001536       437 001551       439 001561       442 001577       444 001603
+    446 001604       447 001612       449 001615       451 001627       453 001635       455 001643       458 001664
+    459 001666       460 001670       462 001673       465 001674       471 001677       472 001703       473 001707
+    474 001712       475 001715       477 001720       480 001725       481 001731       485 001742       486 001746
+    487 001757       488 001762       489 001763       490 001772       491 001774       492 002011       493 002016
+    495 002034       497 002051       499 002054       501 002056       504 002060       509 002062       510 002067
+    511 002071       512 002072       513 002101       515 002113       517 002115       518 002117       519 002132
+    520 002135       521 002146       523 002147       528 002150       529 002154       534 002162       536 002201
+    537 002204       538 002211       539 002213       540 002214       541 002217       542 002224       544 002235
+    545 002242       546 002275       549 002306       550 002307       551 002314       553 002324       556 002364
+    558 002402       560 002421       562 002440       563 002454       567 002521       571 002565       572 002567
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,722 @@
+	COMPILATION LISTING OF SEGMENT makeknown_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1009.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /*
+       13*   Written April 1975 by R. Bratt
+       14*
+       15*   Last modified by:
+       16*
+       17*   R. Bratt October 1975 to initialize kstes as needed
+       18*   R. Bratt June 1975 to differentiate segno_in_use and invalidsegno conditions
+       19*   R. Bratt May 1976 to call garbage_collect_kst in an attempt to avoid kst overflow
+       20*   R. Bratt June 1976 to cause access to be recalculated when priv_init or allow_write are set
+       21*   M. Weaver March 1977 to add use_count parameter
+       22*   E. N. Kittlitz December 1980 to immediately activate directories.
+       23*   J. Bongiovanni, January 1983, to fix stack initiation bug
+       24*   E. N. Kittlitz, February 1983, for kst_util.
+       25*   E. N. Kittlitz, 831130, suspend vcpu during call to activate
+       26*   K. Loepere, October 1984, for control over directory activations (for
+       27*   performance; also has to do with centralizing references to
+       28*   validate_entryp).  Also deleted hdr and unused notion of object
+       29*   undetectability.
+       30**/
+       31 
+       32 
+       33 /****^  HISTORY COMMENTS:
+       34*  1) change(86-08-09,GDixon), approve(86-08-09,MCR7388),
+       35*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+       36*     Copy makeknown_info.entryp into kstep.entryp in every call, rather just in
+       37*     those calls which create the kst entry.  In calls which activate the
+       38*     segment, seg_fault$makeknown_activate will use this kste.entryp to
+       39*     reference the directory entry for the segment.  Also, document the
+       40*     restrictions which callers of makeknown_ must adhere to.
+       41*                                                   END HISTORY COMMENTS */
+       42 
+       43 
+       44 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       45 /*							       */
+       46 /* Function: makeknown_ is responsible for obtaining a segment number for    */
+       47 /* an object.  Whenever possible makeknown_ returns a segment number which   */
+       48 /* was previously assigned to the object.			       */
+       49 /*							       */
+       50 /* WARNING: In order to call makeknown_:			       */
+       51 /*  a) the directory containing the entry pointed to by		       */
+       52 /*     makeknown_info.entryp must be locked by the caller throughout the     */
+       53 /*     call to makeknown_.					       */
+       54 /*  b) after locking the directory and before calling makeknown_, the	       */
+       55 /*     caller must have validated makeknown_info.entryp to ensure that it    */
+       56 /*     points to the dir entry whose uid equals makeknown_.info.uid.	       */
+       57 /* One way to perform both functions is to call sum$getbranch or	       */
+       58 /* sum$getbranch_root_my.					       */
+       59 /*							       */
+       60 /* USAGE:  call makeknown_ (infop, segno, use_count, code);		       */
+       61 /*							       */
+       62 /* infop                [ptr] --- pointer to the makeknown_info structure    */
+       63 /*			    describing the object (input)	       */
+       64 /* segno     [fixed bin (17)] --- segment number (input/output)	       */
+       65 /* use_count [fixed bin (17)] --- updated usage count (output)	       */
+       66 /* code      [fixed bin (35)] --- status code (output)		       */
+       67 /*							       */
+       68 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       69 
+       70 /* format: style4 */
+       71 makeknown_:
+       72      procedure (a_makeknown_infop, a_segno, a_use_count, a_code);
+       73 
+       74 /* Parameters */
+       75 
+       76 dcl  a_code fixed bin (35);
+       77 dcl  a_makeknown_infop ptr;
+       78 dcl  a_segno fixed bin (17);
+       79 dcl  a_use_count fixed bin (17);
+       80 
+       81 /* Variables */
+       82 
+       83 dcl  code fixed bin (35);
+       84 dcl  hash_bucket fixed bin (17);
+       85 dcl  pkstep ptr;
+       86 dcl  ring fixed bin (3);
+       87 dcl  1 sdwi aligned like sdw_info;
+       88 dcl  segno fixed bin (17);
+       89 dcl  valid bit (1) aligned;
+       90 dcl  vcpu_suspend_1 fixed bin (71);
+       91 dcl  vcpu_suspend_2 fixed bin (71);
+       92 
+       93 /* External */
+       94 
+       95 dcl  dseg$ (0:4095) fixed bin (71) external;
+       96 dcl  error_table_$invalidsegno fixed bin (35) external static;
+       97 dcl  error_table_$nrmkst fixed bin (35) ext static;
+       98 dcl  error_table_$segknown fixed bin (35) external static;
+       99 dcl  error_table_$segno_in_use fixed bin (35) external static;
+      100 dcl  1 pds$transparent external aligned,
+      101        2 tms bit (1) unaligned,
+      102        2 tus bit (1) unaligned,
+      103        2 tpd bit (1) unaligned;
+      104 
+      105 /* Entries */
+      106 
+      107 dcl  fim_util$fim_v_time_calc_ext entry (fixed bin (71), fixed bin (71));
+      108 dcl  fim_util$fim_v_time_init_ext entry (fixed bin (71), fixed bin (71));
+      109 dcl  kst_util$garbage_collect entry (fixed bin (35));
+      110 dcl  kst_util$initialize_region entry (fixed bin);
+      111 dcl  kst_util$unthread_kste entry (ptr);
+      112 dcl  kstsrch entry (bit (36) aligned, fixed bin (17), ptr);
+      113 dcl  level$get entry () returns (fixed bin (3));
+      114 dcl  makeunknown_ entry (fixed bin, bit (36) aligned, bit (1) aligned, fixed bin (35));
+      115 dcl  sdw_util_$construct entry (ptr, ptr);
+      116 dcl  sdw_util_$dissect entry (ptr, ptr);
+      117 dcl  sdw_util_$get_valid entry (ptr, bit (1) aligned);
+      118 dcl  seg_fault$makeknown_activate entry (ptr, fixed bin (35));
+      119 dcl  setfaults$disconnect entry (fixed bin (17));
+      120 
+      121 /* Misc */
+      122 
+      123 dcl  (addr, baseno, fixed, null, ptr, rel, string, unspec) builtin;
+      124 
+      125 	makeknown_infop = a_makeknown_infop;
+      126 	segno = a_segno;
+      127 	a_use_count = 0;
+      128 	a_code = 0;
+      129 	kstp = pds$kstp;
+      130 	ring = level$get ();
+      131 	call kstsrch (makeknown_info.uid, hash_bucket, kstep);
+      132 	if kstep ^= null () then do;			/* got kste */
+      133 	     a_code = error_table_$segknown;
+      134 	     a_segno = kste.segno;
+      135 	     if (^kste.priv_init & makeknown_info.priv_init) | (^kste.allow_write & makeknown_info.allow_write) then do;
+      136 						/* access may increase -- could do this better */
+      137 		call setfaults$disconnect ((kste.segno));
+      138 		kste.dtbm = (36)"1"b;		/* force access recomputation at next seg_fault */
+      139 	     end;
+      140 	end;
+      141 	else do;					/* get kste */
+      142 	     if makeknown_info.rsw then do;		/* reserved segment switch */
+      143 		if segno - kst.lowseg < ring |	/* lower ring stack or hardcore */
+      144 		     segno > kst.highseg then call abort (error_table_$invalidsegno);
+      145 		if segno > kst.highest_used_segno then call kst_util$initialize_region (segno);
+      146 		kstep = addr (kst.kst_entry (segno));
+      147 		if unspec (kste.entryp) ^= "0"b then call abort (error_table_$segno_in_use);
+      148 		if kste.fp ^= (18)"1"b then call kst_util$unthread_kste (kstep);
+      149 	     end;
+      150 	     else do;
+      151 		if kst.free_list = "0"b		/* the cupboard was bare */
+      152 		then if kst.highest_used_segno < kst.highseg
+      153 		     then call kst_util$initialize_region (kst.highest_used_segno + 1);
+      154 		     else do;
+      155 			call kst_util$garbage_collect (code);
+      156 			if code ^= 0 then call abort (code);
+      157 		     end;
+      158 		if kst.free_list = ""b
+      159 		then				/* can't happen */
+      160 		     call abort (error_table_$nrmkst);
+      161 		kstep = ptr (kstp, kst.free_list);	/* set kst entry pointer to first free entry */
+      162 		kst.free_list = kste.fp;		/* remove from free list */
+      163 		a_segno = kste.segno;		/* return segment number */
+      164 	     end;					/* thread into hash class */
+      165 	     kste.fp = kst.uid_hash_bucket (hash_bucket);
+      166 	     kst.uid_hash_bucket (hash_bucket) = rel (kstep);
+      167 						/* if this is not the root increment parent infcount */
+      168 	     if makeknown_info.entryp ^= null () then do;
+      169 		pkstep = addr (kst.kst_entry (fixed (baseno (makeknown_info.entryp), 17)));
+      170 		pkstep -> kste.infcount = pkstep -> kste.infcount + 1;
+      171 	     end;					/* set up new kste */
+      172 	     kste.dirsw = makeknown_info.dirsw;
+      173 	     kste.uid = makeknown_info.uid;
+      174 	     kste.dtbm = (36)"1"b;			/* force access computation at first seg_fault */
+      175 
+      176 /* force no access in sdw */
+      177 
+      178 	     call sdw_util_$dissect (addr (dseg$ (kste.segno)), addr (sdwi)); /* Take it apart to set access */
+      179 
+      180 	     sdwi.r1, sdwi.r2, sdwi.r3 = "0"b;
+      181 	     string (sdwi.access) = "0"b;
+      182 
+      183 	     call sdw_util_$construct (addr (dseg$ (kste.segno)), addr (sdwi)); /* Put it back together */
+      184 	end;
+      185 	kste.tus = pds$transparent.tus;
+      186 	kste.tms = pds$transparent.tms | kste.dirsw;	/* THIS IS CRUCIAL to proper maintenance of dtcm for dirs */
+      187 	kste.tpd = pds$transparent.tpd;
+      188 	kste.allow_write = kste.allow_write | makeknown_info.allow_write;
+      189 	kste.priv_init = kste.priv_init | makeknown_info.priv_init;
+      190 	kste.entryp = makeknown_info.entryp;
+      191 	kste.audit = makeknown_info.audit;
+      192 	if kste.usage_count (ring) ^< 0		/* mark kste as known in proper ring */
+      193 	then kste.usage_count (ring) = kste.usage_count (ring) + 1;
+      194 	a_use_count = kste.usage_count (ring);
+      195 
+      196 	if makeknown_info.activate then do;
+      197 	     call sdw_util_$get_valid (addr (dseg$ (kste.segno)), valid);
+      198 	     if ^valid then do;
+      199 		call fim_util$fim_v_time_init_ext (vcpu_suspend_1, vcpu_suspend_2);
+      200 		call seg_fault$makeknown_activate (kstep, code);
+      201 						/* seg_fault/connect as required */
+      202 		if code = 0 then			/* make activate vcpu free  */
+      203 		     call fim_util$fim_v_time_calc_ext (vcpu_suspend_1, vcpu_suspend_2);
+      204 		else do;				/* something really awful? */
+      205 		     a_code = code;			/* override any other error code */
+      206 		     call makeunknown_ ((kste.segno), "01"b, ("0"b), code);
+      207 						/* force terminate */
+      208 		end;
+      209 	     end;
+      210 	end;
+      211 
+      212 	return;
+      213 
+      214 
+      215 abort:
+      216      proc (code);
+      217 dcl  code fixed bin (35);
+      218 	a_code = code;
+      219 	go to non_local_return;
+      220      end abort;
+      221 
+      222 non_local_return:
+      223 	return;
+      224 
+  1     1 /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  1     2 
+  1     3 /*
+  1     4*Modified March 1976 by R. Bratt 
+  1     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  1    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  1    11*     Add warning on use of kste.entryp.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 
+  1    15 dcl  pds$kstp ext ptr,
+  1    16     (kstp, kstep) ptr;
+  1    17 
+  1    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  1    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  1    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  1    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  1    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  1    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  1    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  1    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  1    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  1    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  1    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  1    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  1    30     2 unused_2 bit (9) unaligned,
+  1    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  1    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  1    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  1    34     2 end_of_kst bit (36);
+  1    35 
+  1    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  1    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  1    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  1    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  1    40     2 entryp ptr unaligned,				/* branch pointer */
+  1    41 						/* See WARNING below for requirements to use entryp. */
+  1    42     2 uid bit (36) aligned,				/* unique identifier */
+  1    43     2 access_information unaligned,
+  1    44       3 dtbm bit (36),				/* date time branch modified */
+  1    45       3 extended_access bit (33),			/* extended access from the branch */
+  1    46       3 access bit (3),				/* rew */
+  1    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  1    48     2 pad1 bit (3) unaligned,
+  1    49     2 flags unaligned,
+  1    50       3 dirsw bit (1),				/* directory switch */
+  1    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  1    52       3 priv_init bit (1),				/* privileged initiation */
+  1    53       3 tms bit (1),				/* transparent modification switch */
+  1    54       3 tus bit (1),				/* transparent usage switch */
+  1    55       3 tpd bit (1),				/* transparent paging device switch */
+  1    56       3 audit bit (1),				/* audit switch */
+  1    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  1    58       3 pad bit (3),
+  1    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  1    60 
+  1    61 
+  1    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  1    63 /*							       */
+  1    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  1    65 /* entry associated with the kst entry, you must first validate its value    */
+  1    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  1    67 /* the containing directory.  The containing directory must remain locked    */
+  1    68 /* during the entire period when kste.entryp and the directory entry are     */
+  1    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  1    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  1    71 /* directory since the dir entry could have been moved within the directory  */
+  1    72 /* by another processor.					       */
+  1    73 /*							       */
+  1    74 /* If you only need a pointer to the directory containing the associated     */
+  1    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  1    76 /*    pointer (kste.entryp, 0)				       */
+  1    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  1    78 /*							       */
+  1    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  1    80 
+  1    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+      225 
+      226 
+  2     1 /*  BEGIN INCLUDE FILE - - - makeknown_info.incl.pl1 - - - last modified March 1975 by R. Bratt - - - */
+  2     2 /* Modified October 1984 for explicit activate flag and to remove 
+  2     3*   detectable flag, Keith Loepere. */
+  2     4 
+  2     5 dcl  makeknown_infop ptr;
+  2     6 
+  2     7 dcl 1 makeknown_info aligned based (makeknown_infop),
+  2     8     2 uid bit (36) aligned,
+  2     9     2 entryp ptr unaligned,
+  2    10     2 flags unaligned,
+  2    11       3 dirsw bit (1),
+  2    12       3 rsw bit (1),
+  2    13       3 allow_write bit (1),
+  2    14       3 priv_init bit (1),
+  2    15       3 audit bit (1),
+  2    16       3 activate bit (1);			/* Use only for directory initiation within directory control */
+  2    17 
+  2    18 /*   END INCLUDE FILE makeknown_info.incl.pl1 - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+      227 
+      228 
+  3     1 /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  3     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  3     3 
+  3     4 dcl  sdw_info_ptr pointer;
+  3     5 
+  3     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  3     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  3     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  3     9 
+  3    10     2 access unaligned,				/* REWP */
+  3    11       3 read bit (1) unaligned,
+  3    12       3 execute bit (1) unaligned,
+  3    13       3 write bit (1) unaligned,
+  3    14       3 privileged bit (1) unaligned,
+  3    15 
+  3    16     2 pad1 bit (32) unaligned,
+  3    17 
+  3    18     2 rings unaligned,				/* Ring brackets */
+  3    19       3 r1 bit (3) unaligned,
+  3    20       3 r2 bit (3) unaligned,
+  3    21       3 r3 bit (3) unaligned,
+  3    22 
+  3    23     2 pad2 bit (27) unaligned,
+  3    24 
+  3    25     2 flags aligned,
+  3    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  3    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  3    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  3    29       3 pad3 bit (33) unaligned,
+  3    30 
+  3    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  3    32 
+  3    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+      229 
+      230 
+  4     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  4     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  4     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  4     4 /*	Modified April 1983 by C. Hornig for tasking */
+  4     5 
+  4     6 /****^  HISTORY COMMENTS:
+  4     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  4     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  4     9*     added the heap_header_ptr definition.
+  4    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  4    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  4    12*     Modified to support control point management.  These changes were actually
+  4    13*     made in February 1985 by G. Palter.
+  4    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  4    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  4    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  4    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  4    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  4    19*     (ITS pair).
+  4    20*                                                   END HISTORY COMMENTS */
+  4    21 
+  4    22 /* format: style2 */
+  4    23 
+  4    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  4    25 
+  4    26      dcl	   1 stack_header	      based (sb) aligned,
+  4    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  4    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  4    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  4    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  4    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  4    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  4    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  4    34 	     2 pad4	      bit (2) unal,
+  4    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  4    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  4    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  4    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  4    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  4    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  4    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  4    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  4    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  4    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  4    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  4    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  4    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  4    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  4    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  4    50 	     2 return_no_pop_op_ptr
+  4    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  4    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  4    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  4    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  4    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  4    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  4    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  4    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  4    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  4    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  4    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  4    62 	     2 trace,
+  4    63 	       3 frames,
+  4    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  4    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  4    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  4    67 	     2 pad2	      bit (36),		/*  (61) */
+  4    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  4    69 
+  4    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  4    71 
+  4    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  4    73 						/* (551) octal */
+  4    74 
+  4    75 
+  4    76 /*	The following constants are offsets within this transfer vector table.  */
+  4    77 
+  4    78      dcl	   (
+  4    79 	   call_offset	      fixed bin init (271),
+  4    80 	   push_offset	      fixed bin init (272),
+  4    81 	   return_offset	      fixed bin init (273),
+  4    82 	   return_no_pop_offset   fixed bin init (274),
+  4    83 	   entry_offset	      fixed bin init (275)
+  4    84 	   )		      internal static;
+  4    85 
+  4    86 
+  4    87 
+  4    88 
+  4    89 
+  4    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  4    91*	move the whole stack header should use this overlay.
+  4    92**/
+  4    93 
+  4    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  4    95 
+  4    96 
+  4    97 
+  4    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      231 
+      232      end makeknown_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.4  makeknown_.pl1                    >special_ldd>install>MR12.3-1114>makeknown_.pl1
+225          1    09/18/86  1308.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+227          2    01/30/85  1523.9  makeknown_info.incl.pl1           >ldd>include>makeknown_info.incl.pl1
+229          3    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+231          4    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_code                                 parameter       fixed bin(35,0)          dcl 76 set ref 71 128* 133* 205* 218*
+a_makeknown_infop                      parameter       pointer                  dcl 77 ref 71 125
+a_segno                                parameter       fixed bin(17,0)          dcl 78 set ref 71 126 134* 163*
+a_use_count                            parameter       fixed bin(17,0)          dcl 79 set ref 71 127* 194*
+access                    2     000105 automatic       structure                level 2 packed packed unaligned dcl 87 set ref 181*
+access_information        5            based           structure                level 2 packed packed unaligned dcl 1-36
+activate                  2(05)        based           bit(1)                   level 3 packed packed unaligned dcl 2-7 ref 196
+addr                                                   builtin function         dcl 123 ref 146 169 178 178 178 178 183 183 183 183
+                                                                                  197 197
+allow_write               7(13)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 135
+                                                                                  188* 188
+allow_write               2(02)        based           bit(1)                   level 3 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_" ref
+                                                                                  135 188
+audit                     7(18)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 191*
+audit                     2(04)        based           bit(1)                   level 3 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_" ref
+                                                                                  191
+baseno                                                 builtin function         dcl 123 ref 169
+code                            000100 automatic       fixed bin(35,0)          dcl 83 in procedure "makeknown_" set ref 155* 156
+                                                                                  156* 200* 202 205 206*
+code                                   parameter       fixed bin(35,0)          dcl 217 in procedure "abort" ref 215 218
+dirsw                     2            based           bit(1)                   level 3 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_" ref
+                                                                                  172
+dirsw                     7(12)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 172*
+                                                                                  186
+dseg$                           000010 external static fixed bin(71,0)          array dcl 95 set ref 178 178 183 183 197 197
+dtbm                      5            based           bit(36)                  level 3 packed packed unaligned dcl 1-36 set ref
+                                                                                  138* 174*
+entryp                    3            based           pointer                  level 2 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 147
+                                                                                  190*
+entryp                    1            based           pointer                  level 2 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_" ref
+                                                                                  168 169 190
+error_table_$invalidsegno       000012 external static fixed bin(35,0)          dcl 96 set ref 143*
+error_table_$nrmkst             000014 external static fixed bin(35,0)          dcl 97 set ref 158*
+error_table_$segknown           000016 external static fixed bin(35,0)          dcl 98 ref 133
+error_table_$segno_in_use       000020 external static fixed bin(35,0)          dcl 99 set ref 147*
+fim_util$fim_v_time_calc_ext    000024 constant        entry                    external dcl 107 ref 202
+fim_util$fim_v_time_init_ext    000026 constant        entry                    external dcl 108 ref 199
+fixed                                                  builtin function         dcl 123 ref 169
+flags                     7(12)        based           structure                level 2 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_"
+flags                     2            based           structure                level 2 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_"
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 1-36 set ref 148
+                                                                                  162 165*
+free_list                 7            based           bit(18)                  level 2 packed packed unaligned dcl 1-18 set ref 151
+                                                                                  158 161 162*
+hash_bucket                     000101 automatic       fixed bin(17,0)          dcl 84 set ref 131* 165 166
+highest_used_segno        2            based           fixed bin(17,0)          level 2 dcl 1-18 ref 145 151 151
+highseg                   1            based           fixed bin(17,0)          level 2 dcl 1-18 ref 143 151
+infcount                  7(23)        based           fixed bin(12,0)          level 2 packed packed unaligned dcl 1-36 set ref
+                                                                                  170* 170
+kst                                    based           structure                level 1 dcl 1-18
+kst_entry               110            based           structure                array level 2 dcl 1-18 set ref 146 169
+kst_util$garbage_collect        000030 constant        entry                    external dcl 109 ref 155
+kst_util$initialize_region      000032 constant        entry                    external dcl 110 ref 145 151
+kst_util$unthread_kste          000034 constant        entry                    external dcl 111 ref 148
+kste                                   based           structure                level 1 dcl 1-36
+kstep                           000124 automatic       pointer                  dcl 1-15 set ref 131* 132 134 135 135 137 138 146*
+                                                                                  147 148 148* 161* 162 163 165 166 172 173 174 178
+                                                                                  178 183 183 185 186 186 187 188 188 189 189 190
+                                                                                  191 192 192 192 194 197 197 200* 206
+kstp                            000122 automatic       pointer                  dcl 1-15 set ref 129* 143 143 145 146 151 151 151
+                                                                                  151 158 161 161 162 165 166 169
+kstsrch                         000036 constant        entry                    external dcl 112 ref 131
+level$get                       000040 constant        entry                    external dcl 113 ref 130
+lowseg                                 based           fixed bin(17,0)          level 2 dcl 1-18 ref 143 146 169
+makeknown_info                         based           structure                level 1 dcl 2-7
+makeknown_infop                 000126 automatic       pointer                  dcl 2-5 set ref 125* 131 135 135 142 168 169 172 173
+                                                                                  188 189 190 191 196
+makeunknown_                    000042 constant        entry                    external dcl 114 ref 206
+null                                                   builtin function         dcl 123 ref 132 168
+pds$kstp                        000056 external static pointer                  dcl 1-15 ref 129
+pds$transparent                 000022 external static structure                level 1 dcl 100
+pkstep                          000102 automatic       pointer                  dcl 85 set ref 169* 170 170
+priv_init                 7(14)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 135
+                                                                                  189* 189
+priv_init                 2(03)        based           bit(1)                   level 3 in structure "makeknown_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure "makeknown_" ref
+                                                                                  135 189
+ptr                                                    builtin function         dcl 123 ref 161
+r1                        3     000105 automatic       bit(3)                   level 3 packed packed unaligned dcl 87 set ref 180*
+r2                        3(03) 000105 automatic       bit(3)                   level 3 packed packed unaligned dcl 87 set ref 180*
+r3                        3(06) 000105 automatic       bit(3)                   level 3 packed packed unaligned dcl 87 set ref 180*
+rel                                                    builtin function         dcl 123 ref 166
+ring                            000104 automatic       fixed bin(3,0)           dcl 86 set ref 130* 143 192 192 192 194
+rings                     3     000105 automatic       structure                level 2 packed packed unaligned dcl 87
+rsw                       2(01)        based           bit(1)                   level 3 packed packed unaligned dcl 2-7 ref 142
+sdw_info                               based           structure                level 1 dcl 3-6
+sdw_util_$construct             000044 constant        entry                    external dcl 115 ref 183
+sdw_util_$dissect               000046 constant        entry                    external dcl 116 ref 178
+sdw_util_$get_valid             000050 constant        entry                    external dcl 117 ref 197
+sdwi                            000105 automatic       structure                level 1 dcl 87 set ref 178 178 183 183
+seg_fault$makeknown_activate    000052 constant        entry                    external dcl 118 ref 200
+segno                           000113 automatic       fixed bin(17,0)          dcl 88 in procedure "makeknown_" set ref 126* 143
+                                                                                  143 145 145* 146
+segno                     0(18)        based           fixed bin(17,0)          level 2 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" ref 134 137 163
+                                                                                  178 178 183 183 197 197 206
+setfaults$disconnect            000054 constant        entry                    external dcl 119 ref 137
+string                                                 builtin function         dcl 123 set ref 181*
+tms                       7(15)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 186*
+tms                             000022 external static bit(1)                   level 2 in structure "pds$transparent" packed packed
+                                                                                  unaligned dcl 100 in procedure "makeknown_" ref
+                                                                                  186
+tpd                       7(17)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 187*
+tpd                       0(02) 000022 external static bit(1)                   level 2 in structure "pds$transparent" packed packed
+                                                                                  unaligned dcl 100 in procedure "makeknown_" ref
+                                                                                  187
+tus                       0(01) 000022 external static bit(1)                   level 2 in structure "pds$transparent" packed packed
+                                                                                  unaligned dcl 100 in procedure "makeknown_" ref
+                                                                                  185
+tus                       7(16)        based           bit(1)                   level 3 in structure "kste" packed packed unaligned
+                                                                                  dcl 1-36 in procedure "makeknown_" set ref 185*
+uid                       4            based           bit(36)                  level 2 in structure "kste" dcl 1-36 in procedure
+                                                                                  "makeknown_" set ref 173*
+uid                                    based           bit(36)                  level 2 in structure "makeknown_info" dcl 2-7
+                                                                                  in procedure "makeknown_" set ref 131* 173
+uid_hash_bucket          10            based           bit(18)                  array level 2 packed packed unaligned dcl 1-18 set
+                                                                                  ref 165 166*
+unspec                                                 builtin function         dcl 123 ref 147
+usage_count               1            based           fixed bin(8,0)           array level 2 packed packed unaligned dcl 1-36 set
+                                                                                  ref 192 192* 192 194
+valid                           000114 automatic       bit(1)                   dcl 89 set ref 197* 198
+vcpu_suspend_1                  000116 automatic       fixed bin(71,0)          dcl 90 set ref 199* 202*
+vcpu_suspend_2                  000120 automatic       fixed bin(71,0)          dcl 91 set ref 199* 202*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+call_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 4-78
+push_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 4-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 4-78
+sb                                     automatic       pointer                  dcl 4-24
+sdw_info_ptr                           automatic       pointer                  dcl 3-4
+stack_header                           based           structure                level 1 dcl 4-26
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 4-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 4-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+abort                           000643 constant        entry                    internal dcl 215 ref 143 147 156 158
+makeknown_                      000013 constant        entry                    external dcl 71
+non_local_return                000642 constant        label                    dcl 222 ref 219
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1134        1214     663        1144
+Length      1504     663        60         253     250           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+makeknown_                          124 external procedure  is an external procedure.  
+abort                                   internal procedure  shares stack frame of external procedure makeknown_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+makeknown_               000100 code                        makeknown_
+                         000101 hash_bucket                 makeknown_
+                         000102 pkstep                      makeknown_
+                         000104 ring                        makeknown_
+                         000105 sdwi                        makeknown_
+                         000113 segno                       makeknown_
+                         000114 valid                       makeknown_
+                         000116 vcpu_suspend_1              makeknown_
+                         000120 vcpu_suspend_2              makeknown_
+                         000122 kstp                        makeknown_
+                         000124 kstep                       makeknown_
+                         000126 makeknown_infop             makeknown_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+fim_util$fim_v_time_calc_ext  fim_util$fim_v_time_init_ext  kst_util$garbage_collect      kst_util$initialize_region
+kst_util$unthread_kste        kstsrch                       level$get                     makeunknown_
+sdw_util_$construct           sdw_util_$dissect             sdw_util_$get_valid           seg_fault$makeknown_activate
+setfaults$disconnect
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dseg$                         error_table_$invalidsegno     error_table_$nrmkst           error_table_$segknown
+error_table_$segno_in_use     pds$kstp                      pds$transparent
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     71 000006       125 000020       126 000024       127 000026       128 000027       129 000030       130 000033
+    131 000041       132 000054       133 000060       134 000064       135 000070       137 000110       138 000117
+    140 000122       142 000123       143 000127       145 000146       146 000161       147 000172       148 000203
+    149 000216       151 000217       155 000240       156 000247       158 000253       161 000266       162 000274
+    163 000276       165 000303       166 000312       168 000317       169 000323       170 000335       172 000344
+    173 000351       174 000353       178 000355       180 000376       181 000404       183 000406       185 000427
+    186 000436       187 000451       188 000456       189 000464       190 000471       191 000473       192 000500
+    194 000520       196 000530       197 000533       198 000551       199 000554       200 000565       202 000576
+    205 000612       206 000614       212 000641       222 000642       215 000643       218 000645       219 000650
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

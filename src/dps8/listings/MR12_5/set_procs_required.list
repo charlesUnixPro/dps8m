@@ -1,0 +1,997 @@
+	COMPILATION LISTING OF SEGMENT set_procs_required
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1026.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************************
+        2*        *                                                    *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*        *                                                    *
+        5*        * Copyright (c) 1986 by Massachusetts Institute of   *
+        6*        * Technology and Honeywell Information Systems, Inc. *
+        7*        *                                                    *
+        8*        * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*        * Technology and Honeywell Information Systems, Inc. *
+       10*        *                                                    *
+       11*        ****************************************************** */
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(81-09-01,Bongiovanni), approve(), audit(), install():
+       16*      Written by J. Bongiovanni.
+       17*  2) change(83-08-01,Bongiovanni), approve(), audit(), install():
+       18*      Modified to initialize variables in given_processid.
+       19*  3) change(86-06-02,Lippard), approve(87-02-09,MCR7616),
+       20*     audit(87-06-03,Farley), install(87-08-06,MR12.1-1063):
+       21*      Modified to fix coding error which sometimes allowed sprq'ing an
+       22*      offline cpu.
+       23*  4) change(87-01-12,Lippard), approve(87-02-09,MCR7616),
+       24*     audit(87-06-03,Farley), install(87-08-06,MR12.1-1063):
+       25*      Modified to check ACS before allowing sprq. Removed the obsolete
+       26*      single_cpu entry point and associated code.
+       27*  5) change(87-08-07,Lippard), approve(87-02-09,PBF7616),
+       28*     audit(87-08-11,Farley), install(87-08-18,MR12.1-1090):
+       29*      Added entry points get_procs_required and get_system_procs_required.
+       30*  6) change(87-08-27,Lippard), approve(87-02-09,PBF7616),
+       31*     audit(87-08-28,Farley), install(87-09-01,MR12.1-1095):
+       32*      Always allow Initializer access.
+       33*                                                   END HISTORY COMMENTS */
+       34 
+       35 
+       36 /* format: style3 */
+       37 set_procs_required:
+       38      proc (a_procs_required, a_code);
+       39 
+       40 /*  Ring-0 routine to allow suitably a privileged process to
+       41*    set per-process or system default CPUs required.  Access
+       42*    is controlled by gates to this procedure.  Although this
+       43*    routine locks the Global APT Lock, it is normally unwired,
+       44*    as it is called infrequently.
+       45*
+       46*    Entries:
+       47*
+       48*    set_procs_required - sets per-process CPUs required
+       49*
+       50*    given_processid    - sets per-process CPUs required for
+       51*		     another process
+       52*
+       53*    system_default     - sets the system default group of CPUs
+       54*		     required (this default applies to processes
+       55*		     which have not requested specific CPUs)
+       56*
+       57*    get_procs_required - gets per-process CPUs required
+       58*
+       59*    get_system_procs_required - gets system default group of CPUs
+       60*                         required */
+       61 
+       62 /*  Parameter */
+       63 
+       64 dcl	a_code		fixed bin (35) parameter;	/* standard error code */
+       65 dcl	a_default_flag	bit (1) aligned parameter;	/* on if set of CPUs is default */
+       66 dcl	a_processid	bit (36) aligned parameter;	/* target processid */
+       67 dcl	a_procs_required	bit (8) aligned parameter;	/* mask of CPUs required */
+       68 
+       69 /*  Automatic */
+       70 
+       71 dcl	apteap		ptr;			/* pointer to APTE array */
+       72 dcl	aptex		fixed bin;		/* index into APTE array */
+       73 dcl	bad_processid	bit (1);			/* ON => invalid target processid */
+       74 dcl	code		fixed bin (35);		/* error code (standard or otherwise) */
+       75 dcl	cpu_num		fixed bin;		/* CPU number (0-7) */
+       76 dcl	1 event_flags	like audit_event_flags;	/* audit flags for access_audit_ */
+       77 dcl	is_default	bit (1);			/* ON => setting to system default */
+       78 dcl	local_apte_ptr	ptr;			/* pointer to user's APT entry */
+       79 dcl	mode		bit (36) aligned;		/* ACS access mode */
+       80 dcl	n_aptes		fixed bin;		/* number of APTEs */
+       81 dcl	no_cpus_online	bit (1);			/* ON => requested set of CPUs had none online */
+       82 dcl	old_procs_required	bit (8) aligned;		/* previous value of system default */
+       83 dcl	old_procs_required_tags
+       84 			char (8);			/* CPU tags of previous system default */
+       85 dcl	processid		bit (36) aligned;		/* target processid */
+       86 dcl	procs_required	bit (8) aligned;		/* mask of CPUs required */
+       87 dcl	procs_required_tags char (8);			/* CPU tags of new system default */
+       88 dcl	ptwp		ptr;			/* saved pointer to stack page table for pmut */
+       89 dcl	saved_mask	fixed bin (71);		/* saved interrupt mask for pmut */
+       90 
+       91 /*  Static */
+       92 
+       93 dcl	CPUS		char (8) init ("ABCDEFGH") int static options (constant);
+       94 dcl	INITIALIZER	char (23) init ("Initializer.SysDaemon.z") int static options (constant);
+       95 dcl	MAX_CPU_TAG	fixed bin init (7) int static options (constant);
+       96 dcl	SPRQ_ACS_DIR	char (14) init (">sc1>admin_acs") int static options (constant);
+       97 dcl	SPRQ_ACS_SEG	char (21) init ("set_proc_required.acs") int static options (constant);
+       98 
+       99 /*  Based */
+      100 
+      101 dcl	1 aptea		(n_aptes) aligned based (apteap) like apte;
+      102 dcl	1 local_apte	aligned based (local_apte_ptr) like apte;
+      103 
+      104 /* Entry */
+      105 
+      106 dcl	access_audit_$log_general
+      107 			entry options (variable);
+      108 dcl	level$get		entry returns (fixed bin);
+      109 dcl	pmut$wire_and_mask	entry (fixed bin (71), ptr);
+      110 dcl	pmut$unwire_unmask	entry (fixed bin (71), ptr);
+      111 dcl	pxss$lock_apt	entry;
+      112 dcl	pxss$lock_apte	entry (bit (36) aligned, ptr, fixed bin (35));
+      113 dcl	pxss$set_procs_required
+      114 			entry (bit (8) aligned, fixed bin (35));
+      115 dcl	pxss$unlock_apt	entry;
+      116 dcl	pxss$unlock_apte	entry (ptr);
+      117 dcl	status_$get_user_raw_mode
+      118 			entry (char (*), char (*), char (*), bit (36) aligned, fixed bin (35));
+      119 dcl	syserr		entry options (variable);
+      120 dcl	syserr$error_code	entry options (variable);
+      121 dcl	wire_proc$wire_me	entry;
+      122 dcl	wire_proc$unwire_me entry;
+      123 
+      124 /* External */
+      125 
+      126 dcl	access_operations_$get_procs_required
+      127 			bit (36) aligned external;
+      128 dcl	access_operations_$set_procs_required
+      129 			bit (36) aligned external;
+      130 dcl	error_table_$bad_arg
+      131 			fixed bin (35) external;
+      132 dcl	error_table_$insufficient_access
+      133 			fixed bin (35) ext static;
+      134 dcl	error_table_$no_cpus_online
+      135 			fixed bin (35) external;
+      136 dcl	error_table_$process_unknown
+      137 			fixed bin (35) external;
+      138 dcl	pds$apt_ptr	ptr external;
+      139 dcl	pds$process_group_id
+      140 			char (32) aligned external;
+      141 dcl	scs$processor	bit (8) aligned external;
+      142 dcl	tc_data$apt	bit (36) aligned external;
+      143 dcl	tc_data$apt_size	fixed bin external;
+      144 dcl	tc_data$default_procs_required
+      145 			bit (8) aligned external;
+      146 
+      147 
+      148 /*  Builtin  */
+      149 
+      150 dcl	addr		builtin;
+      151 dcl	null		builtin;
+      152 dcl	rtrim		builtin;
+      153 dcl	string		builtin;
+      154 dcl	substr		builtin;
+      155 
+      156 
+      157 /* SET_PROCS_REQUIRED - set CPUs required for this process
+      158*
+      159*   takes a bit mask specifying CPUs required ("0"b means current
+      160*                        system default)
+      161*
+      162*   return code = 0    - this process running on some CPU in the group
+      163*
+      164*	       error_table_$no_cpus_online - the set requested had
+      165*	              no CPUs online
+      166**/
+      167 
+      168 	procs_required = a_procs_required;		/* copy to stack which will be wired */
+      169 	if ^CHECK_ACCESS (access_operations_$set_procs_required)
+      170 	then do;
+      171 		a_code = error_table_$insufficient_access;
+      172 		return;
+      173 	     end;
+      174 
+      175 	call SET_MY_PROCS_REQUIRED (procs_required, code);
+      176 
+      177 	a_code = code;
+      178 	return;
+      179 
+      180 
+      181 /* GIVEN_PROCESSID     - sets per-process CPUs required for another
+      182*                         process
+      183*
+      184*   takes a bit mask specifying CPUs required ("0"b means current
+      185*   system default) and a processid.
+      186*
+      187*   return code = 0    - proc_required mask set for target process
+      188*                        (will take effect on next trip thru getwork)
+      189*
+      190*                 error_table_$no_cpus_online - the set requested had
+      191*                        no CPUs online
+      192*
+      193*                 error_table_$process_unknown - the target processid
+      194*                        is invalid
+      195**/
+      196 
+      197 given_processid:
+      198      entry (a_procs_required, a_processid, a_code);
+      199 
+      200 	procs_required = a_procs_required;		/* copy arguments to stack to be wired */
+      201 	processid = a_processid;
+      202 
+      203 	call WIRE_LOCK_APT;
+      204 
+      205 /* ---------- WIRED, MASKED, GLOBAL APT LOCK HELD ---------- */
+      206 
+      207 	if procs_required = "0"b
+      208 	then do;					/* system default */
+      209 		is_default = "1"b;
+      210 		procs_required = tc_data$default_procs_required;
+      211 	     end;
+      212 	else is_default = "0"b;
+      213 
+      214 
+      215 	bad_processid = "0"b;			/* Steve Harris says this is useful */
+      216 	if (scs$processor & procs_required) = "0"b
+      217 	then no_cpus_online = "1"b;			/* No online CPUs in requested set */
+      218 	else do;
+      219 		no_cpus_online = "0"b;		/* Steve was correct */
+      220 		call pxss$lock_apte (processid, aptep, code);
+      221 						/* Check processid, lock APTE, set aptep */
+      222 		if code ^= 0
+      223 		then bad_processid = "1"b;		/* Could not lock - processid not found */
+      224 		else if apte.flags.idle		/* Don't allow idle process to change */
+      225 		then do;
+      226 			bad_processid = "1"b;
+      227 			call pxss$unlock_apte (aptep);
+      228 		     end;
+      229 		else do;
+      230 			apte.procs_required = procs_required;
+      231 			apte.flags.default_procs_required = is_default;
+      232 			call pxss$unlock_apte (aptep);/* Unlock APTE */
+      233 		     end;
+      234 	     end;
+      235 
+      236 	call UNLOCK_APT_UNWIRE;
+      237 
+      238 /* ---------- UNMASKED, UNWIRED, NO LOCKS HELD ---------- */
+      239 
+      240 	if no_cpus_online
+      241 	then a_code = error_table_$no_cpus_online;
+      242 	else if bad_processid
+      243 	then a_code = error_table_$process_unknown;
+      244 	else a_code = 0;
+      245 
+      246 	return;
+      247 
+      248 /* SYSTEM_DEFAULT     - sets the system default group of CPUs required
+      249*
+      250*   takes a bit mask specifying the CPUs required
+      251*
+      252*   walks the APTE array and changes procs_required for all processes
+      253*   with current default to new default
+      254*
+      255*   return code = 0    - default set as requested
+      256*
+      257*	       error_table_$no_cpus_online - the set requested had
+      258*                        no CPUs online
+      259*
+      260*                 error_table_$bad_arg - a mask of "0"b was specified
+      261*                        (no CPUs)
+      262**/
+      263 
+      264 system_default:
+      265      entry (a_procs_required, a_code);
+      266 
+      267 	procs_required = a_procs_required;		/* copy to stack to be wired */
+      268 
+      269 	if procs_required = "0"b
+      270 	then do;					/* no CPUs in set */
+      271 		a_code = error_table_$bad_arg;
+      272 		return;
+      273 	     end;
+      274 
+      275 	no_cpus_online = "0"b;
+      276 
+      277 	call WIRE_LOCK_APT;
+      278 
+      279 /* ---------- WIRED, MASKED, GLOBAL APT LOCK HELD ---------- */
+      280 
+      281 	if (scs$processor & procs_required) = "0"b
+      282 	then no_cpus_online = "1"b;			/* No online CPUs in set requested */
+      283 	else do;
+      284 		old_procs_required = tc_data$default_procs_required;
+      285 		tc_data$default_procs_required = procs_required;
+      286 		apteap = addr (tc_data$apt);
+      287 		n_aptes = tc_data$apt_size;
+      288 		do aptex = 1 to n_aptes;
+      289 		     if aptea (aptex).flags.default_procs_required
+      290 						/* This process has system default */
+      291 		     then aptea (aptex).procs_required = procs_required;
+      292 		end;
+      293 	     end;
+      294 
+      295 	call UNLOCK_APT_UNWIRE;
+      296 
+      297 
+      298 /* ---------- UNMASKED, UNWIRED, NO LOCKS HELD ---------- */
+      299 
+      300 	if no_cpus_online
+      301 	then a_code = error_table_$no_cpus_online;
+      302 	else do;
+      303 		a_code = 0;
+      304 		procs_required_tags, old_procs_required_tags = "";
+      305 						/* Build syserr message */
+      306 		do cpu_num = 0 to MAX_CPU_TAG;
+      307 		     if substr (procs_required, cpu_num + 1, 1) = "1"b
+      308 		     then procs_required_tags = rtrim (procs_required_tags) || substr (CPUS, cpu_num + 1, 1);
+      309 		     if substr (old_procs_required, cpu_num + 1, 1) = "1"b
+      310 		     then old_procs_required_tags = rtrim (old_procs_required_tags) || substr (CPUS, cpu_num + 1, 1);
+      311 		end;
+      312 		call syserr (SYSERR_PRINT_ON_CONSOLE,
+      313 		     "set_procs_required: Changing system default CPUs required from ^a to ^a for ^a",
+      314 		     old_procs_required_tags, procs_required_tags, pds$process_group_id);
+      315 	     end;
+      316 
+      317 	return;
+      318 
+      319 /* GET_PROCS_REQUIRED - gets the per-process CPUs required
+      320*
+      321*   returns a bit mask specifying CPUs required, a bit indicating
+      322*   whether the CPUs required is the default, and an error code. */
+      323 
+      324 get_procs_required:
+      325      entry (a_procs_required, a_default_flag, a_code);
+      326 
+      327 	if ^CHECK_ACCESS (access_operations_$get_procs_required)
+      328 	then do;
+      329 		a_code = error_table_$insufficient_access;
+      330 		return;
+      331 	     end;
+      332 
+      333 	local_apte_ptr = pds$apt_ptr;
+      334 	a_procs_required = local_apte.procs_required;
+      335 	a_default_flag = local_apte.flags.default_procs_required;
+      336 	a_code = 0;
+      337 	return;
+      338 
+      339 /* GET_SYSTEM_PROCS_REQUIRED - gets system default group of CPUs required
+      340*   returns a bit mask specifying CPUs required by the system */
+      341 
+      342 get_system_procs_required:
+      343      entry (a_procs_required);
+      344 
+      345 	a_procs_required = tc_data$default_procs_required;
+      346 	return;
+      347 
+      348 
+      349 /* Internal Procedure to check ACS segment for access */
+      350 CHECK_ACCESS:
+      351      proc (a_access_op) returns (bit (1) aligned);
+      352 
+      353 dcl	a_access_op	bit (36) aligned parm;
+      354 dcl	access_op		bit (36) aligned;
+      355 dcl	have_access	bit (1) aligned;
+      356 dcl	return_code	fixed bin (35);
+      357 
+      358 	access_op = a_access_op;
+      359 	have_access = "0"b;
+      360 	return_code = 0;
+      361 
+      362 	if pds$process_group_id = INITIALIZER then return ("1"b);
+      363 
+      364 	call status_$get_user_raw_mode (SPRQ_ACS_DIR, SPRQ_ACS_SEG, "", mode, code);
+      365 	if code ^= 0
+      366 	then do;
+      367 		call syserr$error_code (SYSERR_LOG_OR_PRINT, code,
+      368 		     "set_procs_required: Failed to check access for ^a.", pds$process_group_id);
+      369 		return ("0"b);
+      370 	     end;
+      371 
+      372 	if (mode & RW_ACCESS) = RW_ACCESS
+      373 	then have_access = "1"b;
+      374 	else return_code = error_table_$insufficient_access;
+      375 
+      376 	string (event_flags) = ""b;
+      377 	event_flags.priv_op = "1"b;
+      378 	event_flags.grant = have_access;
+      379 
+      380 	call access_audit_$log_general ("set_procs_required", level$get (), string (event_flags), access_op, "",
+      381 	     return_code, null (), 0);
+      382 	return (have_access);
+      383 
+      384      end CHECK_ACCESS;
+      385 
+      386 
+      387 /* Internal Procedure to set the CPUs required for this process */
+      388 
+      389 SET_MY_PROCS_REQUIRED:
+      390      proc (procs, code);
+      391 
+      392 dcl	procs		bit (8) aligned;		/* Mask for CPUs required */
+      393 dcl	code		fixed bin (35);		/* Standard error code */
+      394 
+      395 dcl	pxss_code		fixed bin (35);		/* Non-standard error code from pxss */
+      396 
+      397 
+      398 	call pxss$set_procs_required (procs, pxss_code);
+      399 	if pxss_code = 0
+      400 	then code = 0;
+      401 	else code = error_table_$no_cpus_online;
+      402 	return;
+      403 
+      404 
+      405      end SET_MY_PROCS_REQUIRED;
+      406 
+      407 
+      408 /* Internal Procedure to wire this procedure (text and linkage), wire
+      409*   stack, mask to system level, and lock the Global APT Lock */
+      410 
+      411 WIRE_LOCK_APT:
+      412      proc;
+      413 
+      414 	call wire_proc$wire_me;
+      415 	call pmut$wire_and_mask (saved_mask, ptwp);
+      416 	call pxss$lock_apt;
+      417 
+      418 
+      419      end WIRE_LOCK_APT;
+      420 
+      421 
+      422 
+      423 
+      424 
+      425 
+      426 
+      427 
+      428 /* Internal Procedure to Unlock Global APT Lock, Reset mask to previous,
+      429*   Unwire Stack, Unwire text and linkage */
+      430 
+      431 UNLOCK_APT_UNWIRE:
+      432      proc;
+      433 
+      434 
+      435 	call pxss$unlock_apt;
+      436 	call pmut$unwire_unmask (saved_mask, ptwp);
+      437 	call wire_proc$unwire_me;
+      438 
+      439 
+      440      end UNLOCK_APT_UNWIRE;
+      441 
+      442 
+      443 
+  1     1 /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      444 
+  2     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  2     2*
+  2     3*   Values for the "access mode" argument so often used in hardcore
+  2     4*   James R. Davis 26 Jan 81  MCR 4844
+  2     5*   Added constants for SM access 4/28/82 Jay Pattin
+  2     6*   Added text strings 03/19/85 Chris Jones
+  2     7**/
+  2     8 
+  2     9 
+  2    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2    11 dcl	(
+  2    12 	N_ACCESS		   init ("000"b),
+  2    13 	R_ACCESS		   init ("100"b),
+  2    14 	E_ACCESS		   init ("010"b),
+  2    15 	W_ACCESS		   init ("001"b),
+  2    16 	RE_ACCESS		   init ("110"b),
+  2    17 	REW_ACCESS	   init ("111"b),
+  2    18 	RW_ACCESS		   init ("101"b),
+  2    19 	S_ACCESS		   init ("100"b),
+  2    20 	M_ACCESS		   init ("010"b),
+  2    21 	A_ACCESS		   init ("001"b),
+  2    22 	SA_ACCESS		   init ("101"b),
+  2    23 	SM_ACCESS		   init ("110"b),
+  2    24 	SMA_ACCESS	   init ("111"b)
+  2    25 	)		   bit (3) internal static options (constant);
+  2    26 
+  2    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  2    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  2    29 
+  2    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  2    31 			   static options (constant);
+  2    32 
+  2    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  2    34 			   static options (constant);
+  2    35 
+  2    36 dcl	(
+  2    37 	N_ACCESS_BIN	   init (00000b),
+  2    38 	R_ACCESS_BIN	   init (01000b),
+  2    39 	E_ACCESS_BIN	   init (00100b),
+  2    40 	W_ACCESS_BIN	   init (00010b),
+  2    41 	RW_ACCESS_BIN	   init (01010b),
+  2    42 	RE_ACCESS_BIN	   init (01100b),
+  2    43 	REW_ACCESS_BIN	   init (01110b),
+  2    44 	S_ACCESS_BIN	   init (01000b),
+  2    45 	M_ACCESS_BIN	   init (00010b),
+  2    46 	A_ACCESS_BIN	   init (00001b),
+  2    47 	SA_ACCESS_BIN	   init (01001b),
+  2    48 	SM_ACCESS_BIN	   init (01010b),
+  2    49 	SMA_ACCESS_BIN	   init (01011b)
+  2    50 	)		   fixed bin (5) internal static options (constant);
+  2    51 
+  2    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      445 
+  3     1 /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  3     2 
+  3     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  3     4 
+  3     5 dcl  aptep pointer;
+  3     6 
+  3     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  3     8     2 thread unaligned,				/* List thread */
+  3     9       3 fp bit (18),				/* Forward pointer */
+  3    10       3 bp bit (18),				/* Backward pointer */
+  3    11     2 flags unaligned,				/* Flags and miscellaneous */
+  3    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  3    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  3    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  3    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  3    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  3    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  3    18       3 eligible bit (1),				/* ON if process is eligible */
+  3    19       3 idle bit (1),				/* ON if  this is an idle process */
+  3    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  3    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  3    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  3    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  3    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  3    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  3    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  3    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  3    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  3    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  3    30       3 state bit (18),				/* execution state */
+  3    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  3    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  3    33 						/* bit 18-35: sequential number */
+  3    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  3    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  3    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  3    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  3    38 
+  3    39 /* * * * * * * * */
+  3    40 
+  3    41     2 ipc_pointers unaligned,
+  3    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  3    43       3 pad3 bit (18),
+  3    44     2 ips_message bit (36),				/* IPS signals pending */
+  3    45     2 asteps unaligned,				/* relative ASTE pointers */
+  3    46       3 pds bit (18),				/* PDS (per-process) */
+  3    47       3 dseg bit (18),				/* DSEG (per-process) */
+  3    48       3 prds bit (18),				/* PRDS (per-processor) */
+  3    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  3    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  3    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  3    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  3    53 
+  3    54 /* * * * * * * * */
+  3    55 
+  3    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  3    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  3    58     2 flags2 unaligned,
+  3    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  3    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  3    61       3 pad7 bit (7),
+  3    62       3 batch bit (1),				/* ON if absentee */
+  3    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  3    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  3    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  3    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  3    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  3    68 
+  3    69 /* * * * * * */
+  3    70 
+  3    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  3    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  3    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  3    74     2 deadline fixed bin (71),			/* time of next run */
+  3    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  3    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  3    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  3    78*						/* reaches this (units = 1/1024 sec) */
+  3    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  3    80     2 access_authorization bit (72),			/* authorization of this process */
+  3    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  3    82 
+  3    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  3    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  3    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  3    86 
+  3    87 /*  Cells used to drive and instrument finite-state model for response time
+  3    88*    measurement. Maintained by meter_response_time */
+  3    89 
+  3    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  3    91     2 pad18 bit (18) unaligned,
+  3    92     2 number_processing fixed bin (35),			/* Number interactions */
+  3    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  3    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  3    95 
+  3    96 /* * * * * * */
+  3    97 
+  3    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  3    99 
+  3   100 /*  End of cells for finite-state model */
+  3   101 
+  3   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  3   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  3   104     2 pad4 bit (28) unaligned,
+  3   105     2 ipc_r_offset fixed bin (18) unsigned,
+  3   106     2 ipc_r_factor fixed bin (35) unsigned,
+  3   107     2 apad (10) fixed bin (35);
+  3   108 
+  3   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      446 
+  4     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  4     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  4     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  4     4 
+  4     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  4     6 
+  4     7 dcl (
+  4     8 
+  4     9 /* The following constants define the message action codes.  This indicates
+  4    10*how a message is to be handled.  */
+  4    11 
+  4    12      SYSERR_CRASH_SYSTEM	init (1),			
+  4    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  4    14 
+  4    15      SYSERR_TERMINATE_PROCESS	init (2),
+  4    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  4    17 
+  4    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  4    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  4    20 
+  4    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  4    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  4    23 
+  4    24      SYSERR_LOG_OR_PRINT	init (4),
+  4    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  4    26 
+  4    27      SYSERR_LOG_OR_DISCARD	init (5),
+  4    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  4    29 
+  4    30 
+  4    31 /* The following constants are added to the normal severities to indicate
+  4    32*different sorting classes of messages.  */
+  4    33 
+  4    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  4    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  4    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  4    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  4    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  4    39 	) fixed bin internal static options (constant);
+  4    40 
+  4    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      447 
+      448 
+      449 
+      450 /* BEGIN MESSAGE DOCUMENTATION
+      451*
+      452*   Message:
+      453*   set_procs_required: Changing system default CPUs required from XXXX to YYYY for PERSON.PROJECT.TAG
+      454*
+      455*   S: $info
+      456*
+      457*   T: $run
+      458*
+      459*   M: The default set of CPUs has been changed from XXXX (CPU tags) to YYYY
+      460*   (CPU tags) by PERSON.PROJECT.TAG.  These are the only CPUs on which
+      461*   processes will run which have not requested to be run on specific CPUs.
+      462*
+      463*   A: $ignore
+      464*
+      465*
+      466*   Message:
+      467*   set_procs_required: Failed to check access for USER.
+      468*
+      469*   S: $log
+      470*
+      471*   T: $run
+      472*
+      473*   M: Access on >sc1>admin_acs>set_proc_required.acs could not be checked.
+      474*
+      475*   A: Verify that the ACS seg exists.
+      476*
+      477*   END MESSAGE DOCUMENTATION */
+      478 
+      479      end set_procs_required;
+      480 
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.9  set_procs_required.pl1            >spec>install>1110>set_procs_required.pl1
+444          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+445          2    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+446          3    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+447          4    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CPUS                            000022 constant        char(8)                  initial packed unaligned dcl 93 ref 307 309
+INITIALIZER                     000013 constant        char(23)                 initial packed unaligned dcl 94 ref 362
+MAX_CPU_TAG                            constant        fixed bin(17,0)          initial dcl 95 ref 306
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 2-11 ref 372 372
+SPRQ_ACS_DIR                    000007 constant        char(14)                 initial packed unaligned dcl 96 set ref 364*
+SPRQ_ACS_SEG                    000001 constant        char(21)                 initial packed unaligned dcl 97 set ref 364*
+SYSERR_LOG_OR_PRINT             000000 constant        fixed bin(17,0)          initial dcl 4-7 set ref 367*
+SYSERR_PRINT_ON_CONSOLE         000036 constant        fixed bin(17,0)          initial dcl 4-7 set ref 312*
+a_access_op                            parameter       bit(36)                  dcl 353 ref 350 358
+a_code                                 parameter       fixed bin(35,0)          dcl 64 set ref 37 171* 177* 197 240* 242* 244* 264
+                                                                                  271* 300* 303* 324 329* 336*
+a_default_flag                         parameter       bit(1)                   dcl 65 set ref 324 335*
+a_processid                            parameter       bit(36)                  dcl 66 ref 197 201
+a_procs_required                       parameter       bit(8)                   dcl 67 set ref 37 168 197 200 264 267 324 334* 342
+                                                                                  345*
+access_audit_$log_general       000010 constant        entry                    external dcl 106 ref 380
+access_op                       000144 automatic       bit(36)                  dcl 354 set ref 358* 380*
+access_operations_$get_procs_required
+                                000044 external static bit(36)                  dcl 126 set ref 327*
+access_operations_$set_procs_required
+                                000046 external static bit(36)                  dcl 128 set ref 169*
+addr                                                   builtin function         dcl 150 ref 286
+apte                                   based           structure                level 1 dcl 3-7
+aptea                                  based           structure                array level 1 dcl 101
+apteap                          000100 automatic       pointer                  dcl 71 set ref 286* 289 289
+aptep                           000130 automatic       pointer                  dcl 3-5 set ref 220* 224 227* 230 231 232*
+aptex                           000102 automatic       fixed bin(17,0)          dcl 72 set ref 288* 289 289*
+audit_event_flags                      based           structure                level 1 dcl 1-5
+bad_processid                   000103 automatic       bit(1)                   packed unaligned dcl 73 set ref 215* 222* 226* 242
+code                            000104 automatic       fixed bin(35,0)          dcl 74 in procedure "set_procs_required" set ref
+                                                                                  175* 177 220* 222 364* 365 367*
+code                                   parameter       fixed bin(35,0)          dcl 393 in procedure "SET_MY_PROCS_REQUIRED" set ref
+                                                                                  389 399* 401*
+cpu_num                         000105 automatic       fixed bin(17,0)          dcl 75 set ref 306* 307 307 309 309*
+default_procs_required
+                          1(10)        based           bit(1)                   level 3 in structure "apte" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "set_procs_required" set ref
+                                                                                  231*
+default_procs_required
+                          1(10)        based           bit(1)                   array level 3 in structure "aptea" packed packed
+                                                                                  unaligned dcl 101 in procedure
+                                                                                  "set_procs_required" ref 289
+default_procs_required
+                          1(10)        based           bit(1)                   level 3 in structure "local_apte" packed packed
+                                                                                  unaligned dcl 102 in procedure
+                                                                                  "set_procs_required" ref 335
+error_table_$bad_arg            000050 external static fixed bin(35,0)          dcl 130 ref 271
+error_table_$insufficient_access
+                                000052 external static fixed bin(35,0)          dcl 132 ref 171 329 374
+error_table_$no_cpus_online     000054 external static fixed bin(35,0)          dcl 134 ref 240 300 401
+error_table_$process_unknown    000056 external static fixed bin(35,0)          dcl 136 ref 242
+event_flags                     000106 automatic       structure                level 1 packed packed unaligned dcl 76 set ref 376*
+                                                                                  380 380
+flags                     1            based           structure                level 2 in structure "apte" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "set_procs_required"
+flags                     1            based           structure                array level 2 in structure "aptea" packed packed
+                                                                                  unaligned dcl 101 in procedure
+                                                                                  "set_procs_required"
+flags                     1            based           structure                level 2 in structure "local_apte" packed packed
+                                                                                  unaligned dcl 102 in procedure
+                                                                                  "set_procs_required"
+grant                     0(01) 000106 automatic       bit(1)                   level 2 packed packed unaligned dcl 76 set ref 378*
+have_access                     000145 automatic       bit(1)                   dcl 355 set ref 359* 372* 378 382
+idle                      1(07)        based           bit(1)                   level 3 packed packed unaligned dcl 3-7 ref 224
+is_default                      000107 automatic       bit(1)                   packed unaligned dcl 77 set ref 209* 212* 231
+level$get                       000012 constant        entry                    external dcl 108 ref 380 380
+local_apte                             based           structure                level 1 dcl 102
+local_apte_ptr                  000110 automatic       pointer                  dcl 78 set ref 333* 334 335
+mode                            000112 automatic       bit(36)                  dcl 79 set ref 364* 372
+n_aptes                         000113 automatic       fixed bin(17,0)          dcl 80 set ref 287* 288
+no_cpus_online                  000114 automatic       bit(1)                   packed unaligned dcl 81 set ref 216* 219* 240 275*
+                                                                                  281* 300
+null                                                   builtin function         dcl 151 ref 380 380
+old_procs_required              000115 automatic       bit(8)                   dcl 82 set ref 284* 309
+old_procs_required_tags         000116 automatic       char(8)                  packed unaligned dcl 83 set ref 304* 309* 309 312*
+pds$apt_ptr                     000060 external static pointer                  dcl 138 ref 333
+pds$process_group_id            000062 external static char(32)                 dcl 139 set ref 312* 362 367*
+pmut$unwire_unmask              000016 constant        entry                    external dcl 110 ref 436
+pmut$wire_and_mask              000014 constant        entry                    external dcl 109 ref 415
+priv_op                   0(03) 000106 automatic       bit(1)                   level 2 packed packed unaligned dcl 76 set ref 377*
+processid                       000120 automatic       bit(36)                  dcl 85 set ref 201* 220*
+procs                                  parameter       bit(8)                   dcl 392 set ref 389 398*
+procs_required                  000121 automatic       bit(8)                   dcl 86 in procedure "set_procs_required" set ref
+                                                                                  168* 175* 200* 207 210* 216 230 267* 269 281 285
+                                                                                  289 307
+procs_required           63            based           bit(8)                   array level 2 in structure "aptea" packed packed
+                                                                                  unaligned dcl 101 in procedure
+                                                                                  "set_procs_required" set ref 289*
+procs_required           63            based           bit(8)                   level 2 in structure "apte" packed packed unaligned
+                                                                                  dcl 3-7 in procedure "set_procs_required" set ref
+                                                                                  230*
+procs_required           63            based           bit(8)                   level 2 in structure "local_apte" packed packed
+                                                                                  unaligned dcl 102 in procedure
+                                                                                  "set_procs_required" ref 334
+procs_required_tags             000122 automatic       char(8)                  packed unaligned dcl 87 set ref 304* 307* 307 312*
+ptwp                            000124 automatic       pointer                  dcl 88 set ref 415* 436*
+pxss$lock_apt                   000020 constant        entry                    external dcl 111 ref 416
+pxss$lock_apte                  000022 constant        entry                    external dcl 112 ref 220
+pxss$set_procs_required         000024 constant        entry                    external dcl 113 ref 398
+pxss$unlock_apt                 000026 constant        entry                    external dcl 115 ref 435
+pxss$unlock_apte                000030 constant        entry                    external dcl 116 ref 227 232
+pxss_code                       000156 automatic       fixed bin(35,0)          dcl 395 set ref 398* 399
+return_code                     000146 automatic       fixed bin(35,0)          dcl 356 set ref 360* 374* 380*
+rtrim                                                  builtin function         dcl 152 ref 307 309
+saved_mask                      000126 automatic       fixed bin(71,0)          dcl 89 set ref 415* 436*
+scs$processor                   000064 external static bit(8)                   dcl 141 ref 216 281
+status_$get_user_raw_mode       000032 constant        entry                    external dcl 117 ref 364
+string                                                 builtin function         dcl 153 set ref 376* 380 380
+substr                                                 builtin function         dcl 154 ref 307 307 309 309
+syserr                          000034 constant        entry                    external dcl 119 ref 312
+syserr$error_code               000036 constant        entry                    external dcl 120 ref 367
+tc_data$apt                     000066 external static bit(36)                  dcl 142 set ref 286
+tc_data$apt_size                000070 external static fixed bin(17,0)          dcl 143 ref 287
+tc_data$default_procs_required  000072 external static bit(8)                   dcl 144 set ref 210 284 285* 345
+wire_proc$unwire_me             000042 constant        entry                    external dcl 122 ref 437
+wire_proc$wire_me               000040 constant        entry                    external dcl 121 ref 414
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 4-7
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+BEEP                                   internal static fixed bin(17,0)          initial dcl 4-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 4-7
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 4-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 4-7
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 4-7
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 4-7
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_ACCESS                    000655 constant        entry                    internal dcl 350 ref 169 327
+SET_MY_PROCS_REQUIRED           001075 constant        entry                    internal dcl 389 ref 175
+UNLOCK_APT_UNWIRE               001147 constant        entry                    internal dcl 431 ref 236 295
+WIRE_LOCK_APT                   001122 constant        entry                    internal dcl 411 ref 203 277
+get_procs_required              000571 constant        entry                    external dcl 324
+get_system_procs_required       000643 constant        entry                    external dcl 342
+given_processid                 000165 constant        entry                    external dcl 197
+set_procs_required              000122 constant        entry                    external dcl 37
+system_default                  000326 constant        entry                    external dcl 264
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1556        1652    1203        1566
+Length      2174    1203        74         305     352           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+set_procs_required                  274 external procedure  is an external procedure.  
+CHECK_ACCESS                            internal procedure  shares stack frame of external procedure set_procs_required.  
+SET_MY_PROCS_REQUIRED                   internal procedure  shares stack frame of external procedure set_procs_required.  
+WIRE_LOCK_APT                           internal procedure  shares stack frame of external procedure set_procs_required.  
+UNLOCK_APT_UNWIRE                       internal procedure  shares stack frame of external procedure set_procs_required.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+set_procs_required       000100 apteap                      set_procs_required
+                         000102 aptex                       set_procs_required
+                         000103 bad_processid               set_procs_required
+                         000104 code                        set_procs_required
+                         000105 cpu_num                     set_procs_required
+                         000106 event_flags                 set_procs_required
+                         000107 is_default                  set_procs_required
+                         000110 local_apte_ptr              set_procs_required
+                         000112 mode                        set_procs_required
+                         000113 n_aptes                     set_procs_required
+                         000114 no_cpus_online              set_procs_required
+                         000115 old_procs_required          set_procs_required
+                         000116 old_procs_required_tags     set_procs_required
+                         000120 processid                   set_procs_required
+                         000121 procs_required              set_procs_required
+                         000122 procs_required_tags         set_procs_required
+                         000124 ptwp                        set_procs_required
+                         000126 saved_mask                  set_procs_required
+                         000130 aptep                       set_procs_required
+                         000144 access_op                   CHECK_ACCESS
+                         000145 have_access                 CHECK_ACCESS
+                         000146 return_code                 CHECK_ACCESS
+                         000156 pxss_code                   SET_MY_PROCS_REQUIRED
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        return_mac          shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_$log_general     level$get                     pmut$unwire_unmask            pmut$wire_and_mask
+pxss$lock_apt                 pxss$lock_apte                pxss$set_procs_required       pxss$unlock_apt
+pxss$unlock_apte              status_$get_user_raw_mode     syserr                        syserr$error_code
+wire_proc$unwire_me           wire_proc$wire_me
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$get_procs_required                       access_operations_$set_procs_required
+error_table_$bad_arg          error_table_$insufficient_access                            error_table_$no_cpus_online
+error_table_$process_unknown  pds$apt_ptr                   pds$process_group_id          scs$processor
+tc_data$apt                   tc_data$apt_size              tc_data$default_procs_required
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     37 000116       168 000132       169 000135       171 000150       172 000153       175 000154       177 000156
+    178 000160       197 000161       200 000175       201 000201       203 000203       207 000204       209 000207
+    210 000211       211 000214       212 000215       215 000216       216 000217       219 000227       220 000230
+    222 000242       224 000247       226 000253       227 000255       228 000264       230 000265       231 000271
+    232 000276       236 000305       240 000306       242 000314       244 000322       246 000323       264 000324
+    267 000336       269 000342       271 000343       272 000346       275 000347       277 000350       281 000351
+    284 000361       285 000363       286 000366       287 000370       288 000372       289 000401       292 000413
+    295 000415       300 000416       303 000424       304 000425       306 000430       307 000437       309 000472
+    311 000526       312 000531       317 000564       324 000565       327 000601       329 000615       330 000620
+    333 000621       334 000625       335 000632       336 000636       337 000637       342 000640       345 000650
+    346 000654       350 000655       358 000657       359 000661       360 000662       362 000663       364 000674
+    365 000724       367 000726       369 000756       372 000761       374 000770       376 000773       377 000774
+    378 000776       380 001003       382 001071       389 001075       398 001077       399 001110       401 001115
+    402 001121       411 001122       414 001123       415 001130       416 001141       419 001146       431 001147
+    435 001150       436 001155       437 001166       440 001173
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

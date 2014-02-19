@@ -1,0 +1,1243 @@
+	COMPILATION LISTING OF SEGMENT initiate_search_rules
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1045.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       13 
+       14 initiate_search_rules: proc (a_ptr, a_code);
+       15 
+       16 /* Last Modified: (Date and Reason)
+       17*   10/15/84 by Keith Loepere for auditing info.
+       18*   06/22/84 by Keith Loepere to use the new dc_find (including access checks).
+       19*   03/77 by M. Weaver to put search rules in user ring
+       20*   07/76 by THVV for Bicentennial
+       21*   04/03/75 by R. Bratt for new kst / rnt system
+       22*   08/11/71 by Richard H. Gumpertz to make length of pds$process_dir_name = 32 instead of 52
+       23*   08/04/71 by Mosley Meer for new KST format
+       24*   originally coded by Mosley Meer
+       25**/
+       26 
+       27 /* This routine is called to initiate and insert the search rules
+       28*   passed to it through the pointer argument
+       29*   USAGE:
+       30*   call initiate_search_rules(ptr, code);
+       31*
+       32*   1) ptr		pointer to a data array. (Input)
+       33*   2) code	return status code. (Output)
+       34*
+       35*   NOTE: the data array is of the form
+       36*   dcl 1 input_arg based aligned,
+       37*   2 number fixed bin,
+       38*   2 name (22) char (168) unal;
+       39*
+       40*   All search rules are checked to be directories. */
+       41 
+       42 /* Parameters */
+       43 
+       44 dcl  a_code			fixed bin (35) parameter; /* return status code */
+       45 dcl  a_ptr			ptr parameter;	/* pointer to input search rule array */
+       46 dcl  syscode			fixed bin (35) parameter;
+       47 dcl  sysptr			ptr parameter;
+       48 
+       49 /* Based */
+       50 
+       51 dcl  based_area			area based;
+       52 dcl  1 input_arg			based (ap) aligned, /* form of input name structure array */
+       53        2 number			fixed bin,
+       54        2 name			(22) char (168) unal;
+       55 dcl  1 search_rules			(22) based (srp) aligned,
+       56      ( 2 base			bit (18),
+       57        2 offset			bit (18),
+       58        2 uid			bit (36)) unaligned;
+       59 
+       60 /* Variables */
+       61 
+       62 dcl  ap				ptr;		/* input array pointer */
+       63 dcl  1 arg			aligned like input_arg;
+       64 dcl  code				fixed bin (35);
+       65 dcl  count			fixed bin;	/* count of rules in pointer array */
+       66 dcl  firstarg			fixed bin;	/* first arg to scan (2 for ssd, else 1) */
+       67 dcl  i				fixed bin;
+       68 dcl  new_ring			bit (1);
+       69 dcl  old_ep			ptr;
+       70 dcl  ring				fixed bin;
+       71 dcl  1 search_rule_temp		(22) aligned like search_rules; /* Stack copy */
+       72 dcl  segnum			fixed bin (15);	/* segment number from pointer */
+       73 dcl  srp				ptr;		/* pointer to a single search rule in KST */
+       74 dcl  1 ssd_dft_rules		(22) aligned like search_rules;
+       75 dcl  ssd_wdir_index			fixed bin;	/* location of rule after WDIR rule */
+       76 dcl  xcode			fixed bin (35);
+       77 
+       78 /* Entries */
+       79 
+       80 dcl  get_kstep			entry (fixed bin (15), ptr, fixed bin (35));
+       81 dcl  level$get			entry returns (fixed bin);
+       82 dcl  lock$dir_unlock		entry (ptr);
+       83 dcl  lock$lock_fast			entry (ptr);
+       84 dcl  lock$unlock_fast		entry (ptr);
+       85 dcl  segno_usage$decrement		entry (fixed bin (15), fixed bin (35));
+       86 
+       87 /* External */
+       88 
+       89 dcl  ahd$n_sr_tags			fixed bin ext;
+       90 dcl  ahd$n_sys_rules		fixed bin ext;
+       91 dcl  1 ahd$search_rule		(50) aligned ext,
+       92        2 name			char (168) unal,
+       93        2 flag			bit (36);
+       94 dcl  1 ahd$sr_tag			(10) aligned ext,
+       95        2 name			char (32),
+       96        2 flag			bit (36);
+       97 dcl  ahd$search_rules_lock		ext;
+       98 dcl  error_table_$bad_arg		ext fixed bin (35);
+       99 dcl  error_table_$bad_string		ext fixed bin (35);
+      100 dcl  error_table_$root		ext fixed bin (35);
+      101 dcl  error_table_$too_many_sr		ext fixed bin (35);
+      102 dcl  pds$home_dir			ext char (168) aligned;
+      103 dcl  pds$process_dir_name		ext char (32) aligned;
+      104 dcl  pds$stacks			(0:7) ptr ext;
+      105 
+      106 /* Misc */
+      107 
+      108 dcl  (addr, baseptr, binary, bit, hbound, null, segno, substr) builtin;
+      109 
+      110 	new_ring = "0"b;				/* entry used by ssr command */
+      111 	goto join;
+      112 
+      113 
+      114 init_ring: entry (a_ptr, a_code);
+      115 
+      116 	new_ring = "1"b;				/* called by makestack */
+      117 
+      118 join:	ap = a_ptr;				/* copy the array pointer */
+      119 	arg = input_arg;				/* Copy whole input structure */
+      120 	code = 0;
+      121 	ring = level$get ();			/* get ring for this search rule set */
+      122 	rntp = pds$stacks (ring) -> stack_header.rnt_ptr;
+      123 	count = 1;				/* count of elements in pointer array */
+      124 	firstarg = 1;
+      125 	if arg.number < 1 | arg.number >= hbound (search_rules, 1) then do;
+      126 	     a_code = error_table_$bad_arg;
+      127 	     return;
+      128 	end;
+      129 
+      130 	call lock$lock_fast (addr (ahd$search_rules_lock));
+      131 	if arg.name (1) = "default" then do;
+      132 	     call process_rule ("default", 0, code);	/* Get all rules tagged "default" */
+      133 	     if code ^= 0 then go to fin;		/* .. might have changed since proc created */
+      134 	     count = count + 1;
+      135 	     go to thru;
+      136 	end;
+      137 
+      138 	if arg.name (1) = "set_search_directories" then do; /* Set default rules but with extras after wdir */
+      139 	     call process_rule ("default", 0, code);	/* Expand default rules */
+      140 	     if code ^= 0 then go to fin;
+      141 	     search_rule_temp (count + 1).offset = END_RULE; /* Flag end of list */
+      142 	     do count = 1 to hbound (search_rules, 1) while (search_rule_temp (count).offset ^= WDIR_RULE); end;
+      143 	     if count > hbound (search_rules, 1) then go to too_many_err;
+      144 	     ssd_wdir_index, count = count + 1;		/* Note pos of wdir */
+      145 	     ssd_dft_rules = search_rule_temp;		/* Save spare copy of defaults */
+      146 	     firstarg = 2;				/* Scan from rule 2 on */
+      147 	end;
+      148 
+      149 	do i = firstarg to arg.number;		/* Scan strings in user input */
+      150 	     call process_rule (arg.name (i), 0, code);	/* Expand each rule */
+      151 	     if code = 1 then i = arg.number;		/* Force end of loop */
+      152 	     else if code ^= 0 then go to fin;
+      153 
+      154 	     count = count + 1;
+      155 	     if count > hbound (search_rules, 1) then go to too_many_err; /* too many search rules */
+      156 	end;
+      157 
+      158 	if arg.name (1) = "set_search_directories" then do; /* Did user rules, now finish sandwich */
+      159 	     do i = ssd_wdir_index to hbound (search_rules, 1); /* Finish copy of default search rules */
+      160 		if count > hbound (search_rules, 1) then go to too_many_err;
+      161 		search_rule_temp (count) = ssd_dft_rules (i);
+      162 		if search_rule_temp (count).offset = END_RULE then go to thru;
+      163 		count = count + 1;
+      164 	     end;
+      165 	     go to too_many_err;			/* shouldn't get here */
+      166 	end;
+      167 
+      168 /* Insert search termination code */
+      169 
+      170 thru:	search_rule_temp (count).uid = "0"b;		/* Put in an end marker */
+      171 	search_rule_temp (count).base = "0"b;
+      172 	search_rule_temp (count).offset = END_RULE;	/* insert the code */
+      173 
+      174 /* check if space allocated for these search rules (this ring) */
+      175 
+      176 	srp = rnt.srulep;				/* ptr to list for current ring */
+      177 	if srp = null then do;			/* First time in a virgin ring */
+      178 	     allocate search_rules in (rnt.areap -> based_area) set (srp);
+      179 	     rnt.srulep = srp;			/* put it in pointer list */
+      180 	end;
+      181 	else do i = 1 to hbound (search_rules, 1) while (search_rules (i).offset ^= END_RULE);
+      182 	     if search_rules (i).uid ^= "0"b then do;	/* Must decrement usage counts of old rules */
+      183 		segnum = binary (search_rules (i).base, 18);
+      184 		call get_kstep (segnum, kstep, xcode);
+      185 		if xcode = 0
+      186 		     then if search_rules (i).uid = kste.uid
+      187 		     then do;
+      188 			call dc_find$obj_terminate_ptr (baseptr (segnum), old_ep, xcode); /* audit termination */
+      189 			if xcode = 0 then  call lock$dir_unlock (ptr (old_ep, 0));
+      190 			if xcode = error_table_$root then xcode = 0;
+      191 			if xcode = 0 then call segno_usage$decrement (segnum, (0));
+      192 		     end;
+      193 	     end;
+      194 	end;
+      195 
+      196 	search_rules = search_rule_temp;		/* Copy search rules into KST */
+      197 
+      198 fin:	call lock$unlock_fast (addr (ahd$search_rules_lock));
+      199 	a_code = code;
+      200 	return;
+      201 
+      202 too_many_err: code = error_table_$too_many_sr;
+      203 	go to fin;
+      204 
+      205 
+      206 /* This entry is called from the initializer to set the system default search rules */
+      207 
+      208 set_system_rules: entry (sysptr, syscode);
+      209 	xsp = sysptr;
+      210 	syscode = 0;
+      211 	i = dft_sr_arg.ntags;
+      212 	if i > hbound (dft_sr_arg.tags, 1) then do;
+      213 	     syscode = error_table_$bad_arg;
+      214 	     return;
+      215 	end;
+      216 	count = dft_sr_arg.nrules;
+      217 	if count > hbound (dft_sr_arg.rules, 1) then do;
+      218 	     syscode = error_table_$bad_arg;
+      219 	     return;
+      220 	end;
+      221 	call lock$lock_fast (addr (ahd$search_rules_lock)); /* Nobody use whilst i am changing */
+      222 	ahd$n_sys_rules = count;
+      223 	ahd$n_sr_tags = i;
+      224 	ahd$n_sys_rules = dft_sr_arg.nrules;
+      225 	do i = 1 to ahd$n_sr_tags;
+      226 	     ahd$sr_tag (i).name = dft_sr_arg.tags (i).name;
+      227 	     ahd$sr_tag (i).flag = dft_sr_arg.tags (i).flag;
+      228 	end;
+      229 	do i = 1 to ahd$n_sys_rules;
+      230 	     ahd$search_rule (i).name = dft_sr_arg.rules (i).name;
+      231 	     ahd$search_rule (i).flag = dft_sr_arg.rules (i).flag;
+      232 	end;
+      233 	call lock$unlock_fast (addr (ahd$search_rules_lock));
+      234 	return;
+      235 
+      236 /* This entry returns them to the user */
+      237 
+      238 get_system_rules: entry (sysptr, syscode);
+      239 
+      240 	syscode = 0;
+      241 	xsp = sysptr;
+      242 	call lock$lock_fast (addr (ahd$search_rules_lock));
+      243 	do i = 1 to ahd$n_sr_tags;
+      244 	     dft_sr_arg.tags (i).name = ahd$sr_tag (i).name;
+      245 	     dft_sr_arg.tags (i).flag = ahd$sr_tag (i).flag;
+      246 	end;
+      247 	do i = 1 to ahd$n_sys_rules;
+      248 	     dft_sr_arg.rules (i).name = ahd$search_rule (i).name;
+      249 	     dft_sr_arg.rules (i).flag = ahd$search_rule (i).flag;
+      250 	end;
+      251 	dft_sr_arg.ntags = ahd$n_sr_tags;
+      252 	dft_sr_arg.nrules = ahd$n_sys_rules;
+      253 	call lock$unlock_fast (addr (ahd$search_rules_lock));
+      254 	return;
+      255 
+      256 process_rule: proc (dn, depth, code);
+      257 
+      258 dcl  code				fixed bin (35) parameter;
+      259 dcl  depth			fixed bin parameter;
+      260 dcl  dn				char (168) parameter;
+      261 
+      262 dcl  j				fixed bin;
+      263 dcl  jj				fixed bin;
+      264 dcl  nfound			fixed bin;
+      265 
+      266 	code, nfound = 0;
+      267 	search_rule_temp (count).base = "0"b;
+      268 	search_rule_temp (count).offset = "0"b;
+      269 	search_rule_temp (count).uid = "0"b;
+      270 
+      271 	if substr (dn, 1, 1) = ">" then do;
+      272 	     call initiate_name;
+      273 	end;
+      274 
+      275 	else if dn = search_rule_names (1) then do;	/* "initiated_segments" */
+      276 	     search_rule_temp (count).offset = INITIATED_RULE; /* search KST code */
+      277 	end;
+      278 
+      279 	else if dn = search_rule_names (2) then do;	/* "referencing_dir" */
+      280 	     search_rule_temp (count).offset = REFERENCING_DIR_RULE; /* parent of referencing proceedure search */
+      281 	end;
+      282 
+      283 	else if dn = search_rule_names (3) then do;	/* "working_dir" */
+      284 	     search_rule_temp (count).offset = WDIR_RULE; /* search working directory code */
+      285 	end;
+      286 
+      287 	else if dn = "process_dir" then do;		/* process directory */
+      288 	     dn = pds$process_dir_name;
+      289 	     call initiate_name;
+      290 	end;
+      291 
+      292 	else if dn = "home_dir" then do;		/* home or login directory */
+      293 	     dn = pds$home_dir;
+      294 	     call initiate_name;
+      295 	end;
+      296 
+      297 	else if dn = search_rule_names (4) then do;	/* End of rules */
+      298 	     code = 1;				/* Force end of loop */
+      299 	end;
+      300 
+      301 	else do;					/* Unrecognized. */
+      302 	     if depth = 0 then do;			/* Keyword ok? */
+      303 		do j = 1 to ahd$n_sr_tags while (dn ^= ahd$sr_tag (j).name); end;
+      304 		if j <= ahd$n_sr_tags then do;
+      305 		     do jj = 1 to ahd$n_sys_rules;
+      306 			if (ahd$search_rule (jj).flag & ahd$sr_tag (j).flag) ^= "0"b then do;
+      307 			     call process_rule (ahd$search_rule (jj).name, 1, code);
+      308 			     if code ^= 0 then return;
+      309 			     nfound = nfound + 1;
+      310 			     count = count + 1;
+      311 			end;
+      312 		     end;
+      313 		     if nfound = 0 then code = 2;
+      314 		     else count = count - 1;		/* count incr by loop above once more than req'd */
+      315 		     return;
+      316 		end;
+      317 	     end;
+      318 	     code = error_table_$bad_string;
+      319 	end;
+      320 
+      321 	return;
+      322 
+      323 initiate_name: proc;
+      324 
+      325 	     call dc_find$dir_initiate (dn, dp, code);
+      326 	     if code = 0 then do;
+      327 		segnum = segno (dp);
+      328 		search_rule_temp (count).base = bit (binary (segnum, 18), 18); /* put away base of pointer */
+      329 		search_rule_temp (count).uid = dp -> dir.uid; /* store uid */
+      330 		call lock$dir_unlock (dp);		/* don't dereference dir */
+      331 	     end;
+      332 	     else if new_ring then do;		/* new ring so do best we can */
+      333 		code = 0;
+      334 		search_rule_temp (count).offset = BAD_RULE; /* special code for bad entry during proc init */
+      335 	     end;
+      336 	     return;
+      337 	end initiate_name;
+      338 
+      339      end process_rule;
+      340  /* BEGIN include file dc_find_dcls.incl.pl1 */
+  1     2 
+  1     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  1     4 /* Added a few more, October 1984. */
+  1     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  1     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  1     7 
+  1     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  1     9 
+  1    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  1    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  1    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  1    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  1    14 
+  1    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  1    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  1    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  1    18 
+  1    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  1    20 
+  1    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  1    22 
+  1    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  1    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  1    25 
+  1    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  1    27 
+  1    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  1    29 
+  1    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  1    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  1    32 
+  1    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  1    34 
+  1    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  1    36 
+  1    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  1    38 
+  1    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    41 
+  1    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  1    44 
+  1    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    47 
+  1    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  1    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  1    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  1    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  1    52 
+  1    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  1    58 
+  1    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  1    60 
+  1    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  1    62 
+  1    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  1    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  1    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  1    66 
+  1    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  1    68 
+  1    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  1    70 
+  1    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  1    72 
+  1    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    74 
+  1    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  1    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  1    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  1    82 
+  1    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  1    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  1    87 
+  1    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  1    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  1    90 
+  1    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  1    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  1    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  1    94 
+  1    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  1    96 
+  1    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  1    98 
+  1    99 /* END include file dc_find_dcls.incl.pl1 */
+      340 
+      341  /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  2     2 
+  2     3 
+  2     4 /* Template for an entry. Length = 38 words */
+  2     5 
+  2     6 dcl  ep ptr;
+  2     7 
+  2     8 dcl 1 entry based (ep) aligned,
+  2     9 
+  2    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  2    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  2    12 
+  2    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  2    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  2    15 
+  2    16     2 uid bit (36),					/* unique id of entry */
+  2    17 
+  2    18     2 dtem bit (36),				/* date-time entry modified */
+  2    19 
+  2    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  2    21     2 pad0 bit (17),
+  2    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  2    23 
+  2    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  2    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  2    26 
+  2    27     2 author,					/* user who created branch */
+  2    28       3 pers_rp bit (18),				/* name of user who created branch */
+  2    29       3 proj_rp bit (18),				/* project of user who created branch */
+  2    30 
+  2    31       3 tag char (1),				/* tag of user who created branch */
+  2    32       3 pad1 char (3),
+  2    33 
+  2    34     2 primary_name bit (504),				/* first name on name list */
+  2    35 
+  2    36     2 dtd bit (36),					/* date time dumped */
+  2    37 
+  2    38     2 pad2 bit (36),
+  2    39 
+  2    40 
+  2    41 /* the declarations below are for branch only */
+  2    42 
+  2    43 
+  2    44     2 pvid bit (36),				/* physical volume id */
+  2    45 
+  2    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  2    47     2 pad3 bit (18),
+  2    48 
+  2    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  2    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  2    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  2    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  2    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  2    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  2    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  2    56     2 security_oosw bit (1),				/* security out of service switch */
+  2    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  2    58     2 master_dir bit (1),				/* TRUE for master directory */
+  2    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  2    60     2 pad4 bit (11),
+  2    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  2    62 
+  2    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  2    64 
+  2    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  2    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  2    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  2    68 
+  2    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  2    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  2    71 
+  2    72     2 bc_author,					/* user who last set the bit count */
+  2    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  2    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  2    75 
+  2    76       3 tag char (1),				/* tag of user who set the bit count */
+  2    77       3 pad5 bit (2),
+  2    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  2    79 
+  2    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  2    81 
+  2    82     2 pad6 bit (36),
+  2    83 
+  2    84     2 checksum bit (36),				/* checksum from dtd */
+  2    85 
+  2    86     2 owner bit (36);				/* uid of containing directory */
+  2    87 
+  2    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      341 
+      342  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  3     2 /* Modified 8/74 for NSS */
+  3     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  3     4 /* Modified 3/82 BIM for change pclock */
+  3     5 /* format: style3 */
+  3     6 
+  3     7 /* Template for the directory header. Length = 64 words. */
+  3     8 
+  3     9 dcl  dp ptr;
+  3    10 
+  3    11 dcl 1 dir based (dp) aligned,
+  3    12 
+  3    13    2 modify bit (36),				/* Process ID of last modifier */
+  3    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  3    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  3    16     2 dtc (3),					/* date-time checked by salvager array */
+  3    17       3 date bit (36),				/* the date */
+  3    18       3 error bit (36),				/* what errors were discovered */
+  3    19 
+  3    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  3    21 
+  3    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  3    23 
+  3    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  3    25 
+  3    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  3    27 
+  3    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  3    29     2 version_number fixed bin (17),			/* version number of header */
+  3    30 
+  3    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  3    32     2 pad2 bit (18),
+  3    33 
+  3    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  3    35     2 pad3 bit (18),
+  3    36 
+  3    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  3    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  3    39 
+  3    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  3    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  3    42 
+  3    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  3    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  3    45 
+  3    46     2 lcount fixed bin (17),				/* number of links */
+  3    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  3    48 
+  3    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  3    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  3    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  3    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  3    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  3    54     2 pad4 bit (14),
+  3    55 
+  3    56     2 iacl_count (0:7),
+  3    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  3    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  3    59 
+  3    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  3    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  3    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  3    63 
+  3    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  3    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  3    66 
+  3    67     2 htsize fixed bin (17),				/* size of hash table */
+  3    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  3    69 
+  3    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  3    71     2 pad6 fixed bin (17),
+  3    72 
+  3    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  3    74     2 pad7 bit (18)) unaligned,
+  3    75 
+  3    76     2 dts bit (36),					/* date-time directory last salvaged */
+  3    77 
+  3    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  3    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  3    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  3    81     2 checksum bit (36),				/* checksummed from uid on */
+  3    82     2 owner bit (36);				/* uid of parent dir */
+  3    83 
+  3    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  3    85 
+  3    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      342 
+      343  /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  4     2 
+  4     3 /*
+  4     4*Modified March 1976 by R. Bratt 
+  4     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  4     6 
+  4     7 
+  4     8 /****^  HISTORY COMMENTS:
+  4     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  4    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  4    11*     Add warning on use of kste.entryp.
+  4    12*                                                   END HISTORY COMMENTS */
+  4    13 
+  4    14 
+  4    15 dcl  pds$kstp ext ptr,
+  4    16     (kstp, kstep) ptr;
+  4    17 
+  4    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  4    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  4    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  4    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  4    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  4    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  4    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  4    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  4    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  4    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  4    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  4    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  4    30     2 unused_2 bit (9) unaligned,
+  4    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  4    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  4    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  4    34     2 end_of_kst bit (36);
+  4    35 
+  4    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  4    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  4    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  4    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  4    40     2 entryp ptr unaligned,				/* branch pointer */
+  4    41 						/* See WARNING below for requirements to use entryp. */
+  4    42     2 uid bit (36) aligned,				/* unique identifier */
+  4    43     2 access_information unaligned,
+  4    44       3 dtbm bit (36),				/* date time branch modified */
+  4    45       3 extended_access bit (33),			/* extended access from the branch */
+  4    46       3 access bit (3),				/* rew */
+  4    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  4    48     2 pad1 bit (3) unaligned,
+  4    49     2 flags unaligned,
+  4    50       3 dirsw bit (1),				/* directory switch */
+  4    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  4    52       3 priv_init bit (1),				/* privileged initiation */
+  4    53       3 tms bit (1),				/* transparent modification switch */
+  4    54       3 tus bit (1),				/* transparent usage switch */
+  4    55       3 tpd bit (1),				/* transparent paging device switch */
+  4    56       3 audit bit (1),				/* audit switch */
+  4    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  4    58       3 pad bit (3),
+  4    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  4    60 
+  4    61 
+  4    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    63 /*							       */
+  4    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  4    65 /* entry associated with the kst entry, you must first validate its value    */
+  4    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  4    67 /* the containing directory.  The containing directory must remain locked    */
+  4    68 /* during the entire period when kste.entryp and the directory entry are     */
+  4    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  4    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  4    71 /* directory since the dir entry could have been moved within the directory  */
+  4    72 /* by another processor.					       */
+  4    73 /*							       */
+  4    74 /* If you only need a pointer to the directory containing the associated     */
+  4    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  4    76 /*    pointer (kste.entryp, 0)				       */
+  4    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  4    78 /*							       */
+  4    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    80 
+  4    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+      343 
+      344  /* BEGIN INCLUDE FILE RNT.INCL.PL1 - WRITTEN SEPTEMBER 1974 BY R. BRATT */
+  5     2 /* modified July 1976 by R. Bratt; updated March 1977 by M. Weaver */
+  5     3 /* modified November 1977 by M. Weaver to use PL/I offsets instead of pointers */
+  5     4 
+  5     5 dcl (rntp, rntep) ptr;
+  5     6 dcl lth fixed bin (17);
+  5     7 dcl based_rnt_area area based;
+  5     8 
+  5     9 dcl 1 rnt aligned based (rntp),
+  5    10     2 areap ptr,					/* pointer to area for rnte allocations */
+  5    11     2 meters,
+  5    12       3 insert,
+  5    13         4 trys fixed bin (17) unaligned,
+  5    14         4 wins fixed bin (17) unaligned,
+  5    15       3 get_segno like insert,
+  5    16       3 get_refnames like insert,
+  5    17       3 delete_segno like insert,
+  5    18       3 delete_name like insert,
+  5    19     2 rnt_area_size fixed bin,
+  5    20     2 srulep ptr,
+  5    21     2 name_hash_table (0:127) offset (rnt.areap -> based_rnt_area),
+  5    22     2 segno_hash_table (0:127) offset (rnt.areap -> based_rnt_area);
+  5    23 
+  5    24 dcl 1 rnte aligned based (rntep),
+  5    25     2 name_fp offset (rnt.areap -> based_rnt_area),
+  5    26     2 segno_fp offset (rnt.areap -> based_rnt_area),
+  5    27     (2 segno fixed bin (17),
+  5    28     2 length fixed bin (17),
+  5    29     2 name char (lth refer (rnte.length)))unaligned;
+  5    30 
+  5    31 /* --------------------END RNT.INCL.PL1--------------------- */
+      344 
+      345  /* BEGIN INCLUDE FILE ... search_rule_flags.incl.pl1 */
+  6     2 
+  6     3 dcl  INITIATED_RULE bit (18) static options (constant) init ("000000000000000001"b);
+  6     4 dcl  REFERENCING_DIR_RULE bit (18) static options (constant) init ("000000000000000010"b);
+  6     5 dcl  WDIR_RULE bit (18) static options (constant) init ("000000000000000011"b);
+  6     6 dcl  END_RULE bit (18) static options (constant) init ("000000000000000100"b);
+  6     7 dcl  BAD_RULE bit (18) static options (constant) init ("000000000000001000"b);
+  6     8 
+  6     9 dcl  search_rule_names (8) char (32) aligned static options (constant) init
+  6    10     ("initiated_segments",
+  6    11      "referencing_dir",
+  6    12      "working_dir",
+  6    13      "end_rules",
+  6    14      "",
+  6    15      "",
+  6    16      "",
+  6    17      "bad search rule");
+  6    18 
+  6    19 /* END INCLUDE FILE ... search_rule_flags.incl.pl1 */
+      345 
+      346  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  7     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  7     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  7     4 /*	Modified April 1983 by C. Hornig for tasking */
+  7     5 
+  7     6 /****^  HISTORY COMMENTS:
+  7     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  7     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  7     9*     added the heap_header_ptr definition.
+  7    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  7    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  7    12*     Modified to support control point management.  These changes were actually
+  7    13*     made in February 1985 by G. Palter.
+  7    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  7    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  7    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  7    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  7    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  7    19*     (ITS pair).
+  7    20*                                                   END HISTORY COMMENTS */
+  7    21 
+  7    22 /* format: style2 */
+  7    23 
+  7    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  7    25 
+  7    26      dcl	   1 stack_header	      based (sb) aligned,
+  7    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  7    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  7    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  7    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  7    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  7    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  7    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  7    34 	     2 pad4	      bit (2) unal,
+  7    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  7    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  7    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  7    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  7    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  7    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  7    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  7    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  7    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  7    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  7    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  7    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  7    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  7    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  7    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  7    50 	     2 return_no_pop_op_ptr
+  7    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  7    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  7    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  7    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  7    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  7    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  7    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  7    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  7    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  7    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  7    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  7    62 	     2 trace,
+  7    63 	       3 frames,
+  7    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  7    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  7    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  7    67 	     2 pad2	      bit (36),		/*  (61) */
+  7    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  7    69 
+  7    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  7    71 
+  7    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  7    73 						/* (551) octal */
+  7    74 
+  7    75 
+  7    76 /*	The following constants are offsets within this transfer vector table.  */
+  7    77 
+  7    78      dcl	   (
+  7    79 	   call_offset	      fixed bin init (271),
+  7    80 	   push_offset	      fixed bin init (272),
+  7    81 	   return_offset	      fixed bin init (273),
+  7    82 	   return_no_pop_offset   fixed bin init (274),
+  7    83 	   entry_offset	      fixed bin init (275)
+  7    84 	   )		      internal static;
+  7    85 
+  7    86 
+  7    87 
+  7    88 
+  7    89 
+  7    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  7    91*	move the whole stack header should use this overlay.
+  7    92**/
+  7    93 
+  7    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  7    95 
+  7    96 
+  7    97 
+  7    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      346 
+      347  /* BEGIN INCLUDE FILE ... system_dft_sr.incl.pl1 */
+  8     2 
+  8     3 dcl  xsp ptr;
+  8     4 dcl 1 dft_sr_arg based (xsp) aligned,
+  8     5     2 ntags fixed bin,
+  8     6     2 nrules fixed bin,
+  8     7     2 tags (10),
+  8     8       3 name char (32),
+  8     9       3 flag bit (36),
+  8    10     2 rules (50),
+  8    11       3 name char (168),
+  8    12       3 flag bit (36);
+  8    13 
+  8    14 /* END INCLUDE FILE ... system_dft_sr.incl.pl1 */
+      347 
+      348      end initiate_search_rules;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.5  initiate_search_rules.pl1         >spec>install>1110>initiate_search_rules.pl1
+340          1    05/20/85  0848.1  dc_find_dcls.incl.pl1             >ldd>include>dc_find_dcls.incl.pl1
+341          2    04/29/76  1100.6  dir_entry.incl.pl1                >ldd>include>dir_entry.incl.pl1
+342          3    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+343          4    09/18/86  1308.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+344          5    01/27/78  1711.4  rnt.incl.pl1                      >ldd>include>rnt.incl.pl1
+345          6    09/13/76  1100.5  search_rule_flags.incl.pl1        >ldd>include>search_rule_flags.incl.pl1
+346          7    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+347          8    03/10/77  1345.4  system_dft_sr.incl.pl1            >ldd>include>system_dft_sr.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BAD_RULE                               constant        bit(18)                  initial packed unaligned dcl 6-7 ref 334
+END_RULE                               constant        bit(18)                  initial packed unaligned dcl 6-6 ref 141 162 172 181
+INITIATED_RULE                         constant        bit(18)                  initial packed unaligned dcl 6-3 ref 276
+REFERENCING_DIR_RULE                   constant        bit(18)                  initial packed unaligned dcl 6-4 ref 280
+WDIR_RULE                              constant        bit(18)                  initial packed unaligned dcl 6-5 ref 142 284
+a_code                                 parameter       fixed bin(35,0)          dcl 44 set ref 14 114 126* 199*
+a_ptr                                  parameter       pointer                  dcl 45 ref 14 114 118
+addr                                                   builtin function         dcl 108 ref 130 130 198 198 221 221 233 233 242 242
+                                                                                  253 253
+ahd$n_sr_tags                   000024 external static fixed bin(17,0)          dcl 89 set ref 223* 225 243 251 303 304
+ahd$n_sys_rules                 000026 external static fixed bin(17,0)          dcl 90 set ref 222* 224* 229 247 252 305
+ahd$search_rule                 000030 external static structure                array level 1 dcl 91
+ahd$search_rules_lock           000034 external static fixed bin(17,0)          dcl 97 set ref 130 130 198 198 221 221 233 233 242
+                                                                                  242 253 253
+ahd$sr_tag                      000032 external static structure                array level 1 dcl 94
+ap                              000100 automatic       pointer                  dcl 62 set ref 118* 119
+areap                                  based           pointer                  level 2 dcl 5-9 ref 178
+arg                             000102 automatic       structure                level 1 dcl 63 set ref 119*
+base                                   based           bit(18)                  array level 2 in structure "search_rules" packed
+                                                                                  packed unaligned dcl 55 in procedure
+                                                                                  "initiate_search_rules" set ref 183
+base                            001747 automatic       bit(18)                  array level 2 in structure "search_rule_temp" packed
+                                                                                  packed unaligned dcl 71 in procedure
+                                                                                  "initiate_search_rules" set ref 171* 267* 328*
+based_area                             based           area(1024)               dcl 51 ref 178
+baseptr                                                builtin function         dcl 108 ref 188 188
+binary                                                 builtin function         dcl 108 ref 183 328
+bit                                                    builtin function         dcl 108 ref 328
+code                            001737 automatic       fixed bin(35,0)          dcl 64 in procedure "initiate_search_rules" set ref
+                                                                                  120* 132* 133 139* 140 150* 151 152 199 202*
+code                                   parameter       fixed bin(35,0)          dcl 258 in procedure "process_rule" set ref 256 266*
+                                                                                  298* 307* 308 313* 318* 325* 326 333*
+count                           001740 automatic       fixed bin(17,0)          dcl 65 set ref 123* 134* 134 141 142* 142* 143 144
+                                                                                  144* 154* 154 155 160 161 162 163* 163 170 171 172
+                                                                                  216* 217 222 267 268 269 276 280 284 310* 310 314*
+                                                                                  314 328 329 334
+dc_find$dir_initiate            000054 constant        entry                    external dcl 1-19 ref 325
+dc_find$obj_terminate_ptr       000056 constant        entry                    external dcl 1-89 ref 188
+depth                                  parameter       fixed bin(17,0)          dcl 259 ref 256 302
+dft_sr_arg                             based           structure                level 1 dcl 8-4
+dir                                    based           structure                level 1 dcl 3-11
+dn                                     parameter       char(168)                packed unaligned dcl 260 set ref 256 271 275 279 283
+                                                                                  287 288* 292 293* 297 303 325*
+dp                              002104 automatic       pointer                  dcl 3-9 set ref 325* 327 329 330*
+error_table_$bad_arg            000036 external static fixed bin(35,0)          dcl 98 ref 126 213 218
+error_table_$bad_string         000040 external static fixed bin(35,0)          dcl 99 ref 318
+error_table_$root               000042 external static fixed bin(35,0)          dcl 100 ref 190
+error_table_$too_many_sr        000044 external static fixed bin(35,0)          dcl 101 ref 202
+firstarg                        001741 automatic       fixed bin(17,0)          dcl 66 set ref 124* 146* 149
+flag                     10     000032 external static bit(36)                  array level 2 in structure "ahd$sr_tag" dcl 94
+                                                                                  in procedure "initiate_search_rules" set ref 227*
+                                                                                  245 306
+flag                     52     000030 external static bit(36)                  array level 2 in structure "ahd$search_rule" dcl 91
+                                                                                  in procedure "initiate_search_rules" set ref 231*
+                                                                                  249 306
+flag                    206            based           bit(36)                  array level 3 in structure "dft_sr_arg" dcl 8-4
+                                                                                  in procedure "initiate_search_rules" set ref 231
+                                                                                  249*
+flag                     12            based           bit(36)                  array level 3 in structure "dft_sr_arg" dcl 8-4
+                                                                                  in procedure "initiate_search_rules" set ref 227
+                                                                                  245*
+get_kstep                       000010 constant        entry                    external dcl 80 ref 184
+hbound                                                 builtin function         dcl 108 ref 125 142 143 155 159 160 181 212 217
+i                               001742 automatic       fixed bin(17,0)          dcl 67 set ref 149* 150 151* 159* 161* 181* 181* 182
+                                                                                  183 185* 211* 212 223 225* 226 226 227 227* 229*
+                                                                                  230 230 231 231* 243* 244 244 245 245* 247* 248
+                                                                                  248 249 249*
+input_arg                              based           structure                level 1 dcl 52 ref 119
+insert                    2            based           structure                level 3 dcl 5-9
+j                               000100 automatic       fixed bin(17,0)          dcl 262 set ref 303* 303* 304 306
+jj                              000101 automatic       fixed bin(17,0)          dcl 263 set ref 305* 306 307*
+kste                                   based           structure                level 1 dcl 4-36
+kstep                           002106 automatic       pointer                  dcl 4-15 set ref 184* 185
+level$get                       000012 constant        entry                    external dcl 81 ref 121
+lock$dir_unlock                 000014 constant        entry                    external dcl 82 ref 189 330
+lock$lock_fast                  000016 constant        entry                    external dcl 83 ref 130 221 242
+lock$unlock_fast                000020 constant        entry                    external dcl 84 ref 198 233 253
+meters                    2            based           structure                level 2 dcl 5-9
+name                            000032 external static char(32)                 array level 2 in structure "ahd$sr_tag" dcl 94
+                                                                                  in procedure "initiate_search_rules" set ref 226*
+                                                                                  244 303
+name                      2            based           char(32)                 array level 3 in structure "dft_sr_arg" dcl 8-4
+                                                                                  in procedure "initiate_search_rules" set ref 226
+                                                                                  244*
+name                            000030 external static char(168)                array level 2 in structure "ahd$search_rule" packed
+                                                                                  packed unaligned dcl 91 in procedure
+                                                                                  "initiate_search_rules" set ref 230* 248 307*
+name                      1     000102 automatic       char(168)                array level 2 in structure "arg" packed packed
+                                                                                  unaligned dcl 63 in procedure
+                                                                                  "initiate_search_rules" set ref 131 138 150* 158
+name                    134            based           char(168)                array level 3 in structure "dft_sr_arg" dcl 8-4
+                                                                                  in procedure "initiate_search_rules" set ref 230
+                                                                                  248*
+new_ring                        001743 automatic       bit(1)                   packed unaligned dcl 68 set ref 110* 116* 332
+nfound                          000102 automatic       fixed bin(17,0)          dcl 264 set ref 266* 309* 309 313
+nrules                    1            based           fixed bin(17,0)          level 2 dcl 8-4 set ref 216 224 252*
+ntags                                  based           fixed bin(17,0)          level 2 dcl 8-4 set ref 211 251*
+null                                                   builtin function         dcl 108 ref 177
+number                          000102 automatic       fixed bin(17,0)          level 2 dcl 63 set ref 125 125 149 151
+offset                    0(18) 001747 automatic       bit(18)                  array level 2 in structure "search_rule_temp" packed
+                                                                                  packed unaligned dcl 71 in procedure
+                                                                                  "initiate_search_rules" set ref 141* 142 162 172*
+                                                                                  268* 276* 280* 284* 334*
+offset                    0(18)        based           bit(18)                  array level 2 in structure "search_rules" packed
+                                                                                  packed unaligned dcl 55 in procedure
+                                                                                  "initiate_search_rules" set ref 181
+old_ep                          001744 automatic       pointer                  dcl 69 set ref 188* 189 189
+pds$home_dir                    000046 external static char(168)                dcl 102 ref 293
+pds$process_dir_name            000050 external static char(32)                 dcl 103 ref 288
+pds$stacks                      000052 external static pointer                  array dcl 104 ref 122
+ring                            001746 automatic       fixed bin(17,0)          dcl 70 set ref 121* 122
+rnt                                    based           structure                level 1 dcl 5-9
+rnt_ptr                  62            based           pointer                  level 2 dcl 7-26 ref 122
+rntp                            002110 automatic       pointer                  dcl 5-5 set ref 122* 176 178 179
+rules                   134            based           structure                array level 2 dcl 8-4 set ref 217
+search_rule_names               000000 constant        char(32)                 initial array dcl 6-9 ref 275 279 283 297
+search_rule_temp                001747 automatic       structure                array level 1 dcl 71 set ref 145 161* 196
+search_rules                           based           structure                array level 1 dcl 55 set ref 125 142 143 155 159 160
+                                                                                  178 181 196*
+segno                                                  builtin function         dcl 108 ref 327
+segno_usage$decrement           000022 constant        entry                    external dcl 85 ref 191
+segnum                          002023 automatic       fixed bin(15,0)          dcl 72 set ref 183* 184* 188 188 191* 327* 328
+srp                             002024 automatic       pointer                  dcl 73 set ref 125 142 143 155 159 160 176* 177 178*
+                                                                                  179 181 181 182 183 185 196
+srulep                   10            based           pointer                  level 2 dcl 5-9 set ref 176 179*
+ssd_dft_rules                   002026 automatic       structure                array level 1 dcl 74 set ref 145* 161
+ssd_wdir_index                  002102 automatic       fixed bin(17,0)          dcl 75 set ref 144* 159
+stack_header                           based           structure                level 1 dcl 7-26
+substr                                                 builtin function         dcl 108 ref 271
+syscode                                parameter       fixed bin(35,0)          dcl 46 set ref 208 210* 213* 218* 238 240*
+sysptr                                 parameter       pointer                  dcl 47 ref 208 209 238 241
+tags                      2            based           structure                array level 2 dcl 8-4 set ref 212
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 3-11 in procedure
+                                                                                  "initiate_search_rules" ref 329
+uid                       4            based           bit(36)                  level 2 in structure "kste" dcl 4-36 in procedure
+                                                                                  "initiate_search_rules" ref 185
+uid                       1     001747 automatic       bit(36)                  array level 2 in structure "search_rule_temp" packed
+                                                                                  packed unaligned dcl 71 in procedure
+                                                                                  "initiate_search_rules" set ref 170* 269* 329*
+uid                       1            based           bit(36)                  array level 2 in structure "search_rules" packed
+                                                                                  packed unaligned dcl 55 in procedure
+                                                                                  "initiate_search_rules" set ref 182 185
+xcode                           002103 automatic       fixed bin(35,0)          dcl 76 set ref 184* 185 188* 189 190 190* 191
+xsp                             002112 automatic       pointer                  dcl 8-3 set ref 209* 211 212 216 217 224 226 227 230
+                                                                                  231 241* 244 245 248 249 251 252
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 1-10
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 1-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 1-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 1-13
+based_rnt_area                         based           area(1024)               dcl 5-7
+call_offset                            internal static fixed bin(17,0)          initial dcl 7-78
+dc_find$dir_for_append          000000 constant        entry                    external dcl 1-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 1-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 1-17
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 1-21
+dc_find$dir_read                000000 constant        entry                    external dcl 1-23
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 1-24
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 1-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 1-28
+dc_find$dir_write               000000 constant        entry                    external dcl 1-30
+dc_find$dir_write_priv          000000 constant        entry                    external dcl 1-31
+dc_find$finished                000000 constant        entry                    external dcl 1-33
+dc_find$link_target             000000 constant        entry                    external dcl 1-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 1-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 1-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 1-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 1-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 1-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 1-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 1-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 1-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 1-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 1-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 1-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 1-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 1-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 1-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 1-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 1-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 1-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 1-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 1-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 1-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 1-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 1-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 1-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 1-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 1-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 1-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 1-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 1-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 1-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 1-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 1-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 1-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 1-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 1-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 1-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 1-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 1-88
+dc_find$obj_truncate            000000 constant        entry                    external dcl 1-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 1-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 1-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 1-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 1-97
+entry                                  based           structure                level 1 dcl 2-8
+entry_offset                           internal static fixed bin(17,0)          initial dcl 7-78
+ep                                     automatic       pointer                  dcl 2-6
+kst                                    based           structure                level 1 dcl 4-18
+kstp                                   automatic       pointer                  dcl 4-15
+lth                                    automatic       fixed bin(17,0)          dcl 5-6
+pds$kstp                               external static pointer                  dcl 4-15
+push_offset                            internal static fixed bin(17,0)          initial dcl 7-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 7-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 7-78
+rnte                                   based           structure                level 1 dcl 5-24
+rntep                                  automatic       pointer                  dcl 5-5
+sb                                     automatic       pointer                  dcl 7-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 7-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 7-72
+version_number_2                       internal static fixed bin(17,0)          initial dcl 3-84
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+fin                             000606 constant        label                    dcl 198 set ref 133 140 152 203
+get_system_rules                000776 constant        entry                    external dcl 238
+init_ring                       000140 constant        entry                    external dcl 114
+initiate_name                   001355 constant        entry                    internal dcl 323 ref 272 289 294
+initiate_search_rules           000127 constant        entry                    external dcl 14
+join                            000147 constant        label                    dcl 118 ref 111
+process_rule                    001120 constant        entry                    internal dcl 256 ref 132 139 150 307
+set_system_rules                000631 constant        entry                    external dcl 208
+thru                            000431 constant        label                    dcl 170 set ref 135 162
+too_many_err                    000623 constant        label                    dcl 202 ref 143 155 160 165
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+ptr                                                    builtin function         ref 189 189
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1736        2016    1441        1746
+Length      2410    1441        60         356     274           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+initiate_search_rules              1165 external procedure  is an external procedure.  
+process_rule                         96 internal procedure  calls itself recursively.  
+initiate_name                           internal procedure  shares stack frame of internal procedure process_rule.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+initiate_search_rules    000100 ap                          initiate_search_rules
+                         000102 arg                         initiate_search_rules
+                         001737 code                        initiate_search_rules
+                         001740 count                       initiate_search_rules
+                         001741 firstarg                    initiate_search_rules
+                         001742 i                           initiate_search_rules
+                         001743 new_ring                    initiate_search_rules
+                         001744 old_ep                      initiate_search_rules
+                         001746 ring                        initiate_search_rules
+                         001747 search_rule_temp            initiate_search_rules
+                         002023 segnum                      initiate_search_rules
+                         002024 srp                         initiate_search_rules
+                         002026 ssd_dft_rules               initiate_search_rules
+                         002102 ssd_wdir_index              initiate_search_rules
+                         002103 xcode                       initiate_search_rules
+                         002104 dp                          initiate_search_rules
+                         002106 kstep                       initiate_search_rules
+                         002110 rntp                        initiate_search_rules
+                         002112 xsp                         initiate_search_rules
+process_rule             000100 j                           process_rule
+                         000101 jj                          process_rule
+                         000102 nfound                      process_rule
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        call_int_this       call_int_other      return_mac          ext_entry           int_entry
+op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+dc_find$dir_initiate          dc_find$obj_terminate_ptr     get_kstep                     level$get
+lock$dir_unlock               lock$lock_fast                lock$unlock_fast              segno_usage$decrement
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ahd$n_sr_tags                 ahd$n_sys_rules               ahd$search_rule               ahd$search_rules_lock
+ahd$sr_tag                    error_table_$bad_arg          error_table_$bad_string       error_table_$root
+error_table_$too_many_sr      pds$home_dir                  pds$process_dir_name          pds$stacks
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000123       110 000134       111 000135       114 000136       116 000145       118 000147       119 000153
+    120 000156       121 000157       122 000166       123 000175       124 000177       125 000200       126 000205
+    127 000210       130 000211       131 000221       132 000225       133 000243       134 000245       135 000246
+    138 000247       139 000253       140 000271       141 000273       142 000301       142 000314       143 000316
+    144 000321       145 000324       146 000327       149 000331       150 000341       151 000355       152 000363
+    154 000365       155 000366       156 000371       158 000373       159 000377       160 000405       161 000410
+    162 000421       163 000425       164 000426       165 000430       170 000431       171 000434       172 000436
+    176 000441       177 000444       178 000450       179 000456       180 000460       181 000461       182 000475
+    183 000500       184 000503       185 000516       188 000526       189 000545       190 000560       191 000565
+    194 000600       196 000602       198 000606       199 000617       200 000622       202 000623       203 000626
+    208 000627       209 000636       210 000642       211 000643       212 000645       213 000647       214 000652
+    216 000653       217 000655       218 000657       219 000662       221 000663       222 000674       223 000677
+    224 000701       225 000704       226 000713       227 000724       228 000730       229 000732       230 000743
+    231 000754       232 000760       233 000762       234 000773       238 000774       240 001003       241 001005
+    242 001010       243 001021       244 001031       245 001042       246 001046       247 001050       248 001061
+    249 001072       250 001076       251 001100       252 001103       253 001106       254 001116       256 001117
+    266 001125       267 001130       268 001135       269 001137       271 001140       272 001146       273 001147
+    275 001150       276 001154       277 001157       279 001160       280 001164       281 001167       283 001170
+    284 001174       285 001177       287 001200       288 001204       289 001210       290 001211       292 001212
+    293 001216       294 001222       295 001223       297 001224       298 001230       299 001232       302 001233
+    303 001235       303 001257       304 001261       305 001265       306 001275       307 001310       308 001327
+    309 001332       310 001333       312 001335       313 001337       314 001345       315 001350       318 001351
+    321 001354       323 001355       325 001356       326 001373       327 001376       328 001403       329 001413
+    330 001416       331 001425       332 001426       333 001431       334 001432       336 001437
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

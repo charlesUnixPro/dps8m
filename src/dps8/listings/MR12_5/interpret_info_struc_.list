@@ -1,0 +1,1894 @@
+	COMPILATION LISTING OF SEGMENT interpret_info_struc_
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1108.63_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 interpret_info_struc_:
+       15      procedure (conname, infoptr, linfo, retsw, no_restart, realsw, lngsw);
+       16 
+       17 
+       18 /* This procedure is used by default_error_handler_ to interpret the info
+       19*   structures passed with software signalled conditions */
+       20 /* Last modified by M. Weaver 2 December 1973 */
+       21 /* Changed 25 January 1979 B. Margulies to set print_sw on af errors */
+       22 /* Modified: 8 August 1980 by G. Palter to special case the code error_table_$active_function for the
+       23*	     active_function_error condition */
+       24 /* Modified: 10 September 1980 by G. Palter to rtrim command name in error_table_$active_function message */
+       25 /* Modified April 1981 by B. Margulies for quiet_restart and new includes */
+       26 /* Modified for program_interrupt BIM July 1981 */
+       27 /* Modified for quit_info E. N. Kittlitz December 1981 */
+       28 /* Modified to notice pl1-signal-statement info structures on non-pl1 */
+       29 /*          conditions 4/82 BIM */
+       30 /* Modified for malformed_list_template_entry_ November 29, 1984 by M. Weaver */
+       31 
+       32 	dcl     conname		 char (32);	/* condition name */
+       33 	dcl     linfo		 char (500) var;	/* resulting info string */
+       34 	dcl     temp		 char (100) aligned;
+       35 	dcl     shortinfo		 char (8) aligned;
+       36 	dcl     temp2		 char (150) var;
+       37 	dcl     name		 char (afe_info.name_lth) based (afe_info.name_ptr);
+       38 						/* for active_function_error caller */
+       39 	dcl     errmsg		 char (afe_info.errmess_lth) based (afe_info.errmess_ptr);
+       40 						/* for new afe message */
+       41           dcl     pl1_signalled_this     bit (1);
+       42 	dcl     tempchar		 char (1) aligned;
+       43 	dcl     (infoptr, lp)	 ptr;
+       44 	dcl     (lng, lngsw)	 fixed bin;
+       45 	dcl     toncode		 fixed bin (35);
+       46 	dcl     lv		 (4) fixed bin (35) based (lp);
+       47 
+       48 	dcl     (retsw, realsw, no_restart)
+       49 				 bit (1) aligned;
+       50 
+       51 	dcl     error_table_$active_function
+       52 				 fixed binary (35) external;
+       53 
+       54 	dcl     (addr, rtrim, substr)	 builtin;
+       55 	dcl     (
+       56 	        ioa_$rs,
+       57 	        ioa_$ioa_stream
+       58 	        )			 ext entry options (variable);
+       59 	dcl     convert_status_code_	 ext entry (fixed bin (35), char (8) aligned, char (100) aligned);
+       60 	dcl     interpret_oncode_	 entry (fixed bin (35), char (150) var);
+       61 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+       62 
+       63 
+       64 	dcl     1 cond_header	 aligned like condition_info_header based (infoptr);
+       65 
+       66 	dcl     1 unwind_err	 aligned based (infoptr),
+       67 		2 header		 aligned like condition_info_header,
+       68 		2 target_label	 label;
+       69 
+       70 
+  2     1 /* BEGIN INCLUDE FILE com_af_error_info.incl.pl1 April 81 BIM */
+  2     2 /* format: style2 */
+  2     3 
+  2     4 /* info structures for command error and active function error */
+  2     5 /* The include file condition_info_header must be included to use this file */
+  2     6 
+  2     7      declare com_af_error_info_ptr  pointer;
+  2     8      declare 1 com_af_error_info    aligned based (com_af_error_info_ptr),
+  2     9 	     2 header	      aligned like condition_info_header,
+  2    10 	     2 name_ptr	      ptr,
+  2    11 	     2 name_lth	      fixed bin,
+  2    12 	     2 errmess_ptr	      ptr,
+  2    13 	     2 errmess_lth	      fixed bin (21),
+  2    14 	     2 max_errmess_lth    fixed bin (21),
+  2    15 	     2 print_sw	      bit (1);		/* set this to inform com_err_ that the msg has been printed */
+  2    16 
+  2    17 declare com_af_error_info_version_3 internal static options (constant) init (3);
+  2    18 
+  2    19 /* END INCLUDE FILE com_af_error_info */
+       71 
+       72 	dcl     1 afe_info		 like com_af_error_info based (infoptr);
+       73 
+  3     1 /* Begin include file: io_error_info.incl.pl1  BIM April 1981 */
+  3     2 /* This depends on condition_info_header.incl.pl1 */
+  3     3 /* format: style2 */
+  3     4 
+  3     5      declare   io_error_info_ptr    pointer;
+  3     6      declare 1 io_error_info	      aligned based (io_error_info_ptr),
+  3     7 	     2 header	      aligned like condition_info_header,
+  3     8 	     2 switch_name	      char (32),
+  3     9 	     2 status,
+  3    10 	       3 code	      fixed bin (35),
+  3    11 	       3 IOS_status_bits  bit (36);		/* for compatability */
+  3    12 
+  3    13 /* end include file, io_error_info.incl.pl1 */
+       74 
+       75 	dcl     1 io_err_info	 aligned like io_error_info based (infoptr);
+  4     1 /* BEGIN INCLUDE FILE sub_error_info.incl.pl1 */
+  4     2 /* format: style2 */
+  4     3 
+  4     4 /* The include file condition_info_header must be used with this file */
+  4     5 
+  4     6      declare sub_error_info_ptr     pointer;
+  4     7      declare 1 sub_error_info	      aligned based (sub_error_info_ptr),
+  4     8 	     2 header	      aligned like condition_info_header,
+  4     9 	     2 retval	      fixed bin (35),	/* return value */
+  4    10 	     2 name	      char (32),		/* module name */
+  4    11 	     2 info_ptr	      ptr;
+  4    12 
+  4    13      declare sub_error_info_version_1
+  4    14 			      internal static options (constant) fixed bin init (1);
+  4    15 
+  4    16 /* END INCLUDE FILE sub_error_info.incl.pl1 */
+       76 
+       77 	dcl     1 sub_error_struc	 aligned like sub_error_info based (infoptr);
+       78 
+  5     1 /* BEGIN INCLUDE FILE ... pl1_info.incl.pl1 */
+  5     2 /* This is intended to be used by all procedures raising pl1 conditions and by the default handler */
+  5     3 /* Created June 1981 by Benson I. Margulies from pl1_info_struc.incl.pl1 */
+  5     4 /* This include file must be used with condition_info_header.incl.pl1. Both must be %included */
+  5     5 
+  5     6 declare pl1_info_ptr pointer;
+  5     7 declare 1 pl1_info aligned based (pl1_info_ptr),
+  5     8             2 header aligned like condition_info_header,
+  5     9 	  2 id char(8) aligned,		/* init "pliocond"; indicates pl1 structure */
+  5    10 	  2 content_flags aligned,
+  5    11 	   (3 v1_sw,			/* on if raised by version 1 */
+  5    12 	    3 oncode_sw,			/* "1"b->valid oncode */
+  5    13 	    3 onfile_sw,			/* "1"b->file name is in structure */
+  5    14 	    3 file_ptr_sw,			/* "1"b->file is associated with this condition */
+  5    15 	    3 onsource_sw,			/* "1"b->valid onsource string for this condition */
+  5    16 	    3 onchar_sw,			/* "1"b->valid onchar index in this structure */
+  5    17 	    3 onkey_sw,			/* "1"b->valid onkey string in this structure */
+  5    18 	    3 onfield_sw) bit(1) unaligned,	/* "1"b->valid onfield string in this structure */
+  5    19 	  2 oncode fixed bin(35),		/* oncode for condition */
+  5    20 	  2 onfile char(32) aligned,		/* onfile string */
+  5    21 	  2 file_ptr ptr,			/* pointer to file value */
+  5    22 	  2 onsource char(256) var,		/* onsource string */
+  5    23 	  2 oncharindex fixed bin,		/* char offset in onsource of offending char */
+  5    24 	  2 onkey_onfield char(256) var;	/* either onkey string or onfield string */
+  5    25 
+  5    26 /* END INCLUDE FILE ... pl1_info.incl.pl1 */
+       79 
+       80 	dcl     1 pl1_info_struc	 aligned like pl1_info based (infoptr);
+       81 
+  6     1 /* begin include file program_interrupt_info.incl.pl1 BIM 1981 */
+  6     2 /* format: style2 */
+  6     3 
+  6     4 /* condition_info_header.info.pl1 must be %included with this file */
+  6     5 
+  6     6      declare program_interrupt_info_ptr
+  6     7 			      pointer;
+  6     8 
+  6     9      declare 1 program_interrupt_info
+  6    10 			      aligned based (program_interrupt_info_ptr),
+  6    11 	     2 header	      aligned like condition_info_header,
+  6    12 	     2 default_handler_restarted_this_signal
+  6    13 			      bit (1) aligned;
+  6    14 
+  6    15      declare program_interrupt_info_version_1
+  6    16 			      fixed bin init (1) internal static options (constant);
+  6    17 
+  6    18      declare program_interrupt_condition_name
+  6    19 			      character (17) init ("program_interrupt") internal static options (constant);
+  6    20 
+  6    21      declare program_interrupt      condition;
+  6    22 
+  6    23 /* end include file program_interrupt_info.incl.pl1 */
+       82 
+       83 	dcl     1 pi_info		 aligned like program_interrupt_info based (infoptr);
+       84 
+  7     1 /* BEGIN INCLUDE FILE ... quit_info.incl.pl1 ... */
+  7     2 
+  7     3 /* The include file condition_info_header must be used with this file. */
+  7     4 
+  7     5 declare quit_info_ptr pointer;
+  7     6 declare 1 quit_info aligned based (quit_info_ptr),
+  7     7         2 header aligned like condition_info_header,
+  7     8         2 switches aligned,
+  7     9 	3 reset_write bit (1) unaligned,
+  7    10           3 ips_quit bit (1) unaligned,
+  7    11           3 reconnection_quit bit (1) unaligned,
+  7    12 	3 pad bit (33);
+  7    13 
+  7    14 /* END INCLUDE FILE ... quit_info.incl.pl1 ... */
+       85 
+       86 	dcl     1 quit_info_struc	 aligned like quit_info based (infoptr);
+       87 
+  8     1 /* BEGIN INCLUDE FILE ... malformed_list_template.incl.pl1 */
+  8     2 
+  8     3 /* Created:  11/27/84 by Michael Mabey */
+  8     4 
+  8     5 declare template_info_ptr     pointer;
+  8     6 
+  8     7 declare 01 template_info
+  8     8 			aligned based (template_info_ptr),
+  8     9 	  02 header	like condition_info_header,
+  8    10 	  02 version	fixed bin (35),		/* the version number */
+  8    11 	  02 variable_p	ptr,			/* beginning of initialized variable */
+  8    12 	  02 variable_end_p ptr,			/* last initialized bit */
+  8    13 	  02 template_p	ptr,			/* beginning of the list template */
+  8    14 	  02 template_error_p
+  8    15 			ptr;			/* template entry that contains the error. */
+  8    16 
+  8    17 /* END INCLUDE FILE ... malformed_list_template.incl.pl1 */
+       88 
+       89 
+       90 	dcl     1 template_info_struc	 aligned like template_info based (infoptr);
+       91 
+       92 
+       93 
+       94 	pl1_signalled_this = pl1_info_struc.id = "pliocond";
+       95 
+       96 	if cond_header.quiet_restart
+       97 	then do;
+       98 		retsw = "1"b;			/* restart the condition */
+       99 		return;				/* and that is all we do */
+      100 	     end;
+      101 
+      102 	if ^retsw
+      103 	then retsw = cond_header.action_flags.default_restart;
+      104 	no_restart = cond_header.action_flags.cant_restart;
+      105 
+      106 	if ^pl1_signalled_this
+      107 	then do;
+      108 
+      109 		if conname = "sub_error_"
+      110 		then sub_error_struc.retval = 0;
+      111 
+      112 		if conname = program_interrupt_condition_name
+      113 		then do;
+      114 			retsw = "1"b;
+      115 			pi_info.default_handler_restarted_this_signal = "1"b;
+      116 			return;			/* protocol is satisfied */
+      117 		     end;
+      118 
+      119 
+      120 		if conname = "active_function_error"
+      121 		then do;
+      122 			if realsw
+      123 			then call ioa_$ioa_stream ("error_output", errmsg);
+      124 			afe_info.print_sw = "0"b;	/* error message causing error must
+      125*						   be printed first, but only once */
+      126 
+      127 			if afe_info.status_code = error_table_$active_function
+      128 			then linfo = "Error:  Attempt to invoke command " || rtrim (name)
+      129 				|| " as an active function." || byte (10) /* NL */;
+      130 			else linfo = "Error:  Bad call to active function " || rtrim (name) || byte (10) /* NL */;
+      131 						/* now fill in info string itself */
+      132 		     end;
+      133 
+      134 		else if conname = "io_error"
+      135 		then do;
+      136 			call convert_status_code_ (io_err_info.status.code, shortinfo, temp);
+      137 
+      138 			if shortinfo = (8)"x"
+      139 			then call ioa_$rs (" Cannot do I/O on switch ^a.^/Hardware status = ^w ^w", linfo, lng,
+      140 				io_err_info.switch_name, io_err_info.status.code,
+      141 				io_err_info.status.IOS_status_bits);
+      142 
+      143 			else call ioa_$rs (" Cannot do I/O on stream ^a.^/^a", linfo, lng, io_err_info.switch_name,
+      144 				temp);
+      145 
+      146 		     end;
+      147 
+      148 		else if conname = "unwinder_error"
+      149 		then do;
+      150 			if lngsw = 1
+      151 			then linfo = unwind_err.info_string;
+      152 			else do;
+      153 				lp = addr (unwind_err.target_label);
+      154 						/* want to print label in octal */
+      155 				call ioa_$rs ("^a^/Label is:  ^w ^w  ^w ^w", linfo, lng, unwind_err.info_string,
+      156 				     lp -> lv (1), lp -> lv (2), lp -> lv (3), lp -> lv (4));
+      157 			     end;
+      158 		     end;
+      159 
+      160 		else if conname = "quit"
+      161 		then do;				/* everything is done by default_error_handler_ */
+      162 		     end;
+      163 
+      164 		else if conname = "malformed_list_template_entry_"
+      165 		then call ioa_$rs ("A compiler has generated incorrect list template initialization^/for an array or external variable.^/The template is at ^p.   The malformed entry is at ^p.",
+      166 		     linfo, lng, template_info_struc.template_p, 
+      167 		     template_info_struc.template_error_p);
+      168 
+      169 		else do;				/* get what we can from structure header */
+      170 			if cond_header.status_code = 0
+      171 			then linfo = cond_header.info_string;
+      172 			else do;
+      173 				call convert_status_code_ (cond_header.status_code, shortinfo, temp);
+      174 				call ioa_$rs ("^a ^a", linfo, lng, temp, cond_header.info_string);
+      175 			     end;
+      176 		     end;
+      177 	     end;
+      178 	else do;					/* have a pl1 condition */
+      179 		if pl1_info_struc.content_flags.onfile_sw
+      180 		then call ioa_$rs ("occurred while doing I/O on file ^a", linfo, lng, pl1_info_struc.onfile);
+      181 
+      182 		if pl1_info_struc.content_flags.onkey_sw
+      183 		then /* have a key to print */
+      184 		     if conname = "endfile" | conname = "transmit" | conname = "record" | conname = "key"
+      185 		     then call ioa_$rs ("^aonkey = ^a", linfo, lng, linfo, pl1_info_struc.onkey_onfield);
+      186 
+      187 		if conname = "conversion"
+      188 		then if pl1_info_struc.content_flags.onsource_sw
+      189 		     then do;
+      190 			     if pl1_info_struc.content_flags.onchar_sw
+      191 			     then do;		/* print both onsource and onchar */
+      192 				     tempchar = substr (pl1_info_struc.onsource, pl1_info_struc.oncharindex, 1);
+      193 						/* must copy to get correct descriptor */
+      194 				     call ioa_$rs ("^aonsource = ""^a"", onchar = ""^1a""", linfo, lng, linfo,
+      195 					pl1_info_struc.onsource, tempchar);
+      196 				end;
+      197 			     else call ioa_$rs ("^aonsource = ""^a""", linfo, lng, linfo, pl1_info_struc.onsource);
+      198 			end;
+      199 
+      200 		if conname = "name"
+      201 		then if pl1_info_struc.content_flags.onfield_sw
+      202 		     then call ioa_$rs ("^aonfield = ^a", linfo, lng, linfo, pl1_info_struc.onkey_onfield);
+      203 
+      204 		if pl1_info_struc.content_flags.oncode_sw
+      205 		then do;
+      206 			toncode = pl1_info_struc.oncode;
+      207 			if toncode ^= 0 & toncode ^= 700
+      208 			then do;			/* determine source */
+      209 				if conname = "error" | conname = "conversion" | conname = "size"
+      210 				     | conname = "record" | conname = "key" | conname = "undefinedfile"
+      211 				then do;		/* want to print oncode */
+      212 					call interpret_oncode_ (toncode, temp2);
+      213 					linfo = linfo || temp2;
+      214 				     end;
+      215 			     end;
+      216 		     end;
+      217 		if linfo ^= ""
+      218 		then if substr (linfo, 1, 1) ^= byte (10)
+      219 						/* NL */
+      220 		     then linfo = byte (10) /* NL */ || linfo;
+      221 						/* don't add double newline */
+      222 	     end;
+      223 
+      224 	return;
+      225 
+      226 /*  */
+      227 no_message:
+      228      entry (conname, infoptr);
+      229 
+      230 /* this entry makes use of info struc but does not format message */
+      231 
+      232 	dcl     based_ptrs		 (100) ptr based;
+      233 	dcl     based_bins		 (100) fixed bin (15) aligned based;
+      234 	dcl     based_file		 file variable based;
+      235 
+      236 	if conname = "endpage"
+      237 	then if pl1_info_struc.id = "pliocond"
+      238 	     then if pl1_info_struc.content_flags.file_ptr_sw
+      239 		then do;
+      240 			if pl1_info_struc.content_flags.v1_sw
+      241 			then pl1_info_struc.file_ptr -> based_ptrs (2) -> based_bins (13) = 1;
+      242 			else put page file (pl1_info_struc.file_ptr -> based_file);
+      243 		     end;
+      244 
+      245 	return;
+      246      end interpret_info_struc_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1108.6  interpret_info_struc_.pl1         >udd>sm>ds>w>ml>interpret_info_struc_.pl1
+62           1    03/24/82  1447.2  condition_info_header.incl.pl1    >ldd>incl>condition_info_header.incl.pl1
+71           2    06/22/81  1915.3  com_af_error_info.incl.pl1        >ldd>incl>com_af_error_info.incl.pl1
+74           3    01/06/82  2306.2  io_error_info.incl.pl1            >ldd>incl>io_error_info.incl.pl1
+76           4    07/18/81  1200.0  sub_error_info.incl.pl1           >ldd>incl>sub_error_info.incl.pl1
+79           5    07/18/81  1200.0  pl1_info.incl.pl1                 >ldd>incl>pl1_info.incl.pl1
+82           6    03/27/82  0535.1  program_interrupt_info.incl.pl1   >ldd>incl>program_interrupt_info.incl.pl1
+85           7    02/09/82  1252.4  quit_info.incl.pl1                >ldd>incl>quit_info.incl.pl1
+88           8    12/21/84  1339.8  malformed_list_template.incl.pl1  >ldd>incl>malformed_list_template.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+IOS_status_bits         116            based           bit(36)                  level 3 dcl 75 set ref 138*
+action_flags              2            based           structure                level 2 dcl 64
+addr                                                   builtin function         dcl 54 ref 153
+afe_info                               based           structure                level 1 unaligned dcl 72
+based_bins                             based           fixed bin(15,0)          array dcl 233 set ref 240*
+based_file                             based           file variable            dcl 234 ref 242
+based_ptrs                             based           pointer                  array dcl 232 ref 240
+cant_restart              2            based           bit(1)                   level 3 packed packed unaligned dcl 64 ref 104
+code                    115            based           fixed bin(35,0)          level 3 dcl 75 set ref 136* 138*
+com_af_error_info                      based           structure                level 1 dcl 2-8
+cond_header                            based           structure                level 1 dcl 64
+condition_info_header                  based           structure                level 1 dcl 1-6
+conname                                parameter       char(32)                 packed unaligned dcl 32 ref 14 109 112 120 134 148
+                                                                                  160 164 182 182 182 182 187 200 209 209 209 209
+                                                                                  209 209 227 236
+content_flags           107            based           structure                level 2 dcl 80
+convert_status_code_            000016 constant        entry                    external dcl 59 ref 136 173
+default_handler_restarted_this_signal
+                        105            based           bit(1)                   level 2 dcl 83 set ref 115*
+default_restart           2(01)        based           bit(1)                   level 3 packed packed unaligned dcl 64 ref 102
+errmess_lth             114            based           fixed bin(21,0)          level 2 dcl 72 ref 122 122
+errmess_ptr             112            based           pointer                  level 2 dcl 72 ref 122
+errmsg                                 based           char                     packed unaligned dcl 39 set ref 122*
+error_table_$active_function    000010 external static fixed bin(35,0)          dcl 51 ref 127
+file_ptr                122            based           pointer                  level 2 dcl 80 ref 240 242
+file_ptr_sw             107(03)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 236
+header                                 based           structure                level 2 in structure "afe_info" dcl 72 in procedure
+                                                                                  "interpret_info_struc_"
+header                                 based           structure                level 2 in structure "unwind_err" dcl 66
+                                                                                  in procedure "interpret_info_struc_"
+id                      105            based           char(8)                  level 2 dcl 80 ref 94 236
+info_string               3            based           varying char(256)        level 3 in structure "unwind_err" dcl 66
+                                                                                  in procedure "interpret_info_struc_" set ref 150
+                                                                                  155*
+info_string               3            based           varying char(256)        level 2 in structure "cond_header" dcl 64
+                                                                                  in procedure "interpret_info_struc_" set ref 170
+                                                                                  174*
+infoptr                                parameter       pointer                  dcl 43 ref 14 94 96 102 104 109 115 122 122 122 124
+                                                                                  127 127 127 130 130 136 138 138 138 143 150 153
+                                                                                  155 164 164 170 170 173 174 179 179 182 182 187
+                                                                                  190 192 192 194 197 200 200 204 206 227 236 236
+                                                                                  240 240 242
+interpret_oncode_               000020 constant        entry                    external dcl 60 ref 212
+io_err_info                            based           structure                level 1 dcl 75
+io_error_info                          based           structure                level 1 dcl 3-6
+ioa_$ioa_stream                 000014 constant        entry                    external dcl 55 ref 122
+ioa_$rs                         000012 constant        entry                    external dcl 55 ref 138 143 155 164 174 179 182 194
+                                                                                  197 200
+linfo                                  parameter       varying char(500)        dcl 33 set ref 14 127* 130* 138* 143* 150* 155* 164*
+                                                                                  170* 174* 179* 182* 182* 194* 194* 197* 197* 200*
+                                                                                  200* 213* 213 217 217 217* 217
+lng                             000210 automatic       fixed bin(17,0)          dcl 44 set ref 138* 143* 155* 164* 174* 179* 182*
+                                                                                  194* 197* 200*
+lngsw                                  parameter       fixed bin(17,0)          dcl 44 ref 14 150
+lp                              000206 automatic       pointer                  dcl 43 set ref 153* 155 155 155 155
+lv                                     based           fixed bin(35,0)          array dcl 46 set ref 155* 155* 155* 155*
+name                                   based           char                     packed unaligned dcl 37 ref 127 130
+name_lth                110            based           fixed bin(17,0)          level 2 dcl 72 ref 127 130
+name_ptr                106            based           pointer                  level 2 dcl 72 ref 127 130
+no_restart                             parameter       bit(1)                   dcl 48 set ref 14 104*
+onchar_sw               107(05)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 190
+oncharindex             225            based           fixed bin(17,0)          level 2 dcl 80 ref 192
+oncode                  110            based           fixed bin(35,0)          level 2 dcl 80 ref 206
+oncode_sw               107(01)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 204
+onfield_sw              107(07)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 200
+onfile                  111            based           char(32)                 level 2 dcl 80 set ref 179*
+onfile_sw               107(02)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 179
+onkey_onfield           226            based           varying char(256)        level 2 dcl 80 set ref 182* 200*
+onkey_sw                107(06)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 182
+onsource                124            based           varying char(256)        level 2 dcl 80 set ref 192 194* 197*
+onsource_sw             107(04)        based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 187
+pi_info                                based           structure                level 1 dcl 83
+pl1_info                               based           structure                level 1 dcl 5-7
+pl1_info_struc                         based           structure                level 1 dcl 80
+pl1_signalled_this              000203 automatic       bit(1)                   packed unaligned dcl 41 set ref 94* 106
+print_sw                116            based           bit(1)                   level 2 packed packed unaligned dcl 72 set ref 124*
+program_interrupt_condition_name
+                                000000 constant        char(17)                 initial packed unaligned dcl 6-18 ref 112
+program_interrupt_info                 based           structure                level 1 dcl 6-9
+quiet_restart             2(02)        based           bit(1)                   level 3 packed packed unaligned dcl 64 ref 96
+quit_info                              based           structure                level 1 dcl 7-6
+realsw                                 parameter       bit(1)                   dcl 48 ref 14 122
+retsw                                  parameter       bit(1)                   dcl 48 set ref 14 98* 102 102* 114*
+retval                  105            based           fixed bin(35,0)          level 2 dcl 77 set ref 109*
+rtrim                                                  builtin function         dcl 54 ref 127 130
+shortinfo                       000132 automatic       char(8)                  dcl 35 set ref 136* 138 173*
+status                  115            based           structure                level 2 dcl 75
+status_code             104            based           fixed bin(35,0)          level 3 in structure "afe_info" dcl 72 in procedure
+                                                                                  "interpret_info_struc_" ref 127
+status_code             104            based           fixed bin(35,0)          level 2 in structure "cond_header" dcl 64
+                                                                                  in procedure "interpret_info_struc_" set ref 170
+                                                                                  173*
+sub_error_info                         based           structure                level 1 dcl 4-7
+sub_error_struc                        based           structure                level 1 dcl 77
+substr                                                 builtin function         dcl 54 ref 192 217
+switch_name             105            based           char(32)                 level 2 dcl 75 set ref 138* 143*
+target_label            106            based           label variable           level 2 dcl 66 set ref 153
+temp                            000100 automatic       char(100)                dcl 34 set ref 136* 143* 173* 174*
+temp2                           000134 automatic       varying char(150)        dcl 36 set ref 212* 213
+tempchar                        000204 automatic       char(1)                  dcl 42 set ref 192* 194*
+template_error_p        114            based           pointer                  level 2 dcl 90 set ref 164*
+template_info                          based           structure                level 1 dcl 8-7
+template_info_struc                    based           structure                level 1 dcl 90
+template_p              112            based           pointer                  level 2 dcl 90 set ref 164*
+toncode                         000211 automatic       fixed bin(35,0)          dcl 45 set ref 206* 207 207 212*
+unwind_err                             based           structure                level 1 dcl 66
+v1_sw                   107            based           bit(1)                   level 3 packed packed unaligned dcl 80 ref 240
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+com_af_error_info_ptr                  automatic       pointer                  dcl 2-7
+com_af_error_info_version_3            internal static fixed bin(17,0)          initial dcl 2-17
+condition_info_header_ptr              automatic       pointer                  dcl 1-4
+io_error_info_ptr                      automatic       pointer                  dcl 3-5
+pl1_info_ptr                           automatic       pointer                  dcl 5-6
+program_interrupt               000000 stack reference condition                dcl 6-21
+program_interrupt_info_ptr             automatic       pointer                  dcl 6-6
+program_interrupt_info_version_1       internal static fixed bin(17,0)          initial dcl 6-15
+quit_info_ptr                          automatic       pointer                  dcl 7-5
+quit_info_struc                        based           structure                level 1 dcl 86
+sub_error_info_ptr                     automatic       pointer                  dcl 4-6
+sub_error_info_version_1               internal static fixed bin(17,0)          initial dcl 4-13
+template_info_ptr                      automatic       pointer                  dcl 8-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+interpret_info_struc_           000334 constant        entry                    external dcl 14
+no_message                      001623 constant        entry                    external dcl 227
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+byte                                                   builtin function         ref 127 130 217 217
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1776        2020    1671        2006
+Length      2360    1671        22         323     105           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+interpret_info_struc_               320 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+interpret_info_struc_    000100 temp                        interpret_info_struc_
+                         000132 shortinfo                   interpret_info_struc_
+                         000134 temp2                       interpret_info_struc_
+                         000203 pl1_signalled_this          interpret_info_struc_
+                         000204 tempchar                    interpret_info_struc_
+                         000206 lp                          interpret_info_struc_
+                         000210 lng                         interpret_info_struc_
+                         000211 toncode                     interpret_info_struc_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        return_mac
+shorten_stack       ext_entry           put_terminate       strem_prep
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+convert_status_code_          interpret_oncode_             ioa_$ioa_stream               ioa_$rs
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$active_function
+
+
+CONSTANTS
+001670  aa     377777777777
+
+000000  aa  160 162 157 147	prog
+000001  aa  162 141 155 137	ram_
+000002  aa  151 156 164 145	inte
+000003  aa  162 162 165 160	rrup
+000004  aa  164 000 000 000	t
+
+
+000005  aa     403000000020
+
+000006  aa  163 151 172 145	size
+
+000007  aa     524000000016
+
+000010  aa  156 141 155 145	name
+
+000011  aa     524000000021
+
+000012  aa     524000000001
+
+000013  aa     524000000041
+
+000014  aa  153 145 171 000	key
+
+000015  aa     524000000043
+
+000016  aa     524000000005
+
+000017  aa     524000000233
+
+000020  aa  161 165 151 164	quit
+
+000021  aa     530000000400
+
+000022  aa     524000000033
+
+000023  aa     524000000144
+
+000024  aa     514000000044
+
+000025  aa     404000000043
+
+000026  aa     524000000040
+
+000027  aa     524000000065
+
+000030  aa     526000000000
+
+000031  aa     524000000014
+
+000032  aa     514000000001
+
+000033  aa     404000000021
+
+000034  aa     464000000000
+
+000035  aa     530000000764
+
+000036  aa     526000000040
+
+000040  aa  145 156 144 160	endp
+000041  aa  141 147 145 000	age
+
+000042  aa  145 162 162 157	erro
+000043  aa  162 000 000 000	r
+
+000044  aa  162 145 143 157	reco
+000045  aa  162 144 000 000	rd
+
+000046  aa  164 162 141 156	tran
+000047  aa  163 155 151 164	smit
+
+000050  aa  145 156 144 146	endf
+000051  aa  151 154 145 000	ile
+
+000052  aa  136 141 040 136	^a ^
+000053  aa  141 000 000 000	a
+
+000054  aa  170 170 170 170	xxxx
+000055  aa  170 170 170 170	xxxx
+
+000056  aa  151 157 137 145	io_e
+000057  aa  162 162 157 162	rror
+
+000060  aa  160 154 151 157	plio
+000061  aa  143 157 156 144	cond
+
+000062  aa  143 157 156 166	conv
+000063  aa  145 162 163 151	ersi
+000064  aa  157 156 000 000	on
+
+000065  aa  136 141 157 156	^aon
+000066  aa  153 145 171 040	key 
+000067  aa  075 040 136 141	= ^a
+
+000070  aa  145 162 162 157	erro
+000071  aa  162 137 157 165	r_ou
+000072  aa  164 160 165 164	tput
+
+000073  aa  163 165 142 137	sub_
+000074  aa  145 162 162 157	erro
+000075  aa  162 137 000 000	r_
+
+000076  aa  165 156 144 145	unde
+000077  aa  146 151 156 145	fine
+000100  aa  144 146 151 154	dfil
+000101  aa  145 000 000 000	e
+
+000102  aa  136 141 157 156	^aon
+000103  aa  146 151 145 154	fiel
+000104  aa  144 040 075 040	d = 
+000105  aa  136 141 000 000	^a
+
+000106  aa  165 156 167 151	unwi
+000107  aa  156 144 145 162	nder
+000110  aa  137 145 162 162	_err
+000111  aa  157 162 000 000	or
+
+000112  aa  136 141 157 156	^aon
+000113  aa  163 157 165 162	sour
+000114  aa  143 145 040 075	ce =
+000115  aa  040 042 136 141	 "^a
+000116  aa  042 000 000 000	"
+
+000117  aa  160 162 157 147	prog
+000120  aa  162 141 155 137	ram_
+000121  aa  151 156 164 145	inte
+000122  aa  162 162 165 160	rrup
+000123  aa  164 000 000 000	t
+
+000124  aa  040 141 163 040	 as 
+000125  aa  141 156 040 141	an a
+000126  aa  143 164 151 166	ctiv
+000127  aa  145 040 146 165	e fu
+000130  aa  156 143 164 151	ncti
+000131  aa  157 156 056 000	on.
+
+000132  aa  141 143 164 151	acti
+000133  aa  166 145 137 146	ve_f
+000134  aa  165 156 143 164	unct
+000135  aa  151 157 156 137	ion_
+000136  aa  145 162 162 157	erro
+000137  aa  162 000 000 000	r
+
+000140  aa  136 141 136 057	^a^/
+000141  aa  114 141 142 145	Labe
+000142  aa  154 040 151 163	l is
+000143  aa  072 040 040 136	:  ^
+000144  aa  167 040 136 167	w ^w
+000145  aa  040 040 136 167	  ^w
+000146  aa  040 136 167 000	 ^w
+
+000147  aa  155 141 154 146	malf
+000150  aa  157 162 155 145	orme
+000151  aa  144 137 154 151	d_li
+000152  aa  163 164 137 164	st_t
+000153  aa  145 155 160 154	empl
+000154  aa  141 164 145 137	ate_
+000155  aa  145 156 164 162	entr
+000156  aa  171 137 000 000	y_
+
+000157  aa  040 103 141 156	 Can
+000160  aa  156 157 164 040	not 
+000161  aa  144 157 040 111	do I
+000162  aa  057 117 040 157	/O o
+000163  aa  156 040 163 164	n st
+000164  aa  162 145 141 155	ream
+000165  aa  040 136 141 056	 ^a.
+000166  aa  136 057 136 141	^/^a
+
+000167  aa  136 141 157 156	^aon
+000170  aa  163 157 165 162	sour
+000171  aa  143 145 040 075	ce =
+000172  aa  040 042 136 141	 "^a
+000173  aa  042 054 040 157	", o
+000174  aa  156 143 150 141	ncha
+000175  aa  162 040 075 040	r = 
+000176  aa  042 136 061 141	"^1a
+000177  aa  042 000 000 000	"
+
+000200  aa  157 143 143 165	occu
+000201  aa  162 162 145 144	rred
+000202  aa  040 167 150 151	 whi
+000203  aa  154 145 040 144	le d
+000204  aa  157 151 156 147	oing
+000205  aa  040 111 057 117	 I/O
+000206  aa  040 157 156 040	 on 
+000207  aa  146 151 154 145	file
+000210  aa  040 136 141 000	 ^a
+
+000211  aa  105 162 162 157	Erro
+000212  aa  162 072 040 040	r:  
+000213  aa  102 141 144 040	Bad 
+000214  aa  143 141 154 154	call
+000215  aa  040 164 157 040	 to 
+000216  aa  141 143 164 151	acti
+000217  aa  166 145 040 146	ve f
+000220  aa  165 156 143 164	unct
+000221  aa  151 157 156 040	ion 
+
+000222  aa  105 162 162 157	Erro
+000223  aa  162 072 040 040	r:  
+000224  aa  101 164 164 145	Atte
+000225  aa  155 160 164 040	mpt 
+000226  aa  164 157 040 151	to i
+000227  aa  156 166 157 153	nvok
+000230  aa  145 040 143 157	e co
+000231  aa  155 155 141 156	mman
+000232  aa  144 040 000 000	d 
+
+000233  aa  040 103 141 156	 Can
+000234  aa  156 157 164 040	not 
+000235  aa  144 157 040 111	do I
+000236  aa  057 117 040 157	/O o
+000237  aa  156 040 163 167	n sw
+000240  aa  151 164 143 150	itch
+000241  aa  040 136 141 056	 ^a.
+000242  aa  136 057 110 141	^/Ha
+000243  aa  162 144 167 141	rdwa
+000244  aa  162 145 040 163	re s
+000245  aa  164 141 164 165	tatu
+000246  aa  163 040 075 040	s = 
+000247  aa  136 167 040 136	^w ^
+000250  aa  167 000 000 000	w
+
+000251  aa  101 040 143 157	A co
+000252  aa  155 160 151 154	mpil
+000253  aa  145 162 040 150	er h
+000254  aa  141 163 040 147	as g
+000255  aa  145 156 145 162	ener
+000256  aa  141 164 145 144	ated
+000257  aa  040 151 156 143	 inc
+000260  aa  157 162 162 145	orre
+000261  aa  143 164 040 154	ct l
+000262  aa  151 163 164 040	ist 
+000263  aa  164 145 155 160	temp
+000264  aa  154 141 164 145	late
+000265  aa  040 151 156 151	 ini
+000266  aa  164 151 141 154	tial
+000267  aa  151 172 141 164	izat
+000270  aa  151 157 156 136	ion^
+000271  aa  057 146 157 162	/for
+000272  aa  040 141 156 040	 an 
+000273  aa  141 162 162 141	arra
+000274  aa  171 040 157 162	y or
+000275  aa  040 145 170 164	 ext
+000276  aa  145 162 156 141	erna
+000277  aa  154 040 166 141	l va
+000300  aa  162 151 141 142	riab
+000301  aa  154 145 056 136	le.^
+000302  aa  057 124 150 145	/The
+000303  aa  040 164 145 155	 tem
+000304  aa  160 154 141 164	plat
+000305  aa  145 040 151 163	e is
+000306  aa  040 141 164 040	 at 
+000307  aa  136 160 056 040	^p. 
+000310  aa  040 040 124 150	  Th
+000311  aa  145 040 155 141	e ma
+000312  aa  154 146 157 162	lfor
+000313  aa  155 145 144 040	med 
+000314  aa  145 156 164 162	entr
+000315  aa  171 040 151 163	y is
+000316  aa  040 141 164 040	 at 
+000317  aa  136 160 056 000	^p.
+
+BEGIN PROCEDURE interpret_info_struc_
+PROLOGUE SEQUENCE
+000320  aa  6 00272 4401 00	sxl0 	pr6|186
+000321  aa  6 00212 6521 00	spri6	pr6|138
+000322  aa  6 00212 3521 00	epp2 	pr6|138
+000323  aa  6 00052 2521 00	spri2	pr6|42
+000324  aa  6 00272 7201 00	lxl0 	pr6|186
+000325  aa   000000 7100 10	tra  	0,0
+MAIN SEQUENCE
+ENTRY TO interpret_info_struc_                              STATEMENT 1 ON LINE 14
+interpret_info_struc_:
+     procedure (conname, infoptr, linfo, retsw, no_restart, realsw, lngsw);
+
+000326  at     000007000036
+000327  tt     000034000035
+000330  tt     000032000032
+000331  tt     000032000033
+000332  ta     000326000000
+000333  da     000073300000
+000334  aa   000500 6270 00	eax7 	320
+000335  aa  7 00034 3521 20	epp2 	pr7|28,*
+000336  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000337  aa     000016000000
+000340  aa     000000000000
+000341  aa   777757 7000 04	tsx0 	-17,ic		000320
+						STATEMENT 1 ON LINE 94
+	pl1_signalled_this = pl1_info_struc.id = "pliocond";
+
+000342  aa  6 00032 3735 20	epp7 	pr6|26,*
+000343  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+000344  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+000345  aa  5 00105 2351 00	lda  	pr5|69		pl1_info_struc.id
+000346  aa  5 00106 2361 00	ldq  	pr5|70		pl1_info_struc.id
+000347  aa   777511 1170 04	cmpaq	-183,ic		000060 = 160154151157 143157156144
+000350  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+000351  aa  6 00203 7551 00	sta  	pr6|131		pl1_signalled_this
+						STATEMENT 1 ON LINE 96
+	if cond_header.quiet_restart
+	then do;
+
+000352  aa  5 00002 2351 00	lda  	pr5|2		cond_header.quiet_restart
+000353  aa   100000 3150 03	cana 	32768,du
+000354  aa   000004 6000 04	tze  	4,ic		000360
+						STATEMENT 1 ON LINE 98
+		retsw = "1"b;
+
+000355  aa   400000 2350 03	lda  	131072,du
+000356  aa  7 00010 7551 20	sta  	pr7|8,*		retsw
+						STATEMENT 1 ON LINE 99
+		return;
+
+000357  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 100
+	     end;
+
+						STATEMENT 1 ON LINE 102
+	if ^retsw
+	then retsw = cond_header.action_flags.default_restart;
+
+000360  aa  7 00010 2351 20	lda  	pr7|8,*		retsw
+000361  aa   400000 3150 03	cana 	131072,du
+000362  aa   000005 6010 04	tnz  	5,ic		000367
+000363  aa  5 00002 2351 00	lda  	pr5|2		cond_header.default_restart
+000364  aa   000001 7350 00	als  	1
+000365  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000366  aa  7 00010 7551 20	sta  	pr7|8,*		retsw
+						STATEMENT 1 ON LINE 104
+	no_restart = cond_header.action_flags.cant_restart;
+
+000367  aa  5 00002 2351 00	lda  	pr5|2		cond_header.cant_restart
+000370  aa  0 00002 3771 00	anaq 	pr0|2		= 400000000000 000000000000
+000371  aa  7 00012 7551 20	sta  	pr7|10,*		no_restart
+						STATEMENT 1 ON LINE 106
+	if ^pl1_signalled_this
+	then do;
+
+000372  aa  6 00203 2351 00	lda  	pr6|131		pl1_signalled_this
+000373  aa   000564 6010 04	tnz  	372,ic		001157
+						STATEMENT 1 ON LINE 109
+		if conname = "sub_error_"
+		then sub_error_struc.retval = 0;
+
+000374  aa  7 00002 3535 20	epp3 	pr7|2,*
+000375  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000376  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+000377  aa   777476 00 0012	desc9a	-194,10		000073 = 163165142137
+000400  aa   000002 6010 04	tnz  	2,ic		000402
+000401  aa  5 00105 4501 00	stz  	pr5|69		sub_error_struc.retval
+						STATEMENT 1 ON LINE 112
+		if conname = program_interrupt_condition_name
+		then do;
+
+000402  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000403  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+000404  aa   777376 00 0021	desc9a	-258,17		000000 = 160162157147
+000405  aa   000005 6010 04	tnz  	5,ic		000412
+						STATEMENT 1 ON LINE 114
+			retsw = "1"b;
+
+000406  aa   400000 2350 03	lda  	131072,du
+000407  aa  7 00010 7551 20	sta  	pr7|8,*		retsw
+						STATEMENT 1 ON LINE 115
+			pi_info.default_handler_restarted_this_signal = "1"b;
+
+000410  aa  5 00105 7551 00	sta  	pr5|69		pi_info.default_handler_restarted_this_signal
+						STATEMENT 1 ON LINE 116
+			return;
+
+000411  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 117
+		     end;
+
+						STATEMENT 1 ON LINE 120
+		if conname = "active_function_error"
+		then do;
+
+000412  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000413  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+000414  aa   777520 00 0025	desc9a	-176,21		000132 = 141143164151
+000415  aa   000177 6010 04	tnz  	127,ic		000614
+						STATEMENT 1 ON LINE 122
+			if realsw
+			then call ioa_$ioa_stream ("error_output", errmsg);
+
+000416  aa  7 00014 2351 20	lda  	pr7|12,*		realsw
+000417  aa   400000 3150 03	cana 	131072,du
+000420  aa   000025 6000 04	tze  	21,ic		000445
+000421  aa  5 00114 2361 00	ldq  	pr5|76		afe_info.errmess_lth
+000422  aa   526000 2760 03	orq  	175104,du
+000423  aa  6 00273 7561 00	stq  	pr6|187
+000424  aa   777444 2370 04	ldaq 	-220,ic		000070 = 145162162157 162137157165
+000425  aa  6 00274 7571 00	staq 	pr6|188
+000426  aa   777444 2350 04	lda  	-220,ic		000072 = 164160165164
+000427  aa  6 00276 7551 00	sta  	pr6|190
+000430  aa  6 00274 3521 00	epp2 	pr6|188
+000431  aa  6 00302 2521 00	spri2	pr6|194
+000432  aa  5 00112 3521 20	epp2 	pr5|74,*		errmsg
+000433  aa  6 00304 2521 00	spri2	pr6|196
+000434  aa   777375 3520 04	epp2 	-259,ic		000031 = 524000000014
+000435  aa  6 00306 2521 00	spri2	pr6|198
+000436  aa  6 00273 3521 00	epp2 	pr6|187
+000437  aa  6 00310 2521 00	spri2	pr6|200
+000440  aa  6 00300 6211 00	eax1 	pr6|192
+000441  aa   010000 4310 07	fld  	4096,dl
+000442  aa  6 00044 3701 20	epp4 	pr6|36,*
+000443  la  4 00014 3521 20	epp2 	pr4|12,*		ioa_$ioa_stream
+000444  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 124
+			afe_info.print_sw = "0"b;
+
+000445  aa   001223 2350 04	lda  	659,ic		001670 = 377777777777
+000446  aa  6 00032 3735 20	epp7 	pr6|26,*
+000447  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+000450  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+000451  aa  5 00116 3551 00	ansa 	pr5|78		afe_info.print_sw
+						STATEMENT 1 ON LINE 127
+			if afe_info.status_code = error_table_$active_function
+			then linfo = "Error:  Attempt to invoke command " || rtrim (name)
+				|| " as an active function." || byte (10) /* NL */;
+
+000452  aa  5 00104 2361 00	ldq  	pr5|68		afe_info.status_code
+000453  aa  6 00044 3701 20	epp4 	pr6|36,*
+000454  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$active_function
+000455  aa   000063 6010 04	tnz  	51,ic		000540
+000456  aa   000012 2360 07	ldq  	10,dl
+000457  aa   000077 7370 00	lls  	63
+000460  aa  6 00273 7551 00	sta  	pr6|187
+000461  aa  5 00106 3535 20	epp3 	pr5|70,*		afe_info.name_ptr
+000462  aa  5 00110 7271 00	lxl7 	pr5|72		afe_info.name_lth
+000463  aa  000 000 165 540	tctr 	(pr,rl)
+000464  aa  3 00000 00 0017	desc9a	pr3|0,x7		name
+000465  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000466  aa  6 00056 0001 00	arg  	pr6|46
+000467  aa  6 00056 2361 00	ldq  	pr6|46
+000470  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000471  aa  6 00277 7561 00	stq  	pr6|191
+000472  aa  5 00110 2361 00	ldq  	pr5|72		afe_info.name_lth
+000473  aa  6 00277 1761 00	sbq  	pr6|191
+000474  aa  6 00277 7561 00	stq  	pr6|191
+000475  aa   000042 0760 07	adq  	34,dl
+000476  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000477  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000500  aa   777523 00 0042	desc9a	-173,34		000222 = 105162162157
+000501  aa  2 00000 00 0042	desc9a	pr2|0,34
+000502  aa  6 00277 2351 00	lda  	pr6|191
+000503  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000504  aa  3 00000 00 0005	desc9a	pr3|0,al		name
+000505  aa  2 00010 40 0005	desc9a	pr2|8(2),al
+000506  aa  6 00277 7561 00	stq  	pr6|191
+000507  aa   000027 0760 07	adq  	23,dl
+000510  aa  6 00312 7561 00	stq  	pr6|202
+000511  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+000512  aa  6 00277 2351 00	lda  	pr6|191
+000513  aa  040 105 100 404	mlr  	(ic),(pr,al),fill(040)
+000514  aa   777411 00 0027	desc9a	-247,23		000124 = 040141163040
+000515  aa  2 00000 00 0027	desc9a	pr2|0,23
+000516  aa  6 00312 2361 00	ldq  	pr6|202
+000517  aa   000001 0760 07	adq  	1,dl
+000520  aa  6 00277 7561 00	stq  	pr6|191
+000521  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+000522  aa  6 00312 2351 00	lda  	pr6|202
+000523  aa  040 105 100 500	mlr  	(pr),(pr,al),fill(040)
+000524  aa  6 00273 00 0001	desc9a	pr6|187,1
+000525  aa  2 00000 00 0001	desc9a	pr2|0,1
+000526  aa  6 00277 2361 00	ldq  	pr6|191
+000527  aa   000764 1160 07	cmpq 	500,dl
+000530  aa   000002 6040 04	tmi  	2,ic		000532
+000531  aa   000764 2360 07	ldq  	500,dl
+000532  aa  7 00006 3515 20	epp1 	pr7|6,*
+000533  aa  1 77777 7561 00	stq  	pr1|-1		linfo
+000534  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000535  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000536  aa  1 00000 00 0006	desc9a	pr1|0,ql		linfo
+000537  aa   001057 7100 04	tra  	559,ic		001616
+						STATEMENT 1 ON LINE 130
+			else linfo = "Error:  Bad call to active function " || rtrim (name) || byte (10) /* NL */;
+
+000540  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000541  aa   000012 2360 07	ldq  	10,dl
+000542  aa   000077 7370 00	lls  	63
+000543  aa  6 00277 7551 00	sta  	pr6|191
+000544  aa  5 00106 3535 20	epp3 	pr5|70,*		afe_info.name_ptr
+000545  aa  5 00110 7271 00	lxl7 	pr5|72		afe_info.name_lth
+000546  aa  000 000 165 540	tctr 	(pr,rl)
+000547  aa  3 00000 00 0017	desc9a	pr3|0,x7		name
+000550  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000551  aa  6 00056 0001 00	arg  	pr6|46
+000552  aa  6 00056 2361 00	ldq  	pr6|46
+000553  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000554  aa  6 00312 7561 00	stq  	pr6|202
+000555  aa  5 00110 2361 00	ldq  	pr5|72		afe_info.name_lth
+000556  aa  6 00312 1761 00	sbq  	pr6|202
+000557  aa  6 00312 7561 00	stq  	pr6|202
+000560  aa   000044 0760 07	adq  	36,dl
+000561  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+000562  aa  040 100 100 404	mlr  	(ic),(pr),fill(040)
+000563  aa   777427 00 0044	desc9a	-233,36		000211 = 105162162157
+000564  aa  2 00000 00 0044	desc9a	pr2|0,36
+000565  aa  6 00312 2351 00	lda  	pr6|202
+000566  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000567  aa  3 00000 00 0005	desc9a	pr3|0,al		name
+000570  aa  2 00011 00 0005	desc9a	pr2|9,al
+000571  aa  6 00312 7561 00	stq  	pr6|202
+000572  aa   000001 0760 07	adq  	1,dl
+000573  aa  6 00273 7561 00	stq  	pr6|187
+000574  aa  0 00606 7001 00	tsx0 	pr0|390		cat_realloc_chars
+000575  aa  6 00312 2351 00	lda  	pr6|202
+000576  aa  040 105 100 500	mlr  	(pr),(pr,al),fill(040)
+000577  aa  6 00277 00 0001	desc9a	pr6|191,1
+000600  aa  2 00000 00 0001	desc9a	pr2|0,1
+000601  aa  6 00273 2361 00	ldq  	pr6|187
+000602  aa   000764 1160 07	cmpq 	500,dl
+000603  aa   000002 6040 04	tmi  	2,ic		000605
+000604  aa   000764 2360 07	ldq  	500,dl
+000605  aa  7 00006 3515 20	epp1 	pr7|6,*
+000606  aa  1 77777 7561 00	stq  	pr1|-1		linfo
+000607  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000610  aa  2 00000 00 0006	desc9a	pr2|0,ql
+000611  aa  1 00000 00 0006	desc9a	pr1|0,ql		linfo
+						STATEMENT 1 ON LINE 132
+		     end;
+
+000612  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+000613  aa   001003 7100 04	tra  	515,ic		001616
+						STATEMENT 1 ON LINE 134
+		else if conname = "io_error"
+		then do;
+
+000614  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000615  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+000616  aa   777242 00 0010	desc9a	-350,8		000056 = 151157137145
+000617  aa   000122 6010 04	tnz  	82,ic		000741
+						STATEMENT 1 ON LINE 136
+			call convert_status_code_ (io_err_info.status.code, shortinfo, temp);
+
+000620  aa  5 00115 3521 00	epp2 	pr5|77		io_err_info.code
+000621  aa  6 00302 2521 00	spri2	pr6|194
+000622  aa  6 00132 3521 00	epp2 	pr6|90		shortinfo
+000623  aa  6 00304 2521 00	spri2	pr6|196
+000624  aa  6 00100 3521 00	epp2 	pr6|64		temp
+000625  aa  6 00306 2521 00	spri2	pr6|198
+000626  aa  6 00300 6211 00	eax1 	pr6|192
+000627  aa   014000 4310 07	fld  	6144,dl
+000630  aa  6 00044 3701 20	epp4 	pr6|36,*
+000631  la  4 00016 3521 20	epp2 	pr4|14,*		convert_status_code_
+000632  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 138
+			if shortinfo = (8)"x"
+			then call ioa_$rs (" Cannot do I/O on switch ^a.^/Hardware status = ^w ^w", linfo, lng,
+				io_err_info.switch_name, io_err_info.status.code,
+				io_err_info.status.IOS_status_bits);
+
+000633  aa  6 00132 2371 00	ldaq 	pr6|90		shortinfo
+000634  aa   777220 1170 04	cmpaq	-368,ic		000054 = 170170170170 170170170170
+000635  aa   000045 6010 04	tnz  	37,ic		000702
+000636  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000637  aa   777375 00 0070	desc9a	-259,56		000233 = 040103141156
+000640  aa  6 00314 00 0070	desc9a	pr6|204,56
+000641  aa  6 00314 3521 00	epp2 	pr6|204
+000642  aa  6 00334 2521 00	spri2	pr6|220
+000643  aa  6 00032 3735 20	epp7 	pr6|26,*
+000644  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+000645  aa  6 00336 2521 00	spri2	pr6|222
+000646  aa  6 00210 3521 00	epp2 	pr6|136		lng
+000647  aa  6 00340 2521 00	spri2	pr6|224
+000650  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+000651  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+000652  aa  5 00105 3521 00	epp2 	pr5|69		io_err_info.switch_name
+000653  aa  6 00342 2521 00	spri2	pr6|226
+000654  aa  5 00115 3521 00	epp2 	pr5|77		io_err_info.code
+000655  aa  6 00344 2521 00	spri2	pr6|228
+000656  aa  5 00116 3521 00	epp2 	pr5|78		io_err_info.IOS_status_bits
+000657  aa  6 00346 2521 00	spri2	pr6|230
+000660  aa   777147 3520 04	epp2 	-409,ic		000027 = 524000000065
+000661  aa  6 00350 2521 00	spri2	pr6|232
+000662  aa   777153 3520 04	epp2 	-405,ic		000035 = 530000000764
+000663  aa  6 00352 2521 00	spri2	pr6|234
+000664  aa   777147 3520 04	epp2 	-409,ic		000033 = 404000000021
+000665  aa  6 00354 2521 00	spri2	pr6|236
+000666  aa   777140 3520 04	epp2 	-416,ic		000026 = 524000000040
+000667  aa  6 00356 2521 00	spri2	pr6|238
+000670  aa   777135 3520 04	epp2 	-419,ic		000025 = 404000000043
+000671  aa  6 00360 2521 00	spri2	pr6|240
+000672  aa   777132 3520 04	epp2 	-422,ic		000024 = 514000000044
+000673  aa  6 00362 2521 00	spri2	pr6|242
+000674  aa  6 00332 6211 00	eax1 	pr6|218
+000675  aa   030000 4310 07	fld  	12288,dl
+000676  aa  6 00044 3701 20	epp4 	pr6|36,*
+000677  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+000700  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+000701  aa   000715 7100 04	tra  	461,ic		001616
+						STATEMENT 1 ON LINE 143
+			else call ioa_$rs (" Cannot do I/O on stream ^a.^/^a", linfo, lng, io_err_info.switch_name,
+				temp);
+
+000702  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000703  aa   777255 00 0040	desc9a	-339,32		000157 = 040103141156
+000704  aa  6 00300 00 0040	desc9a	pr6|192,32
+000705  aa  6 00300 3521 00	epp2 	pr6|192
+000706  aa  6 00334 2521 00	spri2	pr6|220
+000707  aa  6 00032 3735 20	epp7 	pr6|26,*
+000710  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+000711  aa  6 00336 2521 00	spri2	pr6|222
+000712  aa  6 00210 3521 00	epp2 	pr6|136		lng
+000713  aa  6 00340 2521 00	spri2	pr6|224
+000714  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+000715  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+000716  aa  5 00105 3521 00	epp2 	pr5|69		io_err_info.switch_name
+000717  aa  6 00342 2521 00	spri2	pr6|226
+000720  aa  6 00100 3521 00	epp2 	pr6|64		temp
+000721  aa  6 00344 2521 00	spri2	pr6|228
+000722  aa   777104 3520 04	epp2 	-444,ic		000026 = 524000000040
+000723  aa  6 00346 2521 00	spri2	pr6|230
+000724  aa  6 00354 2521 00	spri2	pr6|236
+000725  aa   777110 3520 04	epp2 	-440,ic		000035 = 530000000764
+000726  aa  6 00350 2521 00	spri2	pr6|232
+000727  aa   777104 3520 04	epp2 	-444,ic		000033 = 404000000021
+000730  aa  6 00352 2521 00	spri2	pr6|234
+000731  aa   777072 3520 04	epp2 	-454,ic		000023 = 524000000144
+000732  aa  6 00356 2521 00	spri2	pr6|238
+000733  aa  6 00332 6211 00	eax1 	pr6|218
+000734  aa   024000 4310 07	fld  	10240,dl
+000735  aa  6 00044 3701 20	epp4 	pr6|36,*
+000736  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+000737  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 146
+		     end;
+
+000740  aa   000656 7100 04	tra  	430,ic		001616
+						STATEMENT 1 ON LINE 148
+		else if conname = "unwinder_error"
+		then do;
+
+000741  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+000742  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+000743  aa   777145 00 0016	desc9a	-411,14		000106 = 165156167151
+000744  aa   000063 6010 04	tnz  	51,ic		001027
+						STATEMENT 1 ON LINE 150
+			if lngsw = 1
+			then linfo = unwind_err.info_string;
+
+000745  aa  7 00016 2361 20	ldq  	pr7|14,*		lngsw
+000746  aa   000001 1160 07	cmpq 	1,dl
+000747  aa   000010 6010 04	tnz  	8,ic		000757
+000750  aa  5 00003 2361 00	ldq  	pr5|3		unwind_err.info_string
+000751  aa  7 00006 3515 20	epp1 	pr7|6,*
+000752  aa  1 77777 7561 00	stq  	pr1|-1		linfo
+000753  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+000754  aa  5 00004 00 0006	desc9a	pr5|4,ql		unwind_err.info_string
+000755  aa  1 00000 00 0006	desc9a	pr1|0,ql		linfo
+000756  aa   000640 7100 04	tra  	416,ic		001616
+						STATEMENT 1 ON LINE 152
+			else do;
+
+						STATEMENT 1 ON LINE 153
+				lp = addr (unwind_err.target_label);
+
+000757  aa  5 00106 3515 00	epp1 	pr5|70		unwind_err.target_label
+000760  aa  6 00206 2515 00	spri1	pr6|134		lp
+						STATEMENT 1 ON LINE 155
+				call ioa_$rs ("^a^/Label is:  ^w ^w  ^w ^w", linfo, lng, unwind_err.info_string,
+				     lp -> lv (1), lp -> lv (2), lp -> lv (3), lp -> lv (4));
+
+000761  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000762  aa   777157 00 0034	desc9a	-401,28		000140 = 136141136057
+000763  aa  6 00300 00 0034	desc9a	pr6|192,28
+000764  aa  6 00300 3521 00	epp2 	pr6|192
+000765  aa  6 00366 2521 00	spri2	pr6|246
+000766  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+000767  aa  6 00370 2521 00	spri2	pr6|248
+000770  aa  6 00210 3521 00	epp2 	pr6|136		lng
+000771  aa  6 00372 2521 00	spri2	pr6|250
+000772  aa  5 00004 3521 00	epp2 	pr5|4		unwind_err.info_string
+000773  aa  6 00374 2521 00	spri2	pr6|252
+000774  aa  1 00000 3521 00	epp2 	pr1|0		lv
+000775  aa  6 00376 2521 00	spri2	pr6|254
+000776  aa  1 00001 3521 00	epp2 	pr1|1		lv
+000777  aa  6 00400 2521 00	spri2	pr6|256
+001000  aa  1 00002 3521 00	epp2 	pr1|2		lv
+001001  aa  6 00402 2521 00	spri2	pr6|258
+001002  aa  1 00003 3521 00	epp2 	pr1|3		lv
+001003  aa  6 00404 2521 00	spri2	pr6|260
+001004  aa   777016 3520 04	epp2 	-498,ic		000022 = 524000000033
+001005  aa  6 00406 2521 00	spri2	pr6|262
+001006  aa   777027 3520 04	epp2 	-489,ic		000035 = 530000000764
+001007  aa  6 00410 2521 00	spri2	pr6|264
+001010  aa   777023 3520 04	epp2 	-493,ic		000033 = 404000000021
+001011  aa  6 00412 2521 00	spri2	pr6|266
+001012  aa   777007 3520 04	epp2 	-505,ic		000021 = 530000000400
+001013  aa  6 00414 2521 00	spri2	pr6|268
+001014  aa   777011 3520 04	epp2 	-503,ic		000025 = 404000000043
+001015  aa  6 00416 2521 00	spri2	pr6|270
+001016  aa  6 00420 2521 00	spri2	pr6|272
+001017  aa  6 00422 2521 00	spri2	pr6|274
+001020  aa  6 00424 2521 00	spri2	pr6|276
+001021  aa  6 00364 6211 00	eax1 	pr6|244
+001022  aa   040000 4310 07	fld  	16384,dl
+001023  aa  6 00044 3701 20	epp4 	pr6|36,*
+001024  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001025  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 157
+			     end;
+
+						STATEMENT 1 ON LINE 158
+		     end;
+
+001026  aa   000570 7100 04	tra  	376,ic		001616
+						STATEMENT 1 ON LINE 160
+		else if conname = "quit"
+		then do;
+
+001027  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001030  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001031  aa   776771 00 0004	desc9a	-519,4		000020 = 161165151164
+001032  aa   000002 6010 04	tnz  	2,ic		001034
+						STATEMENT 1 ON LINE 162
+		     end;
+
+001033  aa   000563 7100 04	tra  	371,ic		001616
+						STATEMENT 1 ON LINE 164
+		else if conname = "malformed_list_template_entry_"
+		then call ioa_$rs ("A compiler has generated incorrect list template initialization^/for an array or external variable.^/The template is at ^p.   The malformed entry is at ^p.",
+		     linfo, lng, template_info_struc.template_p, 
+		     template_info_struc.template_error_p);
+
+001034  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001035  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001036  aa   777113 00 0036	desc9a	-437,30		000147 = 155141154146
+001037  aa   000035 6010 04	tnz  	29,ic		001074
+001040  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001041  aa   777211 00 0234	desc9a	-375,156		000251 = 101040143157
+001042  aa  6 00426 00 0234	desc9a	pr6|278,156
+001043  aa  6 00426 3521 00	epp2 	pr6|278
+001044  aa  6 00334 2521 00	spri2	pr6|220
+001045  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001046  aa  6 00336 2521 00	spri2	pr6|222
+001047  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001050  aa  6 00340 2521 00	spri2	pr6|224
+001051  aa  5 00112 3521 00	epp2 	pr5|74		template_info_struc.template_p
+001052  aa  6 00342 2521 00	spri2	pr6|226
+001053  aa  5 00114 3521 00	epp2 	pr5|76		template_info_struc.template_error_p
+001054  aa  6 00344 2521 00	spri2	pr6|228
+001055  aa   776742 3520 04	epp2 	-542,ic		000017 = 524000000233
+001056  aa  6 00346 2521 00	spri2	pr6|230
+001057  aa   776756 3520 04	epp2 	-530,ic		000035 = 530000000764
+001060  aa  6 00350 2521 00	spri2	pr6|232
+001061  aa   776752 3520 04	epp2 	-534,ic		000033 = 404000000021
+001062  aa  6 00352 2521 00	spri2	pr6|234
+001063  aa   776751 3520 04	epp2 	-535,ic		000034 = 464000000000
+001064  aa  6 00354 2521 00	spri2	pr6|236
+001065  aa  6 00356 2521 00	spri2	pr6|238
+001066  aa  6 00332 6211 00	eax1 	pr6|218
+001067  aa   024000 4310 07	fld  	10240,dl
+001070  aa  6 00044 3701 20	epp4 	pr6|36,*
+001071  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001072  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+001073  aa   000523 7100 04	tra  	339,ic		001616
+						STATEMENT 1 ON LINE 169
+		else do;
+
+						STATEMENT 1 ON LINE 170
+			if cond_header.status_code = 0
+			then linfo = cond_header.info_string;
+
+001074  aa  5 00104 2361 00	ldq  	pr5|68		cond_header.status_code
+001075  aa   000010 6010 04	tnz  	8,ic		001105
+001076  aa  5 00003 2361 00	ldq  	pr5|3		cond_header.info_string
+001077  aa  7 00006 3515 20	epp1 	pr7|6,*
+001100  aa  1 77777 7561 00	stq  	pr1|-1		linfo
+001101  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+001102  aa  5 00004 00 0006	desc9a	pr5|4,ql		cond_header.info_string
+001103  aa  1 00000 00 0006	desc9a	pr1|0,ql		linfo
+001104  aa   000512 7100 04	tra  	330,ic		001616
+						STATEMENT 1 ON LINE 172
+			else do;
+
+						STATEMENT 1 ON LINE 173
+				call convert_status_code_ (cond_header.status_code, shortinfo, temp);
+
+001105  aa  5 00104 3521 00	epp2 	pr5|68		cond_header.status_code
+001106  aa  6 00302 2521 00	spri2	pr6|194
+001107  aa  6 00132 3521 00	epp2 	pr6|90		shortinfo
+001110  aa  6 00304 2521 00	spri2	pr6|196
+001111  aa  6 00100 3521 00	epp2 	pr6|64		temp
+001112  aa  6 00306 2521 00	spri2	pr6|198
+001113  aa  6 00300 6211 00	eax1 	pr6|192
+001114  aa   014000 4310 07	fld  	6144,dl
+001115  aa  6 00044 3701 20	epp4 	pr6|36,*
+001116  la  4 00016 3521 20	epp2 	pr4|14,*		convert_status_code_
+001117  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 174
+				call ioa_$rs ("^a ^a", linfo, lng, temp, cond_header.info_string);
+
+001120  aa   776732 2370 04	ldaq 	-550,ic		000052 = 136141040136 141000000000
+001121  aa  6 00476 7571 00	staq 	pr6|318
+001122  aa  6 00476 3521 00	epp2 	pr6|318
+001123  aa  6 00334 2521 00	spri2	pr6|220
+001124  aa  6 00032 3735 20	epp7 	pr6|26,*
+001125  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001126  aa  6 00336 2521 00	spri2	pr6|222
+001127  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001130  aa  6 00340 2521 00	spri2	pr6|224
+001131  aa  6 00100 3521 00	epp2 	pr6|64		temp
+001132  aa  6 00342 2521 00	spri2	pr6|226
+001133  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+001134  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+001135  aa  5 00004 3521 00	epp2 	pr5|4		cond_header.info_string
+001136  aa  6 00344 2521 00	spri2	pr6|228
+001137  aa   776657 3520 04	epp2 	-593,ic		000016 = 524000000005
+001140  aa  6 00346 2521 00	spri2	pr6|230
+001141  aa   776674 3520 04	epp2 	-580,ic		000035 = 530000000764
+001142  aa  6 00350 2521 00	spri2	pr6|232
+001143  aa   776670 3520 04	epp2 	-584,ic		000033 = 404000000021
+001144  aa  6 00352 2521 00	spri2	pr6|234
+001145  aa   776656 3520 04	epp2 	-594,ic		000023 = 524000000144
+001146  aa  6 00354 2521 00	spri2	pr6|236
+001147  aa   776652 3520 04	epp2 	-598,ic		000021 = 530000000400
+001150  aa  6 00356 2521 00	spri2	pr6|238
+001151  aa  6 00332 6211 00	eax1 	pr6|218
+001152  aa   024000 4310 07	fld  	10240,dl
+001153  aa  6 00044 3701 20	epp4 	pr6|36,*
+001154  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001155  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 175
+			     end;
+
+						STATEMENT 1 ON LINE 176
+		     end;
+
+						STATEMENT 1 ON LINE 177
+	     end;
+
+001156  aa   000440 7100 04	tra  	288,ic		001616
+						STATEMENT 1 ON LINE 178
+	else do;
+
+						STATEMENT 1 ON LINE 179
+		if pl1_info_struc.content_flags.onfile_sw
+		then call ioa_$rs ("occurred while doing I/O on file ^a", linfo, lng, pl1_info_struc.onfile);
+
+001157  aa  5 00107 2351 00	lda  	pr5|71		pl1_info_struc.onfile_sw
+001160  aa   100000 3150 03	cana 	32768,du
+001161  aa   000031 6000 04	tze  	25,ic		001212
+001162  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001163  aa   777016 00 0044	desc9a	-498,36		000200 = 157143143165
+001164  aa  6 00300 00 0044	desc9a	pr6|192,36
+001165  aa  6 00300 3521 00	epp2 	pr6|192
+001166  aa  6 00334 2521 00	spri2	pr6|220
+001167  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001170  aa  6 00336 2521 00	spri2	pr6|222
+001171  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001172  aa  6 00340 2521 00	spri2	pr6|224
+001173  aa  5 00111 3521 00	epp2 	pr5|73		pl1_info_struc.onfile
+001174  aa  6 00342 2521 00	spri2	pr6|226
+001175  aa   776620 3520 04	epp2 	-624,ic		000015 = 524000000043
+001176  aa  6 00344 2521 00	spri2	pr6|228
+001177  aa   776636 3520 04	epp2 	-610,ic		000035 = 530000000764
+001200  aa  6 00346 2521 00	spri2	pr6|230
+001201  aa   776632 3520 04	epp2 	-614,ic		000033 = 404000000021
+001202  aa  6 00350 2521 00	spri2	pr6|232
+001203  aa   776623 3520 04	epp2 	-621,ic		000026 = 524000000040
+001204  aa  6 00352 2521 00	spri2	pr6|234
+001205  aa  6 00332 6211 00	eax1 	pr6|218
+001206  aa   020000 4310 07	fld  	8192,dl
+001207  aa  6 00044 3701 20	epp4 	pr6|36,*
+001210  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001211  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 182
+		if pl1_info_struc.content_flags.onkey_sw
+		then /* have a key to print */
+		     if conname = "endfile" | conname = "transmit" | conname = "record" | conname = "key"
+		     then call ioa_$rs ("^aonkey = ^a", linfo, lng, linfo, pl1_info_struc.onkey_onfield);
+
+001212  aa  6 00032 3735 20	epp7 	pr6|26,*
+001213  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+001214  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+001215  aa  5 00107 2351 00	lda  	pr5|71		pl1_info_struc.onkey_sw
+001216  aa   004000 3150 03	cana 	2048,du
+001217  aa   000057 6000 04	tze  	47,ic		001276
+001220  aa  7 00002 3535 20	epp3 	pr7|2,*
+001221  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001222  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001223  aa   776627 00 0007	desc9a	-617,7		000050 = 145156144146
+001224  aa   000015 6000 04	tze  	13,ic		001241
+001225  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001226  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001227  aa   776621 00 0010	desc9a	-623,8		000046 = 164162141156
+001230  aa   000011 6000 04	tze  	9,ic		001241
+001231  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001232  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001233  aa   776613 00 0006	desc9a	-629,6		000044 = 162145143157
+001234  aa   000005 6000 04	tze  	5,ic		001241
+001235  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001236  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001237  aa   776557 00 0003	desc9a	-657,3		000014 = 153145171000
+001240  aa   000036 6010 04	tnz  	30,ic		001276
+001241  aa   776624 2350 04	lda  	-620,ic		000065 = 136141157156
+001242  aa   776624 2360 04	ldq  	-620,ic		000066 = 153145171040
+001243  aa  6 00274 7571 00	staq 	pr6|188
+001244  aa   776623 2350 04	lda  	-621,ic		000067 = 075040136141
+001245  aa  6 00276 7551 00	sta  	pr6|190
+001246  aa  6 00274 3521 00	epp2 	pr6|188
+001247  aa  6 00334 2521 00	spri2	pr6|220
+001250  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001251  aa  6 00336 2521 00	spri2	pr6|222
+001252  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001253  aa  6 00340 2521 00	spri2	pr6|224
+001254  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001255  aa  6 00342 2521 00	spri2	pr6|226
+001256  aa  5 00227 3521 00	epp2 	pr5|151		pl1_info_struc.onkey_onfield
+001257  aa  6 00344 2521 00	spri2	pr6|228
+001260  aa   776551 3520 04	epp2 	-663,ic		000031 = 524000000014
+001261  aa  6 00346 2521 00	spri2	pr6|230
+001262  aa   776553 3520 04	epp2 	-661,ic		000035 = 530000000764
+001263  aa  6 00350 2521 00	spri2	pr6|232
+001264  aa  6 00354 2521 00	spri2	pr6|236
+001265  aa   776546 3520 04	epp2 	-666,ic		000033 = 404000000021
+001266  aa  6 00352 2521 00	spri2	pr6|234
+001267  aa   776532 3520 04	epp2 	-678,ic		000021 = 530000000400
+001270  aa  6 00356 2521 00	spri2	pr6|238
+001271  aa  6 00332 6211 00	eax1 	pr6|218
+001272  aa   024000 4310 07	fld  	10240,dl
+001273  aa  6 00044 3701 20	epp4 	pr6|36,*
+001274  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001275  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 187
+		if conname = "conversion"
+		then if pl1_info_struc.content_flags.onsource_sw
+		     then do;
+
+001276  aa  6 00032 3735 20	epp7 	pr6|26,*
+001277  aa  7 00002 3715 20	epp5 	pr7|2,*
+001300  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001301  aa  5 00000 00 0040	desc9a	pr5|0,32		conname
+001302  aa   776562 00 0012	desc9a	-654,10		000062 = 143157156166
+001303  aa   000114 6010 04	tnz  	76,ic		001417
+001304  aa  7 00004 3535 20	epp3 	pr7|4,*		infoptr
+001305  aa  3 00000 3535 20	epp3 	pr3|0,*		infoptr
+001306  aa  3 00107 2351 00	lda  	pr3|71		pl1_info_struc.onsource_sw
+001307  aa   020000 3150 03	cana 	8192,du
+001310  aa   000107 6000 04	tze  	71,ic		001417
+						STATEMENT 1 ON LINE 190
+			     if pl1_info_struc.content_flags.onchar_sw
+			     then do;
+
+001311  aa  3 00107 2351 00	lda  	pr3|71		pl1_info_struc.onchar_sw
+001312  aa   010000 3150 03	cana 	4096,du
+001313  aa   000046 6000 04	tze  	38,ic		001361
+						STATEMENT 1 ON LINE 192
+				     tempchar = substr (pl1_info_struc.onsource, pl1_info_struc.oncharindex, 1);
+
+001314  aa  6 00204 4501 00	stz  	pr6|132		tempchar
+001315  aa  3 00225 7271 00	lxl7 	pr3|149		pl1_info_struc.oncharindex
+001316  aa  040 100 100 517	mlr  	(pr,x7),(pr),fill(040)
+001317  aa  3 00124 60 0001	desc9a	pr3|84(3),1	pl1_info_struc.onsource
+001320  aa  6 00204 00 0001	desc9a	pr6|132,1		tempchar
+						STATEMENT 1 ON LINE 194
+				     call ioa_$rs ("^aonsource = ""^a"", onchar = ""^1a""", linfo, lng, linfo,
+					pl1_info_struc.onsource, tempchar);
+
+001321  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+001322  aa   776646 00 0044	desc9a	-602,36		000167 = 136141157156
+001323  aa  6 00300 00 0044	desc9a	pr6|192,36
+001324  aa  6 00300 3521 00	epp2 	pr6|192
+001325  aa  6 00334 2521 00	spri2	pr6|220
+001326  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001327  aa  6 00336 2521 00	spri2	pr6|222
+001330  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001331  aa  6 00340 2521 00	spri2	pr6|224
+001332  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001333  aa  6 00342 2521 00	spri2	pr6|226
+001334  aa  3 00125 3521 00	epp2 	pr3|85		pl1_info_struc.onsource
+001335  aa  6 00344 2521 00	spri2	pr6|228
+001336  aa  6 00204 3521 00	epp2 	pr6|132		tempchar
+001337  aa  6 00346 2521 00	spri2	pr6|230
+001340  aa   776453 3520 04	epp2 	-725,ic		000013 = 524000000041
+001341  aa  6 00350 2521 00	spri2	pr6|232
+001342  aa   776473 3520 04	epp2 	-709,ic		000035 = 530000000764
+001343  aa  6 00352 2521 00	spri2	pr6|234
+001344  aa  6 00356 2521 00	spri2	pr6|238
+001345  aa   776466 3520 04	epp2 	-714,ic		000033 = 404000000021
+001346  aa  6 00354 2521 00	spri2	pr6|236
+001347  aa   776452 3520 04	epp2 	-726,ic		000021 = 530000000400
+001350  aa  6 00360 2521 00	spri2	pr6|240
+001351  aa   776441 3520 04	epp2 	-735,ic		000012 = 524000000001
+001352  aa  6 00362 2521 00	spri2	pr6|242
+001353  aa  6 00332 6211 00	eax1 	pr6|218
+001354  aa   030000 4310 07	fld  	12288,dl
+001355  aa  6 00044 3701 20	epp4 	pr6|36,*
+001356  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001357  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 196
+				end;
+
+001360  aa   000037 7100 04	tra  	31,ic		001417
+						STATEMENT 1 ON LINE 197
+			     else call ioa_$rs ("^aonsource = ""^a""", linfo, lng, linfo, pl1_info_struc.onsource);
+
+001361  aa   776531 2370 04	ldaq 	-679,ic		000112 = 136141157156 163157165162
+001362  aa  6 00300 7571 00	staq 	pr6|192
+001363  aa   776531 2370 04	ldaq 	-679,ic		000114 = 143145040075 040042136141
+001364  aa  6 00302 7571 00	staq 	pr6|194
+001365  aa   042000 2350 03	lda  	17408,du
+001366  aa  6 00304 7551 00	sta  	pr6|196
+001367  aa  6 00300 3521 00	epp2 	pr6|192
+001370  aa  6 00334 2521 00	spri2	pr6|220
+001371  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001372  aa  6 00336 2521 00	spri2	pr6|222
+001373  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001374  aa  6 00340 2521 00	spri2	pr6|224
+001375  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001376  aa  6 00342 2521 00	spri2	pr6|226
+001377  aa  3 00125 3521 00	epp2 	pr3|85		pl1_info_struc.onsource
+001400  aa  6 00344 2521 00	spri2	pr6|228
+001401  aa   776410 3520 04	epp2 	-760,ic		000011 = 524000000021
+001402  aa  6 00346 2521 00	spri2	pr6|230
+001403  aa   776432 3520 04	epp2 	-742,ic		000035 = 530000000764
+001404  aa  6 00350 2521 00	spri2	pr6|232
+001405  aa  6 00354 2521 00	spri2	pr6|236
+001406  aa   776425 3520 04	epp2 	-747,ic		000033 = 404000000021
+001407  aa  6 00352 2521 00	spri2	pr6|234
+001410  aa   776411 3520 04	epp2 	-759,ic		000021 = 530000000400
+001411  aa  6 00356 2521 00	spri2	pr6|238
+001412  aa  6 00332 6211 00	eax1 	pr6|218
+001413  aa   024000 4310 07	fld  	10240,dl
+001414  aa  6 00044 3701 20	epp4 	pr6|36,*
+001415  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001416  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 198
+			end;
+
+						STATEMENT 1 ON LINE 200
+		if conname = "name"
+		then if pl1_info_struc.content_flags.onfield_sw
+		     then call ioa_$rs ("^aonfield = ^a", linfo, lng, linfo, pl1_info_struc.onkey_onfield);
+
+001417  aa  6 00032 3735 20	epp7 	pr6|26,*
+001420  aa  7 00002 3715 20	epp5 	pr7|2,*
+001421  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001422  aa  5 00000 00 0040	desc9a	pr5|0,32		conname
+001423  aa   776367 00 0004	desc9a	-777,4		000010 = 156141155145
+001424  aa   000042 6010 04	tnz  	34,ic		001466
+001425  aa  7 00004 3535 20	epp3 	pr7|4,*		infoptr
+001426  aa  3 00000 3535 20	epp3 	pr3|0,*		infoptr
+001427  aa  3 00107 2351 00	lda  	pr3|71		pl1_info_struc.onfield_sw
+001430  aa   002000 3150 03	cana 	1024,du
+001431  aa   000035 6000 04	tze  	29,ic		001466
+001432  aa   776450 2370 04	ldaq 	-728,ic		000102 = 136141157156 146151145154
+001433  aa  6 00300 7571 00	staq 	pr6|192
+001434  aa   776450 2370 04	ldaq 	-728,ic		000104 = 144040075040 136141000000
+001435  aa  6 00302 7571 00	staq 	pr6|194
+001436  aa  6 00300 3521 00	epp2 	pr6|192
+001437  aa  6 00334 2521 00	spri2	pr6|220
+001440  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001441  aa  6 00336 2521 00	spri2	pr6|222
+001442  aa  6 00210 3521 00	epp2 	pr6|136		lng
+001443  aa  6 00340 2521 00	spri2	pr6|224
+001444  aa  7 00006 3521 20	epp2 	pr7|6,*		linfo
+001445  aa  6 00342 2521 00	spri2	pr6|226
+001446  aa  3 00227 3521 00	epp2 	pr3|151		pl1_info_struc.onkey_onfield
+001447  aa  6 00344 2521 00	spri2	pr6|228
+001450  aa   776337 3520 04	epp2 	-801,ic		000007 = 524000000016
+001451  aa  6 00346 2521 00	spri2	pr6|230
+001452  aa   776363 3520 04	epp2 	-781,ic		000035 = 530000000764
+001453  aa  6 00350 2521 00	spri2	pr6|232
+001454  aa  6 00354 2521 00	spri2	pr6|236
+001455  aa   776356 3520 04	epp2 	-786,ic		000033 = 404000000021
+001456  aa  6 00352 2521 00	spri2	pr6|234
+001457  aa   776342 3520 04	epp2 	-798,ic		000021 = 530000000400
+001460  aa  6 00356 2521 00	spri2	pr6|238
+001461  aa  6 00332 6211 00	eax1 	pr6|218
+001462  aa   024000 4310 07	fld  	10240,dl
+001463  aa  6 00044 3701 20	epp4 	pr6|36,*
+001464  la  4 00012 3521 20	epp2 	pr4|10,*		ioa_$rs
+001465  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 204
+		if pl1_info_struc.content_flags.oncode_sw
+		then do;
+
+001466  aa  6 00032 3735 20	epp7 	pr6|26,*
+001467  aa  7 00004 3715 20	epp5 	pr7|4,*		infoptr
+001470  aa  5 00000 3715 20	epp5 	pr5|0,*		infoptr
+001471  aa  5 00107 2351 00	lda  	pr5|71		pl1_info_struc.oncode_sw
+001472  aa   200000 3150 03	cana 	65536,du
+001473  aa   000064 6000 04	tze  	52,ic		001557
+						STATEMENT 1 ON LINE 206
+			toncode = pl1_info_struc.oncode;
+
+001474  aa  5 00110 2361 00	ldq  	pr5|72		pl1_info_struc.oncode
+001475  aa  6 00211 7561 00	stq  	pr6|137		toncode
+						STATEMENT 1 ON LINE 207
+			if toncode ^= 0 & toncode ^= 700
+			then do;
+
+001476  aa   000061 6000 04	tze  	49,ic		001557
+001477  aa   001274 1160 07	cmpq 	700,dl
+001500  aa   000057 6000 04	tze  	47,ic		001557
+						STATEMENT 1 ON LINE 209
+				if conname = "error" | conname = "conversion" | conname = "size"
+				     | conname = "record" | conname = "key" | conname = "undefinedfile"
+				then do;
+
+001501  aa  7 00002 3535 20	epp3 	pr7|2,*
+001502  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001503  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001504  aa   776340 00 0005	desc9a	-800,5		000042 = 145162162157
+001505  aa   000025 6000 04	tze  	21,ic		001532
+001506  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001507  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001510  aa   776354 00 0012	desc9a	-788,10		000062 = 143157156166
+001511  aa   000021 6000 04	tze  	17,ic		001532
+001512  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001513  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001514  aa   776274 00 0004	desc9a	-836,4		000006 = 163151172145
+001515  aa   000015 6000 04	tze  	13,ic		001532
+001516  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001517  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001520  aa   776326 00 0006	desc9a	-810,6		000044 = 162145143157
+001521  aa   000011 6000 04	tze  	9,ic		001532
+001522  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001523  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001524  aa   776272 00 0003	desc9a	-838,3		000014 = 153145171000
+001525  aa   000005 6000 04	tze  	5,ic		001532
+001526  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001527  aa  3 00000 00 0040	desc9a	pr3|0,32		conname
+001530  aa   776350 00 0015	desc9a	-792,13		000076 = 165156144145
+001531  aa   000026 6010 04	tnz  	22,ic		001557
+						STATEMENT 1 ON LINE 212
+					call interpret_oncode_ (toncode, temp2);
+
+001532  aa  6 00211 3521 00	epp2 	pr6|137		toncode
+001533  aa  6 00302 2521 00	spri2	pr6|194
+001534  aa  6 00135 3521 00	epp2 	pr6|93		temp2
+001535  aa  6 00304 2521 00	spri2	pr6|196
+001536  aa  6 00300 6211 00	eax1 	pr6|192
+001537  aa   010000 4310 07	fld  	4096,dl
+001540  aa  6 00044 3701 20	epp4 	pr6|36,*
+001541  la  4 00020 3521 20	epp2 	pr4|16,*		interpret_oncode_
+001542  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 213
+					linfo = linfo || temp2;
+
+001543  aa  6 00032 3735 20	epp7 	pr6|26,*
+001544  aa  7 00006 3715 20	epp5 	pr7|6,*
+001545  aa   000764 2360 07	ldq  	500,dl
+001546  aa  5 77777 1761 00	sbq  	pr5|-1		linfo
+001547  aa  6 00134 1161 00	cmpq 	pr6|92		temp2
+001550  aa   000002 6040 04	tmi  	2,ic		001552
+001551  aa  6 00134 2361 00	ldq  	pr6|92		temp2
+001552  aa  5 77777 7271 00	lxl7 	pr5|-1		linfo
+001553  aa  5 77777 0561 00	asq  	pr5|-1		linfo
+001554  aa  040 157 100 540	mlr  	(pr,rl),(pr,rl,x7),fill(040)
+001555  aa  6 00135 00 0006	desc9a	pr6|93,ql		temp2
+001556  aa  5 00000 00 0006	desc9a	pr5|0,ql		linfo
+						STATEMENT 1 ON LINE 214
+				     end;
+
+						STATEMENT 1 ON LINE 215
+			     end;
+
+						STATEMENT 1 ON LINE 216
+		     end;
+
+						STATEMENT 1 ON LINE 217
+		if linfo ^= ""
+		then if substr (linfo, 1, 1) ^= byte (10)
+						/* NL */
+		     then linfo = byte (10) /* NL */ || linfo;
+
+001557  aa  7 00006 3715 20	epp5 	pr7|6,*
+001560  aa  5 77777 7271 00	lxl7 	pr5|-1		linfo
+001561  aa  040 004 106 540	cmpc 	(pr,rl),(ic),fill(040)
+001562  aa  5 00000 00 0017	desc9a	pr5|0,x7		linfo
+001563  aa   000110 00 0000	desc9a	72,0		001671 = 000011000000
+001564  aa   000031 6000 04	tze  	25,ic		001615
+001565  aa   000012 2360 07	ldq  	10,dl
+001566  aa   000077 7370 00	lls  	63
+001567  aa  6 00475 7551 00	sta  	pr6|317
+001570  aa  7 00006 2351 20	lda  	pr7|6,*		linfo
+001571  aa  0 00022 3771 00	anaq 	pr0|18		= 777000000000 000000000000
+001572  aa  6 00475 1151 00	cmpa 	pr6|317
+001573  aa   000022 6000 04	tze  	18,ic		001615
+001574  aa   000001 2360 07	ldq  	1,dl
+001575  aa  5 77777 0761 00	adq  	pr5|-1		linfo
+001576  aa  0 00551 7001 00	tsx0 	pr0|361		alloc_char_temp
+001577  aa  040 100 100 500	mlr  	(pr),(pr),fill(040)
+001600  aa  6 00475 00 0001	desc9a	pr6|317,1
+001601  aa  2 00000 00 0001	desc9a	pr2|0,1
+001602  aa  5 77777 7271 00	lxl7 	pr5|-1		linfo
+001603  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+001604  aa  5 00000 00 0017	desc9a	pr5|0,x7		linfo
+001605  aa  2 00000 20 0017	desc9a	pr2|0(1),x7
+001606  aa   000764 1160 07	cmpq 	500,dl
+001607  aa   000002 6040 04	tmi  	2,ic		001611
+001610  aa   000764 2360 07	ldq  	500,dl
+001611  aa  5 77777 7561 00	stq  	pr5|-1		linfo
+001612  aa  040 140 100 540	mlr  	(pr,rl),(pr,rl),fill(040)
+001613  aa  2 00000 00 0006	desc9a	pr2|0,ql
+001614  aa  5 00000 00 0006	desc9a	pr5|0,ql		linfo
+						STATEMENT 1 ON LINE 222
+	     end;
+
+001615  aa  0 01014 7001 00	tsx0 	pr0|524		shorten_stack
+						STATEMENT 1 ON LINE 224
+	return;
+
+001616  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO no_message                                         STATEMENT 1 ON LINE 227
+no_message:
+     entry (conname, infoptr);
+
+001617  at     000002000036
+001620  ta     000034000000
+001621  ta     001617000000
+001622  da     000101300000
+001623  aa   000500 6270 00	eax7 	320
+001624  aa  7 00034 3521 20	epp2 	pr7|28,*
+001625  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001626  aa     000004000000
+001627  aa     000000000000
+001630  aa   776470 7000 04	tsx0 	-712,ic		000320
+						STATEMENT 1 ON LINE 236
+	if conname = "endpage"
+	then if pl1_info_struc.id = "pliocond"
+	     then if pl1_info_struc.content_flags.file_ptr_sw
+		then do;
+
+001631  aa  6 00032 3735 20	epp7 	pr6|26,*
+001632  aa  7 00002 3715 20	epp5 	pr7|2,*
+001633  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001634  aa  5 00000 00 0040	desc9a	pr5|0,32		conname
+001635  aa   776205 00 0007	desc9a	-891,7		000040 = 145156144160
+001636  aa   000031 6010 04	tnz  	25,ic		001667
+001637  aa  7 00004 3535 20	epp3 	pr7|4,*		infoptr
+001640  aa  3 00000 3535 20	epp3 	pr3|0,*		infoptr
+001641  aa  3 00105 2351 00	lda  	pr3|69		pl1_info_struc.id
+001642  aa  3 00106 2361 00	ldq  	pr3|70		pl1_info_struc.id
+001643  aa   776215 1170 04	cmpaq	-883,ic		000060 = 160154151157 143157156144
+001644  aa   000023 6010 04	tnz  	19,ic		001667
+001645  aa  3 00107 2351 00	lda  	pr3|71		pl1_info_struc.file_ptr_sw
+001646  aa   040000 3150 03	cana 	16384,du
+001647  aa   000020 6000 04	tze  	16,ic		001667
+						STATEMENT 1 ON LINE 240
+			if pl1_info_struc.content_flags.v1_sw
+			then pl1_info_struc.file_ptr -> based_ptrs (2) -> based_bins (13) = 1;
+
+001650  aa  3 00107 2351 00	lda  	pr3|71		pl1_info_struc.v1_sw
+001651  aa   400000 3150 03	cana 	131072,du
+001652  aa   000006 6000 04	tze  	6,ic		001660
+001653  aa   000001 2360 07	ldq  	1,dl
+001654  aa  3 00122 3515 20	epp1 	pr3|82,*		pl1_info_struc.file_ptr
+001655  aa  1 00002 3715 20	epp5 	pr1|2,*		based_ptrs
+001656  aa  5 00014 7561 00	stq  	pr5|12		based_bins
+001657  aa   000010 7100 04	tra  	8,ic		001667
+						STATEMENT 1 ON LINE 242
+			else put page file (pl1_info_struc.file_ptr -> based_file);
+
+001660  aa  3 00122 3515 20	epp1 	pr3|82,*		based_file
+001661  aa  6 00232 2515 00	spri1	pr6|154
+001662  aa  6 00476 2515 00	spri1	pr6|318
+001663  aa   776122 2350 04	lda  	-942,ic		000005 = 403000000020
+001664  aa   000003 3520 04	epp2 	3,ic		001667 = 000631710100
+001665  aa  0 01066 7001 00	tsx0 	pr0|566		strem_prep
+001666  aa  0 01060 7001 00	tsx0 	pr0|560		put_terminate
+						STATEMENT 1 ON LINE 243
+		     end;
+
+						STATEMENT 1 ON LINE 245
+	return;
+
+001667  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 246
+     end interpret_info_struc_;
+
+  END PROCEDURE interpret_info_struc_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

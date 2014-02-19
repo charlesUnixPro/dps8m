@@ -1,0 +1,327 @@
+	COMPILATION LISTING OF SEGMENT allocate_dir_ht_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1010.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 allocate_dir_ht_: proc (dp, num_names, code);
+       14 
+       15 /* This procedure allocates the appropriate size hash table for the number of names specified.  It does not free
+       16*   the block of storage containing the old hash table.   A non-zero code is returned if allocation fails.
+       17*   The smallest hash table size that is greater or equal to the number of names specified is used.
+       18**/
+       19 /* Written 9/76 by S. Barr */
+       20 
+       21 dcl  num_names fixed bin;				/* number of names in directory */
+       22 dcl  code fixed bin (35);
+       23 
+       24 dcl  i fixed bin;
+       25 dcl  table_size fixed bin;				/* number of slots in hash table */
+       26 dcl  block_size fixed bin;				/* number of words in hash table block */
+       27 dcl  alloc_block (block_size) bit (36) based;		/* used to set owner in hash table block */
+       28 
+       29 dcl (min, null) builtin;
+       30 
+       31 /* external */
+       32 
+       33 dcl  active_hardcore_data$nalloc_sizes fixed bin ext;
+       34 dcl  active_hardcore_data$alloc_sizes (1) fixed bin ext;
+       35 dcl  active_hardcore_data$num_hash_table_sizes fixed bin ext;
+       36 dcl  active_hardcore_data$hash_table_sizes (1) fixed bin ext;
+       37 dcl  fs_alloc$alloc entry (ptr, fixed bin, ptr);
+       38 
+       39 /*  */
+  1     1 /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  1     2 /* Modified 8/74 for NSS */
+  1     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  1     4 /* Modified 3/82 BIM for change pclock */
+  1     5 /* format: style3 */
+  1     6 
+  1     7 /* Template for the directory header. Length = 64 words. */
+  1     8 
+  1     9 dcl  dp ptr;
+  1    10 
+  1    11 dcl 1 dir based (dp) aligned,
+  1    12 
+  1    13    2 modify bit (36),				/* Process ID of last modifier */
+  1    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  1    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  1    16     2 dtc (3),					/* date-time checked by salvager array */
+  1    17       3 date bit (36),				/* the date */
+  1    18       3 error bit (36),				/* what errors were discovered */
+  1    19 
+  1    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  1    21 
+  1    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  1    23 
+  1    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  1    25 
+  1    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  1    27 
+  1    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  1    29     2 version_number fixed bin (17),			/* version number of header */
+  1    30 
+  1    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  1    32     2 pad2 bit (18),
+  1    33 
+  1    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  1    35     2 pad3 bit (18),
+  1    36 
+  1    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  1    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  1    39 
+  1    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  1    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  1    42 
+  1    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  1    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  1    45 
+  1    46     2 lcount fixed bin (17),				/* number of links */
+  1    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  1    48 
+  1    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  1    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  1    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  1    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  1    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  1    54     2 pad4 bit (14),
+  1    55 
+  1    56     2 iacl_count (0:7),
+  1    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  1    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  1    59 
+  1    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  1    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  1    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  1    63 
+  1    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  1    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  1    66 
+  1    67     2 htsize fixed bin (17),				/* size of hash table */
+  1    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  1    69 
+  1    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  1    71     2 pad6 fixed bin (17),
+  1    72 
+  1    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  1    74     2 pad7 bit (18)) unaligned,
+  1    75 
+  1    76     2 dts bit (36),					/* date-time directory last salvaged */
+  1    77 
+  1    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  1    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  1    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  1    81     2 checksum bit (36),				/* checksummed from uid on */
+  1    82     2 owner bit (36);				/* uid of parent dir */
+  1    83 
+  1    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  1    85 
+  1    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+       40 
+  2     1 /*     BEGIN INCLUDE FILE ... dir_ht.incl.pl1 */
+  2     2 
+  2     3 
+  2     4 dcl htp ptr;
+  2     5 
+  2     6 dcl 1 hash_table based (htp) aligned,			/* htp = ptr(dp,active_hardcore_data$htrp) */
+  2     7     2 modify bit (36) unal,
+  2     8     2 type bit (18) unal,				/* type = dir hash table */
+  2     9     2 size fixed bin (17) unal,			/* size of current dir hash table entry */
+  2    10     2 name_rp (0:1) bit(18) unal,			/* rel ptr of name entry  */
+  2    11     2 checksum bit (36) unal,
+  2    12     2 owner bit (36) unal;
+  2    13 						/* otherwise rel ptr to name */
+  2    14 
+  2    15 /*     END INCLUDE FILE ... dir_ht.incl.pl1 */
+       41 
+  3     1 /* BEGIN INCLUDE FILE ... fs_types.incl.pl1 */
+  3     2 
+  3     3 dcl  ACCESS_NAME_TYPE bit (18) static options (constant) init ("000001"b3);
+  3     4 dcl  ACLE_TYPE bit (18) static options (constant) init ("000002"b3);
+  3     5 dcl  DIR_HEADER_TYPE bit (18) static options (constant) init ("000003"b3);
+  3     6 dcl  DIR_TYPE bit (18) static options (constant) init ("000004"b3);
+  3     7 dcl  LINK_TYPE bit (18) static options (constant) init ("000005"b3);
+  3     8 dcl  NAME_TYPE bit (18) static options (constant) init ("000006"b3);
+  3     9 dcl  SEG_TYPE bit (18) static options (constant) init ("000007"b3);
+  3    10 dcl  HASH_TABLE_TYPE bit (18) static options (constant) init ("000013"b3);
+  3    11 
+  3    12 dcl  access_name_type fixed bin static options (constant) init (1);
+  3    13 dcl  acle_type fixed bin static options (constant) init (2);
+  3    14 dcl  dir_header_type fixed bin static options (constant) init (3);
+  3    15 dcl  dir_type fixed bin static options (constant) init (4);
+  3    16 dcl  link_type fixed bin static options (constant) init (5);
+  3    17 dcl  name_type fixed bin static options (constant) init (6);
+  3    18 dcl  seg_type fixed bin static options (constant) init (7);
+  3    19 dcl  hash_table_type fixed bin static options (constant) init (11);
+  3    20 
+  3    21 /* END INCLUDE FILE ... fs_types.incl.pl1 */
+       42 
+       43 /*  */
+       44 	do i = 1 to active_hardcore_data$num_hash_table_sizes
+       45 		while (num_names > active_hardcore_data$hash_table_sizes (i));
+       46 	end;
+       47 	i = min (i, active_hardcore_data$num_hash_table_sizes);
+       48 	table_size = active_hardcore_data$hash_table_sizes (i);
+       49 
+       50 	do i = 1 to active_hardcore_data$nalloc_sizes
+       51 		while (divide (table_size+1, 2, 17, 0) +4 > active_hardcore_data$alloc_sizes (i));
+       52 	end;
+       53 	block_size = active_hardcore_data$alloc_sizes (i);
+       54 	call fs_alloc$alloc (ptr (dp, dir.arearp), block_size, htp);
+       55 	if htp = null then return;
+       56 
+       57 	hash_table.type = HASH_TABLE_TYPE;
+       58 	hash_table.size = block_size;
+       59 	htp -> alloc_block (block_size) = dir.uid;	/* owner */
+       60 	dir.hash_table_rp = rel (htp);
+       61 	dir.htsize = table_size;
+       62 
+       63 	return;
+       64 
+       65      end allocate_dir_ht_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0839.4  allocate_dir_ht_.pl1              >special_ldd>install>MR12.3-1114>allocate_dir_ht_.pl1
+40           1    05/24/82  1005.0  dir_header.incl.pl1               >ldd>include>dir_header.incl.pl1
+41           2    11/02/76  1414.6  dir_ht.incl.pl1                   >ldd>include>dir_ht.incl.pl1
+42           3    05/26/77  0922.2  fs_types.incl.pl1                 >ldd>include>fs_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+HASH_TABLE_TYPE                        constant        bit(18)                  initial packed unaligned dcl 3-10 ref 57
+active_hardcore_data$alloc_sizes
+                                000012 external static fixed bin(17,0)          array dcl 34 ref 50 53
+active_hardcore_data$hash_table_sizes
+                                000016 external static fixed bin(17,0)          array dcl 36 ref 44 48
+active_hardcore_data$nalloc_sizes
+                                000010 external static fixed bin(17,0)          dcl 33 ref 50
+active_hardcore_data$num_hash_table_sizes
+                                000014 external static fixed bin(17,0)          dcl 35 ref 44 47
+alloc_block                            based           bit(36)                  array packed unaligned dcl 27 set ref 59*
+arearp                   24            based           bit(18)                  level 2 packed packed unaligned dcl 1-11 ref 54 54
+block_size                      000102 automatic       fixed bin(17,0)          dcl 26 set ref 53* 54* 58 59
+code                                   parameter       fixed bin(35,0)          dcl 22 ref 13
+dir                                    based           structure                level 1 dcl 1-11
+dp                                     parameter       pointer                  dcl 1-9 ref 13 54 54 54 54 59 60 61
+fs_alloc$alloc                  000020 constant        entry                    external dcl 37 ref 54
+hash_table                             based           structure                level 1 dcl 2-6
+hash_table_rp            55(18)        based           bit(18)                  level 2 packed packed unaligned dcl 1-11 set ref 60*
+htp                             000104 automatic       pointer                  dcl 2-4 set ref 54* 55 57 58 59 60
+htsize                   55            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-11 set ref 61*
+i                               000100 automatic       fixed bin(17,0)          dcl 24 set ref 44* 44* 47* 47 48 50* 50* 53
+min                                                    builtin function         dcl 29 ref 47
+null                                                   builtin function         dcl 29 ref 55
+num_names                              parameter       fixed bin(17,0)          dcl 21 ref 13 44
+size                      1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 2-6 set ref 58*
+table_size                      000101 automatic       fixed bin(17,0)          dcl 25 set ref 48* 50 61
+type                      1            based           bit(18)                  level 2 packed packed unaligned dcl 2-6 set ref 57*
+uid                      10            based           bit(36)                  level 2 dcl 1-11 ref 59
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACCESS_NAME_TYPE                       internal static bit(18)                  initial packed unaligned dcl 3-3
+ACLE_TYPE                              internal static bit(18)                  initial packed unaligned dcl 3-4
+DIR_HEADER_TYPE                        internal static bit(18)                  initial packed unaligned dcl 3-5
+DIR_TYPE                               internal static bit(18)                  initial packed unaligned dcl 3-6
+LINK_TYPE                              internal static bit(18)                  initial packed unaligned dcl 3-7
+NAME_TYPE                              internal static bit(18)                  initial packed unaligned dcl 3-8
+SEG_TYPE                               internal static bit(18)                  initial packed unaligned dcl 3-9
+access_name_type                       internal static fixed bin(17,0)          initial dcl 3-12
+acle_type                              internal static fixed bin(17,0)          initial dcl 3-13
+dir_header_type                        internal static fixed bin(17,0)          initial dcl 3-14
+dir_type                               internal static fixed bin(17,0)          initial dcl 3-15
+hash_table_type                        internal static fixed bin(17,0)          initial dcl 3-19
+link_type                              internal static fixed bin(17,0)          initial dcl 3-16
+name_type                              internal static fixed bin(17,0)          initial dcl 3-17
+seg_type                               internal static fixed bin(17,0)          initial dcl 3-18
+version_number_2                       internal static fixed bin(17,0)          initial dcl 1-84
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+allocate_dir_ht_                000012 constant        entry                    external dcl 13
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+divide                                                 builtin function         ref 50
+ptr                                                    builtin function         ref 54 54
+rel                                                    builtin function         ref 60
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       254         276     151         264
+Length       520     151        22         206     102           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+allocate_dir_ht_                     82 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+allocate_dir_ht_         000100 i                           allocate_dir_ht_
+                         000101 table_size                  allocate_dir_ht_
+                         000102 block_size                  allocate_dir_ht_
+                         000104 htp                         allocate_dir_ht_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+fs_alloc$alloc
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_hardcore_data$alloc_sizes                            active_hardcore_data$hash_table_sizes
+active_hardcore_data$nalloc_sizes                           active_hardcore_data$num_hash_table_sizes
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000006        44 000017        46 000036        47 000040        48 000046        50 000051        52 000072
+     53 000074        54 000101        55 000122        57 000126        58 000131        59 000133        60 000142
+     61 000145        63 000150
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

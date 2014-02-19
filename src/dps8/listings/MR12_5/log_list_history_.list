@@ -1,0 +1,972 @@
+	COMPILATION LISTING OF SEGMENT log_list_history_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1024.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4 */
+       10 
+       11 log_list_history_:
+       12      procedure ();
+       13 
+       14 /* *	LOG_LIST_HISTORY_
+       15*   *
+       16*   *	This procedure is responsible for allocating and filling in a log_read_data
+       17*   *	structure containing the pathnames of all the logs it can find in the chain
+       18*   *	of history begun in the first log. All the logs from each separate directory
+       19*   *	in the history are sorted in chronological order (by name), and space is
+       20*   *	left at the beginning of the log_read_data array for the initial log
+       21*   *	(or logs). This procedure is a utility, used only by log_read_$open.
+       22*   *
+       23*   *	It has one minor problem: it cannot handle the case of looping history
+       24*   *	directories, where log_A points to log_B which points back to log_A.
+       25*   *	There are various ways in which this could be remedied, and one should
+       26*   *	be chosen eventually. Log unique-id comparison is probably the best
+       27*   *	choice, but, as such, should include the initial log(s), and therefore
+       28*   *	must be handled outside this procedure.
+       29*   *
+       30*   *	84-05-04, W. Olin Sibert: In celebration of recursion
+       31*   *	84-08-25, WOS: Added $single_dir entrypoint for log_write_ migration
+       32*   *	84-10-16, WOS: Converted to use log_name_$starname
+       33*   *    1984-12-15, BIM: version sentinel in log_read_data_.
+       34*   *	85-03-03, EJ Sharpe: Changed single_dir entry to return log_read_data structure, added format,
+       35*   *		added single_dir_oldest_and_newest to replace old functionality of single_dir,
+       36**/
+       37 
+       38 declare  P_first_log_ptr pointer parameter;
+       39 declare  P_log_name char (*) parameter;
+       40 declare  P_initial_count fixed bin parameter;
+       41 declare  P_log_read_data_ptr pointer parameter;
+       42 declare  P_log_dname char (*) parameter;
+       43 declare  P_oldest_log_name char (*) parameter;
+       44 declare  P_newest_log_name char (*) parameter;
+       45 declare  P_log_count fixed bin parameter;
+       46 declare  P_code fixed bin (35) parameter;
+       47 
+       48 declare  code fixed bin (35);
+       49 
+       50 declare  system_area_ptr pointer;
+       51 declare  system_area area based (system_area_ptr);
+       52 
+       53 declare  total_segment_count fixed bin;
+       54 declare  last_segment_entered fixed bin;
+       55 declare  log_starname char (32);
+       56 
+       57 declare  first_log_ptr pointer;
+       58 declare  first_dname char (168);
+       59 declare  first_uid bit (36) aligned;
+       60 
+       61 declare  error_table_$nomatch fixed bin (35) external static;
+       62 
+       63 declare  absolute_pathname_ entry (char (*), char (*), fixed bin (35));
+       64 declare  get_system_free_area_ entry () returns (pointer);
+       65 declare  hcs_$get_uid_file entry (char (*), char (*), bit (36) aligned, fixed bin (35));
+       66 declare  hcs_$star_ entry (char (*), char (*), fixed bin (2), pointer, fixed bin, pointer, pointer, fixed bin (35));
+       67 declare  log_initiate_ entry (char (*), char (*), fixed bin, pointer, fixed bin (35));
+       68 declare  log_name_$starname entry (char (*)) returns (char (32));
+       69 declare  log_name_$time entry (char (*)) returns (fixed bin (71));
+       70 declare  sort_items_$general entry (pointer, entry);
+       71 
+       72 
+       73 declare  cleanup condition;
+       74 
+       75 declare  (addr, null, sum) builtin;
+       76 
+       77 
+       78 log_list_history_$all:
+       79      entry (P_first_log_ptr, P_log_name, P_initial_count, P_log_read_data_ptr);
+       80 
+       81 	total_segment_count = P_initial_count;		/* Enough to start with-- as many as our caller has */
+       82 	first_log_ptr = P_first_log_ptr;
+       83 
+       84 /* Starname matches LogName.YYYYMMDD.HHMMSS */
+       85 
+       86 	log_starname = log_name_$starname (P_log_name);
+       87 
+       88 	system_area_ptr = get_system_free_area_ ();
+       89 
+       90 /* See if the first log we got points back to anything at all. If it doesn't, then
+       91*   we just allocate a small return structure and return. Otherwise, we start by
+       92*   listing the first history directory, and begin recursing. One of those recursive
+       93*   calls will give up and allocate the return structure, so by the time the call
+       94*   to list_log_directory returns, all will be ready and filled in. */
+       95 
+       96 	if ^get_dname_and_uid (first_log_ptr, first_dname, first_uid) then
+       97 	     call allocate_read_data ();
+       98 	else call list_log_directory (first_dname, first_uid, "1"b);
+       99 
+      100 	P_log_read_data_ptr = log_read_data_ptr;	/* Return the structure we allocated */
+      101 	return;
+      102 
+      103 
+      104 log_list_history_$single_dir:
+      105      entry (P_log_dname, P_log_name, P_log_read_data_ptr, P_code);
+      106 
+      107 /* This entrypoint returns a log_read_data structure with information about only
+      108*   the logs in a single history directory. */
+      109 
+      110 	first_dname = P_log_dname;
+      111 	log_starname = log_name_$starname (P_log_name);
+      112 
+      113 	total_segment_count = 0;
+      114 	log_read_data_ptr = null ();
+      115 	system_area_ptr = get_system_free_area_ ();
+      116 
+      117 	on condition (cleanup) begin;
+      118 	     if (log_read_data_ptr ^= null ()) then
+      119 		free log_read_data_ptr -> log_read_data in (system_area);
+      120 	end;
+      121 
+      122 	call hcs_$get_uid_file (first_dname, "", first_uid, code); /* We need this value as a parameter, and, in */
+      123 	if (code ^= 0) then do;			/* any case, this is a good place to fail if noentry */
+      124 	     P_code = code;
+      125 	     return;
+      126 	end;
+      127 
+      128 	call list_log_directory (first_dname, first_uid, "0"b); /* Just this directory, please */
+      129 
+      130 	P_log_read_data_ptr = log_read_data_ptr;
+      131 	P_code = 0;
+      132 
+      133 	return;
+      134 
+      135 
+      136 log_list_history_$single_dir_oldest_and_newest:
+      137      entry (P_log_dname, P_log_name, P_oldest_log_name, P_newest_log_name, P_log_count, P_code);
+      138 
+      139 /* This entrypoint is used (by log_write_$open_for_migrate) to determine the names
+      140*   of the oldest and newest log segments in a particular log directory.  Rather
+      141*   than listing the entire history, only a single directory is listed.  */
+      142 
+      143 	first_dname = P_log_dname;
+      144 	log_starname = log_name_$starname (P_log_name);
+      145 
+      146 	P_oldest_log_name = "";
+      147 	P_newest_log_name = "";
+      148 	P_log_count = 0;
+      149 
+      150 	total_segment_count = 0;			/* We started with none, after all */
+      151 	log_read_data_ptr = null ();
+      152 	system_area_ptr = get_system_free_area_ ();
+      153 
+      154 	on condition (cleanup) begin;			/* Always free log_read_data, since it is not retained */
+      155 	     if (log_read_data_ptr ^= null ()) then	/* outside the invocation of this program */
+      156 		free log_read_data_ptr -> log_read_data in (system_area);
+      157 	end;
+      158 
+      159 	call hcs_$get_uid_file (first_dname, "", first_uid, code); /* We need this value as a parameter, and, in */
+      160 	if (code ^= 0) then do;			/* any case, this is a good place to fail if noentry */
+      161 	     P_code = code;
+      162 	     return;
+      163 	end;
+      164 
+      165 	call list_log_directory (first_dname, first_uid, "0"b); /* Just this directory, please */
+      166 
+      167 	if (log_read_data.n_segments > 0) then do;
+      168 	     P_newest_log_name = log_read_data.ename (1);
+      169 	     P_oldest_log_name = log_read_data.ename (log_read_data.n_segments);
+      170 	end;
+      171 
+      172 	P_log_count = log_read_data.n_segments;
+      173 
+      174 	if (log_read_data.n_segments = 0) then
+      175 	     P_code = error_table_$nomatch;
+      176 	else P_code = 0;
+      177 
+      178 	free log_read_data_ptr -> log_read_data in (system_area);
+      179 
+      180 	return;					/* All done for $single_dir */
+      181 
+      182 
+      183 get_dname_and_uid:
+      184      procedure (P_log_segment_ptr, P_dname, P_uid) returns (bit (1) aligned);
+      185 
+      186 declare  P_log_segment_ptr pointer parameter;
+      187 declare  P_dname char (*) parameter;
+      188 declare  P_uid bit (36) aligned parameter;
+      189 
+      190 declare  code fixed bin (35);
+      191 
+      192 /* This procedure extracts the directory name and directory UID for the pathname
+      193*   recorded in the previous log information in the supplied log. If any error
+      194*   occurs, it just gives up, terminating the search at that point. */
+      195 
+      196 
+      197 	if (P_log_segment_ptr = null ()) then return ("0"b);
+      198 
+      199 	if (P_log_segment_ptr -> log_segment.previous_log_dir = "") then return ("0"b);
+      200 
+      201 	call absolute_pathname_ (P_log_segment_ptr -> log_segment.previous_log_dir, P_dname, code);
+      202 	if (code ^= 0) then return ("0"b);
+      203 
+      204 	call hcs_$get_uid_file (P_dname, "", P_uid, code);
+      205 	if (code ^= 0) then return ("0"b);
+      206 
+      207 	return ("1"b);
+      208      end get_dname_and_uid;
+      209 
+      210 
+      211 
+      212 allocate_read_data:
+      213      procedure ();
+      214 
+      215 	log_read_data_n_segments = total_segment_count;
+      216 	last_segment_entered = total_segment_count + 1;	/* Because there are none at all in the array, yet */
+      217 
+      218 	allocate log_read_data in (system_area) set (log_read_data_ptr);
+      219 	log_read_data.header.sentinel = LOG_READ_DATA_VERSION_SENTINEL;
+      220 	log_read_data.n_segments = total_segment_count;
+      221 
+      222 	return;
+      223      end allocate_read_data;
+      224 
+      225 
+      226 /* *	This textbook example of recursion is used to find all the log segments
+      227*   *	in whatever set of directories they may have been migrated to. It is
+      228*   *	called by the main "open" routine to list the directory that the newest
+      229*   *	log points back to, and it goes back from there. After it lists a
+      230*   *	directory, it examines the oldest log segment in that directory, and
+      231*   *	sees where it points for its "previous" log. If the directory thus
+      232*   *	indicated is different, it calls list_log_directory recursively, and
+      233*   *	does it all over again.
+      234*   *
+      235*   *	Once it runs out of directories, or if it encounters any error listing
+      236*   *	or examining directory contents, it allocated log_read_data and starts
+      237*   *	filling it in, from the bottom (oldest) up.
+      238*   *
+      239*   *	The process is controlled by two global variables: total_segment_count
+      240*   *	and last_segment_entered, which keep track of the total size of the
+      241*   *	structure, and of which entries have been filled in already. After the
+      242*   *	initial call to list_log_directory returns, the remaining (first) entry
+      243*   *	in log_read_data is filled in from the parameter we received. The log
+      244*   *	starname is also global, since all historical logs must have the same
+      245*   *	format for their names.
+      246*   *
+      247*   *	NOTE: Despite the names, it's list_this_directory, not list_log_directory,
+      248*   *	that actually calls hcs_$star_.  This procedure just collects the results.
+      249**/
+      250 
+      251 list_log_directory:
+      252      procedure (P_dname, P_uid, P_keep_looking);
+      253 
+      254 declare  P_dname char (*) parameter;			/* Directory to list */
+      255 declare  P_uid bit (36) aligned parameter;		/* Used to check equality of directories */
+      256 declare  P_keep_looking bit (1) aligned parameter;	/* Keep looking for the next older directory */
+      257 
+      258 declare  sort_pointers_ptr pointer;
+      259 declare  1 sort_pointers aligned based (sort_pointers_ptr),
+      260 	 2 n_entries fixed bin,
+      261 	 2 ptr (star_entry_count refer (sort_pointers.n_entries)) pointer unaligned;
+      262 
+      263 declare  code fixed bin (35);				/* Local copy */
+      264 declare  segment_count fixed bin;
+      265 declare  1 one_star_entry aligned like star_entries based;
+      266 declare  entry_idx fixed bin;
+      267 declare  last_log_name char (32);
+      268 declare  last_log_ptr pointer;
+      269 declare  older_dname char (168);
+      270 declare  older_uid bit (36) aligned;
+      271 declare  segment_idx fixed bin;
+      272 
+      273 
+      274 	star_entry_ptr = null ();			/* Initialize for cleanup handler */
+      275 	star_names_ptr = null ();			/* Initialize for cleanup handler */
+      276 	sort_pointers_ptr = null ();			/* Initialize for cleanup handler */
+      277 	last_log_ptr = null ();			/* Initialize for filling into log_read_data */
+      278 	segment_count = 0;				/* Initialize for filling-in loop */
+      279 
+      280 	on condition (cleanup) begin;
+      281 	     call free_star_entries ();
+      282 	end;
+      283 
+      284 /* Now, we list the contents of the directory. It's the job of list_this_directory
+      285*   to test P_keep_looking-- if we aren't supposed to keep looking, it gives up
+      286*   without looking in the oldest log segment for another directory to list.
+      287*   Otherwise, it looks there and returns "1"b if there's anything worth looking at. */
+      288 
+      289 	if (list_this_directory ()) then
+      290 	     call list_log_directory (older_dname, older_uid, P_keep_looking);
+      291 	else call allocate_read_data ();
+      292 
+      293 /* Once the directory is listed, fill in all the segments from our list. This loop will
+      294*   be ignored if there was nothing listed by the earlier call to list_directory, so there
+      295*   are no problems resulting from referencing structures not actually allocated because,
+      296*   for instance, a call to hcs_$star_ failed. */
+      297 
+      298 	do segment_idx = segment_count to 1 by -1;
+      299 	     last_segment_entered = last_segment_entered - 1; /* Get the index of the one to be entered */
+      300 
+      301 	     log_read_data.dname (last_segment_entered) = P_dname;
+      302 	     log_read_data.dir_uid (last_segment_entered) = P_uid;
+      303 	     log_read_data.ename (last_segment_entered) =
+      304 		star_names (sort_pointers.ptr (segment_idx) -> one_star_entry.nindex);
+      305 
+      306 	     log_read_data.suffix_time (last_segment_entered) =
+      307 		log_name_$time (log_read_data.ename (last_segment_entered));
+      308 
+      309 	     if (segment_idx = segment_count) then	/* We've initiated (or at least tried) the oldest log */
+      310 		log_read_data.ptr (last_segment_entered) = last_log_ptr; /* already, so record the pointer we got */
+      311 	     else log_read_data.ptr (last_segment_entered) = null ();
+      312 	end;
+      313 
+      314 	call free_star_entries ();			/* Clean out this level of recursion */
+      315 	return;
+      316 
+      317 
+      318 list_this_directory:
+      319 	procedure () returns (bit (1) aligned);
+      320 
+      321 /* First, try to list any matching logs in the directory. If there is an error, or none
+      322*   can be found, we're all done here. A "0"b is returned if there are no more directories
+      323*   to search, which is the case for all returns except the very last. */
+      324 
+      325 	     call hcs_$star_ (P_dname, log_starname, star_BRANCHES_ONLY, system_area_ptr,
+      326 		star_entry_count, star_entry_ptr, star_names_ptr, code);
+      327 	     if (code ^= 0) then return ("0"b);
+      328 	     if (star_entry_count = 0) then return ("0"b);
+      329 
+      330 	     allocate sort_pointers in (system_area) set (sort_pointers_ptr);
+      331 	     sort_pointers.n_entries = star_entry_count;
+      332 
+      333 	     segment_count = 0;
+      334 	     do entry_idx = 1 to star_entry_count;
+      335 		sort_pointers.ptr (entry_idx) = addr (star_entries (entry_idx));
+      336 		if (star_entries.type (entry_idx) = star_SEGMENT) then
+      337 		     segment_count = segment_count + 1;
+      338 	     end;
+      339 
+      340 	     if (segment_count = 0) then return ("0"b);
+      341 	     total_segment_count = total_segment_count + segment_count;
+      342 
+      343 	     call sort_items_$general (addr (sort_pointers), compare_entries);
+      344 
+      345 	     if ^P_keep_looking then			/* If we're not supposed to keep looking, we */
+      346 		return ("0"b);			/* stop right here without looking at the history */
+      347 
+      348 /* Find the last (oldest) log in this directory, and see what it says about earlier ones */
+      349 
+      350 	     last_log_name = star_names (sort_pointers.ptr (segment_count) -> one_star_entry.nindex);
+      351 	     call log_initiate_ (P_dname, last_log_name, 1, last_log_ptr, code);
+      352 	     if (code ^= 0) then return ("0"b);
+      353 
+      354 /* See if this log contains a usable previous log pathname */
+      355 
+      356 	     if ^get_dname_and_uid (last_log_ptr, older_dname, older_uid) then return ("0"b);
+      357 
+      358 /* Now, check to see whether the "previous" directory in the oldest log of record is
+      359*   different from the directory we're already looking at. This will fail catastrophically
+      360*   if the "previous" directory is, in fact, one we've listed earlier than this call,
+      361*   since it will lead us back to here, and so forth. It's difficult to check for that
+      362*   case, so we'll just take the risk. */
+      363 
+      364 	     if (older_uid = P_uid) then return ("0"b);
+      365 
+      366 	     return ("1"b);
+      367 	end list_this_directory;
+      368 
+      369 
+      370 compare_entries:
+      371 	procedure (P_entry_1, P_entry_2) returns (fixed bin (35));
+      372 
+      373 declare  P_entry_1 unaligned pointer parameter;
+      374 declare  P_entry_2 unaligned pointer parameter;
+      375 
+      376 declare  entry_1_ptr pointer;
+      377 declare  entry_2_ptr pointer;
+      378 declare  1 entry_1 aligned like star_entries based (entry_1_ptr);
+      379 declare  1 entry_2 aligned like star_entries based (entry_2_ptr);
+      380 
+      381 
+      382 	     entry_1_ptr = P_entry_1;
+      383 	     entry_2_ptr = P_entry_2;
+      384 
+      385 /* These first two cases make non-segments always sort at the end, which means
+      386*   they will be ignored when collection time comes. */
+      387 
+      388 	     if (entry_1.type = star_SEGMENT) & (entry_2.type ^= star_SEGMENT) then
+      389 		return (-1);
+      390 	     else if (entry_1.type ^= star_SEGMENT) & (entry_2.type = star_SEGMENT) then
+      391 		return (1);
+      392 	     else if (star_names (entry_1.nindex) < star_names (entry_2.nindex)) then
+      393 		return (1);
+      394 	     else return (-1);
+      395 
+      396 	end compare_entries;
+      397 
+      398 
+      399 
+      400 free_star_entries:
+      401 	procedure ();
+      402 
+      403 declare  star_stuff fixed bin based;
+      404 
+      405 /* This procedure has to have its own based variable to use when freeing, because the
+      406*   standard include file declares the star structures in a way that requires various
+      407*   pointers to be set properly when they may not be. BRAINDAMAGE. It should use fixed
+      408*   array bounds the way it used to before Davidoff got to it. */
+      409 
+      410 
+      411 	     if (star_entry_ptr ^= null ()) then
+      412 		free star_entry_ptr -> star_stuff in (system_area);
+      413 	     if (star_names_ptr ^= null ()) then
+      414 		free star_names_ptr -> star_stuff in (system_area);
+      415 	     if (sort_pointers_ptr ^= null ()) then
+      416 		free sort_pointers in (system_area);
+      417 
+      418 	     return;
+      419 	end free_star_entries;
+      420 
+      421 
+      422 
+      423 /* This must be declared here, in the internal procedure, because it is used recursively */
+      424 
+  1     1 /* BEGIN INCLUDE FILE . . . star_structures.incl.pl1 */
+  1     2 
+  1     3 /* This include file contains structures for the hcs_$star_,
+  1     4*   hcs_$star_list_ and hcs_$star_dir_list_ entry points.
+  1     5*
+  1     6*   Written 23 October 1978 by Monte Davidoff.
+  1     7*   Modified January 1979 by Michael R. Jordan to use unsigned and different pointers for different structures.
+  1     8*   Modified June 1981 by C. Hornig to count link pathnames more efficiently.
+  1     9**/
+  1    10 
+  1    11 /* automatic */
+  1    12 
+  1    13 declare  star_branch_count fixed binary;		/* hcs_$star_list_, hcs_$star_dir_list_: matching branch count */
+  1    14 declare  star_entry_count fixed binary;			/* hcs_$star_: number of matching entries */
+  1    15 declare  star_entry_ptr pointer;			/* hcs_$star_: pointer to array of entry information */
+  1    16 declare  star_list_branch_ptr pointer;			/* hcs_$star_list_, hcs_$star_dir_list_: ptr to array of info */
+  1    17 declare  star_link_count fixed binary;			/* hcs_$star_list_, hcs_$star_dir_list_: matching link count */
+  1    18 declare  star_linkx fixed binary;			/* hcs_$star_list_, hcs_$star_dir_list_: index into star_links */
+  1    19 declare  star_names_ptr pointer;			/* hcs_$star_: pointer to array of entry names */
+  1    20 declare  star_list_names_ptr pointer;			/* hcs_$star_list_, hcs_$star_dir_list_: ptr to entry names */
+  1    21 declare  star_select_sw fixed binary (3);		/* hcs_$star_list_, hcs_$star_dir_list_: what info to return */
+  1    22 
+  1    23 /* based */
+  1    24 
+  1    25 /* hcs_$star_ entry structure */
+  1    26 
+  1    27 declare 1 star_entries (star_entry_count) aligned based (star_entry_ptr),
+  1    28         2 type fixed binary (2) unsigned unaligned,
+  1    29 						/* storage system type */
+  1    30         2 nnames fixed binary (16) unsigned unaligned,
+  1    31 						/* number of names of entry that match star_name */
+  1    32         2 nindex fixed binary (18) unsigned unaligned;
+  1    33 						/* index of first name in star_names */
+  1    34 
+  1    35 /* hcs_$star_ name structure */
+  1    36 
+  1    37 declare  star_names (sum (star_entries (*).nnames)) char (32) based (star_names_ptr);
+  1    38 
+  1    39 /* hcs_$star_list_ branch structure */
+  1    40 
+  1    41 declare 1 star_list_branch (star_branch_count + star_link_count) aligned based (star_list_branch_ptr),
+  1    42         2 type fixed binary (2) unsigned unaligned,
+  1    43 						/* storage system type */
+  1    44         2 nnames fixed binary (16) unsigned unaligned,
+  1    45 						/* number of names of entry that match star_name */
+  1    46         2 nindex fixed binary (18) unsigned unaligned,
+  1    47 						/* index of first name in star_list_names */
+  1    48         2 dtcm bit (36) unaligned,			/* date-time contents of branch were last modified */
+  1    49         2 dtu bit (36) unaligned,			/* date-time branch was last used */
+  1    50         2 mode bit (5) unaligned,			/* user's access mode to the branch */
+  1    51         2 raw_mode bit (5) unaligned,			/* user's ACL access mode */
+  1    52         2 master_dir bit (1) unaligned,			/* is branch a master directory */
+  1    53         2 pad bit (7) unaligned,
+  1    54         2 records fixed binary (18) unsigned unaligned;
+  1    55 						/* records used by branch */
+  1    56 
+  1    57 /* hcs_$star_dir_list_ branch structure */
+  1    58 
+  1    59 declare 1 star_dir_list_branch (star_branch_count + star_link_count) aligned based (star_list_branch_ptr),
+  1    60         2 type fixed binary (2) unsigned unaligned,
+  1    61 						/* storage system type */
+  1    62         2 nnames fixed binary (16) unsigned unaligned,
+  1    63 						/* number of names of entry that match star_name */
+  1    64         2 nindex fixed binary (18) unsigned unaligned,
+  1    65 						/* index of first name in star_list_names */
+  1    66         2 dtem bit (36) unaligned,			/* date-time directory entry of branch was last modified */
+  1    67         2 pad bit (36) unaligned,
+  1    68         2 mode bit (5) unaligned,			/* user's access mode to the branch */
+  1    69         2 raw_mode bit (5) unaligned,			/* user's ACL access mode */
+  1    70         2 master_dir bit (1) unaligned,			/* is branch a master directory */
+  1    71         2 bit_count fixed binary (24) unaligned;
+  1    72 						/* bit count of the branch */
+  1    73 
+  1    74 /* hcs_$star_list_ and hcs_$star_dir_list_ link structure */
+  1    75 
+  1    76 declare 1 star_links (star_branch_count + star_link_count) aligned based (star_list_branch_ptr),
+  1    77         2 type fixed binary (2) unsigned unaligned,
+  1    78 						/* storage system type */
+  1    79         2 nnames fixed binary (16) unsigned unaligned,
+  1    80 						/* number of names of entry that match star_name */
+  1    81         2 nindex fixed binary (18) unsigned unaligned,
+  1    82 						/* index of first name in star_list_names */
+  1    83         2 dtem bit (36) unaligned,			/* date-time link was last modified */
+  1    84         2 dtd bit (36) unaligned,			/* date-time the link was last dumped */
+  1    85         2 pathname_len fixed binary (18) unsigned unaligned,
+  1    86 						/* length of the pathname of the link */
+  1    87         2 pathname_index fixed binary (18) unsigned unaligned;
+  1    88 						/* index of start of pathname in star_list_names */
+  1    89 
+  1    90 /* hcs_$star_list_ and hcs_$star_dir_list_ name array */
+  1    91 
+  1    92 declare  star_list_names char (32) based (star_list_names_ptr)
+  1    93 	dimension (star_links (star_branch_count + star_link_count).nindex
+  1    94 	 + star_links (star_branch_count + star_link_count).nnames
+  1    95 	 + divide (star_links (star_branch_count + star_link_count).pathname_len + 31, 32, 17, 0)
+  1    96 	   * binary (
+  1    97 	     (star_links (star_branch_count + star_link_count).type = star_LINK)
+  1    98 	     & (star_select_sw >= star_LINKS_ONLY_WITH_LINK_PATHS), 1));
+  1    99 
+  1   100 /* hcs_$star_list_ and hcs_$star_dir_list_ link pathname */
+  1   101 
+  1   102 declare  star_link_pathname char (star_links (star_linkx).pathname_len)
+  1   103          based (addr (star_list_names (star_links (star_linkx).pathname_index)));
+  1   104 
+  1   105 /* internal static */
+  1   106 
+  1   107 /* star_select_sw values */
+  1   108 
+  1   109 declare  star_LINKS_ONLY fixed binary (2) internal static options (constant) initial (1);
+  1   110 declare  star_BRANCHES_ONLY fixed binary (2) internal static options (constant) initial (2);
+  1   111 declare  star_ALL_ENTRIES fixed binary (2) internal static options (constant) initial (3);
+  1   112 declare  star_LINKS_ONLY_WITH_LINK_PATHS
+  1   113          fixed binary (3) internal static options (constant) initial (5);
+  1   114 declare  star_ALL_ENTRIES_WITH_LINK_PATHS
+  1   115          fixed binary (3) internal static options (constant) initial (7);
+  1   116 
+  1   117 /* storage system types */
+  1   118 
+  1   119 declare  star_LINK fixed binary (2) unsigned internal static options (constant) initial (0);
+  1   120 declare  star_SEGMENT fixed binary (2) unsigned internal static options (constant) initial (1);
+  1   121 declare  star_DIRECTORY fixed binary (2) unsigned internal static options (constant) initial (2);
+  1   122 
+  1   123 /* END INCLUDE FILE . . . star_structures.incl.pl1 */
+      425 
+      426 
+      427      end list_log_directory;				/* The recursive procedure */
+      428 
+      429 /* format: off */
+      430  /* BEGIN INCLUDE FILE ... log_segment.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  2     2 
+  2     3 declare   log_segment_ptr               pointer;
+  2     4 declare   log_segment_max_size          fixed bin (18);
+  2     5 declare   LOG_SEGMENT_VERSION_1         char (8) internal static options (constant) init ("SysLog01");
+  2     6 
+  2     7 
+  2     8 declare 1 log_segment                   aligned based (log_segment_ptr),
+  2     9           2 header                      aligned like log_segment_header,
+  2    10           2 data                        dim (log_segment_max_size refer (log_segment.max_size)) bit (36) aligned;
+  2    11 
+  2    12 
+  2    13 declare 1 log_segment_header            aligned based,
+  2    14           2 version                     char (8) unaligned, /* LOG_SEGMENT_VERSION_1 */
+  2    15           2 time_created                fixed bin (71),     /* When the segment header was initialized */
+  2    16           2 previous_log_dir            char (168) unaligned, /* Directory containing previous log segment */
+  2    17 
+  2    18           2 limits,
+  2    19             3 first_sequence            fixed bin (35),     /* First and last sequence numbers / time stamps */
+  2    20             3 last_sequence             fixed bin (35),     /* of messages in the log. These may be slightly */
+  2    21             3 first_time                fixed bin (71),     /* incorrect due to lockless updating strategy */
+  2    22             3 last_time                 fixed bin (71),
+  2    23 
+  2    24           2 alloc_info,                                     /* Complex STACQ hack for allocating and assigning */
+  2    25             3 word_1                    fixed bin (18),     /* sequence numbers locklessly. See log_segment_ */
+  2    26             3 word_2                    bit (36) aligned,   /* for details of strategy */
+  2    27           2 max_size                    fixed bin (18),     /* Total words in data area */
+  2    28 
+  2    29           2 listeners_registered        bit (1) aligned,    /* Set if ANY processes were ever registered-- it's only */
+  2    30           2 listener_bootload_time      fixed bin (71),     /* kept here for efficiency. The bootload time is used to */
+  2    31                                                             /* detect all the dead listeners after a reboot */
+  2    32           2 listener (25),                                  /* Processes waiting for messages in the log */
+  2    33             3 process_id                bit (36) aligned,
+  2    34             3 event_channel             fixed bin (71) unaligned, /* Saves space-- allows 3-word entries */
+  2    35 
+  2    36           2 last_wakeup_time            fixed bin (71),     /* When last wakeup was sent */
+  2    37           2 wakeup_delta                fixed bin (71),     /* Wakeups sent no more than once per this interval */
+  2    38 
+  2    39           2 pad (6)                     fixed bin (71);     /* Pad header to 150 words */
+  2    40 
+  2    41 
+  2    42 declare   LOG_SEGMENT_NEW_MESSAGE           init ("777111555333"b3) bit (36) aligned internal static options (constant);
+  2    43 declare   LOG_SEGMENT_COMPLETE_MESSAGE      init ("666000444222"b3) bit (36) aligned internal static options (constant);
+  2    44 
+  2    45 /* END INCLUDE FILE ... log_segment.incl.pl1 */
+      430 
+      431  /* BEGIN INCLUDE FILE ... log_read_data.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  3     2 
+  3     3 /* Added reader_procedure, area_ptr, reader_data_ptr, and entry variables 11/28/84 Steve Herbst */
+  3     4 /* Added (latest earlier)_message_ptr, (first last)_held_message and get_log_uid 11/30/84 Steve Herbst */
+  3     5 /* Put everything before the segments array into header 12/04/84 Steve Herbst */
+  3     6 /* Added entry variables free_message, register & deregister 12/06/84 Steve Herbst */
+  3     7 
+  3     8 
+  3     9 declare   log_read_data_ptr             pointer;
+  3    10 declare   log_read_data_n_segments      fixed bin;
+  3    11 
+  3    12 declare 1 log_read_data                 aligned based (log_read_data_ptr),
+  3    13           2 header                      aligned,
+  3    14 	  3 sentinel		char (8) aligned,
+  3    15             3 n_segments                fixed bin,
+  3    16             3 history_complete          bit (1) aligned,
+  3    17 	  3 call_procedures		bit (1) aligned,
+  3    18 	  3 allocate_copies		bit (1) aligned,
+  3    19             3 current_ptr               pointer,            /* Trivial optimization for positioning */
+  3    20             3 current_idx               fixed bin,
+  3    21 	  3 reader_data_ptr		pointer,		/* log_read_data_ptr returned by reader_proc$open */
+  3    22 	  3 user_area_ptr		pointer,            /* Used in the inner ring to allocate outer ring copies. */
+  3    23 	  3 latest_message		aligned like saved_message,	/* The last message returned */
+  3    24 	  3 earlier_message		aligned like saved_message,	/* The one returned before latest */
+  3    25 	  3 n_held_messages           fixed bin,
+  3    26 	  3 first_held_message_ptr	pointer,		/* Used by $hold_message */
+  3    27 	  3 last_held_message_ptr	pointer,		/* ditto */
+  3    28 	  3 ev,					/* Entry variable for each operation */
+  3    29 	    4 open variable entry (char (*), char (*), pointer, pointer, fixed bin (35)),
+  3    30 	    4 close variable entry (pointer, fixed bin (35)),
+  3    31 	    4 next_message variable entry (pointer, pointer, fixed bin (35)),
+  3    32 	    4 prev_message variable entry (pointer, pointer, fixed bin (35)),
+  3    33 	    4 position_sequence variable entry (pointer, fixed bin (35), bit (1) aligned, pointer, fixed bin (35)),
+  3    34 	    4 position_time variable entry (pointer, fixed bin (71), bit (1) aligned, pointer, fixed bin (35)),
+  3    35 	    4 update variable entry (fixed bin (35), pointer, pointer, fixed bin (35)),
+  3    36 	    4 hold_message variable entry (pointer, pointer),
+  3    37 	    4 free_message variable entry (pointer, pointer),
+  3    38 	    4 get_log_uid variable entry (pointer, bit (36) aligned, fixed bin (35)),
+  3    39 	    4 register variable entry (pointer, bit (36) aligned, fixed bin (71), fixed bin (35)),
+  3    40 	    4 deregister variable entry (pointer, bit (36) aligned, fixed bin (71), fixed bin (35)),
+  3    41 	  3 limits                      aligned,            /* Absolute limits of family contents */
+  3    42 	    4 very_first_time           fixed bin (71),     /* Set up during initialization */
+  3    43 	    4 very_last_time            fixed bin (71),
+  3    44 	    4 very_first_sequence       fixed bin (35),
+  3    45 	    4 very_last_sequence        fixed bin (35),
+  3    46 	    4 very_first_log_idx        fixed bin,
+  3    47 	    4 very_last_log_idx         fixed bin,
+  3    48 
+  3    49           2 segments (log_read_data_n_segments refer (log_read_data.n_segments)),
+  3    50             3 dname                     char (168) unaligned,
+  3    51             3 ename                     char (32) unaligned,
+  3    52             3 ptr                       pointer,
+  3    53             3 suffix_time               fixed bin (71),     /* Time from suffix-- all messages in log are earlier */
+  3    54             3 dir_uid                   bit (36) aligned,   /* UID of parent dir */
+  3    55             3 prev_missing              bit (1) aligned,
+  3    56             3 damaged                   bit (1) aligned,
+  3    57 
+  3    58           2 pad                         fixed bin;
+  3    59 
+  3    60 declare 1 saved_message		aligned based,
+  3    61 	2 actual_ptr		pointer,		/* Points to message in log. */
+  3    62 	2 copy_ptr		pointer;		/* Points to user-ring allocated copy. */
+  3    63 
+  3    64 dcl  1 log_held_message_node aligned based,
+  3    65        2 message aligned like saved_message,
+  3    66        2 reference_count fixed bin,
+  3    67        2 next_ptr ptr;
+  3    68 
+  3    69 declare LOG_READ_DATA_VERSION_SENTINEL char (8) int static options (constant)
+  3    70         init ("logr0001") options (constant);
+  3    71 
+  3    72 /* END INCLUDE FILE ... log_read_data.incl.pl1 */
+      431 
+      432 
+      433 	end log_list_history_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  log_list_history_.pl1             >spec>install>1111>log_list_history_.pl1
+425          1    06/10/82  1045.5  star_structures.incl.pl1          >ldd>include>star_structures.incl.pl1
+430          2    12/04/84  2124.9  log_segment.incl.pl1              >ldd>include>log_segment.incl.pl1
+431          3    01/21/85  0912.3  log_read_data.incl.pl1            >ldd>include>log_read_data.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+LOG_READ_DATA_VERSION_SENTINEL  000000 constant        char(8)                  initial packed unaligned dcl 3-69 ref 219
+P_code                                 parameter       fixed bin(35,0)          dcl 46 set ref 104 124* 131* 136 161* 174* 176*
+P_dname                                parameter       char                     packed unaligned dcl 187 in procedure
+                                                                                  "get_dname_and_uid" set ref 183 201* 204*
+P_dname                                parameter       char                     packed unaligned dcl 254 in procedure
+                                                                                  "list_log_directory" set ref 251 301 325* 351*
+P_entry_1                              parameter       pointer                  packed unaligned dcl 373 ref 370 382
+P_entry_2                              parameter       pointer                  packed unaligned dcl 374 ref 370 383
+P_first_log_ptr                        parameter       pointer                  dcl 38 ref 78 82
+P_initial_count                        parameter       fixed bin(17,0)          dcl 40 ref 78 81
+P_keep_looking                         parameter       bit(1)                   dcl 256 set ref 251 289* 345
+P_log_count                            parameter       fixed bin(17,0)          dcl 45 set ref 136 148* 172*
+P_log_dname                            parameter       char                     packed unaligned dcl 42 ref 104 110 136 143
+P_log_name                             parameter       char                     packed unaligned dcl 39 set ref 78 86* 104 111* 136
+                                                                                  144*
+P_log_read_data_ptr                    parameter       pointer                  dcl 41 set ref 78 100* 104 130*
+P_log_segment_ptr                      parameter       pointer                  dcl 186 ref 183 197 199 201
+P_newest_log_name                      parameter       char                     packed unaligned dcl 44 set ref 136 147* 168*
+P_oldest_log_name                      parameter       char                     packed unaligned dcl 43 set ref 136 146* 169*
+P_uid                                  parameter       bit(36)                  dcl 188 in procedure "get_dname_and_uid" set ref 183
+                                                                                  204*
+P_uid                                  parameter       bit(36)                  dcl 255 in procedure "list_log_directory" ref 251
+                                                                                  302 364
+absolute_pathname_              000012 constant        entry                    external dcl 63 ref 201
+addr                                                   builtin function         dcl 75 ref 335 343 343
+cleanup                         000174 stack reference condition                dcl 73 ref 117 154 280
+code                            000100 automatic       fixed bin(35,0)          dcl 190 in procedure "get_dname_and_uid" set ref
+                                                                                  201* 202 204* 205
+code                            000102 automatic       fixed bin(35,0)          dcl 263 in procedure "list_log_directory" set ref
+                                                                                  325* 327 351* 352
+code                            000100 automatic       fixed bin(35,0)          dcl 48 in procedure "log_list_history_" set ref 122*
+                                                                                  123 124 159* 160 161
+dir_uid                 212            based           bit(36)                  array level 3 dcl 3-12 set ref 302*
+dname                   124            based           char(168)                array level 3 packed packed unaligned dcl 3-12 set
+                                                                                  ref 301*
+ename                   176            based           char(32)                 array level 3 packed packed unaligned dcl 3-12 set
+                                                                                  ref 168 169 303* 306*
+entry_1                                based           structure                level 1 dcl 378
+entry_1_ptr                     000100 automatic       pointer                  dcl 376 set ref 382* 388 390 392
+entry_2                                based           structure                level 1 dcl 379
+entry_2_ptr                     000102 automatic       pointer                  dcl 377 set ref 383* 388 390 392
+entry_idx                       000104 automatic       fixed bin(17,0)          dcl 266 set ref 334* 335 335 336*
+error_table_$nomatch            000010 external static fixed bin(35,0)          dcl 61 ref 174
+first_dname                     000120 automatic       char(168)                packed unaligned dcl 58 set ref 96* 98* 110* 122*
+                                                                                  128* 143* 159* 165*
+first_log_ptr                   000116 automatic       pointer                  dcl 57 set ref 82* 96*
+first_uid                       000172 automatic       bit(36)                  dcl 59 set ref 96* 98* 122* 128* 159* 165*
+get_system_free_area_           000014 constant        entry                    external dcl 64 ref 88 115 152
+hcs_$get_uid_file               000016 constant        entry                    external dcl 65 ref 122 159 204
+hcs_$star_                      000020 constant        entry                    external dcl 66 ref 325
+header                                 based           structure                level 2 in structure "log_segment" dcl 2-8
+                                                                                  in procedure "log_list_history_"
+header                                 based           structure                level 2 in structure "log_read_data" dcl 3-12
+                                                                                  in procedure "log_list_history_"
+last_log_name                   000105 automatic       char(32)                 packed unaligned dcl 267 set ref 350* 351*
+last_log_ptr                    000116 automatic       pointer                  dcl 268 set ref 277* 309 351* 356*
+last_segment_entered            000105 automatic       fixed bin(17,0)          dcl 54 set ref 216* 299* 299 301 302 303 306 306 309
+                                                                                  311
+log_initiate_                   000022 constant        entry                    external dcl 67 ref 351
+log_name_$starname              000024 constant        entry                    external dcl 68 ref 86 111 144
+log_name_$time                  000026 constant        entry                    external dcl 69 ref 306
+log_read_data                          based           structure                level 1 dcl 3-12 set ref 118 155 178 218
+log_read_data_n_segments        000204 automatic       fixed bin(17,0)          dcl 3-10 set ref 215* 218 218
+log_read_data_ptr               000202 automatic       pointer                  dcl 3-9 set ref 100 114* 118 118 130 151* 155 155
+                                                                                  167 168 169 169 172 174 178 218* 219 220 301 302
+                                                                                  303 306 306 309 311
+log_segment                            based           structure                level 1 dcl 2-8
+log_segment_header                     based           structure                level 1 dcl 2-13
+log_starname                    000106 automatic       char(32)                 packed unaligned dcl 55 set ref 86* 111* 144* 325*
+n_entries                              based           fixed bin(17,0)          level 2 dcl 259 set ref 330* 331* 415
+n_segments                2            based           fixed bin(17,0)          level 3 dcl 3-12 set ref 118 155 167 169 172 174 178
+                                                                                  218* 220*
+nindex                    0(18)        based           fixed bin(18,0)          level 2 in structure "entry_2" packed packed
+                                                                                  unsigned unaligned dcl 379 in procedure
+                                                                                  "compare_entries" ref 392
+nindex                    0(18)        based           fixed bin(18,0)          level 2 in structure "entry_1" packed packed
+                                                                                  unsigned unaligned dcl 378 in procedure
+                                                                                  "compare_entries" ref 392
+nindex                    0(18)        based           fixed bin(18,0)          level 2 in structure "one_star_entry" packed packed
+                                                                                  unsigned unaligned dcl 265 in procedure
+                                                                                  "list_log_directory" ref 303 350
+null                                                   builtin function         dcl 75 ref 114 118 151 155 197 274 275 276 277 311
+                                                                                  411 413 415
+older_dname                     000120 automatic       char(168)                packed unaligned dcl 269 set ref 289* 356*
+older_uid                       000172 automatic       bit(36)                  dcl 270 set ref 289* 356* 364
+one_star_entry                         based           structure                level 1 dcl 265
+previous_log_dir          4            based           char(168)                level 3 packed packed unaligned dcl 2-8 set ref 199
+                                                                                  201*
+ptr                     206            based           pointer                  array level 3 in structure "log_read_data" dcl 3-12
+                                                                                  in procedure "log_list_history_" set ref 309* 311*
+ptr                       1            based           pointer                  array level 2 in structure "sort_pointers" packed
+                                                                                  packed unaligned dcl 259 in procedure
+                                                                                  "list_log_directory" set ref 303 335* 350
+saved_message                          based           structure                level 1 dcl 3-60
+segment_count                   000103 automatic       fixed bin(17,0)          dcl 264 set ref 278* 298 309 333* 336* 336 340 341
+                                                                                  350
+segment_idx                     000173 automatic       fixed bin(17,0)          dcl 271 set ref 298* 303 309*
+segments                124            based           structure                array level 2 dcl 3-12
+sentinel                               based           char(8)                  level 3 dcl 3-12 set ref 219*
+sort_items_$general             000030 constant        entry                    external dcl 70 ref 343
+sort_pointers                          based           structure                level 1 dcl 259 set ref 330 343 343 415
+sort_pointers_ptr               000100 automatic       pointer                  dcl 258 set ref 276* 303 330* 331 335 343 343 350
+                                                                                  415 415
+star_BRANCHES_ONLY              000015 constant        fixed bin(2,0)           initial dcl 1-110 set ref 325*
+star_SEGMENT                           constant        fixed bin(2,0)           initial unsigned dcl 1-120 ref 336 388 388 390 390
+star_entries                           based           structure                array level 1 dcl 1-27 set ref 335
+star_entry_count                000174 automatic       fixed bin(17,0)          dcl 1-14 set ref 325* 328 330 330 331 334
+star_entry_ptr                  000176 automatic       pointer                  dcl 1-15 set ref 274* 325* 335 336 411 411
+star_names                             based           char(32)                 array packed unaligned dcl 1-37 ref 303 350 392 392
+star_names_ptr                  000200 automatic       pointer                  dcl 1-19 set ref 275* 303 325* 350 392 392 413 413
+star_stuff                             based           fixed bin(17,0)          dcl 403 ref 411 413
+suffix_time             210            based           fixed bin(71,0)          array level 3 dcl 3-12 set ref 306*
+system_area                            based           area(1024)               dcl 51 ref 118 155 178 218 330 411 413 415
+system_area_ptr                 000102 automatic       pointer                  dcl 50 set ref 88* 115* 118 152* 155 178 218 325*
+                                                                                  330 411 413 415
+total_segment_count             000104 automatic       fixed bin(17,0)          dcl 53 set ref 81* 113* 150* 215 216 220 341* 341
+type                                   based           fixed bin(2,0)           level 2 in structure "entry_2" packed packed
+                                                                                  unsigned unaligned dcl 379 in procedure
+                                                                                  "compare_entries" ref 388 390
+type                                   based           fixed bin(2,0)           array level 2 in structure "star_entries" packed
+                                                                                  packed unsigned unaligned dcl 1-27 in procedure
+                                                                                  "list_log_directory" set ref 336
+type                                   based           fixed bin(2,0)           level 2 in structure "entry_1" packed packed
+                                                                                  unsigned unaligned dcl 378 in procedure
+                                                                                  "compare_entries" ref 388 390
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+LOG_SEGMENT_COMPLETE_MESSAGE           internal static bit(36)                  initial dcl 2-43
+LOG_SEGMENT_NEW_MESSAGE                internal static bit(36)                  initial dcl 2-42
+LOG_SEGMENT_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 2-5
+log_held_message_node                  based           structure                level 1 dcl 3-64
+log_segment_max_size                   automatic       fixed bin(18,0)          dcl 2-4
+log_segment_ptr                        automatic       pointer                  dcl 2-3
+star_ALL_ENTRIES                       internal static fixed bin(2,0)           initial dcl 1-111
+star_ALL_ENTRIES_WITH_LINK_PATHS       internal static fixed bin(3,0)           initial dcl 1-114
+star_DIRECTORY                         internal static fixed bin(2,0)           initial unsigned dcl 1-121
+star_LINK                              internal static fixed bin(2,0)           initial unsigned dcl 1-119
+star_LINKS_ONLY                        internal static fixed bin(2,0)           initial dcl 1-109
+star_LINKS_ONLY_WITH_LINK_PATHS        internal static fixed bin(3,0)           initial dcl 1-112
+star_branch_count                      automatic       fixed bin(17,0)          dcl 1-13
+star_dir_list_branch                   based           structure                array level 1 dcl 1-59
+star_link_count                        automatic       fixed bin(17,0)          dcl 1-17
+star_link_pathname                     based           char                     packed unaligned dcl 1-102
+star_links                             based           structure                array level 1 dcl 1-76
+star_linkx                             automatic       fixed bin(17,0)          dcl 1-18
+star_list_branch                       based           structure                array level 1 dcl 1-41
+star_list_branch_ptr                   automatic       pointer                  dcl 1-16
+star_list_names                        based           char(32)                 array packed unaligned dcl 1-92
+star_list_names_ptr                    automatic       pointer                  dcl 1-20
+star_select_sw                         automatic       fixed bin(3,0)           dcl 1-21
+sum                                                    builtin function         dcl 75
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+allocate_read_data              000771 constant        entry                    internal dcl 212 ref 96 291
+compare_entries                 001537 constant        entry                    internal dcl 370 ref 343 343
+free_star_entries               001641 constant        entry                    internal dcl 400 ref 281 314
+get_dname_and_uid               000651 constant        entry                    internal dcl 183 ref 96 356
+list_log_directory              001025 constant        entry                    internal dcl 251 ref 98 128 165 289
+list_this_directory             001237 constant        entry                    internal dcl 318 ref 289
+log_list_history_               000025 constant        entry                    external dcl 11
+log_list_history_$all           000040 constant        entry                    external dcl 78
+log_list_history_$single_dir    000176 constant        entry                    external dcl 104
+log_list_history_$single_dir_oldest_and_newest
+                                000376 constant        entry                    external dcl 136
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2216        2250    1702        2226
+Length      2532    1702        32         246     314           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_list_history_                   173 external procedure  is an external procedure.  
+on unit on line 117                  64 on unit               
+on unit on line 154                  64 on unit               
+get_dname_and_uid                   100 internal procedure  is called by several nonquick procedures.  
+allocate_read_data                   64 internal procedure  is called by several nonquick procedures.  
+list_log_directory                  207 internal procedure  enables or reverts conditions.  
+on unit on line 280                  64 on unit               
+list_this_directory                     internal procedure  shares stack frame of internal procedure list_log_directory.  
+compare_entries                      70 internal procedure  is assigned to an entry variable.  
+free_star_entries                    64 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+compare_entries          000100 entry_1_ptr                 compare_entries
+                         000102 entry_2_ptr                 compare_entries
+get_dname_and_uid        000100 code                        get_dname_and_uid
+list_log_directory       000100 sort_pointers_ptr           list_log_directory
+                         000102 code                        list_log_directory
+                         000103 segment_count               list_log_directory
+                         000104 entry_idx                   list_log_directory
+                         000105 last_log_name               list_log_directory
+                         000116 last_log_ptr                list_log_directory
+                         000120 older_dname                 list_log_directory
+                         000172 older_uid                   list_log_directory
+                         000173 segment_idx                 list_log_directory
+                         000174 star_entry_count            list_log_directory
+                         000176 star_entry_ptr              list_log_directory
+                         000200 star_names_ptr              list_log_directory
+log_list_history_        000100 code                        log_list_history_
+                         000102 system_area_ptr             log_list_history_
+                         000104 total_segment_count         log_list_history_
+                         000105 last_segment_entered        log_list_history_
+                         000106 log_starname                log_list_history_
+                         000116 first_log_ptr               log_list_history_
+                         000120 first_dname                 log_list_history_
+                         000172 first_uid                   log_list_history_
+                         000202 log_read_data_ptr           log_list_history_
+                         000204 log_read_data_n_segments    log_list_history_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this_desc  call_int_this       call_int_other_desc call_int_other
+return_mac          enable_op           ext_entry           ext_entry_desc      int_entry           int_entry_desc
+op_alloc_           op_freen_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absolute_pathname_            get_system_free_area_         hcs_$get_uid_file             hcs_$star_
+log_initiate_                 log_name_$starname            log_name_$time                sort_items_$general
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$nomatch
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000024        78 000032        81 000056        82 000061        86 000064        88 000101        96 000110
+     98 000144       100 000166       101 000170       104 000171       110 000223       111 000231       113 000247
+    114 000250       115 000252       117 000261       118 000275       120 000310       122 000311       123 000336
+    124 000340       125 000341       128 000342       130 000364       131 000366       133 000367       136 000370
+    143 000433       144 000441       146 000457       147 000465       148 000472       150 000473       151 000474
+    152 000476       154 000505       155 000521       157 000534       159 000535       160 000562       161 000564
+    162 000565       165 000566       167 000610       168 000613       169 000621       172 000630       174 000633
+    176 000641       178 000642       180 000647       183 000650       197 000664       199 000673       201 000703
+    202 000723       204 000730       205 000757       207 000764       212 000770       215 000776       216 001001
+    218 001003       219 001016       220 001021       222 001023       251 001024       274 001040       275 001042
+    276 001043       277 001044       278 001045       280 001046       281 001062       282 001067       289 001070
+    291 001120       298 001125       299 001133       301 001136       302 001150       303 001153       306 001170
+    309 001211       311 001222       312 001227       314 001232       315 001236       318 001237       325 001241
+    327 001307       328 001314       330 001321       331 001332       333 001334       334 001335       335 001345
+    336 001350       338 001357       340 001361       341 001366       343 001370       345 001406       350 001415
+    351 001427       352 001463       356 001470       364 001523       366 001532       370 001536       382 001544
+    383 001553       388 001561       390 001600       392 001611       394 001635       400 001640       411 001646
+    413 001655       415 001664       418 001675
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

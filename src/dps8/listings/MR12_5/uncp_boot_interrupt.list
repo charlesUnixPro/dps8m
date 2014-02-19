@@ -1,0 +1,1017 @@
+	COMPILATION LISTING OF SEGMENT uncp_boot_interrupt
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0930.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1988                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /****^  HISTORY COMMENTS:
+       15*  1) change(88-06-14,Berno), approve(88-07-13,MCR7928),
+       16*     audit(88-06-14,Parisek), install(88-07-19,MR12.2-1061):
+       17*     Created to implement the DSA uncp multiplexer gateway interface.
+       18*                                                   END HISTORY COMMENTS */
+       19 
+       20 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       21 uncp_boot_interrupt:
+       22      proc (a_fnp_no);
+       23 
+       24 /* This procedure is called by uncp when it receives an interrupt from an FNP
+       25*   *  whose "bootloading" flag is on. This program interprets the bootload status
+       26*   *  and wakes up the process that initiated the bootload to inform it of the results
+       27*   *  of the bootload.
+       28*   *
+       29*   *  Written 5/19/76 by Robert S. Coren
+       30*   *  Modified 79 June 8 by Art Beattie to handle new config_messages.
+       31*   *  Modified 08/26/80 by Robert Coren to ignore spurious bootload interrupts.
+       32*
+       33*
+       34*   *  THE FOLLOWING HISTORY COMMENTS REFER TO THE CHANGES ASSOCIATED WITH
+       35*   *  THE uncp MULTIPLEXER INTERFACE FOR THE DSA GATEWAY.  EXTRACTED FROM
+       36*   *  dn355_boot_interrupt.pl1.
+       37*
+       38*   *  Reported in February 1982 the modifications for the DN7100.fd.
+       39*   *  Reported the ????mises???? of MR10.1 in June 1983.
+       40*   *  Reported in August 1985 the modifications for MR11.0.
+       41*   *  Reported in January 1987 - MR12.0.
+       42*   *  Modified in MR12.0 by JLB to clean things up.
+       43*
+       44*
+       45*   Date of the last modification 06/22/87.
+       46**/
+       47 
+       48 
+       49 /* PARAMETER */
+       50 
+       51 dcl  a_fnp_no fixed bin;
+       52 
+       53 
+       54 /* AUTOMATIC */
+       55 
+       56 dcl  fnp_no fixed bin;
+       57 dcl  fnp_tag char (1);
+       58 dcl  igcode fixed bin (35);
+       59 dcl  stat_ptr ptr;
+       60 dcl  event_message fixed bin (71);			/* event message used to report result */
+       61 
+       62 
+       63 /* ENTRIES */
+       64 
+       65 dcl  syserr options (variable);
+       66 dcl  pxss$ring_0_wakeup entry (bit (36) aligned, fixed bin (71), fixed bin (71), fixed bin (35));
+       67 
+       68 
+       69 /* BASED */
+       70 
+       71 dcl  1 ev_msg based (addr (event_message)),
+       72        2 fnp_number fixed bin (17) unal,
+       73        2 fnp_state fixed bin (17) unal,
+       74        2 pad bit (36);
+       75 
+       76 dcl  ev_msg_char char (8) based (addr (event_message));	/* ajouter pour dn 7100   */
+       77 
+       78 /* INTERNAL STATIC CONSTANTS */
+       79 
+       80 dcl  READ_ERROR fixed bin int static options (constant) init (2);
+       81 dcl  FNP_UP fixed bin int static options (constant) init (4);
+       82 dcl  FNP_DOWN fixed bin int static options (constant) init (2);
+       83 
+       84 
+       85 /* BUILTINS */
+       86 
+       87 dcl  addr builtin;
+       88 
+       89 
+       90 /* INCLUDE FILES */
+       91 
+  1     1 	/* BEGIN INCLUDE FILE ... dn355_messages.incl.pl1 */
+  1     2 
+  1     3 	/* created 1/31/75 by Robert S. Coren
+  1     4*	*  modified 5/19/76 by Robert S. Coren to add bootload messages
+  1     5*	*  Modified 1979 June 8 by Art Beattie to add messages to config_messages.
+  1     6*	*/
+  1     7 
+  1     8 	/* This include file describes the data segment used in interpreting
+  1     9*	*  the info returned with an emergency interrupt from the 355,
+  1    10*	*  as well as error message mailboxes and bootload interrupts
+  1    11*	*/
+  1    12 
+  1    13 dcl  dn355_messages$fault_names (0:10) char(16) aligned external;	/* names associated with 355 fault codes */
+  1    14 
+  1    15 dcl  dn355_messages$per_module fixed bin external;	/* names and messages associated with 355 modules */
+  1    16 
+  1    17 dcl  dn355_messages$error_messages (10) fixed bin ext;	/* error_messages sent from the 355 */
+  1    18 
+  1    19 dcl  dn355_messages$boot_messages (0:4) fixed bin external; /* messages describing major bootload status */
+  1    20 
+  1    21 dcl  dn355_messages$config_messages (0:15) fixed bin external; /* messages describing configuration errors */
+  1    22 
+  1    23 dcl  modulep ptr;
+  1    24 dcl  reasonp ptr;
+  1    25 
+  1    26 
+  1    27 	/* list of module names and message list offsets */
+  1    28 
+  1    29 dcl  1 dn355_modules (9) based (modulep) aligned,
+  1    30 	2 name char(12),
+  1    31 	2 list_offset fixed bin;
+  1    32 
+  1    33 	/* list of message offsets */
+  1    34 
+  1    35 dcl  message_offset (22) fixed bin based;
+  1    36 
+  1    37 
+  1    38 	/* crash messages for each module */
+  1    39 
+  1    40 dcl  1 dn355_reason aligned based (reasonp),
+  1    41 	2 length fixed bin (8) unal,
+  1    42 	2 msg char(0 refer (dn355_reason.length)) unal;
+  1    43 
+  1    44 
+  1    45 	/* END INCLUDE FILE ... dn355_messages.incl.pl1 */
+       92 
+       93 
+  2     1 /*  BEGIN dn355_data.incl.pl1 */
+  2     2 
+  2     3 
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(88-06-15,Berno), approve(88-07-13,MCR7928),
+  2     7*     audit(88-06-15,Parisek), install(88-07-19,MR12.2-1061):
+  2     8*     Add data needed for the uncp multiplexer (DSA gateway) interface
+  2     9*     implementation.
+  2    10*  2) change(89-03-20,Parisek), approve(89-06-06,MCR8110),
+  2    11*     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+  2    12*     Add support of protocol mpx.
+  2    13*                                                   END HISTORY COMMENTS */
+  2    14 
+  2    15 
+  2    16 /* Date Last Modified and Reason
+  2    17*
+  2    18*   Created 07/25/74 by R. B. Snyder for new ttydim.
+  2    19*   Modified 06/23/77 by J. Stern to add channel_work_reqd and cwork_count
+  2    20*   Modified 08/14/78 by Robert Coren to remove devx_tab and invent PCBs
+  2    21*   Modified 79 May 14 by Art Beattie to add fnp_mem_size
+  2    22*   Modified December 1979 by Robert Coren to add FNP queue lock
+  2    23*   Modified January 1980 by Larry Johnson to increase max number of FNPs to 8
+  2    24*   Modified 02/12/80 by Robert Coren to add dcw_list_array_ptr
+  2    25*   Modified 03/06/80 by Robert Coren to add some metering info
+  2    26*   Modified 12/10/80 by Robert Coren to add get_meters_waiting flag
+  2    27*   Modified 83-12-16 BIM to use a chanid instead of iom/channel fb's.
+  2    28*   Modified 1984-07-26 BIM for paged iom.
+  2    29*   Modified in September 1985 for the DN7100 version interim.
+  2    30**/
+  2    31 
+  2    32 /* LOCKING RULES: A fnp is locked by its LCTE unless its LCTE is uninitialized.
+  2    33*   In that case, the configuration_lock must be held.
+  2    34*   if tty_lock$lock_lcte returns io_no_permission, then the caller must
+  2    35*   lock$lock_fast the configuration lock and retry the LCTE lock. If
+  2    36*   the lcte is now initialized, too bad. Otherwise, the config lock protects.
+  2    37*
+  2    38*   Configuration locking is interesting to init_multiplexer and
+  2    39*   all of fnp t&d and reconfiguration. The guts of the multiplexer
+  2    40*   pay no attention to it. Thus, if the LCTE can be locked, it MUST be
+  2    41*   locked before changing the io_manager_assigned flag. */
+  2    42 
+  2    43 /* format: style4,delnl,insnl,^ifthendo */
+  2    44 
+  2    45 dcl  max_no_355s fixed bin int static init (8) options (constant);
+  2    46 						/* max no of 355s we can handle (arbitrary) */
+  2    47 dcl  dn355_data$ external fixed bin;
+  2    48 
+  2    49 dcl  infop pointer;
+  2    50 dcl  fnpp ptr;
+  2    51 
+  2    52 dcl  1 datanet_info aligned based (infop),
+  2    53        2 configuration_lock aligned,
+  2    54          3 pid bit (36) aligned,
+  2    55          3 event bit (36) aligned,
+  2    56          3 flags aligned,
+  2    57 	 4 notify_sw bit (1) unaligned,
+  2    58 	 4 pad bit (35) aligned,
+  2    59        2 no_of_355s fixed bin,			/* no. of FNP's */
+  2    60        2 trace bit (1) aligned,			/* watch events on console */
+  2    61        2 debug_stop bit (1) aligned,			/* crash on errors */
+  2    62        2 uncp_bufp ptr,                                     /* pointer to the circular buffer */
+  2    63        2 protocol_datap ptr,				/* pointer to protocol_mpx data */
+  2    64        2 pad1 (6) bit (36) aligned,
+  2    65        2 per_datanet (max_no_355s) aligned like fnp_info;	/* data per datanet */
+  2    66 
+  2    67 dcl  1 fnp_info aligned based (fnpp),			/* structure for each FNP */
+  2    68        2 mbx_pt pointer,				/* pointer to mailbox NULL if not in config */
+  2    69        2 pcb_array_ptr pointer,			/* pointer to array of physical channel blocks */
+  2    70        2 dcw_list_array_ptr pointer,			/* pointer to array of space reserved for output DCW lists */
+  2    71        2 no_of_channels fixed bin,			/* number of channels on this FNP */
+  2    72        2 fnp_id,
+  2    73          3 fnp_tag char (1) unaligned,			/* letter identifying FNP */
+  2    74          3 fnp_number fixed bin (9) unsigned unaligned,	/* sequence number of FNP */
+  2    75          3 padc bit (18) unaligned,
+  2    76        2 io_chanid char (8) aligned,
+  2    77        2 io_manager_chx fixed bin (35),			/* devx for DIA on iom */
+  2    78        2 lsla_idx (0:5) fixed bin aligned,		/* index into PCB array for lsla lines */
+  2    79        2 hsla_idx (0:2) fixed bin aligned,		/* index into PCB array for hsla lines */
+  2    80        2 count fixed bin,				/* number of items in delay queue */
+  2    81        2 cur_ptr fixed bin,				/* offset in tty_buf of next delay queue element */
+  2    82        2 last_ptr fixed bin,				/* offset in tty_buf of last delay queue element */
+  2    83        2 bleft_355 fixed bin,				/* number of free buffers in this 355 */
+  2    84        2 flags,
+  2    85          3 work_reqd bit (1) unaligned,			/* mailbox messages queued up */
+  2    86          3 bootloading bit (1) unaligned,		/* currently being bootloaded */
+  2    87          3 running bit (1) unaligned,			/* this FNP is running */
+  2    88          3 wired bit (1) unaligned,			/* bootload buffer is wired */
+  2    89          3 dump_patch_in_progress bit (1) unaligned,	/* a dump or patch order is in progress */
+  2    90          3 level_3_pending bit (1) unaligned,		/* level 3 interrupt pending */
+  2    91          3 level_7_pending bit (1) unaligned,		/* level 7 interrupt pending */
+  2    92          3 dump_patch_disabled bit (1) unaligned,		/* dump & patch orders disabled because of timeout */
+  2    93          3 t_and_d_in_progress bit (1) unaligned,		/* T & D using FNP */
+  2    94          3 t_and_d_lev_3_occurred bit (1) unaligned,	/* A level 3 occurred */
+  2    95          3 t_and_d_lev_7_occurred bit (1) unaligned,
+  2    96          3 t_and_d_notify_requested bit (1) unaligned,
+  2    97          3 t_and_d_assigned bit (1) unaligned,		/* AS has given fnp to process */
+  2    98          3 get_meters_waiting bit (1) unaligned,		/* waiting for meter copy to complete */
+  2    99          3 padb bit (7) unaligned,
+  2   100          3 active_dial unaligned,
+  2   101             4 active_bit (15) bit (1) unaligned,		/* ON if the process is active */
+  2   102        2 lcte_ptr ptr,				/* pointer to this FNP's LCT entry */
+  2   103        2 astep ptr,					/* pointer to aste of wired bootload buffer */
+  2   104        2 boot_ev_chan fixed bin (71),			/* event channel over which to signal bootload completion */
+  2   105        2 boot_process_id bit (36),			/* process that initiated bootload */
+  2   106        2 version char (4),				/* version id of core image */
+  2   107        2 fnp_mem_size fixed bin (18) unsigned,		/* memory size of this FNP in 18-bit words */
+  2   108        2 queue_lock bit (36) aligned,			/* lock for interrupt queue */
+  2   109        2 dump_patch_lock bit (36),			/* lock for fnp_dump or _patch operation */
+  2   110        2 q_entries_made fixed bin (35),			/* count of delay queue entries made */
+  2   111        2 input_reject_count fixed bin,			/* number of times input rejected */
+  2   112        2 processed_from_q fixed bin (35),		/* number of interrupts processed from queue */
+  2   113        2 fnp_channel_locked fixed bin (35),		/* number of times dn355 found per-FNP lock locked */
+  2   114        2 input_data_transactions fixed bin (35),		/* number of mailbox transactions for input */
+  2   115        2 output_data_transactions fixed bin (35),		/* number of mailbox transactions for output */
+  2   116        2 input_control_transactions fixed bin (35),	/* number of mailbox transactions for inbound control info */
+  2   117        2 output_control_transactions fixed bin (35),	/* number of mailbox transactions for outbound control info */
+  2   118        2 cumulative_mbx_in_use fixed bin (35),		/* cumulative count of number of outbound mailboxes in use */
+  2   119        2 max_mbx_in_use fixed bin,			/* maximum number of mailboxes in use at any given time */
+  2   120        2 mbx_in_use_updated fixed bin (35),		/* number of increments to cumulative_mbx_in_use */
+  2   121        2 mbx_unavailable fixed bin (35),		/* number of times had to queue mailbox transaction because none available */
+  2   122        2 free_size fixed bin (35),			/* cumulative amount of bleft_355 */
+  2   123        2 free_count fixed bin,			/* number of adds to above */
+  2   124        2 fnp_space_restricted_output fixed bin (35),	/* number of times available FNP space restricted amount of output sent */
+  2   125        2 tandd_pcbx fixed bin,			/* index of PCB for COLTS channel */
+  2   126        2 n_pages_wired fixed bin,			/* pages wired for loading */
+  2   127        2 config_flags aligned,
+  2   128          3 available bit (1) unaligned,			/* reconfig says "yes" */
+  2   129          3 io_manager_assigned bit (1) unaligned,		/* We have channel assigned to us */
+  2   130          3 pad bit (34) unaligned,
+  2   131        2 uncp_pcbx1 fixed bin (17) unaligned,		/* For the DN7100 */
+  2   132        2 uncp_pcbx2 fixed bin (17) unaligned,		/* For the DN7100 */  
+  2   133        2 ptx fixed bin,				/* page table index, used only at bootload */
+  2   134        2 ptp pointer unaligned;			/* page table for this FNP */
+  2   135 
+  2   136 /**** The following named constants are used to lay out the
+  2   137*      iom page tables. Each FNP has to have its own page
+  2   138*      table because there is not enough room to have eight different
+  2   139*      bootload images of 32 K and > 64 K of tty_buf 
+  2   140*
+  2   141*      THE MAX TTY BUF LENGTH IS 192 K words. We could have another 16 K
+  2   142*      easily, and then after that it would get hard. */ 
+  2   143 
+  2   144 /**** The layout
+  2   145*
+  2   146*      Page   I/O address   Memory address     Comments
+  2   147*      ----      ------     --------------     --------
+  2   148*      0              0       xxxxxx           invalid PTW
+  2   149*      1           2000         2000           write-enabled (mailbox)
+  2   150*      2           4000         4000           write-enabled (mailbox)
+  2   151*      3	        6000         6000           write-enabled (mailbox)
+  2   152*      4          10000       as needed        bootload image segment page 0
+  2   153*      ....        ....         ....           ....
+  2   154*      35        110000       as needed        bootload image segment page 31
+  2   155*      36        112000       xxxxxx           invalid PTW
+  2   156*      ...         ....         ....           ....
+  2   157*      63        160000         ....           invalid PTW
+  2   158*      64        200000       as needed        tty_buf page 0
+  2   159*      ...         ....         ....           ....
+  2   160*      127       260000       as needed        tty_buf page 63
+  2   161*      255       ......        .....           tty_buf page 191
+  2   162**/
+  2   163 
+  2   164 /**** We assume that the page table starts at all zeros. */
+  2   165 
+  2   166 declare  FIRST_BOOTLOAD_PAGEX fixed bin init (4) int static options (constant);
+  2   167 declare  FIRST_TTY_BUF_PAGEX fixed bin init (64) int static options (constant);
+  2   168 
+  2   169 /* End include file dn355_data.incl.pl1 */
+       94 
+       95 
+  3     1 /*			BEGIN dn355_mailbox.incl.pl1			*/
+  3     2 
+  3     3 /* Date Last Modified and Reason
+  3     4*   Created 07/25/74 by R. B. Snyder for new ttydim.
+  3     5*   Modified 08/20/75 by Mike Grady to prepare for multiple 355's
+  3     6*   Modified 11/08/78 by Robert Coren to introduce FNP-controlled mailboxes
+  3     7*   Modified 02/19/80 by Robert Coren to specify format of accept_input mailbox
+  3     8*   Modified 04/23/80 by Robert Coren to replace lock with num_in_use
+  3     9*   Modified 09/21/82 by Robert Coren to make subfields of crash_data be fixed bin (18) unsigned
+  3    10*   */
+  3    11 
+  3    12 dcl 1 datanet_mbx aligned based (mbxp),			/* declaration of 355 mailbox */
+  3    13     2 dia_pcw aligned,				/* Peripheral Control Word for DIA */
+  3    14       3 zero bit (18) unaligned,
+  3    15       3 error bit (1) unaligned,			/* set to "1"b if error on connect */
+  3    16       3 pad1 bit (5) unaligned,
+  3    17       3 mbx_no bit (6) unaligned,			/* number of submbx being sent to 355 */
+  3    18       3 command bit (6) unaligned,			/* always 71 (octal) */
+  3    19     2 mailbox_requests fixed bin,			/* 0 mod 256K cnt of mbx requests by 355 */
+  3    20     2 term_inpt_mpx_wd bit (36) aligned,		/* terminate interrupt multiplex word */
+  3    21     2 last_mbx_req_count fixed bin,			/* previous value of mailbox_requests */
+  3    22     2 num_in_use fixed bin,				/* number of submailboxes currently in use */
+  3    23     2 mbx_used_flags,				/* one bit for each mailbox */
+  3    24       3 used (0:7) bit (1) unaligned,			/* "1"b means this mbx is being used */
+  3    25       3 pad2 bit (28) unaligned,
+  3    26     2 crash_data,					/* data for 355 emergency interrupt */
+  3    27       3 fault_code fixed bin (18) unal unsigned,
+  3    28       3 ic fixed bin (18) unal unsigned,
+  3    29       3 iom_fault_status fixed bin (18) unal unsigned,
+  3    30       3 fault_word fixed bin (18) unal unsigned,		/* contains either faulting instruction or iomchannel no */
+  3    31     2 dn355_sub_mbxes (0:7) aligned,			/* 8 CS-initiated submailboxes */
+  3    32       3 pad4 (8) fixed bin,				/* eight words each */
+  3    33     2 fnp_sub_mbxes (0:3) aligned,			/* 4 FNP-initiated mailboxes */
+  3    34       3 pad5 (28) fixed bin;				/* 28 words each */
+  3    35 
+  3    36 dcl 1 sub_mbx aligned based (subp),			/* declaration of a submailbox */
+  3    37     2 dn355_no bit (3) unaligned,			/* 355 number */
+  3    38     2 pad1 bit (5) unaligned,
+  3    39     2 line_number unaligned,				/* line number assigned by 355 */
+  3    40       3 is_hsla bit (1) unaligned,			/* on if hsla, off if lsla */
+  3    41       3 la_no bit (3) unaligned,			/* line adapter (high or low speed) number */
+  3    42       3 slot_no bit (6) unaligned,			/* physical slot/subchannel number */
+  3    43     2 terminal_id bit (18) unaligned,			/* not used */
+  3    44 
+  3    45     2 terminal_type bit (9) unaligned,			/* unused */
+  3    46     2 cmd_data_len fixed bin (8) unaligned,		/* no. of 6 bit chars in command data */
+  3    47     2 op_code fixed bin (8) unaligned,			/* op code */
+  3    48     2 io_cmd fixed bin (8) unaligned,			/* i/o cmd */
+  3    49 
+  3    50     2 command_data (3) bit (36) unaligned,		/* data associated with op code */
+  3    51 
+  3    52     2 address unal,					/* dcw buffer or circular queue address */
+  3    53       3 data_addr bit (18) unaligned,			/* data address */
+  3    54       3 word_cnt fixed bin (18) unsigned unaligned,	/* data length */
+  3    55     2 pad3 bit (72) unaligned;
+  3    56 
+  3    57 /* The structure below defines the long form of submailbox used by the FNP. Note that
+  3    58*   the declaration of command_data and input_data is that used for the input_in_mailbox
+  3    59*   operation; other FNP-initiated operations use the command_data format described by
+  3    60*   the above (short mailbox) structure
+  3    61**/
+  3    62 
+  3    63 dcl 1 fnp_sub_mbx aligned based (subp),			/* format used for FNP-controlled mailbox */
+  3    64     2 dn355_no bit (3) unaligned,			/* as above */
+  3    65     2 pad1 bit (5) unaligned,
+  3    66     2 line_number unaligned,				/* as above */
+  3    67       3 is_hsla bit (1) unaligned,
+  3    68       3 la_no bit (3) unaligned,
+  3    69       3 slot_no bit (6) unaligned,
+  3    70     2 n_free_buffers fixed bin (17) unaligned,		/* number of free blocks in FNP at present */
+  3    71 
+  3    72     2 pad3 bit (9) unaligned,
+  3    73     2 n_chars fixed bin (9) unsigned unaligned,		/* number of data characters (if input) */
+  3    74     2 op_code fixed bin (9) unsigned unaligned,		/* as above */
+  3    75     2 io_cmd fixed bin (9) unsigned unaligned,		/* as above */
+  3    76 
+  3    77     2 input_data char (100) unaligned,			/* input characters for input_in_mailbox op */
+  3    78     2 command_data bit (36) unaligned;			/* shouldn't need more than one word */
+  3    79 
+  3    80 /* The structure below defines the format of a long submailbox used for an accept_input operation
+  3    81*   when the data is too long to fit directly in the mailbox. command_data and n_chars occupy the same position as for input_in_mailbox, above.
+  3    82**/
+  3    83 
+  3    84 dcl 1 input_sub_mbx aligned based (subp),
+  3    85     2 pad1 bit (8) unaligned,
+  3    86     2 line_number unaligned like sub_mbx.line_number,
+  3    87     2 n_free_buffers fixed bin (17) unaligned,		/* number of free blocks in FNP at present */
+  3    88 
+  3    89     2 n_chars fixed bin (17) unaligned,			/* total number of data characters */
+  3    90     2 op_code fixed bin (9) unsigned unaligned,
+  3    91     2 io_cmd fixed bin (9) unsigned unaligned,
+  3    92 
+  3    93     2 n_buffers fixed bin,				/* number of buffers in this input chain */
+  3    94     2 dcw (24),					/* "pseudo-DCWs"  used to specify buffer addresses and tallies */
+  3    95       3 abs_addr bit (24) unaligned,			/* supplied by CS */
+  3    96       3 tally fixed bin (12) unsigned unaligned,		/* in characters, supplied by FNP */
+  3    97     2 command_data bit (36) unaligned;			/* as above */
+  3    98 
+  3    99 dcl  subp pointer;
+  3   100 dcl  mbxp pointer;
+  3   101 
+  3   102 /*			END dn355_mailbox.incl.pl1			*/
+       96 
+       97 
+  4     1 /* BEGIN INCLUDE FILE sys_log_constants.incl.pl1 ... 82-09-24 E. N. Kittlitz */
+  4     2 
+  4     3 
+  4     4 /****^  HISTORY COMMENTS:
+  4     5*  1) change(87-04-22,GDixon), approve(87-06-10,MCR7708),
+  4     6*     audit(87-06-02,Parisek), install(87-08-04,MR12.1-1056):
+  4     7*     Added sl_info structure and associated named constants for use in calling
+  4     8*     sys_log_$general.
+  4     9*                                                   END HISTORY COMMENTS */
+  4    10 
+  4    11 
+  4    12 /* format: style4 */
+  4    13 
+  4    14 dcl  (
+  4    15      SL_TYPE_CRASH init (-3),				/* type message with banner & kill system */
+  4    16      SL_TYPE_BEEP init (-2),				/* type message with banner */
+  4    17      SL_TYPE init (-1),				/* type message */
+  4    18      SL_LOG_SILENT init (0),				/* log message */
+  4    19      SL_LOG init (1),				/* log & type message */
+  4    20      SL_LOG_BEEP init (2),				/* log & type message with banner */
+  4    21      SL_LOG_CRASH init (3)				/* log & type message with banner & kill system */
+  4    22      ) fixed bin internal static options (constant);
+  4    23 
+  4    24 dcl  1 sl_info aligned automatic,
+  4    25        2 version char(8),			/* structure version       */
+  4    26        2 arg_list_ptr ptr,			/* arg_list with values    */
+  4    27        2 loc,
+  4    28          3 (mode, severity, code, caller, data, class, ioa_msg) fixed bin,
+  4    29            /* These flags control where the corresponding data item is found.*/
+  4    30 	 /*  -1: data appears in the corresponding structure element below */
+  4    31 	 /*   0: data is not present anywhere			       */
+  4    32 	 /*  +N: data is Nth item in argument list pointed to by 	       */
+  4    33 	 /*      sl_info.arg_list_ptr.  Upon return, data copied into      */
+  4    34 	 /*      corresponding structure element.		       */
+  4    35 	 /*  if data = +N:					       */
+  4    36 	 /*      argN is data_ptr, argN+1 is data_len		       */
+  4    37 	 /*  if ioa_msg = +N:				       */
+  4    38 	 /*      argN+1, ... argLAST are arguments substituted into the    */
+  4    39 	 /*      ioa_msg control string.  The formatted msg is returned.   */
+  4    40        2 flags,
+  4    41          3 ioa_msg_is_error_code bit(1) unal,	/* ioa_ctl is error code.  */
+  4    42          3 flags_pad bit(35) unal,
+  4    43        2 mode fixed bin,			/* as-mode, command-mode   */
+  4    44        2 severity fixed bin,			/* error severity	       */
+  4    45        2 code fixed bin(35),			/* error table code        */
+  4    46        2 caller char(65) varying,		/* caller refname$entryname*/
+  4    47        2 data,				/* binary data ptr/length  */
+  4    48          3 data_ptr ptr,
+  4    49          3 data_lth fixed bin(21),
+  4    50        2 class char(10) varying,		/* binary data class       */
+  4    51        2 ioa_msg char(500) varying;		/* formatted message text  */
+  4    52 
+  4    53 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    54 /*							       */
+  4    55 /* If data values (eg, sl_info.caller) are passed in the argument list,      */
+  4    56 /* their data types should be as shown in the structure above, except that   */
+  4    57 /* character strings should be char(*) nonvarying.		       */
+  4    58 /*							       */
+  4    59 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    60 
+  4    61 /* value for sl_info.version */
+  4    62 dcl  SL_INFO_version_1 char (8) int static options(constant) init("sl_info1");
+  4    63 
+  4    64 /* values for sl_info.mode */
+  4    65 dcl (SL_INFO_as_mode init(1),
+  4    66      SL_INFO_command_mode init(2)) fixed bin int static options(constant);
+  4    67 
+  4    68 /* values for sl_info.loc.(severity code caller data class ioa_ctl arg) */
+  4    69 dcl (SL_INFO_arg_given_in_structure init(-1),
+  4    70      SL_INFO_arg_not_given init(0)) fixed bin int static options(constant);
+  4    71 
+  4    72 
+  4    73 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    74 /*							       */
+  4    75 /* The following static structures are commonly used in the Login Server     */
+  4    76 /* user control software.					       */
+  4    77 /*							       */
+  4    78 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  4    79 
+  4    80 /* Syntax: call Abort (severity, code, ioa_ctl, args);		       */
+  4    81 
+  4    82 dcl  1 sl_info_sev_code_msg		aligned int static options(constant),
+  4    83        2 version char(8)		init ("sl_info1"),
+  4    84        2 arg_list_ptr ptr		init (null),
+  4    85        2 loc,
+  4    86          3 (mode			init (-1),
+  4    87 	  severity  		init ( 1),
+  4    88 	  code 			init ( 2),
+  4    89 	  caller 			init (-1),
+  4    90 	  data 			init ( 0),
+  4    91 	  class 			init ( 0),
+  4    92 	  ioa_msg			init ( 3)) fixed bin,
+  4    93        2 flags,
+  4    94          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  4    95          3 flags_pad bit(35) unal	init ("0"b),
+  4    96        2 mode fixed bin		init ( 1),
+  4    97        2 severity fixed bin		init ( 0),
+  4    98        2 code fixed bin(35)		init ( 0),
+  4    99        2 caller char(65) varying	init (""),
+  4   100        2 data,
+  4   101          3 data_ptr ptr		init (null),
+  4   102          3 data_lth fixed bin(21)	init ( 0),
+  4   103        2 class char(10) varying	init (""),
+  4   104        2 ioa_msg char(500) varying	init ("");
+  4   105 
+  4   106 /* Syntax: call Abort (severity, ioa_ctl, args);			       */
+  4   107 
+  4   108 dcl  1 sl_info_sev_msg		aligned int static options(constant),
+  4   109        2 version char(8)		init ("sl_info1"),
+  4   110        2 arg_list_ptr ptr		init (null),
+  4   111        2 loc,
+  4   112          3 (mode			init (-1),
+  4   113 	  severity  		init ( 1),
+  4   114 	  code 			init ( 0),
+  4   115 	  caller 			init (-1),
+  4   116 	  data 			init ( 0),
+  4   117 	  class 			init ( 0),
+  4   118 	  ioa_msg			init ( 2)) fixed bin,
+  4   119        2 flags,
+  4   120          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  4   121          3 flags_pad bit(35) unal	init ("0"b),
+  4   122        2 mode fixed bin		init ( 1),
+  4   123        2 severity fixed bin		init ( 0),
+  4   124        2 code fixed bin(35)		init ( 0),
+  4   125        2 caller char(65) varying	init (""),
+  4   126        2 data,
+  4   127          3 data_ptr ptr		init (null),
+  4   128          3 data_lth fixed bin(21)	init ( 0),
+  4   129        2 class char(10) varying	init (""),
+  4   130        2 ioa_msg char(500) varying	init ("");
+  4   131 
+  4   132 /* Syntax: call Abort (severity, ioa_ctl_as_error_code, args);	       */
+  4   133 
+  4   134 dcl  1 sl_info_sev_coded_msg		aligned int static options(constant),
+  4   135        2 version char(8)		init ("sl_info1"),
+  4   136        2 arg_list_ptr ptr		init (null),
+  4   137        2 loc,
+  4   138          3 (mode			init (-1),
+  4   139 	  severity  		init ( 1),
+  4   140 	  code 			init ( 0),
+  4   141 	  caller 			init (-1),
+  4   142 	  data 			init ( 0),
+  4   143 	  class 			init ( 0),
+  4   144 	  ioa_msg			init ( 2)) fixed bin,
+  4   145        2 flags,
+  4   146          3 ioa_msg_is_error_code bit(1) unal init ("1"b),
+  4   147          3 flags_pad bit(35) unal	init ("0"b),
+  4   148        2 mode fixed bin		init ( 1),
+  4   149        2 severity fixed bin		init ( 0),
+  4   150        2 code fixed bin(35)		init ( 0),
+  4   151        2 caller char(65) varying	init (""),
+  4   152        2 data,
+  4   153          3 data_ptr ptr		init (null),
+  4   154          3 data_lth fixed bin(21)	init ( 0),
+  4   155        2 class char(10) varying	init (""),
+  4   156        2 ioa_msg char(500) varying	init ("");
+  4   157 
+  4   158 
+  4   159 /* Syntax: call Abort (severity, code, error_return_label, ioa_ctl, args);   */
+  4   160 
+  4   161 dcl  1 sl_info_sev_code_label_msg	aligned int static options(constant),
+  4   162        2 version char(8)		init ("sl_info1"),
+  4   163        2 arg_list_ptr ptr		init (null),
+  4   164        2 loc,
+  4   165          3 (mode			init (-1),
+  4   166 	  severity  		init ( 1),
+  4   167 	  code 			init ( 2),
+  4   168 	  caller 			init (-1),
+  4   169 	  data 			init ( 0),
+  4   170 	  class 			init ( 0),
+  4   171 	  ioa_msg			init ( 4)) fixed bin,
+  4   172        2 flags,
+  4   173          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  4   174          3 flags_pad bit(35) unal	init ("0"b),
+  4   175        2 mode fixed bin		init ( 1),
+  4   176        2 severity fixed bin		init ( 0),
+  4   177        2 code fixed bin(35)		init ( 0),
+  4   178        2 caller char(65) varying	init (""),
+  4   179        2 data,
+  4   180          3 data_ptr ptr		init (null),
+  4   181          3 data_lth fixed bin(21)	init ( 0),
+  4   182        2 class char(10) varying	init (""),
+  4   183        2 ioa_msg char(500) varying	init ("");
+  4   184 
+  4   185 /* Syntax:  call Log_error (code, ioa_ctl, args);			       */
+  4   186 
+  4   187 dcl  1 sl_info_code_msg		aligned int static options(constant),
+  4   188        2 version char(8)		init ("sl_info1"),
+  4   189        2 arg_list_ptr ptr		init (null),
+  4   190        2 loc,
+  4   191          3 (mode			init (-1),
+  4   192 	  severity  		init (-1),
+  4   193 	  code 			init ( 1),
+  4   194 	  caller 			init (-1),
+  4   195 	  data 			init ( 0),
+  4   196 	  class 			init ( 0),
+  4   197 	  ioa_msg			init ( 2)) fixed bin,
+  4   198        2 flags,
+  4   199          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  4   200          3 flags_pad bit(35) unal	init ("0"b),
+  4   201        2 mode fixed bin		init ( 1),
+  4   202        2 severity fixed bin		init ( 0),
+  4   203        2 code fixed bin(35)		init ( 0),
+  4   204        2 caller char(65) varying	init (""),
+  4   205        2 data,
+  4   206          3 data_ptr ptr		init (null),
+  4   207          3 data_lth fixed bin(21)	init ( 0),
+  4   208        2 class char(10) varying	init (""),
+  4   209        2 ioa_msg char(500) varying	init ("");
+  4   210 
+  4   211 
+  4   212 /* Syntax:  call Trace (ioa_ctl, args);				       */
+  4   213 
+  4   214 dcl  1 sl_info_msg			aligned int static options(constant),
+  4   215        2 version char(8)		init ("sl_info1"),
+  4   216        2 arg_list_ptr ptr		init (null),
+  4   217        2 loc,
+  4   218          3 (mode			init (-1),
+  4   219 	  severity  		init (-1),
+  4   220 	  code 			init ( 0),
+  4   221 	  caller 			init (-1),
+  4   222 	  data 			init ( 0),
+  4   223 	  class 			init ( 0),
+  4   224 	  ioa_msg			init ( 1)) fixed bin,
+  4   225        2 flags,
+  4   226          3 ioa_msg_is_error_code bit(1) unal init ("0"b),
+  4   227          3 flags_pad bit(35) unal	init ("0"b),
+  4   228        2 mode fixed bin		init ( 1),
+  4   229        2 severity fixed bin		init ( 0),
+  4   230        2 code fixed bin(35)		init ( 0),
+  4   231        2 caller char(65) varying	init (""),
+  4   232        2 data,
+  4   233          3 data_ptr ptr		init (null),
+  4   234          3 data_lth fixed bin(21)	init ( 0),
+  4   235        2 class char(10) varying	init (""),
+  4   236        2 ioa_msg char(500) varying	init ("");
+  4   237 
+  4   238 /* END INCLUDE FILE sys_log_constants.incl.pl1 */
+       98 
+       99 
+      100 	fnp_no = a_fnp_no;
+      101 	infop = addr (dn355_data$);
+      102 	fnpp = addr (datanet_info.per_datanet (fnp_no));
+      103 	fnp_tag = fnp_info.fnp_tag;
+      104 	ev_msg.fnp_number = fnp_no;
+      105 
+      106 	call syserr (SL_LOG_SILENT, "uncp_boot_interrupt: FNP ^a started.", fnp_tag);
+      107 
+      108 	ev_msg.fnp_state = FNP_UP;
+      109 	fnp_info.running = "1"b;
+      110 
+      111 /* now tell process that started bootload */
+      112 
+      113 	fnp_info.bootloading = "0"b;			/* done now */
+      114 	call pxss$ring_0_wakeup (fnp_info.boot_process_id, fnp_info.boot_ev_chan, event_message, igcode);
+      115 
+      116 	return;
+      117 
+      118 request_init:
+      119      entry (a_fnp_no);
+      120 
+      121 /*  This entry is called if request-init comes from the UNCP
+      122*   after a UNCP load completed.
+      123**/
+      124 
+      125 	fnp_no = a_fnp_no;
+      126 	infop = addr (dn355_data$);
+      127 
+      128 	ev_msg_char = "inituncp";
+      129 	call pxss$ring_0_wakeup (datanet_info.per_datanet (fnp_no).boot_process_id,
+      130 	     datanet_info.per_datanet (fnp_no).boot_ev_chan, event_message, igcode);
+      131 
+      132 	return;
+      133 
+      134 
+      135 
+      136 
+      137 
+      138 
+      139 system_fault:
+      140      entry (a_fnp_no);
+      141 	fnp_no = a_fnp_no;
+      142 	infop = addr (dn355_data$);
+      143 	fnpp = addr (datanet_info.per_datanet (fnp_no));
+      144 	call syserr (SL_LOG_SILENT, "uncp_boot_interrupt: FNP ^a System Fault Interrupt Level 1.", fnp_tag);
+      145 
+      146 	mbxp = fnp_info.mbx_pt;
+      147 
+      148 	fnp_tag = fnp_info.fnp_tag;
+      149 
+      150 	ev_msg.fnp_number = fnp_no;
+      151 
+      152 	stat_ptr = addr (datanet_mbx.crash_data);	/* this is where bootload status goes */
+      153 	call syserr (SL_LOG_SILENT, "uncp_boot_interrupt: FNP ^a not loaded.", fnp_tag);
+      154 	ev_msg.fnp_state = FNP_DOWN;
+      155 	return;
+      156 
+      157 
+      158 
+      159 
+      160 /* Begin message documentation invisible
+      161*
+      162*   This message documentation is considered "invisible" and does NOT have the
+      163*   normal uppercase type so that it will not get inserted into the released
+      164*   to customer message documentation, as this module only implements the 
+      165*   uncp DSA gateway interface and is not a product for distribution.
+      166*
+      167*
+      168*   Message:
+      169*   Invalid bootload interrupt for FNP X, status N
+      170*
+      171*   S:	$info
+      172*
+      173*   T:	when bootloading an FNP
+      174*
+      175*   M:	The FNP responded to the bootload attempt with an interrupt, but the high-order
+      176*   bit of the reported status was not on. N is the reported status (in octal).
+      177*
+      178*   A:	$inform
+      179*
+      180*
+      181*   Message:
+      182*   Unrecognized bootload status N for FNP X
+      183*
+      184*   S:	$info
+      185*
+      186*   T:	when bootloading an FNP
+      187*
+      188*   M:	The status reported by an FNP in response to a bootload attempt was not one of the ones
+      189*   recognized. N is the reported status (in octal).
+      190*
+      191*   A:	$inform
+      192*
+      193*
+      194*
+      195*   Message:
+      196*   FNP X loaded successfully
+      197*
+      198*   S:	$info
+      199*
+      200*   T:	when bootloading an FNP
+      201*
+      202*   M:	The FNP bootload has completed successfully.
+      203*
+      204*   A:	This message is for informational purposes only.
+      205*
+      206*
+      207*   Message:
+      208*   checksum error in core image for FNP X
+      209*
+      210*   S:	$info
+      211*
+      212*   T:	when bootloading an FNP
+      213*
+      214*   M:	The core image received for loading in the FNP had a checksum error.
+      215*
+      216*   A:	Try to load the FNP again. If the error recurs, either the DIA hardware
+      217*   is failing, or the core image in the Multics hierarchy is damaged. In the
+      218*   latter case, the core image must be rebound.
+      219*
+      220*
+      221*   Message:
+      222*   error reading core image for FNP X
+      223*
+      224*   S:	$info
+      225*
+      226*   T:	when bootloading an FNP
+      227*
+      228*   M:	An I/O error was detected by the FNP bootload program while attempting to read
+      229*   the core image into FNP memory. A hardware failure of either the DIA or the Multics IOM is indicated.
+      230*
+      231*   A:	Try the FNP load again. If it fails again, consult Field Engineering.
+      232*
+      233*
+      234*   Message:
+      235*   configuration error reported by bootloading program for FNP X
+      236*
+      237*   S:	$info
+      238*
+      239*   T:	when bootloading an FNP
+      240*
+      241*   M:	The FNP bootload program, gicb, found an inconsistency in the FNP configuration.
+      242*
+      243*   A:	$inform
+      244*
+      245*
+      246*   Message:
+      247*   configuration error reported by FNP X: DETAILS
+      248*
+      249*   S:	$info
+      250*
+      251*   T:	when bootloading an FNP
+      252*
+      253*   M:	The FNP initialization program detected an error or inconsistency in
+      254*   the FNP configuration.  DETAILS is a more specific description of the error.
+      255*
+      256*   A:	If possible, correct the error, either by updating the CDT to reflect the
+      257*   actual configuration, or recabling the FNP. If the error cannot be corrected
+      258*   or is not understood, inform the systems programming staff.
+      259*
+      260*
+      261*   Message:
+      262*   FNP X not loaded.
+      263*
+      264*   S:	$info
+      265*
+      266*   T:	when bootloading an FNP
+      267*
+      268*   M:	The attempted bootload was not successful. This message is always preceded by one of the
+      269*   above error messages.
+      270*
+      271*   A:	This message is for informational purposes only.
+      272*
+      273*   End message documentation invisible */
+      274 
+      275      end /* uncp_boot_interrupt */;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0827.2  uncp_boot_interrupt.pl1           >spec>install>1112>uncp_boot_interrupt.pl1
+92           1    09/12/79  1808.7  dn355_messages.incl.pl1           >ldd>include>dn355_messages.incl.pl1
+94           2    10/26/89  2011.9  dn355_data.incl.pl1               >ldd>include>dn355_data.incl.pl1
+96           3    10/20/82  0938.5  dn355_mailbox.incl.pl1            >ldd>include>dn355_mailbox.incl.pl1
+98           4    08/06/87  0913.5  sys_log_constants.incl.pl1        >ldd>include>sys_log_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+FNP_DOWN                               constant        fixed bin(17,0)          initial dcl 82 ref 154
+FNP_UP                                 constant        fixed bin(17,0)          initial dcl 81 ref 108
+SL_LOG_SILENT                   000002 constant        fixed bin(17,0)          initial dcl 4-14 set ref 106* 144* 153*
+a_fnp_no                               parameter       fixed bin(17,0)          dcl 51 ref 21 100 118 125 139 141
+addr                                                   builtin function         dcl 87 ref 101 102 104 108 126 128 142 143 150 152
+                                                                                  154
+boot_ev_chan             60            based           fixed bin(71,0)          array level 3 in structure "datanet_info" dcl 2-52
+                                                                                  in procedure "uncp_boot_interrupt" set ref 129*
+boot_ev_chan             36            based           fixed bin(71,0)          level 2 in structure "fnp_info" dcl 2-67
+                                                                                  in procedure "uncp_boot_interrupt" set ref 114*
+boot_process_id          40            based           bit(36)                  level 2 in structure "fnp_info" dcl 2-67
+                                                                                  in procedure "uncp_boot_interrupt" set ref 114*
+boot_process_id          62            based           bit(36)                  array level 3 in structure "datanet_info" dcl 2-52
+                                                                                  in procedure "uncp_boot_interrupt" set ref 129*
+bootloading              30(01)        based           bit(1)                   level 3 packed packed unaligned dcl 2-67 set ref
+                                                                                  113*
+crash_data                6            based           structure                level 2 dcl 3-12 set ref 152
+datanet_info                           based           structure                level 1 dcl 2-52
+datanet_mbx                            based           structure                level 1 dcl 3-12
+dn355_data$                     000014 external static fixed bin(17,0)          dcl 2-47 set ref 101 126 142
+ev_msg                                 based           structure                level 1 packed packed unaligned dcl 71
+ev_msg_char                            based           char(8)                  packed unaligned dcl 76 set ref 128*
+event_message                   000106 automatic       fixed bin(71,0)          dcl 60 set ref 104 108 114* 128 129* 150 154
+flags                    30            based           structure                level 2 dcl 2-67
+fnp_id                    7            based           structure                level 2 dcl 2-67
+fnp_info                               based           structure                level 1 dcl 2-67
+fnp_no                          000100 automatic       fixed bin(17,0)          dcl 56 set ref 100* 102 104 125* 129 129 141* 143
+                                                                                  150
+fnp_number                             based           fixed bin(17,0)          level 2 packed packed unaligned dcl 71 set ref 104*
+                                                                                  150*
+fnp_state                 0(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 71 set ref 108*
+                                                                                  154*
+fnp_tag                         000101 automatic       char(1)                  packed unaligned dcl 57 in procedure
+                                                                                  "uncp_boot_interrupt" set ref 103* 106* 144* 148*
+                                                                                  153*
+fnp_tag                   7            based           char(1)                  level 3 in structure "fnp_info" packed packed
+                                                                                  unaligned dcl 2-67 in procedure
+                                                                                  "uncp_boot_interrupt" ref 103 148
+fnpp                            000112 automatic       pointer                  dcl 2-50 set ref 102* 103 109 113 114 114 143* 146
+                                                                                  148
+igcode                          000102 automatic       fixed bin(35,0)          dcl 58 set ref 114* 129*
+infop                           000110 automatic       pointer                  dcl 2-49 set ref 101* 102 126* 129 129 142* 143
+line_number               0(08)        based           structure                level 2 packed packed unaligned dcl 3-36
+max_no_355s                            internal static fixed bin(17,0)          initial dcl 2-45 ref 2-52
+mbx_pt                                 based           pointer                  level 2 dcl 2-67 ref 146
+mbxp                            000114 automatic       pointer                  dcl 3-100 set ref 146* 152
+per_datanet              22            based           structure                array level 2 dcl 2-52 set ref 102 143
+pxss$ring_0_wakeup              000012 constant        entry                    external dcl 66 ref 114 129
+running                  30(02)        based           bit(1)                   level 3 packed packed unaligned dcl 2-67 set ref
+                                                                                  109*
+stat_ptr                        000104 automatic       pointer                  dcl 59 set ref 152*
+sub_mbx                                based           structure                level 1 dcl 3-36
+syserr                          000010 constant        entry                    external dcl 65 ref 106 144 153
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+FIRST_BOOTLOAD_PAGEX                   internal static fixed bin(17,0)          initial dcl 2-166
+FIRST_TTY_BUF_PAGEX                    internal static fixed bin(17,0)          initial dcl 2-167
+READ_ERROR                             internal static fixed bin(17,0)          initial dcl 80
+SL_INFO_arg_given_in_structure         internal static fixed bin(17,0)          initial dcl 4-69
+SL_INFO_arg_not_given                  internal static fixed bin(17,0)          initial dcl 4-69
+SL_INFO_as_mode                        internal static fixed bin(17,0)          initial dcl 4-65
+SL_INFO_command_mode                   internal static fixed bin(17,0)          initial dcl 4-65
+SL_INFO_version_1                      internal static char(8)                  initial packed unaligned dcl 4-62
+SL_LOG                                 internal static fixed bin(17,0)          initial dcl 4-14
+SL_LOG_BEEP                            internal static fixed bin(17,0)          initial dcl 4-14
+SL_LOG_CRASH                           internal static fixed bin(17,0)          initial dcl 4-14
+SL_TYPE                                internal static fixed bin(17,0)          initial dcl 4-14
+SL_TYPE_BEEP                           internal static fixed bin(17,0)          initial dcl 4-14
+SL_TYPE_CRASH                          internal static fixed bin(17,0)          initial dcl 4-14
+dn355_messages$boot_messages           external static fixed bin(17,0)          array dcl 1-19
+dn355_messages$config_messages         external static fixed bin(17,0)          array dcl 1-21
+dn355_messages$error_messages          external static fixed bin(17,0)          array dcl 1-17
+dn355_messages$fault_names             external static char(16)                 array dcl 1-13
+dn355_messages$per_module              external static fixed bin(17,0)          dcl 1-15
+dn355_modules                          based           structure                array level 1 dcl 1-29
+dn355_reason                           based           structure                level 1 dcl 1-40
+fnp_sub_mbx                            based           structure                level 1 dcl 3-63
+input_sub_mbx                          based           structure                level 1 dcl 3-84
+message_offset                         based           fixed bin(17,0)          array dcl 1-35
+modulep                                automatic       pointer                  dcl 1-23
+reasonp                                automatic       pointer                  dcl 1-24
+sl_info                                automatic       structure                level 1 dcl 4-24
+sl_info_code_msg                       internal static structure                level 1 dcl 4-187
+sl_info_msg                            internal static structure                level 1 dcl 4-214
+sl_info_sev_code_label_msg             internal static structure                level 1 dcl 4-161
+sl_info_sev_code_msg                   internal static structure                level 1 dcl 4-82
+sl_info_sev_coded_msg                  internal static structure                level 1 dcl 4-134
+sl_info_sev_msg                        internal static structure                level 1 dcl 4-108
+subp                                   automatic       pointer                  dcl 3-99
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+request_init                    000152 constant        entry                    external dcl 118
+system_fault                    000210 constant        entry                    external dcl 139
+uncp_boot_interrupt             000055 constant        entry                    external dcl 21
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       404         422     314         414
+Length       664     314        16         225      70           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+uncp_boot_interrupt                 117 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+uncp_boot_interrupt      000100 fnp_no                      uncp_boot_interrupt
+                         000101 fnp_tag                     uncp_boot_interrupt
+                         000102 igcode                      uncp_boot_interrupt
+                         000104 stat_ptr                    uncp_boot_interrupt
+                         000106 event_message               uncp_boot_interrupt
+                         000110 infop                       uncp_boot_interrupt
+                         000112 fnpp                        uncp_boot_interrupt
+                         000114 mbxp                        uncp_boot_interrupt
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+pxss$ring_0_wakeup            syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dn355_data$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     21 000052       100 000062       101 000065       102 000067       103 000072       104 000075       106 000100
+    108 000123       109 000125       113 000130       114 000132       116 000147       118 000150       125 000157
+    126 000162       128 000165       129 000167       132 000205       139 000206       141 000215       142 000220
+    143 000223       144 000226       146 000251       148 000254       150 000257       152 000262       153 000264
+    154 000310       155 000312
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

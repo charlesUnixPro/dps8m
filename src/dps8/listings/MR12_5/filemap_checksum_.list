@@ -1,0 +1,309 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>filemap_checksum_.alm                                                                                                                                
+ASSEMBLED ON:	11/11/89  0949.9 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    10  "
+                                    11  "	Routine to compute exclusive-or checksums of the used 
+                                    12  "	portion of the file map
+                                    13  "
+                                    14  "
+                                    15  "	Written January 1982 by J. Bongiovanni
+                                    16  "
+                                    17  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    18  
+    000000                          19  	name	filemap_checksum_
+                        000000      20  	entry	filemap_checksum_
+                                    21  
+                                    22  
+                                    23  	temp	checksum_temp	
+                                    24  
+                                    25  
+                                    26  "
+                                    27  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    28  "
+                                    29  "	filemap_checksum_ - external entry
+                                    30  "
+                                    31  "	call filemap_checksum_ (addr (begin_word), csl, cksum)
+                                    32  "
+                                    33  "	where:
+                                    34  "	
+                                    35  "		begin_word is the first word to checksum
+                                    36  "
+                                    37  "		csl is the current segment length
+                                    38  "
+                                    39  "		cksum is the returned checksum value
+                                    40  "
+                                    41  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    42  
+    000000                          43  filemap_checksum_:
+    000000  aa   000060 6270 00     44  	push
+    000001  aa  7 00040 2721 20
+    000002  aa  0 00002 3715 20     45  	epplb	ap|2,*		" lb -> ptr -> first word
+    000003  aa  5 00000 3715 20     46  	epplb	lb|0,*		" lb -> first word
+    000004  aa  0 00004 2351 20     47  	lda	ap|4,*		" Areg = current segment length
+    000005  aa   000001 0750 07     48  	ada	1,dl		" Compute number of words in file map
+    000006  aa   000001 7710 00     49  	arl	1
+    000007  aa   000000 6200 05     50  	eax0	0,al		" Number of words
+    000010  0a   000016 7070 00     51  	tsx7	checksum		" compute the checksum
+    000011  aa  0 00006 7551 20     52  	sta	ap|6,*		" Areg = computed checksum
+    000012  aa  7 00042 7101 20     53  	return
+                                    54  "
+                                    55  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    56  "
+                                    57  "	checksum - Internal subroutine
+                                    58  "
+                                    59  "	tsx7	checksum
+                                    60  "
+                                    61  "	On entry
+                                    62  "		lb -> first word to checksum
+                                    63  "		x0 = number of words to checksum
+                                    64  "
+                                    65  "	On exit
+                                    66  "		Areg = computed checksum
+                                    67  "		x1, Qreg destroyed
+                                    68  "
+                                    69  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " 
+                                    70  
+    000013  aa   000000 0110 03     71  	even
+    000014                          72  zero_value:
+    000014  aa   000000 000000      73  	dec	0,0
+    000015  aa   000000 000000 
+                                    74  
+    000016                          75  checksum:
+                                    76  
+    000016  0a   000014 2370 00     77  	ldaq	zero_value	" Initially zero
+    000017  aa   000000 6200 10     78  	eax0	0,x0		" Number of words
+    000020  0a   000037 6000 00     79  	tze	checksum_returns 	" Easy case
+                                    80  
+    000021  aa  5 00000 6211 10     81  	eax1	lb|0,x0		" x1 = offset of word beyond end
+    000022  aa   000001 3010 03     82  	canx1	1,du		" Is last word to checksum at odd offset
+    000023  0a   000027 6000 00     83  	tze	checksum_loop	" Yes
+    000024  aa  5 77777 2351 10     84  	lda	lb|-1,x0		" No, adjust so that it is
+    000025  aa   777777 6200 10     85  	eax0	-1,x0
+    000026  0a   000037 6000 00     86  	tze	checksum_returns	" first is last
+                                    87  
+    000027                          88  checksum_loop:
+    000027  aa   777776 6200 10     89  	eax0	-2,x0		" Setup for next double word
+    000030  0a   000034 6000 00     90  	tze	checksum_even	" Next double word exhausts list
+    000031  0a   000036 6040 00     91  	tmi	checksum_odd	" Next word exhausts list
+    000032  aa  5 00000 6771 10     92  	eraq	lb|0,x0		" Exclusive-or next double word
+    000033  0a   000027 7100 00     93  	tra	checksum_loop	" And continue
+                                    94  
+    000034                          95  checksum_even:
+    000034  aa  5 00000 6771 00     96  	eraq	lb|0		" Fold in first double word
+    000035  0a   000037 7100 00     97  	tra	checksum_returns
+                                    98  
+    000036                          99  checksum_odd:
+    000036  aa  5 00000 6751 00    100  	era	lb|0		" Fold in first word
+                                   101  
+    000037                         102  checksum_returns:
+    000037  aa  6 00050 7561 00    103  	stq	checksum_temp	" Fold Qreg into Areg
+    000040  aa  6 00050 6751 00    104  	era	checksum_temp
+    000041  aa   000000 7100 17    105  	tra	0,x7		" And return
+                                   106  
+                                   107  	end
+ENTRY SEQUENCES
+     
+    000042  5a   000013 0000 00
+    000043  aa  7 00046 2721 20
+    000044  0a   000000 7100 00
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000046  5a   000003 000000 
+    000047  5a   000032 600000 
+    000050  aa   000000 000000 
+    000051  55   000013 000002 
+    000052  5a   000002 400003 
+    000053  55   000006 000013 
+    000054  aa  021 146 151 154
+    000055  aa  145 155 141 160
+    000056  aa  137 143 150 145
+    000057  aa  143 153 163 165
+    000060  aa  155 137 000 000
+    000061  55   000023 000003 
+    000062  0a   000043 500000 
+    000063  55   000016 000003 
+    000064  aa  021 146 151 154         filemap_checksum_
+    000065  aa  145 155 141 160
+    000066  aa  137 143 150 145
+    000067  aa  143 153 163 165
+    000070  aa  155 137 000 000
+    000071  55   000002 000013 
+    000072  6a   000000 400002 
+    000073  55   000026 000003 
+    000074  aa  014 163 171 155         symbol_table
+    000075  aa  142 157 154 137
+    000076  aa  164 141 142 154
+    000077  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000100  aa   000000 000015 
+    000101  aa   000000 000000 
+    000102  aa   000000 000000 
+    000103  aa   000000 000000 
+    000104  aa   000000 000000 
+    000105  5a   000013 000000 
+    000106  aa   000000 000000 
+    000107  5a   000023 000000 
+    000110  aa   000000 000000 
+    000111  aa   000000 000000 
+    000112  aa   000000 000000 
+    000113  aa   000000 000000 
+    000114  aa   000000 000000 
+    000115  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000116  aa   000001 000000 
+    000117  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000046 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   255540 204775 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000132 
+    000020  aa   000000 000104 
+    000021  aa   000115 000112 
+    000022  aa   000124 000104 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000050 
+    000067  aa   175453 017476 
+    000070  aa   000000 117547 
+    000071  aa   176235 000000 
+    000072  aa   076163 160145          >spec>install>1110>filemap_checksum_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076146 
+    000077  aa   151154 145155 
+    000100  aa   141160 137143 
+    000101  aa   150145 143153 
+    000102  aa   163165 155137 
+    000103  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          16    checksum                 filemap_checksum_:   51,   75.
+          34    checksum_even            filemap_checksum_:   90,   95.
+          27    checksum_loop            filemap_checksum_:   83,   88,   93.
+          36    checksum_odd             filemap_checksum_:   91,   99.
+          37    checksum_returns         filemap_checksum_:   79,   86,   97,  102.
+          50    checksum_temp            filemap_checksum_:   23,  103,  104.
+           0    filemap_checksum_        filemap_checksum_:   20,   43.
+          14    zero_value               filemap_checksum_:   72,   77.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

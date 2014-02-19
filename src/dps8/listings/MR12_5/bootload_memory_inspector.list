@@ -1,0 +1,1315 @@
+ASSEMBLY LISTING OF SEGMENT >dumps>old>recomp>bootload_memory_inspector.alm   
+ASSEMBLED ON:	10/28/82  1233.8 mst Thu
+OPTIONS USED:	list 
+ASSEMBLED BY:	ALM Version  6.4  April 1981    
+ASSEMBLER CREATED:	07/17/81  1819.2 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     4  " *                                                         *
+                                     5  " ***********************************************************
+                                     6  "
+                                     7  "	BOOTLOAD_MEMORY_INSPECTOR
+                                     8  "
+                                     9  "	This program is used to inspect and clear out the bootload memory.
+                                    10  "
+                                    11  "	01/16/81, W. Olin Sibert
+                                    12  "	Rewritten to use JJB's algorithm and clear one segment
+                                    13  "	at a time, BIM, 7/82.
+                                    14  "
+                                    15  
+    000000                          16  	name	bootload_memory_inspector
+    000000                          17  	decor	L68
+                                    18  
+                                    19  	include	bootload_equs
+                                   1-1  " BEGIN INCLUDE FILE bootload_equs.incl.alm
+                                   1-2  " Created 10/04/80 W. Olin Sibert, mostly from bootstrap1
+                                   1-3  " Modified, 11/16/80 WOS, to increase LOCAL.no_nt_pg from 3 to 4.
+                                   1-4  "
+                                   1-5  " This include file describes various things used by the programs in
+                                   1-6  " bound_bootload_1.
+                                   1-7  
+                                   1-8  " Default pointer register usage:
+                                   1-9  
+                        000000    1-10  	equ	ds,0		" Descriptor segment
+                        000001    1-11  	equ	seg2,1		" Another temporary
+                        000002    1-12  	equ	mb,2		" IOM mailbox
+                        000003    1-13  	equ	slt,3		" Segment loading table (SLT)
+                        000004    1-14  	equ	nt,4		" Name_table
+                        000005    1-15  	equ	prb,5		" Physical_record_buffer
+                        000006    1-16  	equ	seg,6		" Temporary
+                        000007    1-17  	equ	fv,7		" Interrupt and fault vectors
+                                  1-18  
+                                  1-19  " CPU types -- there are but two in this philosophy
+                                  1-20  
+                        000001    1-21  	equ	L68_CPU_TYPE,1
+                        000002    1-22  	equ	ADP_CPU_TYPE,2
+                                  1-23  
+                                  1-24  " Miscellaneous stuff for I/O
+                                  1-25  
+                        000004    1-26  	equ	ioms,4		" Max number of IOMs
+                        000100    1-27  	equ	chans,64		" Max number of IOM channels
+                        000001    1-28  	equ	iom_cow,1
+                                  1-29  
+                        000001    1-30  	equ	fault_channel,1
+                        000002    1-31  	equ	connect_channel,2	" Number of Connect channel
+                        000006    1-32  	equ	special_channel,6
+                                  1-33  
+                                  1-34  "
+                                  1-35  
+                                  1-36  " Layout of absolute memory past the end of bound_bootload_1:
+                                  1-37  " These are all the segments known colloquially as Collection 0.
+                                  1-38  
+                        000002    1-39  	equ	LOCAL.no_slt_pg,2
+                        000004    1-40  	equ	LOCAL.no_nt_pg,4
+                        000002    1-41  	equ	LOCAL.no_prb_pg,2
+                                  1-42  
+                        000401    1-43  	bool	bbl1_segno_,401	" Second init seg, and all that
+                                  1-44  
+                                  1-45  " KLUDGE: The preceeding lines copy information from template_slt_.cds,
+                                  1-46  "         and must be kept in sync with it.
+                                  1-47  
+                        020000    1-48  	bool	bbl1_absloc,20000	
+                        014000    1-49  	bool	bbl1_lth,14000
+                                  1-50  
+                        034000    1-51  	equ	dseg_absloc,bbl1_absloc+bbl1_lth
+                        002000    1-52  	equ	dseg_lth,2*512	" Segnos 000 - 777
+                                  1-53  
+                        036000    1-54  	equ	slt_absloc,dseg_absloc+dseg_lth
+                        004000    1-55  	equ	slt_lth,1024*LOCAL.no_slt_pg
+                                  1-56  
+                        042000    1-57  	equ	nt_absloc,slt_absloc+slt_lth
+                        010000    1-58  	equ	nt_lth,1024*LOCAL.no_nt_pg
+                                  1-59  
+                        052000    1-60  	equ	prb_absloc,nt_absloc+nt_lth
+                        004000    1-61  	equ	prb_lth,1024*LOCAL.no_prb_pg
+                                  1-62  
+                        056000    1-63  	equ	first_free_absloc,prb_absloc+prb_lth
+                                  1-64  
+                                  1-65  " Other known absolute locations for various immovable segments:
+                                  1-66  
+                        000000    1-67  	bool	fv_absloc,0
+                        001200    1-68  	bool	iom_base_absloc,1200     " fixed for Multics
+                        003400    1-69  	bool	dn355_mbx_absloc,3400
+                        010000    1-70  	bool	toehold_absloc,10000
+                        012000    1-71  	bool	config_absloc,12000
+                        002000    1-72  	bool	config_size,2000
+                                  1-73  
+                                  1-74  	macro	include_nolist
+                              1   1-75  	maclist	off,save
+                              2   1-76  	include	&1
+                              3   1-77  	maclist	restore
+                              4   1-78  &end
+                                  1-79  
+                                  1-80  
+                                  1-81  " Macros for the x2 stack
+                                  1-82  
+                                  1-83  	macro	Bpush
+                              1   1-84  	stx2	bootload_1$entry_stack_ptr,id
+                              2   1-85  	ttn	bootload_error$out_of_stack
+                              3   1-86  &end
+                                  1-87  
+                                  1-88  " 	Breturn	offset-from-return-point
+                                  1-89  
+                                  1-90  	macro	Breturn
+                              1   1-91  	ldx2	bootload_1$entry_stack_ptr,di
+                              2   1-92  	tra	0+&1,x2
+                              3   1-93  &end
+                                  1-94  
+                                  1-95  "	Bentry	name,offset-from-return-point
+                                  1-96  
+                                  1-97  	macro	Bentry
+                              1   1-98  	segdef	&1
+                              2   1-99  	macro	&1_return
+                              3  1-100  	Breturn	&<&K,2&[0&;&2&]
+                              4  1-101  &&end
+                              5  1-102  &end
+                                 1-103  
+                                 1-104  " 	Bentry_internal	name,offset_from_return_point
+                                 1-105  
+                                 1-106  	macro	Bentry_internal
+                              1  1-107  	macro	&1_return	
+                              2  1-108  	Breturn	&<&K,2&[0&;&2&]
+                              3  1-109  &&end
+                              4  1-110  &end
+                                 1-111  
+                                 1-112  " END INCLUDE FILE bootload_equs.incl.alm
+                                    20  	include	bootload_cpu_macros
+                                   2-1  " CPU_MACROS
+                                   2-2  "
+                                   2-3  " Macros used to lend a bit of CPU independence to bootloader code.
+                                   2-4  "
+                                   2-5  " 04/22/81, Chris Jones
+                                   2-6  "
+                                   2-7  
+                                   2-8  	include	io_status_word
+                                   3-1  
+                                   3-2  
+                                   3-3       "BEGIN INCLUDE FILE io_st_word.incl.alm
+                                   3-4  
+                                   3-5  
+                                   3-6  	"Created 08/03/83  0901.4 edt Wed by convert_include_file,
+                                   3-7  	"   Version of 12/01/81  1640.3 edt Tue.
+                                   3-8  
+                                   3-9  	"Made from >ldd>include>io_st_word.incl.pl1,
+                                  3-10  	"   modified 07/29/81  1847.8 edt Wed
+                                  3-11  
+                                  3-12  "
+                                  3-13  "	Structure io_st_word
+                                  3-14  "
+                        400000    3-15  	bool	io_st_word.t,400000	" DU
+                        200000    3-16  	bool	io_st_word.power,200000	" DU
+                        000036    3-17  	equ	io_st_word.major_shift,30
+                        000017    3-18  	bool	io_st_word.major_mask,000017
+                        000030    3-19  	equ	io_st_word.sub_shift,24
+                        000077    3-20  	bool	io_st_word.sub_mask,000077
+                        000040    3-21  	bool	io_st_word.eo,000040	" DU
+                        000020    3-22  	bool	io_st_word.marker,000020	" DU
+                        000024    3-23  	equ	io_st_word.soft_shift,20
+                        000003    3-24  	bool	io_st_word.soft_mask,000003
+                        000002    3-25  	bool	io_st_word.initiate,000002 " DU
+                        000001    3-26  	bool	io_st_word.abort,000001	" DU
+                        000017    3-27  	equ	io_st_word.channel_stat_shift,15
+                        000007    3-28  	bool	io_st_word.channel_stat_mask,000007
+                        000014    3-29  	equ	io_st_word.central_stat_shift,12
+                        000007    3-30  	bool	io_st_word.central_stat_mask,000007
+                        000006    3-31  	equ	io_st_word.mbz_shift,6
+                        000077    3-32  	bool	io_st_word.mbz_mask,000077
+                        000000    3-33  	equ	io_st_word.rcount_shift,0
+                        000077    3-34  	bool	io_st_word.rcount_mask,000077
+                                  3-35  
+                                  3-36       "END INCLUDE FILE io_st_word.incl.alm
+                                   3-9  " *********************************************************************
+                                  3-10  " *							*
+                                  3-11  " *	All of these macros depend on the existance of an external	*
+                                  3-12  " *	variable (bootload_info$system_type), which is set to 1 for	*
+                                  3-13  " *	a Level 68, and 2 for an ORION.			*
+                                  3-14  " *							*
+                                  3-15  " *********************************************************************
+                                  3-16  
+                                  3-17  " This is the macro which gets the cpu type.  It is called
+                                  3-18  " only once, as early as possible.  It must be called before any of the
+                                  3-19  " other macros in this include file can be invoked.
+                                  3-20  "
+                                  3-21  	macro	get_system_type
+                              1   3-22  	rres	2		" this is a rsw on a level 68
+                              2   3-23  	tmi	3,ic		" I say this is an ORION
+                              3   3-24  	lda	L68_CPU_TYPE,dl
+                              4   3-25  	tra	2,ic
+                              5   3-26  	lda	ADP_CPU_TYPE,dl
+                              6   3-27  &end
+                                  3-28  
+                                  3-29  "
+                                  3-30  " Macro to transfer to a location if the CPU we are executing on is an ORION
+                                  3-31  " NOTE:	 This macro destroys x0.
+                                  3-32  "
+                                  3-33  	macro	t_ORION
+                              1   3-34  	lxl0	bootload_info$system_type
+                              2   3-35  	cmpx0	ADP_CPU_TYPE,du
+                              3   3-36  	tze	&F1
+                              4   3-37  &end
+                                  3-38  
+                                  3-39  "
+                                  3-40  " Macro to transfer if we are executing on a Level 68 (or DPSE)
+                                  3-41  " NOTE:	  This macro destroys x0.
+                                  3-42  "
+                                  3-43  	macro	t_L68
+                              1   3-44  	lxl0	bootload_info$system_type
+                              2   3-45  	cmpx0	L68_CPU_TYPE,du
+                              3   3-46  	tze	&F1
+                              4   3-47  &end
+                                  3-48  
+                                  3-49  "
+                                  3-50  " Macro to get the absolute address of its argument into au
+                                  3-51  " This macro assumes that the address will fit into 18 bits
+                                  3-52  "
+                                  3-53  	macro	absa_au
+                              1   3-54  	absa	&F1
+                              2   3-55  	als	6
+                              3   3-56  	t_L68	&U
+                              4   3-57  	als	2
+                              5   3-58  &U:
+                              6   3-59  &end
+                                  3-60  
+                                  3-61  "
+                                  3-62  " Macro to get the absolute address of its arguments into al
+                                  3-63  "
+                                  3-64  	macro	absa_al
+                              1   3-65  	absa	&F1
+                              2   3-66  	arl	10
+                              3   3-67  	t_ORION	&U
+                              4   3-68  	arl	2
+                              5   3-69  &U:
+                              6   3-70  &end
+                                  3-71  
+                                  3-72  " Macro to wait for an I/O status to arrive.  It has two exits:  the first is
+                                  3-73  " used if the status did not become valid in the time it took to count an index
+                                  3-74  " register from 0 down to 0. The second is used if the status has become valid.
+                                  3-75  " The status is in the a register, and the contents of x1 are undefined.
+                                  3-76  "
+                                  3-77  	macro	load_status
+                              1   3-78  	eax1	0
+                              2   3-79  &U_1:
+                              3   3-80  	t_ORION	&U_2-*,ic
+                              4   3-81  	cams	4
+                              5   3-82  &U_2:
+                              6   3-83  	lda	&F1
+                              7   3-84  	tmi	&U_3+1-*,ic
+                              8   3-85  	eax1	-1,x1
+                              9   3-86  	tnz	&U_1-*,ic
+                             10   3-87  &U_3:
+                             11   3-88  &end
+                                  3-89  
+                                  3-90  "
+                                  3-91  	macro	load_status_terminate
+                              1   3-92  	eax1	0
+                              2   3-93  &U_1:
+                              3   3-94  	t_ORION	&U_2-*,ic
+                              4   3-95  	cams	4
+                              5   3-96  &U_2:
+                              6   3-97  	lda	&F1
+                              7   3-98  	tmi	&U_3-*,ic
+                              8   3-99  	eax1	-1,x1
+                              9  3-100  	tnz	&U_1-*,ic
+                             10  3-101  	tra	&U_4-*,ic
+                             11  3-102  &U_3:
+                             12  3-103  	eax1	0
+                             13  3-104  &U_5:
+                             14  3-105  	t_ORION	&U_5.1-*,ic
+                             15  3-106            cams	4
+                             16  3-107  &U_5.1:
+                             17  3-108  	lda	&F1
+                             18  3-109  	cana	io_st_word.marker+io_st_word.initiate,du " both must be off
+                             19  3-110  	tze	&U_4+1-*,ic
+                             20  3-111  	eax1	-1,x1
+                             21  3-112  	tnz	&U_5-*,ic
+                             22  3-113  &U_4:
+                             23  3-114  &end
+                                 3-115  
+                                 3-116  " Temporary macro
+                                 3-117  
+                                 3-118  	macro	PANIC
+                              1  3-119  	drl	*
+                              2  3-120  &end
+                                    21  	include	fault_vector
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE fault_vector.incl.alm
+                                   4-4  
+                                   4-5  "	Modified February 1981 by J. Bongiovanni to add fault types
+                                   4-6  
+                                   4-7  "
+                                   4-8  "	Structure fv
+                                   4-9  "
+                        000600    4-10  	equ	fv_size,384
+                                  4-11  
+                                  4-12  
+                        000000    4-13  	equ	fv.ipair,0		"LEVEL 2
+                                  4-14  
+                        000000    4-15  	equ	fv.ipair.scu,0
+                        000001    4-16  	equ	fv.ipair.tra,1
+                        000100    4-17  	equ	fv.fpair,64		"LEVEL 2
+                                  4-18  
+                        000100    4-19  	equ	fv.fpair.scu,64
+                        000101    4-20  	equ	fv.fpair.tra,65
+                        000200    4-21  	equ	fv.i_tra_ptr,128
+                        000300    4-22  	equ	fv.i_scu_ptr,192
+                        000400    4-23  	equ	fv.f_tra_ptr,256
+                        000500    4-24  	equ	fv.f_scu_ptr,320
+                                  4-25  
+                        000000    4-26  	equ	FAULT_NO_SDF,0		" Shutdown
+                        000001    4-27  	equ	FAULT_NO_STR,1		" Store
+                        000002    4-28  	equ	FAULT_NO_MME,2		" Master Mode Entry 1
+                        000003    4-29  	equ	FAULT_NO_F1,3		" Fault Tag 1
+                        000004    4-30  	equ	FAULT_NO_TRO,4		" Timer Runout
+                        000005    4-31  	equ	FAULT_NO_CMD,5		" Command
+                        000006    4-32  	equ	FAULT_NO_DRL,6		" Derail
+                        000007    4-33  	equ	FAULT_NO_LUF,7		" Lockup
+                        000010    4-34  	equ	FAULT_NO_CON,8		" Connect
+                        000011    4-35  	equ	FAULT_NO_PAR,9		" Parity
+                        000012    4-36  	equ	FAULT_NO_IPR,10		" Illegal Procedure
+                        000013    4-37  	equ	FAULT_NO_ONC,11		" Operation Not Complete
+                        000014    4-38  	equ	FAULT_NO_SUF,12		" Startup
+                        000015    4-39  	equ	FAULT_NO_OFL,13		" Overflow
+                        000016    4-40  	equ	FAULT_NO_DIV,14		" Divide Check
+                        000017    4-41  	equ	FAULT_NO_EXF,15		" Execute
+                        000020    4-42  	equ	FAULT_NO_DF0,16		" Directed Fault 0 (Segment Fault)
+                        000021    4-43  	equ	FAULT_NO_DF1,17		" Directed FAult 1 (Page Fault)
+                        000022    4-44  	equ	FAULT_NO_DF2,18		" Directed Fault 2
+                        000023    4-45  	equ	FAULT_NO_DF3,19		" Directed Fault 3
+                        000024    4-46  	equ	FAULT_NO_ACV,20		" Access Violation
+                        000025    4-47  	equ	FAULT_NO_MME2,21		" Master Mode Entry 2
+                        000026    4-48  	equ	FAULT_NO_MME3,22		" Master Mode Entry 3
+                        000027    4-49  	equ	FAULT_NO_MME4,23		" Master Mode Entry 4
+                        000030    4-50  	equ	FAULT_NO_F2,24		" Fault Tag 2 (Linkage Fault)
+                        000031    4-51  	equ	FAULT_NO_F3,25		" Fault Tag 3
+                                  4-52  					" Fault No. 26-30 are Undefined
+                        000037    4-53  	equ	FAULT_NO_TRB,31		" Trouble
+                                  4-54  
+                                  4-55       "END INCLUDE FILE fault_vector.incl.alm
+                                    22  	include	coll0_segnos
+                                   5-1  " BEGIN INCLUDE FILE coll0_segnos.incl.alm 10/28/82  1046.1 mst Thu Holmstedt.SysMaint.m
+                                   5-2  
+                        000000     5-3  	equ	ds_segno_,0	" dseg
+                        000001     5-4  	equ	fv_segno_,1	" fault_vector
+                        000002     5-5  	equ	iom_mbx_segno_,2	" iom_mailbox
+                        000003     5-6  	equ	config_segno_,3	" config_deck
+                        000004     5-7  	equ	dn355_mbx_segno_,4	" dn355_mailbox
+                        000005     5-8  	equ	toehold_segno_,5	" bos_toehold
+                        000006     5-9  	equ	fgbx_segno_,6	" flagbox
+                        000007    5-10  	equ	slt_segno_,7	" slt
+                        000010    5-11  	equ	nt_segno_,8	" name_table
+                        000400    5-12  	equ	prb_segno_,256	" physical_record_buffer
+                        000401    5-13  	equ	bbl1_segno_,257	" bound_bootload_1
+                        000402    5-14  	equ	abs_seg0_segno_,258	" abs_seg0
+                                  5-15  
+                                  5-16  " END INCLUDE FILE
+                                    23  	include	sdw_info
+                                   6-1  
+                                   6-2  
+                                   6-3       "BEGIN INCLUDE FILE sdw_info.incl.alm
+                                   6-4  
+                                   6-5  
+                                   6-6  	"Created 04/04/81  1404.3 est Sat by convert_include_file,
+                                   6-7  	"   Version of 02/27/81  0031.1 est Fri.
+                                   6-8  
+                                   6-9  	"Made from >udd>Multics>nss>new_pc>include>sdw_info.incl.pl1,
+                                  6-10  	"   modified 03/01/81  2328.0 est Sun
+                                  6-11  
+                                  6-12  "
+                                  6-13  "	Structure sdw_info
+                                  6-14  "
+                        000006    6-15  	equ	sdw_info_size,6
+                                  6-16  
+                                  6-17  
+                        000000    6-18  	equ	sdw_info.address,0
+                        000001    6-19  	equ	sdw_info.bound,1
+                        000002    6-20  	equ	sdw_info.access,2		" LEVEL 2
+                                  6-21  
+                        400000    6-22  	bool	sdw_info.read,400000	" DU
+                        200000    6-23  	bool	sdw_info.execute,200000	" DU
+                        100000    6-24  	bool	sdw_info.write,100000	" DU
+                        040000    6-25  	bool	sdw_info.privileged,040000	" DU
+                                  6-26  
+                        000003    6-27  	equ	sdw_info.rings,3		" LEVEL 2
+                                  6-28  
+                        000041    6-29  	equ	sdw_info.r1_shift,33
+                        000007    6-30  	bool	sdw_info.r1_mask,000007
+                        000036    6-31  	equ	sdw_info.r2_shift,30
+                        000007    6-32  	bool	sdw_info.r2_mask,000007
+                        000033    6-33  	equ	sdw_info.r3_shift,27
+                        000007    6-34  	bool	sdw_info.r3_mask,000007
+                                  6-35  
+                        000004    6-36  	equ	sdw_info.flags,4		" LEVEL 2
+                                  6-37  
+                        400000    6-38  	bool	sdw_info.paged,400000	" DU
+                        200000    6-39  	bool	sdw_info.faulted,200000	" DU
+                        100000    6-40  	bool	sdw_info.cache,100000	" DU
+                                  6-41  
+                        000005    6-42  	equ	sdw_info.gate_entry_bound,5
+                                  6-43  
+                                  6-44       "END INCLUDE FILE sdw_info.incl.alm
+                                    24  	include	slt
+                                   7-1  
+                                   7-2  
+                                   7-3       "BEGIN INCLUDE FILE slt.incl.alm
+                                   7-4  
+                                   7-5  	"Created 11/04/76  1459.6 est Thu by convert_include_file,
+                                   7-6  	"   Version of 04/30/76  1208.1 est Fri.
+                                   7-7  
+                                   7-8  	"Made from >user_dir_dir>Multics>Morris>slt>include>slt.incl.pl1,
+                                   7-9  	"   modified 11/04/76  1459.5 est Thu
+                                  7-10  
+                                  7-11  "
+                                  7-12  "	Structure slt
+                                  7-13  "
+                        100010    7-14  	equ	slt_size,32776
+                                  7-15  
+                                  7-16  
+                        000000    7-17  	equ	slt.name_seg_ptr,0
+                        000002    7-18  	equ	slt.free_core_start,2
+                        000003    7-19  	equ	slt.first_sup_seg,3
+                        000004    7-20  	equ	slt.last_sup_seg,4
+                        000005    7-21  	equ	slt.first_init_seg,5
+                        000006    7-22  	equ	slt.last_init_seg,6
+                        000007    7-23  	equ	slt.free_core_size,7
+                        000010    7-24  	equ	slt.seg,8			"LEVEL 2
+                                  7-25  
+                        000010    7-26  	equ	slt.slte,8
+                                  7-27  
+                                  7-28  "
+                                  7-29  "	Structure name_seg
+                                  7-30  "
+                        000201    7-31  	equ	name_seg_size,129
+                                  7-32  
+                        000000    7-33  	equ	name_seg.next_loc,0		"LOWER
+                                  7-34  
+                        000001    7-35  	equ	name_seg.ht,1		"UPPER
+                                  7-36  
+                                  7-37  "
+                                  7-38  "	Structure segnam
+                                  7-39  "
+                                  7-40  
+                        000000    7-41  	equ	segnam.count,0
+                        000001    7-42  	equ	segnam.names,1		"LEVEL 2
+                                  7-43  
+                        000001    7-44  	equ	segnam.hp,1		"UPPER
+                        400000    7-45  	bool	segnam.ref,400000		"DL
+                        000000    7-46  	equ	segnam.segno_shift,0
+                        007777    7-47  	bool	segnam.segno_mask,007777
+                                  7-48  
+                        000002    7-49  	equ	segnam.name,2		"DOUBLE
+                                  7-50  
+                                  7-51  "
+                                  7-52  "	Structure path
+                                  7-53  "
+                        000000    7-54  	equ	path.size,0
+                        000001    7-55  	equ	path.name,1
+                        000000    7-56  	equ	path.acls,0
+                                  7-57  
+                                  7-58  "
+                                  7-59  "	Structure acls
+                                  7-60  "
+                        000000    7-61  	equ	acls.count,0
+                        000001    7-62  	equ	acls.acl,1		"LEVEL 2
+                                  7-63  
+                        000001    7-64  	equ	acls.userid,1		"DOUBLE
+                        000011    7-65  	equ	acls.mode,9
+                        000013    7-66  	equ	acls.code,11
+                                  7-67  
+                                  7-68       "END INCLUDE FILE slt.incl.alm
+                                    25  "
+                                    26  "
+                                    27  
+    000000                          28  	bss	si,sdw_info_size
+    000006                          29  	bss	done_clearing_all,1
+    000007                          30  	bss	amount_to_clear,1
+                 000001 000000      31  	equ	full_seg_length,256*1024
+                                    32  
+    000010                          33  two_fifty_six_K:
+    000010  aa   000001 000000      34  	vfd	36/full_seg_length
+                                    35  
+                                    36  "
+                                    37  " Entrypoint: 	tsx2	bootload_memory_inspector$clear_all
+                                    38  "
+                                    39  " Clears memory from slt.free_core_start for slt.free_core_length
+                                    40  " ASSUMES at least 256K of same, and no more than 512K
+                                    41  
+                                    42  
+                        000011      43  	segdef	clear_all
+    000011                          44  clear_all:
+                                    45  	Bpush
+    000011  4a  4 00010 7421 20         	stx2	bootload_1$entry_stack_ptr,id
+    000012  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    46  
+                                    47  
+    000013  aa   000000 1004 00     48  	mlr	(),(),fill(000)
+    000014  aa   000000 000000      49  	desc9a	0,0
+    000015  0a   000000 000030      50  	desc9a	si,sdw_info_size*4	" clear sdw_info
+    000016  aa  3 00002 2351 00     51  	lda	slt|slt.free_core_start
+    000017  0a   000000 7550 00     52  	sta	si+sdw_info.address
+    000020  aa  3 00007 2351 00     53  	lda	slt|slt.free_core_size
+    000021  0a   000007 7550 00     54  	sta	amount_to_clear
+    000022  0a   000010 2350 00     55  	lda	two_fifty_six_K		" at least 256K out of 512K
+    000023  0a   000001 7550 00     56  	sta	si+sdw_info.bound
+    000024  aa   500000 2350 03     57  	lda	sdw_info.read+sdw_info.write,du
+    000025  0a   000002 7550 00     58  	sta	si+sdw_info.access
+    000026  0a   000006 4500 00     59  	stz	done_clearing_all
+                                    60  
+                                    61  " all the information is there
+                                    62  
+    000027                          63  clear_again:
+    000027  0a   000000 3720 00     64  	epp6	si
+    000030  4a  4 00014 7021 20     65  	tsx2	bootload_dseg$make_sdw
+    000031  aa  0 01004 7571 00     66  	staq	ds|(abs_seg0_segno_*2)   " store away
+    000032  aa   000000 5320 00     67  	cams			     " wrong for orion, i know
+    000033  0a   000226 3720 20     68  	epp6	=its(abs_seg0_segno_,0),*
+    000034  0a   000001 2350 00     69  	lda	si+sdw_info.bound
+                                    70  
+    000035  0a   000051 7020 00     71  	tsx2	clear
+                                    72  
+    000036  0a   000006 2340 00     73  	szn	done_clearing_all
+    000037  0a   000120 6010 00     74  	tnz	x2_return
+                                    75  
+    000040  0a   000000 2350 00     76  	lda	si+sdw_info.address " started here
+    000041  0a   000010 0750 00     77  	ada	two_fifty_six_K     " skip this much
+    000042  0a   000000 7550 00     78  	sta	si+sdw_info.address
+    000043  0a   000007 2350 00     79  	lda	amount_to_clear
+    000044  0a   000010 1750 00     80  	sba	two_fifty_six_K	" Amount already done
+    000045  0a   000120 6044 00     81  	tmoz	x2_return		" only 256K after free_core_start?!
+    000046  0a   000001 7550 00     82  	sta	si+sdw_info.bound   " max left is 512K
+    000047  0a   000006 7550 00     83  	sta	done_clearing_all	" any nonzero value
+    000050  0a   000027 7100 00     84  	tra	clear_again
+                                    85  
+                                    86  
+                                    87  "
+                                    88  " Entrypoint:	tsx2	bootload_memory_inspector$clear
+                                    89  "
+                                    90  "	pr6 points to base of segment to be cleared and tested
+                                    91  "	A register contains segment bound.
+                                    92  
+                        000051      93  	segdef	clear
+                                    94  
+                                    95  clear:	Bpush
+    000051  4a  4 00010 7421 20         	stx2	bootload_1$entry_stack_ptr,id
+    000052  4a  4 00012 6065 20         	ttn	bootload_error$out_of_stack
+                                    96  
+    000053  0a   000134 4500 00     97  	stz	return_via_return	" no stack
+                                    98  
+    000054                          99  common_entry:
+                                   100  
+    000054  0a   000136 7550 00    101  	sta	length_in_words
+                                   102  
+                                   103  " Set up fault vector for STORE and PARITY
+                                   104  
+                                   105  " Save old fault vector assignments
+                                   106  
+    000055  aa  7 00402 2371 00    107  	ldaq	fv|fv.f_tra_ptr+(FAULT_NO_STR*2)
+    000056  0a   000124 7570 00    108  	staq	old_store_pair
+    000057  aa  7 00422 2371 00    109  	ldaq	fv|fv.f_tra_ptr+(FAULT_NO_PAR*2)
+    000060  0a   000122 7570 00    110  	staq	old_parity_pair
+    000061  aa  7 00426 2371 00    111  	ldaq	fv|fv.f_tra_ptr+(FAULT_NO_ONC*2)
+    000062  0a   000126 7570 00    112  	staq	old_onc_pair
+                                   113  
+                                   114  " Set new assignments
+                                   115  
+    000063  0a   000142 3514 00    116  	epp	seg2,parity_fault_handler
+    000064  aa  1 00422 2541 00    117  	spri	seg2,fv|fv.f_tra_ptr+(FAULT_NO_PAR*2)
+    000065  0a   000144 3514 00    118  	epp	seg2,onc_fault_handler
+    000066  aa  1 00426 2541 00    119  	spri	seg2,fv|fv.f_tra_ptr+(FAULT_NO_ONC*2)
+    000067  0a   000146 3514 00    120  	epp	seg2,store_fault_handler
+    000070  aa  1 00402 2541 00    121  	spri	seg2,fv|fv.f_tra_ptr+(FAULT_NO_STR*2)
+                                   122  
+                                   123  " Enable Parity Faults
+                                   124  
+    000071  0a   000135 7540 00    125  	sti	indicators
+    000072  0a   000135 2350 00    126  	lda	indicators
+    000073  0a   000230 3750 00    127  	ana	=o776377		" turn off parity fault and mask
+    000074  0a   000135 7550 00    128  	sta	indicators
+    000075  0a   000135 6340 00    129  	ldi	indicators	" spring-loaded as of now
+                                   130  	
+                                   131  
+                                   132  " Reference segment with MLR
+                                   133  
+    000076  0a   000136 2350 00    134  	lda	length_in_words
+    000077  aa   000002 7350 00    135  	als	2		character count in AL
+    000100  aa   000140 1004 00    136  	mlr	(),(pr,rl),fill(000)
+    000101  aa   000000 000000     137  	desc9a	0
+    000102  aa   600000 000005     138  	desc9a	pr6|0,al		away we go ....
+    000103  aa   000000 0110 07    139  	nop	0,dl
+    000104  aa   000000 0110 07    140  	nop	0,dl		who's there? (let fault take)
+                                   141  
+                                   142  " No faults
+    000105                         143  return:
+                                   144  
+    000105  0a   000126 2370 00    145  	ldaq	old_onc_pair
+    000106  aa  7 00426 7571 00    146  	staq	fv|fv.f_tra_ptr+(FAULT_NO_ONC*2)
+    000107  0a   000122 2370 00    147  	ldaq	old_parity_pair
+    000110  aa  7 00422 7571 00    148  	staq	fv|fv.f_tra_ptr+(FAULT_NO_PAR*2)
+    000111  0a   000124 2370 00    149  	ldaq	old_store_pair
+    000112  aa  7 00402 7571 00    150  	staq	fv|fv.f_tra_ptr+(FAULT_NO_STR*2)
+                                   151  
+    000113  0a   000134 2340 00    152  	szn	return_via_return
+    000114  0a   000120 6000 00    153  	tze	x2_return
+    000115  0a   000130 3720 20    154  	epp6	save_the_return_ptr,*
+    000116  0a   000132 3734 20    155  	epp7	save_pr7,*
+    000117  aa  7 00044 7101 20    156  	short_return
+    000120                         157  x2_return:
+                                   158  	Breturn
+    000120  4a  4 00016 2221 20         	ldx2	bootload_1$entry_stack_ptr,di
+    000121  aa   000000 7100 12         	tra	0+,x2
+                                   159  
+                                   160  	even
+    000122                         161  	bss	old_parity_pair,2
+    000124                         162  	bss	old_store_pair,2
+    000126                         163  	bss	old_onc_pair,2
+    000130                         164  	bss	save_the_return_ptr,2
+    000132                         165  	bss	save_pr7,2
+    000134                         166  	bss	return_via_return,1
+    000135                         167  	bss	indicators,1
+    000136                         168  	bss	length_in_words,1
+                        000140     169  	segdef	bad_location,fault_name_pointer
+    000137                         170  	bss	bad_location,1
+    000140                         171  	bss	fault_name_pointer,2
+                                   172  " 
+                                   173  
+                                   174  " Handlers are here for various faults.
+                                   175  " exact location is determined presently
+                                   176  
+    000142                         177  parity_fault_handler:
+    000142  aa   000022 6250 00    178  	eax5	FAULT_NO_PAR*2
+    000143  0a   000147 7100 00    179  	tra	common
+    000144                         180  onc_fault_handler:
+    000144  aa   000026 6250 00    181  	eax5	FAULT_NO_ONC*2
+    000145  0a   000147 7100 00    182  	tra	common
+    000146                         183  store_fault_handler:
+    000146  aa   000002 6250 00    184  	eax5	FAULT_NO_STR*2
+                                   185  
+    000147  4a  4 00020 6251 20    186  common:	eax5	bootload_info$l68_fault_names,x5	" point to name
+    000150  0a   000140 7450 00    187  	stx5	fault_name_pointer
+    000151  aa   000001 6250 15    188  	eax5	1,x5				" second word
+    000152  0a   000141 7430 00    189  	stx3	fault_name_pointer+1
+                                   190  
+    000153  0a   000173 3514 00    191  	epp	seg2,detail_handler
+    000154  aa  7 00426 2521 00    192  	spri2	fv|fv.f_tra_ptr+(FAULT_NO_ONC*2)
+    000155  aa  7 00422 2521 00    193  	spri2	fv|fv.f_tra_ptr+(FAULT_NO_PAR*2)
+    000156  aa  7 00402 2521 00    194  	spri2	fv|fv.f_tra_ptr+(FAULT_NO_STR*2)
+                                   195  
+    000157  0a   000136 2350 00    196  	lda	length_in_words
+    000160  aa   000022 7350 00    197  	als	18		" for cmpx
+    000161  0a   000136 7550 00    198  	sta	length_in_words
+    000162  aa   000000 6220 00    199  	eax2	0
+    000163  aa   000000 2350 07    200  	lda	0,dl
+    000164                         201  word_by_word_loop:
+    000164  aa  6 00000 7551 12    202  	sta	6|0,x2		" reference
+    000165  aa   000000 0110 07    203  	nop	0,dl
+    000166  aa   000000 0110 07    204  	nop	0,dl		" delay so fault happens before
+                                   205  				" eax below
+    000167  aa   000001 6220 12    206  	eax2	1,x2
+    000170  0a   000136 1020 00    207  	cmpx2	length_in_words
+    000171  0a   000164 6040 00    208  	tmi	word_by_word_loop
+                                   209  
+    000172  0a   000105 7100 00    210  	tra	return		" no error? okay...
+                                   211  
+                                   212  " Control goes here with x2 containing the offset of the nasty word
+                                   213  
+    000173                         214  detail_handler:
+                                   215  	absa_au	6|0,x2		" get absolute address
+    000173  aa  6 00000 2121 12         	absa	6|0,x2
+    000174  aa   000006 7350 00         	als	6
+                                        	t_L68	.._00000
+    000175  4a  4 00022 7201 20         	lxl0	bootload_info$system_type
+    000176  aa   000001 1000 03         	cmpx0	L68_CPU_TYPE,du
+    000177  0a   000201 6000 00         	tze	.._00000
+    000200  aa   000002 7350 00         	als	2
+    000201                              .._00000:
+    000201  aa   000022 7310 00    216  	ars	18
+    000202  0a   000137 7550 00    217  	sta	bad_location
+    000203  0a   000134 2340 00    218  	szn	return_via_return
+    000204  0a   000220 6010 00    219  	tnz	return_error
+    000205  4a  4 00024 7101 20    220  	tra	bootload_error$memory_error
+                                   221  
+                                   222  
+                                   223  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   224  "
+                                   225  " call bootload_memory_inspector$clear_segment (seg_ptr, seg_length, error_loc);
+                                   226  "
+                                   227  "  declare bootload_memory_inspector$clear_segment (ptr, fixed bin (19), fixed bin (26));
+                                   228  "
+                                   229  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   230  
+                        000206     231  	entry	clear_segment
+    000206                         232  clear_segment:
+    000206  0a   000130 6520 00    233  	spri6	save_the_return_ptr
+    000207  0a   000132 6534 00    234  	spri7	save_pr7
+    000210  0a   000232 3734 20    235  	epp7	=its(fv_segno_,0),*
+    000211  aa  0 00006 4501 20    236  	stz	ap|6,*	" clear error return
+    000212  aa  0 00004 2351 20    237  	lda	ap|4,*
+    000213  aa  0 00002 3721 20    238  	epp6	ap|2,*	" Ptr to ptr to segment
+    000214  aa  6 00000 3721 20    239  	epp6	pr6|0,*   " ptr to segment
+    000215  aa   000001 2360 07    240  	ldq	1,dl
+    000216  0a   000134 7560 00    241  	stq	return_via_return
+    000217  0a   000054 7100 00    242  	tra	common_entry	
+                                   243  
+    000220                         244  return_error:
+    000220  aa  0 00006 7551 20    245  	sta	ap|6,*	" failing location from A
+    000221  0a   000105 7100 00    246  	tra	return
+                                   247  
+                                   248  	end
+ENTRY SEQUENCES
+
+    000222  5a   000015 0000 00
+    000223  aa  7 00046 2721 20
+    000224  0a   000206 7100 00
+LITERALS
+
+    000226  aa   000402 000043 
+    000227  aa   000000 000000 
+    000230  aa   000000 776377 
+    000232  aa   000001 000043 
+    000233  aa   000000 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000234  5a   000003 000000 
+    000235  5a   000065 600000 
+    000236  aa   000000 000000 
+    000237  55   000015 000002 
+    000240  5a   000002 400003 
+    000241  55   000006 000015 
+    000242  aa  031 142 157 157
+    000243  aa  164 154 157 141
+    000244  aa  144 137 155 145
+    000245  aa  155 157 162 171
+    000246  aa  137 151 156 163
+    000247  aa  160 145 143 164
+    000250  aa  157 162 000 000
+    000251  55   000024 000003 
+    000252  0a   000223 500000 
+    000253  55   000020 000003 
+    000254  aa  015 143 154 145         clear_segment
+    000255  aa  141 162 137 163
+    000256  aa  145 147 155 145
+    000257  aa  156 164 000 000
+    000260  55   000034 000015 
+    000261  0a   000140 400000 
+    000262  55   000027 000003 
+    000263  aa  022 146 141 165         fault_name_pointer
+    000264  aa  154 164 137 156
+    000265  aa  141 155 145 137
+    000266  aa  160 157 151 156
+    000267  aa  164 145 162 000
+    000270  55   000043 000024 
+    000271  0a   000137 400000 
+    000272  55   000037 000003 
+    000273  aa  014 142 141 144         bad_location
+    000274  aa  137 154 157 143
+    000275  aa  141 164 151 157
+    000276  aa  156 000 000 000
+    000277  55   000050 000034 
+    000300  0a   000051 400000 
+    000301  55   000046 000003 
+    000302  aa  005 143 154 145         clear
+    000303  aa  141 162 000 000
+    000304  55   000056 000043 
+    000305  0a   000011 400000 
+    000306  55   000053 000003 
+    000307  aa  011 143 154 145         clear_all
+    000310  aa  141 162 137 141
+    000311  aa  154 154 000 000
+    000312  55   000002 000050 
+    000313  6a   000000 400002 
+    000314  55   000061 000003 
+    000315  aa  014 163 171 155         symbol_table
+    000316  aa  142 157 154 137
+    000317  aa  164 141 142 154
+    000320  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000321  aa   000000 000015 
+    000322  aa   000000 000000 
+    000323  aa   000000 000000 
+    000324  aa   000000 000000 
+    000325  5a   000050 000000 
+    000326  aa   000000 000000 
+    000327  aa   000000 000000 
+    000330  5a   000056 000000 
+    000331  5a   000024 000000 
+    000332  aa   000000 000000 
+    000333  5a   000015 000000 
+    000334  5a   000043 000000 
+    000335  5a   000034 000000 
+    000336  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000337  aa  014 155 145 155         memory_error
+    000340  aa  157 162 171 137
+    000341  aa  145 162 162 157
+    000342  aa  162 000 000 000
+    000343  aa  013 163 171 163         system_type
+    000344  aa  164 145 155 137
+    000345  aa  164 171 160 145
+    000346  aa  017 154 066 070         l68_fault_names
+    000347  aa  137 146 141 165
+    000350  aa  154 164 137 156
+    000351  aa  141 155 145 163
+    000352  aa  015 142 157 157         bootload_info
+    000353  aa  164 154 157 141
+    000354  aa  144 137 151 156
+    000355  aa  146 157 000 000
+    000356  aa  010 155 141 153         make_sdw
+    000357  aa  145 137 163 144
+    000360  aa  167 000 000 000
+    000361  aa  015 142 157 157         bootload_dseg
+    000362  aa  164 154 157 141
+    000363  aa  144 137 144 163
+    000364  aa  145 147 000 000
+    000365  aa  014 157 165 164         out_of_stack
+    000366  aa  137 157 146 137
+    000367  aa  163 164 141 143
+    000370  aa  153 000 000 000
+    000371  aa  016 142 157 157         bootload_error
+    000372  aa  164 154 157 141
+    000373  aa  144 137 145 162
+    000374  aa  162 157 162 000
+    000375  aa  017 145 156 164         entry_stack_ptr
+    000376  aa  162 171 137 163
+    000377  aa  164 141 143 153
+    000400  aa  137 160 164 162
+    000401  aa  012 142 157 157         bootload_1
+    000402  aa  164 154 157 141
+    000403  aa  144 137 061 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000404  aa   000004 000000 
+    000405  55   000135 000103 
+    000406  aa   000004 000000 
+    000407  55   000116 000107 
+    000410  aa   000004 000000 
+    000411  55   000116 000112 
+    000412  aa   000004 000000 
+    000413  55   000125 000122 
+    000414  aa   000004 000000 
+    000415  55   000135 000131 
+    000416  aa   000004 000000 
+    000417  55   000145 000141 
+    000420  aa   000001 000000 
+    000421  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000422  5a   000150 000000 
+    000423  5a   000152 000000 
+    000424  5a   000154 000000 
+    000425  5a   000156 000000 
+    000426  5a   000160 000000 
+    000427  5a   000162 000000 
+LINKAGE INFORMATION
+
+    000000  aa   000000 000000 
+    000001  0a   000234 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000026 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         bootload_1|entry_stack_ptr
+    000011  5a   000173 0000 56
+    000012  9a   777766 0000 46         bootload_error|out_of_stack
+    000013  5a   000172 0000 00
+    000014  9a   777764 0000 46         bootload_dseg|make_sdw
+    000015  5a   000171 0000 00
+    000016  9a   777762 0000 46         bootload_1|entry_stack_ptr
+    000017  5a   000173 0000 54
+    000020  9a   777760 0000 46         bootload_info|l68_fault_names
+    000021  5a   000170 0000 15
+    000022  9a   777756 0000 46         bootload_info|system_type
+    000023  5a   000167 0000 00
+    000024  9a   777754 0000 46         bootload_error|memory_error
+    000025  5a   000166 0000 00
+SYMBOL INFORMATION
+
+SYMBOL TABLE HEADER
+
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000004 
+    000004  aa   000000 110172 
+    000005  aa   711315 365225 
+    000006  aa   000000 111307 
+    000007  aa   000554 466603 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000305 
+    000020  aa   000000 000241 
+    000021  aa   000000 000264 
+    000022  aa   000272 000241 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   040066 056064 
+    000030  aa   040040 101160 
+    000031  aa   162151 154040 
+    000032  aa   061071 070061 
+    000033  aa   040040 040040 
+    000034  aa   110157 154155 
+    000035  aa   163164 145144 
+    000036  aa   164056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056155 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040040 040040 
+    000046  aa   040040 040040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000010 
+    000066  aa   000126 000057 
+    000067  aa   113022 171007 
+    000070  aa   000000 111305 
+    000071  aa   524711 400000 
+    000072  aa   000142 000043 
+    000073  aa   112741 326565 
+    000074  aa   000000 111274 
+    000075  aa   624345 600000 
+    000076  aa   000153 000051 
+    000077  aa   112741 326562 
+    000100  aa   000000 111274 
+    000101  aa   624344 600000 
+    000102  aa   000166 000044 
+    000103  aa   112741 326622 
+    000104  aa   000000 111274 
+    000105  aa   624410 200000 
+    000106  aa   000177 000042 
+    000107  aa   101301 045475 
+    000110  aa   000000 110133 
+    000111  aa   352304 600000 
+    000112  aa   000210 000047 
+    000113  aa   113022 177713 
+    000114  aa   000000 111306 
+    000115  aa   721103 200000 
+    000116  aa   000222 000036 
+    000117  aa   106701 740603 
+    000120  aa   000000 110670 
+    000121  aa   206426 200000 
+    000122  aa   000232 000031 
+    000123  aa   043243 130516 
+    000124  aa   000000 104205 
+    000125  aa   554413 200000 
+    000126  aa   076144 165155          >dumps>old>recomp>bootload_memory_inspector.alm
+    000127  aa   160163 076157 
+    000130  aa   154144 076162 
+    000131  aa   145143 157155 
+    000132  aa   160076 142157 
+    000133  aa   157164 154157 
+    000134  aa   141144 137155 
+    000135  aa   145155 157162 
+    000136  aa   171137 151156 
+    000137  aa   163160 145143 
+    000140  aa   164157 162056 
+    000141  aa   141154 155040 
+    000142  aa   076154 144144          >ldd>include>bootload_equs.incl.alm
+    000143  aa   076151 156143 
+    000144  aa   154165 144145 
+    000145  aa   076142 157157 
+    000146  aa   164154 157141 
+    000147  aa   144137 145161 
+    000150  aa   165163 056151 
+    000151  aa   156143 154056 
+    000152  aa   141154 155040 
+    000153  aa   076154 144144          >ldd>include>bootload_cpu_macros.incl.alm
+    000154  aa   076151 156143 
+    000155  aa   154165 144145 
+    000156  aa   076142 157157 
+    000157  aa   164154 157141 
+    000160  aa   144137 143160 
+    000161  aa   165137 155141 
+    000162  aa   143162 157163 
+    000163  aa   056151 156143 
+    000164  aa   154056 141154 
+    000165  aa   155040 040040 
+    000166  aa   076154 144144          >ldd>include>io_status_word.incl.alm
+    000167  aa   076151 156143 
+    000170  aa   154165 144145 
+    000171  aa   076151 157137 
+    000172  aa   163164 141164 
+    000173  aa   165163 137167 
+    000174  aa   157162 144056 
+    000175  aa   151156 143154 
+    000176  aa   056141 154155 
+    000177  aa   076154 144144          >ldd>include>fault_vector.incl.alm
+    000200  aa   076151 156143 
+    000201  aa   154165 144145 
+    000202  aa   076146 141165 
+    000203  aa   154164 137166 
+    000204  aa   145143 164157 
+    000205  aa   162056 151156 
+    000206  aa   143154 056141 
+    000207  aa   154155 040040 
+    000210  aa   076144 165155          >dumps>old>recomp>coll0_segnos.incl.alm
+    000211  aa   160163 076157 
+    000212  aa   154144 076162 
+    000213  aa   145143 157155 
+    000214  aa   160076 143157 
+    000215  aa   154154 060137 
+    000216  aa   163145 147156 
+    000217  aa   157163 056151 
+    000220  aa   156143 154056 
+    000221  aa   141154 155040 
+    000222  aa   076154 144144          >ldd>include>sdw_info.incl.alm
+    000223  aa   076151 156143 
+    000224  aa   154165 144145 
+    000225  aa   076163 144167 
+    000226  aa   137151 156146 
+    000227  aa   157056 151156 
+    000230  aa   143154 056141 
+    000231  aa   154155 040040 
+    000232  aa   076154 144144          >ldd>include>slt.incl.alm
+    000233  aa   076151 156143 
+    000234  aa   154165 144145 
+    000235  aa   076163 154164 
+    000236  aa   056151 156143 
+    000237  aa   154056 141154 
+    000240  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         201    .._00000                 bootload_memory_inspector:      215.
+         402    abs_seg0_segno_          bootload_memory_inspector:       66,   68,
+                                         coll0_segnos:        14.
+           1    acls.acl                 slt:           62.
+          13    acls.code                slt:           66.
+           0    acls.count               slt:           61.
+          11    acls.mode                slt:           65.
+           1    acls.userid              slt:           64.
+           2    ADP_CPU_TYPE             bootload_equs:       22.
+           7    amount_to_clear          bootload_memory_inspector:       30,   54,   79.
+         137    bad_location             bootload_memory_inspector:      169,  170,  217.
+       20000    bbl1_absloc              bootload_equs:       48,   51.
+       14000    bbl1_lth                 bootload_equs:       49,   51.
+         401    bbl1_segno_              bootload_equs:       43,
+                                         coll0_segnos:        13.
+                bootload_1               bootload_memory_inspector:       45,   95,  158.
+                bootload_dseg            bootload_memory_inspector:       65.
+                bootload_error           bootload_memory_inspector:       45,   95,  220.
+                bootload_info            bootload_memory_inspector:      186,  215.
+         100    chans                    bootload_equs:       27.
+          51    clear                    bootload_memory_inspector:       71,   93,   95.
+          27    clear_again              bootload_memory_inspector:       63,   84.
+          11    clear_all                bootload_memory_inspector:       43,   44.
+         206    clear_segment            bootload_memory_inspector:      231,  232.
+         147    common                   bootload_memory_inspector:      179,  182,  186.
+          54    common_entry             bootload_memory_inspector:       99,  242.
+       12000    config_absloc            bootload_equs:       71.
+           3    config_segno_            coll0_segnos:         6.
+        2000    config_size              bootload_equs:       72.
+           2    connect_channel          bootload_equs:       31.
+         173    detail_handler           bootload_memory_inspector:      191,  214.
+        3400    dn355_mbx_absloc         bootload_equs:       69.
+           4    dn355_mbx_segno_         coll0_segnos:         7.
+           6    done_clearing_all        bootload_memory_inspector:       29,   59,   73,   83.
+           0    ds                       bootload_memory_inspector:       66,
+                                         bootload_equs:       10.
+       34000    dseg_absloc              bootload_equs:       51,   54.
+        2000    dseg_lth                 bootload_equs:       52,   54.
+           0    ds_segno_                coll0_segnos:         3.
+                entry_stack_ptr          bootload_memory_inspector:       45,   95,  158.
+           1    fault_channel            bootload_equs:       30.
+         140    fault_name_pointer       bootload_memory_inspector:      169,  171,  187,  189.
+          24    FAULT_NO_ACV             fault_vector:        46.
+           5    FAULT_NO_CMD             fault_vector:        31.
+          10    FAULT_NO_CON             fault_vector:        34.
+          20    FAULT_NO_DF0             fault_vector:        42.
+          21    FAULT_NO_DF1             fault_vector:        43.
+          22    FAULT_NO_DF2             fault_vector:        44.
+          23    FAULT_NO_DF3             fault_vector:        45.
+          16    FAULT_NO_DIV             fault_vector:        40.
+           6    FAULT_NO_DRL             fault_vector:        32.
+          17    FAULT_NO_EXF             fault_vector:        41.
+           3    FAULT_NO_F1              fault_vector:        29.
+          30    FAULT_NO_F2              fault_vector:        50.
+          31    FAULT_NO_F3              fault_vector:        51.
+          12    FAULT_NO_IPR             fault_vector:        36.
+           7    FAULT_NO_LUF             fault_vector:        33.
+           2    FAULT_NO_MME             fault_vector:        28.
+          25    FAULT_NO_MME2            fault_vector:        47.
+          26    FAULT_NO_MME3            fault_vector:        48.
+          27    FAULT_NO_MME4            fault_vector:        49.
+          15    FAULT_NO_OFL             fault_vector:        39.
+          13    FAULT_NO_ONC             bootload_memory_inspector:      111,  119,  146,  181,  192,
+                                         fault_vector:        37.
+          11    FAULT_NO_PAR             bootload_memory_inspector:      109,  117,  148,  178,  193,
+                                         fault_vector:        35.
+           0    FAULT_NO_SDF             fault_vector:        26.
+           1    FAULT_NO_STR             bootload_memory_inspector:      107,  121,  150,  184,  194,
+                                         fault_vector:        27.
+          14    FAULT_NO_SUF             fault_vector:        38.
+          37    FAULT_NO_TRB             fault_vector:        53.
+           4    FAULT_NO_TRO             fault_vector:        30.
+           6    fgbx_segno_              coll0_segnos:         9.
+       56000    first_free_absloc        bootload_equs:       63.
+           0    full_seg_length          bootload_memory_inspector:       31,   34.
+           7    fv                       bootload_memory_inspector:      107,  109,  111,  117,  119,  121,  146,  148,  150,
+                                                                         192,  193,  194,
+                                         bootload_equs:       17.
+         100    fv.fpair                 fault_vector:        17.
+         100    fv.fpair.scu             fault_vector:        19.
+         101    fv.fpair.tra             fault_vector:        20.
+         500    fv.f_scu_ptr             fault_vector:        24.
+         400    fv.f_tra_ptr             bootload_memory_inspector:      107,  109,  111,  117,  119,  121,  146,  148,  150,
+                                                                         192,  193,  194,
+                                         fault_vector:        23.
+           0    fv.ipair                 fault_vector:        13.
+           0    fv.ipair.scu             fault_vector:        15.
+           1    fv.ipair.tra             fault_vector:        16.
+         300    fv.i_scu_ptr             fault_vector:        22.
+         200    fv.i_tra_ptr             fault_vector:        21.
+           0    fv_absloc                bootload_equs:       67.
+           1    fv_segno_                bootload_memory_inspector:      235,
+                                         coll0_segnos:         4.
+         600    fv_size                  fault_vector:        10.
+         135    indicators               bootload_memory_inspector:      125,  126,  128,  129,  167.
+           4    ioms                     bootload_equs:       26.
+        1200    iom_base_absloc          bootload_equs:       68.
+           1    iom_cow                  bootload_equs:       28.
+           2    iom_mbx_segno_           coll0_segnos:         5.
+           1    io_st_word.abort         io_status_word:      26.
+           7    io_st_word.central_stat_mask   io_status_word:      30.
+          14    io_st_word.central_stat_shift  io_status_word:      29.
+           7    io_st_word.channel_stat_mask   io_status_word:      28.
+          17    io_st_word.channel_stat_shift  io_status_word:      27.
+          40    io_st_word.eo            io_status_word:      21.
+           2    io_st_word.initiate      io_status_word:      25.
+          17    io_st_word.major_mask    io_status_word:      18.
+          36    io_st_word.major_shift   io_status_word:      17.
+          20    io_st_word.marker        io_status_word:      22.
+          77    io_st_word.mbz_mask      io_status_word:      32.
+           6    io_st_word.mbz_shift     io_status_word:      31.
+      200000    io_st_word.power         io_status_word:      16.
+          77    io_st_word.rcount_mask   io_status_word:      34.
+           0    io_st_word.rcount_shift  io_status_word:      33.
+           3    io_st_word.soft_mask     io_status_word:      24.
+          24    io_st_word.soft_shift    io_status_word:      23.
+          77    io_st_word.sub_mask      io_status_word:      20.
+          30    io_st_word.sub_shift     io_status_word:      19.
+      400000    io_st_word.t             io_status_word:      15.
+           1    L68_CPU_TYPE             bootload_memory_inspector:      215,
+                                         bootload_equs:       21.
+                l68_fault_names          bootload_memory_inspector:      186.
+         136    length_in_words          bootload_memory_inspector:      101,  134,  168,  196,  198,  207.
+           4    LOCAL.no_nt_pg           bootload_equs:       40,   58.
+           2    LOCAL.no_prb_pg          bootload_equs:       41,   61.
+           2    LOCAL.no_slt_pg          bootload_equs:       39,   55.
+                make_sdw                 bootload_memory_inspector:       65.
+           2    mb                       bootload_equs:       12.
+                memory_error             bootload_memory_inspector:      220.
+           1    name_seg.ht              slt:           35.
+           0    name_seg.next_loc        slt:           33.
+         201    name_seg_size            slt:           31.
+           4    nt                       bootload_equs:       14.
+       42000    nt_absloc                bootload_equs:       57,   60.
+       10000    nt_lth                   bootload_equs:       58,   60.
+          10    nt_segno_                coll0_segnos:        11.
+         126    old_onc_pair             bootload_memory_inspector:      112,  145,  163.
+         122    old_parity_pair          bootload_memory_inspector:      110,  147,  161.
+         124    old_store_pair           bootload_memory_inspector:      108,  149,  162.
+         144    onc_fault_handler        bootload_memory_inspector:      118,  180.
+                out_of_stack             bootload_memory_inspector:       45,   95.
+         142    parity_fault_handler     bootload_memory_inspector:      116,  177.
+           0    path.acls                slt:           56.
+           1    path.name                slt:           55.
+           0    path.size                slt:           54.
+           5    prb                      bootload_equs:       15.
+       52000    prb_absloc               bootload_equs:       60,   63.
+        4000    prb_lth                  bootload_equs:       61,   63.
+         400    prb_segno_               coll0_segnos:        12.
+         105    return                   bootload_memory_inspector:      143,  210,  246.
+         220    return_error             bootload_memory_inspector:      219,  244.
+         134    return_via_return        bootload_memory_inspector:       97,  152,  166,  218,  241.
+         132    save_pr7                 bootload_memory_inspector:      155,  165,  234.
+         130    save_the_return_ptr      bootload_memory_inspector:      154,  164,  233.
+           2    sdw_info.access          bootload_memory_inspector:       58,
+                                         sdw_info:      20.
+           0    sdw_info.address         bootload_memory_inspector:       52,   76,   78,
+                                         sdw_info:      18.
+           1    sdw_info.bound           bootload_memory_inspector:       56,   69,   82,
+                                         sdw_info:      19.
+      100000    sdw_info.cache           sdw_info:      40.
+      200000    sdw_info.execute         sdw_info:      23.
+      200000    sdw_info.faulted         sdw_info:      39.
+           4    sdw_info.flags           sdw_info:      36.
+           5    sdw_info.gate_entry_bound      sdw_info:      42.
+      400000    sdw_info.paged           sdw_info:      38.
+       40000    sdw_info.privileged      sdw_info:      25.
+           7    sdw_info.r1_mask         sdw_info:      30.
+          41    sdw_info.r1_shift        sdw_info:      29.
+           7    sdw_info.r2_mask         sdw_info:      32.
+          36    sdw_info.r2_shift        sdw_info:      31.
+           7    sdw_info.r3_mask         sdw_info:      34.
+          33    sdw_info.r3_shift        sdw_info:      33.
+      400000    sdw_info.read            bootload_memory_inspector:       57,
+                                         sdw_info:      22.
+           3    sdw_info.rings           sdw_info:      27.
+      100000    sdw_info.write           bootload_memory_inspector:       57,
+                                         sdw_info:      24.
+           6    sdw_info_size            bootload_memory_inspector:       28,   50,
+                                         sdw_info:      15.
+           6    seg                      bootload_equs:       16.
+           1    seg2                     bootload_memory_inspector:      116,  117,  118,  119,  120,  121,  191,
+                                         bootload_equs:       11.
+           0    segnam.count             slt:           41.
+           1    segnam.hp                slt:           44.
+           2    segnam.name              slt:           49.
+           1    segnam.names             slt:           42.
+      400000    segnam.ref               slt:           45.
+        7777    segnam.segno_mask        slt:           47.
+           0    segnam.segno_shift       slt:           46.
+           0    si                       bootload_memory_inspector:       28,   50,   52,   56,   58,   64,   69,   76,   78,   82.
+           3    slt                      bootload_memory_inspector:       51,   53,
+                                         bootload_equs:       13.
+           5    slt.first_init_seg       slt:           21.
+           3    slt.first_sup_seg        slt:           19.
+           7    slt.free_core_size       bootload_memory_inspector:       53,
+                                         slt:           23.
+           2    slt.free_core_start      bootload_memory_inspector:       51,
+                                         slt:           18.
+           6    slt.last_init_seg        slt:           22.
+           4    slt.last_sup_seg         slt:           20.
+           0    slt.name_seg_ptr         slt:           17.
+          10    slt.seg                  slt:           24.
+          10    slt.slte                 slt:           26.
+       36000    slt_absloc               bootload_equs:       54,   57.
+        4000    slt_lth                  bootload_equs:       55,   57.
+           7    slt_segno_               coll0_segnos:        10.
+      100010    slt_size                 slt:           14.
+           6    special_channel          bootload_equs:       32.
+         146    store_fault_handler      bootload_memory_inspector:      120,  183.
+                system_type              bootload_memory_inspector:      215.
+       10000    toehold_absloc           bootload_equs:       70.
+           5    toehold_segno_           coll0_segnos:         8.
+          10    two_fifty_six_K          bootload_memory_inspector:       33,   55,   77,   80.
+         164    word_by_word_loop        bootload_memory_inspector:      201,  208.
+         120    x2_return                bootload_memory_inspector:       74,   81,  153,  157.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

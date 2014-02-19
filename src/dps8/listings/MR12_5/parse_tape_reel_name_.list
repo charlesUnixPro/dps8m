@@ -1,0 +1,202 @@
+	COMPILATION LISTING OF SEGMENT parse_tape_reel_name_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1008.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* PARSE_TAPE_REEL_NAME_ - Produce IOX Attach Description from Tape Reel Name
+        9*   coded 9/16/77 by Noel I. Morris
+       10*   modified 4/79 by R.J.C. Kissel to recognize 6250 bpi.
+       11*   modified 2/80 by Michael R. Jordan to lengthen the descrip variable.
+       12**/
+       13 
+       14 /* ******************************************************
+       15*   *                                                    *
+       16*   *                                                    *
+       17*   * Copyright (c) 1972 by Massachusetts Institute of   *
+       18*   * Technology and Honeywell Information Systems, Inc. *
+       19*   *                                                    *
+       20*   *                                                    *
+       21*   ****************************************************** */
+       22 
+       23 
+       24 
+       25 parse_tape_reel_name_:
+       26      proc (reelname, attach_descrip);
+       27 
+       28 /* Private version for backup handles long comment strings */
+       29 /* S. Herbst 05/15/81 */
+       30 
+       31 dcl  reelname char (*),				/* tape reel name */
+       32      attach_descrip char (*);				/* IOX attach description */
+       33 
+       34 dcl (comment, descrip) char (256) var,
+       35     (i, j) fixed bin,
+       36      atom char (32) var;
+       37 
+       38 dcl  requote_string_ entry (char (*)) returns (char (*));
+       39 
+       40 dcl (index, length, rtrim, substr) builtin;
+       41 
+       42 
+       43 	comment, descrip = "";
+       44 
+       45 	i = index (reelname, ",");
+       46 	if i = 0
+       47 	then descrip = reelname;
+       48 	else
+       49 	do;
+       50 	     descrip = substr (reelname, 1, i - 1);
+       51 	     do while (i ^= 0);
+       52 		j = index (substr (reelname, i + 1), ",");
+       53 		if j = 0
+       54 		then atom = substr (reelname, i + 1);
+       55 		else
+       56 		do;
+       57 		     j = j + i;
+       58 		     atom = substr (reelname, i + 1, j - i - 1);
+       59 		end;
+       60 
+       61 		if atom = "7track"
+       62 		then descrip = descrip || " -tk 7";
+       63 		else if atom = "9track"
+       64 		then descrip = descrip || " -tk 9";
+       65 		else if index (atom, "=800") ^= 0
+       66 		then descrip = descrip || " -den 800";
+       67 		else if index (atom, "=1600") ^= 0
+       68 		then descrip = descrip || " -den 1600";
+       69 		else if index (atom, "=6250") ^= 0
+       70 		then descrip = descrip || " -den 6250";
+       71 		else if atom = "800"
+       72 		then descrip = descrip || " -den 800";
+       73 		else if atom = "1600"
+       74 		then descrip = descrip || " -den 1600";
+       75 		else if atom = "6250"
+       76 		then descrip = descrip || " -den 6250";
+       77 		else if atom = "sys"
+       78 		then descrip = descrip || " -sys";
+       79 
+       80 		else comment = comment || atom || " ";
+       81 		i = j;
+       82 	     end;
+       83 	end;
+       84 
+       85 	if comment ^= "" then do;
+       86 	     comment = rtrim (comment);
+       87 	     descrip = descrip || " -com ";
+       88 	     if length (descrip) + length (comment) <= length (attach_descrip) then /* fits in caller's arg */
+       89 		descrip = descrip || requote_string_ ((comment));
+       90 	     else descrip = descrip || requote_string_ (substr (comment, 1, length (attach_descrip) - length (descrip)));
+       91 	end;
+       92 
+       93 	attach_descrip = descrip;
+       94 
+       95 	return;
+       96 
+       97 
+       98      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0811.3  parse_tape_reel_name_.pl1         >spec>install>1112>parse_tape_reel_name_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+atom                            000304 automatic       varying char(32)         dcl 34 set ref 53* 58* 61 63 65 67 69 71 73 75 77 80
+attach_descrip                         parameter       char                     packed unaligned dcl 31 set ref 25 88 90 90 93*
+comment                         000100 automatic       varying char(256)        dcl 34 set ref 43* 80* 80 85 86* 86 88 88 90 90
+descrip                         000201 automatic       varying char(256)        dcl 34 set ref 43* 46* 50* 61* 61 63* 63 65* 65 67*
+                                                                                  67 69* 69 71* 71 73* 73 75* 75 77* 77 87* 87 88
+                                                                                  88* 88 90* 90 90 90 93
+i                               000302 automatic       fixed bin(17,0)          dcl 34 set ref 45* 46 50 51 52 53 57 58 58 81*
+index                                                  builtin function         dcl 40 ref 45 52 65 67 69
+j                               000303 automatic       fixed bin(17,0)          dcl 34 set ref 52* 53 57* 57 58 81
+length                                                 builtin function         dcl 40 ref 88 88 88 90 90 90 90
+reelname                               parameter       char                     packed unaligned dcl 31 ref 25 45 46 50 52 53 58
+requote_string_                 000010 constant        entry                    external dcl 38 ref 88 90
+rtrim                                                  builtin function         dcl 40 ref 86
+substr                                                 builtin function         dcl 40 ref 50 52 53 58 90 90
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+parse_tape_reel_name_           000045 constant        entry                    external dcl 25
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       712         724     653         722
+Length      1072     653        12         132      36           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+parse_tape_reel_name_               224 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+parse_tape_reel_name_    000100 comment                     parse_tape_reel_name_
+                         000201 descrip                     parse_tape_reel_name_
+                         000302 i                           parse_tape_reel_name_
+                         000303 j                           parse_tape_reel_name_
+                         000304 atom                        parse_tape_reel_name_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   return_mac          shorten_stack       ext_entry_desc
+set_chars_eis       index_chars_eis
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+requote_string_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     25 000041        43 000065        45 000067        46 000103        50 000115        51 000125        52 000130
+     53 000147        57 000161        58 000163        61 000175        63 000215        65 000235        67 000257
+     69 000301        71 000323        73 000343        75 000363        77 000403        80 000423        81 000457
+     82 000462        85 000463        86 000470        87 000506        88 000520        90 000572        91 000641
+     93 000642        95 000651
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,278 @@
+	COMPILATION LISTING OF SEGMENT limit_covert_channel
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 limit_covert_channel: proc (event_count);
+        9 
+       10 /* Procedure to limit/audit uses of covert channels in ring 0.
+       11*The idea is that some primitive detected the potential use of a covert
+       12*channel that sent <event_count> events (bits).  This will be added to
+       13*pds$covert_event_count.  If the process hits a defined limit of events,
+       14*we determine the bandwidth of the transmission associated with the
+       15*events we have seen.  If this exceeds certain limits, the process will
+       16*be delayed, and possibly audited for the event.
+       17*Written by Keith Loepere in Januray 1985. 
+       18**/
+       19 
+       20 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       21 
+       22 /* Arguments */
+       23 
+       24 dcl  event_count			fixed bin parameter;
+       25 
+       26 /* Constants */
+       27 
+       28 dcl  BIG_fb_35_value		fixed bin (35) init (011111111111111111111111111111111111b) static options (constant);
+       29 dcl  ME				char (20) init ("limit_covert_channel") static options (constant);
+       30 dcl  Tics_per_sec			fixed bin (20) init (1000000) static options (constant);
+       31 
+       32 /* Variables */
+       33 
+       34 dcl  delay_time			fixed bin (71);
+       35 dcl  desired_event_count		fixed bin;
+       36 dcl  elapsed_time			fixed bin (71);
+       37 dcl  limit			bit (1) aligned;
+       38 dcl  my_audit_event_flags		bit (36) aligned;
+       39 dcl  new_event_count		fixed bin;
+       40 dcl  old_event_count		fixed bin;
+       41 dcl  time_per_bit			fixed bin (35);
+       42 
+       43 /* Entries */
+       44 
+       45 dcl  access_audit_$log_general	entry (char (*), fixed bin, bit (36) aligned, bit (36) aligned, char (*), fixed bin (35), ptr, fixed bin (21)) options (variable);
+       46 dcl  pxss$pause			entry (fixed bin (71));
+       47 
+       48 /* External */
+       49 
+       50 dcl  access_operations_$excessive_seg_state_chg bit (36) aligned ext;
+       51 dcl  pds$covert_event_count		fixed bin ext;
+       52 dcl  pds$first_covert_event_time	fixed bin (71) ext;
+       53 dcl  sst$audit_seg_state_change_bw	fixed bin ext;
+       54 dcl  sst$audit_seg_state_chg		fixed bin (35) ext;
+       55 dcl  sst$delayed_seg_state_chg	fixed bin (35) ext;
+       56 dcl  sst$max_seg_state_change_bw	fixed bin ext;
+       57 dcl  sst$seg_state_change_limit	fixed bin ext;
+       58 dcl  sst$seg_state_chg_delay		fixed bin (71) ext;
+       59 
+       60 /* Misc */
+       61 
+       62 dcl  (addr, clock, divide, null, stacq)	builtin;
+       63 
+       64 
+       65 /* We start by setting pds$covert_event_count to its correct value.  In
+       66*principle, this should be done under the PTL, since page control can
+       67*increment this value if we should take the wrong page fault.  However,
+       68*we can set this without locking the PTL as follows.  We determine what the
+       69*value should be and try to stacq it.  If we fail, page control must have
+       70*done its thing.  We then retry.  Admitedly, we can end up with page control
+       71*being invoked between when we set pds$covert_event_count and when we set
+       72*pds$first_covert_event_time, but, if we were to need to advance 
+       73*pds$first_covert_event_time, it follows that we returned pds$covert_event_count
+       74*to such a small value that it is unlikely that page control could find enough
+       75*events to need to care about pds$first_covert_channel_time until we can set
+       76*it. */
+       77 
+       78 SET_count:
+       79 	limit = "0"b;
+       80 	old_event_count = pds$covert_event_count;
+       81 	desired_event_count, new_event_count = old_event_count + event_count;
+       82 	if desired_event_count >= 0 then do;		/* enough to determine bandwidth over */
+       83 	     limit = "1"b;
+       84 	     new_event_count = new_event_count - sst$seg_state_change_limit; /* counter is an upward counter to 0 */
+       85 	end;
+       86 	if ^set_event_count () then go to SET_count;	/* try setting new event count */
+       87 
+       88 	if ^limit then return;			/* not yet hit number of events over which we determine bandwidth */
+       89 
+       90 /* determine bandwidth of channel - this code parallels that in page_fault */
+       91 
+       92 	elapsed_time = clock () - pds$first_covert_event_time;
+       93 	if elapsed_time > BIG_fb_35_value then go to set_time; /* bailout to avoid messy precision later */
+       94 	time_per_bit = divide (fixed (elapsed_time, 35), desired_event_count + sst$seg_state_change_limit, 35);
+       95 
+       96 	if time_per_bit * sst$audit_seg_state_change_bw < Tics_per_sec then do; /* if time_per_bit < allowed time_per_bit */
+       97 	     sst$audit_seg_state_chg = sst$audit_seg_state_chg + 1;
+       98 	     my_audit_event_flags = "0"b;
+       99 	     addr (my_audit_event_flags) -> audit_event_flags.grant = "1"b;
+      100 	     addr (my_audit_event_flags) -> audit_event_flags.cc_10_100 = "1"b;
+      101 	     call access_audit_$log_general (ME, 0, my_audit_event_flags, access_operations_$excessive_seg_state_chg, "", 0, null, 0);
+      102 	end;
+      103 
+      104 	if time_per_bit * sst$max_seg_state_change_bw < Tics_per_sec then do; /* if time_per_bit < allowed time_per_bit */
+      105 	     sst$delayed_seg_state_chg = sst$delayed_seg_state_chg + 1;
+      106 	     delay_time = (divide (Tics_per_sec, sst$max_seg_state_change_bw, 35) - time_per_bit) * (desired_event_count + sst$seg_state_change_limit);
+      107 	     sst$seg_state_chg_delay = delay_time + sst$seg_state_chg_delay;
+      108 	     delay_time = delay_time + clock ();
+      109 	     do while (clock () < delay_time);
+      110 		call pxss$pause (delay_time);
+      111 	     end;
+      112 	end;
+      113 
+      114 set_time: pds$first_covert_event_time = clock ();
+      115 	return;
+      116 
+      117 set_event_count: proc () returns (bit (1) aligned);	/* try to store new event_count */
+      118 
+      119 dcl  new_value			bit (36) aligned based (addr (new_event_count));
+      120 dcl  old_value			bit (36) aligned based (addr (old_event_count));
+      121 dcl  word				bit (36) aligned based (addr (pds$covert_event_count));
+      122 
+      123 	return (stacq (word, new_value, old_value));
+      124      end;
+      125  /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      125 
+      126      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.0  limit_covert_channel.pl1          >spec>install>1112>limit_covert_channel.pl1
+125          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+BIG_fb_35_value                 000006 constant        fixed bin(35,0)          initial dcl 28 ref 93
+ME                              000001 constant        char(20)                 initial packed unaligned dcl 29 set ref 101*
+Tics_per_sec                    000000 constant        fixed bin(20,0)          initial dcl 30 ref 96 104 106
+access_audit_$log_general       000010 constant        entry                    external dcl 45 ref 101
+access_operations_$excessive_seg_state_chg
+                                000014 external static bit(36)                  dcl 50 set ref 101*
+addr                                                   builtin function         dcl 62 ref 99 100 123 123 123
+audit_event_flags                      based           structure                level 1 dcl 1-5
+cc_10_100                 0(05)        based           bit(1)                   level 2 packed packed unaligned dcl 1-5 set ref 100*
+clock                                                  builtin function         dcl 62 ref 92 108 109 114
+delay_time                      000100 automatic       fixed bin(71,0)          dcl 34 set ref 106* 107 108* 108 109 110*
+desired_event_count             000102 automatic       fixed bin(17,0)          dcl 35 set ref 81* 82 94 106
+divide                                                 builtin function         dcl 62 ref 94 106
+elapsed_time                    000104 automatic       fixed bin(71,0)          dcl 36 set ref 92* 93 94
+event_count                            parameter       fixed bin(17,0)          dcl 24 ref 8 81
+grant                     0(01)        based           bit(1)                   level 2 packed packed unaligned dcl 1-5 set ref 99*
+limit                           000106 automatic       bit(1)                   dcl 37 set ref 78* 83* 88
+my_audit_event_flags            000107 automatic       bit(36)                  dcl 38 set ref 98* 99 100 101*
+new_event_count                 000110 automatic       fixed bin(17,0)          dcl 39 set ref 81* 84* 84 123
+new_value                              based           bit(36)                  dcl 119 ref 123
+null                                                   builtin function         dcl 62 ref 101 101
+old_event_count                 000111 automatic       fixed bin(17,0)          dcl 40 set ref 80* 81 123
+old_value                              based           bit(36)                  dcl 120 ref 123
+pds$covert_event_count          000016 external static fixed bin(17,0)          dcl 51 set ref 80 123
+pds$first_covert_event_time     000020 external static fixed bin(71,0)          dcl 52 set ref 92 114*
+pxss$pause                      000012 constant        entry                    external dcl 46 ref 110
+sst$audit_seg_state_change_bw   000022 external static fixed bin(17,0)          dcl 53 ref 96
+sst$audit_seg_state_chg         000024 external static fixed bin(35,0)          dcl 54 set ref 97* 97
+sst$delayed_seg_state_chg       000026 external static fixed bin(35,0)          dcl 55 set ref 105* 105
+sst$max_seg_state_change_bw     000030 external static fixed bin(17,0)          dcl 56 ref 104 106
+sst$seg_state_change_limit      000032 external static fixed bin(17,0)          dcl 57 ref 84 94 106
+sst$seg_state_chg_delay         000034 external static fixed bin(71,0)          dcl 58 set ref 107* 107
+stacq                                                  builtin function         dcl 62 ref 123
+time_per_bit                    000112 automatic       fixed bin(35,0)          dcl 41 set ref 94* 96 104 106
+word                                   based           bit(36)                  dcl 121 ref 123
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+SET_count                       000032 constant        label                    dcl 78 ref 86
+limit_covert_channel            000025 constant        entry                    external dcl 8
+set_event_count                 000241 constant        entry                    internal dcl 117 ref 86
+set_time                        000235 constant        label                    dcl 114 ref 93
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+fixed                                                  builtin function         ref 94
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       456         514     260         466
+Length       724     260        36         174     176           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+limit_covert_channel                122 external procedure  is an external procedure.  
+set_event_count                         internal procedure  shares stack frame of external procedure limit_covert_channel.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+limit_covert_channel     000100 delay_time                  limit_covert_channel
+                         000102 desired_event_count         limit_covert_channel
+                         000104 elapsed_time                limit_covert_channel
+                         000106 limit                       limit_covert_channel
+                         000107 my_audit_event_flags        limit_covert_channel
+                         000110 new_event_count             limit_covert_channel
+                         000111 old_event_count             limit_covert_channel
+                         000112 time_per_bit                limit_covert_channel
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mpfx2               ext_entry           stacq_mac
+clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_$log_general     pxss$pause
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$excessive_seg_state_chg                  pds$covert_event_count        pds$first_covert_event_time
+sst$audit_seg_state_change_bw sst$audit_seg_state_chg       sst$delayed_seg_state_chg     sst$max_seg_state_change_bw
+sst$seg_state_change_limit    sst$seg_state_chg_delay
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+      8 000022        78 000032        80 000033        81 000036        82 000042        83 000043        84 000045
+     86 000047        88 000054        92 000056        93 000062        94 000066        96 000074        97 000102
+     98 000106        99 000107       100 000111       101 000113       104 000163       105 000173       106 000177
+    107 000215       108 000217       109 000222       110 000225       111 000234       114 000235       115 000240
+    117 000241       123 000243
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,2635 @@
+	COMPILATION LISTING OF SEGMENT disk_rebuild
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1030.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 /* disk_rebuild (from_pvtx, to_pvtx, label_pagep, opt_bits, addr_delta, code);
+       15*
+       16*   Assume from_pvtx was volume salvaged and is currently in use.
+       17*   From_pvtx is rebuilt by moving low partitions to make room
+       18*   for the increased vtoc, and copying all vtoce pages by
+       19*   using addr_delta address assignment (since disk rotation
+       20*   makes it impossible to address consecutively laid out segments
+       21*   in the same rotation).
+       22*
+       23*   Written by B. S. Greenberg
+       24*   Modified 8/79 by Mike Grady to fix two bugs - partition display following
+       25*   a rebuild, and to skip ehs entries on rpv rebuild.
+       26*   Modified 03/21/81, W. Olin Sibert, for ADP PTWs and SDWs
+       27*   Modified 03/08/82, J. Bongiovanni, to set pvte.n_vtoce on "to" volume,
+       28*   for new PVTE, and to allow VTOC compression
+       29*   Modified 12/06/82, J. Bongiovanni, for VTOCE checksums
+       30*   Modified 8/9/83, E. N. Kittlitz, search_ast$check, lock ast
+       31**/
+       32 
+       33 /****^  HISTORY COMMENTS:
+       34*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       35*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       36*     Correct error message documentation.
+       37*  2) change(86-06-02,Fawcett), approve(86-04-11,MCR7383),
+       38*     audit(86-06-29,Beattie), install(86-07-17,MR12.0-1097):
+       39*     Add support for 512_WORD_IO devices, calculating n_vtoce
+       40*     per device_type.
+       41*  3) change(86-10-23,Fawcett), approve(86-10-23,MCR7517),
+       42*     audit(86-10-30,Beattie), install(86-11-03,MR12.0-1206):
+       43*     Changed to remove the word BOS from message.
+       44*  4) change(87-09-23,Fawcett), approve(87-09-23,MECR0009),
+       45*     audit(87-09-23,Beattie), install(87-09-24,MR12.1-1120):
+       46*     Change to the internal proc CHECK_VTOC_SIZES.  Fix a bug so that the new
+       47*     number of vtoces will be calculated on the pvtx2 device type instead of
+       48*     pvtx1.
+       49*  5) change(89-09-07,Farley), approve(89-10-05,MCR8137),
+       50*     audit(89-10-11,WAAnderson), install(89-10-11,MR12.3-1090):
+       51*     Changed to call the "no test" entries of read_disk and write_disk, except
+       52*     when reading or writing the label record.  This will speed up processing
+       53*     of the rebuild.
+       54*     
+       55*     Added a call to pc_wired$write to update modified pages of entry-held
+       56*     (ehs) segments back to disk, except when they are contained in a hardcore
+       57*     partition.  (phx14387)
+       58*     
+       59*     Modified the CHECK_VTOC_SIZES procedure to only check the valid vtoc map
+       60*     bits.  Bits on in the PAD bit fields of the words, due to an inconsistent
+       61*     volume, was resulting in a failure to do VTOC compression. (phx15063 &
+       62*     phx17219)
+       63*     
+       64*     Removed a non-local goto at the end of the CLEAN_UP procedure that was
+       65*     prematurely stopping the unwinder's cleanup process.
+       66*                                                   END HISTORY COMMENTS */
+       67 
+       68 /* format: style4 */
+       69 disk_rebuild: proc (a_pvtx1, a_pvtx2, label_pagep, opt_bits, addr_delta, a_code);
+       70 
+       71 
+       72 dcl  (a_pvtx1, a_pvtx2, pvtx) fixed bin;		/* Physical volume table index of vol to be salvaged */
+       73 dcl  (pvtx1, pvtx2) fixed bin,
+       74      (i, j, k, l, r, first_free, last_free) fixed bin;
+       75 dcl  (vtoce_incr, n_vtoce, addr_delta) fixed bin;
+       76 dcl  (baseadd1, baseadd2, old_vtoc_size, lost_pages) fixed bin,
+       77      (addr_index, map_size) fixed bin,
+       78      (lp, label_pagep) ptr,
+       79      opt_bits bit (36) aligned,
+       80      save_vtocx fixed bin init (-1),
+       81      damaged_count fixed bin init (0),
+       82      delta fixed bin;
+       83 dcl  vtoc_buf bit (36 * 192) aligned,
+       84      vtoc_bufp ptr;
+       85 dcl  page_buf bit (36 * 1024) aligned,
+       86      bufp ptr;
+       87 dcl  (a_code, code) fixed bin (35);			/* Error code */
+       88 
+       89 dcl  no_free_aste_err fixed bin (35) internal static init (1);
+       90 
+       91 dcl  table1p ptr;					/* Pointer to table1, i.e. bit_table */
+       92 dcl  table3p ptr;					/* Pointer to table3, i.e. new_bit_map */
+       93 
+       94 dcl  s_ptr ptr;
+       95 
+       96 dcl  ptp pointer;					/* Pointer to page table in aste */
+       97 dcl  vtocx fixed bin;				/* Index of the vtoc entry being processed */
+       98 dcl  pvid bit (36) aligned;				/* ID of volume being processed */
+       99 dcl  n_used_rec fixed bin;				/* Number of records used */
+      100 dcl  n_free_vtoce fixed bin;				/* Number of free vtoc entries */
+      101 dcl  max_n_vtoc_seg fixed bin internal static init (16);
+      102 dcl  free_count fixed bin;				/* count of free vtoces added to consolidated list */
+      103 dcl  p99 pic "99";					/* for name conversion */
+      104 dcl  (dname1, dname2) char (9) varying;
+      105 
+      106 
+      107 dcl  1 table1 based (table1p) aligned,
+      108        2 bit_table (0:label.vol_size - 1) bit (1) unaligned;
+      109 
+      110 
+      111 dcl  pds$processid ext bit (36) aligned;
+      112 
+      113 dcl  sst$astl bit (36) aligned external;
+      114 dcl  sst$astsize fixed bin external;
+      115 dcl  sst$checksum_filemap fixed bin external;
+      116 dcl  1 sst$level (0:3) aligned external,
+      117        2 ausedp bit (18) unaligned,
+      118        2 no_aste bit (18) unaligned;
+      119 dcl  sst$pts (0:3) fixed bin external;
+      120 dcl  sst$root_pvtx fixed bin external;
+      121 
+      122 dcl  pv_salv_seg$ fixed bin external static;
+      123 dcl  volmap_abs_seg$ external static;
+      124 dcl  dseg$ (0:1023) fixed bin (71) aligned external static;
+      125 
+      126 dcl  filemap_checksum_ entry (ptr, fixed bin, bit (36) aligned);
+      127 dcl  get_aste entry (fixed bin) returns (ptr);
+      128 dcl  get_ptrs_$given_segno entry (fixed bin) returns (ptr);
+      129 dcl  get_ptrs_$given_astep entry (ptr) returns (fixed bin (71) aligned);
+      130 dcl  get_pvtx$hold_pvtx entry (bit (36) aligned, fixed bin, fixed bin (35));
+      131 dcl  get_pvtx$release_pvtx entry (bit (36) aligned, fixed bin (35));
+      132 dcl  lock$lock_ast entry;
+      133 dcl  lock$unlock_ast entry;
+      134 dcl  page$cam entry;
+      135 dcl  pc$cleanup ext entry (ptr);
+      136 dcl  pc$truncate_deposit_all entry (ptr);
+      137 dcl  pc_wired$write entry (ptr, fixed bin, fixed bin);
+      138 dcl  pc_wired$write_wait entry (ptr, fixed bin, fixed bin);
+      139 dcl  pmut$swap_sdw entry (ptr, ptr);
+      140 dcl  ptw_util_$make_null entry (pointer, bit (22) aligned);
+      141 dcl  put_aste entry (ptr);
+      142 dcl  read_disk entry (fixed bin, fixed bin, ptr, fixed bin (35));
+      143 dcl  read_disk$read_disk_no_test entry (fixed bin, fixed bin, ptr, fixed bin (35));
+      144 dcl  salvager$set_options ext entry (bit (36) aligned);
+      145 dcl  salv_err_msg entry options (variable);
+      146 dcl  salv_err_msg$code entry options (variable);
+      147 dcl  search_ast$check ext entry (bit (36) aligned, bit (36) aligned, fixed bin, fixed bin (35)) returns (ptr);
+      148 dcl  syserr entry options (variable);
+      149 dcl  thread$out entry (ptr, bit (18));
+      150 dcl  update_vtoce ext entry (ptr);
+      151 dcl  vm_vio$clean_up entry (fixed bin);
+      152 dcl  vm_vio$get_vtocep entry (fixed bin, fixed bin) returns (ptr);
+      153 dcl  vm_vio$init entry (fixed bin, fixed bin (35)) returns (ptr);
+      154 dcl  vtoc_man$get_vtoce ext entry (bit (36) aligned, fixed bin, fixed bin, bit (3) aligned, ptr, fixed bin (35));
+      155 dcl  vtoce_stock_man$drain_stock_range entry (ptr, fixed bin, fixed bin);
+      156 dcl  write_disk entry (fixed bin, fixed bin, ptr, fixed bin (35));
+      157 dcl  write_disk$write_disk_no_test entry (fixed bin, fixed bin, ptr, fixed bin (35));
+      158 
+      159 dcl  (cleanup, page_fault_error) condition;
+      160 
+      161 dcl  (min, null, addr, addrel, baseno, bit, ceil, divide, fixed, mod, ptr, rel, rtrim, substr, unspec) builtin;
+      162 
+      163 
+      164 
+      165 /* MAIN PROGRAM */
+      166 
+      167 	vtoc_bufp = addr (vtoc_buf);
+      168 	bufp = addr (page_buf);
+      169 
+      170 	begin;					/* allocate tables for address incrementation */
+      171 
+      172 dcl  last_used (addr_delta) fixed bin;
+      173 
+      174 	     delta = addr_delta;
+      175 	     lp = label_pagep;
+      176 	     pvtx1 = a_pvtx1;
+      177 	     pvtx2, pvtx = a_pvtx2;
+      178 	     code = 0;
+      179 	     free_count = 0;
+      180 	     pvt_arrayp = addr (pvt$array);
+      181 
+      182 	     call salvager$set_options (opt_bits);
+      183 	     p99 = pvt_array (pvtx1).logical_area_number;
+      184 	     dname1 = rtrim (pvt_array (pvtx1).devname || "_" || p99 || pvt_array (pvtx1).sv_name);
+      185 	     p99 = pvt_array (pvtx2).logical_area_number;
+      186 	     dname2 = rtrim (pvt_array (pvtx2).devname || "_" || p99 || pvt_array (pvtx2).sv_name);
+      187 
+      188 	     call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: Begin disk rebuild of ^a onto ^a.", dname1, dname2);
+      189 	     if pvtx1 = pvtx2 then do;
+      190 		call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: same drive specified for source and copy, aborting.");
+      191 		goto err_ret;
+      192 	     end;
+      193 
+      194 	     if ^pvt_array (pvtx1).used then do;
+      195 		call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: ^a must be mounted for rebuild.", dname1);
+      196 		goto err_ret;
+      197 	     end;
+      198 
+      199 	     if pvt_array (pvtx2).used then do;
+      200 		call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: ^a must not be mounted for rebuild.", dname2);
+      201 		goto err_ret;
+      202 	     end;
+      203 
+      204 	     call CHECK_VTOC_SIZES;
+      205 
+      206 	     pvtep = addr (pvt_array (pvtx2));
+      207 	     pvid = addr (pvt_array (pvtx1)) -> pvte.pvid;/* get first disk id */
+      208 
+      209 /* cop label so vm_vio init works */
+      210 	     do i = 0 to VTOC_ORIGIN - 0;
+      211 		if i = 0 then call copy_page (0, 0, "1"b);
+      212 		else call copy_page (i, i, "0"b);
+      213 	     end;
+      214 
+      215 	     on cleanup begin;
+      216 		     if salv_data$debug then call syserr (CRASH, "disk_rebuild: salv cleanup debugging stop, dump and type go.");
+      217 		     call CLEAN_UP;
+      218 		end;
+      219 
+      220 /* label.vtoc_size has been updated to new value, other info  old */
+      221 	     s_ptr = vm_vio$init (pvtx, code); if code ^= 0 then goto err_ret;
+      222 
+      223 	     labelp = ptr (s_ptr, LABEL_ADDR * 1024);
+      224 	     vol_mapp = ptr (s_ptr, VOLMAP_ADDR * 1024);
+      225 	     vtoc_headerp = ptr (s_ptr, DUMPER_BIT_MAP_ADDR * 1024);
+      226 	     vtoc_mapp = ptr (s_ptr, VTOC_MAP_ADDR * 1024);
+      227 
+      228 	     call salv_err_msg (SALV_DEBUG, "^/disk_rebuild: Summary of original disk contents follows:^/");
+      229 	     call REPORT_SUMMARY;
+      230 
+      231 /* Set up VTOC header for pre-MR10 compatibility */
+      232 
+      233 	     vtoc_header.n_vtoce = n_vtoce;
+      234 	     vtoc_header.n_free_vtoce = 0;
+      235 	     vtoc_header.first_free_vtocx = -1;
+      236 	     vtoc_header.vtoc_last_recno = label.vtoc_size - 1;
+      237 
+      238 /* The VTOC Map has been copied from the old volume. Null it out. */
+      239 
+      240 	     vtoc_map.n_vtoce = n_vtoce;
+      241 	     vtoc_map.vtoc_last_recno = label.vtoc_size - 1;
+      242 	     vtoc_map.bit_map_n_words = divide (n_vtoce + 31, 32, 17);
+      243 	     unspec (vtoc_map.bit_map) = ""b;
+      244 
+      245 	     pvt_array (pvtx2).n_vtoce = n_vtoce;	/* So vtoc_man works */
+      246 	     vtoce_incr = n_vtoce - old_vtoc_size;
+      247 	     vtoc_header.vtoc_last_recno = label.vtoc_size - 1;
+      248 						/* find out about partition changes */
+      249 	     first_free = label.vtoc_size;
+      250 update_frec:   do i = 1 to lp -> label.nparts;
+      251 		if lp -> label.parts (i).frec = first_free then do;
+      252 		     first_free = first_free + lp -> label.parts (i).nrec;
+      253 		     goto update_frec;
+      254 		end;
+      255 	     end;
+      256 
+      257 	     last_free = lp -> label.vol_size;
+      258 	     do j = 1 to lp -> label.nparts;
+      259 		if lp -> label.parts (j).frec > first_free then if lp -> label.parts (j).frec < last_free then
+      260 			last_free = lp -> label.parts (j).frec;
+      261 	     end;
+      262 
+      263 	     last_free = last_free - 1;
+      264 	     lost_pages = vol_map.n_rec - (last_free - first_free);
+      265 	     if lost_pages > vol_map.n_free_rec then do;
+      266 		call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: not enough free records (only ^d.) for increase (need ^d.)",
+      267 		     vol_map.n_free_rec, lost_pages);
+      268 		goto err_out;
+      269 	     end;
+      270 
+      271 	     baseadd1 = vol_map.base_add;
+      272 	     baseadd2 = first_free;
+      273 
+      274 	     if baseadd1 ^= baseadd2 then
+      275 		call salv_err_msg (SALV_DEBUG, "disk_rebuild: base of paging region changed from  ^d. to ^d.", baseadd1, baseadd2);
+      276 
+      277 	     vol_map.base_add = baseadd2;
+      278 	     map_size, vol_map.n_rec = vol_map.n_rec - lost_pages;
+      279 	     vol_map.bit_map_n_words = ceil (map_size / 32);
+      280 						/* now copy matching partitions */
+      281 	     do i = 1 to lp -> label.nparts;
+      282 		do j = 1 to label.nparts;
+      283 		     if lp -> label.parts (i).part = label.parts (j).part then do;
+      284 			r = min (lp -> label.parts (i).nrec, label.parts (j).nrec);
+      285 			if lp -> label.parts (i).part = "bos"
+      286 			     | lp -> label.parts (i).part = "alt" then r = 0;
+      287 			call salv_err_msg (SALV_DEBUG, "disk_rebuild: copying ^d. rec of part ^a", r, label.parts (j).part);
+      288 			k = label.parts (j).frec;
+      289 			do l = lp -> label.parts (i).frec to lp -> label.parts (i).frec + (r - 1);
+      290 			     call copy_page (k, l, "0"b);
+      291 			     k = k + 1;
+      292 			end;
+      293 		     end;
+      294 		end;
+      295 	     end;
+      296 						/* now copy new label page, old one not needed anymore */
+      297 	     call write_disk (pvtx2, 0, lp, code);
+      298 	     if code ^= 0 then do;
+      299 		call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: Error writing label:");
+      300 		goto err_out;
+      301 	     end;
+      302 	     labelp = lp;				/* all new references go to new label copy */
+      303 
+      304 
+      305 	     call INIT_TABLES (table1p, table3p, code);
+      306 
+      307 	     n_free_vtoce = 0;
+      308 	     n_used_rec = 0;
+      309 	     save_vtocx = -1;
+      310 						/* initialize to get assigned addresses to cycle above baseadd2 */
+      311 	     do i = 1 to delta;
+      312 		last_used (i) = baseadd2 - i;
+      313 	     end;
+      314 						/* copy each permanent, valid vtoce */
+      315 	     call copy_vtoc;			/* and move all pages onto new disk */
+      316 
+      317 	     call UPDATE_VOL_MAP;
+      318 
+      319 	     call UPDATE_VTOC_MAP;
+      320 
+      321 	     call FORCE_VTOC_ON_DISK;
+      322 
+      323 	     call FORCE_LABEL_ON_DISK;
+      324 
+      325 	     call salv_err_msg (SALV_DEBUG, "disk_rebuild: End of rebuilding. New summary report follows:^/");
+      326 
+      327 	     call REPORT_SUMMARY;
+      328 
+      329 
+      330 err_out:
+      331 	     if free_count > 0 then call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: ^d. vtoces added to list of free vtoces", free_count);
+      332 	     if code = 0 then call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: Disk rebuild finished.");
+      333 	     else call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: disk rebuild finished with error:");
+      334 
+      335 
+      336 	     call CLEAN_UP;
+      337 
+      338 err_ret:	     a_code = code;
+      339 	     if ^pvt_array (pvtx2).used
+      340 	     then pvt_array (pvtx2).n_vtoce = 0;
+      341 
+      342 	     return;
+      343 
+      344 
+      345 copy_vtoc: proc;
+      346 
+      347 dcl  r fixed bin;
+      348 
+      349 dcl  whole_vtoce bit (192 * 36) based aligned;
+      350 
+      351 	do vtocx = 0 to min (old_vtoc_size, n_vtoce) - 1; /* could have shrunk */
+      352 	     if mod (vtocx, 1000) = 0 then if vtocx > 0 then
+      353 		     call syserr (ANNOUNCE, "disk_rebuild: processing VTOCE #^d.", vtocx);
+      354 	     call vtoc_man$get_vtoce (pvid, pvtx1, vtocx, "111"b, vtoc_bufp, code);
+      355 	     if code ^= 0 then do;
+      356 		call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: reading vtocx ^oo:", vtocx);
+      357 		goto err_out;
+      358 	     end;
+      359 
+      360 /* get ptr to spot for  new one */
+      361 	     vtocep = vm_vio$get_vtocep (pvtx2, vtocx);
+      362 	     if vtoc_bufp -> vtoce.uid = "0"b then do;
+      363 		call FREE_VTOCE;
+      364 		goto next_vtocx;
+      365 	     end;
+      366 	     if ^vtoc_bufp -> vtoce.dirsw then do;
+      367 		if vtoc_bufp -> vtoce.per_process then do;
+      368 		     if salv_data$debug then call salv_err_msg (SALV_DEBUG, "disk_rebuild: freeing per process vtocx ^oo: ^a",
+      369 			     vtocx, vtoc_bufp -> vtoce.primary_name);
+      370 		     call FREE_VTOCE;
+      371 		     goto next_vtocx;
+      372 		end;
+      373 		if vtoc_bufp -> vtoce.deciduous then do;
+      374 		     if salv_data$debug then call salv_err_msg (SALV_DEBUG, "disk_rebuild: freeing deciduous vtocx ^oo: ^a",
+      375 			     vtocx, vtoc_bufp -> vtoce.primary_name);
+      376 		     call FREE_VTOCE;
+      377 		     goto next_vtocx;
+      378 		end;
+      379 	     end;
+      380 						/* see if have to update */
+      381 	     call lock$lock_ast;
+      382 	     astep = search_ast$check ((vtoc_bufp -> vtoce.uid), pvid, vtocx, (0)); /* ignore double-uid error */
+      383 	     if astep ^= null then do;
+      384 		if ^aste.ehs then			/* if we don't need this */
+      385 		     call pc$cleanup (astep);		/* get everything updated on disk */
+      386 		else if ^aste.hc_part then		/* if needed, at least get modified */
+      387 		     call pc_wired$write (astep, 0, -1);/* pages updated to disk */
+      388 		call update_vtoce (astep);
+      389 		call lock$unlock_ast;		/* don't really need it any more */
+      390 		call vtoc_man$get_vtoce (pvid, pvtx1, vtocx, "111"b, vtoc_bufp, code);
+      391 		if code ^= 0 then do;
+      392 		     call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: reading vtocx ^oo:", vtocx);
+      393 		     goto err_out;
+      394 		end;
+      395 	     end;
+      396 	     else call lock$unlock_ast;		/* unlocked no matter what */
+      397 
+      398 	     if vtoc_bufp -> vtoce.damaged then damaged_count = damaged_count + 1;
+      399 
+      400 	     vtocep -> whole_vtoce = vtoc_bufp -> whole_vtoce;
+      401 	     do i = 0 to 255;
+      402 		if substr (vtoce.fm (i), 1, 1) ^= "1"b then do;
+      403 		     call get_new_addr (vtocx, r);
+      404 		     call copy_page (fixed (substr (vtoce.fm (i), 2, 17), 17), r, "0"b);
+      405 		     vtoce.fm (i) = bit (fixed (r, 18), 18);
+      406 		     n_used_rec = n_used_rec + 1;
+      407 		end;
+      408 	     end;
+      409 	     if sst$checksum_filemap = 0 then do;
+      410 		vtocep -> vtoce.fm_checksum_valid = "0"b;
+      411 		vtocep -> vtoce.fm_checksum = ""b;
+      412 	     end;
+      413 	     else do;
+      414 		vtocep -> vtoce.fm_checksum_valid = "1"b;
+      415 		call filemap_checksum_ (addr (vtocep -> vtoce.fm),
+      416 		     fixed (vtocep -> vtoce.csl), vtocep -> vtoce.fm_checksum);
+      417 	     end;
+      418 	     vtocep -> vtoce.fm_damaged = "0"b;
+      419 
+      420 next_vtocx:
+      421 	end;
+      422 
+      423 	if old_vtoc_size ^= n_vtoce then
+      424 	     call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: no. vtoces changed from ^d. to ^d.", old_vtoc_size, n_vtoce);
+      425 	if n_vtoce > old_vtoc_size then do vtocx = old_vtoc_size to n_vtoce - 1;
+      426 	     vtocep = vm_vio$get_vtocep (pvtx2, vtocx);
+      427 	     call FREE_VTOCE;
+      428 	end;
+      429 
+      430      end copy_vtoc;
+      431 
+      432 
+      433 copy_page: proc (from, to, sp_bit);
+      434 
+      435 dcl  (from, to) fixed bin;
+      436 dcl  sp_bit bit (1) aligned;
+      437 
+      438 	if sp_bit then
+      439 	     call read_disk (pvtx1, from, bufp, code);
+      440 	else call read_disk$read_disk_no_test (pvtx1, from, bufp, code);
+      441 	if code ^= 0 then do;
+      442 	     call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: Error from read_disk, aborting:");
+      443 	     goto err_out;
+      444 	end;
+      445 
+      446 	if sp_bit then do;
+      447 	     bufp -> label.vtoc_size = lp -> label.vtoc_size;
+      448 	     call write_disk (pvtx2, to, bufp, code);
+      449 	end;
+      450 	else call write_disk$write_disk_no_test (pvtx2, to, bufp, code);
+      451 	if code ^= 0 then do;
+      452 	     call salv_err_msg$code (SALV_ANNOUNCE, "", code, "disk_rebuild: Error from write_disk, aborting:");
+      453 	     goto err_out;
+      454 	end;
+      455 
+      456      end copy_page;
+      457 
+      458 get_new_addr: proc (a_vtocx, a_addr);
+      459 						/* last_used (delta) is array of last awarded cyclic addresses */
+      460 dcl  a_vtocx fixed bin,
+      461      a_addr fixed bin;
+      462 
+      463 	if a_vtocx ^= save_vtocx then do;		/* switch  to next slot cycle */
+      464 	     addr_index = 1;
+      465 	     do j = 1 to delta;
+      466 		if last_used (j) < last_used (addr_index) then addr_index = j;
+      467 	     end;
+      468 	     save_vtocx = a_vtocx;
+      469 	end;
+      470 
+      471 	a_addr, last_used (addr_index) = last_used (addr_index) + delta;
+      472 	bit_table (last_used (addr_index)) = "1"b;
+      473 						/* check next address to see if oob */
+      474 	if last_used (addr_index) + delta > map_size + baseadd2 then do;
+      475 	     call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: out of room on vtocx ^oo , page ^oo", vtocx, i);
+      476 	     goto err_out;
+      477 	end;
+      478      end get_new_addr;
+      479 
+      480 
+      481 FREE_VTOCE: proc;
+      482 
+      483 dcl  bitx fixed bin;
+      484 dcl  wordx fixed bin;
+      485 
+      486 
+      487 	if vtoce.uid ^= "0"b then free_count = free_count + 1;
+      488 
+      489 	unspec (vtoce) = "0"b;
+      490 
+      491 	wordx = divide (vtocx, 32, 17);
+      492 	bitx = mod (vtocx, 32) + 1;
+      493 	bit_map_wordp = addr (vtoc_map.bit_map (wordx));
+      494 	substr (bit_map_word.bits, bitx, 1) = "1"b;
+      495 
+      496 	n_free_vtoce = n_free_vtoce + 1;
+      497 
+      498 	return;
+      499 
+      500      end FREE_VTOCE;
+      501 
+      502 
+      503 
+      504 UPDATE_VOL_MAP: proc;
+      505 
+      506 dcl  1 old_map (vol_map.bit_map_n_words) based (addr (vol_map.bit_map)) aligned,
+      507        2 pad1 bit (1) unaligned,
+      508        2 bits bit (32) unaligned,
+      509        2 pad2 bit (3) unaligned;
+      510 
+      511 dcl  1 new_map (vol_map.bit_map_n_words) based (table3p) aligned like old_map;
+      512 
+      513 dcl  bit_table_map (1000) bit (32) based (addr (bit_table (vol_map.base_add))) unaligned;
+      514 
+      515 dcl  w fixed bin;
+      516 dcl  j fixed bin;
+      517 dcl  n_free_rec fixed bin;
+      518 
+      519 
+      520 
+      521 	unspec (new_map) = "0"b;
+      522 
+      523 	do w = 1 to vol_map.bit_map_n_words;
+      524 	     new_map (w).bits = ^bit_table_map (w);
+      525 	end;
+      526 
+      527 	j = mod (vol_map.n_rec, 32);
+      528 	if j ^= 0 then substr (new_map (w - 1).bits, j + 1) = "0"b;
+      529 
+      530 	if unspec (old_map) = unspec (new_map) then ;
+      531 	else do;
+      532 	     call report_bit_map_changed;
+      533 	     unspec (old_map) = unspec (new_map);
+      534 	end;
+      535 
+      536 	n_free_rec = vol_map.n_rec - n_used_rec;
+      537 
+      538 	if vol_map.n_free_rec ^= n_free_rec then
+      539 	     do;
+      540 	     call report_n_free_rec_changed;
+      541 	     vol_map.n_free_rec = n_free_rec;
+      542 	end;
+      543 	return;
+      544 
+      545 
+      546 
+      547 report_bit_map_changed: proc;
+      548 	     call salv_err_msg (SALV_DEBUG, "disk_rebuild: Map of assigned addresses changed");
+      549 	     return;
+      550 	end;
+      551 
+      552 report_n_free_rec_changed: proc;
+      553 	     call salv_err_msg (SALV_DEBUG, "disk_rebuild: no. of free recs changed from ^d. to ^d.",
+      554 		vol_map.n_free_rec, n_free_rec);
+      555 	     return;
+      556 	end;
+      557 
+      558      end UPDATE_VOL_MAP;
+      559 
+      560 
+      561 UPDATE_VTOC_MAP: proc;
+      562 
+      563 	if vtoc_map.n_free_vtoce ^= n_free_vtoce then do;
+      564 	     call report_n_free_vtoce;
+      565 	     vtoc_map.n_free_vtoce = n_free_vtoce;
+      566 	end;
+      567 
+      568 
+      569 	return;
+      570 
+      571 
+      572 report_n_free_vtoce: proc;
+      573 	     call salv_err_msg (SALV_DEBUG, "disk_rebuild: no. of free vtoces changed from ^d. to ^d.",
+      574 		vtoc_header.n_free_vtoce, n_free_vtoce);
+      575 	     return;
+      576 	end;
+      577 
+      578      end UPDATE_VTOC_MAP;
+      579 
+      580 
+      581 
+      582 
+      583 
+      584 
+      585 
+      586 FORCE_VTOC_ON_DISK: proc;
+      587 
+      588 dcl  i fixed bin;
+      589 
+      590 
+      591 	do i = 1 to max_n_vtoc_seg - 1;
+      592 	     astep = get_ptrs_$given_segno (fixed (baseno (s_ptr)) + i);
+      593 	     if astep ^= null then call pc_wired$write_wait (astep, 0, -1);
+      594 	end;
+      595 
+      596 	return;
+      597 
+      598      end FORCE_VTOC_ON_DISK;
+      599 
+      600 FORCE_LABEL_ON_DISK: proc;
+      601 
+      602 	astep = get_ptrs_$given_segno (fixed (baseno (s_ptr)));
+      603 
+      604 	if astep ^= null then call pc_wired$write_wait (astep, LABEL_ADDR, 1);
+      605 
+      606 	return;
+      607 
+      608      end FORCE_LABEL_ON_DISK;
+      609 
+      610 REPORT_SUMMARY: procedure;
+      611 
+      612 dcl  i fixed bin, ptot fixed bin (24);
+      613 
+      614 	call salv_err_msg (SALV_DEBUG, "^/disk_rebuild: Summary Report^/^5xVolume ^a of logical volume ^a.^/",
+      615 	     label.pv_name, label.lv_name);
+      616 
+      617 	call salv_err_msg (SALV_DEBUG, "Paging region begins at record ^d. (^oo), for ^d. (^oo) records.",
+      618 	     vol_map.base_add, vol_map.base_add, vol_map.n_rec, vol_map.n_rec);
+      619 	call salv_err_msg (SALV_DEBUG, "^d. (^oo) free records therein.", vol_map.n_free_rec, vol_map.n_free_rec);
+      620 
+      621 	call salv_err_msg (SALV_DEBUG, "Label/VTOC size is ^d. records, ^d. VTOCEs.", label.vtoc_size, vtoc_header.n_vtoce);
+      622 	call salv_err_msg (SALV_DEBUG, "VTOC version ^d., ^d. free VTOCEs.^/", vtoc_header.version, vtoc_header.n_free_vtoce);
+      623 
+      624 	if label.nparts = 0 then call salv_err_msg (SALV_DEBUG, "No partitions defined.");
+      625 	else do;
+      626 	     ptot = 0;
+      627 	     call salv_err_msg (SALV_DEBUG, "^/^10xPartition Map^/Name^16xStart^15xLength^/");
+      628 	     do i = 1 to label.nparts;
+      629 		call salv_err_msg (SALV_DEBUG, "^4a^6x^9d.^x(^6oo)^x^9d.^x(^6oo)",
+      630 		     label.parts.part (i), label.parts (i).frec, label.parts (i).frec, label.parts (i).nrec,
+      631 		     label.parts (i).nrec);
+      632 		ptot = ptot + label.parts (i).nrec;
+      633 	     end;
+      634 	     call salv_err_msg (SALV_DEBUG, "^35x______^2x_______^/^31x^9d.^x(^6oo)^/", ptot, ptot);
+      635 	end;
+      636 	call salv_err_msg (SALV_DEBUG, "Volume size is ^d. (^oo) records total.^/", label.vol_size, label.vol_size);
+      637 
+      638 	if damaged_count > 0 then call salv_err_msg (SALV_DEBUG, "^/^10x^d. damaged segments.", damaged_count);
+      639 
+      640 
+      641      end REPORT_SUMMARY;
+      642 
+      643 CHECK_VTOC_SIZES:
+      644      proc;
+      645 
+      646 /* Validates the size of the new VTOC. It may be equal to or larger than the
+      647*   old VTOC. Or it may be smaller, provided that there are no active VTOCEs
+      648*   in the region of the old VTOC being truncated. */
+      649 
+      650 dcl  all_free bit (1);
+      651 dcl  bit_map_words fixed bin;
+      652 dcl  first_free_word fixed bin;
+      653 dcl  res fixed bin;
+      654 dcl  tsdw fixed bin (71);
+      655 dcl  wordx fixed bin;
+      656 
+      657 dcl  ALL_FREE bit (36) aligned internal static options (constant)
+      658 	init ("377777777770"b3);
+      659 
+      660 
+      661 	old_vtoc_size = pvt_array (pvtx1).n_vtoce;
+      662 	n_vtoce = (lp -> label.vtoc_size - VTOC_ORIGIN) * VTOCES_PER_RECORD (pvt_array (pvtx2).device_type);
+      663 
+      664 	if n_vtoce >= old_vtoc_size then return;
+      665 
+      666 /* Get all free VTOCEs in the truncated region into the VTOC Map */
+      667 
+      668 	call vtoce_stock_man$drain_stock_range (addr (pvt_array (pvtx1)), n_vtoce, old_vtoc_size - 1);
+      669 
+      670 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (pvt_array (pvtx1).volmap_seg_sdw));
+      671 	vtoc_mapp = ptr (addr (volmap_abs_seg$), pvt_array (pvtx1).vtoc_map_offset);
+      672 
+      673 	on page_fault_error begin;
+      674 		call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: Read error accessing VTOC Map of ^a",
+      675 		     dname1);
+      676 		tsdw = 0;
+      677 		call pmut$swap_sdw (addr (volmap_abs_seg$), addr (tsdw));
+      678 		goto err_ret;
+      679 	     end;
+      680 
+      681 	all_free = "1"b;
+      682 	first_free_word = divide (n_vtoce + 32, 32, 17);
+      683 	bit_map_words = divide (old_vtoc_size + 31, 32, 17);
+      684 	if (bit_map_words - 2) >= first_free_word
+      685 	then do wordx = first_free_word to bit_map_words - 2
+      686 		while (all_free);
+      687 	     if (vtoc_map.bit_map (wordx) & ALL_FREE) ^= ALL_FREE
+      688 	     then all_free = "0"b;
+      689 	end;
+      690 
+      691 	res = mod (n_vtoce, 32);
+      692 	if res ^= 0
+      693 	then do;
+      694 	     bit_map_wordp = addr (vtoc_map.bit_map (first_free_word - 1));
+      695 	     if substr (bit_map_word.bits, res + 1, 32 - res) ^= substr (ALL_FREE, 2, 32 - res)
+      696 	     then all_free = "0"b;
+      697 	end;
+      698 
+      699 	res = mod (old_vtoc_size, 32);
+      700 	if res = 0 then res = 32;
+      701 	bit_map_wordp = addr (vtoc_map.bit_map (bit_map_words - 1));
+      702 	if substr (bit_map_word.bits, 1, res) ^= substr (ALL_FREE, 2, res)
+      703 	then all_free = "0"b;
+      704 
+      705 	tsdw = 0;
+      706 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (tsdw));
+      707 	vtoc_mapp = null ();
+      708 
+      709 	if ^all_free then do;
+      710 	     call salv_err_msg (SALV_ANNOUNCE, "disk_rebuild: Cannot compress VTOC on ^a because active VTOCEs in the truncated region.",
+      711 		dname1);
+      712 	     goto err_ret;
+      713 	end;
+      714 
+      715 	return;
+      716 
+      717      end;
+      718 
+      719 
+      720 CLEAN_UP: proc;
+      721 
+      722 
+      723 dcl  segno fixed bin;
+      724 
+      725 
+      726 	segno = fixed (baseno (addr (pv_salv_seg$)), 18);
+      727 
+      728 	astep = get_ptrs_$given_segno (segno);
+      729 
+      730 	if astep ^= null then
+      731 	     do;
+      732 
+      733 	     dseg$ (segno) = 0;
+      734 	     call page$cam;
+      735 
+      736 	     call pc$truncate_deposit_all (astep);
+      737 	     if aste.usedf then call get_pvtx$release_pvtx ((pvt_array.pvid (aste.pvtx)), (aste.pvtx));
+      738 
+      739 	     if sst$astl ^= pds$processid then call lock$lock_ast;
+      740 	     call put_aste (astep);
+      741 	     call lock$unlock_ast;
+      742 
+      743 	end;
+      744 
+      745 	call vm_vio$clean_up (pvtx);
+      746 
+      747      end CLEAN_UP;
+      748 
+      749 INIT_TABLES: proc (table1p, table3p, code);
+      750 
+      751 dcl  table1p ptr;
+      752 dcl  table3p ptr;
+      753 dcl  code fixed bin (35);
+      754 
+      755 dcl  pv_salv_seg$ ext;
+      756 
+      757 dcl  1 pv_salv_seg based (addr (pv_salv_seg$)) aligned,
+      758 
+      759        2 table1,
+      760          3 bit_table (0:label.vol_size - 1) bit (1) unaligned,
+      761 
+      762        2 table3,
+      763          3 new_map (1:vol_map.bit_map_n_words) bit (36) aligned,
+      764 
+      765        2 end bit (36) aligned;
+      766 
+      767 dcl  segno fixed bin,				/* segno assigned to this segment  */
+      768      pvtx fixed bin,				/* PVT index for this segment  */
+      769      msl fixed bin;					/* number of pages for this segment  */
+      770 
+      771 dcl  (i, pts, ptsi) fixed bin;
+      772 
+      773 dcl  tsdw fixed bin (71);
+      774 
+      775 	code = 0;
+      776 
+      777 	segno = fixed (baseno (addr (pv_salv_seg$)), 18);
+      778 	pvtx = sst$root_pvtx;
+      779 	msl = divide (fixed (rel (addr (pv_salv_seg.end)), 18), 1024, 17, 0) + 1;
+      780 
+      781 
+      782 /* ALLOCATE AN ASTE OF THE APPROPRIATE SIZE */
+      783 
+      784 	call lock$lock_ast;
+      785 
+      786 	astep = get_aste (msl);			/* Get an ASTE with the appropriate size PT */
+      787 
+      788 	if astep = null then
+      789 	     do;
+      790 	     call lock$unlock_ast;
+      791 	     code = no_free_aste_err;
+      792 	     call syserr (ANNOUNCE, "disk_rebuild: INIT_TABLES: aste pool ^oo too small", msl);
+      793 	     return;
+      794 	end;
+      795 
+      796 	ptsi = fixed (aste.ptsi);
+      797 	pts = sst$pts (ptsi);
+      798 
+      799 
+      800 /* ZERO THE ASTE  */
+      801 
+      802 	astep -> aste_part.two = "0"b;		/* Zero the rest of the ASTE except ptsi and marker */
+      803 
+      804 
+      805 /* INITIALIZE THE PAGE TABLE WITH NULL ADDRESSES AND PAGE FAULT BITS */
+      806 
+      807 	ptp = addrel (astep, sst$astsize);		/* get a pointer to the page table */
+      808 
+      809 	do i = 0 to pts - 1;
+      810 	     call ptw_util_$make_null (addrel (ptp, i), fill_page_table_null_addr); /* Make null PTWs */
+      811 	end;
+      812 
+      813 
+      814 /* INITIALIZE THE ASTE */
+      815 
+      816 	astep -> aste.vtocx = -1;			/* show there is no VTOCE for the segment */
+      817 	astep -> aste.dnzp = "1"b;
+      818 	astep -> aste.nqsw = "1"b;			/* turn on no quota switch */
+      819 	astep -> aste.strp = bit (fixed (segno, 18), 18); /* store segment number in AST */
+      820 	astep -> aste.msl = bit (fixed (msl, 9), 9);	/* set the max length */
+      821 	astep -> aste.pvtx = pvtx;			/* store the root physical volume table index */
+      822 
+      823 
+      824 /* THE CLEAN_UP OPERATION WILL DEPEND ON THE ORDER IN WHICH THE NEXT ACTIONS ARE PERFORMED */
+      825 
+      826 	tsdw = get_ptrs_$given_astep (astep);		/* Get initial  SDW. */
+      827 	dseg$ (segno) = tsdw;			/* store temp SDW in the descriptor segment */
+      828 	call page$cam;
+      829 	call get_pvtx$hold_pvtx ((pvt_array (pvtx).pvid), pvtx, (0)); /* Hold this vol */
+      830 
+      831 	astep -> aste.usedf = "1"b;			/* mark it as being used - as late as possible */
+      832 
+      833 	call thread$out (astep, sst$level (ptsi).ausedp); /* thread the entry out of the used list */
+      834 
+      835 	call lock$unlock_ast;
+      836 
+      837 
+      838 /* INITIALIZE POINTERS TO TABLES */
+      839 
+      840 	table1p = addr (pv_salv_seg.table1);
+      841 	table3p = addr (pv_salv_seg.table3);
+      842 
+      843 	return;
+      844 
+      845      end INIT_TABLES;
+      846 
+      847 	end;					/* begin block and proc */
+      848 
+      849 /* format: off */
+      850 
+      851  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      851 
+      852  /*	BEGIN INCLUDE FILE...disk_pack.incl.pl1          Last Modified January 1982 for new volume map   */
+  2     2 
+  2     3 
+  2     4 
+  2     5 
+  2     6 /****^  HISTORY COMMENTS:
+  2     7*  1) change(86-01-14,Fawcett), approve(86-05-13,MCR7383),
+  2     8*     audit(86-05-14,LJAdams), install(86-07-18,MR12.0-1098):
+  2     9*     Add vars PAGE_SIZE and VTOCE_SIZE, Also change the SECTORS_PER_VTOCE and
+  2    10*     VTOCES_PER_RECORD form fixed bin constants to arrays of fixed bin
+  2    11*     constants indexed by device type as defined in fs_dev_types.incl.pl1.
+  2    12*     This was done for support of the 3380, and 3390 devices for 512_WORD_IO.
+  2    13*  2) change(86-10-21,Fawcett), approve(86-10-21,MCR7533),
+  2    14*     audit(86-10-21,Farley), install(86-10-22,MR12.0-1193):
+  2    15*     Change PAGE_SIZE and VTOCE_SIZE from automatic to static constants.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 
+  2    19 /*
+  2    20*   All disk packs have the standard layout described below:
+  2    21*
+  2    22*   Record  0		: contains the label, as declared in fs_vol_label.incl.pl1.
+  2    23*   Record  1 to 3		: contains the volume map, as declared in vol_map.incl.pl1
+  2    24*   Record  4 to 5		: contains the dumper bit map, as declared in dumper_bit_map.incl.pl1
+  2    25*   Record  6		: contains the vtoc map, as declared in vtoc_map.incl.pl1 
+  2    26*   Record  7		: formerly contained bad track list; no longer used.
+  2    27*   Records 8 to n-1		: contain the array of vtoc entries; ( n is specified in the label)
+  2    28*   each record contains 5 192-word vtoc entries. The last 64 words are unused.
+  2    29*   Records n to N-1		: contain the pages of the Multics segments. ( N is specified in the label)
+  2    30*
+  2    31*   Sundry partitions may exist within the region n to N-1, withdrawn or not as befits the meaning
+  2    32*   of the particular partition.
+  2    33*
+  2    34*
+  2    35*
+  2    36*   A conceptual declaration for a disk pack could be:
+  2    37*
+  2    38*   dcl 1 disk_pack,
+  2    39*   2 label_record		(0 : 0)		bit(36 * 1024),
+  2    40*   2 volume_map_record	(1 : 3)		bit(36 * 1024),
+  2    41*   2 dumper_bit_map_record	(4 : 5)		bit(36 * 1024),
+  2    42*   2 vtoc_map_record	(6 : 6)		bit(36 * 1024),
+  2    43*   2 spare_record	          (7 : 7)		bit(36 * 1024),
+  2    44*   2 vtoc_array_records	(8 : n-1),
+  2    45*   3 vtoc_entry ( 5 )			bit(36 * 192),
+  2    46*   3 unused				bit(36 * 64),
+  2    47*   2 Multics_pages_records	(n : N-1)		bit(36 * 1024);
+  2    48*
+  2    49*
+  2    50*
+  2    51*
+  2    52**/
+  2    53 
+  2    54 dcl (LABEL_ADDR              init (0),			/* Address of Volume Label */
+  2    55      VOLMAP_ADDR	         init (1),			/* Address of first Volume Map record */
+  2    56      DUMPER_BIT_MAP_ADDR     init (4),			/* For initial release compaitiblity */
+  2    57      VTOC_MAP_ADDR	         init (6),			/* Address of first VTOC Map Record */
+  2    58      VTOC_ORIGIN	         init (8),			/* Address of first record of VTOC */
+  2    59      DEFAULT_HCPART_SIZE     init (1000),		/* Size of Hardcore Partition */
+  2    60      MAX_VTOCE_PER_PACK      init (31774))		/* Limited by size of VTOC Map */
+  2    61 		         fixed bin (17) int static options (constant);
+  2    62 
+  2    63 /* SECTORS_PER_VTOCE & VTOCES_PER_RECORD are indexed via device type as     */
+  2    64 /* defined by fs_dev_types and extracted form the disk_table entry (dte)    */
+  2    65 /* or the physical volume table entry (pvte) device type.		      */
+  2    66 
+  2    67 dcl PAGE_SIZE fixed bin (17) init (1024) static options (constant);
+  2    68 dcl VTOCE_SIZE fixed bin (17) init (192) static options (constant);
+  2    69 
+  2    70 dcl SECTORS_PER_VTOCE       (9) fixed bin static options (constant) init
+  2    71      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  2    72 dcl VTOCES_PER_RECORD       (9) fixed bin  static options  (constant) init
+  2    73      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  2    74 dcl SECTORS_PER_RECORD      (9) fixed bin static options (constant) init
+  2    75      (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  2    76 
+  2    77 /*	END INCLUDE FILE...disk_pack.incl.pl1	*/
+      852 
+      853  /* BEGIN INCLUDE FILE ... fs_vol_label.incl.pl1 .. last modified January 1982 for new volume map format  */
+  3     2 
+  3     3 /****^  HISTORY COMMENTS:
+  3     4*  1) change(86-04-10,Fawcett), approve(86-04-10,MCR7383),
+  3     5*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  3     6*     Add the subvolume info.
+  3     7*  2) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  3     8*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  3     9*     Added inconsistent_dbm bit used to determine consistency of volume
+  3    10*     dumper bit maps.
+  3    11*                                                   END HISTORY COMMENTS */
+  3    12 
+  3    13 /* This is the label at fixed location of each physical volume. Length 1 page */
+  3    14 /* Note: fsout_vol clears pad fields before writing the label */
+  3    15 
+  3    16 dcl  labelp ptr;
+  3    17 
+  3    18 dcl 1 label based (labelp) aligned,
+  3    19 
+  3    20 /* First comes data not used by Multics.. for compatibility with GCOS */
+  3    21 
+  3    22     2 gcos (5*64) fixed bin,
+  3    23 
+  3    24 /* Now we have the Multics label */
+  3    25 
+  3    26     2 Multics char (32) init ("Multics Storage System Volume"), /* Identifier */
+  3    27     2 version fixed bin,				/* Version 1 */
+  3    28     2 mfg_serial char (32),				/* Manufacturer's serial number */
+  3    29     2 pv_name char (32),				/* Physical volume name. */
+  3    30     2 lv_name char (32),				/* Name of logical volume for pack */
+  3    31     2 pvid bit (36),				/* Unique ID of this pack */
+  3    32     2 lvid bit (36),				/* unique ID of its logical vol */
+  3    33     2 root_pvid bit (36),				/* unique ID of the pack containing the root. everybody must agree. */
+  3    34     2 time_registered fixed bin (71),			/* time imported to system */
+  3    35     2 n_pv_in_lv fixed bin,				/* # phys volumes in logical */
+  3    36     2 vol_size fixed bin,				/* total size of volume, in records */
+  3    37     2 vtoc_size fixed bin,				/* number of recs in fixed area + vtoc */
+  3    38     2 not_used bit (1) unal,				/* used to be multiple_class */
+  3    39     2 private bit (1) unal,				/* TRUE if was registered as private */
+  3    40     2 inconsistent_dbm bit (1) unal,			/* TRUE if ESD-less crash */
+  3    41     2 flagpad bit (33) unal,
+  3    42     2 max_access_class bit (72),			/* Maximum access class for stuff on volume */
+  3    43     2 min_access_class bit (72),			/* Minimum access class for stuff on volume */
+  3    44     2 password bit (72),				/* not yet used */
+  3    45     2 number_of_sv fixed bin,				/* if = 0 not a subvolume else the number of svs */
+  3    46     2 this_sv fixed bin,				/* what subvolume number it is */
+  3    47     2 sub_vol_name char (1),				/* what subvolume name (a b c d) it is */
+  3    48     2 pad1 (13) fixed bin,
+  3    49     2 time_mounted fixed bin (71),			/* time mounted */
+  3    50     2 time_map_updated fixed bin (71),			/* time vmap known good */
+  3    51 
+  3    52 /* The next two words overlay time_unmounted on pre-MR10 systems. This
+  3    53*   forces a salvage if an MR10 pack is mounted on an earlier system.
+  3    54* */
+  3    55     2 volmap_version fixed bin,			/* version of volume map (currently 1) */
+  3    56     2 pad6 fixed bin,				
+  3    57 
+  3    58     2 time_salvaged fixed bin (71),			/* time salvaged */
+  3    59     2 time_of_boot fixed bin (71),			/* time of last bootload */
+  3    60     2 time_unmounted fixed bin (71),			/* time unmounted cleanly */
+  3    61     2 last_pvtx fixed bin,				/* pvtx in that PDMAP */
+  3    62     2 pad1a (2) fixed bin,
+  3    63     2 err_hist_size fixed bin,			/* size of pack error history */
+  3    64     2 time_last_dmp (3) fixed bin (71),			/* time last completed dump pass started */
+  3    65     2 time_last_reloaded fixed bin (71),		/* what it says */
+  3    66     2 pad2 (40) fixed bin,
+  3    67     2 root,
+  3    68       3 here bit (1),				/* TRUE if the root is on this pack */
+  3    69       3 root_vtocx fixed bin (35),			/* VTOC index of root, if it is here */
+  3    70       3 shutdown_state fixed bin,			/* Status of hierarchy */
+  3    71       3 pad7 bit (1) aligned,				
+  3    72       3 disk_table_vtocx fixed bin,			/* VTOC index of disk table on RPV */
+  3    73       3 disk_table_uid bit (36) aligned,		/* UID of disk table */
+  3    74       3 esd_state fixed bin,				/* State of esd */
+  3    75     2 volmap_record fixed bin,			/* Begin record of volume map */
+  3    76     2 size_of_volmap fixed bin,			/* Number of records in volume map */
+  3    77     2 vtoc_map_record fixed bin,			/* Begin record of VTOC map */
+  3    78     2 size_of_vtoc_map fixed bin,			/* Number of records in VTOC map */
+  3    79     2 volmap_unit_size fixed bin,			/* Number of words per volume map section */
+  3    80     2 vtoc_origin_record fixed bin,			/* Begin record of VTOC */
+  3    81     2 dumper_bit_map_record fixed bin,			/* Begin record of dumper bit-map */
+  3    82     2 vol_trouble_count fixed bin,			/* Count of inconsistencies found since salvage */
+  3    83     2 pad3 (52) fixed bin,
+  3    84     2 nparts fixed bin,				/* Number of special partitions on pack */
+  3    85     2 parts (47),
+  3    86       3 part char (4),				/* Name of partition */
+  3    87       3 frec fixed bin,				/* First record */
+  3    88       3 nrec fixed bin,				/* Number of records */
+  3    89       3 pad5 fixed bin,
+  3    90     2 pad4 (5*64) fixed bin;
+  3    91 
+  3    92 dcl  Multics_ID_String char (32) init ("Multics Storage System Volume") static;
+  3    93 
+  3    94 /* END INCLUDE FILE fs_vol_label.incl.pl1 */
+      853 
+      854  /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  4     2 /* Added segmove values, Benson Margulies, 84-01 */
+  4     3 
+  4     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  4     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  4     6      get_aste_null_addr init			("3770110"b3),
+  4     7      make_sdw_null_addr init			("3770120"b3),
+  4     8      put_aste_null_addr init			("3770130"b3),
+  4     9      page_bad_pd_null_addr init		("3770150"b3),
+  4    10      list_deposit_null_addr init		("3770160"b3),
+  4    11      get_file_map_null_addr init		("3770170"b3),
+  4    12      fill_page_table_null_addr init		("3770200"b3),
+  4    13      init_sst_null_addr init			("3770210"b3),
+  4    14      get_file_map_vt_null_addr init		("3770220"b3),
+  4    15      unprotected_null_addr init		("3770230"b3),
+  4    16      page_bad_null_addr init			("3770240"b3),
+  4    17      page_problem_null_addr init		("3770250"b3),
+  4    18      page_parity_null_addr init		("3770260"b3),
+  4    19      page_devparity_null_addr init		("3770270"b3),
+  4    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  4    21      segmove_new_addr_null_addr init		("3770310"b3),
+  4    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  4    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  4    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  4    25 
+  4    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  4    27      update_vtoce_null_addr init		("777776"b3),
+  4    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  4    29      truncate_vtoce_null_addr init		("777002"b3),
+  4    30      pv_salv_null_addr init			("777004"b3),
+  4    31      pv_scav_null_addr init			("777006"b3),
+  4    32      volume_reloader_null_addr init		("777774"b3),
+  4    33      volume_retriever_null_addr init		("777773"b3),
+  4    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  4    35 
+  4    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      854 
+      855  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  5     2 
+  5     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  5     4 
+  5     5 /****^  HISTORY COMMENTS:
+  5     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  5     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  5     8*     Add the support for subvolumes
+  5     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  5    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  5    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  5    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  5    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  5    14*     Added inconsistent_dbm bit for determining the status of volume
+  5    15*     dumper bit maps.
+  5    16*                                                   END HISTORY COMMENTS */
+  5    17 
+  5    18      dcl	   pvt$array	      aligned external;
+  5    19      dcl	   pvt$max_n_entries      fixed bin external;
+  5    20 
+  5    21      dcl	   pvt_arrayp	      ptr;
+  5    22      dcl	   pvtep		      ptr;
+  5    23 
+  5    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  5    25 
+  5    26      dcl	   1 pvte		      based (pvtep) aligned,
+  5    27 
+  5    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  5    29 
+  5    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  5    31 
+  5    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  5    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  5    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  5    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  5    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  5    37 	     2 pad3	      bit (2) unaligned,
+  5    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  5    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  5    40 
+  5    41 
+  5    42 
+  5    43 	     2 devname	      char (4),		/* device name */
+  5    44 
+  5    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  5    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  5    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  5    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  5    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  5    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  5    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  5    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  5    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  5    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  5    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  5    56 	     2 scav_check_address
+  5    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  5    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  5    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  5    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  5    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  5    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  5    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  5    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  5    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  5    66 
+  5    67 
+  5    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  5    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  5    70 
+  5    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  5    72 
+  5    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  5    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  5    75 
+  5    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  5    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  5    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  5    79 	     2 records_per_cyl    fixed bin,
+  5    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  5    81 	     2 sv_name            char (2) aligned,
+  5    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  5    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  5    84 
+  5    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  5    86 	     2 pad2	      bit (18) unaligned,
+  5    87 
+  5    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  5    89 
+  5    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  5    91 
+  5    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  5    93 
+  5    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  5    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  5    96 
+  5    97 
+  5    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  5    99 
+  5   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  5   101 
+  5   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  5   103 
+  5   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  5   105 
+  5   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  5   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  5   108 
+  5   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  5   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  5   111 
+  5   112 
+  5   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  5   114 	   VOLMAP_ASYNC_READ      init (1),
+  5   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  5   116 
+  5   117 
+  5   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      855 
+      856  /*     BEGIN INCLUDE FILE ... salv_data.incl.pl1 ... last modified July 1982 */
+  6     2 
+  6     3 dcl  salv_data$debug bit (1) aligned external;		/* ON, For additional debugging messages. */
+  6     4 dcl  salv_data$dump bit (1) aligned external;		/* ON, to dump bad directories and VTOC entries. */
+  6     5 dcl  salv_data$lock bit (36) external aligned;		/* lock to prevent more than one process from using salv_data. */
+  6     6 dcl  salv_data$on_line bit (1) aligned external;		/* ON, for online salvage. */
+  6     7 dcl  salv_data$print_path bit (1) aligned external;	/* ON, if pathname of each directory should be printed. */
+  6     8 dcl  salv_data$printer_delay fixed bin aligned external;	/* Number of minutes to wait for a not ready printer. */
+  6     9 dcl  salv_data$rpv bit (1) aligned external;		/* ON, for root physical volume salvage. */
+  6    10 dcl  salv_data$vol_read_ahead fixed bin external;
+  6    11 
+  6    12 
+  6    13 /*     END INCLUDE FILE ... salv_data.incl.pl1 ... */
+      856 
+      857  /* Begin include file salvager_severities.incl.pl1 BIM 831118 */
+  7     2 /* format: style3 */
+  7     3 
+  7     4 declare	(
+  7     5 	SALV_CRASH	init (1),			/** Something salvager-detected is life threatening. Should never happen */
+  7     6 	SALV_ANNOUNCE	init (2),			/** Worthy of the console if online */
+  7     7 	SALV_LOG		init (4),			/** worthy of the syserr log */
+  7     8 	SALV_DEBUG	init (5),			/** just like 4, but dump the dir */
+  7     9 	SALV_JUST_LOG	init (6)			/** barely worthy of the syserr log */
+  7    10 	)		fixed bin int static options (constant);
+  7    11 
+  7    12 /* End include file salvager_severities.incl.pl1 */
+      857 
+      858  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  8     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  8     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  8     4 
+  8     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  8     6 
+  8     7 dcl (
+  8     8 
+  8     9 /* The following constants define the message action codes.  This indicates
+  8    10*how a message is to be handled.  */
+  8    11 
+  8    12      SYSERR_CRASH_SYSTEM	init (1),			
+  8    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  8    14 
+  8    15      SYSERR_TERMINATE_PROCESS	init (2),
+  8    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  8    17 
+  8    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  8    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  8    20 
+  8    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  8    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  8    23 
+  8    24      SYSERR_LOG_OR_PRINT	init (4),
+  8    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  8    26 
+  8    27      SYSERR_LOG_OR_DISCARD	init (5),
+  8    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  8    29 
+  8    30 
+  8    31 /* The following constants are added to the normal severities to indicate
+  8    32*different sorting classes of messages.  */
+  8    33 
+  8    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  8    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  8    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  8    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  8    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  8    39 	) fixed bin internal static options (constant);
+  8    40 
+  8    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      858 
+      859  /* BEGIN INCLUDE FILE ... vol_map.incl.pl1 */
+  9     2 
+  9     3 dcl   vol_mapp	ptr;
+  9     4 
+  9     5 dcl 1 vol_map based (vol_mapp) aligned,
+  9     6 
+  9     7     2 n_rec fixed bin(17),				/* number of records represented in the map */
+  9     8     2 base_add fixed bin(17),				/* record number for first bit in bit map */
+  9     9     2 n_free_rec fixed bin(17),			/* number of free records */
+  9    10     2 bit_map_n_words fixed bin(17),			/* number of words of the bit map */
+  9    11     2 pad (60) bit(36),				/* pad to 64 words */
+  9    12     2 bit_map (3*1024 - 64) bit(36) ;			/* bit map - the entire vol map occupies 3 records */
+  9    13 
+  9    14 /* END INCLUDE ... vol_map */
+      859 
+      860  /* BEGIN INCLUDE FILE ... vtoc_header.incl.pl1 */
+ 10     2 
+ 10     3 dcl  vtoc_headerp ptr;
+ 10     4 
+ 10     5 dcl 1 vtoc_header based (vtoc_headerp) aligned,
+ 10     6 
+ 10     7     2 version fixed bin (17),				/* version number. The current version number is 1. * */
+ 10     8     2 n_vtoce fixed bin (17),				/* number of vtoc entries */
+ 10     9     2 vtoc_last_recno fixed bin (17),			/* record number of the last record of the vtoc */
+ 10    10     2 n_free_vtoce fixed bin (17),			/* number of free vtoc entries */
+ 10    11     2 first_free_vtocx fixed bin (17),			/* index of the first vtoce in the free list */
+ 10    12     2 pad (3) bit (36),
+ 10    13     2 dmpr_bit_map (2048 - 8) bit (36);			/* space for dmpr bit map */
+ 10    14 
+ 10    15 /* END INCLUDE ... vtoc_header */
+ 10    16 
+      860 
+      861  /*  START OF:	vtoc_map.incl.pl1	... March 1982 ...	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+ 11     2 
+ 11     3      dcl	   vtoc_mapp	      ptr;
+ 11     4      dcl	   bit_map_wordp	      ptr;
+ 11     5 
+ 11     6      dcl	   1 vtoc_map	      aligned based (vtoc_mapp),
+ 11     7 	     2 n_vtoce	      fixed bin,		/* Number of VTOCEs on the device */
+ 11     8 	     2 n_free_vtoce	      fixed bin,		/* Number of free VTOCEs */
+ 11     9 	     2 bit_map_n_words    fixed bin,		/* Number of words in the bit map below */
+ 11    10 	     2 vtoc_last_recno    fixed bin,		/* Last record number in VTOC */
+ 11    11 	     2 pad	      (4) fixed bin,
+ 11    12 	     2 bit_map	      (0:1024 - 9) bit (36);	/* This structure consumes exactly 1 page */
+ 11    13 
+ 11    14      dcl	   1 bit_map_word	      aligned based (bit_map_wordp),
+ 11    15 	     2 pad1	      bit (1) unal,
+ 11    16 	     2 bits	      bit (32) unal,	/* 32 VTOCES ON => free */
+ 11    17 	     2 pad2	      bit (3) unal;
+ 11    18 
+ 11    19 
+ 11    20 
+ 11    21 /*  END OF:	vtoc_map.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      861 
+      862  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+ 12     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+ 12     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+ 12     4 
+ 12     5 dcl  vtocep ptr;
+ 12     6 
+ 12     7 dcl 1 vtoce based (vtocep) aligned,
+ 12     8 
+ 12     9 
+ 12    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+ 12    11 
+ 12    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+ 12    13 
+ 12    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+ 12    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+ 12    16     2 records bit (9),				/* number of records used by the seg in second storage */
+ 12    17     2 pad2 bit (9),
+ 12    18 
+ 12    19     2 dtu bit (36),					/* date and time segment was last used */
+ 12    20 
+ 12    21     2 dtm bit (36),					/* date and time segment was last modified */
+ 12    22 
+ 12    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+ 12    24     2 deciduous bit (1),				/* true if hc_sdw */
+ 12    25     2 nid bit (1),					/* no incremental dump switch */
+ 12    26     2 dnzp bit (1),					/* Dont null zero pages */
+ 12    27     2 gtpd bit (1),					/* Global transparent paging device */
+ 12    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+ 12    29     2 damaged bit (1),				/* TRUE if contents damaged */
+ 12    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+ 12    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+ 12    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+ 12    33     2 pad3 bit (8),
+ 12    34     2 dirsw bit (1),				/* directory switch */
+ 12    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+ 12    36     2 pad4 bit (16)) unaligned,			/* not used */
+ 12    37 
+ 12    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+ 12    39 
+ 12    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+ 12    41 
+ 12    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+ 12    43 
+ 12    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+ 12    45 
+ 12    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+ 12    47 
+ 12    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+ 12    49 
+ 12    50 
+ 12    51 
+ 12    52 
+ 12    53 
+ 12    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+ 12    55 
+ 12    56     2 pad6 (10) bit (36),				/* not used */
+ 12    57 
+ 12    58     2 ncd bit (1),					/* no complete dump switch */
+ 12    59     2 pad7 bit (17),
+ 12    60     2 pad8 bit (18),
+ 12    61 
+ 12    62     2 dtd bit (36),					/* date-time-dumped */
+ 12    63 
+ 12    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+ 12    65 
+ 12    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+ 12    67 
+ 12    68 
+ 12    69 
+ 12    70 
+ 12    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+ 12    72 
+ 12    73     2 primary_name char (32),				/* primary name of the segment */
+ 12    74 
+ 12    75     2 time_created bit (36),				/* time the segment was created */
+ 12    76 
+ 12    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+ 12    78 
+ 12    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+ 12    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+ 12    81 
+ 12    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+ 12    83 
+ 12    84     2 access_class bit (72),				/* access class in branch */
+ 12    85     2 perm_flags aligned,
+ 12    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+ 12    87       3 pad9 bit (35) unal,
+ 12    88     2 owner bit (36);				/* pvid of this volume */
+ 12    89 
+ 12    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+ 12    91 
+ 12    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+ 12    93     2 pad1 bit (7*36),
+ 12    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+ 12    95     2 pad2 bit (184*36);
+ 12    96 
+ 12    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      862 
+      863 
+      864 /* format: on */
+      865 
+      866 
+      867 /* BEGIN MESSAGE DOCUMENTATION
+      868*
+      869*   Message:
+      870*   disk_rebuild: Begin disk rebuild of DSKX_NN{s} onto DSKY_MM{s}
+      871*
+      872*   S:	$salvout
+      873*
+      874*   T:	$dskr
+      875*
+      876*   M:	This message is printed when disk rebuilding begins.
+      877*
+      878*   A:	$ignore
+      879*
+      880*   Message:
+      881*   disk_rebuild: salv cleanup debugging stop, dump and type go
+      882*
+      883*   S:	$crash
+      884*
+      885*   T:	During disk rebuild
+      886*
+      887*   M:	A disk rebuild has aborted due to a crawlout, and the debug switch is set.
+      888*   This message causes the system to return to BCE so that a dump can be taken.
+      889*
+      890*   A:	Follow programmer instructions.
+      891*
+      892*
+      893*   Message:
+      894*   disk_rebuild: INIT_TABLES: aste pool WWWo too small
+      895*
+      896*   S:	$info
+      897*
+      898*   T:	$run
+      899*
+      900*   M:	The physical volume salvager
+      901*   was unable to
+      902*   obtain the necessary temporary AST entries
+      903*   for its work segments.
+      904*   No salvaging was done.
+      905*
+      906*   A:	Shut down,
+      907*   manually correct the SST card,
+      908*   and reboot.
+      909*   Then salvage all volumes,
+      910*   since the indicator that volumes need salvaging
+      911*   may have been lost.
+      912*
+      913*   Message:
+      914*   disk_rebuild: processing VTOCE #XXX.
+      915*
+      916*   S:	$info
+      917*
+      918*   T:	$dskr
+      919*
+      920*   M:	This message indicates that a disk rebuild is progressing normally.
+      921*   It is printed every 1000. VTOC entries.
+      922*
+      923*   A:	$ignore
+      924*
+      925*
+      926*   Message:
+      927*   disk_rebuild: not enough free records (only XXX.) for increase (need YYY.)
+      928*
+      929*   S:	$salvout
+      930*
+      931*   T:	$dskr
+      932*
+      933*   M:	An attempt was made to increase the size
+      934*   of some partitions
+      935*   or of the VTOC.
+      936*   This required a decrease in the size of the paging region.
+      937*   The paging region is too full to be shrunk as required.
+      938*   The disk rebuild is aborted.
+      939*
+      940*   A:	Issue a different disk_rebuild command,
+      941*   or bring up Multics and delete some segments from the pack before trying again.
+      942*
+      943*
+      944*   Message:
+      945*   disk_rebuild: same drive specified for source and copy, aborting
+      946*
+      947*   S:	$salvout
+      948*
+      949*   T:	During disk rebuilding
+      950*
+      951*   M:	The operator attempted to specify the same drive as input and output.
+      952*   No action was taken.
+      953*
+      954*   A:	Enter a corrected command.
+      955*
+      956*
+      957*   Message:
+      958*   disk_rebuild: base of paging region changed from XXX. to YYY.
+      959*
+      960*   S:	$salvout
+      961*
+      962*   T:	$dskr
+      963*
+      964*   M:	The base of the paging
+      965*   region for the new pack is different from that for the old one.
+      966*
+      967*   A:	$ignore
+      968*
+      969*
+      970*   Message:
+      971*   disk_rebuild: copying XXX. rec of part NAME
+      972*
+      973*   S:	$salvout
+      974*
+      975*   T:	$dskr
+      976*
+      977*   M:	A disk rebuild is reformatting a pack
+      978*   which contains non-paging partitions.
+      979*   The contents of these partitions are copied exactly.
+      980*
+      981*   A:	$ignore
+      982*
+      983*
+      984*   Message:
+      985*   disk_rebuild: Error writing label: ERRORMESS
+      986*
+      987*   S:	$salvout
+      988*
+      989*   T:	$dskr
+      990*
+      991*   M:	A disk error has occurred writing the new label during a disk rebuild.
+      992*   The disk rebuild is aborted.
+      993*
+      994*   A:	Correct the problem and issue a new command.
+      995*
+      996*
+      997*   Message:
+      998*   disk_rebuild: Summary of original disk contents follows:
+      999*
+     1000*   S:	$salvout
+     1001*
+     1002*   T:	$dskr
+     1003*
+     1004*   M:	A summary report of the volume parameters before rebuilding is printed.
+     1005*
+     1006*   A:	$ignore
+     1007*
+     1008*
+     1009*   Message:
+     1010*   disk_rebuild: End of rebuilding. New summary report follows:
+     1011*
+     1012*   S:	$salvout
+     1013*
+     1014*   T:	$dskr
+     1015*
+     1016*   M:	Rebuilding has completed.  A summary report of the new volume parameter
+     1017*   is printed.
+     1018*
+     1019*   A:	$ignore
+     1020*
+     1021*
+     1022*   Message:
+     1023*   disk_rebuild: Summary Report
+     1024*   .br
+     1025*        Volume PVNAME of logical volume LVNAME.
+     1026*   .sp
+     1027*   Paging region begins at record DD. (WWo), for LL. (XXo) records.
+     1028*   .br
+     1029*   DD. (WWo) free records therein.
+     1030*   .br
+     1031*   Label/VTOC size is RR. records, MM. VTOCEs.
+     1032*   .br
+     1033*   VTOC version X., TTT. free VTOCEs.
+     1034*   .sp
+     1035*             Partition Map
+     1036*   .br
+     1037*   Name                Start               Length
+     1038*   .sp
+     1039*   NAME            DDD. (   WWWo)       DDD. (   WWWo)
+     1040*   .br
+     1041*                                      ______  _______
+     1042*   .br
+     1043*                                        DDD. (   WWWo)
+     1044*   .sp
+     1045*   Volume size is DDDD. (YYYYo) records total.
+     1046*   .sp
+     1047*             DD. damaged segments.
+     1048*
+     1049*   S:	$salvout
+     1050*
+     1051*   T:	During disk rebuilding.
+     1052*
+     1053*   M:	This is a report summarizing physical volume parameters printed by
+     1054*   the disk rebuilder both before and after rebuilding.
+     1055*   The partition map is omitted if no partitions are defined on the volume.
+     1056*
+     1057*   A:	$ignore
+     1058*
+     1059*
+     1060*   Message:
+     1061*   disk_rebuild: Disk rebuild finished.
+     1062*
+     1063*   S:	$salvout
+     1064*
+     1065*   T:	$dskr
+     1066*
+     1067*   M:	The disk rebuild has completed.
+     1068*
+     1069*   A:	$ignore
+     1070*
+     1071*
+     1072*   Message:
+     1073*   disk_rebuild: vtocx XXXo NAME branch unconnected due to YYYo
+     1074*
+     1075*   S:	$salvout
+     1076*
+     1077*   T:	$dskr
+     1078*
+     1079*   M:	This is debugging output
+     1080*   produced only if the debug switch is on
+     1081*   during a disk rebuild with branch checking.
+     1082*   It informs the system programmers of the
+     1083*   reasons for connection failure.
+     1084*
+     1085*   A:	$ignore
+     1086*
+     1087*
+     1088*   Message:
+     1089*   disk_rebuild:  Disk rebuild finished with errors: ERRORMESS
+     1090*
+     1091*   S:     $salvout
+     1092*
+     1093*   T:     $dskr
+     1094*
+     1095*   M:     The disk rebuild has been aborted due to the indicated ERRORMESS.
+     1096*
+     1097*   A:     $inform
+     1098*
+     1099*
+     1100*   Message:
+     1101*   disk_rebuild: Error from read_disk, aborting: ERRORMESS
+     1102*
+     1103*   S:	$salvout
+     1104*
+     1105*   T:	$dskr
+     1106*
+     1107*   M:	$err
+     1108*   The disk rebuild is aborted.
+     1109*
+     1110*   A:	$inform
+     1111*
+     1112*
+     1113*   Message:
+     1114*   disk_rebuild: Error from write_disk, aborting: ERRORMESS
+     1115*
+     1116*   S:	$salvout
+     1117*
+     1118*   T:	$dskr
+     1119*
+     1120*   M:	$err
+     1121*   The disk rebuild is aborted.
+     1122*
+     1123*   A:	$inform
+     1124*
+     1125*
+     1126*   Message:
+     1127*   disk_rebuild: out of room on vtocx XXXo, page YYYo
+     1128*
+     1129*   S:	$salvout
+     1130*
+     1131*   T:	$dskr
+     1132*
+     1133*   M:	$err
+     1134*   The disk rebuild is aborted.
+     1135*
+     1136*   A:	$inform
+     1137*
+     1138*
+     1139*   Message:
+     1140*   disk_rebuild: reading vtocx XXXo: ERRORMESS
+     1141*
+     1142*   S:	$salvout
+     1143*
+     1144*   T:	$dskr
+     1145*
+     1146*   M:	$err
+     1147*
+     1148*   A:	$inform
+     1149*
+     1150*
+     1151*   Message:
+     1152*   disk_rebuild: NN vtoces added to list of free vtoces.
+     1153*
+     1154*   S:	$salvout
+     1155*
+     1156*   T:	$dskr
+     1157*
+     1158*   M:	NN free VTOC entries
+     1159*   were found while salvaging and added to the list of free VTOC entries.
+     1160*   This is a normal message.
+     1161*
+     1162*   A:	$ignore
+     1163*
+     1164*
+     1165*   Message:
+     1166*   disk_rebuild: freeing deciduous vtocx XXXo: NAME
+     1167*
+     1168*   S:	$salvout
+     1169*
+     1170*   T:	$dskr
+     1171*
+     1172*   M:	The segment originally named NAME
+     1173*   at vtoc index XXXo
+     1174*   was deciduous, and has been deleted from the RPV.
+     1175*   This is debugging output
+     1176*   printed for system programmers
+     1177*   if a SALV DEBG card is supplied.
+     1178*
+     1179*   A:	$ignore
+     1180*
+     1181*
+     1182*   Message:
+     1183*   disk_rebuild: freeing process vtocx XXXo: NAME
+     1184*
+     1185*   S:	$salvout
+     1186*
+     1187*   T:	$dskr
+     1188*
+     1189*   M:	The segment originally named NAME
+     1190*   at vtoc index XXXo
+     1191*   was per-process
+     1192*   and has been deleted.
+     1193*   This is debugging output
+     1194*   printed for system programmers
+     1195*   if a SALV DEBG card is used.
+     1196*
+     1197*   A:	$ignore
+     1198*
+     1199*
+     1200*   Message:
+     1201*   disk_rebuild: Map of assigned addresses changed
+     1202*
+     1203*   S:	$salvout
+     1204*
+     1205*   T:	$dskr
+     1206*
+     1207*   M:	If any corrections were made to the
+     1208*   map on the volume
+     1209*   which shows which addresses are free and which are in use,
+     1210*   this message is printed.
+     1211*   If the volume was not properly shut down, this message is to be expected.
+     1212*
+     1213*   A:	$ignore
+     1214*
+     1215*
+     1216*   Message:
+     1217*   disk_rebuild: no. of free recs changed from OLD. to NEW.
+     1218*
+     1219*   S:	$salvout
+     1220*
+     1221*   T:	$dskr
+     1222*
+     1223*   M:	If The number of free records
+     1224*   in the volume label
+     1225*   is changed by a volume salvage,
+     1226*   this message is printed.
+     1227*   If the volume was not properly shut down, this message is to be expected.
+     1228*
+     1229*   A:	$ignore
+     1230*
+     1231*
+     1232*   Message:
+     1233*   disk_rebuild: no. of free vtoces changed from OLD. to NEW. 
+     1234*
+     1235*   S:	$salvout
+     1236*
+     1237*   T:	$dskr
+     1238*
+     1239*   M:	If the number of
+     1240*   free VTOC entries
+     1241*   in the volume label
+     1242*   is changed by a volume salvage,
+     1243*   this message is printed.
+     1244*
+     1245*   A:	$ignore
+     1246*
+     1247*
+     1248*   Message:
+     1249*   disk_rebuild: dskX_NN{s} must be mounted for rebuild.
+     1250*
+     1251*   S:     $salvout
+     1252*
+     1253*   T:	$dskr
+     1254*
+     1255*   M:	The "from" volume must be mounted for the rebuild.
+     1256*
+     1257*   A:	Mount the logical volume to which the "from" volume belongs
+     1258*   and try the rebuild abain.
+     1259*
+     1260*   Message:
+     1261*   disk_rebuild: dskX_NN{s} must not be mounted for rebuild.
+     1262*
+     1263*   S:     $salvout
+     1264*
+     1265*   T:	$dskr
+     1266*
+     1267*   M:	The "to" volume must not be mounted to the Storage System for
+     1268*   a rebuild.
+     1269*
+     1270*   A:     Demount the logical volume to which the volume belongs and retry
+     1271*   the rebuild.
+     1272*
+     1273*   Message:
+     1274*   disk_rebuild: Read error accessing VTOC Map of dskX_NN{s}
+     1275*
+     1276*   S:     $salvout
+     1277*
+     1278*   T:	$dskr
+     1279*
+     1280*   M:	$err
+     1281*   The rebuild is aborted.
+     1282*
+     1283*   A:     $inform
+     1284*
+     1285*   Message:
+     1286*   disk_rebuild: Cannot compress VTOC on dskX_NN{s} because active VTOCEs in the
+     1287*   truncated region.
+     1288*
+     1289*   S:     $salvout
+     1290*
+     1291*   T:     $dskr
+     1292*
+     1293*   M:     A rebuild was requested in which the number of VTOCEs on the new
+     1294*   volume was smaller than the number of VTOCEs on the old volume. This is
+     1295*   permitted only if there are no active VTOCEs in the truncated region
+     1296*   (that is, no active VTOCEs on the old volume have VTOCE indices which
+     1297*   would be too high for the new volume).
+     1298*
+     1299*   A:     Run sweep_pv -from num_vtoces
+     1300*   to remove these VTOCEs from the old volume and retry the rebuild. It
+     1301*   may be necessary to salvage the volume to recover lost VTOCEs in the
+     1302*   truncated region.
+     1303*
+     1304*
+     1305*   END MESSAGE DOCUMENTATION */
+     1306 
+     1307      end disk_rebuild;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0808.0  disk_rebuild.pl1                  >spec>install>1112>disk_rebuild.pl1
+851          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+852          2    10/22/86  1450.1  disk_pack.incl.pl1                >ldd>include>disk_pack.incl.pl1
+853          3    07/21/88  2036.0  fs_vol_label.incl.pl1             >ldd>include>fs_vol_label.incl.pl1
+854          4    07/11/84  0937.3  null_addresses.incl.pl1           >ldd>include>null_addresses.incl.pl1
+855          5    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+856          6    10/25/82  1015.6  salv_data.incl.pl1                >ldd>include>salv_data.incl.pl1
+857          7    11/29/83  0929.9  salvager_severities.incl.pl1      >ldd>include>salvager_severities.incl.pl1
+858          8    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+859          9    04/29/76  1050.5  vol_map.incl.pl1                  >ldd>include>vol_map.incl.pl1
+860         10    05/23/77  0919.3  vtoc_header.incl.pl1              >ldd>include>vtoc_header.incl.pl1
+861         11    05/27/82  1525.9  vtoc_map.incl.pl1                 >ldd>include>vtoc_map.incl.pl1
+862         12    10/04/83  1105.1  vtoce.incl.pl1                    >ldd>include>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALL_FREE                        000000 constant        bit(36)                  initial dcl 657 ref 687 687 695 702
+ANNOUNCE                        000002 constant        fixed bin(17,0)          initial dcl 8-7 set ref 352* 792*
+CRASH                           000064 constant        fixed bin(17,0)          initial dcl 8-7 set ref 216*
+DUMPER_BIT_MAP_ADDR                    constant        fixed bin(17,0)          initial dcl 2-54 ref 225
+LABEL_ADDR                      000055 constant        fixed bin(17,0)          initial dcl 2-54 set ref 223 604*
+SALV_ANNOUNCE                   000063 constant        fixed bin(17,0)          initial dcl 7-4 set ref 188* 190* 195* 200* 266*
+                                                                                  299* 330* 332* 333* 356* 392* 423* 442* 452* 475*
+                                                                                  674* 710*
+SALV_DEBUG                      000062 constant        fixed bin(17,0)          initial dcl 7-4 set ref 228* 274* 287* 325* 368*
+                                                                                  374* 548* 553* 573* 614* 617* 619* 621* 622* 624*
+                                                                                  627* 629* 634* 636* 638*
+VOLMAP_ADDR                            constant        fixed bin(17,0)          initial dcl 2-54 ref 224
+VTOCES_PER_RECORD               000002 constant        fixed bin(17,0)          initial array dcl 2-72 ref 662
+VTOC_MAP_ADDR                          constant        fixed bin(17,0)          initial dcl 2-54 ref 226
+VTOC_ORIGIN                            constant        fixed bin(17,0)          initial dcl 2-54 ref 210 662
+a_addr                                 parameter       fixed bin(17,0)          dcl 460 set ref 458 471*
+a_code                                 parameter       fixed bin(35,0)          dcl 87 set ref 69 338*
+a_pvtx1                                parameter       fixed bin(17,0)          dcl 72 ref 69 176
+a_pvtx2                                parameter       fixed bin(17,0)          dcl 72 ref 69 177
+a_vtocx                                parameter       fixed bin(17,0)          dcl 460 ref 458 463 468
+addr                                                   builtin function         dcl 161 ref 167 168 180 206 207 415 415 493 524 530
+                                                                                  533 668 668 670 670 670 670 671 677 677 677 677
+                                                                                  694 701 706 706 706 706 726 777 779 779 840 840
+                                                                                  841 841
+addr_delta                             parameter       fixed bin(17,0)          dcl 75 ref 69 172 174
+addr_index                      000120 automatic       fixed bin(17,0)          dcl 76 set ref 464* 466 466* 471 471 472 474
+addrel                                                 builtin function         dcl 161 ref 807 810 810
+all_free                        000100 automatic       bit(1)                   packed unaligned dcl 650 set ref 681* 684 687* 695*
+                                                                                  702* 709
+aste                                   based           structure                level 1 dcl 1-11
+aste_part                              based           structure                level 1 dcl 1-89
+astep                           002464 automatic       pointer                  dcl 1-9 set ref 382* 383 384 384* 386 386* 388* 592*
+                                                                                  593 593* 602* 604 604* 728* 730 736* 737 737 737
+                                                                                  740* 786* 788 796 802 807 816 817 818 819 820 821
+                                                                                  826* 831 833*
+ausedp                          000020 external static bit(18)                  array level 2 packed packed unaligned dcl 116 set
+                                                                                  ref 833*
+base_add                  1            based           fixed bin(17,0)          level 2 dcl 9-5 set ref 271 277* 524 617* 617*
+baseadd1                        000114 automatic       fixed bin(17,0)          dcl 76 set ref 271* 274 274*
+baseadd2                        000115 automatic       fixed bin(17,0)          dcl 76 set ref 272* 274 274* 277 312 474
+baseno                                                 builtin function         dcl 161 ref 592 602 602 726 777
+bit                                                    builtin function         dcl 161 ref 405 819 820
+bit_map                  10            based           bit(36)                  array level 2 in structure "vtoc_map" dcl 11-6
+                                                                                  in procedure "disk_rebuild" set ref 243* 493 687
+                                                                                  694 701
+bit_map                 100            based           bit(36)                  array level 2 in structure "vol_map" dcl 9-5
+                                                                                  in procedure "disk_rebuild" set ref 530 533
+bit_map_n_words           3            based           fixed bin(17,0)          level 2 in structure "vol_map" dcl 9-5 in procedure
+                                                                                  "disk_rebuild" set ref 279* 521 523 530 530 533
+                                                                                  533 779
+bit_map_n_words           2            based           fixed bin(17,0)          level 2 in structure "vtoc_map" dcl 11-6
+                                                                                  in procedure "disk_rebuild" set ref 242*
+bit_map_word                           based           structure                level 1 dcl 11-14
+bit_map_wordp                   002502 automatic       pointer                  dcl 11-4 set ref 493* 494 694* 695 701* 702
+bit_map_words                   000101 automatic       fixed bin(17,0)          dcl 651 set ref 683* 684 684 701
+bit_table                              based           bit(1)                   array level 2 packed packed unaligned dcl 107 set
+                                                                                  ref 472* 524
+bit_table_map                          based           bit(32)                  array packed unaligned dcl 513 ref 524
+bits                      0(01)        based           bit(32)                  array level 2 in structure "new_map" packed packed
+                                                                                  unaligned dcl 511 in procedure "UPDATE_VOL_MAP"
+                                                                                  set ref 524* 528*
+bits                      0(01)        based           bit(32)                  level 2 in structure "bit_map_word" packed packed
+                                                                                  unaligned dcl 11-14 in procedure "disk_rebuild"
+                                                                                  set ref 494* 695 702
+bitx                            000160 automatic       fixed bin(17,0)          dcl 483 set ref 492* 494
+bufp                            002432 automatic       pointer                  dcl 85 set ref 168* 438* 440* 447 448* 450*
+ceil                                                   builtin function         dcl 161 ref 279
+cleanup                         000000 stack reference condition                dcl 159 ref 215
+code                                   parameter       fixed bin(35,0)          dcl 753 in procedure "INIT_TABLES" set ref 749 775*
+                                                                                  791*
+code                            002434 automatic       fixed bin(35,0)          dcl 87 in procedure "disk_rebuild" set ref 178* 221*
+                                                                                  221 297* 298 299* 305* 332 333* 338 354* 355 356*
+                                                                                  390* 391 392* 438* 440* 441 442* 448* 450* 451
+                                                                                  452*
+csl                       2(09)        based           bit(9)                   level 2 packed packed unaligned dcl 12-7 set ref 415
+                                                                                  415
+damaged                   5(06)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref 398
+damaged_count                   000125 automatic       fixed bin(17,0)          initial dcl 76 set ref 76* 398* 398 638 638*
+deciduous                 5(01)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref 373
+delta                           000126 automatic       fixed bin(17,0)          dcl 76 set ref 174* 311 465 471 474
+device_type               4            based           fixed bin(8,0)           array level 2 packed packed unaligned dcl 5-24 set
+                                                                                  ref 662
+devname                   3            based           char(4)                  array level 2 dcl 5-24 set ref 184 186
+dirsw                     5(18)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref 366
+divide                                                 builtin function         dcl 161 ref 242 491 682 683 779
+dname1                          002454 automatic       varying char(9)          dcl 104 set ref 184* 188* 195* 674* 710*
+dname2                          002460 automatic       varying char(9)          dcl 104 set ref 186* 188* 200*
+dnzp                     12(13)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref
+                                                                                  817*
+dseg$                           000032 external static fixed bin(71,0)          array dcl 124 set ref 733* 827*
+ehs                       5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 ref 384
+end                                    based           bit(36)                  level 2 dcl 757 set ref 779
+filemap_checksum_               000034 constant        entry                    external dcl 126 ref 415
+fill_page_table_null_addr       000001 constant        bit(22)                  initial dcl 4-4 set ref 810*
+first_free                      000110 automatic       fixed bin(17,0)          dcl 73 set ref 249* 251 252* 252 259 264 272
+first_free_vtocx          4            based           fixed bin(17,0)          level 2 dcl 10-5 set ref 235*
+first_free_word                 000102 automatic       fixed bin(17,0)          dcl 652 set ref 682* 684 684 694
+fixed                                                  builtin function         dcl 161 ref 404 404 405 415 415 592 602 602 726 777
+                                                                                  779 796 819 820
+fm                       20            based           bit(18)                  array level 2 packed packed unaligned dcl 12-7 set
+                                                                                  ref 402 404 404 405* 415 415
+fm_checksum               6            based           bit(36)                  level 2 dcl 12-7 set ref 411* 415*
+fm_checksum_valid         5(08)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref
+                                                                                  410* 414*
+fm_damaged                5(07)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref
+                                                                                  418*
+frec                   1005            based           fixed bin(17,0)          array level 3 dcl 3-18 set ref 251 259 259 259 288
+                                                                                  289 289 629* 629*
+free_count                      002452 automatic       fixed bin(17,0)          dcl 102 set ref 179* 330 330* 487* 487
+from                                   parameter       fixed bin(17,0)          dcl 435 set ref 433 438* 440*
+get_aste                        000036 constant        entry                    external dcl 127 ref 786
+get_ptrs_$given_astep           000042 constant        entry                    external dcl 129 ref 826
+get_ptrs_$given_segno           000040 constant        entry                    external dcl 128 ref 592 602 728
+get_pvtx$hold_pvtx              000044 constant        entry                    external dcl 130 ref 829
+get_pvtx$release_pvtx           000046 constant        entry                    external dcl 131 ref 737
+hc_part                   5(11)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 ref 386
+i                               000232 automatic       fixed bin(17,0)          dcl 588 in procedure "FORCE_VTOC_ON_DISK" set ref
+                                                                                  591* 592*
+i                               000250 automatic       fixed bin(17,0)          dcl 612 in procedure "REPORT_SUMMARY" set ref 628*
+                                                                                  629 629 629 629 629 632*
+i                               000265 automatic       fixed bin(17,0)          dcl 771 in procedure "INIT_TABLES" set ref 809* 810
+                                                                                  810*
+i                               000103 automatic       fixed bin(17,0)          dcl 73 in procedure "disk_rebuild" set ref 210* 211
+                                                                                  212* 212* 250* 251 252* 281* 283 284 285 285 289
+                                                                                  289* 311* 312 312* 401* 402 404 404 405* 475*
+j                               000104 automatic       fixed bin(17,0)          dcl 73 in procedure "disk_rebuild" set ref 258* 259
+                                                                                  259 259* 282* 283 284 287 288* 465* 466 466*
+j                               000171 automatic       fixed bin(17,0)          dcl 516 in procedure "UPDATE_VOL_MAP" set ref 527*
+                                                                                  528 528
+k                               000105 automatic       fixed bin(17,0)          dcl 73 set ref 288* 290* 291* 291
+l                               000106 automatic       fixed bin(17,0)          dcl 73 set ref 289* 290*
+label                                  based           structure                level 1 dcl 3-18
+label_pagep                            parameter       pointer                  dcl 76 ref 69 175
+labelp                          002466 automatic       pointer                  dcl 3-16 set ref 223* 236 241 247 249 282 283 284
+                                                                                  287 288 302* 614 614 621 624 628 629 629 629 629
+                                                                                  629 632 636 636 779 841
+last_free                       000111 automatic       fixed bin(17,0)          dcl 73 set ref 257* 259 259* 263* 263 264
+last_used                       000100 automatic       fixed bin(17,0)          array dcl 172 set ref 312* 466 466 471 471* 472 474
+lock$lock_ast                   000050 constant        entry                    external dcl 132 ref 381 739 784
+lock$unlock_ast                 000052 constant        entry                    external dcl 133 ref 389 396 741 790 835
+logical_area_number       4(09)        based           fixed bin(8,0)           array level 2 packed packed unaligned dcl 5-24 set
+                                                                                  ref 183 185
+lost_pages                      000117 automatic       fixed bin(17,0)          dcl 76 set ref 264* 265 266* 278
+lp                              000122 automatic       pointer                  dcl 76 set ref 175* 250 251 252 257 258 259 259 259
+                                                                                  281 283 284 285 285 289 289 297* 302 447 662
+lv_name                 531            based           char(32)                 level 2 dcl 3-18 set ref 614*
+map_size                        000121 automatic       fixed bin(17,0)          dcl 76 set ref 278* 279 474
+max_n_vtoc_seg                         constant        fixed bin(17,0)          initial dcl 101 ref 591
+min                                                    builtin function         dcl 161 ref 284 351
+mod                                                    builtin function         dcl 161 ref 352 492 527 691 699
+msl                       4            based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "disk_rebuild" set ref 820*
+msl                             000264 automatic       fixed bin(17,0)          dcl 767 in procedure "INIT_TABLES" set ref 779* 786*
+                                                                                  792* 820
+n_free_rec                2            based           fixed bin(17,0)          level 2 in structure "vol_map" dcl 9-5 in procedure
+                                                                                  "disk_rebuild" set ref 265 266* 538 541* 553* 619*
+                                                                                  619*
+n_free_rec                      000172 automatic       fixed bin(17,0)          dcl 517 in procedure "UPDATE_VOL_MAP" set ref 536*
+                                                                                  538 541 553*
+n_free_vtoce              1            based           fixed bin(17,0)          level 2 in structure "vtoc_map" dcl 11-6
+                                                                                  in procedure "disk_rebuild" set ref 563 565*
+n_free_vtoce                    002451 automatic       fixed bin(17,0)          dcl 100 in procedure "disk_rebuild" set ref 307*
+                                                                                  496* 496 563 565 573*
+n_free_vtoce              3            based           fixed bin(17,0)          level 2 in structure "vtoc_header" dcl 10-5
+                                                                                  in procedure "disk_rebuild" set ref 234* 573* 622*
+n_rec                                  based           fixed bin(17,0)          level 2 dcl 9-5 set ref 264 278 278* 527 536 617*
+                                                                                  617*
+n_used_rec                      002450 automatic       fixed bin(17,0)          dcl 99 set ref 308* 406* 406 536
+n_vtoce                         000113 automatic       fixed bin(17,0)          dcl 75 in procedure "disk_rebuild" set ref 233 240
+                                                                                  242 245 246 351 423 423* 425 425 662* 664 668* 682
+                                                                                  691
+n_vtoce                   1            based           fixed bin(17,0)          level 2 in structure "vtoc_header" dcl 10-5
+                                                                                  in procedure "disk_rebuild" set ref 233* 621*
+n_vtoce                  17(18)        based           fixed bin(17,0)          array level 2 in structure "pvt_array" packed packed
+                                                                                  unaligned dcl 5-24 in procedure "disk_rebuild" set
+                                                                                  ref 245* 339* 661
+n_vtoce                                based           fixed bin(17,0)          level 2 in structure "vtoc_map" dcl 11-6
+                                                                                  in procedure "disk_rebuild" set ref 240*
+new_map                                based           structure                array level 1 dcl 511 set ref 521* 530 533
+no_free_aste_err                       constant        fixed bin(35,0)          initial dcl 89 ref 791
+nparts                 1003            based           fixed bin(17,0)          level 2 dcl 3-18 ref 250 258 281 282 624 628
+nqsw                      5(20)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref
+                                                                                  818*
+nrec                   1006            based           fixed bin(17,0)          array level 3 dcl 3-18 set ref 252 284 284 629* 629*
+                                                                                  632
+null                                                   builtin function         dcl 161 ref 383 593 604 707 730 788
+old_map                                based           structure                array level 1 dcl 506 set ref 530 533*
+old_vtoc_size                   000116 automatic       fixed bin(17,0)          dcl 76 set ref 246 351 423 423* 425 425 661* 664 668
+                                                                                  683 699
+opt_bits                               parameter       bit(36)                  dcl 76 set ref 69 182*
+p99                             002453 automatic       picture(2)               packed unaligned dcl 103 set ref 183* 184 185* 186
+page$cam                        000054 constant        entry                    external dcl 134 ref 734 828
+page_buf                        000432 automatic       bit(36864)               dcl 85 set ref 168
+page_fault_error                000000 stack reference condition                dcl 159 ref 673
+part                   1004            based           char(4)                  array level 3 dcl 3-18 set ref 283 283 285 285 287*
+                                                                                  629*
+parts                  1004            based           structure                array level 2 dcl 3-18
+pc$cleanup                      000056 constant        entry                    external dcl 135 ref 384
+pc$truncate_deposit_all         000060 constant        entry                    external dcl 136 ref 736
+pc_wired$write                  000062 constant        entry                    external dcl 137 ref 386
+pc_wired$write_wait             000064 constant        entry                    external dcl 138 ref 593 604
+pds$processid                   000010 external static bit(36)                  dcl 111 ref 739
+per_process               5(05)        based           bit(1)                   level 2 packed packed unaligned dcl 12-7 set ref 367
+pmut$swap_sdw                   000066 constant        entry                    external dcl 139 ref 670 677 706
+primary_name            260            based           char(32)                 level 2 packed packed unaligned dcl 12-7 set ref
+                                                                                  368* 374*
+ptot                            000251 automatic       fixed bin(24,0)          dcl 612 set ref 626* 632* 632 634* 634*
+ptp                             002444 automatic       pointer                  dcl 96 set ref 807* 810 810
+ptr                                                    builtin function         dcl 161 ref 223 224 225 226 671
+pts                             000266 automatic       fixed bin(17,0)          dcl 771 set ref 797* 809
+ptsi                            000267 automatic       fixed bin(17,0)          dcl 771 in procedure "INIT_TABLES" set ref 796* 797
+                                                                                  833
+ptsi                     13(28)        based           bit(2)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "disk_rebuild" ref 796
+ptw_util_$make_null             000070 constant        entry                    external dcl 140 ref 810
+put_aste                        000072 constant        entry                    external dcl 141 ref 740
+pv_name                 521            based           char(32)                 level 2 dcl 3-18 set ref 614*
+pv_salv_seg                            based           structure                level 1 dcl 757
+pv_salv_seg$                    000026 external static fixed bin(17,0)          dcl 122 in procedure "disk_rebuild" set ref 726
+pv_salv_seg$                    000140 external static fixed bin(17,0)          dcl 755 in procedure "INIT_TABLES" set ref 777 779
+                                                                                  840 841
+pvid                                   based           bit(36)                  level 2 in structure "pvte" dcl 5-26 in procedure
+                                                                                  "disk_rebuild" ref 207
+pvid                                   based           bit(36)                  array level 2 in structure "pvt_array" dcl 5-24
+                                                                                  in procedure "disk_rebuild" set ref 737 829
+pvid                            002447 automatic       bit(36)                  dcl 98 in procedure "disk_rebuild" set ref 207* 354*
+                                                                                  382* 390*
+pvt$array                       000134 external static fixed bin(17,0)          dcl 5-18 set ref 180
+pvt_array                              based           structure                array level 1 dcl 5-24 set ref 206 207 668 668
+pvt_arrayp                      002470 automatic       pointer                  dcl 5-21 set ref 180* 183 184 184 185 186 186 194
+                                                                                  199 206 207 245 339 339 661 662 668 668 670 670
+                                                                                  671 737 829
+pvte                                   based           structure                level 1 dcl 5-26
+pvtep                           002472 automatic       pointer                  dcl 5-22 set ref 206*
+pvtx                            000100 automatic       fixed bin(17,0)          dcl 72 in procedure "disk_rebuild" set ref 177* 221*
+                                                                                  745*
+pvtx                            000263 automatic       fixed bin(17,0)          dcl 767 in procedure "INIT_TABLES" set ref 778* 821
+                                                                                  829 829*
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "disk_rebuild" set ref 737
+                                                                                  737 821*
+pvtx1                           000101 automatic       fixed bin(17,0)          dcl 73 set ref 176* 183 184 184 189 194 207 354*
+                                                                                  390* 438* 440* 661 668 668 670 670 671
+pvtx2                           000102 automatic       fixed bin(17,0)          dcl 73 set ref 177* 185 186 186 189 199 206 245 297*
+                                                                                  339 339 361* 426* 448* 450* 662
+r                               000107 automatic       fixed bin(17,0)          dcl 73 in procedure "disk_rebuild" set ref 284* 285*
+                                                                                  287* 289
+r                               000130 automatic       fixed bin(17,0)          dcl 347 in procedure "copy_vtoc" set ref 403* 404*
+                                                                                  405
+read_disk                       000074 constant        entry                    external dcl 142 ref 438
+read_disk$read_disk_no_test     000076 constant        entry                    external dcl 143 ref 440
+rel                                                    builtin function         dcl 161 ref 779
+res                             000103 automatic       fixed bin(17,0)          dcl 653 set ref 691* 692 695 695 695 699* 700 700*
+                                                                                  702 702
+rtrim                                                  builtin function         dcl 161 ref 184 186
+s_ptr                           002442 automatic       pointer                  dcl 94 set ref 221* 223 224 225 226 592 602 602
+salv_data$debug                 000136 external static bit(1)                   dcl 6-3 ref 216 368 374
+salv_err_msg                    000102 constant        entry                    external dcl 145 ref 188 190 195 200 228 266 274 287
+                                                                                  325 330 332 368 374 423 475 548 553 573 614 617
+                                                                                  619 621 622 624 627 629 634 636 638 674 710
+salv_err_msg$code               000104 constant        entry                    external dcl 146 ref 299 333 356 392 442 452
+salvager$set_options            000100 constant        entry                    external dcl 144 ref 182
+save_vtocx                      000124 automatic       fixed bin(17,0)          initial dcl 76 set ref 76* 309* 463 468*
+search_ast$check                000106 constant        entry                    external dcl 147 ref 382
+segno                           000100 automatic       fixed bin(17,0)          dcl 723 in procedure "CLEAN_UP" set ref 726* 728*
+                                                                                  733
+segno                           000262 automatic       fixed bin(17,0)          dcl 767 in procedure "INIT_TABLES" set ref 777* 819
+                                                                                  827
+sp_bit                                 parameter       bit(1)                   dcl 436 ref 433 438 446
+sst$astl                        000012 external static bit(36)                  dcl 113 ref 739
+sst$astsize                     000014 external static fixed bin(17,0)          dcl 114 ref 807
+sst$checksum_filemap            000016 external static fixed bin(17,0)          dcl 115 ref 409
+sst$level                       000020 external static structure                array level 1 dcl 116
+sst$pts                         000022 external static fixed bin(17,0)          array dcl 119 ref 797
+sst$root_pvtx                   000024 external static fixed bin(17,0)          dcl 120 ref 778
+strp                      2            based           bit(18)                  level 2 packed packed unaligned dcl 1-11 set ref
+                                                                                  819*
+substr                                                 builtin function         dcl 161 set ref 402 404 404 494* 528* 695 695 702
+                                                                                  702
+sv_name                  15            based           char(2)                  array level 2 dcl 5-24 set ref 184 186
+syserr                          000110 constant        entry                    external dcl 148 ref 216 352 792
+table1                                 based           structure                level 1 dcl 107 in procedure "disk_rebuild"
+table1                                 based           structure                level 2 in structure "pv_salv_seg" dcl 757
+                                                                                  in procedure "INIT_TABLES" set ref 840
+table1p                                parameter       pointer                  dcl 751 in procedure "INIT_TABLES" set ref 749 840*
+table1p                         002436 automatic       pointer                  dcl 91 in procedure "disk_rebuild" set ref 305* 472
+                                                                                  524
+table3                                 based           structure                level 2 dcl 757 set ref 841
+table3p                         002440 automatic       pointer                  dcl 92 in procedure "disk_rebuild" set ref 305* 521
+                                                                                  524 528 530 533
+table3p                                parameter       pointer                  dcl 752 in procedure "INIT_TABLES" set ref 749 841*
+thread$out                      000112 constant        entry                    external dcl 149 ref 833
+to                                     parameter       fixed bin(17,0)          dcl 435 set ref 433 448* 450*
+tsdw                            000104 automatic       fixed bin(71,0)          dcl 654 in procedure "CHECK_VTOC_SIZES" set ref 676*
+                                                                                  677 677 705* 706 706
+tsdw                            000270 automatic       fixed bin(71,0)          dcl 773 in procedure "INIT_TABLES" set ref 826* 827
+two                       1            based           bit(388)                 level 2 packed packed unaligned dcl 1-89 set ref
+                                                                                  802*
+uid                       1            based           bit(36)                  level 2 packed packed unaligned dcl 12-7 set ref 362
+                                                                                  382 487
+unspec                                                 builtin function         dcl 161 set ref 243* 489* 521* 530 530 533* 533
+update_vtoce                    000114 constant        entry                    external dcl 150 ref 388
+used                      4(18)        based           bit(1)                   array level 2 packed packed unaligned dcl 5-24 set
+                                                                                  ref 194 199 339
+usedf                     5            based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref 737
+                                                                                  831*
+version                                based           fixed bin(17,0)          level 2 dcl 10-5 set ref 622*
+vm_vio$clean_up                 000116 constant        entry                    external dcl 151 ref 745
+vm_vio$get_vtocep               000120 constant        entry                    external dcl 152 ref 361 426
+vm_vio$init                     000122 constant        entry                    external dcl 153 ref 221
+vol_map                                based           structure                level 1 dcl 9-5
+vol_mapp                        002474 automatic       pointer                  dcl 9-3 set ref 224* 264 265 266 271 277 278 278 279
+                                                                                  521 523 524 527 530 530 530 533 533 533 536 538
+                                                                                  541 553 617 617 617 617 619 619 779
+vol_size                547            based           fixed bin(17,0)          level 2 dcl 3-18 set ref 257 636* 636* 779 841
+volmap_abs_seg$                 000030 external static fixed bin(17,0)          dcl 123 set ref 670 670 671 677 677 706 706
+volmap_seg_sdw           22            based           fixed bin(71,0)          array level 2 dcl 5-24 set ref 670 670
+vtoc_buf                        000127 automatic       bit(6912)                dcl 83 set ref 167
+vtoc_bufp                       000430 automatic       pointer                  dcl 83 set ref 167* 354* 362 366 367 368 373 374 382
+                                                                                  390* 398 400
+vtoc_header                            based           structure                level 1 dcl 10-5
+vtoc_headerp                    002476 automatic       pointer                  dcl 10-3 set ref 225* 233 234 235 236 247 573 621
+                                                                                  622 622
+vtoc_last_recno           3            based           fixed bin(17,0)          level 2 in structure "vtoc_map" dcl 11-6
+                                                                                  in procedure "disk_rebuild" set ref 241*
+vtoc_last_recno           2            based           fixed bin(17,0)          level 2 in structure "vtoc_header" dcl 10-5
+                                                                                  in procedure "disk_rebuild" set ref 236* 247*
+vtoc_man$get_vtoce              000124 constant        entry                    external dcl 154 ref 354 390
+vtoc_map                               based           structure                level 1 dcl 11-6
+vtoc_map_offset          25(18)        based           bit(18)                  array level 2 packed packed unaligned dcl 5-24 set
+                                                                                  ref 671
+vtoc_mapp                       002500 automatic       pointer                  dcl 11-3 set ref 226* 240 241 242 243 493 563 565
+                                                                                  671* 687 694 701 707*
+vtoc_size               550            based           fixed bin(17,0)          level 2 dcl 3-18 set ref 236 241 247 249 447* 447
+                                                                                  621* 662
+vtoce                                  based           structure                level 1 dcl 12-7 set ref 489*
+vtoce_incr                      000112 automatic       fixed bin(17,0)          dcl 75 set ref 246*
+vtoce_stock_man$drain_stock_range
+                                000126 constant        entry                    external dcl 155 ref 668
+vtocep                          002504 automatic       pointer                  dcl 12-5 set ref 361* 400 402 404 404 405 410 411
+                                                                                  414 415 415 415 415 415 418 426* 487 489
+vtocx                           002446 automatic       fixed bin(17,0)          dcl 97 in procedure "disk_rebuild" set ref 351* 352
+                                                                                  352 352* 354* 356* 361* 368* 374* 382* 390* 392*
+                                                                                  403* 425* 426* 475* 491 492
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "disk_rebuild" set ref 816*
+w                               000170 automatic       fixed bin(17,0)          dcl 515 set ref 523* 524 524* 528
+whole_vtoce                            based           bit(6912)                dcl 349 set ref 400* 400
+wordx                           000106 automatic       fixed bin(17,0)          dcl 655 in procedure "CHECK_VTOC_SIZES" set ref 684*
+                                                                                  687*
+wordx                           000161 automatic       fixed bin(17,0)          dcl 484 in procedure "FREE_VTOCE" set ref 491* 493
+write_disk                      000130 constant        entry                    external dcl 156 ref 297 448
+write_disk$write_disk_no_test   000132 constant        entry                    external dcl 157 ref 450
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BEEP                                   internal static fixed bin(17,0)          initial dcl 8-7
+DEFAULT_HCPART_SIZE                    internal static fixed bin(17,0)          initial dcl 2-54
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 8-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 8-7
+MAX_VTOCE_PER_PACK                     internal static fixed bin(17,0)          initial dcl 2-54
+Multics_ID_String                      internal static char(32)                 initial packed unaligned dcl 3-92
+PAGE_SIZE                              internal static fixed bin(17,0)          initial dcl 2-67
+SALV_CRASH                             internal static fixed bin(17,0)          initial dcl 7-4
+SALV_JUST_LOG                          internal static fixed bin(17,0)          initial dcl 7-4
+SALV_LOG                               internal static fixed bin(17,0)          initial dcl 7-4
+SECTORS_PER_RECORD                     internal static fixed bin(17,0)          initial array dcl 2-74
+SECTORS_PER_VTOCE                      internal static fixed bin(17,0)          initial array dcl 2-70
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 8-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 8-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 8-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 5-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 5-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 5-113
+VTOCE_SIZE                             internal static fixed bin(17,0)          initial dcl 2-68
+append_null_addr                       internal static bit(22)                  initial dcl 4-4
+asta                                   based           bit(432)                 array dcl 1-86
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 4-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+get_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 4-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 4-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 4-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 4-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 4-4
+make_sdw_null_addr                     internal static bit(22)                  initial dcl 4-4
+page_bad_null_addr                     internal static bit(22)                  initial dcl 4-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 4-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 4-4
+page_problem_null_addr                 internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 4-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 4-4
+put_aste_null_addr                     internal static bit(22)                  initial dcl 4-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 4-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 4-26
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 5-19
+salv_data$dump                         external static bit(1)                   dcl 6-4
+salv_data$lock                         external static bit(36)                  dcl 6-5
+salv_data$on_line                      external static bit(1)                   dcl 6-6
+salv_data$print_path                   external static bit(1)                   dcl 6-7
+salv_data$printer_delay                external static fixed bin(17,0)          dcl 6-8
+salv_data$rpv                          external static bit(1)                   dcl 6-9
+salv_data$vol_read_ahead               external static fixed bin(17,0)          dcl 6-10
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 4-26
+seg_aste                               based           structure                level 1 dcl 1-96
+seg_vtoce                              based           structure                level 1 dcl 12-92
+segmove_new_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+segmove_old_addr_null_addr             internal static bit(22)                  initial dcl 4-4
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 4-26
+truncate_vtoce_null_addr               internal static bit(18)                  initial dcl 4-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 4-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 4-26
+volume_reloader_null_addr              internal static bit(18)                  initial dcl 4-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 4-26
+vtoce_parts                            based           bit(2304)                array dcl 12-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_VTOC_SIZES                005032 constant        entry                    internal dcl 643 ref 204
+CLEAN_UP                        005414 constant        entry                    internal dcl 720 ref 217 336
+FORCE_LABEL_ON_DISK             004324 constant        entry                    internal dcl 600 ref 323
+FORCE_VTOC_ON_DISK              004246 constant        entry                    internal dcl 586 ref 321
+FREE_VTOCE                      003744 constant        entry                    internal dcl 481 ref 363 370 376 427
+INIT_TABLES                     005563 constant        entry                    internal dcl 749 ref 305
+REPORT_SUMMARY                  004366 constant        entry                    internal dcl 610 ref 229 327
+UPDATE_VOL_MAP                  003776 constant        entry                    internal dcl 504 ref 317
+UPDATE_VTOC_MAP                 004200 constant        entry                    internal dcl 561 ref 319
+copy_page                       003436 constant        entry                    internal dcl 433 ref 211 212 290 404
+copy_vtoc                       002540 constant        entry                    internal dcl 345 ref 315
+disk_rebuild                    001046 constant        entry                    external dcl 69
+err_out                         002411 constant        label                    dcl 330 ref 268 300 357 393 443 453 476
+err_ret                         002517 constant        label                    dcl 338 ref 191 196 201 221 678 712
+get_new_addr                    003636 constant        entry                    internal dcl 458 ref 403
+next_vtocx                      003345 constant        label                    dcl 420 ref 364 371 377
+report_bit_map_changed          004124 constant        entry                    internal dcl 547 ref 532
+report_n_free_rec_changed       004146 constant        entry                    internal dcl 552 ref 540
+report_n_free_vtoce             004214 constant        entry                    internal dcl 572 ref 564
+update_frec                     001672 constant        label                    dcl 250 ref 253
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      6666        7030    6120        6676
+Length      7572    6120       142         525     545           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+disk_rebuild                       1350 external procedure  is an external procedure.  
+begin block on line 170             637 begin block         uses auto adjustable storage, and enables or reverts conditions.  
+on unit on line 215                  90 on unit               
+copy_vtoc                               internal procedure  shares stack frame of begin block on line 170.  
+copy_page                               internal procedure  shares stack frame of begin block on line 170.  
+get_new_addr                            internal procedure  shares stack frame of begin block on line 170.  
+FREE_VTOCE                              internal procedure  shares stack frame of begin block on line 170.  
+UPDATE_VOL_MAP                          internal procedure  shares stack frame of begin block on line 170.  
+report_bit_map_changed                  internal procedure  shares stack frame of begin block on line 170.  
+report_n_free_rec_changed               internal procedure  shares stack frame of begin block on line 170.  
+UPDATE_VTOC_MAP                         internal procedure  shares stack frame of begin block on line 170.  
+report_n_free_vtoce                     internal procedure  shares stack frame of begin block on line 170.  
+FORCE_VTOC_ON_DISK                      internal procedure  shares stack frame of begin block on line 170.  
+FORCE_LABEL_ON_DISK                     internal procedure  shares stack frame of begin block on line 170.  
+REPORT_SUMMARY                          internal procedure  shares stack frame of begin block on line 170.  
+CHECK_VTOC_SIZES                    128 internal procedure  enables or reverts conditions.  
+on unit on line 673                  96 on unit               
+CLEAN_UP                             76 internal procedure  is called by several nonquick procedures.  
+INIT_TABLES                             internal procedure  shares stack frame of begin block on line 170.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+CHECK_VTOC_SIZES         000100 all_free                    CHECK_VTOC_SIZES
+                         000101 bit_map_words               CHECK_VTOC_SIZES
+                         000102 first_free_word             CHECK_VTOC_SIZES
+                         000103 res                         CHECK_VTOC_SIZES
+                         000104 tsdw                        CHECK_VTOC_SIZES
+                         000106 wordx                       CHECK_VTOC_SIZES
+CLEAN_UP                 000100 segno                       CLEAN_UP
+begin block on line 170  000100 last_used                   begin block on line 170
+                         000130 r                           copy_vtoc
+                         000160 bitx                        FREE_VTOCE
+                         000161 wordx                       FREE_VTOCE
+                         000170 w                           UPDATE_VOL_MAP
+                         000171 j                           UPDATE_VOL_MAP
+                         000172 n_free_rec                  UPDATE_VOL_MAP
+                         000232 i                           FORCE_VTOC_ON_DISK
+                         000250 i                           REPORT_SUMMARY
+                         000251 ptot                        REPORT_SUMMARY
+                         000262 segno                       INIT_TABLES
+                         000263 pvtx                        INIT_TABLES
+                         000264 msl                         INIT_TABLES
+                         000265 i                           INIT_TABLES
+                         000266 pts                         INIT_TABLES
+                         000267 ptsi                        INIT_TABLES
+                         000270 tsdw                        INIT_TABLES
+disk_rebuild             000100 pvtx                        disk_rebuild
+                         000101 pvtx1                       disk_rebuild
+                         000102 pvtx2                       disk_rebuild
+                         000103 i                           disk_rebuild
+                         000104 j                           disk_rebuild
+                         000105 k                           disk_rebuild
+                         000106 l                           disk_rebuild
+                         000107 r                           disk_rebuild
+                         000110 first_free                  disk_rebuild
+                         000111 last_free                   disk_rebuild
+                         000112 vtoce_incr                  disk_rebuild
+                         000113 n_vtoce                     disk_rebuild
+                         000114 baseadd1                    disk_rebuild
+                         000115 baseadd2                    disk_rebuild
+                         000116 old_vtoc_size               disk_rebuild
+                         000117 lost_pages                  disk_rebuild
+                         000120 addr_index                  disk_rebuild
+                         000121 map_size                    disk_rebuild
+                         000122 lp                          disk_rebuild
+                         000124 save_vtocx                  disk_rebuild
+                         000125 damaged_count               disk_rebuild
+                         000126 delta                       disk_rebuild
+                         000127 vtoc_buf                    disk_rebuild
+                         000430 vtoc_bufp                   disk_rebuild
+                         000432 page_buf                    disk_rebuild
+                         002432 bufp                        disk_rebuild
+                         002434 code                        disk_rebuild
+                         002436 table1p                     disk_rebuild
+                         002440 table3p                     disk_rebuild
+                         002442 s_ptr                       disk_rebuild
+                         002444 ptp                         disk_rebuild
+                         002446 vtocx                       disk_rebuild
+                         002447 pvid                        disk_rebuild
+                         002450 n_used_rec                  disk_rebuild
+                         002451 n_free_vtoce                disk_rebuild
+                         002452 free_count                  disk_rebuild
+                         002453 p99                         disk_rebuild
+                         002454 dname1                      disk_rebuild
+                         002460 dname2                      disk_rebuild
+                         002464 astep                       disk_rebuild
+                         002466 labelp                      disk_rebuild
+                         002470 pvt_arrayp                  disk_rebuild
+                         002472 pvtep                       disk_rebuild
+                         002474 vol_mapp                    disk_rebuild
+                         002476 vtoc_headerp                disk_rebuild
+                         002500 vtoc_mapp                   disk_rebuild
+                         002502 bit_map_wordp               disk_rebuild
+                         002504 vtocep                      disk_rebuild
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+enter_begin_block   call_ext_out_desc   call_ext_out        call_int_this       call_int_other      begin_return_mac
+return_mac          tra_ext_1           alloc_auto_adj      mdfx1               enable_op           ext_entry
+int_entry           ceil_fx2            divide_fx1
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+filemap_checksum_             get_aste                      get_ptrs_$given_astep         get_ptrs_$given_segno
+get_pvtx$hold_pvtx            get_pvtx$release_pvtx         lock$lock_ast                 lock$unlock_ast
+page$cam                      pc$cleanup                    pc$truncate_deposit_all       pc_wired$write
+pc_wired$write_wait           pmut$swap_sdw                 ptw_util_$make_null           put_aste
+read_disk                     read_disk$read_disk_no_test   salv_err_msg                  salv_err_msg$code
+salvager$set_options          search_ast$check              syserr                        thread$out
+update_vtoce                  vm_vio$clean_up               vm_vio$get_vtocep             vm_vio$init
+vtoc_man$get_vtoce            vtoce_stock_man$drain_stock_range                           write_disk
+write_disk$write_disk_no_test
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+dseg$                         pds$processid                 pv_salv_seg$                  pv_salv_seg$
+pvt$array                     salv_data$debug               sst$astl                      sst$astsize
+sst$checksum_filemap          sst$level                     sst$pts                       sst$root_pvtx
+volmap_abs_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     69 001040        76 001053       167 001056       168 001060       170 001062       172 001065       174 001073
+    175 001075       176 001100       177 001102       178 001105       179 001106       180 001107       182 001112
+    183 001120       184 001141       185 001200       186 001217       188 001256       189 001305       190 001311
+    191 001331       194 001332       195 001340       196 001364       199 001365       200 001373       201 001417
+    204 001420       206 001424       207 001432       210 001437       211 001450       212 001461       213 001474
+    215 001477       216 001513       217 001534       218 001541       221 001542       221 001556       223 001561
+    224 001565       225 001571       226 001575       228 001601       229 001621       233 001622       234 001626
+    235 001627       236 001631       240 001635       241 001637       242 001643       243 001647       245 001652
+    246 001661       247 001663       249 001670       250 001672       251 001704       252 001712       253 001715
+    255 001716       257 001720       258 001723       259 001734       261 001745       263 001747       264 001751
+    265 001757       266 001762       268 002010       271 002011       272 002013       274 002015       277 002045
+    278 002051       279 002055       281 002064       282 002076       283 002110       284 002122       285 002130
+    287 002150       288 002177       289 002205       290 002224       291 002240       292 002242       294 002244
+    295 002246       297 002250       298 002266       299 002271       300 002321       302 002322       305 002324
+    307 002336       308 002340       309 002341       311 002343       312 002354       313 002361       315 002363
+    317 002364       319 002365       321 002366       323 002367       325 002370       327 002410       330 002411
+    332 002437       333 002463       336 002513       338 002517       339 002523       342 002535       847 002537
+    345 002540       351 002541       352 002556       354 002606       355 002632       356 002635       357 002670
+    361 002671       362 002704       363 002710       364 002711       366 002712       367 002715       368 002720
+    370 002751       371 002752       373 002753       374 002756       376 003007       377 003010       381 003011
+    382 003016       383 003042       384 003047       386 003063       388 003104       389 003114       390 003121
+    391 003145       392 003150       393 003203       395 003204       396 003205       398 003212       400 003220
+    401 003224       402 003232       403 003240       404 003250       405 003267       406 003303       408 003304
+    409 003306       410 003311       411 003314       412 003315       414 003316       415 003321       418 003341
+    420 003345       423 003350       425 003401       426 003416       427 003431       428 003432       430 003435
+    433 003436       438 003440       440 003463       441 003502       442 003505       443 003535       446 003536
+    447 003542       448 003546       449 003563       450 003564       451 003601       452 003604       453 003634
+    456 003635       458 003636       463 003640       464 003644       465 003646       466 003656       467 003665
+    468 003667       471 003672       472 003701       474 003705       475 003714       476 003742       478 003743
+    481 003744       487 003745       489 003752       491 003755       492 003760       493 003765       494 003771
+    496 003774       498 003775       504 003776       521 003777       523 004011       524 004021       525 004043
+    527 004045       528 004052       530 004066       532 004100       533 004101       536 004111       538 004114
+    540 004116       541 004117       543 004123       547 004124       548 004125       549 004145       552 004146
+    553 004147       555 004177       561 004200       563 004201       564 004206       565 004207       569 004213
+    572 004214       573 004215       575 004245       586 004246       591 004247       592 004257       593 004276
+    594 004321       596 004323       600 004324       602 004325       604 004343       606 004365       610 004366
+    614 004367       617 004420       619 004456       621 004506       622 004537       624 004567       626 004617
+    627 004620       628 004640       629 004651       632 004715       633 004722       634 004724       636 004752
+    638 005002       641 005030       643 005031       661 005037       662 005050       664 005062       668 005064
+    670 005105       671 005127       673 005143       674 005157       676 005205       677 005210       678 005225
+    681 005230       682 005232       683 005240       684 005244       687 005261       689 005271       691 005273
+    692 005301       694 005302       695 005306       699 005317       700 005322       701 005325       702 005331
+    705 005336       706 005340       707 005355       709 005361       710 005363       712 005407       715 005412
+    720 005413       726 005421       728 005426       730 005441       733 005447       734 005455       736 005461
+    737 005472       739 005523       740 005533       741 005544       745 005551       747 005562       749 005563
+    775 005565       777 005566       778 005574       779 005576       784 005613       786 005620       788 005632
+    790 005637       791 005644       792 005647       793 005672       796 005673       797 005700       802 005703
+    807 005706       809 005712       810 005721       811 005736       816 005740       817 005744       818 005746
+    819 005750       820 005755       821 005762       826 005765       827 005776       828 006004       829 006010
+    831 006032       833 006036       835 006050       840 006055       841 006061       843 006070      1307 006071
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

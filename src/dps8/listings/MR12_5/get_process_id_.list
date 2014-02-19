@@ -1,0 +1,298 @@
+	COMPILATION LISTING OF SEGMENT get_process_id_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************************
+        2*        *                                                    *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*        *                                                    *
+        5*        * Copyright (c) 1987 by Massachusetts Institute of   *
+        6*        * Technology and Honeywell Information Systems, Inc. *
+        7*        *                                                    *
+        8*        * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*        * Technology and Honeywell Information Systems, Inc. *
+       10*        *                                                    *
+       11*        ****************************************************** */
+       12 
+       13 /****	GET_PROCESS_ID_
+       14*	GET_GROUP_ID_
+       15*	GET_PDIR_
+       16*	GET_LOCK_ID_
+       17*	GET_PROCESS_AUTHORIZATION_
+       18*	GET_PROCESS_ACCESS_CLASS_
+       19*	GET_PROCESS_MAX_AUTHORIZATION_
+       20*	GET_MAX_AUTHORIZATION_
+       21*
+       22* - entries to return values  for specified per process variables.
+       23*
+       24*   Originally coded by R. J. Feiertag on January 25, 1970		*/
+       25 /*		Converted to V2 by E. Stone 03/74 */
+       26 /*		get_authorization_ entry added by Kobziar July 74 */
+       27 /*		get_max_authorization_ and get_privileges_ added May 75 */
+       28 /*		Modified March 1975 by Larry Johnson to fix init subroutine. */
+       29 /*		Modified 830906 for correct "returns" entry declarations... -E. A. Ranzenbach */
+       30 /* Modified 84-04-26 BIM for rationalized aim-related entries. */
+       31 
+       32 /* format: style4,delnl,insnl,ifthenstmt,indnoniterend */
+       33 get_process_id_:
+       34      proc () returns (bit (36));
+       35 
+       36 dcl  i fixed bin (17),
+       37      authorization bit (72) aligned;
+       38 dcl  int_process_id bit (36) aligned internal static,
+       39      int_group_id char (32) aligned internal static,
+       40      int_pdir char (32) aligned internal static,
+       41      access_class bit (72) aligned internal static,
+       42      max_authorization bit (72) aligned internal static,
+       43      int_lock_id bit (36) aligned internal static,
+       44      not_init_yet bit (1) aligned internal static init ("1"b);
+       45 
+       46 dcl  hcs_$get_authorization ext entry (bit (72) aligned, bit (72) aligned);
+       47 dcl  aim_util_$get_access_class entry (bit (72) aligned) returns (bit (72) aligned) reducible;
+       48 dcl  aim_util_$get_privileges entry (bit (72) aligned) returns (bit (36) aligned) reducible;
+       49 
+       50 dcl  substr builtin;
+       51 
+       52 dcl  process_id bit (36);
+       53 
+       54 	if not_init_yet then call init;
+       55 	process_id = int_process_id;
+       56 	return (process_id);
+       57 
+       58 get_group_id_:
+       59      entry () returns (char (32));
+       60 
+       61 dcl  group_id char (32);
+       62 
+       63 	if not_init_yet then call init;
+       64 	group_id = int_group_id;
+       65 	return (group_id);
+       66 
+       67 tag_star:
+       68      entry () returns (char (32));
+       69 
+       70 	if not_init_yet then call init;
+       71 	group_id = int_group_id;
+       72 	group_id = substr (group_id, 1, length (rtrim (group_id)) - 1) || "*";
+       73 	return (group_id);
+       74 
+       75 
+       76 get_pdir_:
+       77      entry () returns (char (168));
+       78 
+       79 dcl  pdir char (168);
+       80 
+       81 	if not_init_yet then call init;
+       82 	pdir = int_pdir;
+       83 	return (pdir);
+       84 
+       85 get_lock_id_:
+       86      entry () returns (bit (36));
+       87 
+       88 dcl  lock_id bit (36);
+       89 
+       90 	if not_init_yet then call init;
+       91 	lock_id = int_lock_id;
+       92 	return (lock_id);
+       93 
+       94 init:
+       95      proc;					/* Internal procedure to initially recover per process information from ring 0 and
+       96*						   store it internal static */
+       97 
+       98 dcl  hcs_$proc_info ext entry (bit (36) aligned, char (32) aligned, char (32) aligned, bit (36) aligned);
+       99 
+      100 	call hcs_$proc_info (int_process_id, int_group_id, int_pdir, int_lock_id);
+      101 
+      102 	call hcs_$get_authorization (access_class, max_authorization);
+      103 	access_class = aim_util_$get_access_class (access_class);
+      104 
+      105 	not_init_yet = "0"b;
+      106 
+      107      end init;
+      108 
+      109 get_initial_ring_:
+      110      entry () returns (fixed bin (17));					/* Get initial ring from ring 0 each time */
+      111 
+      112 dcl  iring fixed bin;
+      113 
+      114 dcl  hcs_$get_initial_ring entry (fixed bin);
+      115 
+      116 	call hcs_$get_initial_ring (iring);		/* Schlep it out to the user */
+      117 
+      118 	return (iring);
+      119 
+      120 get_process_access_class_:
+      121 get_authorization_: /** obsolete name */
+      122      entry () returns (bit (72) aligned);
+      123 
+      124 dcl  ret_auth bit (72) aligned;
+      125 
+      126 	if not_init_yet then call init;
+      127 	return (access_class);
+      128 
+      129 
+      130 get_process_authorization_:
+      131 	entry () returns (bit (72) aligned);
+      132 
+      133 	call hcs_$get_authorization (authorization, (""b));
+      134 	return (authorization);
+      135 
+      136 
+      137 get_process_max_authorization_:
+      138 get_max_authorization_: /** obsolete name */
+      139      entry () returns (bit (72) aligned);
+      140 
+      141 	if not_init_yet then call init;
+      142 
+      143 	ret_auth = max_authorization;
+      144 
+      145 	return (ret_auth);
+      146 
+      147 get_privileges_:
+      148      entry () returns (bit (36) aligned);
+      149 
+      150 	call hcs_$get_authorization (authorization, "0"b);
+      151 
+      152 	return (aim_util_$get_privileges (authorization));
+      153 
+      154      end get_process_id_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.6  get_process_id_.pl1               >spec>install>1111>get_process_id_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+access_class                    000032 internal static bit(72)                  dcl 38 set ref 102* 103* 103* 127
+aim_util_$get_access_class      000042 constant        entry                    external dcl 47 ref 103
+aim_util_$get_privileges        000044 constant        entry                    external dcl 48 ref 152
+authorization                   000100 automatic       bit(72)                  dcl 36 set ref 133* 134 150* 152*
+group_id                        000103 automatic       char(32)                 packed unaligned dcl 61 set ref 64* 65 71* 72* 72 72
+                                                                                  73
+hcs_$get_authorization          000040 constant        entry                    external dcl 46 ref 102 133 150
+hcs_$get_initial_ring           000046 constant        entry                    external dcl 114 ref 116
+hcs_$proc_info                  000050 constant        entry                    external dcl 98 ref 100
+int_group_id                    000011 internal static char(32)                 dcl 38 set ref 64 71 100*
+int_lock_id                     000036 internal static bit(36)                  dcl 38 set ref 91 100*
+int_pdir                        000021 internal static char(32)                 dcl 38 set ref 82 100*
+int_process_id                  000010 internal static bit(36)                  dcl 38 set ref 55 100*
+iring                           000166 automatic       fixed bin(17,0)          dcl 112 set ref 116* 118
+lock_id                         000165 automatic       bit(36)                  packed unaligned dcl 88 set ref 91* 92
+max_authorization               000034 internal static bit(72)                  dcl 38 set ref 102* 143
+not_init_yet                    000037 internal static bit(1)                   initial dcl 38 set ref 54 63 70 81 90 105* 126 141
+pdir                            000113 automatic       char(168)                packed unaligned dcl 79 set ref 82* 83
+process_id                      000102 automatic       bit(36)                  packed unaligned dcl 52 set ref 55* 56
+ret_auth                        000170 automatic       bit(72)                  dcl 124 set ref 143* 145
+substr                                                 builtin function         dcl 50 ref 72
+
+NAME DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+i                                      automatic       fixed bin(17,0)          dcl 36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+get_authorization_              000750 constant        entry                    external dcl 120
+get_group_id_                   000114 constant        entry                    external dcl 58
+get_initial_ring_               000623 constant        entry                    external dcl 109
+get_lock_id_                    000521 constant        entry                    external dcl 85
+get_max_authorization_          001175 constant        entry                    external dcl 137
+get_pdir_                       000402 constant        entry                    external dcl 76
+get_privileges_                 001312 constant        entry                    external dcl 147
+get_process_access_class_       000762 constant        entry                    external dcl 120
+get_process_authorization_      001067 constant        entry                    external dcl 130
+get_process_id_                 000013 constant        entry                    external dcl 33
+get_process_max_authorization_  001207 constant        entry                    external dcl 137
+init                            001430 constant        entry                    internal dcl 94 ref 54 63 70 81 90 126 141
+tag_star                        000233 constant        entry                    external dcl 67
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+length                                                 builtin function         ref 72
+rtrim                                                  builtin function         ref 72
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1726        2000    1475        1736
+Length      2212    1475        52         175     230          30
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+get_process_id_                     302 external procedure  is an external procedure.  
+init                                    internal procedure  shares stack frame of external procedure get_process_id_.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 int_process_id              get_process_id_
+000011 int_group_id                get_process_id_
+000021 int_pdir                    get_process_id_
+000032 access_class                get_process_id_
+000034 max_authorization           get_process_id_
+000036 int_lock_id                 get_process_id_
+000037 not_init_yet                get_process_id_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+get_process_id_          000100 authorization               get_process_id_
+                         000102 process_id                  get_process_id_
+                         000103 group_id                    get_process_id_
+                         000113 pdir                        get_process_id_
+                         000165 lock_id                     get_process_id_
+                         000166 iring                       get_process_id_
+                         000170 ret_auth                    get_process_id_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out        return_mac          shorten_stack       ext_entry           any_to_any_truncate_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+aim_util_$get_access_class    aim_util_$get_privileges      hcs_$get_authorization        hcs_$get_initial_ring
+hcs_$proc_info
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     33 000010        54 000022        55 000025        56 000030        58 000111        63 000123        64 000127
+     65 000133        67 000231        70 000242        71 000246        72 000252        73 000300        76 000377
+     81 000411        82 000415        83 000421        85 000517        90 000530        91 000534        92 000537
+    109 000620       116 000632       118 000641       120 000745       126 000771       127 000775       130 001065
+    133 001076       134 001111       137 001173       141 001216       143 001222       145 001225       147 001307
+    150 001320       152 001333        94 001430       100 001431       102 001446       103 001457       105 001467
+    107 001471
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

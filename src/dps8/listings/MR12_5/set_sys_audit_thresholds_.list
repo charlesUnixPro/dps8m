@@ -1,0 +1,338 @@
+	COMPILATION LISTING OF SEGMENT set_sys_audit_thresholds_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1011.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 
+       11 /****^  HISTORY COMMENTS:
+       12*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       13*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       14*     Correct error message documentation.
+       15*                                                   END HISTORY COMMENTS */
+       16 
+       17 
+       18 /* format: style1,^inddcls,^indnoniterdo,insnl,linecom,indcomtxt */
+       19 
+       20 set_sys_audit_thresholds_:
+       21      procedure (a_covert_channel_sw, a_covert_channel_threshold,
+       22 	a_successful_access_sw, a_successful_access_threshold,
+       23 	a_unsuccessful_access_sw, a_unsuccessful_access_threshold,
+       24 	a_ec);
+       25 
+       26 /* format: off */
+       27 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       28 	/*									*/
+       29 	/* SET_SYS_AUDIT_THRESHOLDS							*/
+       30 	/*									*/
+       31 	/* Routine to set the system security access audit enable flags and thresholds in	*/
+       32 	/* sys_info.  This routine is called from as_init with values extracted from the system	*/
+       33 	/* installation parms.  This routine can be called only through hphcs_.		*/
+       34 	/*									*/
+       35 	/* History:								*/
+       36 	/* 84-12-03 EJ Sharpe - minor cosmetic fix
+       37*	/* 84-11-28 EJ Sharpe - created						*/
+       38 	/*									*/
+       39 	/*  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+       40 /* format: on */
+       41 
+       42 
+       43 /* PARMETERS */
+       44 
+       45 dcl     a_covert_channel_sw	 parameter bit (1) aligned;
+       46 dcl     a_covert_channel_threshold
+       47 			 parameter bit (72) aligned;
+       48 dcl     a_successful_access_sw parameter bit (1) aligned;
+       49 dcl     a_successful_access_threshold
+       50 			 parameter bit (72) aligned;
+       51 dcl     a_unsuccessful_access_sw
+       52 			 parameter bit (1) aligned;
+       53 dcl     a_unsuccessful_access_threshold
+       54 			 parameter bit (72) aligned;
+       55 dcl     a_ec		 parameter fixed bin (35);
+       56 
+       57 
+       58 /* AUTOMATIC ARG COPIES */
+       59 
+       60 dcl     covert_channel_sw	 bit (1) aligned;
+       61 dcl     covert_channel_threshold
+       62 			 bit (72) aligned;
+       63 dcl     successful_access_sw	 bit (1) aligned;
+       64 dcl     successful_access_threshold
+       65 			 bit (72) aligned;
+       66 dcl     unsuccessful_access_sw bit (1) aligned;
+       67 dcl     unsuccessful_access_threshold
+       68 			 bit (72) aligned;
+       69 dcl     ec		 fixed bin (35);
+       70 
+       71 
+       72 /* AUTOMATIC */
+       73 
+       74 dcl     1 event_flags	 aligned like audit_event_flags;
+       75 dcl     allowed_range	 (2) bit (72) aligned init (
+       76 			 sys_info$access_class_floor,
+       77 			 sys_info$access_class_ceiling);
+       78 
+       79 
+       80 /* EXTERNAL CONSTANT */
+       81 
+       82 dcl     error_table_$ai_out_range
+       83 			 fixed bin (35) external;
+       84 dcl     access_operations_$system_audit_thresh_modify
+       85 			 bit (36) aligned external;
+       86 dcl     sys_info$access_class_ceiling
+       87 			 bit (72) aligned external;
+       88 dcl     sys_info$access_class_floor
+       89 			 bit (72) aligned external;
+       90 
+       91 
+       92 /* EXTERNAL THAT WE MODIFY */
+       93 
+       94 dcl     sys_info$audit_covert_channel
+       95 			 bit (1) aligned external;
+       96 dcl     sys_info$covert_channel_threshold
+       97 			 bit (72) aligned external;
+       98 dcl     sys_info$audit_successful_access
+       99 			 bit (1) aligned external;
+      100 dcl     sys_info$successful_access_threshold
+      101 			 bit (72) aligned external;
+      102 dcl     sys_info$audit_unsuccessful_access
+      103 			 bit (1) aligned external;
+      104 dcl     sys_info$unsuccessful_access_threshold
+      105 			 bit (72) aligned external;
+      106 
+      107 
+      108 /* ENTRIES */
+      109 
+      110 dcl     access_audit_$log_general
+      111 			 entry options (variable);
+      112 dcl     aim_check_$in_range	 entry (bit (72) aligned, (2) bit (72) aligned) returns (bit (1) aligned);
+      113 dcl     display_access_class_	 entry (bit (72) aligned) returns (char (32) aligned);
+      114 dcl     level$get		 entry () returns (fixed bin);
+      115 
+      116 
+      117 /* MISC */
+      118 
+      119 dcl     null		 builtin;
+      120 dcl     string		 builtin;
+      121 
+      122 /* copy args */
+      123 
+      124 	covert_channel_sw = a_covert_channel_sw;
+      125 	covert_channel_threshold = a_covert_channel_threshold;
+      126 	successful_access_sw = a_successful_access_sw;
+      127 	successful_access_threshold = a_successful_access_threshold;
+      128 	unsuccessful_access_sw = a_unsuccessful_access_sw;
+      129 	unsuccessful_access_threshold = a_unsuccessful_access_threshold;
+      130 
+      131 	ec = 0;					/* will be copied to arg on output */
+      132 
+      133 	if ^aim_check_$in_range (covert_channel_threshold, allowed_range)
+      134 	     | ^aim_check_$in_range (successful_access_threshold, allowed_range)
+      135 	     | ^aim_check_$in_range (unsuccessful_access_threshold, allowed_range)
+      136 	then ec = error_table_$ai_out_range;
+      137 	else do;
+      138 						/* need to audit only if args were legal */
+      139 	     string (event_flags) = ""b;
+      140 	     event_flags.special_op = "1"b;
+      141 	     event_flags.priv_op = "1"b;
+      142 	     event_flags.grant = "1"b;
+      143 	     call access_audit_$log_general ("set_sys_audit_thresholds_", level$get (),
+      144 		string (event_flags), access_operations_$system_audit_thresh_modify, "", 0, null (), 0,
+      145 		"Covert channel audit ^[enable^;disable^], threshold=^a.  Successful access audit ^[enable^;disable^], threshold=^a.  Unsuccessful access audit ^[enable^;disable^], threshold=^a."
+      146 		,
+      147 		covert_channel_sw, display_access_class_ (covert_channel_threshold),
+      148 		successful_access_sw, display_access_class_ (successful_access_threshold),
+      149 		unsuccessful_access_sw, display_access_class_ (unsuccessful_access_threshold));
+      150 
+      151 	     sys_info$audit_covert_channel = covert_channel_sw;
+      152 	     sys_info$covert_channel_threshold = covert_channel_threshold;
+      153 	     sys_info$audit_successful_access = successful_access_sw;
+      154 	     sys_info$successful_access_threshold = successful_access_threshold;
+      155 	     sys_info$audit_unsuccessful_access = unsuccessful_access_sw;
+      156 	     sys_info$unsuccessful_access_threshold = unsuccessful_access_threshold;
+      157 	end;
+      158 
+      159 	a_ec = ec;
+      160 
+      161 	return;
+      162 
+  1     1 /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      163 
+      164 
+      165 
+      166 /* BEGIN MESSAGE DOCUMENTATION
+      167*
+      168*   Message:
+      169*   AUDIT (set_sys_audit_thresholds_): GRANTED|DENIED modification of system audit flags and thresholds ADDED_INFO
+      170*
+      171*   S:	$access_audit
+      172*
+      173*   T:	$run
+      174*
+      175*   M:	Indicates that the system wide audit enable flags and the
+      176*   thresholds have been changed as indicated.
+      177*
+      178*   A:	$ignore
+      179*
+      180*   END MESSAGE DOCUMENTATION */
+      181 
+      182      end set_sys_audit_thresholds_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0809.9  set_sys_audit_thresholds_.pl1     >spec>install>1112>set_sys_audit_thresholds_.pl1
+163          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_covert_channel_sw                    parameter       bit(1)                   dcl 45 ref 20 124
+a_covert_channel_threshold             parameter       bit(72)                  dcl 46 ref 20 125
+a_ec                                   parameter       fixed bin(35,0)          dcl 55 set ref 20 159*
+a_successful_access_sw                 parameter       bit(1)                   dcl 48 ref 20 126
+a_successful_access_threshold          parameter       bit(72)                  dcl 49 ref 20 127
+a_unsuccessful_access_sw               parameter       bit(1)                   dcl 51 ref 20 128
+a_unsuccessful_access_threshold        parameter       bit(72)                  dcl 53 ref 20 129
+access_audit_$log_general       000034 constant        entry                    external dcl 110 ref 143
+access_operations_$system_audit_thresh_modify
+                                000012 external static bit(36)                  dcl 84 set ref 143*
+aim_check_$in_range             000036 constant        entry                    external dcl 112 ref 133 133 133
+allowed_range                   000116 automatic       bit(72)                  initial array dcl 75 set ref 75* 75* 133* 133* 133*
+audit_event_flags                      based           structure                level 1 dcl 1-5
+covert_channel_sw               000100 automatic       bit(1)                   dcl 60 set ref 124* 143* 151
+covert_channel_threshold        000102 automatic       bit(72)                  dcl 61 set ref 125* 133* 143* 143* 152
+display_access_class_           000040 constant        entry                    external dcl 113 ref 143 143 143 143 143 143
+ec                              000114 automatic       fixed bin(35,0)          dcl 69 set ref 131* 133* 159
+error_table_$ai_out_range       000010 external static fixed bin(35,0)          dcl 82 ref 133
+event_flags                     000115 automatic       structure                level 1 dcl 74 set ref 139* 143 143
+grant                     0(01) 000115 automatic       bit(1)                   level 2 packed packed unaligned dcl 74 set ref 142*
+level$get                       000042 constant        entry                    external dcl 114 ref 143 143
+null                                                   builtin function         dcl 119 ref 143 143
+priv_op                   0(03) 000115 automatic       bit(1)                   level 2 packed packed unaligned dcl 74 set ref 141*
+special_op                      000115 automatic       bit(1)                   level 2 packed packed unaligned dcl 74 set ref 140*
+string                                                 builtin function         dcl 120 set ref 139* 143 143
+successful_access_sw            000104 automatic       bit(1)                   dcl 63 set ref 126* 143* 153
+successful_access_threshold     000106 automatic       bit(72)                  dcl 64 set ref 127* 133* 143* 143* 154
+sys_info$access_class_ceiling   000014 external static bit(72)                  dcl 86 ref 75
+sys_info$access_class_floor     000016 external static bit(72)                  dcl 88 ref 75
+sys_info$audit_covert_channel   000020 external static bit(1)                   dcl 94 set ref 151*
+sys_info$audit_successful_access
+                                000024 external static bit(1)                   dcl 98 set ref 153*
+sys_info$audit_unsuccessful_access
+                                000030 external static bit(1)                   dcl 102 set ref 155*
+sys_info$covert_channel_threshold
+                                000022 external static bit(72)                  dcl 96 set ref 152*
+sys_info$successful_access_threshold
+                                000026 external static bit(72)                  dcl 100 set ref 154*
+sys_info$unsuccessful_access_threshold
+                                000032 external static bit(72)                  dcl 104 set ref 156*
+unsuccessful_access_sw          000110 automatic       bit(1)                   dcl 66 set ref 128* 143* 155
+unsuccessful_access_threshold   000112 automatic       bit(72)                  dcl 67 set ref 129* 133* 143* 143* 156
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+set_sys_audit_thresholds_       000110 constant        entry                    external dcl 20
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       726         772     463         736
+Length      1212     463        44         204     243           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+set_sys_audit_thresholds_           240 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+set_sys_audit_thresholds_
+                         000100 covert_channel_sw           set_sys_audit_thresholds_
+                         000102 covert_channel_threshold    set_sys_audit_thresholds_
+                         000104 successful_access_sw        set_sys_audit_thresholds_
+                         000106 successful_access_threshold set_sys_audit_thresholds_
+                         000110 unsuccessful_access_sw      set_sys_audit_thresholds_
+                         000112 unsuccessful_access_threshold
+                                                            set_sys_audit_thresholds_
+                         000114 ec                          set_sys_audit_thresholds_
+                         000115 event_flags                 set_sys_audit_thresholds_
+                         000116 allowed_range               set_sys_audit_thresholds_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_$log_general     aim_check_$in_range           display_access_class_         level$get
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$system_audit_thresh_modify               error_table_$ai_out_range     sys_info$access_class_ceiling
+sys_info$access_class_floor   sys_info$audit_covert_channel sys_info$audit_successful_access
+sys_info$audit_unsuccessful_access                          sys_info$covert_channel_threshold
+sys_info$successful_access_threshold                        sys_info$unsuccessful_access_threshold
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     20 000102        75 000115       124 000140       125 000144       126 000150       127 000153       128 000157
+    129 000162       131 000166       133 000167       139 000251       140 000252       141 000254       142 000256
+    143 000260       151 000431       152 000435       153 000441       154 000444       155 000450       156 000453
+    159 000457       161 000462
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

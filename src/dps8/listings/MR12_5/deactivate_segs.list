@@ -1,0 +1,503 @@
+	COMPILATION LISTING OF SEGMENT deactivate_segs
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1002.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 deactivate_segs: proc (a_pds_astep);
+       14 
+       15 /* DEACTIVATE_SEGS -- remove all traces of a stopped process from the system */
+       16 
+       17 /* Modified by R. Bratt 2/11/75 to lock the ast before attempting to delete trailers
+       18*   and to avoid attempting to delete trailers for hardcore segment numbers
+       19*   modified April 1975 by R. Bratt for new KST / RNT system
+       20*   modified April 1975 by R. Bratt for new access in KST / SDW scheme
+       21*   modified June 1976 by B. Greenberg to leave KST visible in trailer crashes.
+       22*   modified 06/76 by D. Vinograd to handle backup_abs_seg.
+       23*   modified Oct 31 76 by Greenberg for pc$truncate_deposit_all (stop losing dseg pages).
+       24*   modified 02/22/77 by THVV for dsegs with branches
+       25*   Modified 03/21/81, W. Olin Sibert, for ADP PTWs and get_ptrs_$given_sdw
+       26*   Modified 04/16/81, WOS, for sdw_util_, and to remove obsolete PDS unwiring code.
+       27*   Modified March 1982, J. Bongiovanni, to make sure KST exists before using it
+       28*   */
+       29 
+       30 dcl  a_pds_astep pointer parameter;
+       31 
+       32 dcl  asp pointer;					/* Pointer to abs_seg$ (overlays assorted segmets) */
+       33 dcl  drsp pointer;					/* Pointer to dir_seg$ (overlays the dead KST) */
+       34 dcl (dstep, kst_astep, pds_astep, seg_astep) pointer;	/* Assorted ASTEPs */
+       35 dcl  tsdw fixed bin (71);
+       36 dcl  tsdwp pointer;
+       37 dcl  rdstep bit (18) aligned;
+       38 dcl (highseg, hcscnt, rel_dstep, i) fixed bin;
+       39 dcl  sdw_address fixed bin (26);
+       40 dcl  sdwp pointer;
+       41 
+       42 dcl  bit18 bit (18) aligned based;
+       43 dcl  based_ptr ptr based;
+       44 dcl  sdwa (0 : 1023) fixed bin (71) aligned based;	/* DSEG overlay */
+       45 
+       46 dcl  abs_seg$ fixed bin external static;
+       47 dcl  backup_abs_seg$ external static;
+       48 dcl  dir_seg$ fixed bin ext external static;
+       49 
+       50 dcl  pds$dstep bit (18) external static;
+       51 dcl  sst_seg$ external static;
+       52 
+       53 dcl  check_trailer entry (fixed bin) returns (bit (1) aligned);
+       54 dcl  get_ptrs_$given_astep entry (ptr) returns (fixed bin (71));
+       55 dcl  get_ptrs_$given_sdw entry (pointer) returns (pointer);
+       56 dcl  grab_aste$release entry (ptr);
+       57 dcl  grab_aste$release_prewithdraw entry (ptr);
+       58 dcl  lock$lock_ast entry ();
+       59 dcl  lock$unlock_ast entry ();
+       60 dcl  pmut$swap_sdw entry (ptr, ptr);
+       61 dcl  setfaults$deltrailer entry (ptr, fixed bin (17), fixed bin (17));
+       62 dcl  sdw_util_$get_address entry (pointer, fixed bin (26));
+       63 dcl  syserr entry options (variable);
+       64 
+       65 dcl (baseno, ptr, rel, addr, fixed, null) builtin;
+       66 
+       67 /*  */
+       68 
+       69 	pds_astep = a_pds_astep;			/* copy argument */
+       70 	asp = addr (abs_seg$);			/* get needed pointers */
+       71 	drsp = addr (dir_seg$);
+       72 	tsdwp = addr (tsdw);
+       73 	tsdw = get_ptrs_$given_astep (pds_astep);	/* get pointer to PDS of process being deactivated */
+       74 	call pmut$swap_sdw (asp, tsdwp);		/* make abs_seg point to the PDS */
+       75 
+       76 	rdstep = ptr (asp, rel (addr (pds$dstep))) -> bit18; /* get dstep from the PDS */
+       77 	dstep = ptr (addr (sst_seg$), rdstep);		/* get a pointer to the DSEG ASTE */
+       78 	kstp = ptr (asp, rel (addr (pds$kstp))) -> based_ptr; /* get pointer in HIS process to KST */
+       79 
+       80 	tsdw = get_ptrs_$given_astep (dstep);		/* look at the DSEG */
+       81 	call pmut$swap_sdw (asp, tsdwp);		/* make the ABS-SEG work */
+       82 
+       83 	if kstp ^= null () then do;
+       84 	     kst_astep = get_ptrs_$given_sdw (addr (asp -> sdwa (fixed (baseno (kstp), 18))));
+       85 	     tsdw = get_ptrs_$given_astep (kst_astep);	/* make abs_seg point to the KST */
+       86 	     call pmut$swap_sdw (drsp, tsdwp);
+       87 	     highseg = drsp -> kst.highest_used_segno;	/* copy highseg from the KST header */
+       88 	     hcscnt = drsp -> kst.lowseg;		/* get the hardcore seg count for later */
+       89 	     call grab_aste$release (kst_astep);		/* Release the KST aste */
+       90 	end;
+       91 
+       92 /* Used to unwire any wired PDS pages here, but since the PDS is no longer used as a ring zero stack,
+       93*   there is no need to do this any more. First page won't be wired, either, because process is stopped,
+       94*   and has been unloaded. */
+       95 
+       96 	call grab_aste$release_prewithdraw (pds_astep);	/* Release the PDS aste */
+       97 
+       98 	if kstp ^= null () then do;
+       99 	     rel_dstep = fixed (rdstep, 18);		/* get rel(dstep) for deltrailer call */
+      100 	     tsdw = get_ptrs_$given_astep (dstep);	/* make the abs_seg point to the descriptor segment */
+      101 	     call pmut$swap_sdw (asp, tsdwp);
+      102 	     call lock$lock_ast;
+      103 	     do i = hcscnt + 1 to highseg,		/* loop through the KST entries */
+      104 		fixed (baseno (addr (backup_abs_seg$)), 18); /* And the backup_abs_seg, just in case */
+      105 
+      106 		sdwp = addr (asp -> sdwa (i));
+      107 		call sdw_util_$get_address (sdwp, sdw_address);
+      108 		if sdw_address ^= 0 then do;
+      109 		     seg_astep = get_ptrs_$given_sdw (sdwp);
+      110 		     call setfaults$deltrailer (seg_astep, i, rel_dstep); /* delete the trailer */
+      111 		end;
+      112 	     end;
+      113 
+      114 /* this check has been disabled for efficiency considerations, and beecause the
+      115*   class of software problems which caused it to go off have all been fixed.
+      116*   It should be made enablable by a tuning parameter if it is felt to be
+      117*   needed in the future.
+      118*   */
+      119 
+      120 	     if "0"b then
+      121 		if check_trailer (rel_dstep) then
+      122 		     call syserr (1, "deactivate_segs: unflushed trailer");
+      123 
+      124 	     call lock$unlock_ast;
+      125 	end;
+      126 
+      127 /* Done with dseg */
+      128 
+      129 	call grab_aste$release_prewithdraw (dstep);	/* release the DSEG aste */
+      130 
+      131 	tsdw = 0;
+      132 	call pmut$swap_sdw (asp, tsdwp);		/* Clean up dseg */
+      133 	call pmut$swap_sdw (drsp, tsdwp);
+      134 	return;
+      135 
+      136  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      136 
+      137  /*  START OF:	kst.incl.pl1			  *  *  *  *  *  */
+  2     2 
+  2     3 /*
+  2     4*Modified March 1976 by R. Bratt 
+  2     5*Modified November 1984 to remove hdr, Keith Loepere. */
+  2     6 
+  2     7 
+  2     8 /****^  HISTORY COMMENTS:
+  2     9*  1) change(86-08-08,GDixon), approve(86-08-08,MCR7388),
+  2    10*     audit(86-09-02,Farley), install(86-09-08,MR12.0-1150):
+  2    11*     Add warning on use of kste.entryp.
+  2    12*                                                   END HISTORY COMMENTS */
+  2    13 
+  2    14 
+  2    15 dcl  pds$kstp ext ptr,
+  2    16     (kstp, kstep) ptr;
+  2    17 
+  2    18 dcl 1 kst aligned based (kstp),			/* KST header declaration */
+  2    19     2 lowseg fixed bin (17),				/* lowest segment number described by kst */
+  2    20     2 highseg fixed bin (17),				/* highest segment number described by kst */
+  2    21     2 highest_used_segno fixed bin (17),		/* highest segment number yet used  */
+  2    22     2 lvs fixed bin (8),				/* number of private LVs this process is connected to */
+  2    23     2 time_of_bootload fixed bin (71),			/* bootload time during prelinking */
+  2    24     2 garbage_collections fixed bin (17) unaligned,	/* KST garbage collections */
+  2    25     2 entries_collected fixed bin (17) unaligned,		/* KST entries recovered by garbage collection */
+  2    26     2 free_list bit (18) unaligned,			/* relative pointer to first free kste */
+  2    27     2 prelinked_ring (7) bit (1) unaligned,		/* rings prelinked in process */
+  2    28     2 template bit (1) unaligned,			/* this is a template kst if set */
+  2    29     2 allow_256K_connect bit (1) unaligned,		/* can use 256K segments */
+  2    30     2 unused_2 bit (9) unaligned,
+  2    31     2 uid_hash_bucket (0 : 127) bit (18) unaligned,	/* hash buckets */
+  2    32     2 kst_entry (0 refer (kst.lowseg):0 refer (kst.highseg)) aligned like kste, /* kst entries */
+  2    33     2 lv (1:256) bit (36),				/* private logical volume connection list */
+  2    34     2 end_of_kst bit (36);
+  2    35 
+  2    36 dcl 1 kste based (kstep) aligned,			/* KST entry declaration */
+  2    37     2 fp bit (18) unaligned,				/* forward rel pointer */
+  2    38     2 segno fixed bin (17) unaligned,			/* segment number of this kste */
+  2    39     2 usage_count (0:7) fixed bin (8) unaligned,		/* outstanding initiates/ring */
+  2    40     2 entryp ptr unaligned,				/* branch pointer */
+  2    41 						/* See WARNING below for requirements to use entryp. */
+  2    42     2 uid bit (36) aligned,				/* unique identifier */
+  2    43     2 access_information unaligned,
+  2    44       3 dtbm bit (36),				/* date time branch modified */
+  2    45       3 extended_access bit (33),			/* extended access from the branch */
+  2    46       3 access bit (3),				/* rew */
+  2    47       3 ex_rb (3) bit (3),				/* ring brackets from branch */
+  2    48     2 pad1 bit (3) unaligned,
+  2    49     2 flags unaligned,
+  2    50       3 dirsw bit (1),				/* directory switch */
+  2    51       3 allow_write bit (1),				/* set if initiated with write permission */
+  2    52       3 priv_init bit (1),				/* privileged initiation */
+  2    53       3 tms bit (1),				/* transparent modification switch */
+  2    54       3 tus bit (1),				/* transparent usage switch */
+  2    55       3 tpd bit (1),				/* transparent paging device switch */
+  2    56       3 audit bit (1),				/* audit switch */
+  2    57       3 explicit_deact_ok bit (1),			/* set if I am willing to have a user force deactivate */
+  2    58       3 pad bit (3),
+  2    59     2 infcount fixed bin (12) unaligned;		/* _i_f dirsw _t_h_e_n inferior count _e_l_s_e lv index */
+  2    60 
+  2    61 
+  2    62 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    63 /*							       */
+  2    64 /* WARNING: Before using kste.entryp to get a pointer to the directory       */
+  2    65 /* entry associated with the kst entry, you must first validate its value    */
+  2    66 /* by calling sum$getbranch or sum$getbranch_root_my.  This call also locks  */
+  2    67 /* the containing directory.  The containing directory must remain locked    */
+  2    68 /* during the entire period when kste.entryp and the directory entry are     */
+  2    69 /* being referenced.  Once the directory is unlocked, kste.entryp can no     */
+  2    70 /* longer be used to get a pointer to the entry within the unlocked	       */
+  2    71 /* directory since the dir entry could have been moved within the directory  */
+  2    72 /* by another processor.					       */
+  2    73 /*							       */
+  2    74 /* If you only need a pointer to the directory containing the associated     */
+  2    75 /* dir entry (but not to the dir entry itself), you can use:	       */
+  2    76 /*    pointer (kste.entryp, 0)				       */
+  2    77 /* without calling sum to lock the directory and validate entryp.  GDixon    */
+  2    78 /*							       */
+  2    79 /* *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  * */
+  2    80 
+  2    81 /*  END OF:	kst.incl.pl1			  *  *  *  *  *  */
+      137 
+      138 
+      139 /*  */
+      140 
+      141 /* BEGIN MESSAGE DOCUMENTATION
+      142*
+      143*   Message:
+      144*   deactivate_segs: unflushed trailer
+      145*
+      146*   S: $crash
+      147*
+      148*   T: $run
+      149*
+      150*   M: After destroying a process, the system found that some system trailer
+      151*   (specifying connection of that process to some segment) still exists
+      152*   for that process in str_seg. This indicates that some segment was
+      153*   improperly disconnected from the process at some time. $err
+      154*
+      155*   A: $recover
+      156*
+      157*   END MESSAGE DOCUMENTATION */
+      158 
+      159      end deactivate_segs;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.2  deactivate_segs.pl1               >spec>install>1111>deactivate_segs.pl1
+136          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+137          2    09/18/86  1308.1  kst.incl.pl1                      >ldd>include>kst.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+a_pds_astep                            parameter       pointer                  dcl 30 ref 13 69
+abs_seg$                        000010 external static fixed bin(17,0)          dcl 46 set ref 70
+addr                                                   builtin function         dcl 65 ref 70 71 72 76 77 78 84 84 103 106
+asp                             000100 automatic       pointer                  dcl 32 set ref 70* 74* 76 78 81* 84 84 101* 106 132*
+backup_abs_seg$                 000012 external static fixed bin(17,0)          dcl 47 set ref 103
+based_ptr                              based           pointer                  dcl 43 ref 78
+baseno                                                 builtin function         dcl 65 ref 84 84 103
+bit18                                  based           bit(18)                  dcl 42 ref 76
+check_trailer                   000022 constant        entry                    external dcl 53 ref 120
+dir_seg$                        000014 external static fixed bin(17,0)          dcl 48 set ref 71
+drsp                            000102 automatic       pointer                  dcl 33 set ref 71* 86* 87 88 133*
+dstep                           000104 automatic       pointer                  dcl 34 set ref 77* 80* 100* 129*
+fixed                                                  builtin function         dcl 65 ref 84 84 99 103
+get_ptrs_$given_astep           000024 constant        entry                    external dcl 54 ref 73 80 85 100
+get_ptrs_$given_sdw             000026 constant        entry                    external dcl 55 ref 84 109
+grab_aste$release               000030 constant        entry                    external dcl 56 ref 89
+grab_aste$release_prewithdraw   000032 constant        entry                    external dcl 57 ref 96 129
+hcscnt                          000122 automatic       fixed bin(17,0)          dcl 38 set ref 88* 103
+highest_used_segno        2            based           fixed bin(17,0)          level 2 dcl 2-18 ref 87
+highseg                         000121 automatic       fixed bin(17,0)          dcl 38 set ref 87* 103
+i                               000124 automatic       fixed bin(17,0)          dcl 38 set ref 103* 106 110*
+kst                                    based           structure                level 1 dcl 2-18
+kst_astep                       000106 automatic       pointer                  dcl 34 set ref 84* 85* 89*
+kste                                   based           structure                level 1 dcl 2-36
+kstp                            000130 automatic       pointer                  dcl 2-15 set ref 78* 83 84 84 98
+lock$lock_ast                   000034 constant        entry                    external dcl 58 ref 102
+lock$unlock_ast                 000036 constant        entry                    external dcl 59 ref 124
+lowseg                                 based           fixed bin(17,0)          level 2 dcl 2-18 ref 88
+null                                                   builtin function         dcl 65 ref 83 98
+pds$dstep                       000016 external static bit(18)                  packed unaligned dcl 50 set ref 76
+pds$kstp                        000050 external static pointer                  dcl 2-15 set ref 78
+pds_astep                       000110 automatic       pointer                  dcl 34 set ref 69* 73* 96*
+pmut$swap_sdw                   000040 constant        entry                    external dcl 60 ref 74 81 86 101 132 133
+ptr                                                    builtin function         dcl 65 ref 76 77 78
+rdstep                          000120 automatic       bit(18)                  dcl 37 set ref 76* 77 99
+rel                                                    builtin function         dcl 65 ref 76 78
+rel_dstep                       000123 automatic       fixed bin(17,0)          dcl 38 set ref 99* 110* 120*
+sdw_address                     000125 automatic       fixed bin(26,0)          dcl 39 set ref 107* 108
+sdw_util_$get_address           000044 constant        entry                    external dcl 62 ref 107
+sdwa                                   based           fixed bin(71,0)          array dcl 44 set ref 84 84 106
+sdwp                            000126 automatic       pointer                  dcl 40 set ref 106* 107* 109*
+seg_astep                       000112 automatic       pointer                  dcl 34 set ref 109* 110*
+setfaults$deltrailer            000042 constant        entry                    external dcl 61 ref 110
+sst_seg$                        000020 external static fixed bin(17,0)          dcl 51 set ref 77
+syserr                          000046 constant        entry                    external dcl 63 ref 120
+tsdw                            000114 automatic       fixed bin(71,0)          dcl 35 set ref 72 73* 80* 85* 100* 131*
+tsdwp                           000116 automatic       pointer                  dcl 36 set ref 72* 74* 81* 86* 101* 132* 133*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+asta                                   based           bit(432)                 array dcl 1-86
+aste                                   based           structure                level 1 dcl 1-11
+aste_part                              based           structure                level 1 dcl 1-89
+astep                                  automatic       pointer                  dcl 1-9
+kstep                                  automatic       pointer                  dcl 2-15
+seg_aste                               based           structure                level 1 dcl 1-96
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+deactivate_segs                 000026 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       664         736     453         674
+Length      1166     453        52         213     211           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+deactivate_segs                     136 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+deactivate_segs          000100 asp                         deactivate_segs
+                         000102 drsp                        deactivate_segs
+                         000104 dstep                       deactivate_segs
+                         000106 kst_astep                   deactivate_segs
+                         000110 pds_astep                   deactivate_segs
+                         000112 seg_astep                   deactivate_segs
+                         000114 tsdw                        deactivate_segs
+                         000116 tsdwp                       deactivate_segs
+                         000120 rdstep                      deactivate_segs
+                         000121 highseg                     deactivate_segs
+                         000122 hcscnt                      deactivate_segs
+                         000123 rel_dstep                   deactivate_segs
+                         000124 i                           deactivate_segs
+                         000125 sdw_address                 deactivate_segs
+                         000126 sdwp                        deactivate_segs
+                         000130 kstp                        deactivate_segs
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+check_trailer                 get_ptrs_$given_astep         get_ptrs_$given_sdw           grab_aste$release
+grab_aste$release_prewithdraw lock$lock_ast                 lock$unlock_ast               pmut$swap_sdw
+sdw_util_$get_address         setfaults$deltrailer          syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+abs_seg$                      backup_abs_seg$               dir_seg$                      pds$dstep
+pds$kstp                      sst_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000023        69 000033        70 000037        71 000041        72 000043        73 000045        74 000055
+     76 000066        77 000075        78 000101        80 000110        81 000122        83 000133        84 000137
+     85 000156        86 000167        87 000200        88 000203        89 000205        96 000214        98 000223
+     99 000227       100 000232       101 000243       102 000254       103 000261       106 000273       107 000277
+    108 000310       109 000312       110 000323       112 000336       120 000352       124 000412       129 000417
+    131 000426       132 000430       133 000441       134 000452
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

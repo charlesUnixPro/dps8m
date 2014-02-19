@@ -1,0 +1,480 @@
+	COMPILATION LISTING OF SEGMENT mdc_check_mdcs_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1021.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2,indcomtxt */
+       13 
+       14 /* MDC_CHECK_MDCS_: Procedure that validates the contents of a master directory control segment. */
+       15 
+       16 /* Written April 1976 by Larry Johnson */
+       17 /* Modified 8303-12-07 BIM for correct quota precision */
+       18 
+       19 mdc_check_mdcs_:
+       20      proc (mdcsp, code);
+       21 
+       22 	dcl     code		 fixed bin (35);	/* Stanard status code */
+       23 	dcl     quota_used		 fixed bin (18);
+       24 	dcl     (p, q)		 ptr;
+       25 	dcl     (i, j)		 fixed bin;
+       26 
+       27 	dcl     1 list		 aligned based,	/* Format of lined list */
+       28 		2 next		 bit (18) unal,
+       29 		2 fill		 bit (18) unal;
+       30 
+       31 	dcl     admin_gate_$syserr	 entry options (variable);
+       32 	dcl     clock_		 entry returns (fixed bin (71));
+       33 
+       34 	dcl     error_table_$bad_segment
+       35 				 ext fixed bin (35);
+       36 
+       37 	dcl     (addr, bin, ptr, rel, unspec)
+       38 				 builtin;
+       39 
+  1     1 /* Begin include file ..... mdcs.incl.pl1 */
+  1     2 /* Modified to give quota enough precision BIM 83-12-07 */
+  1     3 
+  1     4 /* Format of a master directory control segment */
+  1     5 
+  1     6 dcl  mdcsp ptr;					/* Pointer to structure */
+  1     7 
+  1     8 dcl 1 mdcs aligned based (mdcsp),			/* A master directory control segment */
+  1     9     2 head like mdcs_head,				/* First the header */
+  1    10     2 area area (0 refer (mdcs.area_size));		/* Followed by an area for allocating data */
+  1    11 
+  1    12 dcl 1 mdcs_head aligned based,			/* The header portion of the mdcs */
+  1    13     2 version fixed bin,				/* Version of structure */
+  1    14     2 init bit (1) unal,				/* Set when mdcs created */
+  1    15     2 free_bits bit (35) unal,
+  1    16     2 time_checked fixed bin (71),			/* Time this MDCS last checked for consistency */
+  1    17     2 volume char (32),				/* Name of volume */
+  1    18     2 uid bit (36),					/* Unique id of volume */
+  1    19     2 acct_offset bit (18),				/* Offset to first account entry */
+  1    20     2 dir_offset bit (18),				/* Pointer to first directory entry */
+  1    21     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    22     2 area_size fixed bin (18),			/* Size of the area (rest of segment) */
+  1    23     2 restrict_path bit (18),				/* List of pathnames in volume restict list */
+  1    24     2 default_path bit (18),				/* List of pathnames in volume default list */
+  1    25     2 fill (43) bit (36) aligned;			/* Pad to octal 100 */
+  1    26 
+  1    27 dcl  mdcs_version fixed bin int static options (constant) init (1); /* Latest version */
+  1    28 
+  1    29 dcl  mdirp ptr;					/* Pointer to directory entry */
+  1    30 
+  1    31 dcl 1 mdirent aligned based (mdirp),
+  1    32     2 next bit (18) unal,				/* Pointer to next entry */
+  1    33     2 fill bit (18) unal,
+  1    34     2 uidpath (0:15) bit (36),			/* Uid pathname of master dir */
+  1    35     2 owner,					/* Owner of directory */
+  1    36       3 person char (22) unal,
+  1    37       3 project char (9) unal,
+  1    38     2 quota_offset bit (18),				/* Rel pointer to quota account */
+  1    39     2 quota fixed bin (18),				/* The quota */
+  1    40     2 backup (3) fixed bin (35),			/* Statistics for backup */
+  1    41     2 fill2 (10) bit (36) aligned;
+  1    42 
+  1    43 dcl  acctp ptr;					/* Pointer to account entry */
+  1    44 
+  1    45 dcl 1 acctent aligned based (acctp),
+  1    46     2 next bit (18) unal,				/* Relative pointer to next entry */
+  1    47     2 fill bit (18) unal,
+  1    48     2 name,					/* Name of quota account */
+  1    49       3 person char (22) unal,
+  1    50       3 project char (9) unal,
+  1    51     2 quota fixed bin (35),				/* Total quota for account */
+  1    52     2 quota_used fixed bin (35),			/* Amount of quota assigned to master dirs */
+  1    53     2 trp fixed bin (71) unal,			/* Time record product for deleted dirs */
+  1    54     2 backup (3) fixed bin (35),			/* Backup accounting data */
+  1    55     2 restrict_path bit (18),				/* List of restricting paths for account */
+  1    56     2 fill2 (7) bit (36) aligned;
+  1    57 
+  1    58 dcl  pathp ptr;					/* Pointer to uid pathname entry */
+  1    59 
+  1    60 dcl 1 pathent aligned based (pathp),			/* Entry in a list of pathnames */
+  1    61     2 next bit (18) unal,
+  1    62     2 fill bit (18) unal,
+  1    63     2 uidpath (0:15) bit (36);
+  1    64 
+  1    65 
+  1    66 /* End include file ..... mdcs.incl.pl1 */
+       40 
+       41 
+       42 /* All lists are checked for proper threading */
+       43 
+       44 	call check_thread (mdcs.acct_offset);
+       45 	call check_thread (mdcs.dir_offset);
+       46 	call check_thread (mdcs.restrict_path);
+       47 	call check_thread (mdcs.default_path);
+       48 
+       49 /* Check that things that should be zero are */
+       50 
+       51 	if mdcs.free_bits ^= "0"b
+       52 	then do;
+       53 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Volume ^a had non-zero mdcs.free_bits.", mdcs.volume);
+       54 		mdcs.free_bits = "0"b;
+       55 	     end;
+       56 	if unspec (mdcs.fill) ^= "0"b
+       57 	then do;
+       58 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Volume ^a had non-zero mdcs.fill.", mdcs.volume);
+       59 		unspec (mdcs.fill) = "0"b;
+       60 	     end;
+       61 
+       62 /* Check that each directory entry points to a valid account entry */
+       63 
+       64 	mdirp = ptr (mdcsp, mdcs.dir_offset);		/* Start of directory list */
+       65 	do while (rel (mdirp) ^= "0"b);		/* Scan list */
+       66 	     call check_ascii ("directory", mdirent.owner, mdirp);
+       67 	     if mdirent.quota < 1
+       68 	     then do;				/* bad quota */
+       69 		     call admin_gate_$syserr (4,
+       70 			"mdc_check_mdcs_: Invalid master directory quota changed from ^d to 1 on ^a.",
+       71 			mdirent.quota, mdcs.volume);
+       72 		     mdirent.quota = 1;
+       73 		end;
+       74 	     acctp = ptr (mdcsp, mdcs.acct_offset);	/* Scan down qccount list */
+       75 	     do while (rel (acctp) ^= "0"b);
+       76 		if rel (acctp) = mdirent.quota_offset
+       77 		then go to next_mdir;
+       78 		acctp = ptr (mdcsp, acctent.next);
+       79 	     end;
+       80 	     call admin_gate_$syserr (4, "mdc_check_mdcs_: Invalid quota account offset at ^a|^o", mdcs.volume,
+       81 		bin (rel (mdirp), 18));
+       82 	     go to return_code;
+       83 next_mdir:
+       84 	     mdirp = ptr (mdcsp, mdirent.next);
+       85 	end;
+       86 
+       87 
+       88 /* Now check that each quota account has the correct quota used */
+       89 
+       90 	i = 0;					/* For checking order of entries */
+       91 	acctp = ptr (mdcsp, mdcs.acct_offset);
+       92 	do while (rel (acctp) ^= "0"b);
+       93 	     call check_thread (acctent.restrict_path);
+       94 	     call check_ascii ("account", acctent.name, acctp);
+       95 	     j = 0;				/* Compute sort code of entry */
+       96 	     if acctent.name.person = "*"
+       97 	     then j = j + 2;
+       98 	     if acctent.name.project = "*"
+       99 	     then j = j + 1;
+      100 	     if j < i
+      101 	     then do;				/* Error */
+      102 		     call admin_gate_$syserr (4, "mdc_check_mdcs_: Account entry at ^a|^o for ^a.^a out of sequence.",
+      103 			mdcs.volume, bin (rel (acctp), 18), acctent.name.person, acctent.name.project);
+      104 		     go to return_code;
+      105 		end;
+      106 	     else i = j;				/* For next one */
+      107 	     quota_used = 0;			/* A counter */
+      108 	     mdirp = ptr (mdcsp, mdcs.dir_offset);	/* Scan directory list */
+      109 	     do while (rel (mdirp) ^= "0"b);
+      110 		if mdirent.quota_offset = rel (acctp)
+      111 		then /* If account owns directory */
+      112 		     quota_used = quota_used + mdirent.quota;
+      113 		mdirp = ptr (mdcsp, mdirent.next);
+      114 	     end;
+      115 	     if quota_used ^= acctent.quota_used
+      116 	     then do;				/* If in error */
+      117 		     call admin_gate_$syserr (4, "mdc_check_mdcs_: Quota used of ^a for ^a.^a changed from ^d to ^d.",
+      118 			mdcs.volume, acctent.name.person, acctent.name.project, acctent.quota_used, quota_used);
+      119 		     acctent.quota_used = quota_used;	/* Set it right */
+      120 		end;
+      121 	     if acctent.trp < 0
+      122 	     then do;				/* Bad time record product */
+      123 		     call admin_gate_$syserr (4, "mdc_check_mdcs_: TRP of ^a.^a on ^a changed from ^d to 0.",
+      124 			acctent.person, acctent.project, mdcs.volume, acctent.trp);
+      125 		     acctent.trp = 0;
+      126 		end;
+      127 	     acctp = ptr (mdcsp, acctent.next);
+      128 	end;
+      129 
+      130 	code = 0;
+      131 	mdcs.time_checked = clock_ ();
+      132 	return;
+      133 
+      134 return_code:
+      135 	code = error_table_$bad_segment;
+      136 	return;
+      137 
+      138 
+      139 /* Procedure to check list threading. Each entry is checked to see that it falls within the segment,
+      140*   and there are no circular threads */
+      141 
+      142 check_thread:
+      143      proc (head);
+      144 
+      145 	dcl     head		 bit (18) aligned;	/* Pointer to list head */
+      146 
+      147 	if head = "0"b
+      148 	then return;				/* Empty list */
+      149 	p = ptr (mdcsp, head);			/* Head of list */
+      150 check3:
+      151 	if p -> list.fill ^= "0"b
+      152 	then do;
+      153 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Fill bits zeroed at ^a|^o", mdcs.volume,
+      154 		     bin (rel (p), 18));
+      155 		p -> list.fill = "0"b;
+      156 	     end;
+      157 	if p -> list.next = "0"b
+      158 	then return;				/* End */
+      159 	q = ptr (mdcsp, head);			/* Start at beginning again */
+      160 check2:
+      161 	if rel (p) = rel (q)
+      162 	then go to check1;				/* Caught up to current point */
+      163 	if rel (q) = p -> list.next
+      164 	then do;					/* Loop */
+      165 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Circular list pointer at ^a|^o", mdcs.volume,
+      166 		     bin (rel (p), 18));
+      167 		go to return_code;
+      168 	     end;
+      169 	q = ptr (mdcsp, q -> list.next);
+      170 	go to check2;
+      171 check1:
+      172 	p = ptr (mdcsp, p -> list.next);
+      173 	go to check3;
+      174 
+      175      end check_thread;
+      176 
+      177 
+      178 
+      179 
+      180 /* Procedure to check strings for ASCII. */
+      181 
+      182 check_ascii:
+      183      proc (type, name, p);
+      184 
+      185 	dcl     type		 char (*);
+      186 	dcl     p			 ptr;
+      187 	dcl     1 name		 aligned,
+      188 		2 person		 char (22) unal,
+      189 		2 project		 char (9) unal;
+      190 
+      191 	dcl     bit_person		 bit (198) unal based;
+      192 	dcl     bit_project		 bit (81) unal based;
+      193 
+      194 	if addr (name.person) -> bit_person & (22)"110000000"b
+      195 	then do;
+      196 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Non ascii person name in ^a entry at ^a|^o", type,
+      197 		     mdcs.volume, bin (rel (p), 18));
+      198 		go to return_code;
+      199 	     end;
+      200 	if addr (name.project) -> bit_project & (9)"110000000"b
+      201 	then do;
+      202 		call admin_gate_$syserr (4, "mdc_check_mdcs_: Non ascii project name in ^a entry at ^a|^o", type,
+      203 		     mdcs.volume, bin (rel (p), 18));
+      204 		go to return_code;
+      205 	     end;
+      206 	return;
+      207 
+      208      end check_ascii;
+      209 
+      210 
+      211      end mdc_check_mdcs_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0802.5  mdc_check_mdcs_.pl1               >spec>install>1111>mdc_check_mdcs_.pl1
+40           1    11/20/84  1944.9  mdcs.incl.pl1                     >ldd>include>mdcs.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+acct_offset              15            based           bit(18)                  level 3 dcl 1-8 set ref 44* 74 91
+acctent                                based           structure                level 1 dcl 1-45
+acctp                           000112 automatic       pointer                  dcl 1-43 set ref 74* 75 76 78* 78 91* 92 93 94 94*
+                                                                                  96 98 102 102 102 102 110 115 117 117 117 119 121
+                                                                                  123 123 123 125 127* 127
+addr                                                   builtin function         dcl 37 ref 194 200
+admin_gate_$syserr              000010 constant        entry                    external dcl 31 ref 53 58 69 80 102 117 123 153 165
+                                                                                  196 202
+bin                                                    builtin function         dcl 37 ref 80 80 102 102 153 153 165 165 196 196 202
+                                                                                  202
+bit_person                             based           bit(198)                 packed unaligned dcl 191 ref 194
+bit_project                            based           bit(81)                  packed unaligned dcl 192 ref 200
+clock_                          000012 constant        entry                    external dcl 32 ref 131
+code                                   parameter       fixed bin(35,0)          dcl 22 set ref 19 130* 134*
+default_path             24            based           bit(18)                  level 3 dcl 1-8 set ref 47*
+dir_offset               16            based           bit(18)                  level 3 dcl 1-8 set ref 45* 64 108
+error_table_$bad_segment        000014 external static fixed bin(35,0)          dcl 34 ref 134
+fill                      0(18)        based           bit(18)                  level 2 in structure "list" packed packed unaligned
+                                                                                  dcl 27 in procedure "mdc_check_mdcs_" set ref 150
+                                                                                  155*
+fill                     25            based           bit(36)                  array level 3 in structure "mdcs" dcl 1-8
+                                                                                  in procedure "mdc_check_mdcs_" set ref 56 59*
+free_bits                 1(01)        based           bit(35)                  level 3 packed packed unaligned dcl 1-8 set ref 51
+                                                                                  54*
+head                                   parameter       bit(18)                  dcl 145 in procedure "check_thread" ref 142 147 149
+                                                                                  159
+head                                   based           structure                level 2 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdc_check_mdcs_"
+i                               000106 automatic       fixed bin(17,0)          dcl 25 set ref 90* 100 106*
+j                               000107 automatic       fixed bin(17,0)          dcl 25 set ref 95* 96* 96 98* 98 100 106
+list                                   based           structure                level 1 dcl 27
+mdcs                                   based           structure                level 1 dcl 1-8
+mdcs_head                              based           structure                level 1 dcl 1-12
+mdcsp                                  parameter       pointer                  dcl 1-6 ref 19 44 45 46 47 51 53 54 56 58 59 64 64
+                                                                                  69 74 74 78 80 83 91 91 102 108 108 113 117 123
+                                                                                  127 131 149 153 159 165 169 171 196 202
+mdirent                                based           structure                level 1 dcl 1-31
+mdirp                           000110 automatic       pointer                  dcl 1-29 set ref 64* 65 66 66* 67 69 72 76 80 80 83*
+                                                                                  83 108* 109 110 110 113* 113
+name                                   parameter       structure                level 1 dcl 187 in procedure "check_ascii" set ref
+                                                                                  182
+name                      1            based           structure                level 2 in structure "acctent" dcl 1-45 in procedure
+                                                                                  "mdc_check_mdcs_" set ref 94*
+next                                   based           bit(18)                  level 2 in structure "list" packed packed unaligned
+                                                                                  dcl 27 in procedure "mdc_check_mdcs_" ref 157 163
+                                                                                  169 171
+next                                   based           bit(18)                  level 2 in structure "mdirent" packed packed
+                                                                                  unaligned dcl 1-31 in procedure "mdc_check_mdcs_"
+                                                                                  ref 83 113
+next                                   based           bit(18)                  level 2 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_check_mdcs_"
+                                                                                  ref 78 127
+owner                    21            based           structure                level 2 dcl 1-31 set ref 66*
+p                                      parameter       pointer                  dcl 186 in procedure "check_ascii" ref 182 196 196
+                                                                                  202 202
+p                               000102 automatic       pointer                  dcl 24 in procedure "mdc_check_mdcs_" set ref 149*
+                                                                                  150 153 153 155 157 160 163 165 165 171* 171
+person                                 parameter       char(22)                 level 2 in structure "name" packed packed unaligned
+                                                                                  dcl 187 in procedure "check_ascii" set ref 194
+person                    1            based           char(22)                 level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_check_mdcs_"
+                                                                                  set ref 96 102* 117* 123*
+project                   6(18)        based           char(9)                  level 3 in structure "acctent" packed packed
+                                                                                  unaligned dcl 1-45 in procedure "mdc_check_mdcs_"
+                                                                                  set ref 98 102* 117* 123*
+project                   5(18)        parameter       char(9)                  level 2 in structure "name" packed packed unaligned
+                                                                                  dcl 187 in procedure "check_ascii" set ref 200
+ptr                                                    builtin function         dcl 37 ref 64 74 78 83 91 108 113 127 149 159 169
+                                                                                  171
+q                               000104 automatic       pointer                  dcl 24 set ref 159* 160 163 169* 169
+quota                    32            based           fixed bin(18,0)          level 2 dcl 1-31 set ref 67 69* 72* 110
+quota_offset             31            based           bit(18)                  level 2 dcl 1-31 ref 76 110
+quota_used                      000100 automatic       fixed bin(18,0)          dcl 23 in procedure "mdc_check_mdcs_" set ref 107*
+                                                                                  110* 110 115 117* 119
+quota_used               12            based           fixed bin(35,0)          level 2 in structure "acctent" dcl 1-45 in procedure
+                                                                                  "mdc_check_mdcs_" set ref 115 117* 119*
+rel                                                    builtin function         dcl 37 ref 65 75 76 80 80 92 102 102 109 110 153 153
+                                                                                  160 160 163 165 165 196 196 202 202
+restrict_path            20            based           bit(18)                  level 2 in structure "acctent" dcl 1-45 in procedure
+                                                                                  "mdc_check_mdcs_" set ref 93*
+restrict_path            23            based           bit(18)                  level 3 in structure "mdcs" dcl 1-8 in procedure
+                                                                                  "mdc_check_mdcs_" set ref 46*
+time_checked              2            based           fixed bin(71,0)          level 3 dcl 1-8 set ref 131*
+trp                      13            based           fixed bin(71,0)          level 2 packed packed unaligned dcl 1-45 set ref 121
+                                                                                  123* 125*
+type                                   parameter       char                     packed unaligned dcl 185 set ref 182 196* 202*
+unspec                                                 builtin function         dcl 37 set ref 56 59*
+volume                    4            based           char(32)                 level 3 dcl 1-8 set ref 53* 58* 69* 80* 102* 117*
+                                                                                  123* 153* 165* 196* 202*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+mdcs_version                           internal static fixed bin(17,0)          initial dcl 1-27
+pathent                                based           structure                level 1 dcl 1-60
+pathp                                  automatic       pointer                  dcl 1-58
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+check1                          001442 constant        label                    dcl 171 ref 160
+check2                          001357 constant        label                    dcl 160 ref 170
+check3                          001276 constant        label                    dcl 150 ref 173
+check_ascii                     001452 constant        entry                    internal dcl 182 ref 66 94
+check_thread                    001262 constant        entry                    internal dcl 142 ref 44 45 46 47 93
+mdc_check_mdcs_                 000321 constant        entry                    external dcl 19
+next_mdir                       000667 constant        label                    dcl 83 ref 76
+return_code                     001255 constant        label                    dcl 134 ref 82 104 167 198 204
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1674        1712    1620        1704
+Length      2102    1620        16         153      54           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+mdc_check_mdcs_                     326 external procedure  is an external procedure.  
+check_thread                            internal procedure  shares stack frame of external procedure mdc_check_mdcs_.  
+check_ascii                             internal procedure  shares stack frame of external procedure mdc_check_mdcs_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+mdc_check_mdcs_          000100 quota_used                  mdc_check_mdcs_
+                         000102 p                           mdc_check_mdcs_
+                         000104 q                           mdc_check_mdcs_
+                         000106 i                           mdc_check_mdcs_
+                         000107 j                           mdc_check_mdcs_
+                         000110 mdirp                       mdc_check_mdcs_
+                         000112 acctp                       mdc_check_mdcs_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$syserr            clock_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bad_segment
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000315        44 000326        45 000337        46 000350        47 000361        51 000372        53 000400
+     54 000426        56 000433        58 000441        59 000467        64 000475        65 000503        66 000506
+     67 000534        69 000540        72 000575        74 000600        75 000607        76 000613        78 000616
+     79 000625        80 000626        82 000666        83 000667        85 000676        90 000677        91 000700
+     92 000707        93 000712        94 000721        95 000744        96 000745        98 000754       100 000761
+    102 000764       104 001036       106 001037       107 001040       108 001041       109 001050       110 001052
+    113 001060       114 001067       115 001070       117 001074       119 001147       121 001152       123 001156
+    125 001225       127 001231       128 001240       130 001241       131 001243       132 001254       134 001255
+    136 001261       142 001262       147 001264       149 001271       150 001276       153 001301       155 001341
+    157 001343       159 001347       160 001357       163 001365       165 001371       167 001431       169 001432
+    170 001441       171 001442       173 001451       182 001452       194 001463       196 001471       198 001540
+    200 001541       202 001545       204 001614       206 001615
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

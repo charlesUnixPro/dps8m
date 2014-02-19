@@ -1,0 +1,1858 @@
+	COMPILATION LISTING OF SEGMENT rcp_copy_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0950.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       14 rcp_copy_:
+       15      procedure;
+       16 
+       17 /*	This program implements the RCP copy entries.
+       18*   *	Created on 12/26/74 by Bill Silver.
+       19*   *	Modified on 04/24/78 by Michael R. Jordan to add the attached and loaded bits.
+       20*   *	Modified on 12/09/78 by Michael R. Jordan to add support for listing reservations for both the
+       21*   *	  system and user entries.
+       22*   *	Modified 1/85 by Chris Jones to stop using magic numbers.
+       23*   *	Modified 3/85 by Maria Pozzo to add auditing for B2.
+       24*   *
+       25*   *	This program is called to copy RCP data out of ring 1.
+       26*   *	It has the following entry points:
+       27*   *	     1.	data   -	rcp_sys_$copy_data  -  Copys privileged info.
+       28*   *	     2. 	meters -	rcp_priv_$copy_meters  -  Copy meters.
+       29*   *	     3.	list   -	rcp_$copy_list  -  Copy per user info.
+       30**/
+       31 
+       32 dcl	arg_copy_size	   fixed bin (19);		/* (I) Size of caller's copy buffer. */
+       33 dcl	arg_ecode		   fixed bin (35);		/* (O) error_table_ code. */
+       34 dcl	arg_to_ptr	   ptr;			/* (I) Pointer to caller's work segment. */
+       35 
+       36 dcl	attach_off	   bit (18);		/* Offset of an RLI attachment entry. */
+       37 dcl	dassign_off	   bit (18);		/* Offset of an RLI assignment entry. */
+       38 dcl	caller_level	   fixed bin;		/* Caller's validation level. */
+       39 dcl	copy_size		   fixed bin (19);		/* Size of caller's copy buffer. */
+       40 dcl	device_off	   bit (18);		/* Device entry offset in RCPD. */
+       41 dcl	devicex		   fixed bin;		/* Device entry index in RDI. */
+       42 dcl	ecode		   fixed bin (35);		/* error_table_ code. */
+       43 dcl	(i, j, k)		   fixed bin;
+       44 dcl	max_size		   fixed bin (19);		/* Max seg size of caller's work segment. */
+       45 dcl	meter_time	   fixed bin (71);		/* Time used to base meters on. */
+       46 dcl	num_attach	   fixed bin;		/* Number of attachment entries. */
+       47 dcl	num_dassign	   fixed bin;		/* Number of assignment entries. */
+       48 dcl	num_lv		   fixed bin;		/* Number of lv entries. */
+       49 dcl	operation		   bit (36) aligned;	/* RCP operation */
+       50 dcl	operation_ptr	   ptr;
+       51 dcl	rcse_off		   bit (18);		/* Offset of an RCS entry. */
+       52 dcl	this_process	   bit (36);		/* Process id for the calling process. */
+       53 dcl	to_ptr		   ptr;			/* Pointer to caller's work segment. */
+       54 dcl	total_size	   fixed bin;		/* Total size of an info structure. */
+       55 dcl	who_am_i		   char (32);		/* Identifies the caller. */
+       56 
+       57 dcl	1 en_access_op	   like encoded_access_op aligned based (operation_ptr);
+       58 dcl	(addr, fixed, hbound, ptr, rel, size)
+       59 			   builtin;
+       60 
+       61 dcl	cleanup		   condition;
+       62 
+       63 dcl	(
+       64 	error_table_$bad_arg,
+       65 	error_table_$item_too_big,
+       66 	error_table_$unimplemented_version
+       67 	)		   fixed bin (35) external;
+       68 
+       69 dcl	access_operations_$rcp_copy_info
+       70 			   bit (36) aligned external;
+       71 
+       72 dcl	access_audit_r1_$log_obj_ptr
+       73 			   entry options (variable);
+       74 dcl	clock_		   entry returns (fixed bin (71));
+       75 dcl	cu_$level_get	   entry (fixed bin);
+       76 dcl	cu_$level_set	   entry (fixed bin);
+       77 dcl	get_process_id_	   entry () returns (bit (36));
+       78 dcl	get_ring_		   entry returns (fixed bin (3));
+       79 dcl	get_group_id_	   entry () returns (char (32));
+       80 dcl	get_process_authorization_
+       81 			   entry () returns (bit (72) aligned);
+       82 dcl	hcs_$get_max_length_seg
+       83 			   entry (ptr, fixed bin (19), fixed bin (35));
+       84 dcl	rcp_rcse_$info	   entry (bit (18), fixed bin, bit (18), fixed bin);
+       85 dcl	rcp_pointers_$data	   entry returns (ptr);
+       86 dcl	rcp_pointers_$com_seg  entry returns (ptr);
+       87 dcl	rcp_lv_$copy	   entry (ptr);
+       88 dcl	rcp_lv_$number	   entry (fixed bin);
+       89 
+       90 dcl	DEFAULT_REGISTRY_DIR   char (64) static internal options (constant) init (">sc1>rcp");
+       91 
+       92 data:
+       93      entry (arg_to_ptr, arg_copy_size, arg_ecode);
+       94 
+       95 /*	This entry is called to copy privileged information from rcp_data.
+       96*   *	It is used by privileged commands that want to list data about all
+       97*   *	of the devices controlled by RCP.
+       98**/
+       99 	who_am_i = "rcp_copy_$data";
+      100 	call SETUP;				/* Set up and validate arguments. */
+      101 	on cleanup call CLEANUP;
+      102 
+      103 	rcpd_ptr = rcp_pointers_$data ();
+      104 	rdi_ptr = to_ptr;				/* Return info in RDI structure. */
+      105 
+      106 	if ecode ^= 0 then
+      107 	     goto DATA_RETURN;
+      108 
+      109 	if rdi.head.version_num ^= rdi_version_3	/* Are we using the same version as the caller. */
+      110 	then do;					/* No. */
+      111 	     ecode = error_table_$unimplemented_version;
+      112 	     goto DATA_RETURN;
+      113 	end;
+      114 
+      115 	if size (rdi_header) > copy_size		/* Is there room for at least the header? */
+      116 	then do;					/* No, no room for even this. */
+      117 	     ecode = error_table_$item_too_big;
+      118 	     goto DATA_RETURN;
+      119 	end;
+      120 
+      121 	rdi.head.tot_ddtypes = rcpd.tot_dtypes;		/* Fill in header info. */
+      122 	rdi.head.tot_ddevices = rcpd.tot_devices;
+      123 	rdi.head.tot_dvolumes = rcpd.last_volume;
+      124 
+      125 	total_size = fixed (rel (addr (rdi.end)), 19) - fixed (rel (rdi_ptr), 19);
+      126 	if total_size > copy_size			/* Is there room for the whole structure? */
+      127 	then do;					/* No. */
+      128 	     ecode = error_table_$item_too_big;
+      129 	     goto DATA_RETURN;
+      130 	end;
+      131 
+      132 	devicex = 1;				/* Initialize device index. */
+      133 
+      134 	do i = 1 to rcpd.tot_dtypes;			/* Process each device type. */
+      135 	     dtype_ptr = addr (rcpd.dtype (i));
+      136 	     ddtype_ptr = addr (rdi.ddtypes (i));
+      137 	     ddtype.device_type = dtype.device_type;
+      138 	     ddtype.max_concurrent = dtype.max_concurrent;
+      139 	     ddtype.num_reserved = dtype.num_reserved;
+      140 	     ddtype.num_devices = dtype.num_devices;
+      141 	     devicex = devicex;
+      142 	     ddtype.first_devicex = devicex;		/* Save index of first device of this type. */
+      143 	     device_off = dtype.first_off;		/* Get RCPD offset of 1st device of type. */
+      144 	     do while (device_off ^= "0"b);		/* Process each device of this type. */
+      145 		device_ptr = ptr (rcpd_ptr, device_off);
+      146 		ddevice_ptr = addr (rdi.ddevices (devicex));
+      147 		ddevice.device_name = device.device_name;
+      148 		ddevice.volume_name = device.volume_name;
+      149 		ddevice.dtypex = device.dtypex;
+      150 		ddevice.model = device.model;
+      151 		ddevice.num_qualifiers = device.num_qualifiers;
+      152 		do j = 1 to hbound (ddevice.qualifiers, 1);
+      153 		     ddevice.qualifiers (j) = device.qualifiers (j);
+      154 		end;
+      155 		ddevice.state_time = device.state_time;
+      156 		ddevice.state = device.state;
+      157 		ddevice.iom_num = device.iom_num;
+      158 		ddevice.chan_num = device.chan_num;
+      159 		ddevice.num_channels = device.num_channels;
+      160 		ddevice.flags.reservable = device.flags.reservable;
+      161 		ddevice.flags.reserved = device.flags.reserved;
+      162 		ddevice.flags.mounting = device.flags.mounting;
+      163 		ddevice.flags.writing = device.flags.writing;
+      164 		ddevice.flags.attached = device.flags.attached;
+      165 		ddevice.flags.loaded = (device.volume_name ^= "") & (^rcpd.modes.unload_on_detach);
+      166 		ddevice.group_id = device.group_id;
+      167 		ddevice.reservation_id = device.reservation_id;
+      168 		ddevice.reserved_by = device.reserved_by;
+      169 		device_off = device.next_off;		/* Get offset of next device of this type. */
+      170 		devicex = devicex + 1;		/* Increment RDI device index. */
+      171 	     end;
+      172 	end;
+      173 
+      174 	do i = 1 to rcpd.last_volume;
+      175 	     volume_ptr = addr (rcpd.volume (i));
+      176 	     dvolume_ptr = addr (rdi.dvolumes (i));
+      177 	     dvolume = volume;
+      178 	end;
+      179 
+      180 DATA_RETURN:
+      181 	call audit (ecode);
+      182 	call CLEANUP;
+      183 	arg_ecode = ecode;
+      184 	return;
+      185 
+      186 meters:
+      187      entry (arg_to_ptr, arg_copy_size, arg_ecode);
+      188 
+      189 /*	This entry is called to copy all meter data from RCS and RCPD.
+      190*   *	We will copy only the lock meters from RCS.   Then from RCPD
+      191*   *	we will copy all of the lock data, the complete entry for each
+      192*   *	device type, and all non security data from each device entry.
+      193*   *	With this information the caller can calculate meter data but
+      194*   *	cannot determine the state of any device.
+      195**/
+      196 	who_am_i = "rcp_copy_$meters";
+      197 	call SETUP;				/* Set up arguments. */
+      198 	rcpd_ptr = rcp_pointers_$data ();
+      199 	rcs_ptr = rcp_pointers_$com_seg ();
+      200 	on cleanup call CLEANUP;
+      201 
+      202 	if ecode ^= 0 then
+      203 	     goto METERS_RETURN;
+      204 
+      205 	rmi_ptr = to_ptr;				/* Return info in RMI strcuture. */
+      206 
+      207 	if rmi.head.version_num ^= 1			/* Are we using same version as caller? */
+      208 	then do;					/* No. */
+      209 	     ecode = error_table_$unimplemented_version;
+      210 	     goto METERS_RETURN;
+      211 	end;
+      212 
+      213 	if size (rmi_header) > copy_size		/* Is there room for RMI header? */
+      214 	then do;					/* No, no room for even that. */
+      215 	     ecode = error_table_$item_too_big;
+      216 	     goto METERS_RETURN;
+      217 	end;
+      218 
+      219 	meter_time = clock_ ();			/* Use same time for all devices. */
+      220 	rmi.head.tot_mdtypes = rcpd.tot_dtypes;		/* Get totals from RCPD. */
+      221 	rmi.head.tot_mdevices = rcpd.tot_devices;
+      222 
+      223 	total_size = fixed (rel (addr (rmi.end)), 19) - fixed (rel (rmi_ptr), 19);
+      224 	if total_size > copy_size			/* Is there room for all of RMI? */
+      225 	then do;					/* No. */
+      226 	     ecode = error_table_$item_too_big;
+      227 	     goto METERS_RETURN;
+      228 	end;
+      229 
+      230 	rmi.rcs_lock_info = rcs.lock_info;		/* Copy lock data. */
+      231 	rmi.rcpd_lock_info = rcpd.lock_info;
+      232 
+      233 	do i = 1 to rcpd.tot_dtypes;			/* Copy info for each device type. */
+      234 	     dtype_ptr = addr (rcpd.dtype (i));
+      235 	     mdtype_ptr = addr (rmi.mdtypes (i));
+      236 	     mdtype.device_type = dtype.device_type;
+      237 	     mdtype.num_devices = dtype.num_devices;
+      238 	     do j = 1 to hbound (mdtype.histo_times, 1);
+      239 		mdtype.histo_times (j) = dtype.histo_times (j);
+      240 	     end;
+      241 	end;
+      242 
+      243 	do i = 1 to rcpd.tot_devices;			/* Copy info for each device. */
+      244 	     device_ptr = addr (rcpd.device (i));
+      245 	     mdevice_ptr = addr (rmi.mdevices (i));
+      246 	     mdevice.device_name = device.device_name;
+      247 	     mdevice.dtypex = device.dtypex;
+      248 	     mdevice.error_count = device.error_count;
+      249 	     mdevice.num_assigns = device.num_assigns;
+      250 	     mdevice.tot_assign_time = device.tot_assign_time;
+      251 	     do j = 1 to hbound (mdevice.histogram, 1);
+      252 		mdevice.histogram (j) = device.histogram (j);
+      253 	     end;
+      254 	     if device.state = ASSIGNED		/* If device now assigned tell how long. */
+      255 		then
+      256 		mdevice.time_assigned = meter_time - device.state_time;
+      257 	     else mdevice.time_assigned = 0;
+      258 	end;
+      259 
+      260 METERS_RETURN:
+      261 	call audit (ecode);
+      262 	call CLEANUP;
+      263 	arg_ecode = ecode;
+      264 	return;
+      265 
+      266 list:
+      267      entry (arg_to_ptr, arg_copy_size, arg_ecode);
+      268 
+      269 /*	This entry is called to return RCS information about all attachments
+      270*   *	and assignments of the calling process.
+      271**/
+      272 	who_am_i = "rcp_copy_$list";
+      273 	call SETUP;				/* Set up arguments. */
+      274 	rcpd_ptr = rcp_pointers_$data ();
+      275 	rcs_ptr = rcp_pointers_$com_seg ();
+      276 	on cleanup call CLEANUP;
+      277 
+      278 	if ecode ^= 0 then
+      279 	     goto LIST_RETURN;
+      280 
+      281 	rli_ptr = to_ptr;
+      282 	this_process = get_process_id_ ();
+      283 
+      284 	if (rli.head.version_num ^= rli_version_4)	/* Are we and caller using the same RLI structure? */
+      285 	then do;					/* No. */
+      286 	     ecode = error_table_$unimplemented_version;
+      287 	     goto LIST_RETURN;
+      288 	end;
+      289 
+      290 	if size (rli_header) > copy_size		/* Is there room for RLI header? */
+      291 	then do;					/* No, no room for even that. */
+      292 	     ecode = error_table_$item_too_big;
+      293 	     goto LIST_RETURN;
+      294 	end;
+      295 
+      296 /* Get per process RCS information. */
+      297 	call rcp_rcse_$info (attach_off, num_attach, dassign_off, num_dassign);
+      298 	call rcp_lv_$number (num_lv);			/* get number of lvs. */
+      299 
+      300 	rli.head.num_dassign = num_dassign;		/* Fill in RLI header info. */
+      301 	rli.head.num_attach = num_attach;
+      302 	rli.head.num_lv = num_lv;
+      303 
+      304 	rli.head.num_device_resv = 0;
+      305 	do i = 1 to rcpd.tot_devices;			/* loop through all devices */
+      306 	     device_ptr = addr (rcpd.device (i));
+      307 	     if (device.reservation_id ^= 0) & (device.process_id = this_process) then
+      308 		rli.head.num_device_resv = rli.head.num_device_resv + 1;
+      309 	end;
+      310 
+      311 	rli.head.num_vol_resv = 0;
+      312 	do i = 1 to rcpd.last_volume;			/* and then loop through all volumes */
+      313 	     volume_ptr = addr (rcpd.volume (i));
+      314 	     if (volume.reservation_id ^= 0) & (volume.process_id = this_process) then
+      315 		rli.head.num_vol_resv = rli.head.num_vol_resv + 1;
+      316 	end;
+      317 
+      318 	total_size = fixed (rel (addr (rli.end)), 19) - fixed (rel (rli_ptr), 19);
+      319 	if total_size > copy_size			/* Is there room for all info? */
+      320 	then do;					/* No. */
+      321 	     ecode = error_table_$item_too_big;
+      322 	     goto LIST_RETURN;
+      323 	end;
+      324 
+      325 	rcse_off = dassign_off;			/* Process all assignment RCS entries. */
+      326 	num_dassign = 0;
+      327 	do while (rcse_off ^= "0"b);			/* We will go through process assignment list. */
+      328 	     num_dassign = num_dassign + 1;		/* Index of current assignment entry. */
+      329 	     dassign_ptr = addr (rli.dassigns (num_dassign));
+      330 	     rcse_ptr = ptr (rcs_ptr, rcse_off);	/* Pointer fo RCS entry we get info from. */
+      331 	     rcse_off = rcse.user_off;		/* Offset of next RCS entry in this list. */
+      332 	     dassign.device_name = rcse.device_name;	/* Copy all fields needed for assignment entry. */
+      333 	     dassign.dtypex = rcse.dtypex;
+      334 	     dassign.model = rcse.model;
+      335 	     do i = 1 to rcse.num_qualifiers;
+      336 		dassign.qualifiers (i) = rcse.qualifiers (i);
+      337 	     end;
+      338 	     dassign.state_time = rcse.state_time;
+      339 	     dassign.state = rcse.state;
+      340 	     dassign.level = rcse.caller_level;
+      341 	     dassign.disposition = rcse.disposition;
+      342 	     if rcse.rcse_off = "0"b then
+      343 		dassign.flags.attached = "0"b;
+      344 	     else dassign.flags.attached = "1"b;
+      345 	     dassign.rcp_id = rcse.rcp_id;
+      346 	     dassign.usage_time, dassign.wait_time = 0;
+      347 	end;
+      348 
+      349 	rcse_off = attach_off;			/* Process all attachment entries. */
+      350 	num_attach = 0;
+      351 	do while (rcse_off ^= "0"b);			/* Go through process attachment list. */
+      352 	     num_attach = num_attach + 1;		/* Index of current attachment entry. */
+      353 	     attach_ptr = addr (rli.attaches (num_attach));
+      354 	     rcse_ptr = ptr (rcs_ptr, rcse_off);	/* Pointer to RCS entry we get info from. */
+      355 	     rcse_off = rcse.user_off;		/* Offset of next RCS entry in this list. */
+      356 	     attach.device_name = rcse.device_name;	/* Copy all fields needed for attachment entry. */
+      357 	     attach.volume_name = rcse.volume_name;
+      358 	     attach.dtypex = rcse.dtypex;
+      359 	     attach.state_time = rcse.state_time;
+      360 	     attach.state = rcse.state;
+      361 	     attach.level = rcse.caller_level;
+      362 	     attach.flags.priv = rcse.flags.priv;
+      363 	     attach.flags.writing = rcse.flags.writing;
+      364 	     attach.rcp_id = rcse.rcp_id;
+      365 	     attach.workspace_max = rcse.workspace_max;
+      366 	     attach.timeout_max = rcse.timeout_max;
+      367 	     attach.ioi_index = rcse.ioi_index;
+      368 	     attach.usage_time, attach.wait_time = 0;
+      369 	end;
+      370 
+      371 	if num_lv ^= 0				/* Are there any lvs to list? */
+      372 	     then
+      373 	     call rcp_lv_$copy (rli_ptr);		/* Yes, copy list of lv info. */
+      374 
+      375 	k = 0;
+      376 	do i = 1 to rcpd.tot_devices;			/* loop through all devices */
+      377 	     device_ptr = addr (rcpd.device (i));
+      378 	     if (device.reservation_id ^= 0) & (device.process_id = this_process) then do;
+      379 		k = k + 1;
+      380 		device_resv_ptr = addr (rli.device_resvs (k));
+      381 		device_resv.reservation_id = device.reservation_id;
+      382 		device_resv.reserved_by = device.reserved_by;
+      383 		device_resv.device_name = device.device_name;
+      384 	     end;
+      385 	end;
+      386 
+      387 	k = 0;
+      388 	do i = 1 to rcpd.last_volume;			/* and then loop through all volumes */
+      389 	     volume_ptr = addr (rcpd.volume (i));
+      390 	     if (volume.reservation_id ^= 0) & (volume.process_id = this_process) then do;
+      391 		k = k + 1;
+      392 		vol_resv_ptr = addr (rli.vol_resvs (k));
+      393 		vol_resv.reservation_id = volume.reservation_id;
+      394 		vol_resv.reserved_by = volume.reserved_by;
+      395 		vol_resv.volume_name = volume.volume_name;
+      396 	     end;
+      397 	end;
+      398 
+      399 LIST_RETURN:
+      400 	call CLEANUP;				/* We don't bother to audit 'cause this is non-privileged */
+      401 	arg_ecode = ecode;
+      402 	return;
+      403 
+      404 SETUP:
+      405      procedure;
+      406 
+      407 /*	This procedure is called to set up and validate the caller's
+      408*   *	segment pointer.  We must be sure that we don't copy past the
+      409*   *	end of his segment.
+      410**/
+      411 	call cu_$level_get (caller_level);		/* Save caller's validation level. */
+      412 	call cu_$level_set (get_ring_ ());		/* Set validation level to RCP level. */
+      413 
+      414 	to_ptr = arg_to_ptr;			/* Copy arguments. */
+      415 	copy_size = arg_copy_size;
+      416 	operation = access_operations_$rcp_copy_info;
+      417 	operation_ptr = addr (operation);
+      418 	en_access_op.detailed_operation = 0;
+      419 	ops_ptr = addr (en_access_op.detailed_operation);
+      420 /**** the one non-priv entry (list) isn't audited, so always set this flag ****/
+      421 	detailed_operation.priv_gate_call = "1"b;
+      422 	call hcs_$get_max_length_seg (to_ptr, max_size, ecode);
+      423 	if ecode ^= 0 then
+      424 	     return;
+      425 
+      426 	if (fixed (rel (to_ptr), 19) + copy_size) > max_size then
+      427 	     ecode = error_table_$bad_arg;
+      428 
+      429      end SETUP;
+      430 
+      431 audit:
+      432      proc (code);
+      433 
+      434 dcl	code		   fixed bin (35) parameter;
+      435 
+      436 dcl	1 auto_event_flags	   like audit_event_flags aligned;
+      437 
+      438 	unspec (auto_event_flags) = ""b;
+      439 	auto_event_flags.grant = (code = 0);
+      440 	auto_event_flags.priv_op = "1"b;
+      441 
+      442 	call access_audit_r1_$log_obj_ptr (who_am_i, caller_level, unspec (auto_event_flags), operation, rcpd_ptr, code,
+      443 	     null (), 0);
+      444 
+      445      end audit;
+      446 
+      447 CLEANUP:
+      448      proc;
+      449 
+      450 	call cu_$level_set (caller_level);
+      451 
+      452      end CLEANUP;
+      453 
+  1     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  1     2*
+  1     3*   Values for the "access mode" argument so often used in hardcore
+  1     4*   James R. Davis 26 Jan 81  MCR 4844
+  1     5*   Added constants for SM access 4/28/82 Jay Pattin
+  1     6*   Added text strings 03/19/85 Chris Jones
+  1     7**/
+  1     8 
+  1     9 
+  1    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  1    11 dcl	(
+  1    12 	N_ACCESS		   init ("000"b),
+  1    13 	R_ACCESS		   init ("100"b),
+  1    14 	E_ACCESS		   init ("010"b),
+  1    15 	W_ACCESS		   init ("001"b),
+  1    16 	RE_ACCESS		   init ("110"b),
+  1    17 	REW_ACCESS	   init ("111"b),
+  1    18 	RW_ACCESS		   init ("101"b),
+  1    19 	S_ACCESS		   init ("100"b),
+  1    20 	M_ACCESS		   init ("010"b),
+  1    21 	A_ACCESS		   init ("001"b),
+  1    22 	SA_ACCESS		   init ("101"b),
+  1    23 	SM_ACCESS		   init ("110"b),
+  1    24 	SMA_ACCESS	   init ("111"b)
+  1    25 	)		   bit (3) internal static options (constant);
+  1    26 
+  1    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  1    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  1    29 
+  1    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  1    31 			   static options (constant);
+  1    32 
+  1    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  1    34 			   static options (constant);
+  1    35 
+  1    36 dcl	(
+  1    37 	N_ACCESS_BIN	   init (00000b),
+  1    38 	R_ACCESS_BIN	   init (01000b),
+  1    39 	E_ACCESS_BIN	   init (00100b),
+  1    40 	W_ACCESS_BIN	   init (00010b),
+  1    41 	RW_ACCESS_BIN	   init (01010b),
+  1    42 	RE_ACCESS_BIN	   init (01100b),
+  1    43 	REW_ACCESS_BIN	   init (01110b),
+  1    44 	S_ACCESS_BIN	   init (01000b),
+  1    45 	M_ACCESS_BIN	   init (00010b),
+  1    46 	A_ACCESS_BIN	   init (00001b),
+  1    47 	SA_ACCESS_BIN	   init (01001b),
+  1    48 	SM_ACCESS_BIN	   init (01010b),
+  1    49 	SMA_ACCESS_BIN	   init (01011b)
+  1    50 	)		   fixed bin (5) internal static options (constant);
+  1    51 
+  1    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      454 
+      455 
+  2     1 /* begin include file - access_audit_eventflags.incl.pl1 */
+  2     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  2     3*Keep it up to date. */
+  2     4 
+  2     5 dcl 1 audit_event_flags	based aligned,
+  2     6       2 special_op	bit (1) unal,  /* special sys operation */
+  2     7       2 grant	bit (1) unal,  /* operation was successful */
+  2     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  2     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  2    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  2    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  2    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  2    13       2 pad	bit (29) unal;
+  2    14 
+  2    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      456 
+      457 
+  3     1 /* begin include file - access_audit_encoded_op.incl.pl1 */
+  3     2 
+  3     3 dcl 1 encoded_access_op	aligned based,
+  3     4       2 audit_type	unal,
+  3     5         3 object_type	fixed bin (4) uns unal,
+  3     6         3 access_type	fixed bin (2) uns unal,
+  3     7       2 operation_index	fixed bin (12) uns unal,
+  3     8       2 detailed_operation	fixed bin (18) uns unal;
+  3     9 
+  3    10 /* object_type = Seg, Dir, Rcp, Admin, Special, Other
+  3    11*   access_type = None, Modify_Acl, Modify, Read
+  3    12*   operation_index is the index of this code in
+  3    13*     access_operations_$oper_codes and the index of
+  3    14*     the text descriptor in access_operations_$text_offest_table
+  3    15*     (see access_operations_.incl.pl1)
+  3    16*   detailed_operation is additional info inserted by the
+  3    17*     caller of the subsystem performing the operation
+  3    18**/
+  3    19 
+  3    20 /* end include file - access_audit_encoded_op.incl.pl1 */
+      458 
+      459 
+  4     1 /*	Begin  include file ... rcp_data.incl.pl1
+  4     2*   *
+  4     3*   *	Created on 09/06/74 by Bill Silver.
+  4     4*   *	This include file defines the Resource Control Package data base, rcp_data.
+  4     5*   *	It is initialized in ring 0 by rcp_init.  It is maintained in ring 1 by RCP.
+  4     6*   *	It contains information about all of the devices and volumes managed by RCP.
+  4     7*   *	This include file references rcp_com_seg.incl.pl1.
+  4     8*
+  4     9*   *	Modified by R.J.C. Kissel on 10/5/77 to add the check_label bit.
+  4    10*   *	Modified by Michael R. Jordan on 04/24/78 to add modes and attached flag.
+  4    11*   *	Modified on 12/09/78 to add removable media bit.
+  4    12*   *	Modified 3/79 by Michael R. Jordan for MR7.0R.
+  4    13*   *	Modified 3/79 by C. D. Tavares for expandable RCP modes.
+  4    14*   *	Modified 11/84 by Paul Farley to add fips flag.
+  4    15*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  4    16**/
+  4    17 
+  4    18 /****^  HISTORY COMMENTS:
+  4    19*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  4    20*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  4    21*     Support FIPS and IMU.
+  4    22*                                                   END HISTORY COMMENTS */
+  4    23 
+  4    24 dcl  rcpd_ptr ptr;					/* Points to base of RCPD. */
+  4    25 dcl  dtype_ptr ptr;					/* Points to a device type entry. */
+  4    26 dcl  device_ptr ptr;				/* Points to a device entry. */
+  4    27 dcl  volume_ptr ptr;				/* Points to a volume entry. */
+  4    28 
+  4    29 dcl 1 rcpd based (rcpd_ptr) aligned,			/* Begin at word 0 of RCPD. */
+  4    30     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  4    31     2 init bit (1) unal,				/* ON => rcp_ring1_init_ has executed */
+  4    32     2 modes like rcp_init_flags unaligned,
+  4    33     2 tot_dtypes fixed bin,				/* Number of known device types. */
+  4    34     2 tot_devices fixed bin,				/* Total number of devices configured. */
+  4    35     2 tot_volumes fixed bin,				/* Number of possible attached volumes. */
+  4    36     2 last_volume fixed bin,				/* The last volume entry currently in use. */
+  4    37     2 mtimer_chan fixed bin (71),			/* Event channel for mount timer. */
+  4    38     2 mtimer_pid bit (36),				/* ID of mount timer process. */
+  4    39     2 accounting_chan fixed bin (71),			/* Event channel for device accounting */
+  4    40     2 accounting_pid bit (36),			/* ID of accounting process */
+  4    41     2 unload_sleep_time fixed bin (71),			/* Number of microseconds to wait for unload completion. */
+  4    42     2 pad (7) fixed bin,
+  4    43     2 dtype (0 refer (rcpd.tot_dtypes))			/* One entry per device type. */
+  4    44      like dtype,					/* See structure below. */
+  4    45     2 device (0 refer (rcpd.tot_devices))		/* One entry per configured device. */
+  4    46      like device,					/* See structure below. */
+  4    47     2 volume (0 refer (rcpd.tot_volumes))		/* One entry per possible attached volume. */
+  4    48      like volume,					/* See structure below. */
+  4    49     2 end bit (36) aligned;				/* End of rcp_data. */
+  4    50 
+  4    51 dcl 1 dtype based (dtype_ptr) aligned,			/* Entry for one device type. */
+  4    52     2 device_type char (32),				/* Name of this device type. */
+  4    53     2 max_concurrent fixed bin,			/* Max number of concurrently assigned devices. */
+  4    54     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  4    55     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  4    56     2 first_off bit (18),				/* Offset of first device entry. */
+  4    57     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  4    58 
+  4    59 dcl 1 device based (device_ptr) aligned,		/* Up to state must = rcs.rcse. */
+  4    60     2 device_name char (8),				/* Name of device associated with this entry. */
+  4    61     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  4    62     2 dtypex fixed bin,				/* Device type index. */
+  4    63     2 model fixed bin,				/* Device model number. */
+  4    64     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  4    65     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  4    66     2 state_time fixed bin (71),			/* Time device put into current state. */
+  4    67     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted,
+  4    68*						   3 => storage system, 4 => reserved */
+  4    69 
+  4    70 /*	*	*	*	*	** Following fields are unique to device entry. */
+  4    71 
+  4    72     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  4    73     2 acs_name char (12),				/* Entry name of ACS for this device. */
+  4    74     2 next_off bit (18),				/* Offset of next entry for this device type. */
+  4    75     2 iom_num fixed bin,				/* IOM number for this device. */
+  4    76     2 chan_num fixed bin,				/* Channel number for this device. */
+  4    77     2 num_channels fixed bin,				/* Num channels that may address device. */
+  4    78     2 flags,					/* Special info flags. */
+  4    79      (3 delete bit (1),				/* ON => Delete device when it is unassigned. */
+  4    80       3 priv bit (1),				/* ON => Deleted device assigned for priv attach. */
+  4    81       3 reservable bit (1),				/* ON => may be reserved for system process. */
+  4    82       3 reserved bit (1),				/* ON => reserved to a reserved process. */
+  4    83       3 mounting bit (1),				/* ON => mount pending. */
+  4    84       3 writing bit (1),				/* ON => mounting for writing. */
+  4    85       3 attached bit (1) unal,			/* ON => device is attached. */
+  4    86       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  4    87       3 fips bit (1),				/* ON => FIPS device. */
+  4    88       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  4    89       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  4    90       3 unused bit (25)) unal,
+  4    91     2 process_id bit (36),				/* ID of assigned process. */
+  4    92     2 group_id char (32),				/* Process group ID. */
+  4    93     2 error_count fixed bin (35),			/* Total error count.  Defined by user ring. */
+  4    94     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  4    95     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  4    96     2 histogram (4) fixed bin,			/* Assignment time histogram. */
+  4    97     2 reservation_id fixed bin (71),
+  4    98     2 reserved_by char (32),				/* Who made this reservation. */
+  4    99     2 current_authorization bit (72) aligned;		/* Authoization of process using this device. */
+  4   100 
+  4   101 dcl 1 volume based (volume_ptr) aligned,		/* Entry for one volume. */
+  4   102     2 process_id bit (36),				/* "0"b => unassigned. */
+  4   103     2 volume_name char (32),				/* Volume name. */
+  4   104     2 vtypex fixed bin,				/* Volume type index. */
+  4   105     2 group_id char (32),				/* This is used for the reserved_for field. */
+  4   106     2 reserved_by char (32),
+  4   107     2 reservation_id fixed bin (71),
+  4   108     2 state_time fixed bin (71),			/* Same as for a device. */
+  4   109     2 state fixed bin,				/* Same as for a device. */
+  4   110     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  4   111     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  4   112 
+  5     1 /* BEGIN INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  5     2 
+  5     3 /* Created on 04/24/78 by Michael R. Jordan */
+  5     4 /* Modified 04/10/79 by C. D. Tavares */
+  5     5 
+  5     6 dcl  rifp ptr;
+  5     7 
+  5     8 dcl 1 rcp_init_flags based (rifp),
+  5     9     2 unload_on_detach bit (1) unaligned,		/* ON => tape volumes are unloaded after detaching */
+  5    10     2 pad1 bit (2) unaligned,				/* obsolete */
+  5    11     2 resource_mgmt_enabled bit (1) unaligned,		/* ON => resource management has been enabled */
+  5    12     2 auto_registration bit (1) unaligned,		/* ON => auto registration allowed */
+  5    13     2 pad2 bit (2) unaligned,				/* future expansion, possibly of authentication_level */
+  5    14     2 authentication_level fixed bin (2) unaligned unsigned; /* see below for values */
+  5    15 
+  5    16 dcl (No_authentication initial (0),
+  5    17      Nominal_authentication initial (1),
+  5    18      Automatic_authentication initial (2),
+  5    19      Manual_authentication initial (3)) fixed bin internal static options (constant);
+  5    20 
+  5    21 dcl  authentication_level_names (0:3) char (12) internal static options (constant) initial
+  5    22     ("none", "nominal", "automatic", "manual");
+  5    23 
+  5    24 /* END INCLUDE FILE ... rcp_init_flags.incl.pl1 */
+  4   113 
+  4   114 
+  4   115 /*	End of include file ... rcp_data.incl.pl1	*/
+      460 
+      461 
+  6     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  6     2*   *
+  6     3*   *	Created on 11/20/74 by Bill Silver.
+  6     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  6     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  6     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  6     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  6     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  6     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  6    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  6    11*   *	This include file defines the Resource Control Package communication segment.
+  6    12*   *	This segment is used to communicate requests between the various internal
+  6    13*   *	parts of RCP.
+  6    14**/
+  6    15 
+  6    16 /****^  HISTORY COMMENTS:
+  6    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  6    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  6    19*     Support MCA and FIPS.
+  6    20*                                                   END HISTORY COMMENTS */
+  6    21 
+  6    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  6    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  6    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  6    25 
+  6    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  6    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  6    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  6    29 
+  6    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  6    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  6    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  6    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  6    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  6    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  6    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  6    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  6    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  6    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  6    40     2 num_entries fixed bin,				/* Total number of entries. */
+  6    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  6    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  6    43      like rcse,					/* See structure below. */
+  6    44     2 end bit (36);					/* End of rcp_com_seg. */
+  6    45 
+  6    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  6    47     2 lock bit (36),				/* The lock itself. */
+  6    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  6    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  6    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  6    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  6    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  6    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  6    54 
+  6    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  6    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  6    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  6    58     2 dtypex fixed bin,				/* Device type index. */
+  6    59     2 model fixed bin,				/* Device model number. */
+  6    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  6    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  6    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  6    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  6    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  6    65 
+  6    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  6    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  6    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  6    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  6    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  6    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  6    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  6    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  6    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  6    75     2 flags,					/* Special info flags. */
+  6    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  6    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  6    78       3 system bit (1),				/* ON => assigned to a system process. */
+  6    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  6    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  6    81       3 writing bit (1),				/* ON => writing on volume. */
+  6    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  6    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  6    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  6    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  6    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  6    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  6    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  6    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  6    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  6    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  6    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  6    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  6    94       3 fips bit (1),				/* ON => FIPS device. */
+  6    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  6    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  6    97       3 unused bit (6),
+  6    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  6    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  6   100     2 rcp_id bit (36),				/* ID of this entry. */
+  6   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  6   102     2 process_id bit (36),				/* ID of calling process. */
+  6   103     2 group_id char (32),				/* Group ID of calling process. */
+  6   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  6   105     2 version_num fixed bin,				/* Device info version number. */
+  6   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  6   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  6   108     2 ioi_index fixed bin,				/* IOI device index. */
+  6   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  6   110     2 caller_comment char (64);			/* Caller's comment. */
+  6   111 
+  6   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+      462 
+      463 
+  7     1 /*	Begin  include file ... rcp_data_info.incl.pl1
+  7     2*   *
+  7     3*   *	Created on 04/03/75 by Bill Silver.
+  7     4*   *	Modified on 04/24/78 by Michael R. Jordan to add the attached and loaded bits.
+  7     5*   *	Modified on 11/19/78 by Michael R. Jordan to add reservation information and volume entries (version 2).
+  7     6*   *	Modified 6/79 by Michael R. Jordan for 32 character device types (version 3).
+  7     7*   *	This include file is used to copy data from rcp_data.
+  7     8**/
+  7     9 dcl  rdi_ptr ptr;					/* Pointer to base of the rdi structure. */
+  7    10 dcl  ddtype_ptr ptr;				/* Points to a ddtype entry. */
+  7    11 dcl  ddevice_ptr ptr;				/* Points to a ddevice entry. */
+  7    12 dcl  dvolume_ptr ptr;				/* Points to a dvolume entry. */
+  7    13 
+  7    14 dcl  rdi_version_3 fixed bin static internal options (constant) init (3); /* Version number of this structure. */
+  7    15 
+  7    16 dcl 1 rdi based (rdi_ptr) aligned,			/* Beginning of rcp_data_info structure. */
+  7    17     2 head like rdi_header,				/* Header of this structure. */
+  7    18     2 ddtypes (0 refer (rdi.tot_ddtypes))		/* One entry per device type. */
+  7    19      like ddtype,					/* See structure below. */
+  7    20     2 ddevices (0 refer (rdi.tot_ddevices))		/* One entry per configured device. */
+  7    21      like ddevice,					/* See structure below. */
+  7    22     2 dvolumes (0 refer (rdi.tot_dvolumes))		/* One entry per "known" volume. */
+  7    23      like dvolume,					/* See structure below. */
+  7    24     2 end bit (36) aligned;				/* End of rcp_data_info. */
+  7    25 
+  7    26 dcl 1 rdi_header based aligned,			/* Header of RCP Data Info structure. */
+  7    27     2 version_num fixed bin,				/* The version number of this structure. */
+  7    28     2 tot_ddtypes fixed bin,				/* Total number of ddtype entries. */
+  7    29     2 tot_ddevices fixed bin,				/* Total number of ddevice entries. */
+  7    30     2 tot_dvolumes fixed bin;				/* Total number of dvolume entries. */
+  7    31 
+  7    32 dcl 1 ddtype based (ddtype_ptr) aligned,		/* Entry for one device type. */
+  7    33     2 device_type char (32),				/* Name of this device type. */
+  7    34     2 max_concurrent fixed bin,			/* Max num of concurrently assigned devices. */
+  7    35     2 num_reserved fixed bin,				/* Num of devices reserved for system processes. */
+  7    36     2 num_devices fixed bin,				/* Num of devices of this type that are configured. */
+  7    37     2 first_devicex fixed bin;			/* Index of first device of this type. */
+  7    38 
+  7    39 dcl 1 ddevice based (ddevice_ptr) aligned,		/* Entry for one device. */
+  7    40     2 device_name char (8),				/* Name of device associated with this entry. */
+  7    41     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  7    42     2 dtypex fixed bin,				/* Device type index. */
+  7    43     2 model fixed bin,				/* Device model number. */
+  7    44     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  7    45     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  7    46     2 state_time fixed bin (71),			/* Time device put into current state. */
+  7    47     2 state fixed bin,				/* 0 => free,  1 => assigned,  2 => deleted. */
+  7    48     2 iom_num fixed bin,				/* IOM number for this device. */
+  7    49     2 chan_num fixed bin,				/* Channel number for this device. */
+  7    50     2 num_channels fixed bin,				/* Num channels that may address device. */
+  7    51     2 flags,					/* Special info flags. */
+  7    52      (3 reservable bit (1),				/* ON => may be reserved for system process. */
+  7    53       3 reserved bit (1),				/* ON => assigned to a system process. */
+  7    54       3 mounting bit (1),				/* ON => mount pending. */
+  7    55       3 writing bit (1),				/* ON => mounting for writing. */
+  7    56       3 attached bit (1),				/* ON => device is attached. */
+  7    57       3 loaded bit (1)) unal,				/* ON => device is loaded. */
+  7    58     2 group_id char (32),				/* Process group ID. */
+  7    59     2 reservation_id fixed bin (71),			/* Reservation id. */
+  7    60     2 reserved_by char (32);				/* Group id of user who reserved this device. */
+  7    61 
+  7    62 dcl 1 dvolume based (dvolume_ptr) aligned,		/* Entry for one volume. */
+  7    63     2 process_id bit (36),				/* "0"b => unassigned. */
+  7    64     2 volume_name char (32),				/* Volume name. */
+  7    65     2 vtypex fixed bin,				/* Volume type index. */
+  7    66     2 group_id char (32),				/* This is used for the reserved_for field. */
+  7    67     2 reserved_by char (32),
+  7    68     2 reservation_id fixed bin (71),
+  7    69     2 state_time fixed bin (71),			/* Same as for a device. */
+  7    70     2 state fixed bin,				/* Same as for a device. */
+  7    71     2 unassign_state fixed bin,			/* State to return when unassigning. */
+  7    72     2 current_authorization bit (72) aligned;		/* Authorization of process using this volume. */
+  7    73 
+  7    74 /*	End of include file ... rcp_data_info.incl.pl1	*/
+      464 
+      465 
+  8     1 /*	Begin  include file ... rcp_meter_info.incl.pl1
+  8     2*   *
+  8     3*   *	Created on 01/13/74 by Bill Silver.
+  8     4*   *	This include file defines the metering information needed by RCP.
+  8     5*   *	Note, this include file references rcp_com_seg.incl.pl1.
+  8     6**/
+  8     7 dcl  rmi_ptr ptr;					/* Pointer to RCP meter info structure. */
+  8     8 dcl  mdtype_ptr ptr;				/* Pointer to a device type entry. */
+  8     9 dcl  mdevice_ptr ptr;				/* Pointer to a device entry. */
+  8    10 
+  8    11 dcl 1 rmi based (rmi_ptr) aligned,			/* RCP Meter Information structure. */
+  8    12     2 head like rmi_header,				/* Header for this structure. */
+  8    13     2 rcs_lock_info like lock_info,			/* Lock meters for RCS. */
+  8    14     2 rcpd_lock_info like lock_info,			/* Lock meters for RCPD. */
+  8    15     2 mdtypes (0 refer (rmi.tot_mdtypes))		/* An array of device type entries. */
+  8    16      like mdtype,
+  8    17     2 mdevices (0 refer (rmi.tot_mdevices))		/* An array of device entries. */
+  8    18      like mdevice,
+  8    19     2 end bit (36);					/* Dummy used to find end of RMI. */
+  8    20 
+  8    21 dcl 1 rmi_header based aligned,			/* Header for RCP Meter Info structure. */
+  8    22     2 version_num fixed bin,				/* The version number of this structure. */
+  8    23     2 tot_mdtypes fixed bin,				/* Number of device type entries. */
+  8    24     2 tot_mdevices fixed bin;				/* Number of device entries. */
+  8    25 
+  8    26 dcl 1 mdtype based (mdtype_ptr) aligned,		/* Entry for one device type. */
+  8    27     2 device_type char (32),				/* Name of this device type. */
+  8    28     2 num_devices fixed bin,				/* Number of devices of this type. */
+  8    29     2 histo_times (3) fixed bin;			/* Used to compute histograms for this device type. */
+  8    30 
+  8    31 dcl 1 mdevice based (mdevice_ptr) aligned,		/* Entry for one device. */
+  8    32     2 device_name char (32),				/* Name of device associated with this entry. */
+  8    33     2 dtypex fixed bin,				/* Device type index. */
+  8    34     2 error_count fixed bin (35),			/* Total error count, defined by user ring. */
+  8    35     2 num_assigns fixed bin (35),			/* Total # of times device assigned & unassigned. */
+  8    36     2 tot_assign_time fixed bin (71),			/* Total time that device was assigned. */
+  8    37     2 time_assigned fixed bin (71),			/* Time device assigned during current assignment. */
+  8    38     2 histogram (4) fixed bin;			/* Assignment time histogram. */
+  8    39 
+  8    40 /*	End of include file ... rcp_meter_info.incl.pl1	*/
+      466 
+      467 
+  9     1 /*	Begin  include file ... rcp_list_info.incl.pl1
+  9     2*   *
+  9     3*   *	Created on 01/29/75 by Bill Silver.
+  9     4*   *	Changed on 04/02/76 by Bill Silver to add lv entries.
+  9     5*   *	Modified on 12/09/78 by Michael R. Jordan to add reservation information (version 3).
+  9     6*   *	Modified 8/81 by M.R. Jordan to expand reservation information (version 4).
+  9     7*   *	This include file defines arrays of entries that contain information
+  9     8*   *	about the resources that a process has assigned and attached.
+  9     9**/
+  9    10 dcl  rli_ptr ptr;					/* Pointer to base of RCP list structure. */
+  9    11 dcl  dassign_ptr ptr;				/* Pointer to a device assignment entry. */
+  9    12 dcl  attach_ptr ptr;				/* Pointer to an attachment entry. */
+  9    13 dcl  lv_ptr ptr;					/* Pointer to an lv entry. */
+  9    14 dcl  device_resv_ptr ptr;				/* Pointer to a device reservation entry. */
+  9    15 dcl  vol_resv_ptr ptr;				/* Pointer to a volume reservation entry. */
+  9    16 
+  9    17 dcl  rli_version_4 fixed bin internal static init (4);
+  9    18 
+  9    19 dcl 1 rli based (rli_ptr) aligned,			/* Base of RCP list structure. */
+  9    20     2 head like rli_header,				/* header of structure. */
+  9    21     2 dassigns (0 refer (rli.head.num_dassign))
+  9    22      like dassign,					/* An array of device assignment entries. */
+  9    23     2 attaches (0 refer (rli.head.num_attach))
+  9    24      like attach,					/* An array of attachment entries. */
+  9    25     2 lvs (0 refer (rli.head.num_lv))
+  9    26      like lv,					/* An array of lv attachment entries. */
+  9    27     2 device_resvs (0 refer (rli.head.num_device_resv))
+  9    28      like device_resv,
+  9    29     2 vol_resvs (0 refer (rli.head.num_vol_resv))
+  9    30      like vol_resv,
+  9    31     2 end bit (36);					/* Dummy used to reference end of structure. */
+  9    32 
+  9    33 dcl 1 rli_header based aligned,			/* Header of RCP list info structure. */
+  9    34     2 version_num fixed bin,				/* Current version number.  Now = 1. */
+  9    35     2 num_lv fixed bin,				/* Number of lv attachment entries. */
+  9    36     2 num_dassign fixed bin,				/* Number of device assignment entries. */
+  9    37     2 num_attach fixed bin,				/* Number of attachment entries. */
+  9    38     2 num_device_resv fixed bin,			/* Number of devices reserved. */
+  9    39     2 num_vol_resv fixed bin;				/* Number of volumes reserved. */
+  9    40 
+  9    41 dcl 1 dassign based (dassign_ptr) aligned,		/* Structure of a device assignment entry. */
+  9    42     2 device_name char (8),				/* Device name. */
+  9    43     2 dtypex fixed bin,				/* Device type index. */
+  9    44     2 model fixed bin,				/* Device model number. */
+  9    45     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  9    46     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  9    47     2 state_time fixed bin (71),			/* Time assignment put into current state. */
+  9    48     2 state fixed bin,				/* Current state of assignment. */
+  9    49     2 level fixed bin,				/* Current validation level. */
+  9    50     2 disposition bit (36),				/* Disposition of assignment. */
+  9    51     2 flags,
+  9    52      (3 attached bit (1)) unaligned,			/* ON => device is attached. */
+  9    53     2 rcp_id bit (36),				/* RCP ID for this assignment. */
+  9    54     2 usage_time fixed bin,				/* Number of minutes device may be assigned. */
+  9    55     2 wait_time fixed bin;				/* Number of minutes user must wait for assignment. */
+  9    56 
+  9    57 dcl 1 attach based (attach_ptr) aligned,		/* Structure of an attachment entry. */
+  9    58     2 device_name char (8),				/* Name of attached device. */
+  9    59     2 volume_name char (32),				/* Name of attached volume. */
+  9    60     2 dtypex fixed bin,				/* Device type index. */
+  9    61     2 state_time fixed bin (71),			/* Time attachment put into current state. */
+  9    62     2 state fixed bin,				/* Current state of this attachment. */
+  9    63     2 level fixed bin,				/* Current validation level. */
+  9    64     2 flags,					/* Info flags. */
+  9    65      (3 priv bit (1),				/* ON => attached with privilege. */
+  9    66       3 writing bit (1)) unal,			/* ON => attached for writing. */
+  9    67     2 rcp_id bit (36),				/* RCP ID for this attachment. */
+  9    68     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  9    69     2 timeout_max fixed bin (52),			/* Max IOI time-out interval. */
+  9    70     2 ioi_index fixed bin,				/* Index used to communicate with IOI. */
+  9    71     2 usage_time fixed bin,				/* Number of minutes device may be attached. */
+  9    72     2 wait_time fixed bin;				/* Number of minutes user must wait for attachment. */
+  9    73 
+  9    74 dcl 1 lv based (lv_ptr) aligned,			/* Structure of an LV entry. */
+  9    75     2 volume_name char (32),				/* Logical volume name. */
+  9    76     2 state_time fixed bin (71),			/* Time lv attached for process. */
+  9    77     2 rcp_id bit (36);				/* RCP ID for this lv attachment. */
+  9    78 
+  9    79 dcl 1 device_resv based (device_resv_ptr) aligned,	/* Structure of a device reservation. */
+  9    80     2 reservation_id fixed bin (71),
+  9    81     2 reserved_by char (32),
+  9    82     2 dtypex fixed bin,
+  9    83     2 device_name char (8);
+  9    84 
+  9    85 dcl 1 vol_resv based (vol_resv_ptr) aligned,		/* Structure of a volume reservation. */
+  9    86     2 reservation_id fixed bin (71),
+  9    87     2 reserved_by char (32),
+  9    88     2 vtypex fixed bin,
+  9    89     2 volume_name char (32);
+  9    90 
+  9    91 /*	End of include file ... rcp_list_info.incl.pl1	*/
+      468 
+      469 
+ 10     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+ 10     2 /*  BEGIN include rcp_ops.incl.pl1  */
+ 10     3 
+ 10     4 /* Written 02/27/85 by Chris Jones, Maria Pozzo */
+ 10     5 
+ 10     6 dcl	ops_ptr		   ptr;
+ 10     7 
+ 10     8 dcl	1 detailed_operation   unaligned based (ops_ptr),
+ 10     9 	  2 given,
+ 10    10 	    3 potential_attributes
+ 10    11 			   bit (1),
+ 10    12 	    3 desired_attributes
+ 10    13 			   bit (1),
+ 10    14 	    3 potential_aim_range
+ 10    15 			   bit (1),
+ 10    16 	    3 aim_range	   bit (1),
+ 10    17 	    3 owner	   bit (1),
+ 10    18 	    3 acs_path	   bit (1),
+ 10    19 	    3 location	   bit (1),
+ 10    20 	    3 comment	   bit (1),
+ 10    21 	    3 charge_type	   bit (1),
+ 10    22 	    3 usage_lock	   bit (1),
+ 10    23 	    3 release_lock	   bit (1),
+ 10    24 	    3 user_alloc	   bit (1),
+ 10    25 	  2 priv_gate_call	   bit (1),
+ 10    26 	  2 search	   bit (1),
+ 10    27 	  2 force		   bit (1),
+ 10    28 	  2 process	   bit (1),
+ 10    29 	  2 owner		   bit (1),
+ 10    30 	  2 pad		   bit (1);
+ 10    31 
+      470 
+      471 
+ 11     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+ 11     2 /*       Begin include file rcp_requestor_info.incl.pl1
+ 11     3* *       
+ 11     4* *       This include file gives information about the subject,
+ 11     5* *       or requestor of the RCP operation.  In one case, absentee
+ 11     6* *       requests, the user is the Initializer, so this piece of
+ 11     7* *       information tells us about the real requestor of the RCP
+ 11     8* *       operation.
+ 11     9**/
+ 11    10 
+ 11    11 dcl requestor_info_ptr ptr;
+ 11    12 
+ 11    13 dcl 1 requestor_info aligned based (requestor_info_ptr),
+ 11    14     2 user_id char (32),
+ 11    15     2 current_authorization bit (72) aligned,
+ 11    16     2 validation_level fixed bin (3);
+ 11    17 
+ 11    18 /*  end include file .. rcp_requestor_info.incl.pl1 */
+      472 
+      473 
+ 12     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+ 12     2 /*       Begin include file rcp_resource_info.incl.pl1
+ 12     3*   *
+ 12     4*   *       This include file gives information about the object,
+ 12     5*   *       or resource for the RCP operation.  If RM is enabled this
+ 12     6*   *       information will provide the registry name and switch pointer
+ 12     7*   *       for the registry so additional resource information can be
+ 12     8*   *       determined.  If RM is disabled, this information will include
+ 12     9*   *       the resource name and/or type.
+ 12    10**/
+ 12    11 
+ 12    12 dcl	resource_info_ptr	   ptr;
+ 12    13 
+ 12    14 dcl	1 resource_info	   based (resource_info_ptr),
+ 12    15 	  2 registry_dir	   aligned char (64),	/*  Could be a different if it is reconstruct operation */
+ 12    16 	  2 registry_switch_ptr
+ 12    17 			   ptr,			/*  Switch to the registry */
+ 12    18 	  2 registry_record_ptr
+ 12    19 			   ptr,			/*  Pointer to the registry record */
+ 12    20 	  2 resource_type	   char (32),		/*  Resource type */
+ 12    21 	  2 resource_name	   char (32);		/*  Resource name */
+ 12    22 
+ 12    23 /*  end include file .. rcp_resource_info.incl.pl1 */
+      474 
+      475 
+ 13     1 /*        Begin include file rcp_resource_states.incl.pl1
+ 13     2**
+ 13     3**         Created by M. M. Pozzo on 841005
+ 13     4**	Modified by Chris Jones, 12/84, to add volume states.
+ 13     5**
+ 13     6**/
+ 13     7 
+ 13     8 declare FREE fixed bin static internal options (constant) init (0);
+ 13     9 declare ASSIGNED fixed bin static internal options (constant) init (1);
+ 13    10 declare DELETED fixed bin static internal options (constant) init (2);
+ 13    11 declare STORAGE_SYSTEM fixed bin static internal options (constant) init (3);
+ 13    12 declare RESERVED fixed bin static internal options (constant) init (4);
+ 13    13 
+ 13    14 /* End include file ... rcp_resource_states.incl.pl1  */
+      476 
+      477 
+ 14     1 /*	Begin include file ... rcp_resource_types.incl.pl1
+ 14     2*   *
+ 14     3*   *	Created 3/79 by Michael R. Jordan for MR7.0R
+ 14     4*   *
+ 14     5*   *	This include file defines the official RCP resource types.
+ 14     6*   *	The array of names is indexed by the corresponding device type.
+ 14     7*   *      MOD by RAF for MCA
+ 14     8**/
+ 14     9 
+ 14    10 
+ 14    11 
+ 14    12 /****^  HISTORY COMMENTS:
+ 14    13*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+ 14    14*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+ 14    15*     Support of MCA.
+ 14    16*                                                   END HISTORY COMMENTS */
+ 14    17 
+ 14    18 dcl  DEVICE_TYPE (8) char (32)
+ 14    19 	internal static options (constant)
+ 14    20 	init ("tape_drive", "disk_drive", "console", "printer", "punch", "reader", "special", "mca");
+ 14    21 
+ 14    22 dcl  NUM_QUALIFIERS (8) fixed bin			/* Number of qualifiers for each device type. */
+ 14    23 	internal static init (3, 0, 0, 2, 0, 0, 0, 0);
+ 14    24 
+ 14    25 dcl  VOLUME_TYPE (8) char (32)
+ 14    26 	internal static options (constant)
+ 14    27 	init ("tape_vol", "disk_vol", "", "", "", "", "", "");
+ 14    28 
+ 14    29 dcl  TAPE_DRIVE_DTYPEX fixed bin static internal options (constant) init (1);
+ 14    30 dcl  DISK_DRIVE_DTYPEX fixed bin static internal options (constant) init (2);
+ 14    31 dcl  CONSOLE_DTYPEX fixed bin static internal options (constant) init (3);
+ 14    32 dcl  PRINTER_DTYPEX fixed bin static internal options (constant) init (4);
+ 14    33 dcl  PUNCH_DTYPEX fixed bin static internal options (constant) init (5);
+ 14    34 dcl  READER_DTYPEX fixed bin static internal options (constant) init (6);
+ 14    35 dcl  SPECIAL_DTYPEX fixed bin static internal options (constant) init (7);
+ 14    36 dcl  MCA_DTYPEX fixed bin static internal options (constant) init (8);
+ 14    37 dcl  TAPE_VOL_VTYPEX fixed bin static internal options (constant) init (1);
+ 14    38 dcl  DISK_VOL_VTYPEX fixed bin static internal options (constant) init (2);
+ 14    39 
+ 14    40 
+ 14    41 /*	End include file ... rcp_resource_types.incl.pl1 */
+      478 
+      479 
+      480      end rcp_copy_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0807.0  rcp_copy_.pl1                     >spec>install>1111>rcp_copy_.pl1
+454          1    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+456          2    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+458          3    01/30/85  1523.9  access_audit_encoded_op.incl.pl1  >ldd>include>access_audit_encoded_op.incl.pl1
+460          4    03/27/86  1120.0  rcp_data.incl.pl1                 >ldd>include>rcp_data.incl.pl1
+4-113        5    11/21/79  1458.3  rcp_init_flags.incl.pl1           >ldd>include>rcp_init_flags.incl.pl1
+462          6    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+464          7    11/21/79  1510.7  rcp_data_info.incl.pl1            >ldd>include>rcp_data_info.incl.pl1
+466          8    03/19/82  1647.0  rcp_meter_info.incl.pl1           >ldd>include>rcp_meter_info.incl.pl1
+468          9    03/19/82  1647.0  rcp_list_info.incl.pl1            >ldd>include>rcp_list_info.incl.pl1
+470         10    03/15/85  0953.1  rcp_ops.incl.pl1                  >ldd>include>rcp_ops.incl.pl1
+472         11    03/15/85  0953.1  rcp_requestor_info.incl.pl1       >ldd>include>rcp_requestor_info.incl.pl1
+474         12    03/15/85  0953.1  rcp_resource_info.incl.pl1        >ldd>include>rcp_resource_info.incl.pl1
+476         13    03/15/85  0953.1  rcp_resource_states.incl.pl1      >ldd>include>rcp_resource_states.incl.pl1
+478         14    03/27/86  1120.0  rcp_resource_types.incl.pl1       >ldd>include>rcp_resource_types.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ASSIGNED                               constant        fixed bin(17,0)          initial dcl 13-9 ref 254
+access_audit_r1_$log_obj_ptr    000020 constant        entry                    external dcl 72 ref 442
+access_operations_$rcp_copy_info
+                                000016 external static bit(36)                  dcl 69 ref 416
+addr                                                   builtin function         dcl 58 ref 125 135 136 146 175 176 223 234 235 244
+                                                                                  245 306 313 318 329 353 377 380 389 392 417 419
+arg_copy_size                          parameter       fixed bin(19,0)          dcl 32 ref 92 186 266 415
+arg_ecode                              parameter       fixed bin(35,0)          dcl 33 set ref 92 183* 186 263* 266 401*
+arg_to_ptr                             parameter       pointer                  dcl 34 ref 92 186 266 414
+attach                                 based           structure                level 1 dcl 9-57
+attach_off                      000100 automatic       bit(18)                  packed unaligned dcl 36 set ref 297* 349
+attach_ptr                      000206 automatic       pointer                  dcl 9-12 set ref 353* 356 357 358 359 360 361 362
+                                                                                  363 364 365 366 367 368 368
+attached                 17            based           bit(1)                   level 3 in structure "dassign" packed packed
+                                                                                  unaligned dcl 9-41 in procedure "rcp_copy_" set
+                                                                                  ref 342* 344*
+attached                 35(06)        based           bit(1)                   level 3 in structure "device" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "rcp_copy_" ref
+                                                                                  164
+attached                 30(04)        based           bit(1)                   level 3 in structure "ddevice" packed packed
+                                                                                  unaligned dcl 7-39 in procedure "rcp_copy_" set
+                                                                                  ref 164*
+attaches                               based           structure                array level 2 dcl 9-19 set ref 353
+audit_event_flags                      based           structure                level 1 dcl 2-5
+auto_event_flags                000244 automatic       structure                level 1 dcl 436 set ref 438* 442 442
+caller_level             33            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 340 361
+caller_level                    000102 automatic       fixed bin(17,0)          dcl 38 in procedure "rcp_copy_" set ref 411* 442*
+                                                                                  450*
+chan_num                 33            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 158
+chan_num                 26            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 158*
+cleanup                         000142 stack reference condition                dcl 61 ref 101 200 276
+clock_                          000022 constant        entry                    external dcl 74 ref 219
+code                                   parameter       fixed bin(35,0)          dcl 434 set ref 431 439 442*
+copy_size                       000103 automatic       fixed bin(19,0)          dcl 39 set ref 115 126 213 224 290 319 415* 426
+cu_$level_get                   000024 constant        entry                    external dcl 75 ref 411
+cu_$level_set                   000026 constant        entry                    external dcl 76 ref 412 450
+dassign                                based           structure                level 1 dcl 9-41
+dassign_off                     000101 automatic       bit(18)                  packed unaligned dcl 37 set ref 297* 325
+dassign_ptr                     000204 automatic       pointer                  dcl 9-11 set ref 329* 332 333 334 336 338 339 340
+                                                                                  341 342 344 345 346 346
+dassigns                  6            based           structure                array level 2 dcl 9-19 set ref 329
+ddevice                                based           structure                level 1 dcl 7-39
+ddevice_ptr                     000170 automatic       pointer                  dcl 7-11 set ref 146* 147 148 149 150 151 152 153
+                                                                                  155 156 157 158 159 160 161 162 163 164 165 166
+                                                                                  167 168
+ddevices                               based           structure                array level 2 dcl 7-16 set ref 146
+ddtype                                 based           structure                level 1 dcl 7-32
+ddtype_ptr                      000166 automatic       pointer                  dcl 7-10 set ref 136* 137 138 139 140 142
+ddtypes                   4            based           structure                array level 2 dcl 7-16 set ref 136
+detailed_operation        0(18)        based           fixed bin(18,0)          level 2 in structure "en_access_op" packed packed
+                                                                                  unsigned unaligned dcl 57 in procedure "rcp_copy_"
+                                                                                  set ref 418* 419
+detailed_operation                     based           structure                level 1 packed packed unaligned dcl 10-8
+                                                                                  in procedure "rcp_copy_"
+device                                 based           structure                level 1 dcl 4-59 in procedure "rcp_copy_"
+device                                 based           structure                array level 2 in structure "rcpd" dcl 4-29
+                                                                                  in procedure "rcp_copy_" set ref 244 306 377
+device_name                            based           char(32)                 level 2 in structure "mdevice" dcl 8-31 in procedure
+                                                                                  "rcp_copy_" set ref 246*
+device_name                            based           char(8)                  level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 147*
+device_name              13            based           char(8)                  level 2 in structure "device_resv" dcl 9-79
+                                                                                  in procedure "rcp_copy_" set ref 383*
+device_name                            based           char(8)                  level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 332*
+device_name                            based           char(8)                  level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 356*
+device_name                            based           char(8)                  level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 147 246 383
+device_name                            based           char(8)                  level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 332 356
+device_off                      000104 automatic       bit(18)                  packed unaligned dcl 40 set ref 143* 144 145 169*
+device_ptr                      000154 automatic       pointer                  dcl 4-26 set ref 145* 147 148 149 150 151 153 155
+                                                                                  156 157 158 159 160 161 162 163 164 165 166 167
+                                                                                  168 169 244* 246 247 248 249 250 252 254 254 306*
+                                                                                  307 307 377* 378 378 381 382 383
+device_resv                            based           structure                level 1 dcl 9-79
+device_resv_ptr                 000210 automatic       pointer                  dcl 9-14 set ref 380* 381 382 383
+device_resvs                           based           structure                array level 2 dcl 9-19 set ref 380
+device_type                            based           char(32)                 level 2 in structure "dtype" dcl 4-51 in procedure
+                                                                                  "rcp_copy_" ref 137 236
+device_type                            based           char(32)                 level 2 in structure "mdtype" dcl 8-26 in procedure
+                                                                                  "rcp_copy_" set ref 236*
+device_type                            based           char(32)                 level 2 in structure "ddtype" dcl 7-32 in procedure
+                                                                                  "rcp_copy_" set ref 137*
+devicex                         000105 automatic       fixed bin(17,0)          dcl 41 set ref 132* 141* 141 142 146 170* 170
+disposition              16            based           bit(36)                  level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 341*
+disposition              34            based           bit(1)                   level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 341
+dtype                    43            based           structure                array level 2 in structure "rcpd" dcl 4-29
+                                                                                  in procedure "rcp_copy_" set ref 135 234
+dtype                                  based           structure                level 1 dcl 4-51 in procedure "rcp_copy_"
+dtype_ptr                       000152 automatic       pointer                  dcl 4-25 set ref 135* 137 138 139 140 143 234* 236
+                                                                                  237 239
+dtypex                   10            based           fixed bin(17,0)          level 2 in structure "mdevice" dcl 8-31 in procedure
+                                                                                  "rcp_copy_" set ref 247*
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 149 247
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 333 358
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 358*
+dtypex                    2            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 333*
+dtypex                   12            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 149*
+dvolume                                based           structure                level 1 dcl 7-62 set ref 177*
+dvolume_ptr                     000172 automatic       pointer                  dcl 7-12 set ref 176* 177
+dvolumes                               based           structure                array level 2 dcl 7-16 set ref 176
+ecode                           000106 automatic       fixed bin(35,0)          dcl 42 set ref 106 111* 117* 128* 180* 183 202 209*
+                                                                                  215* 226* 260* 263 278 286* 292* 321* 401 422* 423
+                                                                                  426*
+en_access_op                           based           structure                level 1 dcl 57
+encoded_access_op                      based           structure                level 1 dcl 3-3
+end                                    based           bit(36)                  level 2 in structure "rdi" dcl 7-16 in procedure
+                                                                                  "rcp_copy_" set ref 125
+end                                    based           bit(36)                  level 2 in structure "rmi" dcl 8-11 in procedure
+                                                                                  "rcp_copy_" set ref 223
+end                                    based           bit(36)                  level 2 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_" set ref 318
+error_count              11            based           fixed bin(35,0)          level 2 in structure "mdevice" dcl 8-31 in procedure
+                                                                                  "rcp_copy_" set ref 248*
+error_count              47            based           fixed bin(35,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 248
+error_table_$bad_arg            000010 external static fixed bin(35,0)          dcl 63 ref 426
+error_table_$item_too_big       000012 external static fixed bin(35,0)          dcl 63 ref 117 128 215 226 292 321
+error_table_$unimplemented_version
+                                000014 external static fixed bin(35,0)          dcl 63 ref 111 209 286
+first_devicex            13            based           fixed bin(17,0)          level 2 dcl 7-32 set ref 142*
+first_off                13            based           bit(18)                  level 2 dcl 4-51 ref 143
+fixed                                                  builtin function         dcl 58 ref 125 125 223 223 318 318 426
+flags                    35            based           structure                level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_"
+flags                    30            based           structure                level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_"
+flags                    20            based           structure                level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_"
+flags                    35            based           structure                level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_"
+flags                    17            based           structure                level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_"
+get_process_id_                 000030 constant        entry                    external dcl 77 ref 282
+get_ring_                       000032 constant        entry                    external dcl 78 ref 412 412
+grant                     0(01) 000244 automatic       bit(1)                   level 2 packed packed unaligned dcl 436 set ref 439*
+group_id                 31            based           char(32)                 level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 166*
+group_id                 37            based           char(32)                 level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 166
+hbound                                                 builtin function         dcl 58 ref 152 238 251
+hcs_$get_max_length_seg         000034 constant        entry                    external dcl 82 ref 422
+head                                   based           structure                level 2 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_"
+head                                   based           structure                level 2 in structure "rmi" dcl 8-11 in procedure
+                                                                                  "rcp_copy_"
+head                                   based           structure                level 2 in structure "rdi" dcl 7-16 in procedure
+                                                                                  "rcp_copy_"
+histo_times              14            based           fixed bin(17,0)          array level 2 in structure "dtype" dcl 4-51
+                                                                                  in procedure "rcp_copy_" ref 239
+histo_times              11            based           fixed bin(17,0)          array level 2 in structure "mdtype" dcl 8-26
+                                                                                  in procedure "rcp_copy_" set ref 238 239*
+histogram                54            based           fixed bin(17,0)          array level 2 in structure "device" dcl 4-59
+                                                                                  in procedure "rcp_copy_" ref 252
+histogram                20            based           fixed bin(17,0)          array level 2 in structure "mdevice" dcl 8-31
+                                                                                  in procedure "rcp_copy_" set ref 251 252*
+i                               000107 automatic       fixed bin(17,0)          dcl 43 set ref 134* 135 136* 174* 175 176* 233* 234
+                                                                                  235* 243* 244 245* 305* 306* 312* 313* 335* 336
+                                                                                  336* 376* 377* 388* 389*
+ioi_index                60            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 367
+ioi_index                26            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 367*
+iom_num                  25            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 157*
+iom_num                  32            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 157
+j                               000110 automatic       fixed bin(17,0)          dcl 43 set ref 152* 153 153* 238* 239 239* 251* 252
+                                                                                  252*
+k                               000111 automatic       fixed bin(17,0)          dcl 43 set ref 375* 379* 379 380 387* 391* 391 392
+last_volume              20            based           fixed bin(17,0)          level 2 dcl 4-29 ref 123 174 312 388
+level                    15            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 340*
+level                    17            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 361*
+loaded                   30(05)        based           bit(1)                   level 3 packed packed unaligned dcl 7-39 set ref
+                                                                                  165*
+lock_info                              based           structure                level 2 in structure "rcs" dcl 6-30 in procedure
+                                                                                  "rcp_copy_" ref 230
+lock_info                              based           structure                level 1 dcl 6-46 in procedure "rcp_copy_"
+lock_info                              based           structure                level 2 in structure "rcpd" dcl 4-29 in procedure
+                                                                                  "rcp_copy_" ref 231
+lv                                     based           structure                level 1 dcl 9-74
+max_concurrent           10            based           fixed bin(17,0)          level 2 in structure "dtype" dcl 4-51 in procedure
+                                                                                  "rcp_copy_" ref 138
+max_concurrent           10            based           fixed bin(17,0)          level 2 in structure "ddtype" dcl 7-32 in procedure
+                                                                                  "rcp_copy_" set ref 138*
+max_size                        000112 automatic       fixed bin(19,0)          dcl 44 set ref 422* 426
+mdevice                                based           structure                level 1 dcl 8-31
+mdevice_ptr                     000200 automatic       pointer                  dcl 8-9 set ref 245* 246 247 248 249 250 251 252 254
+                                                                                  257
+mdevices                               based           structure                array level 2 dcl 8-11 set ref 245
+mdtype                                 based           structure                level 1 dcl 8-26
+mdtype_ptr                      000176 automatic       pointer                  dcl 8-8 set ref 235* 236 237 238 239
+mdtypes                  34            based           structure                array level 2 dcl 8-11 set ref 235
+meter_time                      000114 automatic       fixed bin(71,0)          dcl 45 set ref 219* 254
+model                    13            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 334
+model                    13            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 150
+model                    13            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 150*
+model                     3            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 334*
+modes                    14(01)        based           structure                level 2 packed packed unaligned dcl 4-29
+mounting                 30(02)        based           bit(1)                   level 3 in structure "ddevice" packed packed
+                                                                                  unaligned dcl 7-39 in procedure "rcp_copy_" set
+                                                                                  ref 162*
+mounting                 35(04)        based           bit(1)                   level 3 in structure "device" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "rcp_copy_" ref
+                                                                                  162
+next_off                 31            based           bit(18)                  level 2 dcl 4-59 ref 169
+num_assigns              12            based           fixed bin(35,0)          level 2 in structure "mdevice" dcl 8-31 in procedure
+                                                                                  "rcp_copy_" set ref 249*
+num_assigns              50            based           fixed bin(35,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 249
+num_attach                3            based           fixed bin(17,0)          level 3 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_" set ref 301* 318 380 392
+num_attach                      000116 automatic       fixed bin(17,0)          dcl 46 in procedure "rcp_copy_" set ref 297* 301
+                                                                                  350* 352* 352 353
+num_channels             34            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 159
+num_channels             27            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 159*
+num_dassign               2            based           fixed bin(17,0)          level 3 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_" set ref 300* 318 353 380 392
+num_dassign                     000117 automatic       fixed bin(17,0)          dcl 47 in procedure "rcp_copy_" set ref 297* 300
+                                                                                  326* 328* 328 329
+num_device_resv           4            based           fixed bin(17,0)          level 3 dcl 9-19 set ref 304* 307* 307 318 392
+num_devices              10            based           fixed bin(17,0)          level 2 in structure "mdtype" dcl 8-26 in procedure
+                                                                                  "rcp_copy_" set ref 237*
+num_devices              12            based           fixed bin(17,0)          level 2 in structure "dtype" dcl 4-51 in procedure
+                                                                                  "rcp_copy_" ref 140 237
+num_devices              12            based           fixed bin(17,0)          level 2 in structure "ddtype" dcl 7-32 in procedure
+                                                                                  "rcp_copy_" set ref 140*
+num_lv                          000120 automatic       fixed bin(17,0)          dcl 48 in procedure "rcp_copy_" set ref 298* 302 371
+num_lv                    1            based           fixed bin(17,0)          level 3 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_" set ref 302* 318 380 392
+num_qualifiers           14            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 151*
+num_qualifiers           14            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 151
+num_qualifiers           14            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 335
+num_reserved             11            based           fixed bin(17,0)          level 2 in structure "dtype" dcl 4-51 in procedure
+                                                                                  "rcp_copy_" ref 139
+num_reserved             11            based           fixed bin(17,0)          level 2 in structure "ddtype" dcl 7-32 in procedure
+                                                                                  "rcp_copy_" set ref 139*
+num_vol_resv              5            based           fixed bin(17,0)          level 3 dcl 9-19 set ref 311* 314* 314 318
+operation                       000121 automatic       bit(36)                  dcl 49 set ref 416* 417 442*
+operation_ptr                   000122 automatic       pointer                  dcl 50 set ref 417* 418 419
+ops_ptr                         000214 automatic       pointer                  dcl 10-6 set ref 419* 421
+priv                     20            based           bit(1)                   level 3 in structure "attach" packed packed
+                                                                                  unaligned dcl 9-57 in procedure "rcp_copy_" set
+                                                                                  ref 362*
+priv                     35(01)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 6-55 in procedure "rcp_copy_" ref 362
+priv_gate_call            0(12)        based           bit(1)                   level 2 packed packed unaligned dcl 10-8 set ref
+                                                                                  421*
+priv_op                   0(03) 000244 automatic       bit(1)                   level 2 packed packed unaligned dcl 436 set ref 440*
+process_id                             based           bit(36)                  level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_copy_" ref 314 390
+process_id               36            based           bit(36)                  level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 307 378
+ptr                                                    builtin function         dcl 58 ref 145 330 354
+qualifiers               15            based           fixed bin(35,0)          array level 2 in structure "ddevice" dcl 7-39
+                                                                                  in procedure "rcp_copy_" set ref 152 153*
+qualifiers               15            based           fixed bin(35,0)          array level 2 in structure "rcse" dcl 6-55
+                                                                                  in procedure "rcp_copy_" ref 336
+qualifiers               15            based           fixed bin(35,0)          array level 2 in structure "device" dcl 4-59
+                                                                                  in procedure "rcp_copy_" ref 153
+qualifiers                5            based           fixed bin(35,0)          array level 2 in structure "dassign" dcl 9-41
+                                                                                  in procedure "rcp_copy_" set ref 336*
+rcp_id                   20            based           bit(36)                  level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 345*
+rcp_id                   36            based           bit(36)                  level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 345 364
+rcp_id                   21            based           bit(36)                  level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 364*
+rcp_init_flags                         based           structure                level 1 packed packed unaligned dcl 5-8
+rcp_lv_$copy                    000044 constant        entry                    external dcl 87 ref 371
+rcp_lv_$number                  000046 constant        entry                    external dcl 88 ref 298
+rcp_pointers_$com_seg           000042 constant        entry                    external dcl 86 ref 199 275
+rcp_pointers_$data              000040 constant        entry                    external dcl 85 ref 103 198 274
+rcp_rcse_$info                  000036 constant        entry                    external dcl 84 ref 297
+rcpd                                   based           structure                level 1 dcl 4-29
+rcpd_lock_info           20            based           structure                level 2 dcl 8-11 set ref 231*
+rcpd_ptr                        000150 automatic       pointer                  dcl 4-24 set ref 103* 121 122 123 134 135 145 165
+                                                                                  174 175 198* 220 221 231 233 234 243 244 274* 305
+                                                                                  306 312 313 376 377 388 389 442*
+rcs                                    based           structure                level 1 dcl 6-30
+rcs_lock_info             4            based           structure                level 2 dcl 8-11 set ref 230*
+rcs_ptr                         000160 automatic       pointer                  dcl 6-23 set ref 199* 230 275* 330 354
+rcse                                   based           structure                level 1 dcl 6-55
+rcse_off                        000124 automatic       bit(18)                  packed unaligned dcl 51 in procedure "rcp_copy_" set
+                                                                                  ref 325* 327 330 331* 349* 351 354 355*
+rcse_off                 32            based           bit(18)                  level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 342
+rcse_ptr                        000162 automatic       pointer                  dcl 6-24 set ref 330* 331 332 333 334 335 336 338
+                                                                                  339 340 341 342 345 354* 355 356 357 358 359 360
+                                                                                  361 362 363 364 365 366 367
+rdi                                    based           structure                level 1 dcl 7-16
+rdi_header                             based           structure                level 1 dcl 7-26 ref 115
+rdi_ptr                         000164 automatic       pointer                  dcl 7-9 set ref 104* 109 121 122 123 125 125 136 146
+                                                                                  176
+rdi_version_3                          constant        fixed bin(17,0)          initial dcl 7-14 ref 109
+rel                                                    builtin function         dcl 58 ref 125 125 223 223 318 318 426
+reservable               30            based           bit(1)                   level 3 in structure "ddevice" packed packed
+                                                                                  unaligned dcl 7-39 in procedure "rcp_copy_" set
+                                                                                  ref 160*
+reservable               35(02)        based           bit(1)                   level 3 in structure "device" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "rcp_copy_" ref
+                                                                                  160
+reservation_id                         based           fixed bin(71,0)          level 2 in structure "vol_resv" dcl 9-85
+                                                                                  in procedure "rcp_copy_" set ref 393*
+reservation_id                         based           fixed bin(71,0)          level 2 in structure "device_resv" dcl 9-79
+                                                                                  in procedure "rcp_copy_" set ref 381*
+reservation_id           32            based           fixed bin(71,0)          level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_copy_" ref 314 390 393
+reservation_id           60            based           fixed bin(71,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 167 307 378 381
+reservation_id           42            based           fixed bin(71,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 167*
+reserved                 30(01)        based           bit(1)                   level 3 in structure "ddevice" packed packed
+                                                                                  unaligned dcl 7-39 in procedure "rcp_copy_" set
+                                                                                  ref 161*
+reserved                 35(03)        based           bit(1)                   level 3 in structure "device" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "rcp_copy_" ref
+                                                                                  161
+reserved_by              22            based           char(32)                 level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_copy_" ref 394
+reserved_by               2            based           char(32)                 level 2 in structure "vol_resv" dcl 9-85
+                                                                                  in procedure "rcp_copy_" set ref 394*
+reserved_by               2            based           char(32)                 level 2 in structure "device_resv" dcl 9-79
+                                                                                  in procedure "rcp_copy_" set ref 382*
+reserved_by              44            based           char(32)                 level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 168*
+reserved_by              62            based           char(32)                 level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 168 382
+rli                                    based           structure                level 1 dcl 9-19
+rli_header                             based           structure                level 1 dcl 9-33 ref 290
+rli_ptr                         000202 automatic       pointer                  dcl 9-10 set ref 281* 284 300 301 302 304 307 307
+                                                                                  311 314 314 318 318 329 353 371* 380 392
+rli_version_4                          constant        fixed bin(17,0)          initial dcl 9-17 ref 284
+rmi                                    based           structure                level 1 dcl 8-11
+rmi_header                             based           structure                level 1 dcl 8-21 ref 213
+rmi_ptr                         000174 automatic       pointer                  dcl 8-7 set ref 205* 207 220 221 223 223 230 231 235
+                                                                                  245
+size                                                   builtin function         dcl 58 ref 115 213 290
+state                    24            based           fixed bin(17,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 339 360
+state                    24            based           fixed bin(17,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 156 254
+state                    16            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 360*
+state                    24            based           fixed bin(17,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 156*
+state                    14            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 339*
+state_time               14            based           fixed bin(71,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 359*
+state_time               22            based           fixed bin(71,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 155 254
+state_time               12            based           fixed bin(71,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 338*
+state_time               22            based           fixed bin(71,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 338 359
+state_time               22            based           fixed bin(71,0)          level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 155*
+this_process                    000125 automatic       bit(36)                  packed unaligned dcl 52 set ref 282* 307 314 378 390
+time_assigned            16            based           fixed bin(71,0)          level 2 dcl 8-31 set ref 254* 257*
+timeout_max              56            based           fixed bin(71,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 366
+timeout_max              24            based           fixed bin(52,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 366*
+to_ptr                          000126 automatic       pointer                  dcl 53 set ref 104 205 281 414* 422* 426
+tot_assign_time          14            based           fixed bin(71,0)          level 2 in structure "mdevice" dcl 8-31 in procedure
+                                                                                  "rcp_copy_" set ref 250*
+tot_assign_time          52            based           fixed bin(71,0)          level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 250
+tot_ddevices              2            based           fixed bin(17,0)          level 3 dcl 7-16 set ref 122* 125 176
+tot_ddtypes               1            based           fixed bin(17,0)          level 3 dcl 7-16 set ref 121* 125 146 176
+tot_devices              16            based           fixed bin(17,0)          level 2 dcl 4-29 ref 122 175 221 243 305 313 376 389
+tot_dtypes               15            based           fixed bin(17,0)          level 2 dcl 4-29 ref 121 134 175 220 233 244 306 313
+                                                                                  377 389
+tot_dvolumes              3            based           fixed bin(17,0)          level 3 dcl 7-16 set ref 123* 125
+tot_mdevices              2            based           fixed bin(17,0)          level 3 dcl 8-11 set ref 221* 223
+tot_mdtypes               1            based           fixed bin(17,0)          level 3 dcl 8-11 set ref 220* 223 245
+total_size                      000130 automatic       fixed bin(17,0)          dcl 54 set ref 125* 126 223* 224 318* 319
+unload_on_detach         14(01)        based           bit(1)                   level 3 packed packed unaligned dcl 4-29 ref 165
+usage_time               27            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 368*
+usage_time               21            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 346*
+user_off                 27            based           bit(18)                  level 2 dcl 6-55 ref 331 355
+version_num                            based           fixed bin(17,0)          level 3 in structure "rmi" dcl 8-11 in procedure
+                                                                                  "rcp_copy_" ref 207
+version_num                            based           fixed bin(17,0)          level 3 in structure "rli" dcl 9-19 in procedure
+                                                                                  "rcp_copy_" ref 284
+version_num                            based           fixed bin(17,0)          level 3 in structure "rdi" dcl 7-16 in procedure
+                                                                                  "rcp_copy_" ref 109
+vol_resv                               based           structure                level 1 dcl 9-85
+vol_resv_ptr                    000212 automatic       pointer                  dcl 9-15 set ref 392* 393 394 395
+vol_resvs                              based           structure                array level 2 dcl 9-19 set ref 392
+volume                                 based           structure                level 1 dcl 4-101 in procedure "rcp_copy_" ref 177
+volume                                 based           structure                array level 2 in structure "rcpd" dcl 4-29
+                                                                                  in procedure "rcp_copy_" set ref 175 313 389
+volume_name               2            based           char(32)                 level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 357*
+volume_name               2            based           char(32)                 level 2 in structure "ddevice" dcl 7-39 in procedure
+                                                                                  "rcp_copy_" set ref 148*
+volume_name              13            based           char(32)                 level 2 in structure "vol_resv" dcl 9-85
+                                                                                  in procedure "rcp_copy_" set ref 395*
+volume_name               2            based           char(32)                 level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 357
+volume_name               1            based           char(32)                 level 2 in structure "volume" dcl 4-101 in procedure
+                                                                                  "rcp_copy_" ref 395
+volume_name               2            based           char(32)                 level 2 in structure "device" dcl 4-59 in procedure
+                                                                                  "rcp_copy_" ref 148 165
+volume_ptr                      000156 automatic       pointer                  dcl 4-27 set ref 175* 177 313* 314 314 389* 390 390
+                                                                                  393 394 395
+wait_time                22            based           fixed bin(17,0)          level 2 in structure "dassign" dcl 9-41 in procedure
+                                                                                  "rcp_copy_" set ref 346*
+wait_time                30            based           fixed bin(17,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 368*
+who_am_i                        000131 automatic       char(32)                 packed unaligned dcl 55 set ref 99* 196* 272* 442*
+workspace_max            55            based           fixed bin(19,0)          level 2 in structure "rcse" dcl 6-55 in procedure
+                                                                                  "rcp_copy_" ref 365
+workspace_max            22            based           fixed bin(19,0)          level 2 in structure "attach" dcl 9-57 in procedure
+                                                                                  "rcp_copy_" set ref 365*
+writing                  30(03)        based           bit(1)                   level 3 in structure "ddevice" packed packed
+                                                                                  unaligned dcl 7-39 in procedure "rcp_copy_" set
+                                                                                  ref 163*
+writing                  35(05)        based           bit(1)                   level 3 in structure "device" packed packed
+                                                                                  unaligned dcl 4-59 in procedure "rcp_copy_" ref
+                                                                                  163
+writing                  20(01)        based           bit(1)                   level 3 in structure "attach" packed packed
+                                                                                  unaligned dcl 9-57 in procedure "rcp_copy_" set
+                                                                                  ref 363*
+writing                  35(05)        based           bit(1)                   level 3 in structure "rcse" packed packed unaligned
+                                                                                  dcl 6-55 in procedure "rcp_copy_" ref 363
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+Automatic_authentication               internal static fixed bin(17,0)          initial dcl 5-16
+CONSOLE_DTYPEX                         internal static fixed bin(17,0)          initial dcl 14-31
+DEFAULT_REGISTRY_DIR                   internal static char(64)                 initial packed unaligned dcl 90
+DELETED                                internal static fixed bin(17,0)          initial dcl 13-10
+DEVICE_TYPE                            internal static char(32)                 initial array packed unaligned dcl 14-18
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-33
+DISK_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 14-30
+DISK_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 14-38
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+FREE                                   internal static fixed bin(17,0)          initial dcl 13-8
+MCA_DTYPEX                             internal static fixed bin(17,0)          initial dcl 14-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+Manual_authentication                  internal static fixed bin(17,0)          initial dcl 5-16
+NUM_QUALIFIERS                         internal static fixed bin(17,0)          initial array dcl 14-22
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+No_authentication                      internal static fixed bin(17,0)          initial dcl 5-16
+Nominal_authentication                 internal static fixed bin(17,0)          initial dcl 5-16
+PRINTER_DTYPEX                         internal static fixed bin(17,0)          initial dcl 14-32
+PUNCH_DTYPEX                           internal static fixed bin(17,0)          initial dcl 14-33
+READER_DTYPEX                          internal static fixed bin(17,0)          initial dcl 14-34
+RESERVED                               internal static fixed bin(17,0)          initial dcl 13-12
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 1-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 1-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 1-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 1-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 1-36
+SPECIAL_DTYPEX                         internal static fixed bin(17,0)          initial dcl 14-35
+STORAGE_SYSTEM                         internal static fixed bin(17,0)          initial dcl 13-11
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+TAPE_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 14-29
+TAPE_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 14-37
+VOLUME_TYPE                            internal static char(32)                 initial array packed unaligned dcl 14-25
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 1-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 1-36
+authentication_level_names             internal static char(12)                 initial array packed unaligned dcl 5-21
+based_rcp_id                           based           structure                level 1 dcl 6-26
+get_group_id_                   000000 constant        entry                    external dcl 79
+get_process_authorization_      000000 constant        entry                    external dcl 80
+lock_info_ptr                          automatic       pointer                  dcl 6-22
+lv_ptr                                 automatic       pointer                  dcl 9-13
+requestor_info                         based           structure                level 1 dcl 11-13
+requestor_info_ptr                     automatic       pointer                  dcl 11-11
+resource_info                          based           structure                level 1 unaligned dcl 12-14
+resource_info_ptr                      automatic       pointer                  dcl 12-12
+rifp                                   automatic       pointer                  dcl 5-6
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CLEANUP                         002174 constant        entry                    internal dcl 447 ref 101 182 200 262 276 399
+DATA_RETURN                     000476 constant        label                    dcl 180 ref 106 112 118 129
+LIST_RETURN                     001774 constant        label                    dcl 399 ref 278 287 293 322
+METERS_RETURN                   001034 constant        label                    dcl 260 ref 202 210 216 227
+SETUP                           002004 constant        entry                    internal dcl 404 ref 100 197 273
+audit                           002106 constant        entry                    internal dcl 431 ref 180 260
+data                            000051 constant        entry                    external dcl 92
+list                            001050 constant        entry                    external dcl 266
+meters                          000512 constant        entry                    external dcl 186
+rcp_copy_                       000037 constant        entry                    external dcl 14
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+null                                                   builtin function         ref 442 442
+unspec                                                 builtin function         ref 438 442 442
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2502        2552    2216        2512
+Length      3262    2216        50         473     263           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_copy_                           242 external procedure  is an external procedure.  
+on unit on line 101                  64 on unit               
+on unit on line 200                  64 on unit               
+on unit on line 276                  64 on unit               
+SETUP                                   internal procedure  shares stack frame of external procedure rcp_copy_.  
+audit                                   internal procedure  shares stack frame of external procedure rcp_copy_.  
+CLEANUP                              68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_copy_                000100 attach_off                  rcp_copy_
+                         000101 dassign_off                 rcp_copy_
+                         000102 caller_level                rcp_copy_
+                         000103 copy_size                   rcp_copy_
+                         000104 device_off                  rcp_copy_
+                         000105 devicex                     rcp_copy_
+                         000106 ecode                       rcp_copy_
+                         000107 i                           rcp_copy_
+                         000110 j                           rcp_copy_
+                         000111 k                           rcp_copy_
+                         000112 max_size                    rcp_copy_
+                         000114 meter_time                  rcp_copy_
+                         000116 num_attach                  rcp_copy_
+                         000117 num_dassign                 rcp_copy_
+                         000120 num_lv                      rcp_copy_
+                         000121 operation                   rcp_copy_
+                         000122 operation_ptr               rcp_copy_
+                         000124 rcse_off                    rcp_copy_
+                         000125 this_process                rcp_copy_
+                         000126 to_ptr                      rcp_copy_
+                         000130 total_size                  rcp_copy_
+                         000131 who_am_i                    rcp_copy_
+                         000150 rcpd_ptr                    rcp_copy_
+                         000152 dtype_ptr                   rcp_copy_
+                         000154 device_ptr                  rcp_copy_
+                         000156 volume_ptr                  rcp_copy_
+                         000160 rcs_ptr                     rcp_copy_
+                         000162 rcse_ptr                    rcp_copy_
+                         000164 rdi_ptr                     rcp_copy_
+                         000166 ddtype_ptr                  rcp_copy_
+                         000170 ddevice_ptr                 rcp_copy_
+                         000172 dvolume_ptr                 rcp_copy_
+                         000174 rmi_ptr                     rcp_copy_
+                         000176 mdtype_ptr                  rcp_copy_
+                         000200 mdevice_ptr                 rcp_copy_
+                         000202 rli_ptr                     rcp_copy_
+                         000204 dassign_ptr                 rcp_copy_
+                         000206 attach_ptr                  rcp_copy_
+                         000210 device_resv_ptr             rcp_copy_
+                         000212 vol_resv_ptr                rcp_copy_
+                         000214 ops_ptr                     rcp_copy_
+                         000244 auto_event_flags            audit
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_r1_$log_obj_ptr  clock_                        cu_$level_get                 cu_$level_set
+get_process_id_               get_ring_                     hcs_$get_max_length_seg       rcp_lv_$copy
+rcp_lv_$number                rcp_pointers_$com_seg         rcp_pointers_$data            rcp_rcse_$info
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_copy_info                            error_table_$bad_arg          error_table_$item_too_big
+error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000036        92 000044        99 000056       100 000061       101 000062       103 000104       104 000113
+    106 000115       109 000117       111 000122       112 000125       115 000126       117 000131       118 000134
+    121 000135       122 000141       123 000143       125 000145       126 000174       128 000177       129 000202
+    132 000203       134 000205       135 000215       136 000221       137 000226       138 000231       139 000233
+    140 000235       141 000237       142 000241       143 000242       144 000244       145 000246       146 000251
+    147 000265       148 000271       149 000274       150 000276       151 000300       152 000302       153 000307
+    154 000314       155 000316       156 000322       157 000324       158 000326       159 000330       160 000332
+    161 000337       162 000344       163 000351       164 000356       165 000363       166 000402       167 000405
+    168 000407       169 000412       170 000414       171 000415       172 000416       174 000420       175 000431
+    176 000452       177 000471       178 000474       180 000476       182 000500       183 000504       184 000507
+    186 000510       196 000517       197 000522       198 000523       199 000532       200 000541       202 000563
+    205 000565       207 000567       209 000572       210 000575       213 000576       215 000601       216 000604
+    219 000605       220 000614       221 000620       223 000622       224 000643       226 000646       227 000651
+    230 000652       231 000656       233 000661       234 000671       235 000675       236 000702       237 000705
+    238 000707       239 000715       240 000722       241 000724       243 000726       244 000737       245 000752
+    246 000766       247 000771       248 000773       249 000775       250 000777       251 001001       252 001007
+    253 001014       254 001016       257 001027       258 001032       260 001034       262 001036       263 001042
+    264 001045       266 001046       272 001055       273 001060       274 001061       275 001070       276 001077
+    278 001121       281 001123       282 001125       284 001134       286 001137       287 001142       290 001143
+    292 001146       293 001151       297 001152       298 001167       300 001176       301 001201       302 001203
+    304 001205       305 001206       306 001217       307 001232       309 001241       311 001243       312 001245
+    313 001255       314 001276       316 001305       318 001307       319 001353       321 001356       322 001361
+    325 001362       326 001365       327 001366       328 001370       329 001371       330 001376       331 001402
+    332 001404       333 001410       334 001412       335 001414       336 001423       337 001430       338 001432
+    339 001436       340 001440       341 001442       342 001444       344 001450       345 001452       346 001454
+    347 001456       349 001457       350 001462       351 001463       352 001466       353 001467       354 001503
+    355 001507       356 001511       357 001515       358 001520       359 001522       360 001524       361 001526
+    362 001530       363 001535       364 001542       365 001544       366 001546       367 001550       368 001552
+    369 001554       371 001555       375 001566       376 001567       377 001577       378 001612       379 001617
+    380 001620       381 001650       382 001652       383 001655       385 001661       387 001663       388 001664
+    389 001675       390 001716       391 001723       392 001724       393 001762       394 001764       395 001767
+    397 001772       399 001774       401 002000       402 002003       404 002004       411 002005       412 002014
+    414 002034       415 002040       416 002042       417 002045       418 002047       419 002051       421 002055
+    422 002060       423 002072       426 002075       429 002105       431 002106       438 002110       439 002111
+    440 002117       442 002121       445 002172       447 002173       450 002201       452 002210
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

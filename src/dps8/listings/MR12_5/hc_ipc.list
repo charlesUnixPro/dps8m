@@ -1,0 +1,1269 @@
+	COMPILATION LISTING OF SEGMENT hc_ipc
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0938.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style3 */
+       13 hc_ipc:
+       14      procedure;
+       15 
+       16 /* Rewritten by E Donner Jan 1981 for new ipc */
+       17 /* Modified 04/26/82 by S Krupp to print module name with all syserr msgs. */
+       18 /* Modified 10/03/83 by Jeffrey I. Schiller to fix bug with messages for
+       19*   bad rings. */
+       20 /* Modified 1984-11-21 by E. Swenson for IPC event channel validation. */
+       21 /* Modified 1985-01-25 by EJ Sharpe to use access_audit_ */
+       22 
+       23 
+       24 /****^  HISTORY COMMENTS:
+       25*  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+       26*     audit(86-10-20,Fawcett), install(86-11-03,MR12.0-1206):
+       27*     Changed to allow wakeups on fast channels by other than the creating
+       28*     process.  The changes to support async event channels are all handled in
+       29*     pxss$wakeup.
+       30*                                                   END HISTORY COMMENTS */
+       31 
+       32 
+       33 /*  entries  */
+       34 
+       35 dcl	ipc_validate_$decode_event_channel_name
+       36 			entry (fixed bin (18), fixed bin (35), fixed bin (71), bit (3) aligned, fixed bin (15),
+       37 			fixed bin (3), bit (1) aligned, fixed bin (18), fixed bin (35));
+       38 dcl	ipc_validate_$encode_event_channel_name
+       39 			entry (fixed bin (18), fixed bin (35), bit (3) aligned, fixed bin (15), fixed bin (3),
+       40 			bit (1) aligned, fixed bin (18), fixed bin (71));
+       41 dcl	level$get		entry returns (fixed bin (3));
+       42 dcl	access_audit_$log_general
+       43 			entry options (variable);
+       44 dcl	pxss$free_itt	entry (bit (18) aligned);
+       45 dcl	pxss$wakeup	entry (bit (36) aligned, bit (72) aligned, fixed bin (71), fixed bin (35));
+       46 dcl	syserr		entry options (variable);
+       47 dcl	tc_util$get_ipc_operands
+       48 			entry (fixed bin (18), fixed bin (35));
+       49 dcl	tc_util$get_ipc_operands_priv
+       50 			entry (bit (36) aligned, fixed bin (18), fixed bin (35), fixed bin (35));
+       51 dcl	terminate_proc	entry (fixed bin (35));
+       52 
+       53 /* internal static */
+       54 dcl	last_sender	bit (36) internal static init ("0"b);
+       55 						/* on of the few uses of internal static in ring zero */
+       56 
+       57 /* Constants */
+       58 
+       59 dcl	ME		char (32) initial ("hc_ipc") internal static options (constant);
+       60 dcl	OFF		bit (1) aligned internal static options (constant) init ("0"b);
+       61 dcl	(ON, YES)		bit (1) aligned internal static options (constant) init ("1"b);
+       62 dcl	QUITSTOP		char (8) internal static options (constant) init ("quitstop");
+       63 
+       64 /* external static */
+       65 dcl	access_operations_$ipc_wakeup
+       66 			bit (36) aligned ext;
+       67 dcl	error_table_$ect_full
+       68 			fixed bin (35) ext;
+       69 dcl	error_table_$inconsistent_ect
+       70 			fixed bin (35) ext;
+       71 dcl	error_table_$invalid_channel
+       72 			fixed bin (35) ext;
+       73 dcl	error_table_$itt_overflow
+       74 			fixed bin (35) ext;
+       75 dcl	error_table_$process_stopped
+       76 			fixed bin (35) ext;
+       77 dcl	error_table_$process_unknown
+       78 			fixed bin (35) ext;
+       79 dcl	error_table_$special_channels_full
+       80 			fixed bin (35) ext;
+       81 dcl	error_table_$wakeup_denied
+       82 			fixed bin (35) ext;
+       83 dcl	error_table_$wrong_channel_ring
+       84 			fixed bin (35) ext;
+       85 
+       86 dcl	pds$event_masks	(7) bit (36) aligned ext;
+       87 dcl	pds$events_pending	bit (36) aligned ext;
+       88 dcl	pds$itt_head	bit (18) aligned ext;
+       89 dcl	pds$process_group_id
+       90 			char (32) aligned ext;
+       91 dcl	pds$process_id	bit (36) aligned ext;
+       92 dcl	pds$ring_events	bit (36) aligned ext;	/* per ring indicator of messages copied from itt to ect */
+       93 
+       94 dcl	pds$special_channels
+       95 			bit (36) aligned ext;
+       96 dcl	pds$stacks	(0:7) ext ptr;
+       97 dcl	tc_data$		fixed bin (17) ext;
+       98 dcl	tc_data$max_channels
+       99 			fixed bin (35) ext;
+      100 
+      101 
+      102 /* builtins */
+      103 
+      104 dcl	addr		builtin;
+      105 dcl	index		builtin;
+      106 dcl	null		builtin;
+      107 dcl	ptr		builtin;
+      108 dcl	string		builtin;
+      109 dcl	substr		builtin;
+      110 dcl	unspec		builtin;
+      111 
+      112 /* conditions */
+      113 
+      114 dcl	area		condition;
+      115 
+      116 /* Automatic */
+      117 
+      118 dcl	channel_ring	fixed bin (3);
+      119 dcl	code		fixed bin (35);
+      120 dcl	ev_chn_flags	bit (3) aligned;
+      121 dcl	ev_chn_index	fixed bin (15);
+      122 dcl	ev_chn_ring	fixed bin (3);
+      123 dcl	ev_chn_type	bit (1) aligned;
+      124 dcl	ev_chn_unique_id	fixed bin (18);
+      125 dcl	event_channel_name_fb71
+      126 			fixed bin (71) automatic;
+      127 dcl	event_channel_message
+      128 			fixed bin (71);
+      129 dcl	fast_channel_id	fixed bin (18);
+      130 dcl	1 event_flags	aligned like audit_event_flags;
+      131 						/* for access_audit_ */
+      132 dcl	1 itt_dummy	like itt_entry aligned;	/* used to send self wakeup */
+      133 dcl	itt_relp		bit (18) aligned;
+      134 dcl	msg_ptr		ptr;			/* pointer to allocated itt msg entry in ECT */
+      135 dcl	r_offset		fixed bin (18);		/* IPC validation operand */
+      136 dcl	r_factor		fixed bin (35);		/* IPC validation operand */
+      137 dcl	target_process	bit (36) aligned;
+      138 dcl	same_process	bit (1) aligned;
+      139 dcl	pxss_status	fixed bin (35);
+      140 dcl	target_ring	fixed bin (3);		/* target ring of message */
+      141 dcl	val_ring		fixed bin (3);
+      142 
+      143 /* based */
+      144 
+      145 dcl	ect_area		area (ect_header.ect_area_size) based (ect_header.ect_areap);
+      146 
+      147 ipc_wakeup:
+      148      entry (a_target_process, a_event_channel, a_event_channel_message, a_code);
+      149 
+      150 /**** This entry (target of the gate hcs_$wakeup) performs IPC signalling.
+      151*      Note that pxss$wakeup may also send an IPS "wkp_" signal if the event
+      152*      channel flags indicate that it is that type of event channel.
+      153*      It validates the supplied processid as well as the event channel
+      154*      name before calling pxss to process the wakeup. */
+      155 
+      156 dcl	a_target_process	bit (36) aligned parameter;
+      157 dcl	a_event_channel	fixed bin (71) parameter;
+      158 dcl	a_event_channel_message
+      159 			fixed bin (71) parameter;
+      160 dcl	a_code		fixed bin (35) parameter;
+      161 
+      162 /* wakeup can be called from all rings (1-7) in order to send an IPC
+      163*   signal to any currently-active process. It returns the following code:
+      164*
+      165*   code = 0	Signalling correctly accomplished
+      166*   code = error_table_$process_stopped
+      167*		Signalling correctly done & target process was found to be stopped
+      168*   code = error_table_$invalid_channel
+      169*	          The specified event channel name was bad.
+      170*   code = error_table_$process_unknown
+      171*		Target process not found (either process-id wrong or process deactivated)
+      172*   code = error_table_$itt_overflow
+      173*		ITT overflow resulted, signalling aborted
+      174*   code = error_table_$wakeup_denied
+      175*		The access authorization of the target process
+      176*		is not greater than or equal to the access authorization
+      177*		of the sender process, so signalling is aborted.
+      178**/
+      179 
+      180 	code = 0;					/* reset returned code to zero */
+      181 	target_process = a_target_process;		/* copy args into stack */
+      182 	event_channel_name_fb71 = a_event_channel;	/* copy parameters */
+      183 	event_channel_message = a_event_channel_message;
+      184 
+      185 	val_ring = level$get ();			/* save validation level */
+      186 
+      187 	call tc_util$get_ipc_operands_priv (target_process, r_offset, r_factor, code);
+      188 	if code ^= 0
+      189 	then do;
+      190 		call syserr (LOG, "^a: Denied wakeup by ^a in ring ^d.  Invalid process id ^w.", ME,
+      191 		     pds$process_group_id, val_ring, target_process);
+      192 		goto WAKEUP_RETURNS;
+      193 	     end;
+      194 
+      195 	call ipc_validate_$decode_event_channel_name (r_offset, r_factor, event_channel_name_fb71, ev_chn_flags,
+      196 	     ev_chn_index, ev_chn_ring, ev_chn_type, ev_chn_unique_id, code);
+      197 	if code ^= 0
+      198 	then do;
+      199 		call syserr (LOG, "^a: Denied wakeup by ^a in ring ^d to process ^w.  Invalid event channel ^24.3b",
+      200 		     ME, pds$process_group_id, val_ring, target_process, unspec (event_channel_name_fb71));
+      201 		goto WAKEUP_RETURNS;
+      202 	     end;
+      203 
+      204 /* is wakeup being sent to self */
+      205 	same_process = (target_process = pds$process_id);
+      206 
+      207 /* Determine if channel is a fast channel and do not allow */
+      208 /* sending wakeup to an inner ring */
+      209 
+      210 	if ev_chn_type = FAST_CHANNEL_TYPE		/* it's a fast channel */
+      211 	then do;
+      212 		if ev_chn_ring < val_ring
+      213 		then do;
+      214 			code = error_table_$invalid_channel;
+      215 			call syserr (LOG,
+      216 			     "^a: Denied wakeup by ^a in ring ^d to process ^w.  Fast channel (^24.3b) not allowed.",
+      217 			     ME, pds$process_group_id, val_ring, target_process, unspec (event_channel_name_fb71));
+      218 
+      219 			go to WAKEUP_RETURNS;
+      220 		     end;
+      221 	     end;
+      222 
+      223 /* It's not a fast channel and sending self wakeup */
+      224 /* Special case - avoid calling pxss and allocate entry in ECT directly */
+      225 
+      226 	else if (same_process = YES)
+      227 	then do;
+      228 		if ev_chn_ring = val_ring
+      229 		then do;
+      230 			unspec (itt_dummy) = "0"b;	/* set up replica of entry in ITT */
+      231 						/* fill in values */
+      232 			itt_dummy.sender, itt_dummy.target_id = target_process;
+      233 			itt_dummy.ring = val_ring;
+      234 			unspec (itt_dummy.channel_id) = unspec (event_channel_name_fb71);
+      235 			itt_dummy.message = event_channel_message;
+      236 
+      237 			on area call ect_error_handler (error_table_$ect_full, target_ring);
+      238 
+      239 			call dispatch_message (addr (itt_dummy), target_ring);
+      240 			if target_ring > 0
+      241 			then go to WAKEUP_RETURNS;	/* it should be done */
+      242 		     end;
+      243 
+      244 	     end;
+      245 
+      246 /* send wakeup to other process or send wakeup over fast channel */
+      247 /* call wakeup which does checks for overflow of ITT */
+      248 
+      249 	code = 0;					/* Start clean. */
+      250 
+      251 	call pxss$wakeup (target_process, unspec (event_channel_name_fb71), event_channel_message, pxss_status);
+      252 
+      253 	if pxss_status = 0
+      254 	then code = error_table_$process_unknown;	/* target process unknown */
+      255 
+      256 	else if pxss_status = 5
+      257 	then code = error_table_$process_stopped;	/* target process is quit */
+      258 
+      259 	else if pxss_status = 100
+      260 	then do;
+      261 		string (event_flags) = ""b;
+      262 		call access_audit_$log_general (ME, val_ring, string (event_flags), access_operations_$ipc_wakeup, "",
+      263 		     0, null (), 0, "Target process (^w) authorization is lower", target_process);
+      264 		code = error_table_$wakeup_denied;
+      265 	     end;
+      266 
+      267 	else if pxss_status = 200
+      268 	then do;					/* ITT overflow */
+      269 		code = error_table_$itt_overflow;
+      270 		if pds$process_id ^= last_sender
+      271 		then do;				/* filter useless msgs */
+      272 			last_sender = pds$process_id;
+      273 			call syserr (0, "^a: ITT overflow caused by ^a", ME, pds$process_group_id);
+      274 		     end;
+      275 	     end;
+      276 
+      277 WAKEUP_RETURNS:
+      278 	a_code = code;
+      279 	return;
+      280 
+      281 /*	BLOCK = procedure to receive IPC Signals */
+      282 
+      283 full_block:
+      284      entry;
+      285 
+      286 	val_ring = level$get ();			/* get validation level */
+      287 	on area call ect_error_handler (error_table_$ect_full, target_ring);
+      288 
+      289 	itte_ptr = addr (tc_data$);
+      290 	do itt_relp = pds$itt_head repeat (itte_ptr -> itt_entry.next_itt_relp) while (itt_relp);
+      291 						/* go through all ITT messages */
+      292 	     itte_ptr = ptr (itte_ptr, itt_relp);
+      293 	     call dispatch_message (itte_ptr, target_ring);
+      294 
+      295 	end;
+      296 
+      297 	call pxss$free_itt (pds$itt_head);		/* free all messages */
+      298 
+      299 	return;
+      300 
+      301 assign_channel:
+      302      entry (a_channel_name, a_code);
+      303 
+      304 dcl	a_channel_name	fixed bin (71);		/* name of channel assigned */
+      305 
+      306 	code = 0;
+      307 
+      308 	fast_channel_id = index (pds$special_channels, "0"b);
+      309 						/* get index of new channel */
+      310 	if (fast_channel_id > tc_data$max_channels) | (fast_channel_id = 0)
+      311 	then do;					/* channels exhausted */
+      312 		code = error_table_$special_channels_full;
+      313 		a_channel_name = 0;
+      314 		go to FAST_CHANNEL_RETURNS;
+      315 	     end;
+      316 	substr (pds$special_channels, fast_channel_id, 1) = ON;
+      317 						/* channel is asigned */
+      318 	val_ring = level$get ();
+      319 	substr (pds$event_masks (val_ring), fast_channel_id, 1) = ON;
+      320 						/* channel assigned to ring */
+      321 	substr (pds$events_pending, fast_channel_id, 1) = OFF;
+      322 						/* turn off any pending wakeups */
+      323 
+      324 /**** Retrieve the values of R-Offset and R-Factor from the APTE.  These
+      325*      values are needed to encode the event channel name. */
+      326 
+      327 	call tc_util$get_ipc_operands (r_offset, r_factor);
+      328 
+      329 /* fill in channel name */
+      330 
+      331 	call ipc_validate_$encode_event_channel_name (r_offset, r_factor, NORMAL_CHANNEL_FLAGS, (fast_channel_id),
+      332 	     val_ring, FAST_CHANNEL_TYPE, fast_channel_id, event_channel_name_fb71);
+      333 
+      334 	unspec (a_channel_name) = unspec (event_channel_name_fb71);
+      335 	go to FAST_CHANNEL_RETURNS;
+      336 
+      337 delete_channel:
+      338      entry (a_channel_name, a_code);
+      339 
+      340 	unspec (event_channel_name_fb71) = unspec (a_channel_name);
+      341 	code = 0;
+      342 	val_ring = level$get ();
+      343 
+      344 /**** Retrieve the values of R-Offset and R-Factor from the APTE.  These
+      345*      values are needed to decode the event channel name. */
+      346 
+      347 	call tc_util$get_ipc_operands (r_offset, r_factor);
+      348 
+      349 	call ipc_validate_$decode_event_channel_name (r_offset, r_factor, event_channel_name_fb71, ev_chn_flags,
+      350 	     ev_chn_index, channel_ring, ev_chn_type, fast_channel_id, code);
+      351 	if code ^= 0
+      352 	then goto FAST_CHANNEL_RETURNS;
+      353 
+      354 	if fast_channel_id ^= ev_chn_index
+      355 	then do;
+      356 		code = error_table_$invalid_channel;
+      357 		goto FAST_CHANNEL_RETURNS;
+      358 	     end;
+      359 
+      360 	if val_ring > channel_ring
+      361 	then do;					/* access violation */
+      362 		code = error_table_$wrong_channel_ring;
+      363 		go to FAST_CHANNEL_RETURNS;
+      364 	     end;
+      365 
+      366 	if ev_chn_type ^= FAST_CHANNEL_TYPE
+      367 	then do;
+      368 		code = error_table_$invalid_channel;
+      369 		goto FAST_CHANNEL_RETURNS;
+      370 	     end;
+      371 
+      372 	if fast_channel_id > tc_data$max_channels | fast_channel_id <= 0
+      373 	then do;
+      374 		code = error_table_$invalid_channel;
+      375 		go to FAST_CHANNEL_RETURNS;
+      376 	     end;
+      377 
+      378 	if (substr (pds$event_masks (channel_ring), fast_channel_id, 1) = OFF)
+      379 	then do;
+      380 		code = error_table_$invalid_channel;
+      381 		go to FAST_CHANNEL_RETURNS;
+      382 	     end;
+      383 
+      384 /* deallocate channel in ring */
+      385 	substr (pds$event_masks (channel_ring), fast_channel_id, 1) = OFF;
+      386 	substr (pds$special_channels, fast_channel_id, 1) = OFF;
+      387 						/* deallocate channel */
+      388 FAST_CHANNEL_RETURNS:
+      389 	a_code = code;
+      390 	return;
+      391 
+      392 dispatch_message:
+      393      proc (a_itte_ptr, a_target_ring);
+      394 
+      395 dcl	a_itte_ptr	ptr parameter;
+      396 dcl	a_target_ring	fixed bin (3) parameter;
+      397 
+      398 /* following is the unthreading of the event queue and the dispatching
+      399*   of the event messages into their corresponding rings */
+      400 
+      401 	a_target_ring = 0;
+      402 
+      403 /* process is being destroyed */
+      404 	if unspec (a_itte_ptr -> itt_entry.channel_id) = unspec (QUITSTOP)
+      405 	then return;
+      406 
+      407 /* pick up ring from channel name and check its validity */
+      408 	a_target_ring = addr (a_itte_ptr -> itt_entry.channel_id) -> event_channel_name.ring;
+      409 	if a_target_ring = 0
+      410 	then return;
+      411 	sb = pds$stacks (a_target_ring);
+      412 	if sb = null				/* sender could have put bad ring in name */
+      413 	then return;
+      414 
+      415 /* pick up pointer to ect and ect area and check that all goes well */
+      416 	ect_ptr = sb -> stack_header.ect_ptr;
+      417 
+      418 /* ect_ptr is null in rings that don't have an ECT (like inner rings that
+      419*haven't called ipc_$create_ev_chn). DONT KILL PROCESS BECAUSE OF THIS, just
+      420*ignore the event. Note that anyone can send an event message to an event
+      421*channel that specifies any old ring... The old code here used to terminate
+      422*the process on this condition thus allowing malicious users to trash 
+      423*any process */
+      424 
+      425 	if ect_ptr = null
+      426 	then return;
+      427 
+      428 	if ect_header.ect_areap = null
+      429 	then call ect_error_handler (error_table_$inconsistent_ect, a_target_ring);
+      430 
+      431 	allocate itt_message in (ect_area) set (msg_ptr);
+      432 	ect_header.count (ITT_MESSAGE) = ect_header.count (ITT_MESSAGE) + 1;
+      433 	ect_header.count (TOTAL) = ect_header.count (TOTAL) + 1;
+      434 	unspec (msg_ptr -> itt_message) = "0"b;
+      435 	msg_ptr -> itt_message.type = ITT_MESSAGE;
+      436 	call thread_itt_message (ect_ptr, msg_ptr);
+      437 
+      438 	msg_ptr -> itt_message.message_data = a_itte_ptr -> itt_entry, by name;
+      439 
+      440 	substr (pds$ring_events, a_target_ring, 1) = ON;	/* record that messages copied into this ring's ect */
+      441 						/* may not be validation ring */
+      442 
+      443      end dispatch_message;
+      444 
+      445 thread_itt_message:
+      446      proc (a_ect_ptr, a_msgp);
+      447 
+      448 dcl	a_ect_ptr		ptr parameter;
+      449 dcl	a_msgp		ptr parameter;
+      450 
+      451 dcl	prev_ittp		ptr;
+      452 
+      453 	prev_ittp = a_ect_ptr -> ect_header.lastp (ITT_MESSAGE);
+      454 	if prev_ittp = null
+      455 	then a_ect_ptr -> ect_header.firstp (ITT_MESSAGE) = a_msgp;
+      456 	else prev_ittp -> itt_message.next_itt_msgp = a_msgp;
+      457 	a_ect_ptr -> ect_header.lastp (ITT_MESSAGE) = a_msgp;
+      458 	a_msgp -> itt_message.next_itt_msgp = null;
+      459 
+      460      end thread_itt_message;
+      461 
+      462 ect_error_handler:
+      463      proc (a_code, a_ring);
+      464 
+      465 dcl	a_code		fixed bin (35) parameter;
+      466 dcl	a_ring		fixed bin (3) parameter;
+      467 
+      468 	call syserr (4, "^a: Unable to allocate in ring ^d ECT for ^a", ME, a_ring, pds$process_group_id);
+      469 	call terminate_proc (a_code);
+      470 
+      471      end ect_error_handler;
+      472 
+      473 /* format: off */
+      474  /* begin include file - access_audit_eventflags.incl.pl1 */
+  1     2 /* NOTE: This include file has an ALM counterpart made with cif.
+  1     3*Keep it up to date. */
+  1     4 
+  1     5 dcl 1 audit_event_flags	based aligned,
+  1     6       2 special_op	bit (1) unal,  /* special sys operation */
+  1     7       2 grant	bit (1) unal,  /* operation was successful */
+  1     8       2 admin_op	bit (1) unal,  /* administrative operation */
+  1     9       2 priv_op	bit (1) unal,  /* privileged operation */
+  1    10       2 cc_1_10	bit (1) unal,  /* small covert channel */
+  1    11       2 cc_10_100	bit (1) unal,  /* moderate covert channel */
+  1    12       2 receiver	bit (1) unal,  /* on receiving end of channel */
+  1    13       2 pad	bit (29) unal;
+  1    14 
+  1    15 /* end include file - access_audit_eventflags.incl.pl1 */
+      474 
+      475  /*	BEGIN INCLUDE FILE ... ect_structures.incl.pl1 ... Jan 1981 */
+  2     2 
+  2     3 /* Modified 1984-10-28 by E. Swenson for new ipc validation and to move
+  2     4*   event_channel_name declarations from here to event_channel_name.incl.pl1 */
+  2     5 
+  2     6 
+  2     7 /****^  HISTORY COMMENTS:
+  2     8*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  2     9*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  2    10*     Changed to support control point management.  These changes were actually
+  2    11*     done in February 1985 by G. Palter.
+  2    12*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+  2    13*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  2    14*     Modified to eke out some flag bits by making the type fixed bin (8) in
+  2    15*     order to support async event channels.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 
+  2    19 /* format: style3 */
+  2    20 
+  2    21 
+  2    22 /* Definition of the Event Channel Table (ECT) header */
+  2    23 
+  2    24 dcl	1 ect_header	aligned based (ect_ptr),
+  2    25 	  2 ect_areap	ptr,			/* pointer to area in which ECT entries are allocated */
+  2    26 	  2 ect_area_size	fixed bin (19),		/* number of words in ECT area */
+  2    27 	  2 count		(-1:5) fixed bin,		/* totals of entries allocated */
+  2    28 						/* -1 = waiting control points */
+  2    29 						/* 0 = total entries, 1 = wait channels */
+  2    30 						/* 2 = call channels, 3 = call channel messages */
+  2    31 						/* 4 = ITT messages, 5 = wait channel messages */
+  2    32 	  2 entry_list_ptrs (5),			/* head and tail of lists in ECT */
+  2    33 						/* 1 = wait channels, 2 = call channels */
+  2    34 						/* 3 = call channel messages, 4 = ITT messages */
+  2    35 						/* 5 = wait channel messages */
+  2    36 	    3 firstp	ptr,			/* head of list */
+  2    37 	    3 lastp	ptr,			/* tail of list */
+  2    38 	  2 meters,
+  2    39 	    3 total_wakeups fixed bin (33),		/* total wakeups sent on all channels */
+  2    40 	    3 total_wait_wakeups
+  2    41 			fixed bin (33),		/* wakeups sent on wait channels */
+  2    42 	    3 total_call_wakeups
+  2    43 			fixed bin (33),		/* wakeups sent on call channels */
+  2    44 	    3 ittes_tossed	fixed bin (33),		/* number invalid ITT messages received, ignored */
+  2    45 	  2 seed		fixed bin (33),		/* used to generate uid portion of channel name */
+  2    46 	  2 flags,
+  2    47 	    3 call_priority bit (1) unal,		/* = "0"b if wait chns have priority - default */
+  2    48 						/* = "1"b if call chans have priority */
+  2    49 	    3 wakeup_control_points			/** ON => we must wakeup other control points before */
+  2    50 			bit (1) unaligned,		/* ... processing any event messages */
+  2    51 	    3 unused1	bit (16) unaligned,
+  2    52 	    3 mask_call_count
+  2    53 			fixed bin (17) unal,	/* number times event call chans masked */
+  2    54 	  2 ecit_ptr	ptr,			/* pointer to the ECIT */
+  2    55 	  2 ecit_lth	fixed bin (17),		/* length of the ECIT (see below) */
+  2    56 	  2 r_offset	fixed bin (18),		/* operand used to encode/decode channel names */
+  2    57 	  2 r_factor	fixed bin (35),		/* operand used to encode/decode channel names */
+  2    58 	  2 last_fast_channel_events			/** prior fast channel settings */
+  2    59 			bit (36) aligned;
+  2    60 
+  2    61 dcl	ect_ptr		pointer;
+  2    62 
+  2    63 dcl	TOTAL		fixed bin (8) static options (constant) init (0);
+  2    64 dcl	WAIT		fixed bin (8) static options (constant) init (1);
+  2    65 dcl	CALL		fixed bin (8) static options (constant) init (2);
+  2    66 dcl	EV_CALL_MESSAGE	fixed bin (8) static options (constant) init (3);
+  2    67 dcl	ITT_MESSAGE	fixed bin (8) static options (constant) init (4);
+  2    68 dcl	EV_WAIT_MESSAGE	fixed bin (8) static options (constant) init (5);
+  2    69 dcl	WAITING_CP	fixed bin (8) static options (constant) init (-1);
+  2    70 						/* used to index count and entry_list_ptrs arrays */
+  2    71 
+  2    72 
+  2    73 /* Definition of the Event Channel Index Table (ECIT) -- Given an event channel
+  2    74*   name, ipc_validate_$decode_event_channel_name will yield an index into this
+  2    75*   table which contains a pointer to the definition of the channel (its ECT) */
+  2    76 
+  2    77 dcl	1 ecit		aligned based (ecit_ptr),
+  2    78 	  2 ecte_ptr	(ecit_lth) pointer unaligned;
+  2    79 
+  2    80 dcl	ecit_ptr		pointer;
+  2    81 dcl	ecit_lth		fixed binary (17);
+  2    82 
+  2    83 
+  2    84 /* Definition of an event wait channel */
+  2    85 
+  2    86 dcl	1 wait_channel	aligned based (ectep),
+  2    87 	  2 word_0,
+  2    88 	    3 unused1	fixed bin (17) unal,
+  2    89 	    3 flags	unal,
+  2    90 	      4 async_call	bit (1) unal,		/* Only checked for call channels. */
+  2    91 	      4 pad	bit (8) unal,
+  2    92 	    3 type	fixed bin (8) unal,		/* = WAIT */
+  2    93 	  2 next_chanp	ptr unal,			/* pointer to next wait channel */
+  2    94 	  2 prev_chanp	ptr unal,			/* pointer to previous wait channel */
+  2    95 	  2 word_3,
+  2    96 	    3 fast_channel	bit (1) unal,		/* ON => this is a fast channel */
+  2    97 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  2    98 	    3 wakeup_control_points			/** ON => wakeup the control points waiting on this channel */
+  2    99 			bit (1) unaligned,
+  2   100 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  2   101 	  2 name		bit (72),			/* event channel name associated with this channel */
+  2   102 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  2   103 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  2   104 	  2 first_wcpp	ptr unal,			/* pointer to first control point waiting on this channel */
+  2   105 	  2 last_wcpp	ptr unal,			/* pointer to last control point waiting on this channel */
+  2   106 	  2 fast_channel_id fixed binary,		/* index into ipc_data_$fast_channel_events */
+  2   107 	  2 unused2	fixed binary;		/* pad to 12 words */
+  2   108 
+  2   109 
+  2   110 /* Definition of an event call channel */
+  2   111 
+  2   112 dcl	1 call_channel	aligned based (ectep),
+  2   113 	  2 word_0,
+  2   114 	    3 priority	fixed bin (17) unal,	/* indicated priority relative to other call chns */
+  2   115 	    3 flags	unal,
+  2   116 	      4 async_call	bit (1) unal,		/* Send IPS "wkp_" on wakeup. */
+  2   117 	      4 pad	bit (8) unal,
+  2   118 	    3 type	fixed bin (8) unal,		/* = CALL */
+  2   119 	  2 next_chanp	ptr unal,			/* pointer to next call channel */
+  2   120 	  2 prev_chanp	ptr unal,			/* pointer to prev call channel */
+  2   121 	  2 word_3,
+  2   122 	    3 call_inhibit	bit (1) unal,		/* = "1"b if call to associated proc in progress */
+  2   123 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  2   124 	    3 wakeup_control_points			/** ON => wakeup the control point waiting on this channel */
+  2   125 			bit (1) unaligned,
+  2   126 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  2   127 	  2 name		bit (72),			/* event channel name associated with this channel */
+  2   128 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  2   129 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  2   130 	  2 data_ptr	ptr unal,			/* pointer to associated data base */
+  2   131 	  2 procedure_value,			/* procedure to call when message arrives */
+  2   132 	    3 procedure_ptr ptr unal,			/* pointer to entry point */
+  2   133 	    3 environment_ptr
+  2   134 			ptr unal,			/* pointer to stack frame */
+  2   135 	  2 control_point_id			/** ID of control point which "owns" this channel */
+  2   136 			bit (36) aligned;
+  2   137 
+  2   138 dcl	ectep		pointer;
+  2   139 
+  2   140 
+  2   141 /* Definition of a message for either an event wait or an event call channel */
+  2   142 
+  2   143 dcl	1 event_message	aligned based,
+  2   144 	  2 word_0,
+  2   145 	    3 priority	fixed bin (17) unal,	/* priority of call channel */
+  2   146 	    3 type	fixed bin (17) unal,	/* = EV_CALL_MESSAGE or EV_WAIT_MESSAGE */
+  2   147 	  2 chanp		ptr unal,			/* pointer to associated event channel */
+  2   148 	  2 message_data	like event_message_data aligned,
+  2   149 						/* event message as returned from ipc_$block */
+  2   150 	  2 next_ev_msgp	ptr unal,			/* pointer to next event call/wait channel message */
+  2   151 	  2 prev_ev_msgp	ptr unal,			/* pointer to previous event call/wait channel message */
+  2   152 	  2 next_chan_msgp	ptr unal,			/* pointer to next message for this channel */
+  2   153 	  2 prev_chan_msgp	ptr unal;			/* pointer to previous message for this channel */
+  2   154 
+  2   155 
+  2   156 /* Definition of an ITT message as returned from ring 0 */
+  2   157 
+  2   158 dcl	1 itt_message	aligned based,
+  2   159 	  2 word_0,
+  2   160 	    3 unused1	fixed bin (17) unal,
+  2   161 	    3 type	fixed bin (17) unal,
+  2   162 	  2 next_itt_msgp	ptr unal,			/* pointer to next itt message entry in ECT currently */
+  2   163 	  2 message_data	like event_message_data aligned,
+  2   164 	  2 unused2	(4) fixed bin;		/* pad to 12 words */
+  2   165 
+  2   166 
+  2   167 /* Definition of an event message as returned from ring 0 */
+  2   168 
+  2   169 dcl	1 event_message_data
+  2   170 			aligned based,
+  2   171 	  2 channel_id	fixed bin (71),		/* event channel name */
+  2   172 	  2 message	fixed bin (71),		/* 72 bit message associated with wakeup */
+  2   173 	  2 sender	bit (36),			/* process ID of sender */
+  2   174 	  2 origin,
+  2   175 	    3 dev_signal	bit (18) unal,		/* "1"b if device signal */
+  2   176 						/* "0"b if user event */
+  2   177 	    3 ring	fixed bin (17) unal;	/* ring of sending process */
+  2   178 
+  2   179 
+  2   180 /* Definition of a control point which is blocked on a channel */
+  2   181 
+  2   182 dcl	1 waiting_control_point
+  2   183 			aligned based (wcpp),
+  2   184 	  2 word_0,
+  2   185 	    3 block_count	fixed binary (17) unaligned,	/* # of in-progress ipc_$block calls by this control point */
+  2   186 	    3 type	fixed binary (17) unaligned,	/* = WAITING_CP */
+  2   187 	  2 control_point_id			/** ID of the waiting control point */
+  2   188 			bit (36) aligned,
+  2   189 	  2 chain,
+  2   190 	    3 next_wcpp	pointer,			/* pointer to previous waiting control point */
+  2   191 	    3 prev_wcpp	pointer,			/* pointer to next waiting control point */
+  2   192 	  2 unused	(6) bit (36) aligned;	/* pad to 12 words */
+  2   193 
+  2   194 dcl	wcpp		pointer;
+  2   195 
+  2   196 /* 	END INCLUDE file ... ect_structures.incl.pl1 */
+      475 
+      476  /* Begin include file event_channel_name.incl.pl1 */
+  3     2 
+  3     3 /* format: style4 */
+  3     4 
+  3     5 /* Written 1984-11-02 by E. Swenson */
+  3     6 
+  3     7 
+  3     8 /****^  HISTORY COMMENTS:
+  3     9*  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+  3    10*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  3    11*     Added constants for the flag values and declared a structure to describe
+  3    12*     the encoded_index after it is decoded.  This include file has also been
+  3    13*     converted to ALM for use by pxss.
+  3    14*                                                   END HISTORY COMMENTS */
+  3    15 
+  3    16 
+  3    17 dcl  1 event_channel_name structure aligned based,
+  3    18        2 encoded_index bit (18) unaligned,
+  3    19        2 verifier bit (18) unaligned,
+  3    20        2 ring fixed bin (3) unsigned unaligned,
+  3    21        2 type bit (1) unaligned,			/* "1"b for regular, "0"b for fast */
+  3    22        2 mbz bit (14) unaligned,
+  3    23        2 unique_id fixed bin (18) unsigned unaligned;
+  3    24 
+  3    25 dcl  FAST_CHANNEL_TYPE bit (1) aligned initial ("0"b) internal static options (constant);
+  3    26 dcl  REGULAR_CHANNEL_TYPE bit (1) aligned initial ("1"b) internal static options (constant);
+  3    27 
+  3    28 dcl  NORMAL_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("000"b);
+  3    29 dcl  SEND_IPS_WKP_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("001"b);
+  3    30 
+  3    31 /* Structure for use after the encoded_index in the event_channel_name has been decoded. */
+  3    32 
+  3    33 dcl  1 decoded_index structure aligned based,
+  3    34        2 flags bit (3) unaligned,
+  3    35        2 index fixed bin (15) unsigned unaligned;
+  3    36 
+  3    37 dcl  ENCODED_INDEX_CONSTANT fixed bin (35) internal static options (constant) init (262144);
+  3    38 
+  3    39 /* End include file event_channel_name.incl.pl1 */
+      476 
+      477  /*	BEGIN INCLUDE FILE ... itt_entry.incl.pl1 ... Feb 1981 */
+  4     2 
+  4     3 /* format: style3 */
+  4     4 dcl	itte_ptr		ptr;			/* pointer to entry in ITT */
+  4     5 
+  4     6 dcl	1 itt_entry	aligned based (itte_ptr),	/* declaration of single entry in the ITT */
+  4     7 	  2 next_itt_relp	bit (18) unaligned,		/* thread of relative pointers */
+  4     8 	  2 pad		bit (18) unaligned,
+  4     9 	  2 sender	bit (36),			/* id of sending process */
+  4    10 	  2 origin,				/* origin of event message */
+  4    11 	    3 dev_signal	bit (18) unaligned,		/* 0 = user-event, 1 = device-signal */
+  4    12 	    3 ring	fixed bin (17) unaligned,	/* if user-event, sender's validation ring */
+  4    13 	  2 target_id	bit (36),			/* target process' id */
+  4    14 	  2 channel_id	fixed bin (71),		/* target process' event channel */
+  4    15 	  2 message	fixed bin (71);		/* event message */
+  4    16 
+  4    17 /*	END INCLUDE FILE ... itt_entry.incl.pl1 */
+      477 
+      478  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  5     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  5     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  5     4 /*	Modified April 1983 by C. Hornig for tasking */
+  5     5 
+  5     6 /****^  HISTORY COMMENTS:
+  5     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  5     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  5     9*     added the heap_header_ptr definition.
+  5    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  5    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  5    12*     Modified to support control point management.  These changes were actually
+  5    13*     made in February 1985 by G. Palter.
+  5    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  5    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  5    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  5    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  5    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  5    19*     (ITS pair).
+  5    20*                                                   END HISTORY COMMENTS */
+  5    21 
+  5    22 /* format: style2 */
+  5    23 
+  5    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  5    25 
+  5    26      dcl	   1 stack_header	      based (sb) aligned,
+  5    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  5    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  5    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  5    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  5    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  5    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  5    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  5    34 	     2 pad4	      bit (2) unal,
+  5    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  5    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  5    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  5    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  5    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  5    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  5    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  5    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  5    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  5    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  5    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  5    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  5    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  5    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  5    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  5    50 	     2 return_no_pop_op_ptr
+  5    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  5    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  5    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  5    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  5    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  5    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  5    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  5    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  5    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  5    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  5    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  5    62 	     2 trace,
+  5    63 	       3 frames,
+  5    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  5    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  5    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  5    67 	     2 pad2	      bit (36),		/*  (61) */
+  5    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  5    69 
+  5    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  5    71 
+  5    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  5    73 						/* (551) octal */
+  5    74 
+  5    75 
+  5    76 /*	The following constants are offsets within this transfer vector table.  */
+  5    77 
+  5    78      dcl	   (
+  5    79 	   call_offset	      fixed bin init (271),
+  5    80 	   push_offset	      fixed bin init (272),
+  5    81 	   return_offset	      fixed bin init (273),
+  5    82 	   return_no_pop_offset   fixed bin init (274),
+  5    83 	   entry_offset	      fixed bin init (275)
+  5    84 	   )		      internal static;
+  5    85 
+  5    86 
+  5    87 
+  5    88 
+  5    89 
+  5    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  5    91*	move the whole stack header should use this overlay.
+  5    92**/
+  5    93 
+  5    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  5    95 
+  5    96 
+  5    97 
+  5    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      478 
+      479  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  6     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  6     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  6     4 
+  6     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  6     6 
+  6     7 dcl (
+  6     8 
+  6     9 /* The following constants define the message action codes.  This indicates
+  6    10*how a message is to be handled.  */
+  6    11 
+  6    12      SYSERR_CRASH_SYSTEM	init (1),			
+  6    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  6    14 
+  6    15      SYSERR_TERMINATE_PROCESS	init (2),
+  6    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  6    17 
+  6    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  6    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  6    20 
+  6    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  6    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  6    23 
+  6    24      SYSERR_LOG_OR_PRINT	init (4),
+  6    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  6    26 
+  6    27      SYSERR_LOG_OR_DISCARD	init (5),
+  6    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  6    29 
+  6    30 
+  6    31 /* The following constants are added to the normal severities to indicate
+  6    32*different sorting classes of messages.  */
+  6    33 
+  6    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  6    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  6    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  6    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  6    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  6    39 	) fixed bin internal static options (constant);
+  6    40 
+  6    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      479 
+      480 
+      481 /* BEGIN MESSAGE DOCUMENTATION
+      482*
+      483*   Message:
+      484*   hc_ipc: ITT overflow caused by NAME.PROJ
+      485*
+      486*   S:	$info
+      487*
+      488*   T:	$run
+      489*
+      490*   M:	When wakeups are sent from one process to another, or from a device
+      491*   like a tape drive to a process, the wakeups are stored temporarily in the 
+      492*   Interprocess Transmission Table (ITT). If wakeups are sent too fast,
+      493*   or if the receiving process never calls block to read its wakeups,
+      494*   the ITT may overflow. When the ITT is full, this message is printed
+      495*   for each lost wakeup. The message identifies the sender of the wakeup,
+      496*   who may be innocent of any error or wrongdoing.
+      497*
+      498*   If a critical system function cannot send a wakeup, the system may crash.
+      499*
+      500*   A:	If the ITT overflow is a transient condition, this message will stop
+      501*   coming out after a few minutes. If so, system operation may return to normal.
+      502*   If the message comes out repeatedly, the system will have to be crashed,
+      503*   since user terminal operation, daemon operations, and the message
+      504*   coordinator depend on wakeups.
+      505*   $recover
+      506*
+      507*
+      508*   Message:
+      509*   hc_ipc: Unable to allocate in ring RINGNO ECT for  NAME.PROJ
+      510*
+      511*   S:     $log
+      512*
+      513*   T:     $run
+      514*
+      515*   M:     When a process recieves wakeups, they are copied from the
+      516*   Interprocess Transmission Table to an Event Channel Table (ECT).
+      517*   A process owns one ECT per ring.  If, for any reason, an entry
+      518*   for a wakeup cannot be allocated in a process' ECT, that
+      519*   process is terminated.
+      520*
+      521*   A:     If the process is a daemon process, it must be reinitialized.
+      522*   If the process is the initializer process, the system will crash.
+      523*
+      524*   END MESSAGE DOCUMENTATION */
+      525 /* format: on */
+      526 
+      527      end hc_ipc;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  hc_ipc.pl1                        >spec>install>1112>hc_ipc.pl1
+474          1    01/30/85  1523.9  access_audit_eventflags.incl.pl1  >ldd>include>access_audit_eventflags.incl.pl1
+475          2    11/07/86  1550.3  ect_structures.incl.pl1           >ldd>include>ect_structures.incl.pl1
+476          3    11/07/86  1550.3  event_channel_name.incl.pl1       >ldd>include>event_channel_name.incl.pl1
+477          4    03/27/82  0429.8  itt_entry.incl.pl1                >ldd>include>itt_entry.incl.pl1
+478          5    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+479          6    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+FAST_CHANNEL_TYPE               000027 constant        bit(1)                   initial dcl 3-25 set ref 210 331* 366
+ITT_MESSAGE                            constant        fixed bin(8,0)           initial dcl 2-67 ref 432 432 435 453 454 457
+LOG                             000030 constant        fixed bin(17,0)          initial dcl 6-7 set ref 190* 199* 215*
+ME                              000002 constant        char(32)                 initial packed unaligned dcl 59 set ref 190* 199*
+                                                                                  215* 262* 273* 468*
+NORMAL_CHANNEL_FLAGS            000027 constant        bit(3)                   initial dcl 3-28 set ref 331*
+OFF                                    constant        bit(1)                   initial dcl 60 ref 321 378 385 386
+ON                                     constant        bit(1)                   initial dcl 61 ref 316 319 440
+QUITSTOP                        000000 constant        char(8)                  initial packed unaligned dcl 62 ref 404
+TOTAL                                  constant        fixed bin(8,0)           initial dcl 2-63 ref 433 433
+YES                                    constant        bit(1)                   initial dcl 61 ref 226
+a_channel_name                         parameter       fixed bin(71,0)          dcl 304 set ref 301 313* 334* 337 340
+a_code                                 parameter       fixed bin(35,0)          dcl 160 in procedure "hc_ipc" set ref 147 277* 301
+                                                                                  337 388*
+a_code                                 parameter       fixed bin(35,0)          dcl 465 in procedure "ect_error_handler" set ref 462
+                                                                                  469*
+a_ect_ptr                              parameter       pointer                  dcl 448 ref 445 453 454 457
+a_event_channel                        parameter       fixed bin(71,0)          dcl 157 ref 147 182
+a_event_channel_message                parameter       fixed bin(71,0)          dcl 158 ref 147 183
+a_itte_ptr                             parameter       pointer                  dcl 395 ref 392 404 408 438
+a_msgp                                 parameter       pointer                  dcl 449 ref 445 454 456 457 458
+a_ring                                 parameter       fixed bin(3,0)           dcl 466 set ref 462 468*
+a_target_process                       parameter       bit(36)                  dcl 156 ref 147 181
+a_target_ring                          parameter       fixed bin(3,0)           dcl 396 set ref 392 401* 408* 409 411 428* 440
+access_audit_$log_general       000020 constant        entry                    external dcl 42 ref 262
+access_operations_$ipc_wakeup   000036 external static bit(36)                  dcl 65 set ref 262*
+addr                                                   builtin function         dcl 104 ref 239 239 289 408
+area                            000100 stack reference condition                dcl 114 ref 237 287
+audit_event_flags                      based           structure                level 1 dcl 1-5
+channel_id                4            based           fixed bin(71,0)          level 2 in structure "itt_entry" dcl 4-6
+                                                                                  in procedure "hc_ipc" set ref 404 408
+channel_id                4     000124 automatic       fixed bin(71,0)          level 2 in structure "itt_dummy" dcl 132
+                                                                                  in procedure "hc_ipc" set ref 234*
+channel_ring                    000106 automatic       fixed bin(3,0)           dcl 118 set ref 349* 360 378 385
+code                            000107 automatic       fixed bin(35,0)          dcl 119 set ref 180* 187* 188 195* 197 214* 249*
+                                                                                  253* 256* 264* 269* 277 306* 312* 341* 349* 351
+                                                                                  356* 362* 368* 374* 380* 388
+count                     3            based           fixed bin(17,0)          array level 2 dcl 2-24 set ref 432* 432 433* 433
+ect_area                               based           area                     dcl 145 ref 431
+ect_areap                              based           pointer                  level 2 dcl 2-24 ref 428 431
+ect_header                             based           structure                level 1 dcl 2-24
+ect_ptr                  64            based           pointer                  level 2 in structure "stack_header" dcl 5-26
+                                                                                  in procedure "hc_ipc" ref 416
+ect_ptr                         000150 automatic       pointer                  dcl 2-61 in procedure "hc_ipc" set ref 416* 425 428
+                                                                                  431 432 432 433 433 436*
+entry_list_ptrs          12            based           structure                array level 2 dcl 2-24
+error_table_$ect_full           000040 external static fixed bin(35,0)          dcl 67 set ref 237* 287*
+error_table_$inconsistent_ect   000042 external static fixed bin(35,0)          dcl 69 set ref 428*
+error_table_$invalid_channel    000044 external static fixed bin(35,0)          dcl 71 ref 214 356 368 374 380
+error_table_$itt_overflow       000046 external static fixed bin(35,0)          dcl 73 ref 269
+error_table_$process_stopped    000050 external static fixed bin(35,0)          dcl 75 ref 256
+error_table_$process_unknown    000052 external static fixed bin(35,0)          dcl 77 ref 253
+error_table_$special_channels_full
+                                000054 external static fixed bin(35,0)          dcl 79 ref 312
+error_table_$wakeup_denied      000056 external static fixed bin(35,0)          dcl 81 ref 264
+error_table_$wrong_channel_ring 000060 external static fixed bin(35,0)          dcl 83 ref 362
+ev_chn_flags                    000110 automatic       bit(3)                   dcl 120 set ref 195* 349*
+ev_chn_index                    000111 automatic       fixed bin(15,0)          dcl 121 set ref 195* 349* 354
+ev_chn_ring                     000112 automatic       fixed bin(3,0)           dcl 122 set ref 195* 212 228
+ev_chn_type                     000113 automatic       bit(1)                   dcl 123 set ref 195* 210 349* 366
+ev_chn_unique_id                000114 automatic       fixed bin(18,0)          dcl 124 set ref 195*
+event_channel_message           000120 automatic       fixed bin(71,0)          dcl 127 set ref 183* 235 251*
+event_channel_name                     based           structure                level 1 dcl 3-17
+event_channel_name_fb71         000116 automatic       fixed bin(71,0)          dcl 125 set ref 182* 195* 199 199 215 215 234 251
+                                                                                  251 331* 334 340* 349*
+event_flags                     000123 automatic       structure                level 1 dcl 130 set ref 261* 262 262
+event_message_data                     based           structure                level 1 dcl 2-169
+fast_channel_id                 000122 automatic       fixed bin(18,0)          dcl 129 set ref 308* 310 310 316 319 321 331 331*
+                                                                                  349* 354 372 372 378 385 386
+firstp                   12            based           pointer                  array level 3 dcl 2-24 set ref 454*
+index                                                  builtin function         dcl 105 ref 308
+ipc_validate_$decode_event_channel_name
+                                000012 constant        entry                    external dcl 35 ref 195 349
+ipc_validate_$encode_event_channel_name
+                                000014 constant        entry                    external dcl 38 ref 331
+itt_dummy                       000124 automatic       structure                level 1 dcl 132 set ref 230* 239 239
+itt_entry                              based           structure                level 1 dcl 4-6 set ref 438
+itt_message                            based           structure                level 1 dcl 2-158 set ref 431 434*
+itt_relp                        000134 automatic       bit(18)                  dcl 133 set ref 290* 290* 292*
+itte_ptr                        000152 automatic       pointer                  dcl 4-4 set ref 289* 292* 292 293* 295
+last_sender                     000010 internal static bit(36)                  initial packed unaligned dcl 54 set ref 270 272*
+lastp                    14            based           pointer                  array level 3 dcl 2-24 set ref 453 457*
+level$get                       000016 constant        entry                    external dcl 41 ref 185 286 318 342
+message                   6     000124 automatic       fixed bin(71,0)          level 2 dcl 132 set ref 235*
+message_data              2            based           structure                level 2 dcl 2-158 set ref 438*
+msg_ptr                         000136 automatic       pointer                  dcl 134 set ref 431* 434 435 436* 438
+next_itt_msgp             1            based           pointer                  level 2 packed packed unaligned dcl 2-158 set ref
+                                                                                  456* 458*
+next_itt_relp                          based           bit(18)                  level 2 packed packed unaligned dcl 4-6 ref 295
+null                                                   builtin function         dcl 106 ref 262 262 412 425 428 454 458
+origin                    2     000124 automatic       structure                level 2 dcl 132
+pds$event_masks                 000062 external static bit(36)                  array dcl 86 set ref 319* 378 385*
+pds$events_pending              000064 external static bit(36)                  dcl 87 set ref 321*
+pds$itt_head                    000066 external static bit(18)                  dcl 88 set ref 290 297*
+pds$process_group_id            000070 external static char(32)                 dcl 89 set ref 190* 199* 215* 273* 468*
+pds$process_id                  000072 external static bit(36)                  dcl 91 ref 205 270 272
+pds$ring_events                 000074 external static bit(36)                  dcl 92 set ref 440*
+pds$special_channels            000076 external static bit(36)                  dcl 94 set ref 308 316* 386*
+pds$stacks                      000100 external static pointer                  array dcl 96 ref 411
+prev_ittp                       000174 automatic       pointer                  dcl 451 set ref 453* 454 456
+ptr                                                    builtin function         dcl 107 ref 292
+pxss$free_itt                   000022 constant        entry                    external dcl 44 ref 297
+pxss$wakeup                     000024 constant        entry                    external dcl 45 ref 251
+pxss_status                     000144 automatic       fixed bin(35,0)          dcl 139 set ref 251* 253 256 259 267
+r_factor                        000141 automatic       fixed bin(35,0)          dcl 136 set ref 187* 195* 327* 331* 347* 349*
+r_offset                        000140 automatic       fixed bin(18,0)          dcl 135 set ref 187* 195* 327* 331* 347* 349*
+ring                      2(18) 000124 automatic       fixed bin(17,0)          level 3 in structure "itt_dummy" packed packed
+                                                                                  unaligned dcl 132 in procedure "hc_ipc" set ref
+                                                                                  233*
+ring                      1            based           fixed bin(3,0)           level 2 in structure "event_channel_name" packed
+                                                                                  packed unsigned unaligned dcl 3-17 in procedure
+                                                                                  "hc_ipc" ref 408
+same_process                    000143 automatic       bit(1)                   dcl 138 set ref 205* 226
+sb                              000154 automatic       pointer                  dcl 5-24 set ref 411* 412 416
+sender                    1     000124 automatic       bit(36)                  level 2 dcl 132 set ref 232*
+stack_header                           based           structure                level 1 dcl 5-26
+string                                                 builtin function         dcl 108 set ref 261* 262 262
+substr                                                 builtin function         dcl 109 set ref 316* 319* 321* 378 385* 386* 440*
+syserr                          000026 constant        entry                    external dcl 46 ref 190 199 215 273 468
+target_id                 3     000124 automatic       bit(36)                  level 2 dcl 132 set ref 232*
+target_process                  000142 automatic       bit(36)                  dcl 137 set ref 181* 187* 190* 199* 205 215* 232
+                                                                                  251* 262*
+target_ring                     000145 automatic       fixed bin(3,0)           dcl 140 set ref 237* 239* 240 287* 293*
+tc_data$                        000102 external static fixed bin(17,0)          dcl 97 set ref 289
+tc_data$max_channels            000104 external static fixed bin(35,0)          dcl 98 ref 310 372
+tc_util$get_ipc_operands        000030 constant        entry                    external dcl 47 ref 327 347
+tc_util$get_ipc_operands_priv   000032 constant        entry                    external dcl 49 ref 187
+terminate_proc                  000034 constant        entry                    external dcl 51 ref 469
+type                      0(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 2-158 set ref
+                                                                                  435*
+unspec                                                 builtin function         dcl 110 set ref 199 199 215 215 230* 234* 234 251
+                                                                                  251 334* 334 340* 340 404 404 434*
+val_ring                        000146 automatic       fixed bin(3,0)           dcl 141 set ref 185* 190* 199* 212 215* 228 233 262*
+                                                                                  286* 318* 319 331* 342* 360
+word_0                                 based           structure                level 2 dcl 2-158
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 6-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 6-7
+CALL                                   internal static fixed bin(8,0)           initial dcl 2-65
+CRASH                                  internal static fixed bin(17,0)          initial dcl 6-7
+ENCODED_INDEX_CONSTANT                 internal static fixed bin(35,0)          initial dcl 3-37
+EV_CALL_MESSAGE                        internal static fixed bin(8,0)           initial dcl 2-66
+EV_WAIT_MESSAGE                        internal static fixed bin(8,0)           initial dcl 2-68
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 6-7
+REGULAR_CHANNEL_TYPE                   internal static bit(1)                   initial dcl 3-26
+SEND_IPS_WKP_CHANNEL_FLAGS             internal static bit(3)                   initial dcl 3-29
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 6-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 6-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 6-7
+WAIT                                   internal static fixed bin(8,0)           initial dcl 2-64
+WAITING_CP                             internal static fixed bin(8,0)           initial dcl 2-69
+call_channel                           based           structure                level 1 dcl 2-112
+call_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+decoded_index                          based           structure                level 1 dcl 3-33
+ecit                                   based           structure                level 1 dcl 2-77
+ecit_lth                               automatic       fixed bin(17,0)          dcl 2-81
+ecit_ptr                               automatic       pointer                  dcl 2-80
+ectep                                  automatic       pointer                  dcl 2-138
+entry_offset                           internal static fixed bin(17,0)          initial dcl 5-78
+event_message                          based           structure                level 1 dcl 2-143
+push_offset                            internal static fixed bin(17,0)          initial dcl 5-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 5-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 5-78
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 5-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 5-72
+wait_channel                           based           structure                level 1 dcl 2-86
+waiting_control_point                  based           structure                level 1 dcl 2-182
+wcpp                                   automatic       pointer                  dcl 2-194
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+FAST_CHANNEL_RETURNS            001356 constant        label                    dcl 388 ref 314 335 351 357 363 369 375 381
+WAKEUP_RETURNS                  000745 constant        label                    dcl 277 ref 192 201 219 240
+assign_channel                  001051 constant        entry                    external dcl 301
+delete_channel                  001203 constant        entry                    external dcl 337
+dispatch_message                001361 constant        entry                    internal dcl 392 ref 239 293
+ect_error_handler               001545 constant        entry                    internal dcl 462 ref 237 287 428
+full_block                      000751 constant        entry                    external dcl 283
+hc_ipc                          000172 constant        entry                    external dcl 13
+ipc_wakeup                      000205 constant        entry                    external dcl 147
+thread_itt_message              001505 constant        entry                    internal dcl 445 ref 436
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2306        2414    1644        2316
+Length      3002    1644       106         351     442           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+hc_ipc                              269 external procedure  is an external procedure.  
+on unit on line 237                  72 on unit               
+on unit on line 287                  72 on unit               
+dispatch_message                        internal procedure  shares stack frame of external procedure hc_ipc.  
+thread_itt_message                      internal procedure  shares stack frame of external procedure hc_ipc.  
+ect_error_handler                   100 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 last_sender                 hc_ipc
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+hc_ipc                   000106 channel_ring                hc_ipc
+                         000107 code                        hc_ipc
+                         000110 ev_chn_flags                hc_ipc
+                         000111 ev_chn_index                hc_ipc
+                         000112 ev_chn_ring                 hc_ipc
+                         000113 ev_chn_type                 hc_ipc
+                         000114 ev_chn_unique_id            hc_ipc
+                         000116 event_channel_name_fb71     hc_ipc
+                         000120 event_channel_message       hc_ipc
+                         000122 fast_channel_id             hc_ipc
+                         000123 event_flags                 hc_ipc
+                         000124 itt_dummy                   hc_ipc
+                         000134 itt_relp                    hc_ipc
+                         000136 msg_ptr                     hc_ipc
+                         000140 r_offset                    hc_ipc
+                         000141 r_factor                    hc_ipc
+                         000142 target_process              hc_ipc
+                         000143 same_process                hc_ipc
+                         000144 pxss_status                 hc_ipc
+                         000145 target_ring                 hc_ipc
+                         000146 val_ring                    hc_ipc
+                         000150 ect_ptr                     hc_ipc
+                         000152 itte_ptr                    hc_ipc
+                         000154 sb                          hc_ipc
+                         000174 prev_ittp                   thread_itt_message
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+enable_op           ext_entry           int_entry           index_bs_1_eis      op_alloc_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_$log_general     ipc_validate_$decode_event_channel_name
+ipc_validate_$encode_event_channel_name                     level$get                     pxss$free_itt
+pxss$wakeup                   syserr                        tc_util$get_ipc_operands      tc_util$get_ipc_operands_priv
+terminate_proc
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$ipc_wakeup error_table_$ect_full         error_table_$inconsistent_ect error_table_$invalid_channel
+error_table_$itt_overflow     error_table_$process_stopped  error_table_$process_unknown
+error_table_$special_channels_full                          error_table_$wakeup_denied
+error_table_$wrong_channel_ring                             pds$event_masks               pds$events_pending
+pds$itt_head                  pds$process_group_id          pds$process_id                pds$ring_events
+pds$special_channels          pds$stacks                    tc_data$                      tc_data$max_channels
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000171       147 000177       180 000215       181 000216       182 000221       183 000223       185 000225
+    187 000233       188 000250       190 000252       192 000312       195 000313       197 000342       199 000344
+    201 000412       205 000413       210 000420       212 000423       214 000426       215 000430       219 000475
+    221 000476       226 000477       228 000502       230 000505       232 000510       233 000513       234 000515
+    235 000517       237 000521       239 000550       240 000554       249 000556       251 000557       253 000576
+    256 000604       259 000612       261 000614       262 000615       264 000700       265 000703       267 000704
+    269 000706       270 000711       272 000714       273 000715       277 000745       279 000747       283 000750
+    286 000756       287 000765       289 001014       290 001017       292 001024       293 001027       295 001031
+    297 001035       299 001044       301 001045       306 001061       308 001062       310 001070       312 001074
+    313 001076       314 001101       316 001102       318 001106       319 001114       321 001127       327 001134
+    331 001144       334 001173       335 001200       337 001201       340 001213       341 001220       342 001221
+    347 001230       349 001241       351 001270       354 001272       356 001275       357 001300       360 001301
+    362 001304       363 001307       366 001310       368 001313       369 001316       372 001317       374 001325
+    375 001327       378 001330       380 001343       381 001345       385 001346       386 001351       388 001356
+    390 001360       392 001361       401 001363       404 001364       408 001373       409 001376       411 001400
+    412 001405       416 001412       425 001414       428 001421       431 001436       432 001444       433 001447
+    434 001451       435 001454       436 001456       438 001460       440 001476       443 001504       445 001505
+    453 001507       454 001514       456 001526       457 001531       458 001537       460 001543       462 001544
+    468 001552       469 001610       471 001620
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,423 @@
+	COMPILATION LISTING OF SEGMENT hc_page_trace
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1046.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style2,indcomtxt */
+       13 
+       14 /**** hc_page_trace: user interface to pds trace buffer
+       15*      Written at an unknown time by an unknown party.
+       16*      Modified 83-12-03 BIM for pgt_ signal. */
+       17 
+       18 /* Entries:
+       19*
+       20*   declare hc_page_trace entry (pointer);
+       21*   call hc_page_trace (data_ptr);
+       22*
+       23*   Where: data_ptr points to the structure "trace" in
+       24*   sys_trace.incl.pl1. The entry array is declared
+       25*   with a bound of 1024, and the last_available field
+       26*   is used to tell the size.
+       27*
+       28*
+       29*   declare hc_page_trace$get_signal entry (bit (1) aligned, fixed bin (17));
+       30*   call hc_page_trace$get_signal (ips_signal_enabled, threshold_percent);
+       31*
+       32*   Where: ips_signal_enabled is "1"b is pgt_ is sent when the buffer
+       33*   is threshold_percent filled.
+       34*   threshold_percent (between 50 and 100) is the % threshold at
+       35*   which a pgt_ is sent.
+       36*
+       37*   declare hc_page_trace$set_signal entry (bit (1) aligned, fixed bin (17), bit (1) aligned, fixed bin (35));
+       38*   call hc_page_trace$set_signal (ips_signal_enabled, threshold_percent, changed, old_enabled, old_threshold, code);
+       39*
+       40*   Where:
+       41*   ips_signal_enabled (Input)  is as in get_signal
+       42*   threshold_percent (Input)   is as in get_signal
+       43*   if it is < 0, then threshold is not changed.
+       44*   changed (Output) is "1"b if either value was changed.
+       45*   old_enabled (Output) is the old value of signal_enabled
+       46*   old_threshold (Output) is the old value of threshold
+       47*   code (Output) is error_table_$bigarg or error_table_$smallarg
+       48*   if threshold_percent is not between 50 and 100.
+       49**/
+       50 
+       51 
+       52 hc_page_trace$get_page_trace:
+       53      procedure (Data_ptr);
+       54 
+       55 	declare (
+       56 	        Data_ptr		 pointer,
+       57 	        Old_signal		 bit (1) aligned,
+       58 	        New_signal		 bit (1) aligned,
+       59 	        Old_threshold	 fixed bin (17),
+       60 	        New_threshold	 fixed bin (17),
+       61 	        Changed		 bit (1) aligned,
+       62 	        Code		 fixed bin (35)
+       63 	        )			 parameter;
+       64 
+       65 	declare dp		 pointer;
+       66 	declare copy_data		 (copy_length) bit (36) aligned based;
+       67 	declare copy_length		 fixed bin (19);
+       68 	declare signal_enabled	 bit (1) aligned;
+       69 	declare threshold_percent	 fixed bin (17);
+       70 	declare threshold		 fixed bin (16);
+       71 	declare code		 fixed bin (35);
+       72 
+       73 	declare error_table_$bigarg	 fixed bin (35) ext static;
+       74 	declare error_table_$smallarg	 fixed bin (35) ext static;
+       75 	declare pds$trace		 bit (36) aligned external static;
+       76 	declare pds$process_group_id   char (32) external static;
+       77 
+       78           declare syserr		 entry options (variable);
+       79 
+       80 	declare (addr, decimal, fixed, float, round, wordno)
+       81 				 builtin;
+       82 
+  1     1 /* BEGIN INCLUDE FILE sys_trace.incl.pl1  --  Last modified Jan. 1982 */
+  1     2 /* Modified for new pgt_ signal technology, Benson Margulies, 83-12 */
+  1     3 /* format: style3 */
+  1     4 
+  1     5 declare	trace_ptr		ptr;
+  1     6 
+  1     7 declare	1 trace		based (trace_ptr) aligned,	/* system trace data structure */
+  1     8 	  2 next_free	fixed bin (17) uns unal,	/* index to next free trace entry */
+  1     9 	  2 pad1		bit (19) unal,
+  1    10 	  2 last_available	fixed bin (17) uns unal,	/* index to first unusable entry in list */
+  1    11 	  2 pad2		bit (19) unal,
+  1    12 	  2 ttime		fixed bin (71),		/* time used to figure incremental times */
+  1    13 	  2 temp		bit (36),			/* temporary used by page$enter_data */
+  1    14 	  2 index		bit (17),			/* index to end of post purge list */
+  1    15 	  2 threshold	fixed bin (17) unsigned unaligned,
+  1    16 	  2 pad3		bit (1) unaligned,		/* to halfword */
+  1    17 	  2 flags		unaligned,
+  1    18 	    3 send_ips	bit (1) unaligned,		/* send pgt_ when index reached threshold */
+  1    19 	    3 pad		bit (17) unaligned,
+  1    20 	  2 pad4		bit (36) aligned,
+  1    21 	  2 data		(1024),			/* trace data entry structure */
+  1    22 	    3 data_word	char (4),			/* per-type data word */
+  1    23 	    3 type	fixed bin (6) uns unaligned,	/* type of trace entry */
+  1    24 	    3 pad		bit (14) unaligned,
+  1    25 	    3 dtime	fixed bin (16) uns unaligned; /* time increment since last trace entry (in 64 micsec) */
+  1    26 
+  1    27 declare	1 page_trace_entry	based (trace_ptr) aligned,	/* entry for page fault data */
+  1    28 	  2 pad		bit (18) unaligned,
+  1    29 	  2 ring		fixed bin (3) uns unaligned,	/* ring number fault occured in */
+  1    30 	  2 segment_number	fixed bin (15) uns unaligned, /* segment number of segment getting page fault */
+  1    31 	  2 type		fixed bin (6) uns unaligned,	/* MBZ for page faults */
+  1    32 	  2 page_number	fixed bin (12) uns unaligned, /* page number which caused fault */
+  1    33 	  2 pad1		bit (2) unal,
+  1    34 	  2 time		fixed bin (16) uns unaligned; /* time increment since last trace entry (res = 64 micro-secs) */
+  1    35 
+  1    36 declare	1 extended_page_trace_entry
+  1    37 			based (trace_ptr) aligned,	/* page fault data with more info */
+  1    38 	  2 psr_segno	fixed bin (12) uns unaligned, /* segment number of proc faulting */
+  1    39 	  2 psr_offset	fixed bin (18) uns unaligned, /* IC of proc faulting */
+  1    40 	  2 tsr_segno_1	bit (6) unaligned,		/* 1st 6 bits of segment number faulted */
+  1    41 	  2 type		fixed bin (6) uns unaligned,	/* 15 decimal */
+  1    42 	  2 tsr_segno_2	bit (6) unaligned,		/* last 6 bits of segment number faulted */
+  1    43 	  2 tsr_pageno	fixed bin (8) uns unaligned,	/* page number faulted */
+  1    44 	  2 time		fixed bin (16) uns unaligned; /* time increment since last trace entry (res = 64 micro-secs) */
+  1    45 
+  1    46 
+  1    47 /* END INCLUDE FILE sys_trace.incl.pl1 */
+       83 
+       84 
+       85 
+       86 	dp = Data_ptr;				/* copy argument */
+       87 	trace_ptr = addr (pds$trace);
+       88 	copy_length = wordno (addr (trace.data)) + (2 * trace.last_available);
+       89 						/* entries are doublewords */
+       90 
+       91 	/*** if user supplied insufficient space, tough! */
+       92 
+       93 	dp -> copy_data = trace_ptr -> copy_data;	/* copy the trace data */
+       94 	return;
+       95 
+       96 
+       97 get_signal:
+       98      entry (Old_signal, Old_threshold);
+       99 
+      100 	call setup_get_old;
+      101 	return;
+      102 
+      103 set_signal:
+      104      entry (New_signal, New_threshold, Changed, Old_signal, Old_threshold, Code);
+      105 
+      106 	code = 0;
+      107 	call setup_get_old;
+      108 
+      109 	signal_enabled = New_signal;
+      110 	threshold_percent = New_threshold;
+      111 
+      112 	if threshold_percent ^< 0			/* changing threshold */
+      113 	then do;
+      114 		if threshold_percent < 50
+      115 		then code = error_table_$smallarg;
+      116 		else if threshold_percent > 100
+      117 		then code = error_table_$bigarg;
+      118 		if code ^= 0
+      119 		then go to RETURN;
+      120 	     end;
+      121 	else threshold_percent = get_threshold_percent ();
+      122 
+      123 	threshold =
+      124 	     round (fixed (float (decimal (threshold_percent)) / 1.0e2 * float (decimal (trace.last_available)), 17, 1),
+      125 	     0);					/* calculate in decimal to make 100 work right */
+      126 	Changed = (signal_enabled ^= trace.send_ips) | (threshold ^< 0 & threshold ^= trace.threshold);
+      127 	trace.send_ips = signal_enabled;
+      128 	trace.threshold = threshold;
+      129 RETURN:
+      130 	Code = code;
+      131 	return;
+      132 
+      133 setup_get_old:
+      134      procedure;
+      135 	trace_ptr = addr (pds$trace);
+      136 	Old_signal = trace.send_ips;
+      137 	Old_threshold = get_threshold_percent ();
+      138 	return;
+      139      end setup_get_old;
+      140 
+      141 get_threshold_percent:
+      142      procedure returns (fixed bin (17));
+      143 
+      144 	if trace.threshold = 0
+      145 	then call syserr (TERMINATE_PROCESS, "hc_page_trace: pds$trace.threshold found zero for ^a.",
+      146 		pds$process_group_id);
+      147 	else return (
+      148 		round (
+      149 		fixed (float (decimal (trace.threshold)) / float (decimal (trace.last_available)) * 1.00e2, 17, 1), 0)
+      150 		);
+      151      end get_threshold_percent;
+      152 
+  2     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  2     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  2     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  2     4 
+  2     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  2     6 
+  2     7 dcl (
+  2     8 
+  2     9 /* The following constants define the message action codes.  This indicates
+  2    10*how a message is to be handled.  */
+  2    11 
+  2    12      SYSERR_CRASH_SYSTEM	init (1),			
+  2    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  2    14 
+  2    15      SYSERR_TERMINATE_PROCESS	init (2),
+  2    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  2    17 
+  2    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  2    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  2    20 
+  2    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  2    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  2    23 
+  2    24      SYSERR_LOG_OR_PRINT	init (4),
+  2    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  2    26 
+  2    27      SYSERR_LOG_OR_DISCARD	init (5),
+  2    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  2    29 
+  2    30 
+  2    31 /* The following constants are added to the normal severities to indicate
+  2    32*different sorting classes of messages.  */
+  2    33 
+  2    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  2    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  2    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  2    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  2    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  2    39 	) fixed bin internal static options (constant);
+  2    40 
+  2    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      153 
+      154 
+      155 /* BEGIN MESSAGE DOCUMENTATION
+      156*
+      157*   Message:
+      158*   hc_page_trace: pds$trace.threshold found zero for USER.
+      159*
+      160*   M:  The signalling threshold for page tracing was found to be
+      161*   zero for USER. This indicates that the user's pds has been
+      162*   damaged.
+      163*
+      164*   S:  $term
+      165*
+      166*   T:  $run
+      167*
+      168*   A:  Investigate the saved dead process.
+      169*
+      170*
+      171*   END MESSAGE DOCUMENTATION */
+      172 
+      173      end hc_page_trace$get_page_trace;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.5  hc_page_trace.pl1                 >spec>install>1110>hc_page_trace.pl1
+83           1    07/11/84  0937.3  sys_trace.incl.pl1                >ldd>include>sys_trace.incl.pl1
+153          2    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Changed                                parameter       bit(1)                   dcl 55 set ref 103 126*
+Code                                   parameter       fixed bin(35,0)          dcl 55 set ref 103 129*
+Data_ptr                               parameter       pointer                  dcl 55 ref 52 86
+New_signal                             parameter       bit(1)                   dcl 55 ref 103 109
+New_threshold                          parameter       fixed bin(17,0)          dcl 55 ref 103 110
+Old_signal                             parameter       bit(1)                   dcl 55 set ref 97 103 136*
+Old_threshold                          parameter       fixed bin(17,0)          dcl 55 set ref 97 103 137*
+TERMINATE_PROCESS               000004 constant        fixed bin(17,0)          initial dcl 2-7 set ref 144*
+addr                                                   builtin function         dcl 80 ref 87 88 135
+code                            000106 automatic       fixed bin(35,0)          dcl 71 set ref 106* 114* 116* 118 129
+copy_data                              based           bit(36)                  array dcl 66 set ref 93* 93
+copy_length                     000102 automatic       fixed bin(19,0)          dcl 67 set ref 88* 93
+data                     10            based           structure                array level 2 dcl 1-7 set ref 88
+decimal                                                builtin function         dcl 80 ref 123 123 147 147
+dp                              000100 automatic       pointer                  dcl 65 set ref 86* 93
+error_table_$bigarg             000010 external static fixed bin(35,0)          dcl 73 ref 116
+error_table_$smallarg           000012 external static fixed bin(35,0)          dcl 74 ref 114
+fixed                                                  builtin function         dcl 80 ref 123 147
+flags                     6(18)        based           structure                level 2 packed packed unaligned dcl 1-7
+float                                                  builtin function         dcl 80 ref 123 123 147 147
+last_available            1            based           fixed bin(17,0)          level 2 packed packed unsigned unaligned dcl 1-7 ref
+                                                                                  88 123 147
+pds$process_group_id            000016 external static char(32)                 packed unaligned dcl 76 set ref 144*
+pds$trace                       000014 external static bit(36)                  dcl 75 set ref 87 135
+round                                                  builtin function         dcl 80 ref 123 147
+send_ips                  6(18)        based           bit(1)                   level 3 packed packed unaligned dcl 1-7 set ref 126
+                                                                                  127* 136
+signal_enabled                  000103 automatic       bit(1)                   dcl 68 set ref 109* 126 127
+syserr                          000020 constant        entry                    external dcl 78 ref 144
+threshold                 6            based           fixed bin(17,0)          level 2 in structure "trace" packed packed unsigned
+                                                                                  unaligned dcl 1-7 in procedure
+                                                                                  "hc_page_trace$get_page_trace" set ref 126 128*
+                                                                                  144 147
+threshold                       000105 automatic       fixed bin(16,0)          dcl 70 in procedure "hc_page_trace$get_page_trace"
+                                                                                  set ref 123* 126 126 128
+threshold_percent               000104 automatic       fixed bin(17,0)          dcl 69 set ref 110* 112 114 116 121* 123
+trace                                  based           structure                level 1 dcl 1-7
+trace_ptr                       000110 automatic       pointer                  dcl 1-5 set ref 87* 88 88 93 123 126 126 127 128
+                                                                                  135* 136 144 147 147
+wordno                                                 builtin function         dcl 80 ref 88
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 2-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 2-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 2-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 2-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 2-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 2-7
+extended_page_trace_entry              based           structure                level 1 dcl 1-36
+page_trace_entry                       based           structure                level 1 dcl 1-27
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN                          000263 constant        label                    dcl 129 ref 118
+get_signal                      000076 constant        entry                    external dcl 97
+get_threshold_percent           000306 constant        entry                    internal dcl 141 ref 121 137
+hc_page_trace$get_page_trace    000041 constant        entry                    external dcl 52
+set_signal                      000120 constant        entry                    external dcl 103
+setup_get_old                   000267 constant        entry                    internal dcl 133 ref 100 107
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       544         566     422         554
+Length      1000     422        22         175     122           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+hc_page_trace$get_page_trace        163 external procedure  is an external procedure.  
+setup_get_old                           internal procedure  shares stack frame of external procedure hc_page_trace$get_page_trace.  
+get_threshold_percent                   internal procedure  shares stack frame of external procedure hc_page_trace$get_page_trace.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+hc_page_trace$get_page_trace
+                         000100 dp                          hc_page_trace$get_page_trace
+                         000102 copy_length                 hc_page_trace$get_page_trace
+                         000103 signal_enabled              hc_page_trace$get_page_trace
+                         000104 threshold_percent           hc_page_trace$get_page_trace
+                         000105 threshold                   hc_page_trace$get_page_trace
+                         000106 code                        hc_page_trace$get_page_trace
+                         000110 trace_ptr                   hc_page_trace$get_page_trace
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             r_ge_a              call_ext_out_desc   return_mac          signal_op           ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$bigarg           error_table_$smallarg         pds$process_group_id          pds$trace
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     52 000036        86 000046        87 000052        88 000054        93 000065        94 000071        97 000072
+    100 000110       101 000111       103 000112       106 000132       107 000133       109 000134       110 000140
+    112 000142       114 000143       116 000151       118 000156       120 000160       121 000161       123 000163
+    126 000230       127 000251       128 000256       129 000263       131 000266       133 000267       135 000270
+    136 000273       137 000277       138 000305       141 000306       144 000310       147 000342       151 000410
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

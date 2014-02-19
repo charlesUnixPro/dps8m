@@ -1,0 +1,426 @@
+	COMPILATION LISTING OF SEGMENT oc_trans_input_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1002.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************************
+        2*        *                                                    *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987           *
+        4*        *                                                    *
+        5*        * Copyright (c) 1987 by Massachusetts Institute of   *
+        6*        * Technology and Honeywell Information Systems, Inc. *
+        7*        *                                                    *
+        8*        * Copyright (c) 1972 by Massachusetts Institute of   *
+        9*        * Technology and Honeywell Information Systems, Inc. *
+       10*        *                                                    *
+       11*        ****************************************************** */
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(87-07-16,Farley), approve(87-07-17,MCR7735),
+       17*     audit(87-07-20,Fawcett), install(87-07-22,MR12.1-1044):
+       18*     Corrected handling of input escape sequences..
+       19*                                                   END HISTORY COMMENTS */
+       20 
+       21 
+       22 /* format: style2 */
+       23 oc_trans_input_:
+       24      procedure (tptr, mnum, tlen, iptr, ilen);
+       25 
+       26 
+       27 /* format: off */
+       28 /*	Originally coded by  Bill Silver  July, 73.
+       29**	Modified by N. I. Morris, March 1974 for ASCII input.
+       30**	Modified by Bill Silver, May 1976 to fix EMC bugs.
+       31**         BCD support expunged BIM 8/82.
+       32**
+       33**	This procedure is called to transliterate an operator's console input string
+       34**	into a canonicalized ASCII string.
+       35**
+       36**		 ASCII   INPUT
+       37**
+       38**	The ASCII string will be examined character by character.  This will be done
+       39**	with the help of a state transition table:  "state_table".   While we are converting
+       40**	the input string we are always in one of three possible states.  The ASCII
+       41**	character set has been divided into five groups.   For each group, depending upon
+       42**	the current state, there is a routine which will process the current character.
+       43**
+       44**	The three states are:
+       45**	1.  DIRECT  (D)	The preceding character has no relationship to this character.
+       46**	2.  ESCAPE  (E)	The preceding character was an escape character: "\".
+       47**	2.  OCTAL   (O)	We are currently processing an octal escape sequence.
+       48**
+       49**	The five character groups or types are:
+       50**	1.  KILL		The kill   character "@".
+       51**	2.  ERASE		The erase  character "#".
+       52**	3.  ESCAPE	The escape character "\".
+       53**	4.  OCTAL		The eight  octal digits.
+       54**	5.  OTHERS	All other  characters.
+       55**
+       56**	The seven routines that can be used and the states that they return to are:
+       57**	1.  (K)  -> (D)	KILL   - kill the whole line.
+       58**	2.  (E)  -> (D)	ERASE  - delete the last character.
+       59**	3.  (D)  -> (D)	DIRECT - convert directly from BCD to OCTAL.
+       60**	4.  (SE) -> (E)	SET ESCAPE - just switch to the escape  (E) state.
+       61**	5.  (CE) -> (D)	CONVERT ESCAPE - convert to ASCII acording to escape mapping.
+       62**	6.  (O)  -> (O)	OCTAL - convert one octal digit.
+       63**	7.  (OE) -> (D)	OCTAL END - end the octal conversion.
+       64**
+       65**	A more symbolic representation of the state transition table "state_table":
+       66**
+       67**		| KILL  | ERASE | ESCAPE| OCTAL | OTHERS
+       68**	__________|_______|_______|_______|_______|_______
+       69**	DIRECT	|   K   |   E   |   SE  |   D   |   D
+       70**	__________|_______|_______|_______|_______|_______
+       71**	ESCAPE	|   CE  |   CE  |   CE  |   O   |   CE
+       72**	__________|_______|_______|_______|_______|_______
+       73**	OCTAL	|   K   |   OE  |   OE  |   O   |   OE
+       74**/
+       75 /* format: on */
+       76 
+       77 
+       78 /*		PARAMETER  DATA		*/
+       79 
+       80 	dcl     tptr		 ptr,		/* (I) Pointer to the translated ASCII string.  */
+       81 	        mnum		 fixed bin,	/* (I) Max num of ASCII chars caller will accept.  */
+       82 	        tlen		 fixed bin,	/* (O) Num of ASCII characters in translated string. */
+       83 	        iptr		 ptr,		/* (I) Pointer to the INPUT  (ASCII)  string.  */
+       84 	        ilen		 fixed bin;	/* (I) Length  of the INPUT string in characters.  */
+       85 
+       86 
+       87 
+       88 /*		AUTOMATIC  DATA		*/
+       89 
+       90 	dcl     bindex		 fixed bin (35),	/* Binary form  of an ASCII character. */
+       91 	        charx		 fixed bin,	/* character group number. */
+       92 	        icount		 fixed bin,	/* The number of the input character being processed. */
+       93 	        ocount		 fixed bin,	/* Num of octal digits processed for an ASCII char. */
+       94 	        statex		 fixed bin,	/* state number. */
+       95 	        oct		 fixed bin,	/* Used to build an ASCII char from octal input. */
+       96 	        temp_char		 char (1) aligned;	/* Used to hold ASCII character. */
+       97 
+       98 
+       99 
+      100 /*		BASED  DATA		*/
+      101 
+      102 	dcl     tstring		 char (mnum) based (tptr);
+      103 						/* An overlay of the translated ASCII string. */
+      104 
+      105 	dcl     astring		 char (80) based (iptr) unal;
+      106 						/* Used to reference the input ASCII string. */
+      107 
+      108 
+      109 
+      110 	dcl     (byte, max, rank, substr)
+      111 				 builtin;
+      112 
+      113 
+      114 /*		INTERNAL STATIC DATA	*/
+      115 
+      116 /*	This is the state transition table.  There are 3 states and 5 character
+      117**	types.  For each state and character type there is a number which represents
+      118**	a routine which will process that combination.
+      119**/
+      120 	dcl     state_table		 (3, 5) fixed bin internal static options (constant) init (
+      121 						/** */
+      122 				 1, 2, 4, 3, 3,	/* STATE 1 */
+      123 				 5, 5, 5, 6, 5,	/* STATE 2 */
+      124 				 1, 7, 7, 6, 7);	/* STATE 3 */
+      125 
+      126 
+      127 /*	This table contains the character types.  */
+      128 
+      129 	dcl     char_types		 (0:127) fixed bin (8) unaligned internal static options (constant) init (
+      130 						/** **/
+      131 				 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      132 						/* 000 - 017 */
+      133 				 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      134 						/* 020 - 037 */
+      135 				 5, 5, 5, 2, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      136 						/* 040 - 057 */
+      137 				 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5,
+      138 						/* 060 - 077 */
+      139 				 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      140 						/* 100 - 117 */
+      141 				 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 5, 5, 5,
+      142 						/* 120 - 137 */
+      143 				 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+      144 						/* 140 - 157 */
+      145 				 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5);
+      146 						/* 160 - 177 */
+      147 
+      148 
+      149 
+      150 	tlen, icount = 0;				/* Initialize counters. */
+      151 
+      152 	statex = 1;				/* Start out in DIRECT state. */
+      153 	call RESET_OCTAL;
+      154 
+      155 LOOP:						/* Each iteration of loop will process 1 char. */
+      156 	if (tlen = mnum) |				/** Have we got all caller wants (less new line)? */
+      157 	     (icount = ilen)			/* Have we got all there is? */
+      158 	then goto END_OF_TRANS;			/* YES. */
+      159 
+      160 	icount = icount + 1;			/* Work on next character. */
+      161 	temp_char = substr (astring, icount, 1);
+      162 
+      163 	bindex = rank (temp_char);
+      164 	charx = char_types (bindex);			/* Get appropriate character type code. */
+      165 
+      166 /*	Using state transition table go to correct routine for this character type
+      167**	and current state.
+      168**/
+      169 	goto ACTION (state_table (statex, charx));
+      170 
+      171 /*	We come here when we have finished processing the input string.
+      172**	We have to do two more tasks:
+      173**	1.  Strip off all white space (blanks and tabs) from the end of the translated
+      174**	    ASCII string.
+      175**	2.  Put a new line character at the end of the ASCII string.
+      176**/
+      177 END_OF_TRANS:
+      178 STRIP_LOOP:					/* Each iteration processes one ASCII character. */
+      179 	if tlen = 0				/* Check for null string. */
+      180 	then goto ADD_NEW_LINE;
+      181 
+      182 	if (substr (tstring, tlen, 1) ^= " ") &		/** If not a blank or tab. */
+      183 	     (substr (tstring, tlen, 1) ^= "	")
+      184 	then goto ADD_NEW_LINE;			/* Then we are all done stripping. */
+      185 
+      186 	tlen = tlen - 1;				/* Delete this white space character. */
+      187 	goto STRIP_LOOP;				/* Process next character at end of string. */
+      188 
+      189 ADD_NEW_LINE:
+      190 	tlen = tlen + 1;				/* Add new line at end of string. */
+      191 	substr (tstring, tlen, 1) = "
+      192 ";
+      193 
+      194 	return;					/* Now we are all done. */
+      195 
+      196 
+      197 
+      198 ACTION (1):					/* KILL */
+      199 	tlen = 0;					/* Delete all the ASCII characters. */
+      200 	statex = 1;				/* Now in DIRECT state. */
+      201 	call RESET_OCTAL;
+      202 	goto LOOP;
+      203 
+      204 
+      205 ACTION (2):					/* ERASE */
+      206 	tlen = max (tlen - 1, 0);			/* Delete last translated char, never go below zero. */
+      207 	statex = 1;				/* Now in DIRECT state. */
+      208 	call RESET_OCTAL;
+      209 	goto LOOP;
+      210 
+      211 
+      212 ACTION (3):					/* DIRECT */
+      213 	call SET_CHAR;				/* Place character directly in output. */
+      214 	goto LOOP;
+      215 
+      216 
+      217 ACTION (4):					/* SET ESCAPE */
+      218 	statex = 2;				/* Go to escape state. */
+      219 	goto LOOP;
+      220 
+      221 
+      222 ACTION (5):					/* CONVERT ESCAPE */
+      223 	statex = 1;				/* Go to direct state. */
+      224 	if (charx ^= 5)				/* a special character. */
+      225 	then call SET_CHAR;				/* just copy it. */
+      226 	else do;
+      227 	     temp_char = "\";			/* insert leading ESCAPE */
+      228 	     call SET_CHAR;
+      229 	     temp_char = substr (astring, icount, 1);	/* now add character. */
+      230 	     call SET_CHAR;
+      231 	end;
+      232 	goto LOOP;
+      233 
+      234 
+      235 ACTION (6):					/* OCTAL */
+      236 	statex = 3;				/* Go to octal state. */
+      237 
+      238 
+      239 /* Shift octal digits left one place and
+      240**  add new digit in low order position. */
+      241 
+      242 
+      243 	oct = (oct * 8) + (bindex - rank ("0"));
+      244 	ocount = ocount + 1;			/* Up count of octal digits processed. */
+      245 	if ocount = 3				/* Is this the third and last octal digit? */
+      246 	then do;					/* YES. */
+      247 		call SET_OCTAL;			/* Now we can set up the ASCII character. */
+      248 		statex = 1;			/* Leave octal state. */
+      249 	     end;
+      250 	goto LOOP;				/* Go process the next character. */
+      251 
+      252 
+      253 ACTION (7):					/* OCTAL END */
+      254 	call SET_OCTAL;				/* Use all the digits we have. */
+      255 	statex = 1;				/* Go back to direct state. */
+      256 	icount = icount - 1;			/* Last char not really processed - try again. */
+      257 	goto LOOP;
+      258 
+      259 
+      260 SET_CHAR:
+      261      procedure;
+      262 
+      263 /*	This procedure is called to move one character into
+      264**	the output string.
+      265**/
+      266 	tlen = tlen + 1;
+      267 	substr (tstring, tlen, 1) = temp_char;
+      268 
+      269      end SET_CHAR;
+      270 
+      271 
+      272 
+      273 SET_OCTAL:
+      274      procedure;
+      275 
+      276 /*	This procedure is called to set up one ASCII character from the octal digits
+      277**	that have been put into  "oct".
+      278**/
+      279 	tlen = tlen + 1;				/* Build the translated ASCII character  from
+      280*					*  the three octal digits we have. */
+      281 	temp_char = byte (oct);
+      282 	substr (tstring, tlen, 1) = temp_char;		/* Then into translated string. */
+      283 	call RESET_OCTAL;				/* Make sure everything is reset. */
+      284      end SET_OCTAL;
+      285 
+      286 
+      287 
+      288 RESET_OCTAL:
+      289      procedure;
+      290 
+      291 /*	 This procedure is called to reset the octal work array and the octal count.
+      292**/
+      293 	oct = 0;
+      294 	ocount = 0;
+      295 
+      296      end RESET_OCTAL;
+      297 
+      298      end oc_trans_input_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  oc_trans_input_.pl1               >spec>install>1110>oc_trans_input_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+astring                                based           char(80)                 packed unaligned dcl 105 ref 161 229
+bindex                          000100 automatic       fixed bin(35,0)          dcl 90 set ref 163* 164 243
+byte                                                   builtin function         dcl 110 ref 281
+char_types                      000007 constant        fixed bin(8,0)           initial array packed unaligned dcl 129 ref 164
+charx                           000101 automatic       fixed bin(17,0)          dcl 90 set ref 164* 169 224
+icount                          000102 automatic       fixed bin(17,0)          dcl 90 set ref 150* 155 160* 160 161 229 256* 256
+ilen                                   parameter       fixed bin(17,0)          dcl 80 ref 23 155
+iptr                                   parameter       pointer                  dcl 80 ref 23 161 229
+max                                                    builtin function         dcl 110 ref 205
+mnum                                   parameter       fixed bin(17,0)          dcl 80 ref 23 155 182 182 191 267 282
+ocount                          000103 automatic       fixed bin(17,0)          dcl 90 set ref 244* 244 245 294*
+oct                             000105 automatic       fixed bin(17,0)          dcl 90 set ref 243* 243 281 293*
+rank                                                   builtin function         dcl 110 ref 163 243
+state_table                     000047 constant        fixed bin(17,0)          initial array dcl 120 ref 169
+statex                          000104 automatic       fixed bin(17,0)          dcl 90 set ref 152* 169 200* 207* 217* 222* 235*
+                                                                                  248* 255*
+substr                                                 builtin function         dcl 110 set ref 161 182 182 191* 229 267* 282*
+temp_char                       000106 automatic       char(1)                  dcl 90 set ref 161* 163 227* 229* 267 281* 282
+tlen                                   parameter       fixed bin(17,0)          dcl 80 set ref 23 150* 155 177 182 182 186* 186 189*
+                                                                                  189 191 198* 205* 205 266* 266 267 279* 279 282
+tptr                                   parameter       pointer                  dcl 80 ref 23 182 182 191 267 282
+tstring                                based           char                     packed unaligned dcl 102 set ref 182 182 191* 267*
+                                                                                  282*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ACTION                          000000 constant        label                    array(7) dcl 198 ref 169
+ADD_NEW_LINE                    000166 constant        label                    dcl 189 ref 177 182
+END_OF_TRANS                    000146 constant        label                    dcl 177 ref 155
+LOOP                            000110 constant        label                    dcl 155 ref 202 209 214 219 232 250 257
+RESET_OCTAL                     000333 constant        entry                    internal dcl 288 ref 153 201 208 283
+SET_CHAR                        000303 constant        entry                    internal dcl 260 ref 212 224 228 230
+SET_OCTAL                       000315 constant        entry                    internal dcl 273 ref 247 253
+STRIP_LOOP                      000146 constant        label                    dcl 177 ref 187
+oc_trans_input_                 000075 constant        entry                    external dcl 23
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       364         374     337         374
+Length       540     337        10         127      25           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+oc_trans_input_                      92 external procedure  is an external procedure.  
+SET_CHAR                                internal procedure  shares stack frame of external procedure oc_trans_input_.  
+SET_OCTAL                               internal procedure  shares stack frame of external procedure oc_trans_input_.  
+RESET_OCTAL                             internal procedure  shares stack frame of external procedure oc_trans_input_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+oc_trans_input_          000100 bindex                      oc_trans_input_
+                         000101 charx                       oc_trans_input_
+                         000102 icount                      oc_trans_input_
+                         000103 ocount                      oc_trans_input_
+                         000104 statex                      oc_trans_input_
+                         000105 oct                         oc_trans_input_
+                         000106 temp_char                   oc_trans_input_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     23 000070       150 000102       152 000105       153 000107       155 000110       160 000117       161 000120
+    163 000127       164 000132       169 000141       177 000146       182 000151       186 000163       187 000165
+    189 000166       191 000167       194 000175       198 000176       200 000177       201 000201       202 000202
+    205 000203       207 000211       208 000213       209 000214       212 000215       214 000216       217 000217
+    219 000221       222 000222       224 000224       227 000231       228 000233       229 000234       230 000244
+    232 000245       235 000246       243 000250       244 000265       245 000266       247 000271       248 000272
+    250 000274       253 000275       255 000276       256 000300       257 000302       260 000303       266 000304
+    267 000306       269 000314       273 000315       279 000316       281 000320       282 000323       283 000331
+    284 000332       288 000333       293 000334       294 000335       296 000336
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

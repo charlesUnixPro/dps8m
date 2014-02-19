@@ -1,0 +1,1512 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>find_bit_.alm                                                                                                                                        
+ASSEMBLED ON:	11/11/89  0944.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1986 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " HISTORY COMMENTS:
+                                    10  "  1) change(86-05-08,GDixon), approve(86-05-16,MCR7357),
+                                    11  "     audit(86-07-10,Farley), install(86-07-17,MR12.0-1097):
+                                    12  "     Created find_bit_ subroutine.
+                                    13  "                                                      END HISTORY COMMENTS
+                                    14  
+                                    15  " *  *  *  *  *  *  *  *  *  *  *  *  *  *  **  *  *  *  *  *  *  *  *  *  *  *
+                                    16  "
+                                    17  " Name:  find_bit_
+                                    18  "
+                                    19  "      This subroutine uses the EIS compare bit (CMPB) and test character and
+                                    20  " translate (TCT) instructions to search for an on or off bit in a bit string.
+                                    21  " The bit index of the first bit found in the desired state is returned.
+                                    22  " Searching is performed either from the left (beginning) or from the
+                                    23  " right-hand side (end) of the string.  The code uses a pre-defined
+                                    24  " test/translate table for the TCT portion of the scanning.
+                                    25  "
+                                    26  " Entry:	find_bit_$first_on
+                                    27  "
+                                    28  " Function:  This entrypoint returns the index (bit position) of the first
+                                    29  " (leftmost) bit which is on ("1"b) in a bit string.
+                                    30  " 
+                                    31  " Syntax:
+                                    32  "   dcl find_bit_$first_on entry (bit(*)) returns (fixed bin(24)) reducible;
+                                    33  "   index = find_bit_$first_on (bit_string);
+                                    34  " 
+                                    35  " Arguments:
+                                    36  " bit_string
+                                    37  "    is the bit string to be examined. (In)
+                                    38  " index
+                                    39  "    is the bit position of the first "1"b bit within the bit string.  If no
+                                    40  "    "1"b bits are found, then 0 is returned. (Out)
+                                    41  "
+                                    42  " Entry:	find_bit_$first_off
+                                    43  "
+                                    44  " Function:  This entrypoint returns the index (bit position) of the first
+                                    45  " (leftmost) bit which is off ("0"b) in a bit string.
+                                    46  " 
+                                    47  " Syntax:
+                                    48  "   dcl find_bit_$first_off entry (bit(*)) returns (fixed bin(24)) reducible;
+                                    49  "   index = find_bit_$first_off (bit_string);
+                                    50  " 
+                                    51  " Arguments:
+                                    52  " bit_string
+                                    53  "    is the bit string to be examined. (In)
+                                    54  " index
+                                    55  "    is the bit position of the first "0"b bit within the bit string.  If no
+                                    56  "    "0"b bits are found, then 0 is returned. (Out)
+                                    57  "
+                                    58  " Entry:	find_bit_$last_on
+                                    59  "
+                                    60  " Function:  This entrypoint returns the index (bit position) of the last
+                                    61  " (rightmost) bit which is on ("1"b) in a bit string.
+                                    62  " 
+                                    63  " Syntax:
+                                    64  "   dcl find_bit_$last_on entry (bit(*)) returns (fixed bin(24)) reducible;
+                                    65  "   index = find_bit_$last_on (bit_string);
+                                    66  " 
+                                    67  " Arguments:
+                                    68  " bit_string
+                                    69  "    is the bit string to be examined. (In)
+                                    70  " index
+                                    71  "    is the bit position of the last "1"b bit within the bit string.  If no
+                                    72  "    "1"b bits are found, then 0 is returned. (Out)
+                                    73  "
+                                    74  " Entry:	find_bit_$last_off
+                                    75  "
+                                    76  " Function:  This entrypoint returns the index (bit position) of the last
+                                    77  " (rightmost) bit which is on ("0"b) in a bit string.
+                                    78  " 
+                                    79  " Syntax:
+                                    80  "   dcl find_bit_$last_on entry (bit(*)) returns (fixed bin(24)) reducible;
+                                    81  "   index = find_bit_$last_off (bit_string);
+                                    82  " 
+                                    83  " Arguments:
+                                    84  " bit_string
+                                    85  "    is the bit string to be examined. (In)
+                                    86  " index
+                                    87  "    is the bit position of the last "0"b bit within the bit string.  If no
+                                    88  "    "0"b bits are found, then 0 is returned. (Out)
+                                    89  "
+                                    90  " *  *  *  *  *  *  *  *  *  *  *  *  *  *  **  *  *  *  *  *  *  *  *  *  *  *
+                                    91  
+                                    92  
+                                    93  	include	its	
+                                   1-1  
+                                   1-2  
+                                   1-3       "BEGIN INCLUDE FILE its.incl.alm
+                                   1-4  
+                                   1-5  
+                                   1-6  	"Created 09/30/81  0830.8 edt Wed by convert_include_file,
+                                   1-7  	"   Version of 04/19/81  1450.7 edt Sun.
+                                   1-8  
+                                   1-9  	"Made from >udd>Multics>Kittlitz>hc>its.incl.pl1,
+                                  1-10  	"   modified 09/30/81  0830.7 edt Wed
+                                  1-11  
+                                  1-12  "
+                                  1-13  "	Structure its
+                                  1-14  "
+                        000002    1-15  	equ	its_size,2
+                                  1-16  
+                        000000    1-17  	equ	its.segno_word,0
+                        000022    1-18  	equ	its.segno_shift,18
+                        077777    1-19  	bool	its.segno_mask,077777
+                        000000    1-20  	equ	its.ringno_word,0
+                        000017    1-21  	equ	its.ringno_shift,15
+                        000007    1-22  	bool	its.ringno_mask,000007
+                        000000    1-23  	equ	its.its_mod_word,0
+                        000000    1-24  	equ	its.its_mod_shift,0
+                        000077    1-25  	bool	its.its_mod_mask,000077
+                                  1-26  
+                        000001    1-27  	equ	its.offset,1		" UPPER
+                        000001    1-28  	equ	its.bit_offset_word,1
+                        000011    1-29  	equ	its.bit_offset_shift,9
+                        000077    1-30  	bool	its.bit_offset_mask,000077
+                        000001    1-31  	equ	its.mod_word,1
+                        000000    1-32  	equ	its.mod_shift,0
+                        000077    1-33  	bool	its.mod_mask,000077
+                                  1-34  
+                                  1-35  "
+                                  1-36  "	Structure itp
+                                  1-37  "
+                        000002    1-38  	equ	itp_size,2
+                                  1-39  
+                        000000    1-40  	equ	itp.pr_no_word,0
+                        000041    1-41  	equ	itp.pr_no_shift,33
+                        000007    1-42  	bool	itp.pr_no_mask,000007
+                        000000    1-43  	equ	itp.itp_mod_word,0
+                        000000    1-44  	equ	itp.itp_mod_shift,0
+                        000077    1-45  	bool	itp.itp_mod_mask,000077
+                                  1-46  
+                        000001    1-47  	equ	itp.offset,1		" UPPER
+                        000001    1-48  	equ	itp.bit_offset_word,1
+                        000011    1-49  	equ	itp.bit_offset_shift,9
+                        000077    1-50  	bool	itp.bit_offset_mask,000077
+                        000001    1-51  	equ	itp.mod_word,1
+                        000000    1-52  	equ	itp.mod_shift,0
+                        000077    1-53  	bool	itp.mod_mask,000077
+                                  1-54  
+                                  1-55  "
+                                  1-56  "	Structure its_unsigned
+                                  1-57  "
+                        000002    1-58  	equ	its_unsigned_size,2
+                                  1-59  
+                        000000    1-60  	equ	its_unsigned.segno_word,0
+                        000022    1-61  	equ	its_unsigned.segno_shift,18
+                        077777    1-62  	bool	its_unsigned.segno_mask,077777
+                        000000    1-63  	equ	its_unsigned.ringno_word,0
+                        000017    1-64  	equ	its_unsigned.ringno_shift,15
+                        000007    1-65  	bool	its_unsigned.ringno_mask,000007
+                        000000    1-66  	equ	its_unsigned.its_mod_word,0
+                        000000    1-67  	equ	its_unsigned.its_mod_shift,0
+                        000077    1-68  	bool	its_unsigned.its_mod_mask,000077
+                                  1-69  
+                        000001    1-70  	equ	its_unsigned.offset,1	" UPPER
+                        000001    1-71  	equ	its_unsigned.bit_offset_word,1
+                        000011    1-72  	equ	its_unsigned.bit_offset_shift,9
+                        000077    1-73  	bool	its_unsigned.bit_offset_mask,000077
+                        000001    1-74  	equ	its_unsigned.mod_word,1
+                        000000    1-75  	equ	its_unsigned.mod_shift,0
+                        000077    1-76  	bool	its_unsigned.mod_mask,000077
+                                  1-77  
+                                  1-78  "
+                                  1-79  "	Structure itp_unsigned
+                                  1-80  "
+                        000002    1-81  	equ	itp_unsigned_size,2
+                                  1-82  
+                        000000    1-83  	equ	itp_unsigned.pr_no_word,0
+                        000041    1-84  	equ	itp_unsigned.pr_no_shift,33
+                        000007    1-85  	bool	itp_unsigned.pr_no_mask,000007
+                        000000    1-86  	equ	itp_unsigned.itp_mod_word,0
+                        000000    1-87  	equ	itp_unsigned.itp_mod_shift,0
+                        000077    1-88  	bool	itp_unsigned.itp_mod_mask,000077
+                                  1-89  
+                        000001    1-90  	equ	itp_unsigned.offset,1	" UPPER
+                        000001    1-91  	equ	itp_unsigned.bit_offset_word,1
+                        000011    1-92  	equ	itp_unsigned.bit_offset_shift,9
+                        000077    1-93  	bool	itp_unsigned.bit_offset_mask,000077
+                        000001    1-94  	equ	itp_unsigned.mod_word,1
+                        000000    1-95  	equ	itp_unsigned.mod_shift,0
+                        000077    1-96  	bool	itp_unsigned.mod_mask,000077
+                                  1-97  
+                                  1-98       "END INCLUDE FILE its.incl.alm
+                                    94  
+                                    95  " -----------------------------------------------------------------------------
+                                    96  " Segname definitions: 
+                                    97  " -----------------------------------------------------------------------------
+                                    98  
+    000000                          99  	name	find_bit_
+                                   100  
+                        000004     101  	segdef	first_on
+                        000010     102  	segdef	first_off
+                        000014     103  	segdef	last_on
+                        000020     104  	segdef	last_off
+                                   105  
+                                   106  " -----------------------------------------------------------------------------
+                                   107  " Data Values and Register name assignments: 
+                                   108  " -----------------------------------------------------------------------------
+                                   109  
+                        000000     110  	equ	arg_list,0	" pr0 -> argument list
+                        000001     111  	equ	bit_string,1	" pr1 -> bit_string
+                        000002     112  	equ	index,2		" pr2 -> result          (after return)
+                        000002     113  	equ	bit_length,2	" pr2 -> length(bit_string)
+                                   114  				"		    (before return)
+                        000003     115  	equ	byte_str,3	" pr3 -> 1st full byte of bit_string
+                        000004     116  	equ	table,4		" pr4 -> tct table
+                        000005     117  	equ	test_bit,5	" pr5 -> type of bit we are looking
+                                   118  				"        for (either on or off)
+                        000000     119  	equ	direction,0	  " x0 = entrypoint indicator.
+                        000000     120  	equ	 FIRST,0		  "        find first desired bit
+                        000001     121  	equ	 LAST,1		  "	 find last  desired bit
+                        000001     122  	equ	bits_prior_1st_byte,1 " x1 = bits prior to first full byte
+                                   123  				  "      of bit_string.
+                        000002     124  	equ	bits_after_Nth_byte,2 " x2 = bits after last full byte
+                                   125  				  "      of bit_string.
+                        000003     126  	equ	do_index,3	  " x3 = a do group index.
+                        000004     127  	equ	table_char,4	  " x4 = tctr translated result char.
+                        000011     128  	equ	BITS_PER_BYTE,9
+                                   129  
+                                   130  	even			" Selected bit values: 
+    000000                         131  on_bit:				" on  bit ("1"b), one of the possible
+    000000  aa   400000 000000     132  	oct	400000000000	"   values we can search for.
+    000001                         133  off_bit:				" off bit ("0"b), the other possible
+    000001  aa   000000 000000     134  	oct	000000000000	"   value we can search for.
+                                   135  
+    000002                         136  desc_length_mask:			" ANDing mask to extract char string
+    000002  aa   000077 777777     137  	oct	000077777777	"   length from an argument descriptor.
+    000003                         138  string_index_mask:			" ANDing mask to extract char offset
+    000003  aa   000777 777777     139  	oct	000777777777	"   from result of TCT instruction.
+                                   140  
+                                   141  " -----------------------------------------------------------------------------
+                                   142  " Code for find_bit_$(first last)_(on off):
+                                   143  "    Setup entrypoint indicator, table pointer, and test bit pointer.
+                                   144  "
+                                   145  "  Out:	pr(table)    -> TCT test/translate table for selecting first/last 
+                                   146  "		      on/off bit from a string of full bytes.
+                                   147  "	pr(test_bit) -> type of bit we are looking for (on or off).
+                                   148  "	x(direction)  = choice of first/last, based upon entrypoint.
+                                   149  "
+                                   150  " -----------------------------------------------------------------------------
+                                   151  " first_on: entry (bit_string) returns(index);
+                                   152  " -----------------------------------------------------------------------------
+    000004  aa   000000 2200 03    153  first_on:	ldx	direction,FIRST,du
+    000005  0a   000250 3700 00    154  	epp	table,first_on_bit_table
+    000006  0a   000000 3714 00    155  	epp	test_bit,on_bit
+    000007  0a   000024 7100 00    156  	tra	common
+                                   157  
+                                   158  " -----------------------------------------------------------------------------
+                                   159  " first_off: entry (bit_string) returns(index);
+                                   160  " -----------------------------------------------------------------------------
+    000010                         161  first_off:
+    000010  aa   000000 2200 03    162  	ldx	direction,FIRST,du 
+    000011  0a   000450 3700 00    163  	epp	table,first_off_bit_table
+    000012  0a   000001 3714 00    164  	epp	test_bit,off_bit
+    000013  0a   000024 7100 00    165  	tra	common
+                                   166  
+                                   167  " -----------------------------------------------------------------------------
+                                   168  " last_on: entry (bit_string) returns(index);
+                                   169  " -----------------------------------------------------------------------------
+    000014  aa   000001 2200 03    170  last_on:	ldx	direction,LAST,du
+    000015  0a   000650 3700 00    171  	epp	table,last_on_bit_table
+    000016  0a   000000 3714 00    172  	epp	test_bit,on_bit
+    000017  0a   000024 7100 00    173  	tra	common
+                                   174  
+                                   175  " -----------------------------------------------------------------------------
+                                   176  " last_off: entry (bit_string) returns(index);
+                                   177  " -----------------------------------------------------------------------------
+    000020  aa   000001 2200 03    178  last_off: ldx	direction,LAST,du
+    000021  0a   001050 3700 00    179  	epp	table,last_off_bit_table
+    000022  0a   000001 3714 00    180  	epp	test_bit,off_bit
+    000023  0a   000024 7100 00    181  	tra	common
+                                   182  
+                                   183  " -----------------------------------------------------------------------------
+                                   184  " Get address of input and output parm.
+                                   185  "   In:	pr(arg_list)         -> the argument list.
+                                   186  "  Out:	pr(bit_string)       -> bit string to be searched (input parm).
+                                   187  "	pr(index)		 -> bit index within string  (output parm).
+                                   188  " -----------------------------------------------------------------------------
+    000024                         189  common:
+    000024  aa  0 00002 3515 20    190  	epp	bit_string,arg_list|2,* 
+                                   191  				" get addr(bit_string).
+    000025  aa  0 00004 3521 20    192  	epp	index,arg_list|4,*	" get addr(index).
+                                   193  
+                                   194  " -----------------------------------------------------------------------------
+                                   195  " Since the TCT instruction is byte-oriented, we must special-case bits which
+                                   196  " precede the first full byte, and which follow the last full byte of
+                                   197  " bit_string.  Compute number of bits which precede the first full byte of the
+                                   198  " bit_string.
+                                   199  "   In:	pr(bit_string)        -> bit string to be searched.
+                                   200  "  Out:	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   201  " -----------------------------------------------------------------------------
+    000026  aa   000000 2210 03    202  	ldx	bits_prior_1st_byte,0,du
+    000027  aa  1 00000 2131 00    203  	epaq	bit_string|0	" get bit offset of addr(bit_string)
+    000030  aa   000077 3760 07    204  	anq	its.bit_offset_mask,dl	
+                                   205  				" QL now contains bit offset
+    000031  aa   000011 5060 07    206  	div	BITS_PER_BYTE,dl	" test if bit_string is byte_aligned
+    000032  aa   000000 1150 07    207  	cmpa	0,dl		" mod(bit_offset,9) = 0?
+    000033  0a   000037 6000 00    208  	tze	get_length	" yes.  There are no bits before byte
+    000034  aa   000000 5310 00    209  	neg
+    000035  aa   000011 0750 07    210  	ada	BITS_PER_BYTE,dl
+    000036  aa   000000 6210 05    211  	eax	bits_prior_1st_byte,0,al
+                                   212  				" number of bits in bit_string which
+                                   213  				" precede the first full byte.
+                                   214  
+                                   215  " -----------------------------------------------------------------------------
+                                   216  " Get length (bit_string).  Because we don't want to pay the expense of pushing
+                                   217  " a stack frame, this program writes in only one word of memory, its output
+                                   218  " argument (index).  length(bit_string) will be saved temporarily in index.
+                                   219  "
+                                   220  " NB: bit_length and index are two names for the same pointer register 
+                                   221  "     (pr2).  When the location pointed by pr2 contains length(bit_string), it
+                                   222  "     is referenced as bit_length|0.  When it contains the resulting index
+                                   223  "     within bit_string, it is referenced as index|0.
+                                   224  "   In:	pr(arg_list)         -> the argument list.
+                                   225  "  Out:	pr(bit_length)       -> length(bit_string).
+                                   226  " -----------------------------------------------------------------------------
+    000037                         227  get_length: 
+    000037  aa  0 00000 7231 00    228  	lxl3	arg_list|0	" get length(bit_string):  
+    000040  aa   000004 1030 03    229  	cmpx3	4,du		"   compensate for arg lists which
+    000041  0a   000044 6000 00    230  	tze	no_parent		"   have a parent_ptr.
+    000042                         231  parent:	 			" bit_string descriptor is 1st in 
+    000042  aa  0 00010 2361 20    232  	ldq	arg_list|8,*	"   arg_list (after bit_string arg,
+                                   233  				"   index arg and parent_ptr).
+    000043  0a   000045 7100 00    234  	tra	compute_length
+    000044                         235  no_parent:
+    000044  aa  0 00006 2361 20    236  	ldq	arg_list|6,*	" bit_string descriptor is 1st in
+                                   237  				"   arg_list (after bit_string arg
+                                   238  				"   and index arg).
+    000045                         239  compute_length:
+    000045  0a   000002 3760 00    240  	anq	desc_length_mask	" mask out all but bit length from desc
+    000046  aa  2 00000 7561 00    241  	stq	bit_length|0
+                                   242  
+                                   243  " -----------------------------------------------------------------------------
+                                   244  " Branch depending upon whether search is for first (left-to-right) or 
+                                   245  " last (right-to-left) on/off bit.
+                                   246  "   In:	x(direction) = choice of first/last.
+                                   247  " -----------------------------------------------------------------------------
+    000047  0a   000050 7100 10    248  	tra	direction_vector,direction
+    000050                         249  direction_vector:
+    000050  0a   000052 7100 00    250  	tra	find_first_in_lead_bits
+    000051  0a   000152 7100 00    251  	tra	find_last_in_trail_bits
+                                   252  
+                                   253  " -----------------------------------------------------------------------------
+                                   254  " LOOKING FOR FIRST BIT (left-to-right search): 
+                                   255  " Loop thru bits prior to first full byte: check for desired (on or off) bit.
+                                   256  "   In:	x(bits_prior_1st_byte) = bits preceding first full byte of 
+                                   257  "			     bit_string.  These must be processed one at
+                                   258  "			     a time.  Full bytes are processed later.
+                                   259  "	pr(bit_length) 	  -> length(bit_string).
+                                   260  "	pr(bit_string)	  -> bit_string to be searched.
+                                   261  "	pr(test_bit)	  -> bit value searching for (on or off).
+                                   262  "  Out:	q-reg		   = index in bit_string of desired bit, if match
+                                   263  "			     occurs.
+                                   264  " -----------------------------------------------------------------------------
+    000052                         265  find_first_in_lead_bits:
+    000052  aa   000000 6360 11    266  fflb:	eaq	0,bits_prior_1st_byte
+    000053  0a   000072 6044 00    267  	tmoz	find_first_in_bytes " Byte-aligned bit string?  Skip
+                                   268  				"    checking of leading bits.
+                                   269  				" if bits_prior_first_byte > 0 then
+    000054  aa   000022 7320 00    270  	qrs	18		" do do_index = min(length(bit_string),
+    000055  aa  2 00000 1161 00    271  	cmpq	bit_length|0	"    bits_prior_1st_byte) to 0 by -1
+    000056  0a   000060 6040 00    272  	tmi	fflb_long_bit_string
+    000057  aa  2 00000 2361 00    273  	ldq	bit_length|0	
+    000060                         274  fflb_long_bit_string: 		
+    000060  aa   000001 6230 06    275  	eax	do_index,1,ql
+    000061  aa   000001 2360 07    276  	ldq	1,dl
+    000062                         277  fflb_loop: 
+    000062  aa   000001 1630 03    278  	sbx	do_index,1,du	
+    000063  0a   000072 6000 00    279  	tze	find_first_in_bytes	" Leading bits exhausted, no match.
+                                   280  	even
+    000064  aa  0 00100 0665 06    281  	cmpb	(pr,ql),(pr)	" Compare leading bit with test_bit.
+    000065  aa   177777 700001     282  	descb	bit_string|-1(35),1	"  substr(bit_string,q-reg,1)=test_bit?
+    000066  aa   500000 000001     283  	descb	test_bit|0,1
+    000067  0a   000146 6000 00    284  	tze	match		" Yes, match found.
+    000070  aa   000001 0760 07    285  	adq	1,dl		" No, match not found.  Continue loop.
+    000071  0a   000062 7100 00    286  	tra	fflb_loop	
+                                   287  
+                                   288  " -----------------------------------------------------------------------------
+                                   289  " Desired bit not found.  Compute number of full bytes (byte-aligned bytes)
+                                   290  " in bit_string.
+                                   291  "   In:	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   292  "	pr(bit_length)	  -> length(bit_string).
+                                   293  "  Out:	x(bits_after_Nth_byte) = bits following last full byte of bit_string.
+                                   294  "	q-reg		   = count of full bytes in bit_string.
+                                   295  " -----------------------------------------------------------------------------
+    000072                         296  find_first_in_bytes: 		" Compute bits in full bytes in a-reg: 
+    000072  aa   000000 6350 11    297  	eaa	0,bits_prior_1st_byte
+    000073  aa   000022 7310 00    298  	ars	18		"   Put bits_prior_1st_byte into a-reg.
+    000074  aa   000000 5310 00    299  	neg			"   Negate value for subtraction.
+    000075  aa  2 00000 0751 00    300  	ada	bit_length|0	"   Subtract from length(bit_string).
+    000076  aa   000044 7730 00    301  	lrl	36		"   Put result in q-reg for division.
+    000077  aa   000011 5060 07    302  	div	BITS_PER_BYTE,dl
+    000100  aa   000000 6220 05    303  	eax	bits_after_Nth_byte,0,al
+                                   304  				" Remainder of division is bits after
+                                   305  				"   last byte.
+    000101  aa   000000 1160 07    306  	cmpq	0,dl		" Are there any full bytes?
+    000102  0a   000114 6000 00    307  	tze	find_first_in_trail_bits
+                                   308  				" No.  Branch to test trailing bits.
+                                   309  
+                                   310  " -----------------------------------------------------------------------------
+                                   311  " Test full bytes to find first containing desired bit, using TCT instruction.
+                                   312  "   In:	pr(bit_length)	  -> length(bit_string).
+                                   313  "	pr(bit_string)	  -> bit_string.
+                                   314  "	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   315  "	q-reg		   = count of full bytes in bit_string.
+                                   316  "	pr(table)		  -> test/translate table appropriate for desired
+                                   317  "			     bit and direction.
+                                   318  "  Out:	pr(index)		  -> result of TCT instruction, if match found.
+                                   319  "	pr(bit_length)	  -> length(bit_string), if match not found.
+                                   320  " -----------------------------------------------------------------------------
+    000103  aa  2 00000 2351 00    321  	lda 	bit_length|0	" Save full length of bit_string in 
+                                   322  				"   a-reg while bit_length loc holds
+                                   323  				"   result of tct instruction.
+    000104  aa  1 00000 3535 00    324  	epp	byte_str,bit_string|0 
+    000105  aa  3 00000 5035 11    325  	abd	byte_str|0,bits_prior_1st_byte
+                                   326  				" Compute loc of first full byte
+                                   327  	even
+    000106  aa  0 00000 1645 40    328  	tct	(pr,rl),fill(000)	" Look for first instance of desired
+    000107  aa   300000 000006     329  	desc9a	byte_str|0,ql	"   (on/off) bit.
+    000110  aa  4 00000 0001 00    330  	arg	table|0
+    000111  aa  2 00000 0001 00    331  	arg	index|0		"    result goes into index loc
+    000112  0a   000134 6070 00    332  	ttf	store_tct_result	" Match found in some byte?  We won!
+    000113  aa  2 00000 7551 00    333  	sta	bit_length|0	" Restore length(bit_string) into 
+                                   334  				" storage to undo temp-save done above.
+                                   335  
+                                   336  " -----------------------------------------------------------------------------
+                                   337  " Loop thru bits after last full byte, checking for desired (on/off) bit.
+                                   338  "   In:	x(bits_after_Nth_byte) = bits following last full byte of bit_string.
+                                   339  "	pr(bit_length)	  -> length(bit_string).
+                                   340  "	pr(bit_string)	  -> bit_string to be searched.
+                                   341  "	pr(test_bit)	  -> bit value searching for (on or off).
+                                   342  "  Out:	q-reg		   = index of desired bit, if match found.
+                                   343  " -----------------------------------------------------------------------------
+    000114                         344  find_first_in_trail_bits:
+    000114  aa   000000 6350 12    345  fftb:	eaa	0,bits_after_Nth_byte
+                                   346  				" Are there any bits after last byte?
+    000115  0a   000150 6044 00    347  	tmoz	no_match		" No, no match found.
+    000116  aa   000022 7310 00    348  	ars	18		" Yes, a-reg contains number of bits.
+    000117  aa   000000 5310 00    349  	neg			" a-reg = length(bit_string) - 
+    000120  aa  2 00000 0751 00    350  	ada	bit_length|0	"         bits_after_Nth_byte + 1
+                                   351  				"       = index of 1st bit after
+    000121  aa   000001 0750 07    352  	ada	1,dl		"         Nth byte.
+    000122  aa   000044 7730 00    353  	lrl	36		" Shift result to q-reg
+    000123  aa   000001 6230 12    354  	eax	do_index,1,bits_after_Nth_byte
+    000124                         355  fftb_loop: 			" do do_index = bits_after_Nth_byte
+    000124  aa   000001 1630 03    356  	sbx	do_index,1,du	"    to 0 by -1
+                                   357  				
+    000125  0a   000150 6000 00    358  	tze	no_match		" Trailing bits exhausted, no match.
+                                   359  	even
+    000126  aa  0 00100 0665 06    360  	cmpb	(pr,ql),(pr)	" Compare trailing bit with test_bit.
+    000127  aa   177777 700001     361  	descb	bit_string|-1(35),1	"  substr(bit_string,q-reg,1)=test_bit?
+    000130  aa   500000 000001     362  	descb	test_bit|0,1
+    000131  0a   000146 6000 00    363  	tze	match		" Match found.
+    000132  aa   000001 0760 07    364  	adq	1,dl
+    000133  0a   000124 7100 00    365  	tra	fftb_loop		" No match found-- loop.
+                                   366  
+                                   367  " -----------------------------------------------------------------------------
+                                   368  " Matching bit found in full byte.
+                                   369  " Convert tct result to bit index, stored in q-reg.
+                                   370  "   In:	pr(index)		  -> result of TCT instruction.
+                                   371  "	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   372  "  Out:	q-reg		   = index in bit_string of desired bit.
+                                   373  " -----------------------------------------------------------------------------
+    000134                         374  store_tct_result: 
+    000134  aa  2 00000 2361 00    375  	ldq	index|0		" Match found, compute bit index: 
+    000135  0a   000003 3760 00    376  	anq	string_index_mask	"   Start with byte offset (not index)
+    000136  aa   000011 4020 07    377  	mpy	BITS_PER_BYTE,dl	"   * 9 = bit offset of selected byte
+    000137  aa  2 00000 2351 00    378  	lda	index|0		"   + translated byte value (index of
+    000140  aa   000033 7710 00    379  	arl	27		"     first desired bit within byte
+    000141  aa  2 00000 7551 00    380  	sta	index|0		"     copied from test/translate 
+    000142  aa  2 00000 0761 00    381  	adq	index|0		"     table by TCT into 1st byte of
+                                   382  				"     TCT result)
+    000143  aa  2 00000 4501 00    383  	stz	index|0		"   + bits prior to first byte.
+    000144  aa  2 00000 4411 00    384  	sxl	bits_prior_1st_byte,index|0
+    000145  aa  2 00000 0761 00    385  	adq	index|0
+                                   386  
+                                   387  " -----------------------------------------------------------------------------
+                                   388  " Success return point:
+                                   389  "   In:	q-reg		   = index in bit_string of desired bit.
+                                   390  "  Out:	pr(index)		  -> index in bit_string of desired bit (result).
+                                   391  " -----------------------------------------------------------------------------
+    000146  aa  2 00000 7561 00    392  match: 	stq	index|0
+    000147  aa  7 00044 7101 20    393  	short_return
+                                   394  
+                                   395  " -----------------------------------------------------------------------------
+                                   396  " Failure return point:
+                                   397  "  Out:	pr(index)		  -> 0 (desired bit not found).
+                                   398  " -----------------------------------------------------------------------------
+    000150  aa  2 00000 4501 00    399  no_match: stz	index|0
+    000151  aa  7 00044 7101 20    400  	short_return
+                                   401  
+                                   402  " -----------------------------------------------------------------------------
+                                   403  " LOOKING FOR LAST BIT (right-to-left search): 
+                                   404  " Compute how many bits of bit_string follow the last full byte.
+                                   405  "   In:	x(bits_prior_1st_byte) = bits preceding first full byte of 
+                                   406  "			     bit_string.  These must be processed 
+                                   407  "			     separately from full (byte-aligned) bytes.
+                                   408  "	pr(bit_length) 	  -> length(bit_string).
+                                   409  "  Out:	x(bits_after_Nth_byte) = bits following last full byte of bit_string.
+                                   410  "	a-reg		   = count of full bytes in bit_string.
+                                   411  " -----------------------------------------------------------------------------
+    000152                         412  find_last_in_trail_bits:
+    000152  aa   000000 2220 03    413  fltb:	ldx	bits_after_Nth_byte,0,du   " assume no trailing bits.
+    000153  aa   000000 6350 11    414  	eaa	0,bits_prior_1st_byte      " length(bit_string) -
+    000154  aa   000022 7310 00    415  	ars	18		       "   bits_prior_1st_byte 
+    000155  aa   000000 5310 00    416  	neg
+    000156  aa  2 00000 0751 00    417  	ada	bit_length|0	       
+    000157  0a   000210 6040 00    418  	tmi	find_last_in_lead_bits     " Negative?  No bits follow.
+    000160  aa   000044 7730 00    419  	lrl	36
+    000161  aa   000011 5060 07    420  	div	BITS_PER_BYTE,dl	       " mod(length,9) =  
+    000162  aa   000000 6220 05    421  	eax	bits_after_Nth_byte,0,al   "   bits after last full byte
+    000163  aa   000044 7370 00    422  	lls	36		       " a-reg = number of full bytes
+                                   423  
+                                   424  " -----------------------------------------------------------------------------
+                                   425  " Loop thru bits after last full byte, checking for a desired (on/off) bit
+                                   426  "   In:	pr(bit_length) 	  -> length(bit_string).
+                                   427  "  	x(bits_after_Nth_byte) = bits following last full byte of bit_string.
+                                   428  "	pr(bit_string)	  -> bit_string to be searched.
+                                   429  "	pr(test_bit)	  -> bit value searching for (on or off).
+                                   430  "  Out:	q-reg		   = index of desired bit, if match found.
+                                   431  " -----------------------------------------------------------------------------
+    000164  aa  2 00000 2361 00    432  	ldq	bit_length|0
+    000165  aa   000001 6230 12    433  	eax	do_index,1,bits_after_Nth_byte
+    000166                         434  fltb_loop: 			" do do_index = bits_after_Nth_byte
+    000166  aa   000001 1630 03    435  	sbx	do_index,1,du	"    to 0 by -1
+    000167  0a   000176 6000 00    436  	tze	find_last_in_bytes
+                                   437  				" Trailing bits exhausted, no match.
+                                   438  	even
+    000170  aa  0 00100 0665 06    439  	cmpb	(pr,ql),(pr)	" Compare trailing bit with test_bit.
+    000171  aa   177777 700001     440  	descb	bit_string|-1(35),1	"  substr(bit_string,q-req,1)=test_bit?
+    000172  aa   500000 000001     441  	descb	test_bit|0,1
+    000173  0a   000146 6000 00    442  	tze	match		" Match found.
+    000174  aa   000001 1760 07    443  	sbq	1,dl
+    000175  0a   000166 7100 00    444  	tra	fltb_loop		" No match found.  Continue loop.
+                                   445  
+                                   446  " -----------------------------------------------------------------------------
+                                   447  " Test full bytes to find last containing desired bit, using TCTR instruction.
+                                   448  "   In:	a-reg		   = count of full bytes in bit_string.
+                                   449  "	pr(bit_length)	  -> length(bit_string).
+                                   450  "	pr(bit_string)	  -> bit_string.
+                                   451  "	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   452  "	pr(table)		  -> test/translate table appropriate for desired
+                                   453  "			     bit and direction.
+                                   454  "  Out:	pr(index)		  -> result of TCT instruction, if match found.
+                                   455  "	pr(bit_length)	  -> length(bit_string), if match not found.
+                                   456  "	q-reg		   = count of full bytes in bit_string.
+                                   457  " -----------------------------------------------------------------------------
+    000176                         458  find_last_in_bytes: 
+    000176  aa   000044 7730 00    459  	lrl	36		" put number full bytes in q-reg
+    000177  aa  2 00000 2351 00    460  	lda 	bit_length|0	" Save length (bit_string) in a-reg
+                                   461  				"   while bit_length holds tctr result.
+    000200  aa  1 00000 3535 00    462  	epp	byte_str,bit_string|0 
+    000201  aa  3 00000 5035 11    463  	abd	byte_str|0,bits_prior_1st_byte
+                                   464  				" Compute loc of first full byte.
+                                   465  	even
+    000202  aa  0 00000 1655 40    466  	tctr	(pr,rl),fill(000)	" Look for last instance of desired
+    000203  aa   300000 000006     467  	desc9a	byte_str|0,ql	"   (on/off) bit.
+    000204  aa  4 00000 0001 00    468  	arg	table|0
+    000205  aa  2 00000 0001 00    469  	arg	index|0		"    result goes into index location.
+    000206  0a   000227 6070 00    470  	ttf	store_tctr_result	" Match found in some byte?  We won!
+    000207  aa  2 00000 7551 00    471  	sta	bit_length|0	" Restore length(bit_string) into 
+                                   472  				" storage to undo temp-save done above.
+                                   473  
+                                   474  " -----------------------------------------------------------------------------
+                                   475  " Loop thru bits prior to first full byte, checking for desired (on/off) bit.
+                                   476  "   In:	x(bits_prior_1st_byte) = bits preceding first full byte of 
+                                   477  "			     bit_string.
+                                   478  "	pr(bit_length) 	  -> length(bit_string).
+                                   479  "	pr(bit_string)	  -> bit_string to be searched.
+                                   480  "	pr(test_bit)	  -> bit value searching for (on or off).
+                                   481  "  Out:	q-reg		   = index in bit_string of desired bit, if match
+                                   482  "			     occurs.
+                                   483  " -----------------------------------------------------------------------------
+    000210                         484  find_last_in_lead_bits: 
+    000210  aa   000000 6360 11    485  fllb:	eaq	0,bits_prior_1st_byte
+    000211  0a   000150 6044 00    486  	tmoz	no_match		" No leading bits? Then desired bit
+                                   487  				"   not found.
+    000212  aa   000022 7320 00    488  	qrs	18
+    000213  aa  2 00000 1161 00    489  	cmpq	bit_length|0	" do q-reg = min (length(bit_string),
+    000214  0a   000216 6040 00    490  	tmi	fllb_long_bit_string"    bits_prior_to_1st_byte) to 0 by -1
+    000215  aa  2 00000 2361 00    491  	ldq	bit_length|0	
+    000216                         492  fllb_long_bit_string: 		
+    000216  aa   000001 0760 07    493  	adq	1,dl
+    000217                         494  fllb_loop: 
+    000217  aa   000001 1760 07    495  	sbq	1,dl
+    000220  0a   000150 6044 00    496  	tmoz	no_match		" Leading bits exhausted, no match.
+    000221  aa   000000 0110 03    497  	even
+    000222  aa  0 00100 0665 06    498  	cmpb	(pr,ql),(pr)	" Compare leading bit with test_bit.
+    000223  aa   177777 700001     499  	descb	bit_string|-1(35),1	"  substr(bit_string,q-reg,1)=test_bit?
+    000224  aa   500000 000001     500  	descb	test_bit|0,1
+    000225  0a   000146 6000 00    501  	tze	match		" Yes, match found.
+    000226  0a   000217 7100 00    502  	tra	fllb_loop		" No, match not found.  Continue loop.
+                                   503  
+                                   504  " -----------------------------------------------------------------------------
+                                   505  " Matching bit found in full byte.
+                                   506  " Convert tctr result to bit index, stored in q-reg.
+                                   507  "   In:	pr(index)		  -> result of TCTR instruction.
+                                   508  "	x(bits_prior_1st_byte) = bits preceding first full byte of bit_string
+                                   509  "	q-reg		   = count of full bytes in bit_string.
+                                   510  "  Out:	q-reg		   = index in bit_string of desired bit.
+                                   511  " -----------------------------------------------------------------------------
+    000227                         512  store_tctr_result:
+    000227  aa  2 00000 2241 00    513  	ldx	table_char,index|0
+                                   514  				" Save selected char from
+                                   515  				"   test/translate table which TCTR
+                                   516  				"   instruction put in 1st byte of
+                                   517  				"   TCTR result.
+    000230  aa  2 00000 2351 00    518  	lda	index|0		" a-reg = byte_offset_from_right_end
+    000231  0a   000003 3750 00    519  	ana	string_index_mask	" 
+    000232  aa  2 00000 7561 00    520  	stq	index|0		" q-reg = full_bytes_in_bit_string
+                                   521  				"  (saved at find_last_in_bytes above)
+                                   522  
+    000233  aa  2 00000 1751 00    523  	sba	index|0		"   full_bytes_in_bit_string
+    000234  aa   000000 5310 00    524  	neg			" - byte_offset_from_right_end
+    000235  aa   000001 1750 07    525  	sba	1,dl		" - 1
+                                   526  				" = bytes_before_wanted_byte
+                                   527  
+    000236  aa   000044 7730 00    528  	lrl	36		" * 9 
+    000237  aa   000011 4020 07    529  	mpy	BITS_PER_BYTE,dl	" = bits_in_bytes_before_wanted_byte
+                                   530  
+    000240  aa   000000 6350 14    531  	eaa	0,table_char	" + translated byte value (index of
+    000241  aa   000033 7710 00    532  	arl	27		"     first desired bit within byte)
+    000242  aa  2 00000 7551 00    533  	sta	index|0		" = bit index of wanted bit, excluding
+    000243  aa  2 00000 0761 00    534  	adq	index|0		"   bits prior to first byte.
+                                   535  
+    000244  aa  2 00000 4501 00    536  	stz	index|0		" + bits prior to first byte.
+    000245  aa  2 00000 4411 00    537  	sxl	bits_prior_1st_byte,index|0
+    000246  aa  2 00000 0761 00    538  	adq	index|0		" = bit index of wanted bit (in q-reg)
+                                   539  
+    000247  0a   000146 7100 00    540  	tra 	match
+                                   541  
+                                   542  " -----------------------------------------------------------------------------
+                                   543  " TCT test/translate tables:
+                                   544  "
+                                   545  " Each of the following test/translate tables is designed to work with the
+                                   546  " TCT and TCTR instructions.  The bit string being examined is broken up into
+                                   547  " full bytes.  The byte value (rank) of each byte is used as an index into the
+                                   548  " 512 entry test/translate table.  The numeric value stored in the table entry
+                                   549  " gives the index within the byte of the desired bit (eg, the first on bit
+                                   550  " within the byte).
+                                   551  " 
+                                   552  " For example, when looking for the first on bit, suppose the byte being
+                                   553  " tested has the value 003 (octal).  Using PL/I bit string notation, this is
+                                   554  " expressed as "003"b3 = "000000011"b.  The index of the first on bit
+                                   555  " within the byte is 8.  8 (decimal) = "010"b3.
+                                   556  "
+                                   557  " Therefore, the number 8 (= "010"b3) is stored in the test/translate table
+                                   558  " entry corresponding to the byte "003"b in the table below.
+                                   559  " -----------------------------------------------------------------------------
+                                   560  
+                                   561  	even
+    000250                         562  first_on_bit_table:
+    000250  aa   000011 010010     563  	oct	000011010010,007007007007	" 000-007  (entry 003
+    000251  aa   007007 007007 
+                                   564  					"           has value 010)
+    000252  aa   006006 006006     565  	oct	006006006006,006006006006	" 010-017
+    000253  aa   006006 006006 
+    000254  aa   005005 005005     566  	oct	005005005005,005005005005	" 020-027
+    000255  aa   005005 005005 
+    000256  aa   005005 005005     567  	oct	005005005005,005005005005	" 030-037
+    000257  aa   005005 005005 
+    000260  aa   004004 004004     568  	oct	004004004004,004004004004	" 040-047
+    000261  aa   004004 004004 
+    000262  aa   004004 004004     569  	oct	004004004004,004004004004	" 050-057
+    000263  aa   004004 004004 
+    000264  aa   004004 004004     570  	oct	004004004004,004004004004	" 060-067
+    000265  aa   004004 004004 
+    000266  aa   004004 004004     571  	oct	004004004004,004004004004	" 070-077
+    000267  aa   004004 004004 
+    000270  aa   003003 003003     572  	oct	003003003003,003003003003	" 100-107
+    000271  aa   003003 003003 
+    000272  aa   003003 003003     573  	oct	003003003003,003003003003	" 110-117
+    000273  aa   003003 003003 
+    000274  aa   003003 003003     574  	oct	003003003003,003003003003	" 120-127
+    000275  aa   003003 003003 
+    000276  aa   003003 003003     575  	oct	003003003003,003003003003	" 130-137
+    000277  aa   003003 003003 
+    000300  aa   003003 003003     576  	oct	003003003003,003003003003	" 140-147
+    000301  aa   003003 003003 
+    000302  aa   003003 003003     577  	oct	003003003003,003003003003	" 150-157
+    000303  aa   003003 003003 
+    000304  aa   003003 003003     578  	oct	003003003003,003003003003	" 160-167
+    000305  aa   003003 003003 
+    000306  aa   003003 003003     579  	oct	003003003003,003003003003	" 170-177
+    000307  aa   003003 003003 
+    000310  aa   002002 002002     580  	oct	002002002002,002002002002	" 200-207
+    000311  aa   002002 002002 
+    000312  aa   002002 002002     581  	oct	002002002002,002002002002	" 210-217
+    000313  aa   002002 002002 
+    000314  aa   002002 002002     582  	oct	002002002002,002002002002	" 220-227
+    000315  aa   002002 002002 
+    000316  aa   002002 002002     583  	oct	002002002002,002002002002	" 230-237
+    000317  aa   002002 002002 
+    000320  aa   002002 002002     584  	oct	002002002002,002002002002	" 240-247
+    000321  aa   002002 002002 
+    000322  aa   002002 002002     585  	oct	002002002002,002002002002	" 250-257
+    000323  aa   002002 002002 
+    000324  aa   002002 002002     586  	oct	002002002002,002002002002	" 260-267
+    000325  aa   002002 002002 
+    000326  aa   002002 002002     587  	oct	002002002002,002002002002	" 270-277
+    000327  aa   002002 002002 
+    000330  aa   002002 002002     588  	oct	002002002002,002002002002	" 300-307
+    000331  aa   002002 002002 
+    000332  aa   002002 002002     589  	oct	002002002002,002002002002	" 310-317
+    000333  aa   002002 002002 
+    000334  aa   002002 002002     590  	oct	002002002002,002002002002	" 320-327
+    000335  aa   002002 002002 
+    000336  aa   002002 002002     591  	oct	002002002002,002002002002	" 330-337
+    000337  aa   002002 002002 
+    000340  aa   002002 002002     592  	oct	002002002002,002002002002	" 340-347
+    000341  aa   002002 002002 
+    000342  aa   002002 002002     593  	oct	002002002002,002002002002	" 350-357
+    000343  aa   002002 002002 
+    000344  aa   002002 002002     594  	oct	002002002002,002002002002	" 360-367
+    000345  aa   002002 002002 
+    000346  aa   002002 002002     595  	oct	002002002002,002002002002	" 370-377
+    000347  aa   002002 002002 
+    000350  aa   001001 001001     596  	oct	001001001001,001001001001	" 400-407
+    000351  aa   001001 001001 
+    000352  aa   001001 001001     597  	oct	001001001001,001001001001	" 410-417
+    000353  aa   001001 001001 
+    000354  aa   001001 001001     598  	oct	001001001001,001001001001	" 420-427
+    000355  aa   001001 001001 
+    000356  aa   001001 001001     599  	oct	001001001001,001001001001	" 430-437
+    000357  aa   001001 001001 
+    000360  aa   001001 001001     600  	oct	001001001001,001001001001	" 440-447
+    000361  aa   001001 001001 
+    000362  aa   001001 001001     601  	oct	001001001001,001001001001	" 450-457
+    000363  aa   001001 001001 
+    000364  aa   001001 001001     602  	oct	001001001001,001001001001	" 460-467
+    000365  aa   001001 001001 
+    000366  aa   001001 001001     603  	oct	001001001001,001001001001	" 470-477
+    000367  aa   001001 001001 
+    000370  aa   001001 001001     604  	oct	001001001001,001001001001	" 500-507
+    000371  aa   001001 001001 
+    000372  aa   001001 001001     605  	oct	001001001001,001001001001	" 510-517
+    000373  aa   001001 001001 
+    000374  aa   001001 001001     606  	oct	001001001001,001001001001	" 520-527
+    000375  aa   001001 001001 
+    000376  aa   001001 001001     607  	oct	001001001001,001001001001	" 530-537
+    000377  aa   001001 001001 
+    000400  aa   001001 001001     608  	oct	001001001001,001001001001	" 540-547
+    000401  aa   001001 001001 
+    000402  aa   001001 001001     609  	oct	001001001001,001001001001	" 550-557
+    000403  aa   001001 001001 
+    000404  aa   001001 001001     610  	oct	001001001001,001001001001	" 560-567
+    000405  aa   001001 001001 
+    000406  aa   001001 001001     611  	oct	001001001001,001001001001	" 570-577
+    000407  aa   001001 001001 
+    000410  aa   001001 001001     612  	oct	001001001001,001001001001	" 600-607
+    000411  aa   001001 001001 
+    000412  aa   001001 001001     613  	oct	001001001001,001001001001	" 610-617
+    000413  aa   001001 001001 
+    000414  aa   001001 001001     614  	oct	001001001001,001001001001	" 620-627
+    000415  aa   001001 001001 
+    000416  aa   001001 001001     615  	oct	001001001001,001001001001	" 630-637
+    000417  aa   001001 001001 
+    000420  aa   001001 001001     616  	oct	001001001001,001001001001	" 640-647
+    000421  aa   001001 001001 
+    000422  aa   001001 001001     617  	oct	001001001001,001001001001	" 650-657
+    000423  aa   001001 001001 
+    000424  aa   001001 001001     618  	oct	001001001001,001001001001	" 660-667
+    000425  aa   001001 001001 
+    000426  aa   001001 001001     619  	oct	001001001001,001001001001	" 670-677
+    000427  aa   001001 001001 
+    000430  aa   001001 001001     620  	oct	001001001001,001001001001	" 700-707
+    000431  aa   001001 001001 
+    000432  aa   001001 001001     621  	oct	001001001001,001001001001	" 710-717
+    000433  aa   001001 001001 
+    000434  aa   001001 001001     622  	oct	001001001001,001001001001	" 720-727
+    000435  aa   001001 001001 
+    000436  aa   001001 001001     623  	oct	001001001001,001001001001	" 730-737
+    000437  aa   001001 001001 
+    000440  aa   001001 001001     624  	oct	001001001001,001001001001	" 740-747
+    000441  aa   001001 001001 
+    000442  aa   001001 001001     625  	oct	001001001001,001001001001	" 750-757
+    000443  aa   001001 001001 
+    000444  aa   001001 001001     626  	oct	001001001001,001001001001	" 760-767
+    000445  aa   001001 001001 
+    000446  aa   001001 001001     627  	oct	001001001001,001001001001	" 770-777
+    000447  aa   001001 001001 
+                                   628  	
+                                   629  	even
+    000450                         630  first_off_bit_table:
+    000450  aa   001001 001001     631  	oct	001001001001,001001001001	" 000-007
+    000451  aa   001001 001001 
+    000452  aa   001001 001001     632  	oct	001001001001,001001001001	" 010-017
+    000453  aa   001001 001001 
+    000454  aa   001001 001001     633  	oct	001001001001,001001001001	" 020-027
+    000455  aa   001001 001001 
+    000456  aa   001001 001001     634  	oct	001001001001,001001001001	" 030-037
+    000457  aa   001001 001001 
+    000460  aa   001001 001001     635  	oct	001001001001,001001001001	" 040-047
+    000461  aa   001001 001001 
+    000462  aa   001001 001001     636  	oct	001001001001,001001001001	" 050-057
+    000463  aa   001001 001001 
+    000464  aa   001001 001001     637  	oct	001001001001,001001001001	" 060-067
+    000465  aa   001001 001001 
+    000466  aa   001001 001001     638  	oct	001001001001,001001001001	" 070-077
+    000467  aa   001001 001001 
+    000470  aa   001001 001001     639  	oct	001001001001,001001001001	" 100-107
+    000471  aa   001001 001001 
+    000472  aa   001001 001001     640  	oct	001001001001,001001001001	" 110-117
+    000473  aa   001001 001001 
+    000474  aa   001001 001001     641  	oct	001001001001,001001001001	" 120-127
+    000475  aa   001001 001001 
+    000476  aa   001001 001001     642  	oct	001001001001,001001001001	" 130-137
+    000477  aa   001001 001001 
+    000500  aa   001001 001001     643  	oct	001001001001,001001001001	" 140-147
+    000501  aa   001001 001001 
+    000502  aa   001001 001001     644  	oct	001001001001,001001001001	" 150-157
+    000503  aa   001001 001001 
+    000504  aa   001001 001001     645  	oct	001001001001,001001001001	" 160-167
+    000505  aa   001001 001001 
+    000506  aa   001001 001001     646  	oct	001001001001,001001001001	" 170-177
+    000507  aa   001001 001001 
+    000510  aa   001001 001001     647  	oct	001001001001,001001001001	" 200-207
+    000511  aa   001001 001001 
+    000512  aa   001001 001001     648  	oct	001001001001,001001001001	" 210-217
+    000513  aa   001001 001001 
+    000514  aa   001001 001001     649  	oct	001001001001,001001001001	" 220-227
+    000515  aa   001001 001001 
+    000516  aa   001001 001001     650  	oct	001001001001,001001001001	" 230-237
+    000517  aa   001001 001001 
+    000520  aa   001001 001001     651  	oct	001001001001,001001001001	" 240-247
+    000521  aa   001001 001001 
+    000522  aa   001001 001001     652  	oct	001001001001,001001001001	" 250-257
+    000523  aa   001001 001001 
+    000524  aa   001001 001001     653  	oct	001001001001,001001001001	" 260-267
+    000525  aa   001001 001001 
+    000526  aa   001001 001001     654  	oct	001001001001,001001001001	" 270-277
+    000527  aa   001001 001001 
+    000530  aa   001001 001001     655  	oct	001001001001,001001001001	" 300-307
+    000531  aa   001001 001001 
+    000532  aa   001001 001001     656  	oct	001001001001,001001001001	" 310-317
+    000533  aa   001001 001001 
+    000534  aa   001001 001001     657  	oct	001001001001,001001001001	" 320-327
+    000535  aa   001001 001001 
+    000536  aa   001001 001001     658  	oct	001001001001,001001001001	" 330-337
+    000537  aa   001001 001001 
+    000540  aa   001001 001001     659  	oct	001001001001,001001001001	" 340-347
+    000541  aa   001001 001001 
+    000542  aa   001001 001001     660  	oct	001001001001,001001001001	" 350-357
+    000543  aa   001001 001001 
+    000544  aa   001001 001001     661  	oct	001001001001,001001001001	" 360-367
+    000545  aa   001001 001001 
+    000546  aa   001001 001001     662  	oct	001001001001,001001001001	" 370-377
+    000547  aa   001001 001001 
+    000550  aa   002002 002002     663  	oct	002002002002,002002002002	" 400-407
+    000551  aa   002002 002002 
+    000552  aa   002002 002002     664  	oct	002002002002,002002002002	" 410-417
+    000553  aa   002002 002002 
+    000554  aa   002002 002002     665  	oct	002002002002,002002002002	" 420-427
+    000555  aa   002002 002002 
+    000556  aa   002002 002002     666  	oct	002002002002,002002002002	" 430-437
+    000557  aa   002002 002002 
+    000560  aa   002002 002002     667  	oct	002002002002,002002002002	" 440-447
+    000561  aa   002002 002002 
+    000562  aa   002002 002002     668  	oct	002002002002,002002002002	" 450-457
+    000563  aa   002002 002002 
+    000564  aa   002002 002002     669  	oct	002002002002,002002002002	" 460-467
+    000565  aa   002002 002002 
+    000566  aa   002002 002002     670  	oct	002002002002,002002002002	" 470-477
+    000567  aa   002002 002002 
+    000570  aa   002002 002002     671  	oct	002002002002,002002002002	" 500-507
+    000571  aa   002002 002002 
+    000572  aa   002002 002002     672  	oct	002002002002,002002002002	" 510-517
+    000573  aa   002002 002002 
+    000574  aa   002002 002002     673  	oct	002002002002,002002002002	" 520-527
+    000575  aa   002002 002002 
+    000576  aa   002002 002002     674  	oct	002002002002,002002002002	" 530-537
+    000577  aa   002002 002002 
+    000600  aa   002002 002002     675  	oct	002002002002,002002002002	" 540-547
+    000601  aa   002002 002002 
+    000602  aa   002002 002002     676  	oct	002002002002,002002002002	" 550-557
+    000603  aa   002002 002002 
+    000604  aa   002002 002002     677  	oct	002002002002,002002002002	" 560-567
+    000605  aa   002002 002002 
+    000606  aa   002002 002002     678  	oct	002002002002,002002002002	" 570-577
+    000607  aa   002002 002002 
+    000610  aa   003003 003003     679  	oct	003003003003,003003003003	" 600-607
+    000611  aa   003003 003003 
+    000612  aa   003003 003003     680  	oct	003003003003,003003003003	" 610-617
+    000613  aa   003003 003003 
+    000614  aa   003003 003003     681  	oct	003003003003,003003003003	" 620-627
+    000615  aa   003003 003003 
+    000616  aa   003003 003003     682  	oct	003003003003,003003003003	" 630-637
+    000617  aa   003003 003003 
+    000620  aa   003003 003003     683  	oct	003003003003,003003003003	" 640-647
+    000621  aa   003003 003003 
+    000622  aa   003003 003003     684  	oct	003003003003,003003003003	" 650-657
+    000623  aa   003003 003003 
+    000624  aa   003003 003003     685  	oct	003003003003,003003003003	" 660-667
+    000625  aa   003003 003003 
+    000626  aa   003003 003003     686  	oct	003003003003,003003003003	" 670-677
+    000627  aa   003003 003003 
+    000630  aa   004004 004004     687  	oct	004004004004,004004004004	" 700-707
+    000631  aa   004004 004004 
+    000632  aa   004004 004004     688  	oct	004004004004,004004004004	" 710-717
+    000633  aa   004004 004004 
+    000634  aa   004004 004004     689  	oct	004004004004,004004004004	" 720-727
+    000635  aa   004004 004004 
+    000636  aa   004004 004004     690  	oct	004004004004,004004004004	" 730-737
+    000637  aa   004004 004004 
+    000640  aa   005005 005005     691  	oct	005005005005,005005005005	" 740-747
+    000641  aa   005005 005005 
+    000642  aa   005005 005005     692  	oct	005005005005,005005005005	" 750-757
+    000643  aa   005005 005005 
+    000644  aa   006006 006006     693  	oct	006006006006,006006006006	" 760-767
+    000645  aa   006006 006006 
+    000646  aa   007007 007007     694  	oct	007007007007,010010011000	" 770-777
+    000647  aa   010010 011000 
+                                   695  
+                                   696  	even
+    000650                         697  last_on_bit_table: 
+    000650  aa   000011 010011     698  	oct	000011010011,007011010011	" 000-007
+    000651  aa   007011 010011 
+    000652  aa   006011 010011     699  	oct	006011010011,007011010011	" 010-017
+    000653  aa   007011 010011 
+    000654  aa   005011 010011     700  	oct	005011010011,007011010011	" 020-027
+    000655  aa   007011 010011 
+    000656  aa   006011 010011     701  	oct	006011010011,007011010011	" 030-037
+    000657  aa   007011 010011 
+    000660  aa   004011 010011     702  	oct	004011010011,007011010011	" 040-047
+    000661  aa   007011 010011 
+    000662  aa   006011 010011     703  	oct	006011010011,007011010011	" 050-057
+    000663  aa   007011 010011 
+    000664  aa   005011 010011     704  	oct	005011010011,007011010011	" 060-067
+    000665  aa   007011 010011 
+    000666  aa   006011 010011     705  	oct	006011010011,007011010011	" 070-077
+    000667  aa   007011 010011 
+    000670  aa   003011 010011     706  	oct	003011010011,007011010011	" 100-107
+    000671  aa   007011 010011 
+    000672  aa   006011 010011     707  	oct	006011010011,007011010011	" 110-117
+    000673  aa   007011 010011 
+    000674  aa   005011 010011     708  	oct	005011010011,007011010011	" 120-127
+    000675  aa   007011 010011 
+    000676  aa   006011 010011     709  	oct	006011010011,007011010011	" 130-137
+    000677  aa   007011 010011 
+    000700  aa   004011 010011     710  	oct	004011010011,007011010011	" 140-147
+    000701  aa   007011 010011 
+    000702  aa   006011 010011     711  	oct	006011010011,007011010011	" 150-157
+    000703  aa   007011 010011 
+    000704  aa   005011 010011     712  	oct	005011010011,007011010011	" 160-167
+    000705  aa   007011 010011 
+    000706  aa   006011 010011     713  	oct	006011010011,007011010011	" 170-177
+    000707  aa   007011 010011 
+    000710  aa   002011 010011     714  	oct	002011010011,007011010011	" 200-207
+    000711  aa   007011 010011 
+    000712  aa   006011 010011     715  	oct	006011010011,007011010011	" 210-217
+    000713  aa   007011 010011 
+    000714  aa   005011 010011     716  	oct	005011010011,007011010011	" 220-227
+    000715  aa   007011 010011 
+    000716  aa   006011 010011     717  	oct	006011010011,007011010011	" 230-237
+    000717  aa   007011 010011 
+    000720  aa   004011 010011     718  	oct	004011010011,007011010011	" 240-247
+    000721  aa   007011 010011 
+    000722  aa   006011 010011     719  	oct	006011010011,007011010011	" 250-257
+    000723  aa   007011 010011 
+    000724  aa   005011 010011     720  	oct	005011010011,007011010011	" 260-267
+    000725  aa   007011 010011 
+    000726  aa   006011 010011     721  	oct	006011010011,007011010011	" 270-277
+    000727  aa   007011 010011 
+    000730  aa   003011 010011     722  	oct	003011010011,007011010011	" 300-307
+    000731  aa   007011 010011 
+    000732  aa   006011 010011     723  	oct	006011010011,007011010011	" 310-317
+    000733  aa   007011 010011 
+    000734  aa   005011 010011     724  	oct	005011010011,007011010011	" 320-327
+    000735  aa   007011 010011 
+    000736  aa   006011 010011     725  	oct	006011010011,007011010011	" 330-337
+    000737  aa   007011 010011 
+    000740  aa   004011 010011     726  	oct	004011010011,007011010011	" 340-347
+    000741  aa   007011 010011 
+    000742  aa   006011 010011     727  	oct	006011010011,007011010011	" 350-357
+    000743  aa   007011 010011 
+    000744  aa   005011 010011     728  	oct	005011010011,007011010011	" 360-367
+    000745  aa   007011 010011 
+    000746  aa   006011 010011     729  	oct	006011010011,007011010011	" 370-377
+    000747  aa   007011 010011 
+    000750  aa   001011 010011     730  	oct	001011010011,007011010011	" 400-407
+    000751  aa   007011 010011 
+    000752  aa   006011 010011     731  	oct	006011010011,007011010011	" 410-417
+    000753  aa   007011 010011 
+    000754  aa   005011 010011     732  	oct	005011010011,007011010011	" 420-427
+    000755  aa   007011 010011 
+    000756  aa   006011 010011     733  	oct	006011010011,007011010011	" 430-437
+    000757  aa   007011 010011 
+    000760  aa   004011 010011     734  	oct	004011010011,007011010011	" 440-447
+    000761  aa   007011 010011 
+    000762  aa   006011 010011     735  	oct	006011010011,007011010011	" 450-457
+    000763  aa   007011 010011 
+    000764  aa   005011 010011     736  	oct	005011010011,007011010011	" 460-467
+    000765  aa   007011 010011 
+    000766  aa   006011 010011     737  	oct	006011010011,007011010011	" 470-477
+    000767  aa   007011 010011 
+    000770  aa   003011 010011     738  	oct	003011010011,007011010011	" 500-507
+    000771  aa   007011 010011 
+    000772  aa   006011 010011     739  	oct	006011010011,007011010011	" 510-517
+    000773  aa   007011 010011 
+    000774  aa   005011 010011     740  	oct	005011010011,007011010011	" 520-527
+    000775  aa   007011 010011 
+    000776  aa   006011 010011     741  	oct	006011010011,007011010011	" 530-537
+    000777  aa   007011 010011 
+    001000  aa   004011 010011     742  	oct	004011010011,007011010011	" 540-547
+    001001  aa   007011 010011 
+    001002  aa   006011 010011     743  	oct	006011010011,007011010011	" 550-557
+    001003  aa   007011 010011 
+    001004  aa   005011 010011     744  	oct	005011010011,007011010011	" 560-567
+    001005  aa   007011 010011 
+    001006  aa   006011 010011     745  	oct	006011010011,007011010011	" 570-577
+    001007  aa   007011 010011 
+    001010  aa   002011 010011     746  	oct	002011010011,007011010011	" 600-607
+    001011  aa   007011 010011 
+    001012  aa   006011 010011     747  	oct	006011010011,007011010011	" 610-617
+    001013  aa   007011 010011 
+    001014  aa   005011 010011     748  	oct	005011010011,007011010011	" 620-627
+    001015  aa   007011 010011 
+    001016  aa   006011 010011     749  	oct	006011010011,007011010011	" 630-637
+    001017  aa   007011 010011 
+    001020  aa   004011 010011     750  	oct	004011010011,007011010011	" 640-647
+    001021  aa   007011 010011 
+    001022  aa   006011 010011     751  	oct	006011010011,007011010011	" 650-657
+    001023  aa   007011 010011 
+    001024  aa   005011 010011     752  	oct	005011010011,007011010011	" 660-667
+    001025  aa   007011 010011 
+    001026  aa   006011 010011     753  	oct	006011010011,007011010011	" 670-677
+    001027  aa   007011 010011 
+    001030  aa   003011 010011     754  	oct	003011010011,007011010011	" 700-707
+    001031  aa   007011 010011 
+    001032  aa   006011 010011     755  	oct	006011010011,007011010011	" 710-717
+    001033  aa   007011 010011 
+    001034  aa   005011 010011     756  	oct	005011010011,007011010011	" 720-727
+    001035  aa   007011 010011 
+    001036  aa   006011 010011     757  	oct	006011010011,007011010011	" 730-737
+    001037  aa   007011 010011 
+    001040  aa   004011 010011     758  	oct	004011010011,007011010011	" 740-747
+    001041  aa   007011 010011 
+    001042  aa   006011 010011     759  	oct	006011010011,007011010011	" 750-757
+    001043  aa   007011 010011 
+    001044  aa   005011 010011     760  	oct	005011010011,007011010011	" 760-767
+    001045  aa   007011 010011 
+    001046  aa   006011 010011     761  	oct	006011010011,007011010011	" 770-777
+    001047  aa   007011 010011 
+                                   762  
+                                   763  	even
+    001050                         764  last_off_bit_table: 
+    001050  aa   011010 011007     765  	oct	011010011007,011010011006	" 000-007
+    001051  aa   011010 011006 
+    001052  aa   011010 011007     766  	oct	011010011007,011010011005	" 010-017
+    001053  aa   011010 011005 
+    001054  aa   011010 011007     767  	oct	011010011007,011010011006	" 020-027
+    001055  aa   011010 011006 
+    001056  aa   011010 011007     768  	oct	011010011007,011010011004	" 030-037
+    001057  aa   011010 011004 
+    001060  aa   011010 011007     769  	oct	011010011007,011010011006	" 040-047
+    001061  aa   011010 011006 
+    001062  aa   011010 011007     770  	oct	011010011007,011010011005	" 050-057
+    001063  aa   011010 011005 
+    001064  aa   011010 011007     771  	oct	011010011007,011010011006	" 060-067
+    001065  aa   011010 011006 
+    001066  aa   011010 011007     772  	oct	011010011007,011010011003	" 070-077
+    001067  aa   011010 011003 
+    001070  aa   011010 011007     773  	oct	011010011007,011010011006	" 100-107
+    001071  aa   011010 011006 
+    001072  aa   011010 011007     774  	oct	011010011007,011010011005	" 110-117
+    001073  aa   011010 011005 
+    001074  aa   011010 011007     775  	oct	011010011007,011010011006	" 120-127
+    001075  aa   011010 011006 
+    001076  aa   011010 011007     776  	oct	011010011007,011010011004	" 130-137
+    001077  aa   011010 011004 
+    001100  aa   011010 011007     777  	oct	011010011007,011010011006	" 140-147
+    001101  aa   011010 011006 
+    001102  aa   011010 011007     778  	oct	011010011007,011010011005	" 150-157
+    001103  aa   011010 011005 
+    001104  aa   011010 011007     779  	oct	011010011007,011010011006	" 160-167
+    001105  aa   011010 011006 
+    001106  aa   011010 011007     780  	oct	011010011007,011010011002	" 170-177
+    001107  aa   011010 011002 
+    001110  aa   011010 011007     781  	oct	011010011007,011010011006	" 200-207
+    001111  aa   011010 011006 
+    001112  aa   011010 011007     782  	oct	011010011007,011010011005	" 210-217
+    001113  aa   011010 011005 
+    001114  aa   011010 011007     783  	oct	011010011007,011010011006	" 220-227
+    001115  aa   011010 011006 
+    001116  aa   011010 011007     784  	oct	011010011007,011010011004	" 230-237
+    001117  aa   011010 011004 
+    001120  aa   011010 011007     785  	oct	011010011007,011010011006	" 240-247
+    001121  aa   011010 011006 
+    001122  aa   011010 011007     786  	oct	011010011007,011010011005	" 250-257
+    001123  aa   011010 011005 
+    001124  aa   011010 011007     787  	oct	011010011007,011010011006	" 260-267
+    001125  aa   011010 011006 
+    001126  aa   011010 011007     788  	oct	011010011007,011010011003	" 270-277
+    001127  aa   011010 011003 
+    001130  aa   011010 011007     789  	oct	011010011007,011010011006	" 300-307
+    001131  aa   011010 011006 
+    001132  aa   011010 011007     790  	oct	011010011007,011010011005	" 310-317
+    001133  aa   011010 011005 
+    001134  aa   011010 011007     791  	oct	011010011007,011010011006	" 320-327
+    001135  aa   011010 011006 
+    001136  aa   011010 011007     792  	oct	011010011007,011010011004	" 330-337
+    001137  aa   011010 011004 
+    001140  aa   011010 011007     793  	oct	011010011007,011010011006	" 340-347
+    001141  aa   011010 011006 
+    001142  aa   011010 011007     794  	oct	011010011007,011010011005	" 350-357
+    001143  aa   011010 011005 
+    001144  aa   011010 011007     795  	oct	011010011007,011010011006	" 360-367
+    001145  aa   011010 011006 
+    001146  aa   011010 011007     796  	oct	011010011007,011010011001	" 370-377
+    001147  aa   011010 011001 
+    001150  aa   011010 011007     797  	oct	011010011007,011010011006	" 400-407
+    001151  aa   011010 011006 
+    001152  aa   011010 011007     798  	oct	011010011007,011010011005	" 410-417
+    001153  aa   011010 011005 
+    001154  aa   011010 011007     799  	oct	011010011007,011010011006	" 420-427
+    001155  aa   011010 011006 
+    001156  aa   011010 011007     800  	oct	011010011007,011010011004	" 430-437
+    001157  aa   011010 011004 
+    001160  aa   011010 011007     801  	oct	011010011007,011010011006	" 440-447
+    001161  aa   011010 011006 
+    001162  aa   011010 011007     802  	oct	011010011007,011010011005	" 450-457
+    001163  aa   011010 011005 
+    001164  aa   011010 011007     803  	oct	011010011007,011010011006	" 460-467
+    001165  aa   011010 011006 
+    001166  aa   011010 011007     804  	oct	011010011007,011010011003	" 470-477
+    001167  aa   011010 011003 
+    001170  aa   011010 011007     805  	oct	011010011007,011010011006	" 500-507
+    001171  aa   011010 011006 
+    001172  aa   011010 011007     806  	oct	011010011007,011010011005	" 510-517
+    001173  aa   011010 011005 
+    001174  aa   011010 011007     807  	oct	011010011007,011010011006	" 520-527
+    001175  aa   011010 011006 
+    001176  aa   011010 011007     808  	oct	011010011007,011010011004	" 530-537
+    001177  aa   011010 011004 
+    001200  aa   011010 011007     809  	oct	011010011007,011010011006	" 540-547
+    001201  aa   011010 011006 
+    001202  aa   011010 011007     810  	oct	011010011007,011010011005	" 550-557
+    001203  aa   011010 011005 
+    001204  aa   011010 011007     811  	oct	011010011007,011010011006	" 560-567
+    001205  aa   011010 011006 
+    001206  aa   011010 011007     812  	oct	011010011007,011010011002	" 570-577
+    001207  aa   011010 011002 
+    001210  aa   011010 011007     813  	oct	011010011007,011010011006	" 600-607
+    001211  aa   011010 011006 
+    001212  aa   011010 011007     814  	oct	011010011007,011010011005	" 610-617
+    001213  aa   011010 011005 
+    001214  aa   011010 011007     815  	oct	011010011007,011010011006	" 620-627
+    001215  aa   011010 011006 
+    001216  aa   011010 011007     816  	oct	011010011007,011010011004	" 630-637
+    001217  aa   011010 011004 
+    001220  aa   011010 011007     817  	oct	011010011007,011010011006	" 640-647
+    001221  aa   011010 011006 
+    001222  aa   011010 011007     818  	oct	011010011007,011010011005	" 650-657
+    001223  aa   011010 011005 
+    001224  aa   011010 011007     819  	oct	011010011007,011010011006	" 660-667
+    001225  aa   011010 011006 
+    001226  aa   011010 011007     820  	oct	011010011007,011010011003	" 670-677
+    001227  aa   011010 011003 
+    001230  aa   011010 011007     821  	oct	011010011007,011010011006	" 700-707
+    001231  aa   011010 011006 
+    001232  aa   011010 011007     822  	oct	011010011007,011010011005	" 710-717
+    001233  aa   011010 011005 
+    001234  aa   011010 011007     823  	oct	011010011007,011010011006	" 720-727
+    001235  aa   011010 011006 
+    001236  aa   011010 011007     824  	oct	011010011007,011010011004	" 730-737
+    001237  aa   011010 011004 
+    001240  aa   011010 011007     825  	oct	011010011007,011010011006	" 740-747
+    001241  aa   011010 011006 
+    001242  aa   011010 011007     826  	oct	011010011007,011010011005	" 750-757
+    001243  aa   011010 011005 
+    001244  aa   011010 011007     827  	oct	011010011007,011010011006	" 760-767
+    001245  aa   011010 011006 
+    001246  aa   011010 011007     828  	oct	011010011007,011010011000	" 770-777
+    001247  aa   011010 011000 
+                                   829  
+                                   830  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    001250  5a   000003 000000 
+    001251  5a   000047 600000 
+    001252  aa   000000 000000 
+    001253  55   000011 000002 
+    001254  5a   000002 400003 
+    001255  55   000006 000011 
+    001256  aa  011 146 151 156
+    001257  aa  144 137 142 151
+    001260  aa  164 137 000 000
+    001261  55   000017 000003 
+    001262  0a   000020 400000 
+    001263  55   000014 000003 
+    001264  aa  010 154 141 163         last_off
+    001265  aa  164 137 157 146
+    001266  aa  146 000 000 000
+    001267  55   000024 000011 
+    001270  0a   000014 400000 
+    001271  55   000022 000003 
+    001272  aa  007 154 141 163         last_on
+    001273  aa  164 137 157 156
+    001274  55   000032 000017 
+    001275  0a   000010 400000 
+    001276  55   000027 000003 
+    001277  aa  011 146 151 162         first_off
+    001300  aa  163 164 137 157
+    001301  aa  146 146 000 000
+    001302  55   000040 000024 
+    001303  0a   000004 400000 
+    001304  55   000035 000003 
+    001305  aa  010 146 151 162         first_on
+    001306  aa  163 164 137 157
+    001307  aa  156 000 000 000
+    001310  55   000002 000032 
+    001311  6a   000000 400002 
+    001312  55   000043 000003 
+    001313  aa  014 163 171 155         symbol_table
+    001314  aa  142 157 154 137
+    001315  aa  164 141 142 154
+    001316  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    001317  aa   000000 000015 
+    001320  aa   000000 000000 
+    001321  aa   000000 000000 
+    001322  5a   000017 000000 
+    001323  5a   000032 000000 
+    001324  aa   000000 000000 
+    001325  aa   000000 000000 
+    001326  5a   000040 000000 
+    001327  aa   000000 000000 
+    001330  aa   000000 000000 
+    001331  aa   000000 000000 
+    001332  5a   000011 000000 
+    001333  5a   000024 000000 
+    001334  aa   000000 000000 
+
+NO EXTERNAL NAMES
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    001335  aa   000001 000000 
+    001336  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    001337  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   001250 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000010 
+    000007  a2   000000 000000 
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   253301 363733 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000216 
+    000020  aa   000000 000115 
+    000021  aa   000175 000172 
+    000022  aa   000207 000115 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000002 
+    000066  aa   000076 000040 
+    000067  aa   175453 020015 
+    000070  aa   000000 117547 
+    000071  aa   176665 000000 
+    000072  aa   000106 000031 
+    000073  aa   127236 043537 
+    000074  aa   000000 112724 
+    000075  aa   701745 600000 
+    000076  aa   076163 160145          >spec>install>1110>find_bit_.alm
+    000077  aa   143076 151156 
+    000100  aa   163164 141154 
+    000101  aa   154076 061061 
+    000102  aa   061060 076146 
+    000103  aa   151156 144137 
+    000104  aa   142151 164137 
+    000105  aa   056141 154155 
+    000106  aa   076154 144144          >ldd>include>its.incl.alm
+    000107  aa   076151 156143 
+    000110  aa   154165 144145 
+    000111  aa   076151 164163 
+    000112  aa   056151 156143 
+    000113  aa   154056 141154 
+    000114  aa   155040 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+           0    arg_list                 find_bit_:    110,  190,  192,  228,  232,  236.
+           2    bits_after_Nth_byte      find_bit_:    124,  303,  345,  354,  413,  421,  433.
+          11    BITS_PER_BYTE            find_bit_:    128,  206,  210,  302,  377,  420,  529.
+           1    bits_prior_1st_byte      find_bit_:    122,  202,  211,  266,  297,  325,  384,  414,  463,  485,  537.
+           2    bit_length               find_bit_:    113,  241,  271,  273,  300,  321,  333,  350,  417,  432,  460,  471,
+                                                       489,  491.
+           1    bit_string               find_bit_:    111,  190,  203,  282,  324,  361,  440,  462,  499.
+           3    byte_str                 find_bit_:    115,  324,  325,  329,  462,  463,  467.
+          24    common                   find_bit_:    156,  165,  173,  181,  189.
+          45    compute_length           find_bit_:    234,  239.
+           2    desc_length_mask         find_bit_:    136,  240.
+           0    direction                find_bit_:    119,  153,  162,  170,  178,  248.
+          50    direction_vector         find_bit_:    248,  249.
+           3    do_index                 find_bit_:    126,  275,  278,  354,  356,  433,  435.
+          52    fflb                     find_bit_:    266.
+          60    fflb_long_bit_string     find_bit_:    272,  274.
+          62    fflb_loop                find_bit_:    277,  286.
+         114    fftb                     find_bit_:    345.
+         124    fftb_loop                find_bit_:    355,  365.
+          72    find_first_in_bytes      find_bit_:    267,  279,  296.
+          52    find_first_in_lead_bits  find_bit_:    250,  265.
+         114    find_first_in_trail_bits       find_bit_:    307,  344.
+         176    find_last_in_bytes       find_bit_:    436,  458.
+         210    find_last_in_lead_bits   find_bit_:    418,  484.
+         152    find_last_in_trail_bits  find_bit_:    251,  412.
+           0    FIRST                    find_bit_:    120,  153,  162.
+          10    first_off                find_bit_:    102,  161.
+         450    first_off_bit_table      find_bit_:    163,  630.
+           4    first_on                 find_bit_:    101,  153.
+         250    first_on_bit_table       find_bit_:    154,  562.
+         210    fllb                     find_bit_:    485.
+         216    fllb_long_bit_string     find_bit_:    490,  492.
+         217    fllb_loop                find_bit_:    494,  502.
+         152    fltb                     find_bit_:    413.
+         166    fltb_loop                find_bit_:    434,  444.
+          37    get_length               find_bit_:    208,  227.
+           2    index                    find_bit_:    112,  192,  331,  375,  378,  380,  381,  383,  384,  385,  392,  399,
+                                                       469,  513,  518,  520,  523,  533,  534,  536,  537,  538.
+          77    itp.bit_offset_mask      its:           50.
+          11    itp.bit_offset_shift     its:           49.
+           1    itp.bit_offset_word      its:           48.
+          77    itp.itp_mod_mask         its:           45.
+           0    itp.itp_mod_shift        its:           44.
+           0    itp.itp_mod_word         its:           43.
+          77    itp.mod_mask             its:           53.
+           0    itp.mod_shift            its:           52.
+           1    itp.mod_word             its:           51.
+           1    itp.offset               its:           47.
+           7    itp.pr_no_mask           its:           42.
+          41    itp.pr_no_shift          its:           41.
+           0    itp.pr_no_word           its:           40.
+           2    itp_size                 its:           38.
+          77    itp_unsigned.bit_offset_mask   its:           93.
+          11    itp_unsigned.bit_offset_shift  its:           92.
+           1    itp_unsigned.bit_offset_word   its:           91.
+          77    itp_unsigned.itp_mod_mask      its:           88.
+           0    itp_unsigned.itp_mod_shift     its:           87.
+           0    itp_unsigned.itp_mod_word      its:           86.
+          77    itp_unsigned.mod_mask    its:           96.
+           0    itp_unsigned.mod_shift   its:           95.
+           1    itp_unsigned.mod_word    its:           94.
+           1    itp_unsigned.offset      its:           90.
+           7    itp_unsigned.pr_no_mask  its:           85.
+          41    itp_unsigned.pr_no_shift       its:           84.
+           0    itp_unsigned.pr_no_word  its:           83.
+           2    itp_unsigned_size        its:           81.
+          77    its.bit_offset_mask      find_bit_:    204,
+                                         its:           30.
+          11    its.bit_offset_shift     its:           29.
+           1    its.bit_offset_word      its:           28.
+          77    its.its_mod_mask         its:           25.
+           0    its.its_mod_shift        its:           24.
+           0    its.its_mod_word         its:           23.
+          77    its.mod_mask             its:           33.
+           0    its.mod_shift            its:           32.
+           1    its.mod_word             its:           31.
+           1    its.offset               its:           27.
+           7    its.ringno_mask          its:           22.
+          17    its.ringno_shift         its:           21.
+           0    its.ringno_word          its:           20.
+       77777    its.segno_mask           its:           19.
+          22    its.segno_shift          its:           18.
+           0    its.segno_word           its:           17.
+           2    its_size                 its:           15.
+          77    its_unsigned.bit_offset_mask   its:           73.
+          11    its_unsigned.bit_offset_shift  its:           72.
+           1    its_unsigned.bit_offset_word   its:           71.
+          77    its_unsigned.its_mod_mask      its:           68.
+           0    its_unsigned.its_mod_shift     its:           67.
+           0    its_unsigned.its_mod_word      its:           66.
+          77    its_unsigned.mod_mask    its:           76.
+           0    its_unsigned.mod_shift   its:           75.
+           1    its_unsigned.mod_word    its:           74.
+           1    its_unsigned.offset      its:           70.
+           7    its_unsigned.ringno_mask       its:           65.
+          17    its_unsigned.ringno_shift      its:           64.
+           0    its_unsigned.ringno_word       its:           63.
+       77777    its_unsigned.segno_mask  its:           62.
+          22    its_unsigned.segno_shift       its:           61.
+           0    its_unsigned.segno_word  its:           60.
+           2    its_unsigned_size        its:           58.
+           1    LAST                     find_bit_:    121,  170,  178.
+          20    last_off                 find_bit_:    104,  178.
+        1050    last_off_bit_table       find_bit_:    179,  764.
+          14    last_on                  find_bit_:    103,  170.
+         650    last_on_bit_table        find_bit_:    171,  697.
+         146    match                    find_bit_:    284,  363,  392,  442,  501,  540.
+         150    no_match                 find_bit_:    347,  358,  399,  486,  496.
+          44    no_parent                find_bit_:    230,  235.
+           1    off_bit                  find_bit_:    133,  164,  180.
+           0    on_bit                   find_bit_:    131,  155,  172.
+          42    parent                   find_bit_:    231.
+         227    store_tctr_result        find_bit_:    470,  512.
+         134    store_tct_result         find_bit_:    332,  374.
+           3    string_index_mask        find_bit_:    138,  376,  519.
+           4    table                    find_bit_:    116,  154,  163,  171,  179,  330,  468.
+           4    table_char               find_bit_:    127,  513,  531.
+           5    test_bit                 find_bit_:    117,  155,  164,  172,  180,  283,  362,  441,  500.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1018 @@
+	COMPILATION LISTING OF SEGMENT ncp_trace_
+	Compiled by: Multics PL/I Compiler, Release 28d, of October 4, 1983
+	Compiled at: Honeywell Multics Op. - System M
+	Compiled on: 07/02/84  1321.1 mst Mon
+	    Options: optimize list
+
+        1 /* ***********************************************************
+        2*   *                                                         *
+        3*   * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        4*   *                                                         *
+        5*   * Copyright (c) 1972 by Massachusetts Institute of        *
+        6*   * Technology and Honeywell Information Systems, Inc.      *
+        7*   *                                                         *
+        8*   *********************************************************** */
+        9 
+       10 
+       11 ncp_trace_:
+       12           procedure (P_trace_control);
+       13 
+       14 /*             This module contains the entry points to control the tracing     */
+       15 /*        of the NCP.                                                           */
+       16 
+       17 /*        Originally created by D. M. Wells, 15 May, 1975.                      */
+       18 /*        Modified by D. M. Wells, August 1977, to use clock builtin.           */
+       19 
+       20           /* * * * * PARAMETER DECLARATIONS  * * * * * * * */
+       21 
+       22      declare
+       23          (P_msg_len fixed binary (24),
+       24           P_trace_control bit (36) aligned,                 /* caller of trace entry provides this            */
+       25           P_tracing_bits bit (*),
+       26           P_comment character (*),
+       27           P_msg_ptr pointer)
+       28                parameter;
+       29 
+       30           /* * * * * AUTOMATIC STORAGE DECLARATIONS  * * * */
+       31 
+       32      declare
+       33          (ctl_byte (10) fixed binary (8),
+       34           (indx, jdex) fixed binary (17),
+       35           mins_since_hour fixed binary (17),
+       36           secs_since_min fixed binary (17),
+       37           secs_since_midnight fixed binary (17),
+       38           buff_len fixed binary (24),
+       39           clock_reading fixed binary (71),
+       40           line_buffer character (120) aligned)
+       41                automatic;
+       42 
+       43           /* * * * * BASED & TEMPLATE DECLARATIONS * * * * */
+       44 
+       45      declare
+       46           1 based_ctl_msg based,
+       47              2 byte (1 : 1) bit (8);
+       48 
+       49           /* * * * * TEXT SECTION REFERENCES * * * * * * * */
+       50 
+       51      declare
+       52          (MILLION initial (1000000),
+       53           SECONDS_IN_MINUTE initial (60),
+       54           MINUTES_IN_HOUR initial (60),
+       55           SECONDS_IN_DAY initial (86400))
+       56                fixed binary (35) internal static options (constant);
+       57 
+       58           /* * * * * EXTERNAL STATIC DECLARATIONS  * * * * */
+       59 
+       60      declare
+       61          (ncp_params_$syserr_report_event fixed binary (17),
+       62           ncp_tables_$tracing_info bit (36) aligned,
+       63           pds$process_id bit (36) aligned,
+       64           pds$process_group_id character (32) aligned)
+       65                external static;
+       66 
+       67           /* * * * * ENTRY & PROCEDURE DECLARATIONS  * * * */
+       68 
+       69      declare
+       70           formline_ constant entry options (variable),
+       71           ncp_trace_$ncp_trace_ constant entry options (variable),
+       72           syserr constant entry options (variable),
+       73           trace constant entry options (variable),
+       74           trace_rsw constant entry () returns (bit (36) aligned);
+       75 
+       76      declare
+       77           (addr, binary, clock, dimension, divide, length, mod, substr)
+       78                builtin;
+       79 
+       80           /* * * * * INCLUDE FILES * * * * * * * * * * * * */
+       81 
+       82           
+  1     2 /*             "ncp_constants_dcls.incl.pl1" -- include file to       */
+  1     3 /*        declare some constants used throughout the Multics Network  */
+  1     4 /*        Control Program (NCP).                                      */
+  1     5 
+  1     6 /*        Originally created by D. M. Wells, 1975, May 19.            */
+  1     7 
+  1     8      declare
+  1     9          (NCP_DOWN            initial (0),                  /* the NCP has been shutdown normally             */
+  1    10           NCP_UP_IMP_DOWN     initial (1),                  /* the NCP is up, but the IMP is unreachable      */
+  1    11           NCP_UP              initial (2),                  /* the NCP is up and running normally             */
+  1    12           NCP_CRASHED         initial (-1))                 /* the NCP has crashed itself                     */
+  1    13                fixed binary (3) internal static options (constant);
+  1    14 
+  1    15      declare
+  1    16          (READ_GENDER         initial ("0"b),               /* Read sockets are even numbers                  */
+  1    17           WRITE_GENDER        initial ("1"b))               /* Write sockets ar odd numbers                   */
+  1    18                bit (1) internal static options (constant);
+  1    19 
+  1    20      declare
+  1    21          (HOST_OFF            initial (0),                  /* this host is not enabled for communications    */
+  1    22           HOST_UP             initial (1),                  /* Host is up and everything ok                   */
+  1    23           HOST_RST            initial (2),                  /* a Host-Host RST command has been sent          */
+  1    24           HOST_DOWN           initial (3),                  /* Foreign host is down                           */
+  1    25           HOST_ON             initial (4))                  /* Foreign host is enabled, but not RST yet       */
+  1    26                fixed binary (6) internal static options (constant);
+  1    27 
+  1    28      declare
+  1    29          (SOCK_UNASSIGNED     initial (0),                  /* This socket entry is not in use currently      */
+  1    30           SOCK_ASSIGNED       initial (1),                  /* Socket has been assigned and is quiescent      */
+  1    31           SOCK_LISTENING      initial (2),                  /* Socket is listening for incoming-RFCs          */
+  1    32           SOCK_RFC_RCVD       initial (3),                  /* Socket has received RFC from foreign socket    */
+  1    33           SOCK_RFC_ABORTED    initial (4),                  /* CLS  received for unacknowledged RFC           */
+  1    34           SOCK_RFC_SENT       initial (5),                  /* RFC sent to foreign socket, but no reply       */
+  1    35           SOCK_CONNECTED      initial (6),                  /* Socket is connected to foreign socket          */
+  1    36           SOCK_CLS_WAIT       initial (7),                  /* CLS issued, waiting for reply CLS              */
+  1    37                                                             /* State 8 is not currently defined               */
+  1    38           SOCK_DATA_WAIT      initial (9),                  /* User requested close, but data still here      */
+  1    39           SOCK_RFNM_WAIT      initial (10),                 /* User requested close, but waiting on last RFNM */
+  1    40           SOCK_CLS_READ       initial (11),                 /* CLS received, but data still in buffers        */
+  1    41                                                             /* State 12 is not currently defined              */
+  1    42           SOCK_BROKEN         initial (13),                 /* Socket has been involved in some NCP anomaly   */
+  1    43           SOCK_RESET          initial (14))                 /* Socket was connected to host that was reset    */
+  1    44                fixed binary (6) internal static options (constant);
+  1    45 
+  1    46      declare
+  1    47          (SOCK_INDX_MASK      initial ("000000777777"b3),   /* mask to get out actual array index             */
+  1    48           SOCK_UNIQUE_MASK    initial ("377777000000"b3))   /* mask to get out incrementing part of indx      */
+  1    49                bit (36) internal static options (constant);
+  1    50 
+  1    51      declare
+  1    52          (ANY_TRACING         initial ("400000000000"b3),             /* if any tracing is occurring          */
+  1    53           PRINTER_TRACING     initial ("200000000000"b3),             /* if tracing to the ptr is happening   */
+  1    54           SYSERR_LOG_TRACING  initial ("100000000000"b3),             /* if tracing to syserr log mechanism   */
+  1    55 
+  1    56           TRACE_CTL_MSGS      initial ("004000000000"b3),             /* if host-host ctl msgs should be trcd */
+  1    57           TRACE_PROCESS_INFO  initial ("002000000000"b3),             /* if process control should be trcd    */
+  1    58           TRACE_DATA_FLOW     initial ("001000000000"b3),             /* if flow of user data to be traced    */
+  1    59 
+  1    60           TRACE_NCP_RING      initial ("000400000000"b3),             /* if ncp_ring_ should be traced        */
+  1    61           TRACE_NCP_ACCESS    initial ("000200000000"b3),             /* if ncp_access_ should be traced      */
+  1    62           TRACE_NCP_DAEMON    initial ("000100000000"b3),             /* if ncp_daemon_ should be traced      */
+  1    63           TRACE_NCP_CONTROL   initial ("000040000000"b3),             /* if ncp_control_ should be traced     */
+  1    64           TRACE_NCP_TBOP      initial ("000020000000"b3),             /* if ncp_tbop_ should be traced        */
+  1    65           TRACE_NCP_IO        initial ("000010000000"b3))             /* if ncp_io_ should be traced          */
+  1    66                bit (36) aligned internal static options (constant);
+  1    67 
+  1    68 /*        end of include file "ncp_constants_dcls.incl.pl1            */
+  1    69 
+       82 
+       83 
+       84 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+       85 
+       86           if (ncp_tables_$tracing_info & P_trace_control) = ""b
+       87           then return;                                      /* desired tracing does not match callers mask    */
+       88 
+       89           if ^ substr (trace_rsw (), 25, 1)
+       90           then return;                                      /* switch 24 on processor is off, don't trace     */
+       91 
+       92           buff_len = length (line_buffer);
+       93 
+       94           call formline_ (2, 3, addr (line_buffer), buff_len, 1);
+       95 
+       96           if (ncp_tables_$tracing_info & PRINTER_TRACING)
+       97           then do;
+       98                clock_reading = divide (clock (), MILLION, 71, 0);
+       99                secs_since_midnight = mod (clock_reading, SECONDS_IN_DAY);
+      100                secs_since_min = mod (secs_since_midnight, SECONDS_IN_MINUTE);
+      101                mins_since_hour = mod (secs_since_midnight / SECONDS_IN_MINUTE, MINUTES_IN_HOUR);
+      102 
+      103                call trace ("^w ^2d ^2d :: ^a", pds$process_id, mins_since_hour, secs_since_min, line_buffer);
+      104                end;
+      105 
+      106           if (ncp_tables_$tracing_info & SYSERR_LOG_TRACING)
+      107           then call syserr (ncp_params_$syserr_report_event, "NCP (Trace ^a):  ^a", pds$process_group_id, line_buffer);
+      108 
+      109           return;
+      110 
+      111           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      112 
+      113 ncp_tracing:
+      114           entry (P_tracing_bits);
+      115 
+      116           ncp_tables_$tracing_info = P_tracing_bits;
+      117 
+      118           return;
+      119 
+      120           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      121 
+      122 ncp_priv_comment:
+      123           entry (P_comment);
+      124 
+      125           call syserr (ncp_params_$syserr_report_event, "NCP (Comment ^a):  ^a ", pds$process_group_id, P_comment);
+      126 
+      127           return;
+      128 
+      129           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      130 
+      131 ncp_trace_comment:
+      132           entry (P_comment);
+      133 
+      134           if ncp_tables_$tracing_info = ""b
+      135           then return;                                      /* quick return if not tracing at all             */
+      136 
+      137           call ncp_trace_$ncp_trace_ (ANY_TRACING, P_comment);
+      138 
+      139           return;
+      140 
+      141           /* * * * * * * * * * * * * * * * * * * * * * * * */
+      142 
+      143 trace_control_msg:
+      144           entry (P_msg_ptr, P_msg_len);
+      145 
+      146           if (ncp_tables_$tracing_info & TRACE_CTL_MSGS) = ""b
+      147           then return;
+      148 
+      149           call ncp_trace_$ncp_trace_ (TRACE_CTL_MSGS, "CTL MSG at ^p,  ^d bytes", P_msg_ptr, P_msg_len);
+      150 
+      151           do indx = 1 by dimension (ctl_byte, 1) to P_msg_len;
+      152                do jdex = 1 by 1 to dimension (ctl_byte, 1);
+      153                     if indx + jdex - 1 > P_msg_len
+      154                     then ctl_byte (jdex) = -1;
+      155                     else ctl_byte (jdex) = binary (P_msg_ptr -> based_ctl_msg.byte (indx + jdex - 1), 8);
+      156                     end;
+      157 
+      158                call ncp_trace_$ncp_trace_ (TRACE_CTL_MSGS, "^3d:      ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d", indx,
+      159                          ctl_byte (1), ctl_byte (2), ctl_byte (3), ctl_byte (4), ctl_byte (5),
+      160                          ctl_byte (6), ctl_byte (7), ctl_byte (8), ctl_byte (9), ctl_byte (10));
+      161                end;
+      162 
+      163           return;
+      164 
+      165 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      166 
+      167 /* BEGIN MESSAGE DOCUMENTATION
+      168*
+      169*   Message:
+      170*   NCP (Trace USER): TRACE-MSG
+      171*
+      172*   S: $log
+      173*
+      174*   T: $run
+      175*
+      176*   M: This is a tracing message produced by the ARPANET
+      177*   Network Control Program.  The TRACE-MSG indicates that some
+      178*   particular event has occurred while the NCP was operating.
+      179*   This tracing facility is not normally enabled during
+      180*   normal system operation.
+      181*
+      182*   A: $contact_sa
+      183*   The supervisor must be patched to turn this facility on and off.
+      184*
+      185*
+      186*   Message:
+      187*   NCP (Comment USER):  COMMENT
+      188*
+      189*   S: $log
+      190*
+      191*   T: $run
+      192*
+      193*   M: A privileged ARPANET user, such as the Network Daemon
+      194*   or a Network administrator has added a comment to the
+      195*   system log.
+      196*
+      197*   A: $ignore
+      198*
+      199*   END MESSAGE DOCUMENTATION */
+      200 
+      201 end;      /* end ncp_trace_                                */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    07/02/84  1129.5  ncp_trace_.pl1                    >dumps>old_dumps>hardcore>ncp_trace_.pl1
+82           1    10/07/77  1700.0  ncp_constants_dcls.incl.pl1       >ldd>include>ncp_constants_dcls.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ANY_TRACING                     000001 constant        bit(36)                  initial dcl 1-51 set ref 137*
+MILLION                         000002 constant        fixed bin(35,0)          initial dcl 51 ref 98
+MINUTES_IN_HOUR                 000651 constant        fixed bin(35,0)          initial dcl 51 ref 101
+PRINTER_TRACING                        constant        bit(36)                  initial dcl 1-51 ref 96
+P_comment                              parameter       char                     unaligned dcl 22 set ref 122 125* 131 137*
+P_msg_len                              parameter       fixed bin(24,0)          dcl 22 set ref 143 149* 151 153
+P_msg_ptr                              parameter       pointer                  dcl 22 set ref 143 149* 155
+P_trace_control                        parameter       bit(36)                  dcl 22 ref 11 86
+P_tracing_bits                         parameter       bit                      unaligned dcl 22 ref 113 116
+SECONDS_IN_DAY                  000650 constant        fixed bin(35,0)          initial dcl 51 ref 99
+SECONDS_IN_MINUTE               000651 constant        fixed bin(35,0)          initial dcl 51 ref 100 101
+SYSERR_LOG_TRACING                     constant        bit(36)                  initial dcl 1-51 ref 106
+TRACE_CTL_MSGS                  000000 constant        bit(36)                  initial dcl 1-51 set ref 146 149* 158*
+addr                                                   builtin function         dcl 76 ref 94 94
+based_ctl_msg                          based           structure                level 1 packed unaligned dcl 45
+binary                                                 builtin function         dcl 76 ref 155
+buff_len                        000117 automatic       fixed bin(24,0)          dcl 32 set ref 92* 94*
+byte                                   based           bit(8)                   array level 2 packed unaligned dcl 45 ref 155
+clock                                                  builtin function         dcl 76 ref 98
+clock_reading                   000120 automatic       fixed bin(71,0)          dcl 32 set ref 98* 99
+ctl_byte                        000100 automatic       fixed bin(8,0)           array dcl 32 set ref 151 152 153* 155* 158* 158*
+                                                                                  158* 158* 158* 158* 158* 158* 158* 158*
+dimension                                              builtin function         dcl 76 ref 151 152
+divide                                                 builtin function         dcl 76 ref 98
+formline_                       000020 constant        entry                    external dcl 69 ref 94
+indx                            000112 automatic       fixed bin(17,0)          dcl 32 set ref 151* 153 155 158*
+jdex                            000113 automatic       fixed bin(17,0)          dcl 32 set ref 152* 153 153 155 155*
+length                                                 builtin function         dcl 76 ref 92
+line_buffer                     000122 automatic       char(120)                dcl 32 set ref 92 94 94 103* 106*
+mins_since_hour                 000114 automatic       fixed bin(17,0)          dcl 32 set ref 101* 103*
+mod                                                    builtin function         dcl 76 ref 99 100 101
+ncp_params_$syserr_report_event 000010 external static fixed bin(17,0)          dcl 60 set ref 106* 125*
+ncp_tables_$tracing_info        000012 external static bit(36)                  dcl 60 set ref 86 96 106 116* 134 146
+ncp_trace_$ncp_trace_           000022 constant        entry                    external dcl 69 ref 137 149 158
+pds$process_group_id            000016 external static char(32)                 dcl 60 set ref 106* 125*
+pds$process_id                  000014 external static bit(36)                  dcl 60 set ref 103*
+secs_since_midnight             000116 automatic       fixed bin(17,0)          dcl 32 set ref 99* 100 101
+secs_since_min                  000115 automatic       fixed bin(17,0)          dcl 32 set ref 100* 103*
+substr                                                 builtin function         dcl 76 ref 89
+syserr                          000024 constant        entry                    external dcl 69 ref 106 125
+trace                           000026 constant        entry                    external dcl 69 ref 103
+trace_rsw                       000030 constant        entry                    external dcl 69 ref 89
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+HOST_DOWN                              internal static fixed bin(6,0)           initial dcl 1-20
+HOST_OFF                               internal static fixed bin(6,0)           initial dcl 1-20
+HOST_ON                                internal static fixed bin(6,0)           initial dcl 1-20
+HOST_RST                               internal static fixed bin(6,0)           initial dcl 1-20
+HOST_UP                                internal static fixed bin(6,0)           initial dcl 1-20
+NCP_CRASHED                            internal static fixed bin(3,0)           initial dcl 1-8
+NCP_DOWN                               internal static fixed bin(3,0)           initial dcl 1-8
+NCP_UP                                 internal static fixed bin(3,0)           initial dcl 1-8
+NCP_UP_IMP_DOWN                        internal static fixed bin(3,0)           initial dcl 1-8
+READ_GENDER                            internal static bit(1)                   initial unaligned dcl 1-15
+SOCK_ASSIGNED                          internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_BROKEN                            internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_CLS_READ                          internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_CLS_WAIT                          internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_CONNECTED                         internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_DATA_WAIT                         internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_INDX_MASK                         internal static bit(36)                  initial unaligned dcl 1-46
+SOCK_LISTENING                         internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_RESET                             internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_RFC_ABORTED                       internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_RFC_RCVD                          internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_RFC_SENT                          internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_RFNM_WAIT                         internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_UNASSIGNED                        internal static fixed bin(6,0)           initial dcl 1-28
+SOCK_UNIQUE_MASK                       internal static bit(36)                  initial unaligned dcl 1-46
+TRACE_DATA_FLOW                        internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_ACCESS                       internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_CONTROL                      internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_DAEMON                       internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_IO                           internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_RING                         internal static bit(36)                  initial dcl 1-51
+TRACE_NCP_TBOP                         internal static bit(36)                  initial dcl 1-51
+TRACE_PROCESS_INFO                     internal static bit(36)                  initial dcl 1-51
+WRITE_GENDER                           internal static bit(1)                   initial unaligned dcl 1-15
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ncp_priv_comment                000330 constant        entry                    external dcl 122
+ncp_trace_                      000067 constant        entry                    external dcl 11
+ncp_trace_comment               000400 constant        entry                    external dcl 131
+ncp_tracing                     000301 constant        entry                    external dcl 113
+trace_control_msg               000441 constant        entry                    external dcl 143
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1032        1064     652        1042
+Length      1276     652        32         176     157           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ncp_trace_                          220 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ncp_trace_               000100 ctl_byte                    ncp_trace_
+                         000112 indx                        ncp_trace_
+                         000113 jdex                        ncp_trace_
+                         000114 mins_since_hour             ncp_trace_
+                         000115 secs_since_min              ncp_trace_
+                         000116 secs_since_midnight         ncp_trace_
+                         000117 buff_len                    ncp_trace_
+                         000120 clock_reading               ncp_trace_
+                         000122 line_buffer                 ncp_trace_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return              mod_fx1             mod_fx3             ext_entry
+ext_entry_desc      trunc_fx2           divide_fx1          divide_fx3          scaled_mod_fx3      clock
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+formline_                     ncp_trace_$ncp_trace_         syserr                        trace
+trace_rsw
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+ncp_params_$syserr_report_event                             ncp_tables_$tracing_info      pds$process_group_id
+pds$process_id
+
+
+CONSTANTS
+000000  aa     004000000000
+
+000001  aa     400000000000
+
+000650  aa     000000250600
+
+000651  aa     000000000074
+
+000002  aa     000003641100
+
+000003  aa     404000000010
+
+000004  aa     524000000061
+
+000005  aa     524000000030
+
+000006  aa     524000000026
+
+000007  aa     524000000040
+
+000010  aa     524000000023
+
+000011  aa     524000000170
+
+000012  aa     404000000021
+
+000013  aa     524000000020
+
+000014  aa     404000000005
+
+000015  aa     464000000000
+
+000016  aa     526077777777
+
+000017  aa     516077777777
+
+000020  aa     514000000044
+
+000021  aa     404000000030
+
+000022  aa  136 167 040 136	^w ^
+000023  aa  062 144 040 136	2d ^
+000024  aa  062 144 040 072	2d :
+000025  aa  072 040 136 141	: ^a
+
+000026  aa  116 103 120 040	NCP 
+000027  aa  050 124 162 141	(Tra
+000030  aa  143 145 040 136	ce ^
+000031  aa  141 051 072 040	a): 
+000032  aa  040 136 141 000	 ^a
+
+000033  aa  103 124 114 040	CTL 
+000034  aa  115 123 107 040	MSG 
+000035  aa  141 164 040 136	at ^
+000036  aa  160 054 040 040	p,  
+000037  aa  136 144 040 142	^d b
+000040  aa  171 164 145 163	ytes
+
+000041  aa  116 103 120 040	NCP 
+000042  aa  050 103 157 155	(Com
+000043  aa  155 145 156 164	ment
+000044  aa  040 136 141 051	 ^a)
+000045  aa  072 040 040 136	:  ^
+000046  aa  141 040 000 000	a 
+
+000047  aa  136 063 144 072	^3d:
+000050  aa  040 040 040 040	    
+000051  aa  040 040 136 064	  ^4
+000052  aa  144 040 136 064	d ^4
+000053  aa  144 040 136 064	d ^4
+000054  aa  144 040 136 064	d ^4
+000055  aa  144 040 136 064	d ^4
+000056  aa  144 040 136 064	d ^4
+000057  aa  144 040 136 064	d ^4
+000060  aa  144 040 136 064	d ^4
+000061  aa  144 040 136 064	d ^4
+000062  aa  144 040 136 064	d ^4
+000063  aa  144 000 000 000	d
+
+BEGIN PROCEDURE ncp_trace_
+ENTRY TO ncp_trace_                                         STATEMENT 1 ON LINE 11
+ncp_trace_:
+          procedure (P_trace_control);
+
+000064  at     000001000020
+000065  ta     000064000000
+000066  da     000115300000
+000067  aa   000340 6270 00	eax7 	224
+000070  aa  7 00034 3521 20	epp2 	pr7|28,*
+000071  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000072  aa     000002000000
+000073  aa     000000000000
+						STATEMENT 1 ON LINE 86
+          if (ncp_tables_$tracing_info & P_trace_control) = ""b
+          then return;
+
+000074  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000075  aa  6 00032 3735 20	epp7 	pr6|26,*
+000076  aa  7 00002 3151 20	cana 	pr7|2,*		P_trace_control
+000077  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 89
+          if ^ substr (trace_rsw (), 25, 1)
+          then return;
+
+000100  aa  6 00162 3521 00	epp2 	pr6|114
+000101  aa  6 00166 2521 00	spri2	pr6|118
+000102  aa  6 00164 6211 00	eax1 	pr6|116
+000103  aa   004000 4310 07	fld  	2048,dl
+000104  la  4 00030 3521 20	epp2 	pr4|24,*		trace_rsw
+000105  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+000106  aa  6 00162 2351 00	lda  	pr6|114
+000107  aa   004000 3150 07	cana 	2048,dl
+000110  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 92
+          buff_len = length (line_buffer);
+
+000111  aa   000170 2360 07	ldq  	120,dl
+000112  aa  6 00117 7561 00	stq  	pr6|79		buff_len
+						STATEMENT 1 ON LINE 94
+          call formline_ (2, 3, addr (line_buffer), buff_len, 1);
+
+000113  aa   000002 2360 07	ldq  	2,dl
+000114  aa  6 00162 7561 00	stq  	pr6|114
+000115  aa   000003 2360 07	ldq  	3,dl
+000116  aa  6 00163 7561 00	stq  	pr6|115
+000117  aa  6 00122 3735 00	epp7 	pr6|82		line_buffer
+000120  aa  6 00170 6535 00	spri7	pr6|120
+000121  aa   000001 2360 07	ldq  	1,dl
+000122  aa  6 00172 7561 00	stq  	pr6|122
+000123  aa  6 00162 3521 00	epp2 	pr6|114
+000124  aa  6 00176 2521 00	spri2	pr6|126
+000125  aa  6 00163 3521 00	epp2 	pr6|115
+000126  aa  6 00200 2521 00	spri2	pr6|128
+000127  aa  6 00170 3521 00	epp2 	pr6|120
+000130  aa  6 00202 2521 00	spri2	pr6|130
+000131  aa  6 00117 3521 00	epp2 	pr6|79		buff_len
+000132  aa  6 00204 2521 00	spri2	pr6|132
+000133  aa  6 00172 3521 00	epp2 	pr6|122
+000134  aa  6 00206 2521 00	spri2	pr6|134
+000135  aa   777657 3520 04	epp2 	-81,ic		000014 = 404000000005
+000136  aa  6 00210 2521 00	spri2	pr6|136
+000137  aa  6 00212 2521 00	spri2	pr6|138
+000140  aa  6 00220 2521 00	spri2	pr6|144
+000141  aa   777654 3520 04	epp2 	-84,ic		000015 = 464000000000
+000142  aa  6 00214 2521 00	spri2	pr6|140
+000143  aa   777656 3520 04	epp2 	-82,ic		000021 = 404000000030
+000144  aa  6 00216 2521 00	spri2	pr6|142
+000145  aa  6 00174 6211 00	eax1 	pr6|124
+000146  aa   024000 4310 07	fld  	10240,dl
+000147  aa  6 00044 3701 20	epp4 	pr6|36,*
+000150  la  4 00020 3521 20	epp2 	pr4|16,*		formline_
+000151  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 96
+          if (ncp_tables_$tracing_info & PRINTER_TRACING)
+          then do;
+
+000152  aa  6 00044 3701 20	epp4 	pr6|36,*
+000153  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000154  aa   200000 3150 03	cana 	65536,du
+000155  aa   000062 6000 04	tze  	50,ic		000237
+						STATEMENT 1 ON LINE 98
+               clock_reading = divide (clock (), MILLION, 71, 0);
+
+000156  aa  0 01435 7001 00	tsx0 	pr0|797		clock
+000157  aa   777623 3520 04	epp2 	-109,ic		000002 = 000003641100
+000160  aa  0 01264 7001 00	tsx0 	pr0|692		divide_fx3
+000161  aa     000000000000
+000162  aa  6 00120 7571 00	staq 	pr6|80		clock_reading
+						STATEMENT 1 ON LINE 99
+               secs_since_midnight = mod (clock_reading, SECONDS_IN_DAY);
+
+000163  aa   000465 3520 04	epp2 	309,ic		000650 = 000000250600
+000164  aa  0 00706 7001 00	tsx0 	pr0|454		mod_fx3
+000165  aa  6 00116 7561 00	stq  	pr6|78		secs_since_midnight
+						STATEMENT 1 ON LINE 100
+               secs_since_min = mod (secs_since_midnight, SECONDS_IN_MINUTE);
+
+000166  aa   000463 3520 04	epp2 	307,ic		000651 = 000000000074
+000167  aa  0 00704 7001 00	tsx0 	pr0|452		mod_fx1
+000170  aa  6 00115 7561 00	stq  	pr6|77		secs_since_min
+						STATEMENT 1 ON LINE 101
+               mins_since_hour = mod (secs_since_midnight / SECONDS_IN_MINUTE, MINUTES_IN_HOUR);
+
+000171  aa  6 00116 2361 00	ldq  	pr6|78		secs_since_midnight
+000172  aa  0 01262 7001 00	tsx0 	pr0|690		divide_fx1
+000173  aa     000000000066
+000174  aa   000455 3520 04	epp2 	301,ic		000651 = 000000000074
+000175  aa  0 01270 7001 00	tsx0 	pr0|696		scaled_mod_fx3
+000176  aa     000000000066
+000177  aa     000000000000
+000200  aa   000066 7220 07	lxl2 	54,dl
+000201  aa  0 01115 7001 00	tsx0 	pr0|589		trunc_fx2
+000202  aa  6 00114 7561 00	stq  	pr6|76		mins_since_hour
+						STATEMENT 1 ON LINE 103
+               call trace ("^w ^2d ^2d :: ^a", pds$process_id, mins_since_hour, secs_since_min, line_buffer);
+
+000203  aa   777617 2370 04	ldaq 	-113,ic		000022 = 136167040136 062144040136
+000204  aa  6 00164 7571 00	staq 	pr6|116
+000205  aa   777617 2370 04	ldaq 	-113,ic		000024 = 062144040072 072040136141
+000206  aa  6 00166 7571 00	staq 	pr6|118
+000207  aa  6 00164 3521 00	epp2 	pr6|116
+000210  aa  6 00176 2521 00	spri2	pr6|126
+000211  aa  6 00044 3701 20	epp4 	pr6|36,*
+000212  la  4 00014 3521 20	epp2 	pr4|12,*		pds$process_id
+000213  aa  6 00200 2521 00	spri2	pr6|128
+000214  aa  6 00114 3521 00	epp2 	pr6|76		mins_since_hour
+000215  aa  6 00202 2521 00	spri2	pr6|130
+000216  aa  6 00115 3521 00	epp2 	pr6|77		secs_since_min
+000217  aa  6 00204 2521 00	spri2	pr6|132
+000220  aa  6 00122 3521 00	epp2 	pr6|82		line_buffer
+000221  aa  6 00206 2521 00	spri2	pr6|134
+000222  aa   777571 3520 04	epp2 	-135,ic		000013 = 524000000020
+000223  aa  6 00210 2521 00	spri2	pr6|136
+000224  aa   777574 3520 04	epp2 	-132,ic		000020 = 514000000044
+000225  aa  6 00212 2521 00	spri2	pr6|138
+000226  aa   777564 3520 04	epp2 	-140,ic		000012 = 404000000021
+000227  aa  6 00214 2521 00	spri2	pr6|140
+000230  aa  6 00216 2521 00	spri2	pr6|142
+000231  aa   777560 3520 04	epp2 	-144,ic		000011 = 524000000170
+000232  aa  6 00220 2521 00	spri2	pr6|144
+000233  aa  6 00174 6211 00	eax1 	pr6|124
+000234  aa   024000 4310 07	fld  	10240,dl
+000235  la  4 00026 3521 20	epp2 	pr4|22,*		trace
+000236  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 104
+               end;
+
+						STATEMENT 1 ON LINE 106
+          if (ncp_tables_$tracing_info & SYSERR_LOG_TRACING)
+          then call syserr (ncp_params_$syserr_report_event, "NCP (Trace ^a):  ^a", pds$process_group_id, line_buffer);
+
+000237  aa  6 00044 3701 20	epp4 	pr6|36,*
+000240  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000241  aa   100000 3150 03	cana 	32768,du
+000242  aa   000033 6000 04	tze  	27,ic		000275
+000243  aa   777563 2370 04	ldaq 	-141,ic		000026 = 116103120040 050124162141
+000244  aa  6 00174 7571 00	staq 	pr6|124
+000245  aa   777563 2370 04	ldaq 	-141,ic		000030 = 143145040136 141051072040
+000246  aa  6 00176 7571 00	staq 	pr6|126
+000247  aa   777563 2350 04	lda  	-141,ic		000032 = 040136141000
+000250  aa  6 00200 7551 00	sta  	pr6|128
+000251  la  4 00010 3521 20	epp2 	pr4|8,*		ncp_params_$syserr_report_event
+000252  aa  6 00224 2521 00	spri2	pr6|148
+000253  aa  6 00174 3521 00	epp2 	pr6|124
+000254  aa  6 00226 2521 00	spri2	pr6|150
+000255  la  4 00016 3521 20	epp2 	pr4|14,*		pds$process_group_id
+000256  aa  6 00230 2521 00	spri2	pr6|152
+000257  aa  6 00122 3521 00	epp2 	pr6|82		line_buffer
+000260  aa  6 00232 2521 00	spri2	pr6|154
+000261  aa   777531 3520 04	epp2 	-167,ic		000012 = 404000000021
+000262  aa  6 00234 2521 00	spri2	pr6|156
+000263  aa   777525 3520 04	epp2 	-171,ic		000010 = 524000000023
+000264  aa  6 00236 2521 00	spri2	pr6|158
+000265  aa   777522 3520 04	epp2 	-174,ic		000007 = 524000000040
+000266  aa  6 00240 2521 00	spri2	pr6|160
+000267  aa   777522 3520 04	epp2 	-174,ic		000011 = 524000000170
+000270  aa  6 00242 2521 00	spri2	pr6|162
+000271  aa  6 00222 6211 00	eax1 	pr6|146
+000272  aa   020000 4310 07	fld  	8192,dl
+000273  la  4 00024 3521 20	epp2 	pr4|20,*		syserr
+000274  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 109
+          return;
+
+000275  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO ncp_tracing                                        STATEMENT 1 ON LINE 113
+ncp_tracing:
+          entry (P_tracing_bits);
+
+000276  at     000001000017
+000277  ta     000276000000
+000300  da     000123300000
+000301  aa   000340 6270 00	eax7 	224
+000302  aa  7 00034 3521 20	epp2 	pr7|28,*
+000303  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000304  aa     000002000000
+000305  aa     000000000000
+000306  aa  6 00042 3735 20	epp7 	pr6|34,*
+000307  aa  7 00000 2361 20	ldq  	pr7|0,*
+000310  aa   000002 6040 04	tmi  	2,ic		000312
+000311  aa   777777 3760 07	anq  	262143,dl
+000312  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000313  aa  6 00244 7561 00	stq  	pr6|164
+						STATEMENT 1 ON LINE 116
+          ncp_tables_$tracing_info = P_tracing_bits;
+
+000314  aa  6 00044 3701 20	epp4 	pr6|36,*
+000315  la  4 00012 3735 20	epp7 	pr4|10,*		ncp_tables_$tracing_info
+000316  aa  6 00032 3715 20	epp5 	pr6|26,*
+000317  aa  5 00002 3535 20	epp3 	pr5|2,*
+000320  aa  6 00244 2351 00	lda  	pr6|164
+000321  aa  003 100 060 540	csl  	(pr,rl),(pr),fill(0),bool(move)
+000322  aa  3 00000 00 0005	descb	pr3|0,al		P_tracing_bits
+000323  aa  7 00000 00 0044	descb	pr7|0,36		ncp_tables_$tracing_info
+						STATEMENT 1 ON LINE 118
+          return;
+
+000324  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO ncp_priv_comment                                   STATEMENT 1 ON LINE 122
+ncp_priv_comment:
+          entry (P_comment);
+
+000325  at     000001000016
+000326  ta     000325000000
+000327  da     000133300000
+000330  aa   000340 6270 00	eax7 	224
+000331  aa  7 00034 3521 20	epp2 	pr7|28,*
+000332  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000333  aa     000002000000
+000334  aa     000000000000
+000335  aa  6 00042 3735 20	epp7 	pr6|34,*
+000336  aa  7 00000 2361 20	ldq  	pr7|0,*
+000337  aa   000002 6040 04	tmi  	2,ic		000341
+000340  aa   777777 3760 07	anq  	262143,dl
+000341  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000342  aa  6 00244 7561 00	stq  	pr6|164
+						STATEMENT 1 ON LINE 125
+          call syserr (ncp_params_$syserr_report_event, "NCP (Comment ^a):  ^a ", pds$process_group_id, P_comment);
+
+000343  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000344  aa   777476 00 0030	desc9a	-194,24		000041 = 116103120040
+000345  aa  6 00222 00 0030	desc9a	pr6|146,24
+000346  aa  6 00044 3701 20	epp4 	pr6|36,*
+000347  la  4 00010 3521 20	epp2 	pr4|8,*		ncp_params_$syserr_report_event
+000350  aa  6 00176 2521 00	spri2	pr6|126
+000351  aa  6 00222 3521 00	epp2 	pr6|146
+000352  aa  6 00200 2521 00	spri2	pr6|128
+000353  la  4 00016 3521 20	epp2 	pr4|14,*		pds$process_group_id
+000354  aa  6 00202 2521 00	spri2	pr6|130
+000355  aa  6 00032 3735 20	epp7 	pr6|26,*
+000356  aa  7 00002 3521 20	epp2 	pr7|2,*		P_comment
+000357  aa  6 00204 2521 00	spri2	pr6|132
+000360  aa   777432 3520 04	epp2 	-230,ic		000012 = 404000000021
+000361  aa  6 00206 2521 00	spri2	pr6|134
+000362  aa   777424 3520 04	epp2 	-236,ic		000006 = 524000000026
+000363  aa  6 00210 2521 00	spri2	pr6|136
+000364  aa   777423 3520 04	epp2 	-237,ic		000007 = 524000000040
+000365  aa  6 00212 2521 00	spri2	pr6|138
+000366  aa  6 00042 3715 20	epp5 	pr6|34,*
+000367  aa  5 00000 3521 20	epp2 	pr5|0,*
+000370  aa  6 00214 2521 00	spri2	pr6|140
+000371  aa  6 00174 6211 00	eax1 	pr6|124
+000372  aa   020000 4310 07	fld  	8192,dl
+000373  la  4 00024 3521 20	epp2 	pr4|20,*		syserr
+000374  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 127
+          return;
+
+000375  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO ncp_trace_comment                                  STATEMENT 1 ON LINE 131
+ncp_trace_comment:
+          entry (P_comment);
+
+000376  ta     000325000000
+000377  da     000143300000
+000400  aa   000340 6270 00	eax7 	224
+000401  aa  7 00034 3521 20	epp2 	pr7|28,*
+000402  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000403  aa     000002000000
+000404  aa     000000000000
+000405  aa  6 00042 3735 20	epp7 	pr6|34,*
+000406  aa  7 00000 2361 20	ldq  	pr7|0,*
+000407  aa   000002 6040 04	tmi  	2,ic		000411
+000410  aa   777777 3760 07	anq  	262143,dl
+000411  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000412  aa  6 00244 7561 00	stq  	pr6|164
+						STATEMENT 1 ON LINE 134
+          if ncp_tables_$tracing_info = ""b
+          then return;
+
+000413  aa  6 00044 3701 20	epp4 	pr6|36,*
+000414  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000415  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 137
+          call ncp_trace_$ncp_trace_ (ANY_TRACING, P_comment);
+
+000416  aa   777363 3520 04	epp2 	-269,ic		000001 = 400000000000
+000417  aa  6 00224 2521 00	spri2	pr6|148
+000420  aa  6 00032 3735 20	epp7 	pr6|26,*
+000421  aa  7 00002 3521 20	epp2 	pr7|2,*		P_comment
+000422  aa  6 00226 2521 00	spri2	pr6|150
+000423  aa   777375 3520 04	epp2 	-259,ic		000020 = 514000000044
+000424  aa  6 00230 2521 00	spri2	pr6|152
+000425  aa  6 00042 3715 20	epp5 	pr6|34,*
+000426  aa  5 00000 3521 20	epp2 	pr5|0,*
+000427  aa  6 00232 2521 00	spri2	pr6|154
+000430  aa  6 00222 6211 00	eax1 	pr6|146
+000431  aa   010000 4310 07	fld  	4096,dl
+000432  la  4 00022 3521 20	epp2 	pr4|18,*		ncp_trace_$ncp_trace_
+000433  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 139
+          return;
+
+000434  aa  0 00631 7101 00	tra  	pr0|409		return
+ENTRY TO trace_control_msg                                  STATEMENT 1 ON LINE 143
+trace_control_msg:
+          entry (P_msg_ptr, P_msg_len);
+
+000435  at     000002000015
+000436  ta     000021000000
+000437  ta     000435000000
+000440  da     000153300000
+000441  aa   000340 6270 00	eax7 	224
+000442  aa  7 00034 3521 20	epp2 	pr7|28,*
+000443  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000444  aa     000004000000
+000445  aa     000000000000
+						STATEMENT 1 ON LINE 146
+          if (ncp_tables_$tracing_info & TRACE_CTL_MSGS) = ""b
+          then return;
+
+000446  aa  6 00044 3701 20	epp4 	pr6|36,*
+000447  la  4 00012 2351 20	lda  	pr4|10,*		ncp_tables_$tracing_info
+000450  aa   004000 3150 03	cana 	2048,du
+000451  aa  0 00631 6001 00	tze  	pr0|409		return
+						STATEMENT 1 ON LINE 149
+          call ncp_trace_$ncp_trace_ (TRACE_CTL_MSGS, "CTL MSG at ^p,  ^d bytes", P_msg_ptr, P_msg_len);
+
+000452  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000453  aa   777361 00 0030	desc9a	-271,24		000033 = 103124114040
+000454  aa  6 00222 00 0030	desc9a	pr6|146,24
+000455  aa   777323 3520 04	epp2 	-301,ic		000000 = 004000000000
+000456  aa  6 00176 2521 00	spri2	pr6|126
+000457  aa  6 00222 3521 00	epp2 	pr6|146
+000460  aa  6 00200 2521 00	spri2	pr6|128
+000461  aa  6 00032 3735 20	epp7 	pr6|26,*
+000462  aa  7 00002 3521 20	epp2 	pr7|2,*		P_msg_ptr
+000463  aa  6 00202 2521 00	spri2	pr6|130
+000464  aa  7 00004 3521 20	epp2 	pr7|4,*		P_msg_len
+000465  aa  6 00204 2521 00	spri2	pr6|132
+000466  aa   777332 3520 04	epp2 	-294,ic		000020 = 514000000044
+000467  aa  6 00206 2521 00	spri2	pr6|134
+000470  aa   777315 3520 04	epp2 	-307,ic		000005 = 524000000030
+000471  aa  6 00210 2521 00	spri2	pr6|136
+000472  aa   777323 3520 04	epp2 	-301,ic		000015 = 464000000000
+000473  aa  6 00212 2521 00	spri2	pr6|138
+000474  aa   777325 3520 04	epp2 	-299,ic		000021 = 404000000030
+000475  aa  6 00214 2521 00	spri2	pr6|140
+000476  aa  6 00174 6211 00	eax1 	pr6|124
+000477  aa   020000 4310 07	fld  	8192,dl
+000500  la  4 00022 3521 20	epp2 	pr4|18,*		ncp_trace_$ncp_trace_
+000501  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 151
+          do indx = 1 by dimension (ctl_byte, 1) to P_msg_len;
+
+000502  aa  6 00032 3735 20	epp7 	pr6|26,*
+000503  aa  7 00004 2361 20	ldq  	pr7|4,*		P_msg_len
+000504  aa  6 00160 7561 00	stq  	pr6|112
+000505  aa   000012 2360 07	ldq  	10,dl
+000506  aa  6 00161 7561 00	stq  	pr6|113
+000507  aa   000001 2360 07	ldq  	1,dl
+000510  aa  6 00112 7561 00	stq  	pr6|74		indx
+000511  aa   000000 0110 03	nop  	0,du
+000512  aa  6 00161 2361 00	ldq  	pr6|113
+000513  aa   000004 6040 04	tmi  	4,ic		000517
+000514  aa  6 00112 2361 00	ldq  	pr6|74		indx
+000515  aa  6 00160 1161 00	cmpq 	pr6|112
+000516  aa   000131 6054 04	tpnz 	89,ic		000647
+000517  aa  6 00161 2361 00	ldq  	pr6|113
+000520  aa   000004 6050 04	tpl  	4,ic		000524
+000521  aa  6 00112 2361 00	ldq  	pr6|74		indx
+000522  aa  6 00160 1161 00	cmpq 	pr6|112
+000523  aa   000124 6040 04	tmi  	84,ic		000647
+						STATEMENT 1 ON LINE 152
+               do jdex = 1 by 1 to dimension (ctl_byte, 1);
+
+000524  aa   000001 2360 07	ldq  	1,dl
+000525  aa  6 00113 7561 00	stq  	pr6|75		jdex
+000526  aa  6 00113 2361 00	ldq  	pr6|75		jdex
+000527  aa   000012 1160 07	cmpq 	10,dl
+000530  aa   000030 6054 04	tpnz 	24,ic		000560
+						STATEMENT 1 ON LINE 153
+                    if indx + jdex - 1 > P_msg_len
+                    then ctl_byte (jdex) = -1;
+
+000531  aa  6 00112 0761 00	adq  	pr6|74		indx
+000532  aa   000001 1760 07	sbq  	1,dl
+000533  aa  6 00032 3735 20	epp7 	pr6|26,*
+000534  aa  7 00004 1161 20	cmpq 	pr7|4,*		P_msg_len
+000535  aa   000005 6044 04	tmoz 	5,ic		000542
+000536  aa   000001 3360 07	lcq  	1,dl
+000537  aa  6 00113 7271 00	lxl7 	pr6|75		jdex
+000540  aa  6 00077 7561 17	stq  	pr6|63,7		ctl_byte
+000541  aa   000015 7100 04	tra  	13,ic		000556
+						STATEMENT 1 ON LINE 155
+                    else ctl_byte (jdex) = binary (P_msg_ptr -> based_ctl_msg.byte (indx + jdex - 1), 8);
+
+000542  aa  6 00112 2361 00	ldq  	pr6|74		indx
+000543  aa  6 00113 0761 00	adq  	pr6|75		jdex
+000544  aa   000003 7360 00	qls  	3
+000545  aa  7 00002 3715 20	epp5 	pr7|2,*		P_msg_ptr
+000546  aa  5 00000 3715 20	epp5 	pr5|0,*		P_msg_ptr
+000547  aa  003 100 060 506	csl  	(pr,ql),(pr),fill(0),bool(move)
+000550  aa  5 77777 42 0010	descb	pr5|-1(20),8	based_ctl_msg.byte
+000551  aa  6 00056 00 0044	descb	pr6|46,36
+000552  aa  6 00056 2351 00	lda  	pr6|46
+000553  aa   000100 7730 00	lrl  	64
+000554  aa  6 00113 7271 00	lxl7 	pr6|75		jdex
+000555  aa  6 00077 7561 17	stq  	pr6|63,7		ctl_byte
+						STATEMENT 1 ON LINE 156
+                    end;
+
+000556  aa  6 00113 0541 00	aos  	pr6|75		jdex
+000557  aa   777747 7100 04	tra  	-25,ic		000526
+						STATEMENT 1 ON LINE 158
+               call ncp_trace_$ncp_trace_ (TRACE_CTL_MSGS, "^3d:      ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d ^4d", indx,
+                         ctl_byte (1), ctl_byte (2), ctl_byte (3), ctl_byte (4), ctl_byte (5),
+                         ctl_byte (6), ctl_byte (7), ctl_byte (8), ctl_byte (9), ctl_byte (10));
+
+000560  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000561  aa   777267 00 0064	desc9a	-329,52		000047 = 136063144072
+000562  aa  6 00222 00 0064	desc9a	pr6|146,52
+000563  aa   777215 3520 04	epp2 	-371,ic		000000 = 004000000000
+000564  aa  6 00250 2521 00	spri2	pr6|168
+000565  aa  6 00222 3521 00	epp2 	pr6|146
+000566  aa  6 00252 2521 00	spri2	pr6|170
+000567  aa  6 00112 3521 00	epp2 	pr6|74		indx
+000570  aa  6 00254 2521 00	spri2	pr6|172
+000571  aa  6 00100 3521 00	epp2 	pr6|64		ctl_byte
+000572  aa  6 00256 2521 00	spri2	pr6|174
+000573  aa  6 00101 3521 00	epp2 	pr6|65		ctl_byte
+000574  aa  6 00260 2521 00	spri2	pr6|176
+000575  aa  6 00102 3521 00	epp2 	pr6|66		ctl_byte
+000576  aa  6 00262 2521 00	spri2	pr6|178
+000577  aa  6 00103 3521 00	epp2 	pr6|67		ctl_byte
+000600  aa  6 00264 2521 00	spri2	pr6|180
+000601  aa  6 00104 3521 00	epp2 	pr6|68		ctl_byte
+000602  aa  6 00266 2521 00	spri2	pr6|182
+000603  aa  6 00105 3521 00	epp2 	pr6|69		ctl_byte
+000604  aa  6 00270 2521 00	spri2	pr6|184
+000605  aa  6 00106 3521 00	epp2 	pr6|70		ctl_byte
+000606  aa  6 00272 2521 00	spri2	pr6|186
+000607  aa  6 00107 3521 00	epp2 	pr6|71		ctl_byte
+000610  aa  6 00274 2521 00	spri2	pr6|188
+000611  aa  6 00110 3521 00	epp2 	pr6|72		ctl_byte
+000612  aa  6 00276 2521 00	spri2	pr6|190
+000613  aa  6 00111 3521 00	epp2 	pr6|73		ctl_byte
+000614  aa  6 00300 2521 00	spri2	pr6|192
+000615  aa   777203 3520 04	epp2 	-381,ic		000020 = 514000000044
+000616  aa  6 00302 2521 00	spri2	pr6|194
+000617  aa   777165 3520 04	epp2 	-395,ic		000004 = 524000000061
+000620  aa  6 00304 2521 00	spri2	pr6|196
+000621  aa   777171 3520 04	epp2 	-391,ic		000012 = 404000000021
+000622  aa  6 00306 2521 00	spri2	pr6|198
+000623  aa   777160 3520 04	epp2 	-400,ic		000003 = 404000000010
+000624  aa  6 00310 2521 00	spri2	pr6|200
+000625  aa   777156 3520 04	epp2 	-402,ic		000003 = 404000000010
+000626  aa  6 00312 2521 00	spri2	pr6|202
+000627  aa  6 00314 2521 00	spri2	pr6|204
+000630  aa  6 00316 2521 00	spri2	pr6|206
+000631  aa  6 00320 2521 00	spri2	pr6|208
+000632  aa  6 00322 2521 00	spri2	pr6|210
+000633  aa  6 00324 2521 00	spri2	pr6|212
+000634  aa  6 00326 2521 00	spri2	pr6|214
+000635  aa  6 00330 2521 00	spri2	pr6|216
+000636  aa  6 00332 2521 00	spri2	pr6|218
+000637  aa  6 00246 6211 00	eax1 	pr6|166
+000640  aa   064000 4310 07	fld  	26624,dl
+000641  aa  6 00044 3701 20	epp4 	pr6|36,*
+000642  la  4 00022 3521 20	epp2 	pr4|18,*		ncp_trace_$ncp_trace_
+000643  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 161
+               end;
+
+000644  aa  6 00161 2361 00	ldq  	pr6|113
+000645  aa  6 00112 0561 00	asq  	pr6|74		indx
+000646  aa   777644 7100 04	tra  	-92,ic		000512
+						STATEMENT 1 ON LINE 163
+          return;
+
+000647  aa  0 00631 7101 00	tra  	pr0|409		return
+						STATEMENT 1 ON LINE 201
+end;
+
+  END PROCEDURE ncp_trace_
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

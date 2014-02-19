@@ -1,0 +1,905 @@
+	COMPILATION LISTING OF SEGMENT init_hc_part
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-06-05,GJohnson), approve(86-06-05,MCR7387),
+       12*     audit(86-06-10,Martinson), install(86-07-11,MR12.0-1091):
+       13*     Correct error message documentation.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 init_hc_part:
+       18      proc (pvtx, frec, nrec);
+       19 
+       20 /* Hardcore Partition Management
+       21*
+       22*   init_hc_part establishes all structures necessary for paging to
+       23*          operate against the Hardcore Partition on a specified
+       24*	device. These structures include the PVTE, volmap_seg,
+       25*	and record_stock. One or more records at the beginning
+       26*	of the partition are used as a fake Volume Map.
+       27*
+       28*   init_hc_part$terminate_hc_part terminates allocation against the
+       29*          Hardcore Partition. It is called immediately before
+       30*	enabling the File System.
+       31*
+       32*  This program will require modification for the new Volume Map
+       33*  format. To facilitate this, those functions which are dependent
+       34*  on Volume Map format are embodied in separate subroutines.
+       35*
+       36*
+       37*  Written March 1982 by J. Bongiovanni
+       38**/
+       39 
+       40 /*  Parameter  */
+       41 
+       42 	dcl     pvtx		 fixed bin;	/* Index of PVTE for device */
+       43 	dcl     frec		 fixed bin (18);	/* First record of HC PART of device */
+       44 	dcl     nrec		 fixed bin (18);	/* Number of records in HC PART */
+       45 
+       46 /*  Automatic  */
+       47 
+       48 	dcl     null_sdw		 fixed bin (71);	/* To clear volmap_abs_seg when done */
+       49 	dcl     p99		 pic "99";
+       50 	dcl     ptp		 ptr;		/* Pointer to page table */
+       51 	dcl     temp_sdw		 fixed bin (71);	/* SDW for volmap_abs_seg */
+       52 	dcl     vol_pagex		 fixed bin;
+       53 
+       54 /*  Static  */
+       55 
+       56 	dcl     ALL_FREE		 bit (36) aligned int static options (constant) init ("377777777770"b3);
+       57 	dcl     RECORDS_PER_PAGE	 fixed bin int static options (constant) init (1024 * 32);
+       58 
+       59 /*  External  */
+       60 
+       61 	dcl     sst$pts		 (0:3) fixed bin external;
+       62 	dcl     1 sst$level		 (0:3) aligned external,
+       63 		2 ausedp		 bit (18) unal,
+       64 		2 no_aste		 bit (18) unal;
+       65 	dcl     volmap_abs_seg$	 external;
+       66 
+       67 /*  Entry  */
+       68 
+       69 	dcl     make_sdw$unthreaded	 entry (fixed bin, fixed bin (71), ptr, ptr);
+       70 	dcl     page$cleanup entry (ptr);
+       71 	dcl     page$drain_record_stock entry (ptr);
+       72 	dcl     pmut$swap_sdw	 entry (ptr, ptr);
+       73 	dcl     ptw_util_$make_null_disk entry (ptr, fixed bin (17));
+       74 	dcl     stock_man$allocate_record_stock entry (ptr, ptr);
+       75 	dcl     stock_man$free_record_stock	 entry (ptr, ptr);
+       76 	dcl     syserr		 entry options (variable);
+       77 	dcl     thread$cin		 entry (ptr, bit (18));
+       78 
+       79 /*  Builtin  */
+       80 
+       81 	dcl     addr		 builtin;
+       82 	dcl     addrel		 builtin;
+       83 	dcl     baseno		 builtin;
+       84 	dcl     bin		 builtin;
+       85 	dcl     convert		 builtin;
+       86 	dcl     divide		 builtin;
+       87 	dcl     null		 builtin;
+       88 	dcl     substr		 builtin;
+       89 
+       90 
+       91 	pvt_arrayp = addr (pvt$array);
+       92 	pvtep = addr (pvt_array (pvtx));
+       93 	vol_mapp = addr (volmap_abs_seg$);
+       94 	null_sdw = 0;
+       95 
+       96 	n_volmap_pages = get_volmap_size ();
+       97 	if nrec < n_volmap_pages
+       98 	then call syserr (CRASH, "init_hc_part: HC PART on dsk^a_^a too small",
+       99 		pvte.devname, convert (p99, pvte.logical_area_number));
+      100 
+      101 	call make_sdw$unthreaded (bin (baseno (addr (volmap_abs_seg$))), temp_sdw, astep, ptp);
+      102 	if astep = null ()
+      103 	then call syserr (CRASH, "init_hc_part: Unable to get ASTE for HC PART volmap");
+      104 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (temp_sdw));
+      105 	if sst$pts (bin (aste.ptsi)) < n_volmap_pages
+      106 	then call syserr (CRASH, "init_hc_part: volmap_abs_seg size too small");
+      107 	aste.pvtx = pvtx;
+      108 	aste.volmap_seg = "1"b;
+      109 	pvte.volmap_astep = astep;
+      110 	pvte.volmap_seg_sdw = temp_sdw;
+      111 
+      112 	call stock_man$allocate_record_stock (pvtep, record_stockp);
+      113 
+      114 /* Withdraw addresses for the Volume Map by hand */
+      115 
+      116 	do vol_pagex = 1 to n_volmap_pages;
+      117 	     call ptw_util_$make_null_disk (addrel (ptp, vol_pagex - 1), frec - 1 + vol_pagex);
+      118 	end;
+      119 
+      120 	pvte.baseadd = frec + n_volmap_pages;
+      121 	pvte.totrec = nrec - n_volmap_pages;
+      122 	pvte.nleft = nrec - n_volmap_pages;
+      123 
+      124 	call init_record_stock;
+      125 	call init_volmap;
+      126 
+      127 	call pmut$swap_sdw (addr (volmap_abs_seg$), addr (null_sdw));
+      128 
+      129 	return;
+      130 
+      131 terminate_hc_part: entry (pvtx);
+      132 
+      133 	pvt_arrayp = addr (pvt$array);
+      134 	pvtep = addr (pvt_array (pvtx));
+      135 	astep = pvte.volmap_astep;
+      136 	record_stockp = pvte.volmap_stock_ptr;
+      137 
+      138 	call page$drain_record_stock (pvtep);
+      139 	call stock_man$free_record_stock (pvtep, record_stockp);
+      140 
+      141 	call page$cleanup(astep);
+      142 
+      143 	aste_part.two = "0"b;
+      144 	call thread$cin (astep, sst$level (bin (aste.ptsi)).ausedp);
+      145 
+      146 	pvte.nleft, pvte.baseadd, pvte.totrec = 0;
+      147 	pvte.volmap_astep = null ();
+      148 	pvte.volmap_seg_sdw = 0;
+      149 
+      150 	return;
+      151 
+      152 
+      153 
+      154 /* Internal procedure to compute the number of pages needed for the
+      155*   Volume Map  */
+      156 
+      157 get_volmap_size:
+      158      proc returns (fixed bin);
+      159 
+      160 	return (divide (bin (rel (addr (vol_map.bit_map (divide (nrec + 31, 32, 17) + 1)))) + 1023, 1024, 17));
+      161 
+      162      end get_volmap_size;
+      163 
+      164 /* Internal procedure to initialize the record stock */
+      165 
+      166 init_record_stock:
+      167      proc;
+      168 
+      169 	dcl     base		 fixed bin;
+      170 	dcl     bias		 fixed bin;
+      171 	dcl     left		 fixed bin;
+      172 	dcl     ox		 fixed bin;
+      173 
+      174 
+      175 	record_stock.n_volmap_pages = n_volmap_pages;
+      176 	record_stock.target = record_stock.n_in_stock;	/* Withdraw only, no deposit */
+      177 	
+      178 	do ox = 1 to hbound (record_stock.old_volmap_page, 1);
+      179 	     record_stock.old_volmap_page (ox).last = 0;
+      180 	end;
+      181 
+      182 	base = frec + n_volmap_pages;
+      183 	left = nrec - n_volmap_pages;
+      184 	bias = 64 * 32;				/* Old Volume Map kludge */
+      185 	do ox = 1 repeat ox + 1 while (ox <= n_volmap_pages & left > 0);
+      186 	     record_stock.volmap_page (ox).n_free = min (RECORDS_PER_PAGE - bias, left);
+      187 	     record_stock.volmap_page (ox).baseadd = base - bias;
+      188 	     left = left - record_stock.volmap_page (ox).n_free;
+      189 	     base = base + RECORDS_PER_PAGE;
+      190 	     bias = 0;				/* Kludge for first page */
+      191 	end;
+      192 
+      193      end init_record_stock;
+      194 
+      195 /* Internal procedure to initialize the fake Volume Map, indicating
+      196*   that all records in the Hardcore Partition (except those subverted
+      197*   for the Map itself) are free */
+      198 
+      199 init_volmap:
+      200      proc;
+      201 
+      202 	dcl     bmx		 fixed bin;
+      203 	dcl     n_bitmap_words	 fixed bin;
+      204 	dcl     n_rem_bits		 fixed bin;
+      205 
+      206 
+      207 	n_bitmap_words = divide (nrec - n_volmap_pages, 32, 17);
+      208 
+      209 	do bmx = 1 to n_bitmap_words;
+      210 	     vol_map.bit_map (bmx) = ALL_FREE;
+      211 	end;
+      212 
+      213 	n_rem_bits = mod (nrec - n_volmap_pages, 32);
+      214 	if n_rem_bits > 0
+      215 	then do bmx = 1 to n_rem_bits;
+      216 		substr (vol_map.bit_map (n_bitmap_words + 1), bmx + 1, 1) = "1"b;
+      217 	     end;
+      218 
+      219 	return;
+      220 
+      221      end init_volmap;
+      222  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      222 
+      223  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  2     2 
+  2     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  2     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2     8*     Add the support for subvolumes
+  2     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  2    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  2    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  2    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  2    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  2    14*     Added inconsistent_dbm bit for determining the status of volume
+  2    15*     dumper bit maps.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18      dcl	   pvt$array	      aligned external;
+  2    19      dcl	   pvt$max_n_entries      fixed bin external;
+  2    20 
+  2    21      dcl	   pvt_arrayp	      ptr;
+  2    22      dcl	   pvtep		      ptr;
+  2    23 
+  2    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  2    25 
+  2    26      dcl	   1 pvte		      based (pvtep) aligned,
+  2    27 
+  2    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  2    29 
+  2    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  2    31 
+  2    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  2    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  2    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  2    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  2    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  2    37 	     2 pad3	      bit (2) unaligned,
+  2    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  2    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  2    40 
+  2    41 
+  2    42 
+  2    43 	     2 devname	      char (4),		/* device name */
+  2    44 
+  2    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  2    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  2    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  2    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  2    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  2    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  2    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  2    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  2    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  2    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  2    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  2    56 	     2 scav_check_address
+  2    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  2    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  2    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  2    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  2    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  2    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  2    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  2    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  2    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  2    66 
+  2    67 
+  2    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  2    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  2    70 
+  2    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  2    72 
+  2    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  2    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  2    75 
+  2    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  2    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  2    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  2    79 	     2 records_per_cyl    fixed bin,
+  2    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  2    81 	     2 sv_name            char (2) aligned,
+  2    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  2    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  2    84 
+  2    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  2    86 	     2 pad2	      bit (18) unaligned,
+  2    87 
+  2    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  2    89 
+  2    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  2    91 
+  2    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  2    93 
+  2    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  2    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  2    96 
+  2    97 
+  2    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  2    99 
+  2   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  2   101 
+  2   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  2   103 
+  2   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  2   105 
+  2   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  2   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  2   108 
+  2   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  2   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  2   111 
+  2   112 
+  2   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  2   114 	   VOLMAP_ASYNC_READ      init (1),
+  2   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  2   116 
+  2   117 
+  2   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      223 
+      224  /*  START OF:	stock_seg.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3      dcl	   stock_segp	      ptr;
+  3     4      dcl	   record_stockp	      ptr;
+  3     5      dcl	   vtoce_stockp	      ptr;
+  3     6      dcl	   stock_seg$	      ext;
+  3     7 
+  3     8      dcl	   n_in_record_stock      fixed bin;
+  3     9      dcl	   n_volmap_pages	      fixed bin;
+  3    10      dcl	   n_in_vtoce_stock	      fixed bin;
+  3    11 
+  3    12 
+  3    13      dcl	   1 stock_seg	      aligned based (stock_segp),
+  3    14 
+  3    15 	     2 meters	      aligned like rsmeters,
+  3    16 
+  3    17 	     2 record_stock_entries fixed bin,		/* Number of entries in a record stock */
+  3    18 	     2 vtoce_stock_entries fixed bin,		/* Number of entries in a VTOCE stock */
+  3    19 	     2 record_stock_size  fixed bin,		/* Size of a record stock in words */
+  3    20 	     2 vtoce_stock_size   fixed bin,		/* Size of a VTOCE stock in words */
+  3    21 	     2 n_stock_entries    fixed bin,		/* Number of stocks of each type */
+  3    22 	     2 record_stock_arrayp ptr,		/* Record stock region */
+  3    23 	     2 vtoce_stock_arrayp ptr;		/* VTOCE stock region */
+  3    24 
+  3    25 
+  3    26      dcl	   1 record_stock	      aligned based (record_stockp),
+  3    27 
+  3    28 	     2 pvtep	      ptr unal,		/* PVTE for this stock */
+  3    29 
+  3    30 	     2 n_in_stock	      fixed bin (18) uns unal,/* Max number of addresses in stock */
+  3    31 	     2 n_volmap_pages     fixed bin (18) uns unal,/* Number of pages in Volume Map */
+  3    32 
+  3    33 	     2 n_free_in_stock    fixed bin (18) uns unal,/* Number addresses currently free */
+  3    34 	     2 n_os_in_stock      fixed bin (18) uns unal,/* Number addresses currently out-of-service */
+  3    35 
+  3    36 	     2 low_threshold      fixed bin (18) uns unal,/* Low threshold for withdrawing from volmap */
+  3    37 	     2 high_threshold     fixed bin (18) uns unal,/* High threshold for depositing to volmap */
+  3    38 
+  3    39 	     2 target	      fixed bin (18) uns unal,/* Target for stock */
+  3    40 	     2 stock_offset	      bit (18) unal,	/* Offset of stock in this structure */
+  3    41 
+  3    42 	     2 n_words_in_stock   fixed bin (18) uns unal,/* Number of words = Number of entries / 2 */
+  3    43 	     2 search_index	      fixed bin (18) uns unal,/* Roving pointer */
+  3    44 
+  3    45 	     2 old_volmap_page    (3) aligned,		/* N_OLD_VOLMAP_PAGES (cif) */
+  3    46 	       3 last	      fixed bin (18) uns unal,/* Roving pointer */
+  3    47 	       3 pad	      bit (18) unal,
+  3    48 
+  3    49 	     2 volmap_page	      (n_volmap_pages refer (record_stock.n_volmap_pages)) aligned,
+  3    50 	       3 n_free	      fixed bin (18) uns unal,/* Number free records in this volmap page */
+  3    51 	       3 baseadd	      fixed bin (17) unal,	/* First record address described by this page */
+  3    52 
+  3    53 	     2 stock	      (n_in_record_stock refer (record_stock.n_in_stock)) bit (18) unal; /* Stock array of addresses */
+  3    54 						/* bit 0 ON => out-of-service */
+  3    55 
+  3    56 
+  3    57      dcl	   1 vtoce_stock	      aligned based (vtoce_stockp),
+  3    58 	     2 pvtep	      ptr unal,		/* PVTE for this stock */
+  3    59 	     2 n_in_stock	      fixed bin (18) uns unal,/* Max number indices in stock */
+  3    60 	     2 n_free_in_stock    fixed bin (18) uns unal,/* Number indices currently free */
+  3    61 	     2 target	      fixed bin (18) uns unal,/* Target when withdrawing/depositing */
+  3    62 	     2 search_index	      fixed bin (18) uns unal,/* Roving pointer */
+  3    63 	     2 stock	      (n_in_vtoce_stock refer (vtoce_stock.n_in_stock)) fixed bin (17) unal; /* Stock array of VTOCE indices */
+  3    64 
+  3    65 
+  3    66      dcl	   1 rsmeters	      aligned based,
+  3    67 
+  3    68 	     2 async_read_calls   fixed bin (35),	/* Number of asynchronous read attempts */
+  3    69 	     2 async_page_reads   fixed bin (35),	/* Number of times page read was required */
+  3    70 	     2 async_post_io_calls fixed bin (35),	/* Number of times read or write posted */
+  3    71 	     2 deposit_calls      fixed bin (35),	/* Number of times deposit called */
+  3    72 	     2 async_post_io_time fixed bin (71),	/* CPU time posting I/Os (interrupt side) */
+  3    73 	     2 deposit_time	      fixed bin (71),	/* CPU time in deposit (call side) */
+  3    74 	     2 low_thresh_detected fixed bin (35),	/* Number of times stock below low threshold */
+  3    75 	     2 high_thresh_detected fixed bin (35),	/* Number of times stock above high threshold */
+  3    76 	     2 low_thresh_fails   fixed bin (35),	/* Number of times no records in volmap */
+  3    77 	     2 withdraw_stock_steps fixed bin (35),	/* Number steps thru stock in withdraw */
+  3    78 	     2 withdraw_stock_losses fixed bin (35),	/* Number lockless losses */
+  3    79 	     2 n_withdraw_attempt fixed bin (35),	/* Number attempts to withdraw a page */
+  3    80 	     2 n_withdraw_range   fixed bin (35),	/* Number attempts to withdraw within range */
+  3    81 	     2 n_pages_withdraw_stock fixed bin (35),	/* Number pages withdrawn from stock */
+  3    82 	     2 n_pages_withdraw_async fixed bin (35),	/* Number pages withdrawn from volmap */
+  3    83 	     2 n_v_withdraw_attempts fixed bin (35),	/* Number attempts to withdraw from volmap */
+  3    84 	     2 withdraw_volmap_steps fixed bin (35),	/* Number steps thru volmap in withdraw */
+  3    85 	     2 deposit_stock_steps fixed bin (35),	/* Number steps thru stock in deposit */
+  3    86 	     2 deposit_stock_losses fixed bin (35),	/* Number lockless losses */
+  3    87 	     2 n_deposit_attempt  fixed bin (35),	/* Number attempts to deposit a page */
+  3    88 	     2 n_pages_deposit_stock fixed bin (35),	/* Number pages deposited to stock */
+  3    89 	     2 n_pages_deposit_volmap fixed bin (35),	/* Number pages deposited to volmap */
+  3    90 	     2 n_v_deposit_attempts fixed bin (35),	/* Number attempts to deposit to volmap */
+  3    91 	     2 reset_os_calls     fixed bin (35),	/* Number calls to reset_os */
+  3    92 	     2 reset_os_losses    fixed bin (35),	/* Number lockless losses */
+  3    93 	     2 withdraw_calls     fixed bin (35),	/* Number calls to withdraw */
+  3    94 	     2 withdraw_time      fixed bin (71),	/* CPU time in withdraw (page-fault) */
+  3    95 	     2 pc_deposit_time    fixed bin (71),	/* CPU time in pc_deposit */
+  3    96 	     2 pc_deposit_calls   fixed bin (35),	/* Number calls to pc_deposit */
+  3    97 	     2 pc_deposit_pages   fixed bin (35),	/* Number pages deposited by pc_deposit */
+  3    98 	     2 get_free_vtoce_calls fixed bin (35),	/* Number calls to get_free_vtoce */
+  3    99 	     2 return_free_vtoce_call fixed bin (35),	/* Number calls to return_free_vtoce */
+  3   100 	     2 deposit_vstock_calls fixed bin (35),	/* Number attempts to deposit to vtoce stock */
+  3   101 	     2 deposit_vstock_fails fixed bin (35),	/* Number times deposit failed */
+  3   102 	     2 withdraw_vstock_calls fixed bin (35),	/* Number attempts to withdraw from vtoce stock */
+  3   103 	     2 withdraw_vstock_fails fixed bin (35),	/* Number times withdraw failed */
+  3   104 	     2 deposit_vtoc_map fixed bin (35),		/* Number times vtoce deposited to map */
+  3   105 	     2 withdraw_check_scav fixed bin (35),	/* Number times withdraw checked an address for scavenge */
+  3   106 	     2 withdraw_conflict fixed bin (35),	/* Number times conflict found */
+  3   107 	     2 pad (11)	      fixed bin (35);
+  3   108 	
+  3   109 
+  3   110      dcl	   N_OLD_VOLMAP_PAGES     fixed bin init (3) int static options (constant);
+  3   111      dcl	   DEFAULT_N_IN_RECORD_STOCK fixed bin init (104) int static options (constant);
+  3   112      dcl	   DEFAULT_N_IN_VTOCE_STOCK fixed bin init (10) int static options (constant);
+  3   113 
+  3   114 
+  3   115 /*  END OF:	stock_seg.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      224 
+      225  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  4     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  4     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  4     4 
+  4     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  4     6 
+  4     7 dcl (
+  4     8 
+  4     9 /* The following constants define the message action codes.  This indicates
+  4    10*how a message is to be handled.  */
+  4    11 
+  4    12      SYSERR_CRASH_SYSTEM	init (1),			
+  4    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  4    14 
+  4    15      SYSERR_TERMINATE_PROCESS	init (2),
+  4    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  4    17 
+  4    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  4    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  4    20 
+  4    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  4    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  4    23 
+  4    24      SYSERR_LOG_OR_PRINT	init (4),
+  4    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  4    26 
+  4    27      SYSERR_LOG_OR_DISCARD	init (5),
+  4    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  4    29 
+  4    30 
+  4    31 /* The following constants are added to the normal severities to indicate
+  4    32*different sorting classes of messages.  */
+  4    33 
+  4    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  4    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  4    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  4    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  4    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  4    39 	) fixed bin internal static options (constant);
+  4    40 
+  4    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      225 
+      226  /* BEGIN INCLUDE FILE ... vol_map.incl.pl1 */
+  5     2 
+  5     3 dcl   vol_mapp	ptr;
+  5     4 
+  5     5 dcl 1 vol_map based (vol_mapp) aligned,
+  5     6 
+  5     7     2 n_rec fixed bin(17),				/* number of records represented in the map */
+  5     8     2 base_add fixed bin(17),				/* record number for first bit in bit map */
+  5     9     2 n_free_rec fixed bin(17),			/* number of free records */
+  5    10     2 bit_map_n_words fixed bin(17),			/* number of words of the bit map */
+  5    11     2 pad (60) bit(36),				/* pad to 64 words */
+  5    12     2 bit_map (3*1024 - 64) bit(36) ;			/* bit map - the entire vol map occupies 3 records */
+  5    13 
+  5    14 /* END INCLUDE ... vol_map */
+      226 
+      227 
+      228 
+      229 /* BEGIN MESSAGE DOCUMENTATION
+      230*
+      231*   Message:
+      232*   init_hc_part: HC PART on dskX_NN too small
+      233*
+      234*   S:     $crash
+      235*
+      236*   T:     $init
+      237*
+      238*   M:	The Hardcore Partition on the device indicated is unreasonably
+      239*   small, as it does not contain sufficient space to hold the bit map
+      240*   describing it.
+      241*
+      242*   A:	Recreate the partition and reboot.
+      243*
+      244*
+      245*   Message:
+      246*   init_hc_part: volmap_abs_seg size too small
+      247*
+      248*   T:     $init
+      249*
+      250*   S:	$crash
+      251*
+      252*   M:	The maximum length of volmap_abs_seg on the MST header is not
+      253*   sufficient to access an entire Volume Map.
+      254*
+      255*   A:	Recreate the MST with a larger maximum length for volmap_abs_seg
+      256*   and reboot.
+      257*
+      258*   END MESSAGE DOCUMENTATION */
+      259 
+      260      end init_hc_part;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0801.1  init_hc_part.pl1                  >spec>install>1110>init_hc_part.pl1
+222          1    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+223          2    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+224          3    10/25/82  1015.6  stock_seg.incl.pl1                >ldd>include>stock_seg.incl.pl1
+225          4    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+226          5    04/29/76  1050.5  vol_map.incl.pl1                  >ldd>include>vol_map.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALL_FREE                        000000 constant        bit(36)                  initial dcl 56 ref 210
+CRASH                           000006 constant        fixed bin(17,0)          initial dcl 4-7 set ref 97* 102* 105*
+RECORDS_PER_PAGE                       constant        fixed bin(17,0)          initial dcl 57 ref 186 189
+addr                                                   builtin function         dcl 81 ref 91 92 93 101 101 104 104 104 104 127 127
+                                                                                  127 127 133 134 160
+addrel                                                 builtin function         dcl 82 ref 117 117
+aste                                   based           structure                level 1 dcl 1-11
+aste_part                              based           structure                level 1 dcl 1-89
+astep                           000110 automatic       pointer                  dcl 1-9 set ref 101* 102 105 107 108 109 135* 141*
+                                                                                  143 144* 144
+ausedp                          000012 external static bit(18)                  array level 2 packed packed unaligned dcl 62 set ref
+                                                                                  144*
+base                            000142 automatic       fixed bin(17,0)          dcl 169 set ref 182* 187 189* 189
+baseadd                  20            based           fixed bin(18,0)          level 2 in structure "pvte" packed packed unsigned
+                                                                                  unaligned dcl 2-26 in procedure "init_hc_part" set
+                                                                                  ref 120* 146*
+baseadd                  11(18)        based           fixed bin(17,0)          array level 3 in structure "record_stock" packed
+                                                                                  packed unaligned dcl 3-26 in procedure
+                                                                                  "init_hc_part" set ref 187*
+baseno                                                 builtin function         dcl 83 ref 101 101
+bias                            000143 automatic       fixed bin(17,0)          dcl 170 set ref 184* 186 187 190*
+bin                                                    builtin function         dcl 84 ref 101 101 105 144 160
+bit_map                 100            based           bit(36)                  array level 2 dcl 5-5 set ref 160 210* 216*
+bmx                             000154 automatic       fixed bin(17,0)          dcl 202 set ref 209* 210* 214* 216*
+convert                                                builtin function         dcl 85 ref 97 97
+devname                   3            based           char(4)                  level 2 dcl 2-26 set ref 97*
+divide                                                 builtin function         dcl 86 ref 160 160 207
+frec                                   parameter       fixed bin(18,0)          dcl 43 ref 17 117 120 182
+last                      6            based           fixed bin(18,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 3-26 set ref 179*
+left                            000144 automatic       fixed bin(17,0)          dcl 171 set ref 183* 185 186 188* 188
+logical_area_number       4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 2-26 ref 97 97
+make_sdw$unthreaded             000016 constant        entry                    external dcl 69 ref 101
+n_bitmap_words                  000155 automatic       fixed bin(17,0)          dcl 203 set ref 207* 209 216
+n_free                   11            based           fixed bin(18,0)          array level 3 packed packed unsigned unaligned
+                                                                                  dcl 3-26 set ref 186* 188
+n_in_stock                1            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-26
+                                                                                  ref 176
+n_rem_bits                      000156 automatic       fixed bin(17,0)          dcl 204 set ref 213* 214 214
+n_volmap_pages            1(18)        based           fixed bin(18,0)          level 2 in structure "record_stock" packed packed
+                                                                                  unsigned unaligned dcl 3-26 in procedure
+                                                                                  "init_hc_part" set ref 175*
+n_volmap_pages                  000120 automatic       fixed bin(17,0)          dcl 3-9 in procedure "init_hc_part" set ref 96* 97
+                                                                                  105 116 120 121 122 175 182 183 185 207 213
+nleft                     7            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 2-26 set ref
+                                                                                  122* 146*
+nrec                                   parameter       fixed bin(18,0)          dcl 44 ref 17 97 121 122 160 183 207 213
+null                                                   builtin function         dcl 87 ref 102 147
+null_sdw                        000100 automatic       fixed bin(71,0)          dcl 48 set ref 94* 127 127
+old_volmap_page           6            based           structure                array level 2 dcl 3-26 set ref 178
+ox                              000145 automatic       fixed bin(17,0)          dcl 172 set ref 178* 179* 185* 185* 186 187 188* 191
+p99                                    automatic       picture(2)               packed unaligned dcl 49 ref 97 97
+page$cleanup                    000020 constant        entry                    external dcl 70 ref 141
+page$drain_record_stock         000022 constant        entry                    external dcl 71 ref 138
+pmut$swap_sdw                   000024 constant        entry                    external dcl 72 ref 104 127
+ptp                             000102 automatic       pointer                  dcl 50 set ref 101* 117 117
+ptsi                     13(28)        based           bit(2)                   level 2 packed packed unaligned dcl 1-11 ref 105 144
+ptw_util_$make_null_disk        000026 constant        entry                    external dcl 73 ref 117
+pvt$array                       000040 external static fixed bin(17,0)          dcl 2-18 set ref 91 133
+pvt_array                              based           structure                array level 1 dcl 2-24 set ref 92 134
+pvt_arrayp                      000112 automatic       pointer                  dcl 2-21 set ref 91* 92 133* 134
+pvte                                   based           structure                level 1 dcl 2-26
+pvtep                           000114 automatic       pointer                  dcl 2-22 set ref 92* 97 97 97 109 110 112* 120 121
+                                                                                  122 134* 135 136 138* 139* 146 146 146 147 148
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "init_hc_part" set ref 107*
+pvtx                                   parameter       fixed bin(17,0)          dcl 42 in procedure "init_hc_part" ref 17 92 107 131
+                                                                                  134
+record_stock                           based           structure                level 1 dcl 3-26
+record_stockp                   000116 automatic       pointer                  dcl 3-4 set ref 112* 136* 139* 175 176 176 178 179
+                                                                                  186 187 188
+rsmeters                               based           structure                level 1 dcl 3-66
+sst$level                       000012 external static structure                array level 1 dcl 62
+sst$pts                         000010 external static fixed bin(17,0)          array dcl 61 ref 105
+stock_man$allocate_record_stock 000030 constant        entry                    external dcl 74 ref 112
+stock_man$free_record_stock     000032 constant        entry                    external dcl 75 ref 139
+substr                                                 builtin function         dcl 88 set ref 216*
+syserr                          000034 constant        entry                    external dcl 76 ref 97 102 105
+target                    4            based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 3-26
+                                                                                  set ref 176*
+temp_sdw                        000104 automatic       fixed bin(71,0)          dcl 51 set ref 101* 104 104 110
+thread$cin                      000036 constant        entry                    external dcl 77 ref 144
+totrec                    7(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 2-26 set ref
+                                                                                  121* 146*
+two                       1            based           bit(388)                 level 2 packed packed unaligned dcl 1-89 set ref
+                                                                                  143*
+vol_map                                based           structure                level 1 dcl 5-5
+vol_mapp                        000122 automatic       pointer                  dcl 5-3 set ref 93* 160 210 216
+vol_pagex                       000106 automatic       fixed bin(17,0)          dcl 52 set ref 116* 117 117 117*
+volmap_abs_seg$                 000014 external static fixed bin(17,0)          dcl 65 set ref 93 101 101 104 104 127 127
+volmap_astep             24            based           pointer                  level 2 packed packed unaligned dcl 2-26 set ref
+                                                                                  109* 135 147*
+volmap_page              11            based           structure                array level 2 dcl 3-26
+volmap_seg                5(23)        based           bit(1)                   level 2 packed packed unaligned dcl 1-11 set ref
+                                                                                  108*
+volmap_seg_sdw           22            based           fixed bin(71,0)          level 2 dcl 2-26 set ref 110* 148*
+volmap_stock_ptr         30            based           pointer                  level 2 packed packed unaligned dcl 2-26 ref 136
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 4-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 4-7
+DEFAULT_N_IN_RECORD_STOCK              internal static fixed bin(17,0)          initial dcl 3-111
+DEFAULT_N_IN_VTOCE_STOCK               internal static fixed bin(17,0)          initial dcl 3-112
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 4-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 4-7
+N_OLD_VOLMAP_PAGES                     internal static fixed bin(17,0)          initial dcl 3-110
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 4-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 4-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 2-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 2-113
+asta                                   based           bit(432)                 array dcl 1-86
+n_in_record_stock                      automatic       fixed bin(17,0)          dcl 3-8
+n_in_vtoce_stock                       automatic       fixed bin(17,0)          dcl 3-10
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 2-19
+seg_aste                               based           structure                level 1 dcl 1-96
+stock_seg                              based           structure                level 1 dcl 3-13
+stock_seg$                             external static fixed bin(17,0)          dcl 3-6
+stock_segp                             automatic       pointer                  dcl 3-3
+vtoce_stock                            based           structure                level 1 dcl 3-57
+vtoce_stockp                           automatic       pointer                  dcl 3-5
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+get_volmap_size                 000514 constant        entry                    internal dcl 157 ref 96
+init_hc_part                    000063 constant        entry                    external dcl 17
+init_record_stock               000535 constant        entry                    internal dcl 166 ref 124
+init_volmap                     000630 constant        entry                    internal dcl 199 ref 125
+terminate_hc_part               000411 constant        entry                    external dcl 131
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+hbound                                                 builtin function         ref 178
+min                                                    builtin function         ref 186
+mod                                                    builtin function         ref 213
+rel                                                    builtin function         ref 160
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1110        1152     712        1120
+Length      1440     712        42         251     175           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+init_hc_part                        153 external procedure  is an external procedure.  
+get_volmap_size                         internal procedure  shares stack frame of external procedure init_hc_part.  
+init_record_stock                       internal procedure  shares stack frame of external procedure init_hc_part.  
+init_volmap                             internal procedure  shares stack frame of external procedure init_hc_part.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+init_hc_part             000100 null_sdw                    init_hc_part
+                         000102 ptp                         init_hc_part
+                         000104 temp_sdw                    init_hc_part
+                         000106 vol_pagex                   init_hc_part
+                         000110 astep                       init_hc_part
+                         000112 pvt_arrayp                  init_hc_part
+                         000114 pvtep                       init_hc_part
+                         000116 record_stockp               init_hc_part
+                         000120 n_volmap_pages              init_hc_part
+                         000122 vol_mapp                    init_hc_part
+                         000142 base                        init_record_stock
+                         000143 bias                        init_record_stock
+                         000144 left                        init_record_stock
+                         000145 ox                          init_record_stock
+                         000154 bmx                         init_volmap
+                         000155 n_bitmap_words              init_volmap
+                         000156 n_rem_bits                  init_volmap
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          mdfx1               ext_entry           divide_fx3
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+make_sdw$unthreaded           page$cleanup                  page$drain_record_stock       pmut$swap_sdw
+ptw_util_$make_null_disk      stock_man$allocate_record_stock                             stock_man$free_record_stock
+syserr                        thread$cin
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+pvt$array                     sst$level                     sst$pts                       volmap_abs_seg$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     17 000057        91 000070        92 000072        93 000077        94 000101        96 000103        97 000105
+    101 000156       102 000201       104 000225       105 000242       107 000271       108 000276       109 000300
+    110 000302       112 000304       116 000315       117 000325       118 000347       120 000351       121 000357
+    122 000362       124 000366       125 000367       127 000370       129 000405       131 000406       133 000416
+    134 000421       135 000426       136 000430       138 000432       139 000440       141 000451       143 000460
+    144 000464       146 000500       147 000507       148 000511       150 000513       157 000514       160 000516
+    166 000535       175 000536       176 000541       178 000543       179 000551       180 000555       182 000557
+    183 000563       184 000566       185 000570       186 000577       187 000611       188 000615       189 000622
+    190 000624       191 000625       193 000627       199 000630       207 000631       209 000636       210 000645
+    211 000650       213 000652       214 000660       216 000667       217 000676       219 000700
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

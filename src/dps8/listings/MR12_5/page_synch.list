@@ -1,0 +1,1295 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1111>page_synch.alm                                                                                                                                       
+ASSEMBLED ON:	11/11/89  0924.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " ***********************************************************
+                                     8  
+                                     9  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    10  "
+                                    11  "	page_synch
+                                    12  "
+                                    13  "	Module to manage Data Management synchronized pages for ALM
+                                    14  "	Page Control.
+                                    15  "
+                                    16  "	Entries:
+                                    17  "
+                                    18  "	cleanup  	when a synch page is evicted, for housekeeping
+                                    19  "	move	when a synch page is moved from one frame to another
+                                    20  "	write     when Page Control wants to write a synch page, to see
+                                    21  "		whether it can
+                                    22  "	unlink_journal when a journal time stamp is changed, to unlink
+                                    23  "		all held CMEs
+                                    24  "
+                                    25  "	Written October 1982 by J. Bongiovanni
+                                    26  "	Modified June 1983 by M. Pandolf to better meter invalid formats
+                                    27  "	Modified May 1984 by Chris Jones to add move entry
+                                    28  "
+                                    29  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    30  
+    000000                          31  	name	page_synch
+                                    32  
+                        000001      33  	segdef	cleanup
+                        000012      34  	segdef	move
+                        000026      35  	segdef	write
+                        000066      36  	segdef	unlink_journal
+                                    37  
+    000000                          38  minus_one:
+    000000  aa   777777 777777      39  	dec	-1
+                                    40  
+                                    41  "
+                                    42  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    43  "
+                                    44  "	cleanup
+                                    45  "
+                                    46  "	Called when a synch page is evicted from memory, to do housekeeping
+                                    47  "	and reset CME bits.
+                                    48  "
+                                    49  "	tsx7	page_synch$cleanup
+                                    50  "
+                                    51  "	On entry,
+                                    52  "		x4 -> CME
+                                    53  "
+                                    54  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    55  
+    000001                          56  cleanup:
+    000001  aa  6 00236 2501 00     57  	spriap	page_synch_temp		" Save register
+    000002  4a  4 00010 3501 20     58  	eppap	dm_journal_seg_$
+                                    59  
+    000003  4a  4 00012 2361 20     60  	ldq	page_fault$cme_flags,*x4	" CME flags
+    000004  aa   010000 3160 07     61  	canq	cme.synch_held,dl		" Held page?
+    000005  0a   000007 6000 00     62  	tze	cleanup_not_held		" No
+    000006  0a   000226 7060 00     63  	tsx6	thread_out		" Yes - thread out of per-journal list
+                                    64  
+    000007                          65  cleanup_not_held:
+    000007  aa   010001 3350 07     66  	lca	cme.synch_held+1,dl		" Reset held bit
+    000010  4a  4 00012 3551 20     67  	ansa	page_fault$cme_flags,*x4
+                                    68  
+    000011  0a   000112 7100 00     69  	tra	ret_0
+                                    70  "
+                                    71  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    72  "	move
+                                    73  "
+                                    74  "	Called when a synch-held page is moved from one frame to another.
+                                    75  "	Its entry in dm_journal_seg_ must be updated.
+                                    76  "
+                                    77  "	tsx7	page_synch$move
+                                    78  "
+                                    79  "	On entry,
+                                    80  "		x4 -> new CME
+                                    81  "		x5 -> old CME
+                                    82  "
+                                    83  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+    000012                          84  move:
+    000012  4a  4 00014 2351 20     85  	lda	page_fault$cme_flags,*x5
+    000013  aa   010000 3750 07     86  	ana	cme.synch_held,dl
+    000014  aa   000000 6000 17     87  	tze	0,x7			" not held, nothing to do
+    000015  aa  6 00236 2501 00     88  	spriap	page_synch_temp
+    000016  4a  4 00012 2551 20     89  	orsa	page_fault$cme_flags,*x4	" turn on synch_help in new
+    000017  aa   000000 6360 15     90  	eaq	0,x5			" save this for a minute
+    000020  4a  4 00016 7251 20     91  	lxl5	page_fault$cme_synch_page_entryp,*qu
+    000021  4a  4 00020 4451 20     92  	sxl5	page_fault$cme_synch_page_entryp,*x4
+    000022  4a  4 00010 3501 20     93  	eppap	dm_journal_seg_$		" point to dm_page_entry
+    000023  aa  0 00001 7441 15     94  	stx4	ap|dm_page_entry.cme_relp,x5
+    000024  aa   000000 6250 02     95  	eax5	0,qu			" copy it back
+    000025  0a   000112 7100 00     96  	tra	ret_0
+                                    97  "
+                                    98  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    99  "	write
+                                   100  "
+                                   101  "	Called when Page Control wants to write a synch page. If the page
+                                   102  "	must be held, it is threaded to a per-journal list.
+                                   103  "
+                                   104  "	tsx7	page_synch$write
+                                   105  "	<return if page must be held>
+                                   106  "	<return if OK to write>
+                                   107  "
+                                   108  "	On entry,
+                                   109  "		x4 -> CME
+                                   110  "		bp -> PTW
+                                   111  "		abs_seg1 -> memory frame for page
+                                   112  "
+                                   113  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   114  
+    000026                         115  write:
+    000026  aa  6 00236 2501 00    116  	spriap	page_synch_temp		" Save register
+    000027  4a  4 00010 3501 20    117  	eppap	dm_journal_seg_$
+    000030  aa  0 00021 0541 00    118  	aos	ap|dm_journal.synch_write_calls " Meter
+                                   119  
+    000031  4a  4 00022 7061 20    120  	tsx6	page_fault$savex		" Recursive use of x7
+                                   121  
+    000032  4a  4 00012 2351 20    122  	lda	page_fault$cme_flags,*x4
+    000033  aa   010000 3150 07    123  	cana	cme.synch_held,dl		" Page already held?
+    000034  0a   000036 6000 00    124  	tze	write_not_held		" No
+    000035  0a   000226 7060 00    125  	tsx6	thread_out		" Yes - thread out of list
+                                   126  
+    000036                         127  write_not_held:
+    000036  0a   000124 7060 00    128  	tsx6	check_page_hold		" Should we hold?
+    000037  0a   000061 7100 00    129  	tra	invalid_format		" Bogus synch page format
+    000040  0a   000051 7100 00    130  	tra	write_hold		" Hold for sure
+                                   131  
+                                   132  "	Maybe not hold, but race exists since page is accessible to other
+                                   133  "	CPUs. Remove access and check again
+                                   134  
+    000041  aa   000005 3350 07    135  	lca	ptw.valid+1,dl
+    000042  aa  2 00000 3551 00    136  	ansa	bp|0			" Remove access in PTW
+    000043  4a  4 00024 7061 20    137  	tsx6	page_fault$check_accessible	" Is segment accessible?
+    000044  4a  4 00026 7071 20    138  	tsx7	cam_cache$cam_cache		" Yes, zap AMs
+                                   139  
+    000045  0a   000124 7060 00    140  	tsx6	check_page_hold		" Check again for hold
+    000046  0a   000061 7100 00    141  	tra	invalid_format		" Bogus format
+    000047  0a   000051 7100 00    142  	tra	write_hold		" Hold
+    000050  0a   000122 7100 00    143  	tra	ret_unsavex_1		" Can write - done restores access
+                                   144  
+    000051                         145  write_hold:
+    000051  aa   000004 2350 07    146  	lda	ptw.valid,dl		" Restore access
+    000052  aa  2 00000 2551 00    147  	orsa 	bp|0
+    000053  aa  0 00006 2351 00    148  	lda	ap|dm_journal.n_held_pages_mem " Check held against threshold
+    000054  aa  0 00005 1151 00    149  	cmpa	ap|dm_journal.max_held_pages_mem
+    000055  0a   000064 6050 00    150  	tpl	write_over_threshold	" Exceeded
+    000056  aa  0 00022 0541 00    151  	aos	ap|dm_journal.synch_write_holds " Meter
+    000057  0a   000176 7060 00    152  	tsx6	thread_in			" Thread into list per-journal
+    000060  0a   000120 7100 00    153  	tra	ret_unsavex_0		" And return
+                                   154  
+    000061                         155  invalid_format:
+    000061  aa   000004 2350 07    156  	lda	ptw.valid,dl		" Restore access
+    000062  aa  2 00000 2551 00    157  	orsa	bp|0
+    000063  0a   000122 7100 00    158  	tra	ret_unsavex_1		" For now
+                                   159  
+    000064                         160  write_over_threshold:
+    000064  aa  0 00027 0541 00    161  	aos	ap|dm_journal.synch_write_tosses " Meter
+    000065  0a   000122 7100 00    162  	tra	ret_unsavex_1		" And toss by allowing write
+                                   163  "
+                                   164  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   165  "
+                                   166  "	unlink_journal
+                                   167  "
+                                   168  "	Called when a journal time stamp is changed to unlink all CMEs,
+                                   169  "	causing pages not to be held. Pages which should still be held
+                                   170  "	will be detected when next we try to write them.
+                                   171  "
+                                   172  "	call page_synch$unlink_journal (Journal_Index)
+                                   173  "
+                                   174  "	Must be called with PTL held
+                                   175  "
+                                   176  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   177  
+    000066                         178  unlink_journal:
+    000066  aa   000300 6270 00    179  	push
+    000067  aa  7 00040 2721 20
+                                   180  
+    000070  aa  0 00002 2361 20    181  	ldq	ap|2,*			" Journal index
+    000071  0a   000111 6044 00    182  	tmoz	unlink_returns		" Bogus
+    000072  4a  4 00010 3501 20    183  	eppap	dm_journal_seg_$
+    000073  aa  0 00003 1161 00    184  	cmpq	ap|dm_journal.n_journals	" Valid index
+    000074  0a   000111 6054 00    185  	tpnz	unlink_returns		" No
+    000075  aa   000010 4020 07    186  	mpy	dm_per_journal_size,dl
+    000076  aa  0 00030 6361 06    187  	eaq	ap|dm_journal.per_journal-dm_per_journal_size,ql " QU -> per journal entry
+    000077  aa  6 00236 7561 00    188  	stq	page_synch_temp
+    000100  aa  0 00030 0541 00    189  	aos	ap|dm_journal.unlink_calls	" Meter
+                                   190  
+    000101                         191  unlink_loop:
+    000101  aa  6 00236 2361 00    192  	ldq	page_synch_temp		" QU -> per journal entry
+    000102  aa  0 00006 2201 02    193  	ldx0	ap|dm_per_journal.entry_relp,qu " x0 -> page entry
+    000103  0a   000111 6000 00    194  	tze	unlink_returns		" None left
+    000104  aa  0 00031 0541 00    195  	aos	ap|dm_journal.unlink_steps	" Meter
+    000105  aa  0 00001 2241 10    196  	ldx4	ap|dm_page_entry.cme_relp,x0	" x4 -> CME
+    000106  4a  4 00030 6001 20    197  	tze	page_error$dm_journal_seg_problem " Bad news, indeed
+    000107  0a   000226 7060 00    198  	tsx6	thread_out		" Unthread this entry
+    000110  0a   000101 7100 00    199  	tra	unlink_loop
+                                   200  
+    000111                         201  unlink_returns:
+    000111  aa  7 00042 7101 20    202  	return
+                                   203  "
+                                   204  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   205  "
+                                   206  "	Return points - restore registers and return
+                                   207  "
+                                   208  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   209  
+    000112                         210  ret_0:
+    000112  aa  6 00236 7601 00    211  	lprpap	page_synch_temp
+    000113  aa   000000 7100 17    212  	tra	0,x7
+                                   213  
+    000114                         214  ret_1:
+    000114  aa  6 00236 7601 00    215  	lprpap	page_synch_temp
+    000115  aa   000001 7100 17    216  	tra	1,x7
+                                   217  
+    000116                         218  ret_2:
+    000116  aa  6 00236 7601 00    219  	lprpap	page_synch_temp
+    000117  aa   000002 7100 17    220  	tra	2,x7
+                                   221  
+    000120                         222  ret_unsavex_0:
+    000120  aa  6 00236 7601 00    223  	lprpap	page_synch_temp
+    000121  4a  4 00032 7101 20    224  	tra	page_fault$unsavex
+                                   225  
+    000122                         226  ret_unsavex_1:
+    000122  aa  6 00236 7601 00    227  	lprpap	page_synch_temp
+    000123  4a  4 00034 7101 20    228  	tra	page_fault$unsavex_1
+                                   229  "
+                                   230  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   231  "
+                                   232  "	Internal procedure to check whether a page should be held, and
+                                   233  "	not written.
+                                   234  "	
+                                   235  "	tsx6	check_page_hold
+                                   236  "	<return if invalid synch page format>
+                                   237  "	<return if should hold>
+                                   238  "	<return if write OK>
+                                   239  "
+                                   240  "	On entry,
+                                   241  "		x4 -> CME
+                                   242  "		abs_seg1 -> main memory for page
+                                   243  "
+                                   244  "	On exit,
+                                   245  "		ap -> dm_journal_seg_
+                                   246  "
+                                   247  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   248  
+    000124                         249  check_page_hold:
+                                   250  
+    000124  4a  4 00036 3501 20    251  	eppap	abs_seg1$			" ap -> page
+    000125  aa  0 00000 2371 00    252  	ldaq	ap|synch_page.version_word
+    000126  0a   000162 6000 00    253  	tze	null_version_word
+    000127  aa  0 00000 2351 00    254  	lda	ap|synch_page.version_word
+    000130  aa   777000 3750 03    255  	ana	synch_page.version,du
+    000131  aa   641000 1150 03    256  	cmpa	SYNCH_PAGE_VERSION_1,du	" Good format for header
+    000132  0a   000165 6010 00    257  	tnz	invalid_version_number	" No
+    000133  aa  0 00000 2351 00    258  	lda	ap|synch_page.journal_index_word
+    000134  aa   000022 7710 00    259  	arl	synch_page.journal_index_shift
+    000135  aa   000777 3750 07    260  	ana	synch_page.journal_index_mask,dl " Pick up journal index
+    000136  0a   000170 6000 00    261  	tze	invalid_journal_index	" No good
+    000137  aa  6 00242 7551 00    262  	sta	page_synch_index		" save
+    000140  aa  0 00000 2371 00    263  	ldaq	ap|synch_page.time_stamp_word
+    000141  0a   000264 3770 00    264  	anaq	synch_page.time_stamp_mask	" Get time stamp
+    000142  aa  6 00240 7571 00    265  	staq	page_synch_time		" And save
+    000143  4a  4 00040 6331 20    266  	rccl	sys_info$clock_,*		" Check for reasonable value
+    000144  aa  6 00240 1171 00    267  	cmpaq	page_synch_time		" Can't be later than clock
+    000145  0a   000173 6040 00    268  	tmi	invalid_time_stamp
+                                   269  
+    000146  4a  4 00010 3501 20    270  	eppap	dm_journal_seg_$
+                                   271  
+    000147  aa  6 00242 2361 00    272  	ldq	page_synch_index
+    000150  aa  0 00003 1161 00    273  	cmpq	ap|dm_journal.n_journals	" Index valid
+    000151  aa   000000 6054 16    274  	tpnz	0,x6			" No
+    000152  aa   000010 4020 07    275  	mpy	dm_per_journal_size,dl	" Convert to offset
+    000153  aa  0 00030 6201 06    276  	eax0	ap|dm_journal.per_journal-dm_per_journal_size,ql " x0 -> per_journal entry
+    000154  aa  0 00003 2341 10    277  	szn	ap|dm_per_journal.uid,x0	" In use?
+    000155  aa   000000 6000 16    278  	tze	0,x6			" No - bogousity
+                                   279  
+    000156  aa  6 00240 2371 00    280  	ldaq	page_synch_time
+    000157  aa  0 00000 1171 10    281  	cmpaq	ap|dm_per_journal.time_stamp,x0 " Hold page?
+    000160  aa   000002 6044 16    282  	tmoz	2,x6			" No
+    000161  aa   000001 7100 16    283  	tra	1,x6			" Yes
+                                   284  
+    000162                         285  null_version_word:
+    000162  4a  4 00010 3501 20    286  	eppap	dm_journal_seg_$
+    000163  aa  0 00023 0541 00    287  	aos	ap|dm_journal.synch_write_no_stamp " Meter
+    000164  aa   000000 7100 16    288  	tra	0,x6
+                                   289  
+    000165                         290  invalid_version_number:	
+    000165  4a  4 00010 3501 20    291  	eppap	dm_journal_seg_$
+    000166  aa  0 00024 0541 00    292  	aos	ap|dm_journal.synch_write_inv_vers " Meter
+    000167  aa   000000 7100 16    293  	tra	0,x6
+                                   294  
+    000170                         295  invalid_journal_index:
+    000170  4a  4 00010 3501 20    296  	eppap	dm_journal_seg_$
+    000171  aa  0 00025 0541 00    297  	aos	ap|dm_journal.synch_write_inv_ix " Meter
+    000172  aa   000000 7100 16    298  	tra	0,x6
+                                   299  
+    000173                         300  invalid_time_stamp:
+    000173  4a  4 00010 3501 20    301  	eppap	dm_journal_seg_$
+    000174  aa  0 00026 0541 00    302  	aos	ap|dm_journal.synch_write_inv_time " Meter
+    000175  aa   000000 7100 16    303  	tra	0,x6
+                                   304  
+                                   305  "
+                                   306  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   307  "
+                                   308  "	Internal procedure to thread an entry into a per-journal list
+                                   309  "
+                                   310  "	tsx6	thread_in
+                                   311  "
+                                   312  "	On entry,
+                                   313  "		ap -> dm_journal_seg_$
+                                   314  "		x4 -> CME
+                                   315  "		x0 -> per_journal entry
+                                   316  "
+                                   317  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   318  
+    000176                         319  thread_in:
+    000176  aa  0 00020 2211 00    320  	ldx1	ap|dm_journal.free_list_relp	" Next free entry
+    000177  4a  4 00042 6001 20    321  	tze	page_error$no_free_dm_entries	" None
+                                   322  
+    000200  aa  0 00000 2361 11    323  	ldq	ap|0,x1			" QU -> next free
+    000201  aa  0 00020 7561 00    324  	stq	ap|dm_journal.free_list_relp
+                                   325  
+    000202  aa  0 00001 7441 11    326  	stx4	ap|dm_page_entry.cme_relp,x1
+                                   327  
+    000203  aa  0 00006 2251 10    328  	ldx5	ap|dm_per_journal.entry_relp,x0 " Entry in list
+    000204  0a   000211 6010 00    329  	tnz	thread_in_non_empty		" List non-empty
+                                   330  
+    000205  aa  0 00006 7411 10    331  	stx1	ap|dm_per_journal.entry_relp,x0 " Save in list ptr
+    000206  aa  0 00000 7411 11    332  	stx1	ap|dm_page_entry.fp,x1	" Entry threads to self
+    000207  aa  0 00000 4411 11    333  	sxl1	ap|dm_page_entry.bp,x1
+    000210  0a   000217 7100 00    334  	tra	thread_in_done
+                                   335  
+    000211                         336  thread_in_non_empty:
+    000211  aa  0 00000 2351 15    337  	lda	ap|dm_page_entry.fp,x5	" x5 -> an entry in the list
+    000212  aa  0 00000 4411 15    338  	sxl1	ap|dm_page_entry.bp,x5	" entry -> back to new entry
+    000213  aa  0 00000 7451 11    339  	stx5	ap|dm_page_entry.fp,x1	" new entry -> forward to entry
+    000214  aa  0 00000 7411 05    340  	stx1	ap|dm_page_entry.fp,al	" prev entry -> forward to new entry
+    000215  aa   000000 6250 05    341  	eax5	0,al
+    000216  aa  0 00000 4451 11    342  	sxl5	ap|dm_page_entry.bp,x1	" new entry -> back to prev entry
+                                   343  
+    000217                         344  thread_in_done:
+    000217  aa  0 00001 4401 11    345  	sxl0	ap|dm_page_entry.journal_relp,x1 " pointer to per_journal
+    000220  4a  4 00020 4411 20    346  	sxl1	page_fault$cme_synch_page_entryp,*x4 " CME -> entry
+    000221  aa   010000 2350 07    347  	lda	cme.synch_held,dl
+    000222  4a  4 00012 2551 20    348  	orsa	page_fault$cme_flags,*x4	" Mark CME as held
+    000223  aa  0 00002 0541 10    349  	aos	ap|dm_per_journal.n_held,x0	" Bump count of held this journal
+    000224  aa  0 00006 0541 00    350  	aos	ap|dm_journal.n_held_pages_mem " And total held
+                                   351  
+    000225  aa   000000 7100 16    352  	tra	0,x6
+                                   353  "
+                                   354  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   355  "
+                                   356  "	Internal procedure to thread an entry out of a per-journal list
+                                   357  "
+                                   358  "	tsx6	thread_out
+                                   359  "
+                                   360  "	On entry,
+                                   361  "		ap -> dm_journal_seg_$
+                                   362  "		x4 -> CME
+                                   363  "
+                                   364  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   365  
+    000226                         366  thread_out:
+                                   367  
+    000226  aa   010000 2350 07    368  	lda	cme.synch_held,dl
+    000227  0a   000000 6750 00    369  	era	minus_one
+    000230  4a  4 00012 3551 20    370  	ansa	page_fault$cme_flags,*x4	" Mark CME as not-held
+                                   371  
+    000231  4a  4 00020 7211 20    372  	lxl1	page_fault$cme_synch_page_entryp,*x4 " x1 -> entry
+    000232  4a  4 00030 6001 20    373  	tze	page_error$dm_journal_seg_problem
+    000233  aa   777777 2350 03    374  	lda	-1,du
+    000234  4a  4 00020 3551 20    375  	ansa	page_fault$cme_synch_page_entryp,*x4 " Reset CME pointer
+                                   376  
+    000235  aa  0 00001 7201 11    377  	lxl0	ap|dm_page_entry.journal_relp,x1 " x0 -> per-journal entry
+                                   378  
+    000236  aa  0 00000 7251 11    379  	lxl5	ap|dm_page_entry.bp,x1	" x5 -> prev entry
+    000237  aa  0 00000 1011 11    380  	cmpx1	ap|dm_page_entry.fp,x1	" Thread to self?
+    000240  0a   000243 6010 00    381  	tnz	thread_out_non_empty	" No - list won't be empty
+                                   382  	
+    000241  aa  0 00006 4501 10    383  	stz	ap|dm_per_journal.entry_relp,x0 " Mark list as empty
+    000242  0a   000250 7100 00    384  	tra	thread_out_done
+                                   385  
+    000243                         386  thread_out_non_empty:
+    000243  aa  0 00000 2351 11    387  	lda	ap|dm_page_entry.fp,x1	" AU -> next entry
+    000244  aa  0 00000 4451 01    388  	sxl5	ap|dm_page_entry.bp,au	" next -> back to prev
+    000245  aa   000000 6250 01    389  	eax5	0,au			" x5 -> next entry
+    000246  aa  0 00000 7451 05    390  	stx5	ap|dm_page_entry.fp,al	" prev -> forward to next
+    000247  aa  0 00006 7451 10    391  	stx5	ap|dm_per_journal.entry_relp,x0 " In case it pointed to this one
+                                   392  
+    000250                         393  thread_out_done:
+    000250  aa  0 00020 2351 00    394  	lda	ap|dm_journal.free_list_relp	" Thread entry into free list
+    000251  aa  0 00000 7551 11    395  	sta	ap|dm_page_entry.fp,x1
+    000252  aa   000000 6350 11    396  	eaa	0,x1
+    000253  aa  0 00020 7551 00    397  	sta	ap|dm_journal.free_list_relp
+                                   398  
+    000254  aa  0 00002 2351 10    399  	lda	ap|dm_per_journal.n_held,x0	" Decrement per-journal count
+    000255  aa   000001 1350 07    400  	sbla	1,dl
+    000256  aa  0 00002 7551 10    401  	sta	ap|dm_per_journal.n_held,x0
+    000257  aa  0 00006 2351 00    402  	lda	ap|dm_journal.n_held_pages_mem " Decrement total count
+    000260  aa   000001 1350 07    403  	sbla	1,dl
+    000261  aa  0 00006 7551 00    404  	sta	ap|dm_journal.n_held_pages_mem
+                                   405  
+    000262  aa   000000 7100 16    406  	tra	0,x6
+                                   407  "
+                                   408  	include	cmp
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE	cmp.incl.alm	October 1982
+                                   1-3  "
+                        000004     1-4  	equ	cme_size,4	Size of a CME
+                                   1-5  
+                        000000     1-6  	equ	cme.fp,0		forward pointer to next core map entry (DU)
+                        000000     1-7  	equ	cme.bp,0		backward pointer to previous core map entry (DL)
+                                   1-8  
+                        000001     1-9  	equ	cme.devadd,1	device address of page in the core block
+                        000001    1-10  	equ	cme.flags,1	word containing various flags
+                        740000    1-11  	bool	cme.did_mask,740000	mask for extracting device ID from core map entry
+                        010000    1-12  	bool	cme.synch_held,010000 page of synch seg held in mem (DL)
+                        004000    1-13  	bool	cme.io,004000	read/write bit (DL)
+                        001000    1-14  	bool	cme.er,001000	error on previous I/O
+                        000400    1-15  	bool	cme.removing,000400	page is being removed
+                        000200    1-16  	bool	cme.abs_w,000200	page may not be moved
+                        000100    1-17  	bool	cme.abs_usable,000100 page may be assigned with fixed abs addr
+                        000040    1-18  	bool	cme.notify_requested,000040 ptw event must be notified on completion
+                        000010    1-19  	bool	cme.phm_hedge,000010 periodic write scheduler
+                        000007    1-20  	bool	cme.contr,000007	port number of controller in which core block is located
+                                  1-21  
+                        000002    1-22  	equ	cme.ptwp,2	page table word pointer (DU)
+                        000002    1-23  	equ	cme.astep,2	AST entry ptr (DL)
+                                  1-24  
+                        000003    1-25  	equ	cme.pin_counter,3	number times to skip eviction (DU)
+                        000003    1-26  	equ	cme.synch_page_entryp,3 rel ptr to synch page entry
+                                  1-27  	
+                                  1-28  "	END INCLUDE FILE cmp.incl.alm
+                                   409  "
+                                   410  	include	dm_journal_seg_
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE dm_journal_seg_.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 06/07/83  1515.4 edt Tue by convert_include_file,
+                                   2-7  	"   Version of 11/07/82  1545.1 edt Sun.
+                                   2-8  
+                                   2-9  	"Made from >user_dir_dir>Multics>Pandolf>h>s>dm_journal_seg_.incl.pl1,
+                                  2-10  	"   modified 06/07/83  1515.1 edt Tue
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure dm_journal
+                                  2-14  "
+                                  2-15  
+                        000000    2-16  	equ	dm_journal.lock,0
+                        000001    2-17  	equ	dm_journal.wait_event,1
+                                  2-18  
+                        000002    2-19  	equ	dm_journal.notify_sw_word,2
+                        400000    2-20  	bool	dm_journal.notify_sw,400000	" DU
+                                  2-21  
+                        000003    2-22  	equ	dm_journal.n_journals,3
+                        000004    2-23  	equ	dm_journal.n_journals_inuse,4
+                        000005    2-24  	equ	dm_journal.max_held_pages_mem,5
+                        000006    2-25  	equ	dm_journal.n_held_pages_mem,6
+                        000007    2-26  	equ	dm_journal.max_held_per_journal,7
+                        000010    2-27  	equ	dm_journal.per_aste_pool,8	" LEVEL 2
+                                  2-28  
+                        000010    2-29  	equ	dm_journal.threshold,8
+                        000011    2-30  	equ	dm_journal.n_active,9
+                                  2-31  
+                        000020    2-32  	equ	dm_journal.free_list_relp,16	" UPPER
+                                  2-33  
+                        000021    2-34  	equ	dm_journal.synch_write_calls,17
+                        000022    2-35  	equ	dm_journal.synch_write_holds,18
+                        000023    2-36  	equ	dm_journal.synch_write_no_stamp,19
+                        000024    2-37  	equ	dm_journal.synch_write_inv_vers,20
+                        000025    2-38  	equ	dm_journal.synch_write_inv_ix,21
+                        000026    2-39  	equ	dm_journal.synch_write_inv_time,22
+                        000027    2-40  	equ	dm_journal.synch_write_tosses,23
+                        000030    2-41  	equ	dm_journal.unlink_calls,24
+                        000031    2-42  	equ	dm_journal.unlink_steps,25
+                        000032    2-43  	equ	dm_journal.activate_calls,26
+                        000033    2-44  	equ	dm_journal.deactivate_calls,27
+                        000034    2-45  	equ	dm_journal.activate_denied,28
+                        000035    2-46  	equ	dm_journal.set_stamp_calls,29
+                        000036    2-47  	equ	dm_journal.allocate_calls,30
+                        000037    2-48  	equ	dm_journal.free_calls,31
+                        000040    2-49  	equ	dm_journal.per_journal,32	" LEVEL 2
+                                  2-50  
+                        000000    2-51  	equ	dm_journal.page_entry,0	" LEVEL 2
+                                  2-52  
+                                  2-53  
+                                  2-54  "
+                                  2-55  "	Structure dm_per_journal_array
+                                  2-56  "
+                                  2-57  
+                                  2-58  "
+                                  2-59  "	Structure dm_per_journal
+                                  2-60  "
+                        000010    2-61  	equ	dm_per_journal_size,8
+                                  2-62  
+                        000000    2-63  	equ	dm_per_journal.time_stamp,0	" DOUBLE
+                        000002    2-64  	equ	dm_per_journal.n_held,2
+                        000003    2-65  	equ	dm_per_journal.uid,3
+                        000004    2-66  	equ	dm_per_journal.access_class,4	" DOUBLE
+                                  2-67  
+                        000006    2-68  	equ	dm_per_journal.entry_relp,6	" UPPER
+                                  2-69  
+                                  2-70  "
+                                  2-71  "	Structure dm_page_entry
+                                  2-72  "
+                        000002    2-73  	equ	dm_page_entry_size,2
+                                  2-74  
+                        000000    2-75  	equ	dm_page_entry.fp,0		" UPPER
+                        000000    2-76  	equ	dm_page_entry.bp,0		" LOWER
+                                  2-77  
+                        000001    2-78  	equ	dm_page_entry.cme_relp,1	" UPPER
+                        000001    2-79  	equ	dm_page_entry.journal_relp,1	" LOWER
+                                  2-80  
+                                  2-81       "END INCLUDE FILE dm_journal_seg_.incl.alm
+                                   411  "
+                                   412  	include	ptw
+                                   3-1  " BEGIN INCLUDE FILE ... ptw.incl.alm ... 03/01/81, for ADP conversion
+                                   3-2  
+                                   3-3  	iftarget	l68	" Include whichever seems appropriate
+                                        	 include	ptw.l68
+                                   4-1  
+                                   4-2  
+                                   4-3       "BEGIN INCLUDE FILE ptw.l68.incl.alm
+                                   4-4  
+                                   4-5  
+                                   4-6  	"Created 04/05/81  1616.0 est Sun by convert_include_file,
+                                   4-7  	"   Version of 04/05/81  1606.8 est Sun.
+                                   4-8  
+                                   4-9  	"Made from >udd>Multics>hardcore_pool>new_pc>include>ptw.l68.incl.pl1,
+                                  4-10  	"   modified 03/20/81  1815.9 est Fri
+                                  4-11  
+                                  4-12  "
+                                  4-13  "	Structure core_ptw
+                                  4-14  "
+                        000026    4-15  	equ	core_ptw.frame_shift,22
+                        037777    4-16  	bool	core_ptw.frame_mask,037777
+                        000000    4-17  	equ	core_ptw.flags,0	" LOWER
+                        000016    4-18  	equ	core_ptw.add_type_shift,14
+                        000017    4-19  	bool	core_ptw.add_type_mask,000017
+                        020000    4-20  	bool	core_ptw.first,020000	" DL
+                        010000    4-21  	bool	core_ptw.er,010000	" DL
+                        002000    4-22  	bool	core_ptw.unusable1,002000	" DL
+                        001000    4-23  	bool	core_ptw.phu,001000	" DL
+                        000400    4-24  	bool	core_ptw.phm1,000400	" DL
+                        000200    4-25  	bool	core_ptw.nypd,000200	" DL
+                        000100    4-26  	bool	core_ptw.phm,000100	" DL
+                        000040    4-27  	bool	core_ptw.phu1,000040	" DL
+                        000020    4-28  	bool	core_ptw.wired,000020	" DL
+                        000010    4-29  	bool	core_ptw.os,000010	" DL
+                        000004    4-30  	bool	core_ptw.valid,000004	" DL
+                        000000    4-31  	equ	core_ptw.df_no_shift,0
+                        000003    4-32  	bool	core_ptw.df_no_mask,000003
+                                  4-33  
+                                  4-34  "
+                                  4-35  "	Structure ptw
+                                  4-36  "
+                        000000    4-37  	equ	ptw.add,0		" UPPER
+                        000000    4-38  	equ	ptw.flags,0		" LOWER
+                        000016    4-39  	equ	ptw.add_type_shift,14
+                        000017    4-40  	bool	ptw.add_type_mask,000017
+                        020000    4-41  	bool	ptw.first,020000	" DL
+                        010000    4-42  	bool	ptw.er,010000		" DL
+                        002000    4-43  	bool	ptw.unusable1,002000	" DL
+                        001000    4-44  	bool	ptw.phu,001000		" DL
+                        000400    4-45  	bool	ptw.phm1,000400		" DL
+                        000200    4-46  	bool	ptw.nypd,000200		" DL
+                        000100    4-47  	bool	ptw.phm,000100		" DL
+                        000040    4-48  	bool	ptw.phu1,000040		" DL
+                        000020    4-49  	bool	ptw.wired,000020	" DL
+                        000010    4-50  	bool	ptw.os,000010		" DL
+                        000004    4-51  	bool	ptw.valid,000004	" DL
+                        000000    4-52  	equ	ptw.df_no_shift,0
+                        000003    4-53  	bool	ptw.df_no_mask,000003
+                                  4-54  
+                                  4-55       "END INCLUDE FILE ptw.l68.incl.alm
+                                        "	ifend
+                                   3-6  
+                                   3-7  	iftarget	adp
+                                        "	 include	ptw.adp
+                                        "	ifend
+                                  3-10  
+                                  3-11  " END INCLUDE FILE ... ptw.incl.alm
+                                   413  "
+                                   414  	include	pxss_page_stack
+                                   5-1  "
+                                   5-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   5-3  "
+                                   5-4  
+                        000006     5-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     5-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   5-7  
+                                   5-8  	temp8	notify_regs
+                                   5-9  	temp	save_stack(stack_size),stackp
+                                  5-10  	tempd	pre_time,pre_temp(3)
+                                  5-11  	tempd	arg(11),temp
+                                  5-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  5-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  5-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  5-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  5-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  5-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  5-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  5-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  5-20  	temp	lock_volmap_temp
+                                  5-21  	temp	volmap_page_temp
+                                  5-22  	tempd	free_store_start_time,post_io_start_time
+                                  5-23  
+                                  5-24  	temp	done_astep,volmap_page_temp_1
+                                  5-25  	temp	vtocx,pageno
+                                  5-26  
+                                  5-27  	tempd	page_synch_temp,page_synch_time
+                                  5-28  	temp	page_synch_index
+                                  5-29  
+                                  5-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  5-31  	tempd	pf_sdw
+                                  5-32  
+                                  5-33  	temp	pad(22)		" to grow compatibly
+                                  5-34  "
+                                  5-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  5-36  "
+                                   415  "
+                                   416  	include	synch_page
+                                   6-1  
+                                   6-2  
+                                   6-3       "BEGIN INCLUDE FILE synch_page.incl.alm
+                                   6-4  
+                                   6-5  
+                                   6-6  
+                                   6-7  "
+                                   6-8  "	Structure synch_page
+                                   6-9  "
+                        002000    6-10  	equ	synch_page_size,1024
+                                  6-11  
+                        000000    6-12  	equ	synch_page.version_word,0
+                        777000    6-13  	bool	synch_page.version,777000     " DU
+                        000000    6-14  	equ	synch_page.journal_index_word,0
+                        000022    6-15  	equ	synch_page.journal_index_shift,18
+                        000777    6-16  	bool	synch_page.journal_index_mask,000777 " DL
+                        000000    6-17  	equ	synch_page.time_stamp_word,0
+                                  6-18  
+                        641000    6-19  	bool	SYNCH_PAGE_VERSION_1,641000	" DU  MANIFEST
+                                  6-20  
+    000263  aa   000000 0110 03   6-21  	even
+    000264                        6-22  synch_page.time_stamp_mask:
+    000264  aa   000000 777777    6-23  	oct	000000777777
+    000265  aa   777777 777777    6-24  	oct	777777777777
+                                  6-25  
+                                  6-26  
+                                  6-27       "END INCLUDE FILE synch_page.incl.alm
+                                   417  
+                                   418  
+                                   419  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000266  5a   000003 000000 
+    000267  5a   000046 600000 
+    000270  aa   000000 000000 
+    000271  55   000011 000002 
+    000272  5a   000002 400003 
+    000273  55   000006 000011 
+    000274  aa  012 160 141 147
+    000275  aa  145 137 163 171
+    000276  aa  156 143 150 000
+    000277  55   000020 000003 
+    000300  0a   000066 400000 
+    000301  55   000014 000003 
+    000302  aa  016 165 156 154         unlink_journal
+    000303  aa  151 156 153 137
+    000304  aa  152 157 165 162
+    000305  aa  156 141 154 000
+    000306  55   000025 000011 
+    000307  0a   000026 400000 
+    000310  55   000023 000003 
+    000311  aa  005 167 162 151         write
+    000312  aa  164 145 000 000
+    000313  55   000032 000020 
+    000314  0a   000012 400000 
+    000315  55   000030 000003 
+    000316  aa  004 155 157 166         move
+    000317  aa  145 000 000 000
+    000320  55   000037 000025 
+    000321  0a   000001 400000 
+    000322  55   000035 000003 
+    000323  aa  007 143 154 145         cleanup
+    000324  aa  141 156 165 160
+    000325  55   000002 000032 
+    000326  6a   000000 400002 
+    000327  55   000042 000003 
+    000330  aa  014 163 171 155         symbol_table
+    000331  aa  142 157 154 137
+    000332  aa  164 141 142 154
+    000333  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000334  aa   000000 000015 
+    000335  5a   000032 000000 
+    000336  aa   000000 000000 
+    000337  aa   000000 000000 
+    000340  5a   000011 000000 
+    000341  aa   000000 000000 
+    000342  aa   000000 000000 
+    000343  5a   000037 000000 
+    000344  aa   000000 000000 
+    000345  aa   000000 000000 
+    000346  aa   000000 000000 
+    000347  aa   000000 000000 
+    000350  5a   000020 000000 
+    000351  5a   000025 000000 
+
+EXTERNAL NAMES
+
+    000352  aa  022 156 157 137         no_free_dm_entries
+    000353  aa  146 162 145 145
+    000354  aa  137 144 155 137
+    000355  aa  145 156 164 162
+    000356  aa  151 145 163 000
+    000357  aa  006 143 154 157         clock_
+    000360  aa  143 153 137 000
+    000361  aa  010 163 171 163         sys_info
+    000362  aa  137 151 156 146
+    000363  aa  157 000 000 000
+    000364  aa  010 141 142 163         abs_seg1
+    000365  aa  137 163 145 147
+    000366  aa  061 000 000 000
+    000367  aa  011 165 156 163         unsavex_1
+    000370  aa  141 166 145 170
+    000371  aa  137 061 000 000
+    000372  aa  007 165 156 163         unsavex
+    000373  aa  141 166 145 170
+    000374  aa  026 144 155 137         dm_journal_seg_problem
+    000375  aa  152 157 165 162
+    000376  aa  156 141 154 137
+    000377  aa  163 145 147 137
+    000400  aa  160 162 157 142
+    000401  aa  154 145 155 000
+    000402  aa  012 160 141 147         page_error
+    000403  aa  145 137 145 162
+    000404  aa  162 157 162 000
+    000405  aa  011 143 141 155         cam_cache
+    000406  aa  137 143 141 143
+    000407  aa  150 145 000 000
+    000410  aa  020 143 150 145         check_accessible
+    000411  aa  143 153 137 141
+    000412  aa  143 143 145 163
+    000413  aa  163 151 142 154
+    000414  aa  145 000 000 000
+    000415  aa  005 163 141 166         savex
+    000416  aa  145 170 000 000
+    000417  aa  025 143 155 145         cme_synch_page_entryp
+    000420  aa  137 163 171 156
+    000421  aa  143 150 137 160
+    000422  aa  141 147 145 137
+    000423  aa  145 156 164 162
+    000424  aa  171 160 000 000
+    000425  aa  011 143 155 145         cme_flags
+    000426  aa  137 146 154 141
+    000427  aa  147 163 000 000
+    000430  aa  012 160 141 147         page_fault
+    000431  aa  145 137 146 141
+    000432  aa  165 154 164 000
+    000433  aa  017 144 155 137         dm_journal_seg_
+    000434  aa  152 157 165 162
+    000435  aa  156 141 154 137
+    000436  aa  163 145 147 137
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000437  aa   000004 000000 
+    000440  55   000114 000064 
+    000441  aa   000004 000000 
+    000442  55   000073 000071 
+    000443  aa   000003 000000 
+    000444  5a   000076 000000 
+    000445  aa   000004 000000 
+    000446  55   000142 000101 
+    000447  aa   000004 000000 
+    000450  55   000142 000104 
+    000451  aa   000004 000000 
+    000452  55   000114 000106 
+    000453  aa   000004 000000 
+    000454  55   000117 000117 
+    000455  aa   000004 000000 
+    000456  55   000142 000122 
+    000457  aa   000004 000000 
+    000460  55   000142 000127 
+    000461  aa   000004 000000 
+    000462  55   000142 000131 
+    000463  aa   000004 000000 
+    000464  55   000142 000137 
+    000465  aa   000003 000000 
+    000466  5a   000145 000000 
+    000467  aa   000001 000000 
+    000470  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000471  5a   000151 000000 
+    000472  5a   000153 000000 
+    000473  5a   000155 000000 
+    000474  5a   000157 000000 
+    000475  5a   000161 000000 
+    000476  5a   000163 000000 
+    000477  5a   000165 000000 
+    000500  5a   000167 000000 
+    000501  5a   000171 000000 
+    000502  5a   000173 000000 
+    000503  5a   000175 000000 
+    000504  5a   000177 000000 
+    000505  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000266 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000044 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         dm_journal_seg_|       
+    000011  5a   000216 0000 00
+    000012  9a   777766 0000 46         page_fault|cme_flags
+    000013  5a   000215 0000 74
+    000014  9a   777764 0000 46         page_fault|cme_flags
+    000015  5a   000215 0000 75
+    000016  9a   777762 0000 46         page_fault|cme_synch_page_entryp
+    000017  5a   000214 0000 62
+    000020  9a   777760 0000 46         page_fault|cme_synch_page_entryp
+    000021  5a   000214 0000 74
+    000022  9a   777756 0000 46         page_fault|savex
+    000023  5a   000213 0000 00
+    000024  9a   777754 0000 46         page_fault|check_accessible
+    000025  5a   000212 0000 00
+    000026  9a   777752 0000 46         cam_cache|cam_cache
+    000027  5a   000211 0000 00
+    000030  9a   777750 0000 46         page_error|dm_journal_seg_problem
+    000031  5a   000210 0000 00
+    000032  9a   777746 0000 46         page_fault|unsavex
+    000033  5a   000207 0000 00
+    000034  9a   777744 0000 46         page_fault|unsavex_1
+    000035  5a   000206 0000 00
+    000036  9a   777742 0000 46         abs_seg1|       
+    000037  5a   000205 0000 00
+    000040  9a   777740 0000 46         sys_info|clock_
+    000041  5a   000204 0000 20
+    000042  9a   777736 0000 46         page_error|no_free_dm_entries
+    000043  5a   000203 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   242357 555237 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000305 
+    000020  aa   000000 000215 
+    000021  aa   000251 000241 
+    000022  aa   000273 000215 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000007 
+    000066  aa   000122 000041 
+    000067  aa   175453 017641 
+    000070  aa   000000 117547 
+    000071  aa   176351 400000 
+    000072  aa   000133 000031 
+    000073  aa   113434 242275 
+    000074  aa   000000 111347 
+    000075  aa   432071 000000 
+    000076  aa   000142 000045 
+    000077  aa   121216 332017 
+    000100  aa   000000 112121 
+    000101  aa   764715 200000 
+    000102  aa   000154 000031 
+    000103  aa   102456 350276 
+    000104  aa   000000 110246 
+    000105  aa   520730 400000 
+    000106  aa   000163 000035 
+    000107  aa   106701 740574 
+    000110  aa   000000 110670 
+    000111  aa   206425 200000 
+    000112  aa   000173 000045 
+    000113  aa   133234 136230 
+    000114  aa   000000 113324 
+    000115  aa   322064 400000 
+    000116  aa   000205 000040 
+    000117  aa   113434 242335 
+    000120  aa   000000 111347 
+    000121  aa   432127 000000 
+    000122  aa   076163 160145          >spec>install>1111>page_synch.alm
+    000123  aa   143076 151156 
+    000124  aa   163164 141154 
+    000125  aa   154076 061061 
+    000126  aa   061061 076160 
+    000127  aa   141147 145137 
+    000130  aa   163171 156143 
+    000131  aa   150056 141154 
+    000132  aa   155040 040040 
+    000133  aa   076154 144144          >ldd>include>cmp.incl.alm
+    000134  aa   076151 156143 
+    000135  aa   154165 144145 
+    000136  aa   076143 155160 
+    000137  aa   056151 156143 
+    000140  aa   154056 141154 
+    000141  aa   155040 040040 
+    000142  aa   076154 144144          >ldd>include>dm_journal_seg_.incl.alm
+    000143  aa   076151 156143 
+    000144  aa   154165 144145 
+    000145  aa   076144 155137 
+    000146  aa   152157 165162 
+    000147  aa   156141 154137 
+    000150  aa   163145 147137 
+    000151  aa   056151 156143 
+    000152  aa   154056 141154 
+    000153  aa   155040 040040 
+    000154  aa   076154 144144          >ldd>include>ptw.incl.alm
+    000155  aa   076151 156143 
+    000156  aa   154165 144145 
+    000157  aa   076160 164167 
+    000160  aa   056151 156143 
+    000161  aa   154056 141154 
+    000162  aa   155040 040040 
+    000163  aa   076154 144144          >ldd>include>ptw.l68.incl.alm
+    000164  aa   076151 156143 
+    000165  aa   154165 144145 
+    000166  aa   076160 164167 
+    000167  aa   056154 066070 
+    000170  aa   056151 156143 
+    000171  aa   154056 141154 
+    000172  aa   155040 040040 
+    000173  aa   076154 144144          >ldd>include>pxss_page_stack.incl.alm
+    000174  aa   076151 156143 
+    000175  aa   154165 144145 
+    000176  aa   076160 170163 
+    000177  aa   163137 160141 
+    000200  aa   147145 137163 
+    000201  aa   164141 143153 
+    000202  aa   056151 156143 
+    000203  aa   154056 141154 
+    000204  aa   155040 040040 
+    000205  aa   076154 144144          >ldd>include>synch_page.incl.alm
+    000206  aa   076151 156143 
+    000207  aa   154165 144145 
+    000210  aa   076163 171156 
+    000211  aa   143150 137160 
+    000212  aa   141147 145056 
+    000213  aa   151156 143154 
+    000214  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+                abs_seg1                 page_synch:   251.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pxss_page_stack:     11.
+         204    before                   pxss_page_stack:     17.
+                cam_cache                page_synch:   138.
+                check_accessible         page_synch:   137.
+         124    check_page_hold          page_synch:   128,  140,  249.
+           1    cleanup                  page_synch:    33,   56.
+           7    cleanup_not_held         page_synch:    62,   65.
+                clock_                   page_synch:   266.
+         100    cme.abs_usable           cmp:           17.
+         200    cme.abs_w                cmp:           16.
+           2    cme.astep                cmp:           23.
+           0    cme.bp                   cmp:            7.
+           7    cme.contr                cmp:           20.
+           1    cme.devadd               cmp:            9.
+      740000    cme.did_mask             cmp:           11.
+        1000    cme.er                   cmp:           14.
+           1    cme.flags                cmp:           10.
+           0    cme.fp                   cmp:            6.
+        4000    cme.io                   cmp:           13.
+          40    cme.notify_requested     cmp:           18.
+          10    cme.phm_hedge            cmp:           19.
+           3    cme.pin_counter          cmp:           25.
+           2    cme.ptwp                 cmp:           22.
+         400    cme.removing             cmp:           15.
+       10000    cme.synch_held           page_synch:    61,   66,   86,  123,  347,  368,
+                                         cmp:           12.
+           3    cme.synch_page_entryp    cmp:           26.
+         164    cmep                     pxss_page_stack:     15.
+                cme_flags                page_synch:    60,   67,   85,   89,  122,  348,  370.
+           4    cme_size                 cmp:            4.
+                cme_synch_page_entryp    page_synch:    91,   92,  346,  372,  375.
+         173    core_add                 pxss_page_stack:     16.
+          17    core_ptw.add_type_mask   ptw.l68:       19.
+          16    core_ptw.add_type_shift  ptw.l68:       18.
+           3    core_ptw.df_no_mask      ptw.l68:       32.
+           0    core_ptw.df_no_shift     ptw.l68:       31.
+       10000    core_ptw.er              ptw.l68:       21.
+       20000    core_ptw.first           ptw.l68:       20.
+           0    core_ptw.flags           ptw.l68:       17.
+       37777    core_ptw.frame_mask      ptw.l68:       16.
+          26    core_ptw.frame_shift     ptw.l68:       15.
+         200    core_ptw.nypd            ptw.l68:       25.
+          10    core_ptw.os              ptw.l68:       29.
+         100    core_ptw.phm             ptw.l68:       26.
+         400    core_ptw.phm1            ptw.l68:       24.
+        1000    core_ptw.phu             ptw.l68:       23.
+          40    core_ptw.phu1            ptw.l68:       27.
+        2000    core_ptw.unusable1       ptw.l68:       22.
+           4    core_ptw.valid           ptw.l68:       30.
+          20    core_ptw.wired           ptw.l68:       28.
+         174    count                    pxss_page_stack:     16.
+         154    delta_t                  pxss_page_stack:     13.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+          32    dm_journal.activate_calls      dm_journal_seg_:     43.
+          34    dm_journal.activate_denied     dm_journal_seg_:     45.
+          36    dm_journal.allocate_calls      dm_journal_seg_:     47.
+          33    dm_journal.deactivate_calls    dm_journal_seg_:     44.
+          37    dm_journal.free_calls    dm_journal_seg_:     48.
+          20    dm_journal.free_list_relp      page_synch:   320,  324,  394,  397,
+                                               dm_journal_seg_:     32.
+           0    dm_journal.lock          dm_journal_seg_:     16.
+           5    dm_journal.max_held_pages_mem  page_synch:   149,
+                                               dm_journal_seg_:     24.
+           7    dm_journal.max_held_per_journal      dm_journal_seg_:     26.
+      400000    dm_journal.notify_sw     dm_journal_seg_:     20.
+           2    dm_journal.notify_sw_word      dm_journal_seg_:     19.
+          11    dm_journal.n_active      dm_journal_seg_:     30.
+           6    dm_journal.n_held_pages_mem    page_synch:   148,  350,  402,  404,
+                                               dm_journal_seg_:     25.
+           3    dm_journal.n_journals    page_synch:   184,  273,
+                                         dm_journal_seg_:     22.
+           4    dm_journal.n_journals_inuse    dm_journal_seg_:     23.
+           0    dm_journal.page_entry    dm_journal_seg_:     51.
+          10    dm_journal.per_aste_pool       dm_journal_seg_:     27.
+          40    dm_journal.per_journal   page_synch:   187,  276,
+                                         dm_journal_seg_:     49.
+          35    dm_journal.set_stamp_calls     dm_journal_seg_:     46.
+          21    dm_journal.synch_write_calls   page_synch:   118,
+                                               dm_journal_seg_:     34.
+          22    dm_journal.synch_write_holds   page_synch:   151,
+                                               dm_journal_seg_:     35.
+          25    dm_journal.synch_write_inv_ix  page_synch:   297,
+                                               dm_journal_seg_:     38.
+          26    dm_journal.synch_write_inv_time      page_synch:   302,
+                                                     dm_journal_seg_:     39.
+          24    dm_journal.synch_write_inv_vers      page_synch:   292,
+                                                     dm_journal_seg_:     37.
+          23    dm_journal.synch_write_no_stamp      page_synch:   287,
+                                                     dm_journal_seg_:     36.
+          27    dm_journal.synch_write_tosses  page_synch:   161,
+                                               dm_journal_seg_:     40.
+          10    dm_journal.threshold     dm_journal_seg_:     29.
+          30    dm_journal.unlink_calls  page_synch:   189,
+                                         dm_journal_seg_:     41.
+          31    dm_journal.unlink_steps  page_synch:   195,
+                                         dm_journal_seg_:     42.
+           1    dm_journal.wait_event    dm_journal_seg_:     17.
+                dm_journal_seg_          page_synch:    58,   93,  117,  183,  270,  286,  291,  296,  301.
+                dm_journal_seg_problem   page_synch:   197,  373.
+           0    dm_page_entry.bp         page_synch:   333,  338,  342,  379,  388,
+                                         dm_journal_seg_:     76.
+           1    dm_page_entry.cme_relp   page_synch:    94,  196,  326,
+                                         dm_journal_seg_:     78.
+           0    dm_page_entry.fp         page_synch:   332,  337,  339,  340,  380,  387,  390,  395,
+                                         dm_journal_seg_:     75.
+           1    dm_page_entry.journal_relp     page_synch:   345,  377,
+                                               dm_journal_seg_:     79.
+           2    dm_page_entry_size       dm_journal_seg_:     73.
+           4    dm_per_journal.access_class    dm_journal_seg_:     66.
+           6    dm_per_journal.entry_relp      page_synch:   193,  328,  331,  383,  391,
+                                               dm_journal_seg_:     68.
+           2    dm_per_journal.n_held    page_synch:   349,  399,  401,
+                                         dm_journal_seg_:     64.
+           0    dm_per_journal.time_stamp      page_synch:   281,
+                                               dm_journal_seg_:     63.
+           3    dm_per_journal.uid       page_synch:   277,
+                                         dm_journal_seg_:     65.
+          10    dm_per_journal_size      page_synch:   186,  187,  275,  276,
+                                         dm_journal_seg_:     61.
+         232    done_astep               pxss_page_stack:     24.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+         177    inter                    pxss_page_stack:     16.
+          61    invalid_format           page_synch:   129,  141,  155.
+         170    invalid_journal_index    page_synch:   261,  295.
+         173    invalid_time_stamp       page_synch:   268,  300.
+         165    invalid_version_number   page_synch:   257,  290.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+           0    minus_one                page_synch:    38,  369.
+          12    move                     page_synch:    34,   84.
+          50    notify_regs              pxss_page_stack:      8.
+                no_free_dm_entries       page_synch:   321.
+         162    null_version_word        page_synch:   253,  285.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+                page_error               page_synch:   197,  321,  373.
+                page_fault               page_synch:    60,   67,   85,   89,   91,   92,  120,  122,  137,  224,  228,  346,
+                                                       348,  370,  372,  375.
+         242    page_synch_index         page_synch:   262,  272,
+                                         pxss_page_stack:     28.
+         236    page_synch_temp          page_synch:    57,   88,  116,  188,  192,  211,  215,  219,  223,  227,
+                                         pxss_page_stack:     27.
+         240    page_synch_time          page_synch:   265,  267,  280,
+                                         pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+         176    ptp_astep                pxss_page_stack:     16.
+           0    ptw.add                  ptw.l68:       37.
+          17    ptw.add_type_mask        ptw.l68:       40.
+          16    ptw.add_type_shift       ptw.l68:       39.
+           3    ptw.df_no_mask           ptw.l68:       53.
+           0    ptw.df_no_shift          ptw.l68:       52.
+       10000    ptw.er                   ptw.l68:       42.
+       20000    ptw.first                ptw.l68:       41.
+           0    ptw.flags                ptw.l68:       38.
+         200    ptw.nypd                 ptw.l68:       46.
+          10    ptw.os                   ptw.l68:       50.
+         100    ptw.phm                  ptw.l68:       47.
+         400    ptw.phm1                 ptw.l68:       45.
+        1000    ptw.phu                  ptw.l68:       44.
+          40    ptw.phu1                 ptw.l68:       48.
+        2000    ptw.unusable1            ptw.l68:       43.
+           4    ptw.valid                page_synch:   135,  146,  156,
+                                         ptw.l68:       51.
+          20    ptw.wired                ptw.l68:       49.
+         172    pvtx                     pxss_page_stack:     16.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+         112    ret_0                    page_synch:    69,   96,  210.
+         114    ret_1                    page_synch:   214.
+         116    ret_2                    page_synch:   218.
+         120    ret_unsavex_0            page_synch:   153,  222.
+         122    ret_unsavex_1            page_synch:   143,  158,  162,  226.
+                savex                    page_synch:   120.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+         777    synch_page.journal_index_mask  page_synch:   260,
+                                               synch_page:    16.
+          22    synch_page.journal_index_shift       page_synch:   259,
+                                                     synch_page:    15.
+           0    synch_page.journal_index_word  page_synch:   258,
+                                               synch_page:    14.
+         264    synch_page.time_stamp_mask     page_synch:   264,
+                                               synch_page:    22.
+           0    synch_page.time_stamp_word     page_synch:   263,
+                                               synch_page:    17.
+      777000    synch_page.version       page_synch:   255,
+                                         synch_page:    13.
+           0    synch_page.version_word  page_synch:   252,  254,
+                                         synch_page:    12.
+        2000    synch_page_size          synch_page:    10.
+      641000    SYNCH_PAGE_VERSION_1     page_synch:   256,
+                                         synch_page:    19.
+                sys_info                 page_synch:   266.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+         176    thread_in                page_synch:   152,  319.
+         217    thread_in_done           page_synch:   334,  344.
+         211    thread_in_non_empty      page_synch:   329,  336.
+         226    thread_out               page_synch:    63,  125,  198,  366.
+         250    thread_out_done          page_synch:   384,  393.
+         243    thread_out_non_empty     page_synch:   381,  386.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+          66    unlink_journal           page_synch:    36,  178.
+         101    unlink_loop              page_synch:   191,  199.
+         111    unlink_returns           page_synch:   182,  185,  194,  201.
+                unsavex                  page_synch:   224.
+                unsavex_1                page_synch:   228.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+          26    write                    page_synch:    35,  115.
+          51    write_hold               page_synch:   130,  142,  145.
+          36    write_not_held           page_synch:   124,  127.
+          64    write_over_threshold     page_synch:   150,  160.
+         206    x5                       pxss_page_stack:     17.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

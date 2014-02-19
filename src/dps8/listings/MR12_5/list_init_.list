@@ -1,0 +1,1374 @@
+	COMPILATION LISTING OF SEGMENT list_init_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0957.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ******************************************
+        2*        *                                        *
+        3*        * Copyright, (C) Honeywell Limited, 1983 *
+        4*        *                                        *
+        5*        ****************************************** */
+        6 
+        7 
+        8 /****^  HISTORY COMMENTS:
+        9*  1) change(86-10-21,DGHowe), approve(86-10-21,MCR7420), audit(86-11-12,Zwick),
+       10*     install(86-11-20,MR12.0-1222):
+       11*     Added the ability to initialize an external pointer to a
+       12*     non-constant value via list_init_.  Changed the calling sequence of
+       13*     list_init_ and already_zero.  Removed the signaling of malformed
+       14*     list template.  list_init_ now returns a standard error code leaving
+       15*     the error handling up to the caller.  Added a segment pointer to
+       16*     the variable node structure.
+       17*                                                   END HISTORY COMMENTS */
+       18 
+       19 
+       20 /* format: style3 */
+       21 list_init_:
+       22      proc (variable_p, list_template_p, vsize, a_sb, a_seg_ptr, a_code) options (support);
+       23 
+       24 /* Procedure to do a list template initialization of a variable. */
+       25 /* Created: 82-11-18. T. Oke (UNCA). */
+       26 
+       27 /* Modification History:
+       28*   83-04-21 M. Weaver to add $variable_already_zero and to handle large datum
+       29*   83-05-10 M. Weaver to not use fortran_storage include file
+       30*   84-10-19 M. Mabey to enable skipping backwards while initializing.  Data
+       31*		skipped over is no longer zeroed.  The condition
+       32*		'malformed_list_template_entry_' is signalled when an
+       33*		error is encountered.  "options (support)" is added to
+       34*		the procedure declaration.
+       35**/
+       36 
+       37 /* Parameters
+       38*
+       39*    variable_p	 Input pointer to base of variable.
+       40*
+       41*    list_template_p	 Input pointer to 'list_init_info' or null to init to "0"b.
+       42*
+       43*    vsize		 Input size of variable to be initialized.
+       44*
+       45*    a_sb		 Input pointer to the stack header for the object 
+       46*		 containing the variable
+       47*
+       48*    a_seg_ptr	 Input pointer to the segment containing the variable
+       49*		 reference or null if it would be impossible to initialize
+       50*		 a pointer to it or if the ext var has no pointers
+       51*		 When called from link_snap this is a pointer based on
+       52*		 the address in the init_info pointer (ie the 
+       53*		 list_template_p).
+       54*
+       55*    a_code	 Is a system error code (Output).
+       56*
+       57**/
+       58 
+       59 dcl	list_template_p	pointer parameter;
+       60 dcl	variable_p	pointer parameter;
+       61 dcl	vsize		fixed bin (35) parameter;
+       62 dcl	a_seg_ptr		pointer parameter;
+       63 dcl	a_code		fixed bin (35) parameter;
+       64 dcl	a_sb		pointer;
+       65 
+       66 
+       67 
+       68 /* Automatic Storage */
+       69 
+       70 dcl	fill_in_zeroes	bit (1) aligned automatic;	/* "1"b if reinitializing */
+       71 dcl	max_bit		fixed bin (35) automatic;	/* top bit in variable */
+       72 dcl	min_bit		fixed bin (35) automatic;	/* base bit in variable */
+       73 dcl	seg_end		fixed bin (35) automatic;	/* bit address of segment end */
+       74 dcl	skip_addr		fixed bin (35) automatic;	/* final address after skipping */
+       75 dcl	seg_ptr		ptr automatic;		/* local copy of seg ptr */
+       76 dcl	tp		ptr automatic;		/* local list pointer */
+       77 dcl	var_p		ptr automatic;		/* pointer to current point in variable */
+       78 dcl	vlength		fixed bin (35) automatic;	/* length to init */
+       79 
+       80 
+       81 /* Builtins */
+       82 
+       83 dcl	(addr, addrel, addbitno, copy, currentsize, divide, 
+       84 	fixed, length, max, min, null, ptr, substr, segno,
+       85 	unspec)		builtin;
+       86 
+       87 
+       88 /* Linkage and external */
+       89 
+       90 dcl	hcs_$link_force	entry (pointer, fixed bin, fixed bin (35));
+       91 
+       92 dcl	error_table_$invalid_ptr_target
+       93 			fixed bin (35) external;
+       94 dcl	error_table_$malformed_list_template_entry
+       95 			fixed bin (35) external;
+       96 dcl	error_table_$null_info_ptr
+       97 			fixed bin (35) external;
+       98 
+       99 dcl	pl1_operators_$VLA_words_per_seg_
+      100 			fixed bin (35) external;
+      101 
+      102 /* list_init_ entry point: we set the fill in zeros flag because we can 
+      103*   not be sure if the variable was already zeroed
+      104**/
+      105 	fill_in_zeroes = "1"b;
+      106 
+      107 /* Driver */
+      108 
+      109 join:
+      110 	a_code = 0;
+      111 	seg_ptr = a_seg_ptr;
+      112 	var_p = variable_p;
+      113 	tp = list_template_p;
+      114 	vlength = vsize * 36;
+      115 	max_bit = bit_logical (var_p, vlength);
+      116 	min_bit = bit_logical (var_p, 0);
+      117 
+      118 	if tp = null ()
+      119 	then call init_zero (var_p, vlength, tp);
+      120 
+      121 	else do while (tp ^= null ());		/* go through list */
+      122 		if tp -> list_template_entry.n_bits = 0 /* KEY END LIST */
+      123 		then tp = null ();
+      124 
+      125 /* check for ptr intialization */
+      126 
+      127 
+      128 		else if tp -> list_template_entry.init_type = ITS_PTR_INIT
+      129 		then do;				/* ITS ptr initialization */
+      130 			call initialize_ptr (tp, seg_ptr, a_sb, ("1"b), var_p);
+      131 			tp = addrel (tp, currentsize (tp -> list_template_entry));
+      132 		     end;
+      133 
+      134 
+      135 		else if tp -> list_template_entry.init_type = PACKED_PTR_INIT
+      136 		then do;				/* packed ptr initialization */
+      137 			call initialize_ptr (tp, seg_ptr, a_sb, ("0"b), var_p);
+      138 			tp = addrel (tp, currentsize (tp -> list_template_entry));
+      139 		     end;
+      140 
+      141 
+      142 		else if tp -> list_template_entry.repeat = 0
+      143 						/* KEY FOR SKIPPING */
+      144 		then do;
+      145 			skip_addr = bit_logical (var_p, tp -> list_template_entry.n_bits);
+      146 
+      147 			if skip_addr > max_bit | skip_addr < min_bit
+      148 			then do;
+      149 				a_code = error_table_$malformed_list_template_entry;
+      150 				goto ERROR_EXIT;
+      151 			     end;
+      152 
+      153 			call p_inc (var_p, tp -> list_template_entry.n_bits);
+      154 			tp = addrel (tp, 2);
+      155 		     end;
+      156 
+      157 		else do;
+      158 			call set_value (var_p, tp);
+      159 			tp = addrel (tp, currentsize (tp -> list_template_entry));
+      160 		     end;
+      161 
+      162 	     end;
+      163 ERROR_EXIT:					/* escape */
+      164 	return;
+      165 
+      166 /* External entrypoints ------------------------------------------ */
+      167 
+      168 /* already_zero: the caller has asured us that the variable has been 
+      169*   zeroed so we can skip zeroing it.
+      170**/
+      171 
+      172 variable_already_zero:
+      173      entry (variable_p, list_template_p, vsize, a_sb, a_seg_ptr, a_code);
+      174 
+      175 	fill_in_zeroes = "0"b;
+      176 	go to join;
+      177 
+      178 
+      179 /* Internal Procedures ------------------------------------------- */
+      180 
+      181 
+      182 
+      183 /* initializes a pointer to one of the following references text, linkage, 
+      184*   static sections. This routine sets var_p and the variable
+      185*   it points to. The basic format is 
+      186*
+      187*   base_ptr = target_section + section_offset;
+      188*   target_ptr = base_ptr (snapped if linkage) + word_offset + bit_offset;
+      189*
+      190*   The idea behind this type of initialization is to allow
+      191*   compilers such as the C compiler, to initialize external
+      192*   pointers to an object that is only known at runtime.  eg.  a
+      193*   pointer to a subroutine within an execution unit or a pointer to
+      194*   a string stored in the text section / static section of the
+      195*   object or a pointer to another external variable.
+      196*   
+      197*   The compiler can generate encoded information concerning the
+      198*   target. It knows where the target will be located and how to
+      199*   reference it but may not be able to get the exact address. The
+      200*   information required is stored in an existing format ie. the
+      201*   list_init_template. list_init_ through this routine converts
+      202*   that symbolic pointer information into a real pointer and stores
+      203*   the resulting address in the target variable via set_value.
+      204*   
+      205*   In this way compilers can initialize pointers to more than a
+      206*   constant value such as null().
+      207*
+      208*   Parameters
+      209*   template_ptr    is a pointer to the template for the field being inited
+      210*   seg_ptr         is a pointer to the segment containing the initialization
+      211*	         information. The init_ptr can't be used due to the 
+      212*	         possibility of set_fortran_common being used to initialize
+      213*	         the variable. sfc creates its own initialization inforamtion
+      214*	         in some circumstances. The seg_ptr is used as a base for
+      215*	         text section references.
+      216*   sb	         stack base pointer
+      217*   is_its_ptr      specifies if the ptr to be inited is an its or an packed
+      218*	         if it is "0"b
+      219*   var_p	         is a pointer to the target variable where the datum is
+      220*	         to be copied.
+      221*
+      222**/
+      223 
+      224 initialize_ptr:
+      225      procedure (template_ptr, seg_ptr, sb, is_its_ptr, var_p);
+      226 
+      227 /* parameters */
+      228 
+      229 dcl	template_ptr	pointer parameter;
+      230 dcl	seg_ptr		pointer parameter;
+      231 dcl	sb		pointer parameter;
+      232 dcl	is_its_ptr	bit (1) parameter;
+      233 dcl	var_p		pointer parameter;
+      234 
+      235 /* automatic */
+      236 
+      237 dcl	bit_offset	fixed bin (6) unsigned automatic; /* num of bits to add to target addr */
+      238 dcl	datum_ptr		ptr automatic;		    /* ptr to ptr init template */
+      239 dcl	packed_section_ptr	pointer unaligned automatic;	    /* packed ptr to desired section */
+      240 dcl	section_offset	fixed bin (18) unsigned automatic; /* offset in wrds in specified section */
+      241 dcl	section_ptr	pointer automatic;		     /* ptr to desired section */
+      242 dcl	target_seg_ptr	pointer automatic;		     /* ptr to target seg */
+      243 dcl	target_ptr	pointer automatic;		     /* ptr to final target its */
+      244 dcl	target_packed_ptr	pointer unaligned;		     /* ptr to final target packed */
+      245 dcl	word_offset	fixed bin (18) unsigned automatic; /* offset from target base in wrds */
+      246 
+      247 /* structures */
+      248 
+      249 dcl	1 temp_template	like list_template_entry_ptr;
+      250 
+      251 /* based */
+      252 
+      253 dcl	1 ptr_typed_datum	like pointer_init_template based (datum_ptr);
+      254 dcl	target_its	pointer aligned based;
+      255 
+      256 /* get general information about the passed segment */
+      257 
+      258 	if seg_ptr = null ()
+      259 	then do;
+      260 		a_code = error_table_$malformed_list_template_entry;
+      261 		goto ERROR_EXIT;
+      262 	     end;
+      263 
+      264 
+      265 	target_seg_ptr = ptr (seg_ptr, 0);
+      266 
+      267 /* get pointer information */
+      268 
+      269 	datum_ptr = addr (template_ptr -> list_template_entry.datum);
+      270 	section_offset = ptr_typed_datum.section_offset;
+      271 	word_offset = ptr_typed_datum.word_offset;
+      272 	bit_offset = ptr_typed_datum.bit_offset;
+      273 
+      274 
+      275 /* make our own copy of the template */
+      276 
+      277 	if is_its_ptr				/* copy important data to new template */
+      278 	then temp_template.n_bits = length (unspec (target_ptr));
+      279 	else temp_template.n_bits = length (unspec (target_packed_ptr));
+      280 
+      281 	temp_template.mbz = ""b;
+      282 	temp_template.init_type = template_ptr -> list_template_entry.init_type;
+      283 	temp_template.repeat = template_ptr -> list_template_entry.repeat;
+      284 
+      285 /* now get the target value by the section specifier */
+      286 
+      287 	if ptr_typed_datum.ptr_type = PTR_INIT_TEXT
+      288 	then do;					/* text section reference */
+      289 		section_ptr = target_seg_ptr;
+      290 		target_ptr = addrel (section_ptr, section_offset);
+      291 		target_ptr = addrel (target_ptr, word_offset);
+      292 		target_ptr = addbitno (target_ptr, bit_offset);
+      293 
+      294 		if is_its_ptr
+      295 		then unspec (temp_template.datum) = unspec (target_ptr);
+      296 		else do;
+      297 			target_packed_ptr = target_ptr;
+      298 			unspec (temp_template.datum) = unspec (target_packed_ptr);
+      299 		     end;
+      300 	     end;
+      301 
+      302 
+      303 	else if (ptr_typed_datum.ptr_type = PTR_INIT_LOT) | (ptr_typed_datum.ptr_type = PTR_INIT_ISOT)
+      304 	then do;
+      305 		if sb = null
+      306 		then do;
+      307 			a_code = error_table_$null_info_ptr;
+      308 			goto ERROR_EXIT;
+      309 
+      310 		     end;
+      311 
+      312 		if (segno (target_seg_ptr) > sb -> stack_header.cur_lot_size)
+      313 		then do;
+      314 			a_code = error_table_$malformed_list_template_entry;
+      315 			goto ERROR_EXIT;
+      316 		     end;
+      317 
+      318 		packed_section_ptr = sb -> stack_header.lot_ptr -> lot.lp (segno (target_seg_ptr));
+      319 
+      320 /* check if we have a valid seg number. If 0 the seg is invalid. If lot fault
+      321*   the linkage and static sections have not been combined.
+      322**/
+      323 
+      324 		if (unspec (packed_section_ptr) = lot_fault) | (fixed (unspec (packed_section_ptr)) = 0)
+      325 		then do;
+      326 			a_code = error_table_$malformed_list_template_entry;
+      327 			goto ERROR_EXIT;
+      328 		     end;
+      329 
+      330 		if (ptr_typed_datum.ptr_type = PTR_INIT_ISOT)
+      331 		then /* ISOT ptr init */
+      332 		     packed_section_ptr = sb -> stack_header.isot_ptr -> isot.isp (segno (target_seg_ptr));
+      333 
+      334 /* just in case we better check the ISOT entry for a valid reference even
+      335*   though it is set if the lot is set.  It doesn't hurt to make sure. ie.
+      336*   if the static section is combined the ISOT is set and if it is separate
+      337*   this better be set.
+      338**/
+      339 
+      340 		if (unspec (packed_section_ptr) = lot_fault) |
+      341 		   (fixed (unspec (packed_section_ptr)) = 0) |
+      342 		   (sb -> stack_header.isot_ptr -> isot1 (segno (target_seg_ptr)).flags.fault ="11"b)
+      343 		then do;
+      344 			a_code = error_table_$malformed_list_template_entry;
+      345 			goto ERROR_EXIT;
+      346 		     end;
+      347 
+      348 /* try to initialize the pointer to the target.
+      349*   Get target link and snap it if it is not snapped. 
+      350**/
+      351 		target_ptr = addrel (packed_section_ptr, section_offset);
+      352 
+      353 		if ptr_typed_datum.ptr_type = PTR_INIT_LOT
+      354 		then do;
+      355 			if (target_ptr -> its.its_mod ^= ITS_MODIFIER)
+      356 			then do;			/* we have an unsnapped link so snap it */
+      357 				call hcs_$link_force (target_ptr, (0), a_code);
+      358 				if a_code ^= 0
+      359 				then do;
+      360 					a_code = error_table_$invalid_ptr_target;
+      361 					goto ERROR_EXIT;
+      362 				     end;
+      363 			     end;
+      364 
+      365 
+      366 /* now we have the address of the target link get the address of the target
+      367*   variable
+      368**/
+      369 			target_ptr = addrel (target_ptr -> target_its, word_offset);
+      370 						/* indirect through the link and add the word offset */
+      371 			target_ptr = addbitno (target_ptr, bit_offset);
+      372 
+      373 /* get address of target from link */
+      374 			if is_its_ptr
+      375 			then unspec (temp_template.datum) = unspec (target_ptr);
+      376 			else do;
+      377 				target_packed_ptr = target_ptr;
+      378 				unspec (temp_template.datum) = unspec (target_packed_ptr);
+      379 			     end;
+      380 		     end;
+      381 
+      382 		else if ptr_typed_datum.ptr_type = PTR_INIT_ISOT
+      383 		then do;
+      384 
+      385 			target_ptr = addrel (target_ptr, word_offset);
+      386 			target_ptr = addbitno (target_ptr, bit_offset);
+      387 
+      388 			if is_its_ptr
+      389 			then unspec (temp_template.datum) = unspec (target_ptr);
+      390 			else do;
+      391 				target_packed_ptr = target_ptr;
+      392 				unspec (temp_template.datum) = unspec (target_packed_ptr);
+      393 			     end;
+      394 		     end;
+      395 	     end;					/* PTR_INIT_LOT & PTR_INIT_ISOT */
+      396 
+      397 	else do;					/* unknown init type */
+      398 		a_code = error_table_$malformed_list_template_entry;
+      399 		goto ERROR_EXIT;
+      400 	     end;
+      401 
+      402 	call set_value (var_p, addr (temp_template));
+      403 
+      404 	return;
+      405 
+      406 
+      407 
+      408      end initialize_ptr;
+      409 
+      410 /* Set Area to "0"b 
+      411*   Paramters
+      412*    var_p         points to the target variable
+      413*    vlength       is the length of the area to be zeroed
+      414*    tp            is a pointer to the init template
+      415**/
+      416 
+      417 init_zero:
+      418      proc (var_p, vlength, tp);
+      419 
+      420 /* Initialize the variable based at var_p to zero for vlength bits. */
+      421 
+      422 /* If you look at this code you will believe that an explanation is in order.
+      423*
+      424*   The purpose of this code is to efficiently set an area to "0"b, which may
+      425*   span over a segment boundary, and further to permit a segment to be seen as
+      426*   a certain key number of words (pl1_operators_$VLA_words_per_seg_) to be
+      427*   exact.  This is done by basing a bit variable on the desired point to start
+      428*   initializing, and then determining the length that can be done within this
+      429*   segment, if the full area can be done then this is done with an unspec
+      430*   assignment.  If the area to clear spans the segment end, then we slice off
+      431*   chunks and clear them individually.  At the end of the clear, var_p points
+      432*   to the next bit which would be affected. 
+      433**/
+      434 
+      435 
+      436 dcl	var_p		ptr;
+      437 dcl	vlength		fixed bin (35);
+      438 dcl	tp		ptr;
+      439 
+      440 dcl	(
+      441 	bsize,					/* size of area currently to set */
+      442 	vdone
+      443 	)		fixed bin (35);		/* amount of variable done */
+      444 
+      445 dcl	variable		(bsize) bit (1) unaligned based (var_p);
+      446 
+      447 	if bit_logical (var_p, vlength) > max_bit
+      448 	then do;
+      449 		a_code = error_table_$malformed_list_template_entry;
+      450 		goto ERROR_EXIT;
+      451 	     end;
+      452 
+      453 	bsize = vlength;
+      454 	vdone = 0;
+      455 
+      456 /* if we fit within a segment from our base, then do it. */
+      457 
+      458 	seg_end = bit_logical (ptr (var_p, "0"b), pl1_operators_$VLA_words_per_seg_ * 36);
+      459 
+      460 	if seg_end >= bit_logical (var_p, vlength)
+      461 	then do;
+      462 		if fill_in_zeroes
+      463 		then unspec (variable) = "0"b;
+      464 		call p_inc (var_p, bsize);
+      465 	     end /* simple set */;
+      466 
+      467 /* clear multi-segment area, or across a segment bound */
+      468 
+      469 	else do while (vdone < vlength);
+      470 
+      471 /* find space left in this segment from current base.		*/
+      472 /* end of segment is next segment - 1 bit			*/
+      473 
+      474 		seg_end = bit_logical (ptr (var_p, "0"b), pl1_operators_$VLA_words_per_seg_ * 36);
+      475 
+      476 		bsize = min (vlength - vdone, seg_end - bit_logical (var_p, 0));
+      477 		if fill_in_zeroes
+      478 		then unspec (variable) = "0"b;
+      479 
+      480 /* do center section til end */
+      481 		vdone = bsize + vdone;
+      482 		call p_inc (var_p, bsize);
+      483 	     end;
+      484 	return;
+      485      end init_zero;
+      486 
+      487 /* Set Area to value 
+      488*   the area pointed to by var_p is set to the value of the datum contained in
+      489*   the template and repeated by the repeat factor specified in the template
+      490*
+      491*   Parameters
+      492*   var_p        pointer to the target variable
+      493*   tp	      pointer to the initialization template
+      494**/
+      495 
+      496 set_value:
+      497      proc (var_p, tp);
+      498 
+      499 /* This is again a complex procedure.			        */
+      500 
+      501 /* Speed is an essential for multi-segment initializations. 
+      502*
+      503*   Initialization is done by replicating the datum by doing a long
+      504*   OVERWRITING EIS move to replicate in one fast operation.  This is done in
+      505*   one of two methods.
+      506*
+      507*   1. If the area left to initialize is small, or the datum is to be repeated 
+      508*      only once, then we do a simple copy to the area, 
+      509*      offset by the bit offset necessary from the last segment break.
+      510*
+      511*   2. If the area left to initialize is large, then we do a copy of at least
+      512*      eight words of datum replication to the start of the area to init, offset
+      513*      within the datum by the point of the last segment break.  Then we do an
+      514*      EIS copy with intentional overwrite to replicate the datum.  This
+      515*      requires at least an eight word offset between the source position and
+      516*      the target bit position.  We chose up to 32 words to be safe on hardware
+      517*      capability changes.
+      518*
+      519*   Slicing of initialization permits spanning segment bounds at any bit point
+      520*   within the datum replication. 
+      521**/
+      522 
+      523 dcl	var_p		ptr;
+      524 dcl	tp		ptr;
+      525 
+      526 /* builtin */
+      527 
+      528 dcl       mod                 builtin;
+      529      
+      530 
+      531 /* automatic */
+      532 
+      533 dcl	bsize		fixed bin (35);		/* size in bits to do this slice */
+      534 dcl	bstart		fixed bin (18);		/* template offset from datum start */
+      535 dcl	copy_offset	fixed bin (35);		/* bit offset of target from source */
+      536 dcl	template_length	fixed bin (35);
+      537 
+      538 dcl	p		ptr;
+      539 dcl	variable		(bsize) bit (1) based (var_p);
+      540 dcl	(
+      541 	vlength,					/* length of total set */
+      542 	vdone
+      543 	)		fixed bin (35);		/* length of set done */
+      544 
+      545 dcl	template		bit (template_length) based (var_p);
+      546 						/* where template is stored */
+      547 dcl	replications	fixed bin;		/* number of copies of datum in template */
+      548 
+      549 dcl	1 its		like its_unsigned based (addr (var_p));
+      550 
+      551 /* Check if there is an invalid template entry */
+      552 
+      553 	if tp -> list_template_entry.n_bits < 0
+      554 	then do;
+      555 		a_code = error_table_$malformed_list_template_entry;
+      556 		goto ERROR_EXIT;
+      557 	     end;
+      558 
+      559 /* Find total length to set. */
+      560 
+      561 	vlength = tp -> list_template_entry.n_bits * tp -> list_template_entry.repeat;
+      562 
+      563 
+      564 	if bit_logical (var_p, vlength) > max_bit
+      565 	then do;
+      566 		a_code = error_table_$malformed_list_template_entry;
+      567 		goto ERROR_EXIT;
+      568 	     end;
+      569 	bstart, vdone = 0;
+      570 	template_length = max (32 * 36, tp -> list_template_entry.n_bits);
+      571 
+      572 /* do fast "0"b init if possible */
+      573 
+      574 	if tp -> list_template_entry.datum = "0"b
+      575 	then call init_zero (var_p, vlength, tp);
+      576 
+      577 /* do slower template initialization as necessary */
+      578 
+      579 	else do while (vdone < vlength);
+      580 
+      581 /* determine bit slice we can do, and number of repications needed.   */
+      582 /* find space left in this segment from current base.		*/
+      583 /* end of segment is next segment - 1 bit			*/
+      584 
+      585 		seg_end = bit_logical (ptr (var_p, "0"b), pl1_operators_$VLA_words_per_seg_ * 36);
+      586 
+      587 		bsize = min (vlength - vdone, seg_end - bit_logical (var_p, 0));
+      588 
+      589 		if (bsize < 100 * 36) | (tp -> list_template_entry.repeat = 1)
+      590 		     | (bsize <= tp -> list_template_entry.n_bits)
+      591 		then do;
+      592 			replications =
+      593 			     divide (fixed (bsize, 30) + bstart + fixed (tp -> list_template_entry.n_bits, 24) - 1,
+      594 			     fixed (tp -> list_template_entry.n_bits, 24), 18);
+      595 			unspec (var_p -> variable) =
+      596 			     substr (copy (tp -> list_template_entry.datum, replications), bstart + 1, bsize);
+      597 		     end;
+      598 
+      599 /* make minimum replications in a template area at base of variable, then use
+      600*   overlapping EIS move to replicate it throughout. */
+      601 
+      602 		else do;
+      603 
+      604 /* number of primary copies needed */
+      605 
+      606 			p = var_p;
+      607 			replications =
+      608 			     divide (length (template) + bstart + fixed (tp -> list_template_entry.n_bits, 24) - 1,
+      609 			     fixed (tp -> list_template_entry.n_bits, 24), 18);
+      610 			copy_offset =
+      611 			     divide (length (template), fixed (tp -> list_template_entry.n_bits, 24), 24)
+      612 			     * fixed (tp -> list_template_entry.n_bits, 24);
+      613 			template =
+      614 			     substr (copy (tp -> list_template_entry.datum, replications), bstart + 1, copy_offset);
+      615 
+      616 /* overlay copy the strings */
+      617 
+      618 			begin;
+      619 dcl	source		bit (bsize - copy_offset) based (var_p);
+      620 dcl	target		bit (bsize - copy_offset) based (addr (substr (template, copy_offset + 1)));
+      621 
+      622 			     target = source;
+      623 			end /* overlay copy */;
+      624 		     end;
+      625 
+      626 		vdone = bsize + vdone;
+      627 		call p_inc (var_p, bsize);
+      628 		bstart = mod (bsize, fixed (tp -> list_template_entry.n_bits, 24));
+      629 	     end /* do set area */;
+      630      end set_value;
+      631 
+      632 /* increment a pointer by binc bits, keeping in mind the VLA_words_per_seg_
+      633*   limit of a segment and return the updated pointer. 
+      634*
+      635*   Parameters
+      636*   var_p     pointer to the target variable
+      637*   binc	   is the increment to be added to the var_p to obtain the address
+      638*	   where further information is to be added.
+      639*
+      640**/
+      641 
+      642 p_inc:
+      643      proc (var_p, binc);
+      644 
+      645 /* parameters */
+      646 dcl	var_p		ptr;
+      647 dcl	binc		fixed bin (35);
+      648 
+      649 /* builtin */
+      650 
+      651 dcl       mod                 builtin;
+      652 
+      653 
+      654 /* automatic */
+      655 dcl	address		fixed bin (35);
+      656 dcl	1 its		like its_unsigned based (addr (var_p));
+      657 
+      658 
+      659 	address = bit_logical (var_p, binc);
+      660 	its.bit_offset = mod (address, 36);
+      661 	address = divide (address, 36, 35);
+      662 	its.offset = mod (address, pl1_operators_$VLA_words_per_seg_);
+      663 	its.segno = divide (address, pl1_operators_$VLA_words_per_seg_, 18);
+      664 	return;
+      665      end p_inc;
+      666 
+      667 
+      668 /* return a fixed bin (35) logical bit address from a pointer plus an offset
+      669*   use pl1_operators_$VLA_words_per_seg_ as the segment length determination 
+      670*
+      671*   Parameters
+      672*   p          pointer to the start of the target
+      673*   offset	    offset to be added to the target ptr
+      674*
+      675**/
+      676 
+      677 bit_logical:
+      678      proc (p, offset) returns (fixed bin (35));
+      679 
+      680 /* parameters */
+      681 dcl	p		ptr;
+      682 dcl	offset		fixed bin (35);
+      683 
+      684 /* automatic */
+      685 dcl	address		fixed bin (35);
+      686 dcl	1 its		like its_unsigned based (addr (p));
+      687 
+      688 	address =
+      689 	     (fixed (its.segno * pl1_operators_$VLA_words_per_seg_, 24) + its.offset) * 36 + its.bit_offset + offset;
+      690 	return (address);
+      691      end bit_logical;
+      692 
+      693 /* Include Files */
+      694 
+  1     1 /* Begin include file ... system_link_init_info.incl.pl1 ... 5/6/80 MRJ */
+  1     2 
+  1     3 
+  1     4 
+  1     5 /****^  HISTORY COMMENTS:
+  1     6*  1) change(86-05-02,Elhard), approve(86-05-02,MCR7391),
+  1     7*     audit(86-07-18,DGHowe), install(86-11-20,MR12.0-1222):
+  1     8*     Modified to declare DEFERRED_INIT type constant.
+  1     9*  2) change(86-06-24,DGHowe), approve(86-06-24,MCR7420), audit(86-11-12,Zwick),
+  1    10*     install(86-11-20,MR12.0-1222):
+  1    11*     added the external pointer initialization structure and the constants
+  1    12*     required to use them.
+  1    13*                                                   END HISTORY COMMENTS */
+  1    14 
+  1    15 
+  1    16 /* Modified: 82-11-17 by T. Oke to add list_init_info and LIST_TEMPLATE_INIT. */
+  1    17 
+  1    18 /* format: style3,idind25 */
+  1    19 
+  1    20 /* NOTE --------------------------------------------------
+  1    21*   the following structures defining initialization information can also
+  1    22*   be found in fortran_storage.incl.pl1  definition_dcls.incl.pl1
+  1    23*   and should be kept equivalent
+  1    24*   -------------------------------------------------------
+  1    25**/
+  1    26 
+  1    27 dcl	init_info_ptr	     ptr;			/* ptr to structure below */
+  1    28 dcl	init_size		     fixed bin (35);	/* size (in words) of initialization template */
+  1    29 
+  1    30 dcl	1 init_info	     aligned based (init_info_ptr),
+  1    31 	  2 size		     fixed bin (35),	/* size (in words) of data */
+  1    32 	  2 type		     fixed bin,		/* type of initialization: see below */
+  1    33 	  2 init_template	     (init_size refer (init_info.size)) fixed bin (35);
+  1    34 
+  1    35 dcl	1 init_info_single_word  aligned based (init_info_ptr),
+  1    36 						/* for convenience of people like ssi */
+  1    37 	  2 size		     fixed bin (19),	/* = 1 */
+  1    38 	  2 type		     fixed bin,		/* = TEMPLATE_INIT */
+  1    39 	  2 init_template	     (1) fixed bin (35);	/* = value */
+  1    40 
+  1    41 dcl	1 list_init_info	     aligned based,
+  1    42 	  2 size		     fixed bin (35),	/* length of variable */
+  1    43 	  2 type		     fixed bin,		/* LIST_TEMPLATE_INIT */
+  1    44 	  2 pad		     bit (18) unaligned,
+  1    45 	  2 list_size	     fixed bin (18) unsigned unaligned,
+  1    46 						/* size in words of template */
+  1    47 	  2 template	     (0 refer (list_init_info.list_size)) bit (36);
+  1    48 						/* first create_entry position */
+  1    49 
+  1    50 /* A list template consists of a series of entries with the following
+  1    51*   description, concatenated together.  n_bits and datum are bit items,
+  1    52*   to permit a wide range of inputs.
+  1    53*
+  1    54*   1.  A 'repeat' of '0' signifies skipping of 'n_bits' bits.
+  1    55*   2.  A 'n_bits' of '0' signifies the last item of the list.
+  1    56*
+  1    57*   COMMON, VLA's, and LA's are presumed to start at the base pointer
+  1    58*   of their particular storage section. */
+  1    59 
+  1    60 dcl	1 list_template_entry    aligned based,
+  1    61 	  2 n_bits	     fixed bin (35) aligned,	/* size of datum */
+  1    62 	  2 mbz		     bit (3) unaligned,	/* future expansion */
+  1    63 	  2 init_type	     fixed bin (3) unsigned unaligned, /* 0 normal init, 1 ptr init, 2 packed ptr init */
+  1    64 	  2 repeat	     fixed bin (30) unsigned unaligned,
+  1    65 						/* number of times to repeat datum */
+  1    66 	  2 datum		     bit (init_n_bits_in_datum refer (list_template_entry.n_bits));
+  1    67 
+  1    68 /* list_template_entry_ptr is defined such that it can be used as an
+  1    69*   automatic definition overlay with a fixed size datum. it has a declared 
+  1    70*   size of 72 to allow for the its pointer sixe of 72 bits.
+  1    71**/
+  1    72 
+  1    73 dcl	1 list_template_entry_ptr	aligned based,
+  1    74 	  2 n_bits	     fixed bin (35) aligned,
+  1    75 	  2 mbz		     bit(3) unaligned,
+  1    76 	  2 init_type	     fixed bin (3) unsigned unaligned,
+  1    77 	  2 repeat	     fixed bin (30) unsigned unaligned,
+  1    78 	  2 datum		     bit(72);
+  1    79 
+  1    80 /* the pointer_init_template represents the initialization information
+  1    81*   for ITS and packed pointers.  Both pointer types require the entire
+  1    82*   72 bit structure.
+  1    83**/
+  1    84 
+  1    85 dcl       1 pointer_init_template  based,
+  1    86 	  2 ptr_type	     fixed bin (18) unsigned unaligned,  /* 0 text section, 1 linkage section, 2 static section */
+  1    87 	  2 section_offset	     fixed bin (18) unsigned unaligned,  /* offset to item in specified section */
+  1    88 	  2 word_offset	     fixed bin (18) unsigned unaligned,  /* word offset from section item to target */
+  1    89 	  2 mbz		     bit (12) unaligned,
+  1    90 	  2 bit_offset	     fixed bin (6) unsigned unaligned;   /* bit offset from section item|word offset to target */
+  1    91 
+  1    92 
+  1    93 dcl	init_n_bits_in_datum     fixed bin (35);
+  1    94 
+  1    95 dcl	NO_INIT		     fixed bin static options (constant) init (0);
+  1    96 dcl	TEMPLATE_INIT	     fixed bin static options (constant) init (3);
+  1    97 dcl	EMPTY_AREA_INIT	     fixed bin static options (constant) init (4);
+  1    98 dcl	LIST_TEMPLATE_INIT	     fixed bin static options (constant) init (5);
+  1    99 dcl	INIT_DEFERRED	     fixed bin static options (constant) init (6);
+  1   100 dcl	ITS_PTR_INIT	     fixed bin (3) unsigned static options (constant) init(1);
+  1   101 dcl	PACKED_PTR_INIT	     fixed bin (3) unsigned static options (constant) init(2);
+  1   102 dcl	PTR_INIT_TEXT	     fixed bin (17) static options (constant) init(0);
+  1   103 dcl	PTR_INIT_LOT	     fixed bin (17) static options (constant) init(1);
+  1   104 dcl	PTR_INIT_ISOT	     fixed bin (17) static options (constant) init(2);
+  1   105 	
+  1   106 
+  1   107 /* End include file ... system_link_init_info.incl.pl1 */
+      695 
+      696 
+  2     1 /* BEGIN INCLUDE FILE its.incl.pl1
+  2     2*   modified 27 July 79 by JRDavis to add its_unsigned
+  2     3*   Internal format of ITS pointer, including ring-number field for follow-on processor */
+  2     4 
+  2     5 dcl 1 its based aligned,				/* declaration for ITS type pointer */
+  2     6     2 pad1 bit (3) unaligned,
+  2     7     2 segno bit (15) unaligned,			/* segment number within the pointer */
+  2     8     2 ringno bit (3) unaligned,			/* ring number within the pointer */
+  2     9     2 pad2 bit (9) unaligned,
+  2    10     2 its_mod bit (6) unaligned,			/* should be 43(8) */
+  2    11 
+  2    12     2 offset bit (18) unaligned,			/* word offset within the addressed segment */
+  2    13     2 pad3 bit (3) unaligned,
+  2    14     2 bit_offset bit (6) unaligned,			/* bit offset within the word */
+  2    15     2 pad4 bit (3) unaligned,
+  2    16     2 mod bit (6) unaligned;				/* further modification */
+  2    17 
+  2    18 dcl 1 itp based aligned,				/* declaration for ITP type pointer */
+  2    19     2 pr_no bit (3) unaligned,			/* number of pointer register to use */
+  2    20     2 pad1 bit (27) unaligned,
+  2    21     2 itp_mod bit (6) unaligned,			/* should be 41(8) */
+  2    22 
+  2    23     2 offset bit (18) unaligned,			/* word offset from pointer register word offset */
+  2    24     2 pad2 bit (3) unaligned,
+  2    25     2 bit_offset bit (6) unaligned,			/* bit offset relative to new word offset */
+  2    26     2 pad3 bit (3) unaligned,
+  2    27     2 mod bit (6) unaligned;				/* further modification */
+  2    28 
+  2    29 
+  2    30 dcl 1 its_unsigned based aligned,			/* just like its, but with unsigned binary */
+  2    31     2 pad1 bit (3) unaligned,
+  2    32     2 segno fixed bin (15) unsigned unaligned,
+  2    33     2 ringno fixed bin (3) unsigned unaligned,
+  2    34     2 pad2 bit (9) unaligned,
+  2    35     2 its_mod bit (6) unaligned,
+  2    36 
+  2    37     2 offset fixed bin (18) unsigned unaligned,
+  2    38     2 pad3 bit (3) unaligned,
+  2    39     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    40     2 pad4 bit (3) unaligned,
+  2    41     2 mod bit (6) unaligned;
+  2    42 
+  2    43 dcl 1 itp_unsigned based aligned,			/* just like itp, but with unsigned binary where appropriate */
+  2    44     2 pr_no fixed bin (3) unsigned unaligned,
+  2    45     2 pad1 bit (27) unaligned,
+  2    46     2 itp_mod bit (6) unaligned,
+  2    47 
+  2    48     2 offset fixed bin (18) unsigned unaligned,
+  2    49     2 pad2 bit (3) unaligned,
+  2    50     2 bit_offset fixed bin (6) unsigned unaligned,
+  2    51     2 pad3 bit (3) unaligned,
+  2    52     2 mod bit (6) unaligned;
+  2    53 
+  2    54 
+  2    55 dcl  ITS_MODIFIER bit (6) unaligned internal static options (constant) init ("43"b3);
+  2    56 dcl  ITP_MODIFIER bit (6) unaligned internal static options (constant) init ("41"b3);
+  2    57 
+  2    58 /* END INCLUDE FILE   its.incl.pl1 */
+      697 
+      698 
+  3     1 /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  3     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  3     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  3     4 /*	Modified April 1983 by C. Hornig for tasking */
+  3     5 
+  3     6 /****^  HISTORY COMMENTS:
+  3     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  3     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  3     9*     added the heap_header_ptr definition.
+  3    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  3    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  3    12*     Modified to support control point management.  These changes were actually
+  3    13*     made in February 1985 by G. Palter.
+  3    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  3    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  3    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  3    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  3    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  3    19*     (ITS pair).
+  3    20*                                                   END HISTORY COMMENTS */
+  3    21 
+  3    22 /* format: style2 */
+  3    23 
+  3    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  3    25 
+  3    26      dcl	   1 stack_header	      based (sb) aligned,
+  3    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  3    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  3    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  3    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  3    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  3    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  3    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  3    34 	     2 pad4	      bit (2) unal,
+  3    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  3    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  3    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  3    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  3    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  3    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  3    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  3    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  3    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  3    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  3    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  3    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  3    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  3    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  3    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  3    50 	     2 return_no_pop_op_ptr
+  3    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  3    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  3    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  3    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  3    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  3    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  3    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  3    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  3    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  3    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  3    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  3    62 	     2 trace,
+  3    63 	       3 frames,
+  3    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  3    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  3    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  3    67 	     2 pad2	      bit (36),		/*  (61) */
+  3    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  3    69 
+  3    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  3    71 
+  3    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  3    73 						/* (551) octal */
+  3    74 
+  3    75 
+  3    76 /*	The following constants are offsets within this transfer vector table.  */
+  3    77 
+  3    78      dcl	   (
+  3    79 	   call_offset	      fixed bin init (271),
+  3    80 	   push_offset	      fixed bin init (272),
+  3    81 	   return_offset	      fixed bin init (273),
+  3    82 	   return_no_pop_offset   fixed bin init (274),
+  3    83 	   entry_offset	      fixed bin init (275)
+  3    84 	   )		      internal static;
+  3    85 
+  3    86 
+  3    87 
+  3    88 
+  3    89 
+  3    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  3    91*	move the whole stack header should use this overlay.
+  3    92**/
+  3    93 
+  3    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  3    95 
+  3    96 
+  3    97 
+  3    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      699 
+      700 
+  4     1 /* BEGIN INCLUDE FILE --  lot.incl.pl1   S.Webber 9/74, Modified by R. Bratt 04/76, modified by M. Weaver 7/76 */
+  4     2 /* modified by M. Weaver 3/77 */
+  4     3 
+  4     4 dcl  lotp ptr;
+  4     5 
+  4     6 dcl 1 lot based (lotp) aligned,
+  4     7     2 lp (0:9999) ptr unaligned;			/* array of packed pointers to linkage sections */
+  4     8 
+  4     9 dcl lot_fault bit (36) aligned static options (constant) init ("111000000000000000000000000000000000"b);
+  4    10 						/* lot fault has fault code = 0 and offset = 0 */
+  4    11 
+  4    12 dcl  isotp ptr;
+  4    13 dcl 1 isot based (isotp) aligned,
+  4    14     2 isp (0:9999) ptr unaligned;
+  4    15 
+  4    16 dcl 1 isot1 (0 :9999) aligned based,
+  4    17     2 flags unaligned,
+  4    18       3 fault bit (2) unaligned,
+  4    19       3 system bit (1) unaligned,
+  4    20       3 mbz bit (6) unaligned,
+  4    21     2 fault_code fixed bin (8) unaligned,
+  4    22     2 static_offset bit (18) unaligned;
+  4    23 
+  4    24 
+  4    25 /* END INCLUDE FILE  lot.incl.pl1 */
+      701 
+      702      end list_init_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.9  list_init_.pl1                    >spec>install>1110>list_init_.pl1
+695          1    11/24/86  1226.9  system_link_init_info.incl.pl1    >ldd>include>system_link_init_info.incl.pl1
+697          2    11/26/79  1320.6  its.incl.pl1                      >ldd>include>its.incl.pl1
+699          3    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+701          4    08/05/77  1022.4  lot.incl.pl1                      >ldd>include>lot.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ITS_MODIFIER                           constant        bit(6)                   initial packed unaligned dcl 2-55 ref 355
+ITS_PTR_INIT                           constant        fixed bin(3,0)           initial unsigned dcl 1-100 ref 128
+PACKED_PTR_INIT                        constant        fixed bin(3,0)           initial unsigned dcl 1-101 ref 135
+PTR_INIT_ISOT                          constant        fixed bin(17,0)          initial dcl 1-104 ref 303 330 382
+PTR_INIT_LOT                           constant        fixed bin(17,0)          initial dcl 1-103 ref 303 353
+PTR_INIT_TEXT                          constant        fixed bin(17,0)          initial dcl 1-102 ref 287
+a_code                                 parameter       fixed bin(35,0)          dcl 63 set ref 21 109* 149* 172 260* 307* 314* 326*
+                                                                                  344* 357* 358 360* 398* 449* 555* 566*
+a_sb                                   parameter       pointer                  dcl 64 set ref 21 130* 137* 172
+a_seg_ptr                              parameter       pointer                  dcl 62 ref 21 111 172
+addbitno                                               builtin function         dcl 83 ref 292 371 386
+addr                                                   builtin function         dcl 83 ref 269 402 402 622 660 662 663 688 688 688
+addrel                                                 builtin function         dcl 83 ref 131 138 154 159 290 291 351 369 385
+address                         000214 automatic       fixed bin(35,0)          dcl 685 in procedure "bit_logical" set ref 688* 690
+address                         000204 automatic       fixed bin(35,0)          dcl 655 in procedure "p_inc" set ref 659* 660 661*
+                                                                                  661 662 663
+binc                                   parameter       fixed bin(35,0)          dcl 647 set ref 642 659*
+bit_offset                1(21)        based           fixed bin(6,0)           level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 686 in procedure "bit_logical" ref
+                                                                                  688
+bit_offset                1(30)        based           fixed bin(6,0)           level 2 in structure "ptr_typed_datum" packed packed
+                                                                                  unsigned unaligned dcl 253 in procedure
+                                                                                  "initialize_ptr" ref 272
+bit_offset                1(21)        based           fixed bin(6,0)           level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 656 in procedure "p_inc" set ref
+                                                                                  660*
+bit_offset                      000124 automatic       fixed bin(6,0)           unsigned dcl 237 in procedure "initialize_ptr" set
+                                                                                  ref 272* 292 371 386
+bsize                           000154 automatic       fixed bin(35,0)          dcl 440 in procedure "init_zero" set ref 453* 462
+                                                                                  464* 476* 477 481 482*
+bsize                           000164 automatic       fixed bin(35,0)          dcl 533 in procedure "set_value" set ref 587* 589
+                                                                                  589 592 595 595 622 622 626 627* 628
+bstart                          000165 automatic       fixed bin(18,0)          dcl 534 set ref 569* 592 595 607 613 628*
+copy                                                   builtin function         dcl 83 ref 595 613
+copy_offset                     000166 automatic       fixed bin(35,0)          dcl 535 set ref 610* 613 622 622 622
+cur_lot_size             13            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 3-26 ref 312
+currentsize                                            builtin function         dcl 83 ref 131 138 159
+datum                     2     000142 automatic       bit(72)                  level 2 in structure "temp_template" packed packed
+                                                                                  unaligned dcl 249 in procedure "initialize_ptr"
+                                                                                  set ref 294* 298* 374* 378* 388* 392*
+datum                     2            based           bit                      level 2 in structure "list_template_entry" dcl 1-60
+                                                                                  in procedure "list_init_" set ref 269 574 595 613
+datum_ptr                       000126 automatic       pointer                  dcl 238 set ref 269* 270 271 272 287 303 303 330 353
+                                                                                  382
+divide                                                 builtin function         dcl 83 ref 592 607 610 661 663
+error_table_$invalid_ptr_target 000012 external static fixed bin(35,0)          dcl 92 ref 360
+error_table_$malformed_list_template_entry
+                                000014 external static fixed bin(35,0)          dcl 94 ref 149 260 314 326 344 398 449 555 566
+error_table_$null_info_ptr      000016 external static fixed bin(35,0)          dcl 96 ref 307
+fault                                  based           bit(2)                   array level 3 packed packed unaligned dcl 4-16 ref
+                                                                                  340
+fill_in_zeroes                  000100 automatic       bit(1)                   dcl 70 set ref 105* 175* 462 477
+fixed                                                  builtin function         dcl 83 ref 324 340 592 592 592 607 607 610 610 628
+                                                                                  688
+flags                                  based           structure                array level 2 packed packed unaligned dcl 4-16
+hcs_$link_force                 000010 constant        entry                    external dcl 90 ref 357
+init_type                 1(03) 000142 automatic       fixed bin(3,0)           level 2 in structure "temp_template" packed packed
+                                                                                  unsigned unaligned dcl 249 in procedure
+                                                                                  "initialize_ptr" set ref 282*
+init_type                 1(03)        based           fixed bin(3,0)           level 2 in structure "list_template_entry" packed
+                                                                                  packed unsigned unaligned dcl 1-60 in procedure
+                                                                                  "list_init_" ref 128 135 282
+is_its_ptr                             parameter       bit(1)                   packed unaligned dcl 232 ref 224 277 294 374 388
+isot                                   based           structure                level 1 dcl 4-13
+isot1                                  based           structure                array level 1 dcl 4-16
+isot_ptr                 52            based           pointer                  level 2 dcl 3-26 ref 330 340
+isp                                    based           pointer                  array level 2 packed packed unaligned dcl 4-13 ref
+                                                                                  330
+its                                    based           structure                level 1 packed packed unaligned dcl 686 in procedure
+                                                                                  "bit_logical"
+its                                    based           structure                level 1 packed packed unaligned dcl 656 in procedure
+                                                                                  "p_inc"
+its                                    based           structure                level 1 dcl 2-5 in procedure "list_init_"
+its_mod                   0(30)        based           bit(6)                   level 2 packed packed unaligned dcl 2-5 ref 355
+its_unsigned                           based           structure                level 1 dcl 2-30
+length                                                 builtin function         dcl 83 ref 277 279 607 610
+list_template_entry                    based           structure                level 1 dcl 1-60 set ref 131 138 159
+list_template_entry_ptr                based           structure                level 1 dcl 1-73
+list_template_p                        parameter       pointer                  dcl 59 ref 21 113 172
+lot                                    based           structure                level 1 dcl 4-6
+lot_fault                              constant        bit(36)                  initial dcl 4-9 ref 324 340
+lot_ptr                  26            based           pointer                  level 2 dcl 3-26 ref 318
+lp                                     based           pointer                  array level 2 packed packed unaligned dcl 4-6 ref
+                                                                                  318
+max                                                    builtin function         dcl 83 ref 570
+max_bit                         000101 automatic       fixed bin(35,0)          dcl 71 set ref 115* 147 447 564
+mbz                       1     000142 automatic       bit(3)                   level 2 packed packed unaligned dcl 249 set ref 281*
+min                                                    builtin function         dcl 83 ref 476 587
+min_bit                         000102 automatic       fixed bin(35,0)          dcl 72 set ref 116* 147
+mod                                                    builtin function         dcl 528 in procedure "set_value" ref 628
+mod                                                    builtin function         dcl 651 in procedure "p_inc" ref 660 662
+n_bits                                 based           fixed bin(35,0)          level 2 in structure "list_template_entry" dcl 1-60
+                                                                                  in procedure "list_init_" set ref 122 131 138 145*
+                                                                                  153* 159 269 553 561 570 574 589 592 592 595 607
+                                                                                  607 610 610 613 628
+n_bits                          000142 automatic       fixed bin(35,0)          level 2 in structure "temp_template" dcl 249
+                                                                                  in procedure "initialize_ptr" set ref 277* 279*
+null                                                   builtin function         dcl 83 ref 118 121 122 258 305
+offset                    1            based           fixed bin(18,0)          level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 686 in procedure "bit_logical" ref
+                                                                                  688
+offset                                 parameter       fixed bin(35,0)          dcl 682 in procedure "bit_logical" ref 677 688
+offset                    1            based           fixed bin(18,0)          level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 656 in procedure "p_inc" set ref
+                                                                                  662*
+p                               000170 automatic       pointer                  dcl 538 in procedure "set_value" set ref 606*
+p                                      parameter       pointer                  dcl 681 in procedure "bit_logical" set ref 677 688
+                                                                                  688 688
+packed_section_ptr              000130 automatic       pointer                  packed unaligned dcl 239 set ref 318* 324 324 330*
+                                                                                  340 340 351
+pl1_operators_$VLA_words_per_seg_
+                                000020 external static fixed bin(35,0)          dcl 99 ref 458 474 585 662 663 688
+pointer_init_template                  based           structure                level 1 packed packed unaligned dcl 1-85
+ptr                                                    builtin function         dcl 83 ref 265 458 458 474 474 585 585
+ptr_type                               based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 253 ref
+                                                                                  287 303 303 330 353 382
+ptr_typed_datum                        based           structure                level 1 packed packed unaligned dcl 253
+repeat                    1(06) 000142 automatic       fixed bin(30,0)          level 2 in structure "temp_template" packed packed
+                                                                                  unsigned unaligned dcl 249 in procedure
+                                                                                  "initialize_ptr" set ref 283*
+repeat                    1(06)        based           fixed bin(30,0)          level 2 in structure "list_template_entry" packed
+                                                                                  packed unsigned unaligned dcl 1-60 in procedure
+                                                                                  "list_init_" ref 142 283 561 589
+replications                    000174 automatic       fixed bin(17,0)          dcl 547 set ref 592* 595 607* 613
+sb                                     parameter       pointer                  dcl 231 ref 224 305 312 318 330 340
+section_offset            0(18)        based           fixed bin(18,0)          level 2 in structure "ptr_typed_datum" packed packed
+                                                                                  unsigned unaligned dcl 253 in procedure
+                                                                                  "initialize_ptr" ref 270
+section_offset                  000131 automatic       fixed bin(18,0)          unsigned dcl 240 in procedure "initialize_ptr" set
+                                                                                  ref 270* 290 351
+section_ptr                     000132 automatic       pointer                  dcl 241 set ref 289* 290
+seg_end                         000103 automatic       fixed bin(35,0)          dcl 73 set ref 458* 460 474* 476 585* 587
+seg_ptr                         000106 automatic       pointer                  dcl 75 in procedure "list_init_" set ref 111* 130*
+                                                                                  137*
+seg_ptr                                parameter       pointer                  dcl 230 in procedure "initialize_ptr" ref 224 258
+                                                                                  265
+segno                     0(03)        based           fixed bin(15,0)          level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 656 in procedure "p_inc" set ref
+                                                                                  663*
+segno                                                  builtin function         dcl 83 in procedure "list_init_" ref 312 318 330 340
+segno                     0(03)        based           fixed bin(15,0)          level 2 in structure "its" packed packed unsigned
+                                                                                  unaligned dcl 686 in procedure "bit_logical" ref
+                                                                                  688
+skip_addr                       000104 automatic       fixed bin(35,0)          dcl 74 set ref 145* 147 147
+source                                 based           bit                      packed unaligned dcl 619 ref 622
+stack_header                           based           structure                level 1 dcl 3-26
+substr                                                 builtin function         dcl 83 ref 595 613 622
+target                                 based           bit                      packed unaligned dcl 620 set ref 622*
+target_its                             based           pointer                  dcl 254 ref 369
+target_packed_ptr               000140 automatic       pointer                  packed unaligned dcl 244 set ref 279 297* 298 377*
+                                                                                  378 391* 392
+target_ptr                      000136 automatic       pointer                  dcl 243 set ref 277 290* 291* 291 292* 292 294 297
+                                                                                  351* 355 357* 369* 369 371* 371 374 377 385* 385
+                                                                                  386* 386 388 391
+target_seg_ptr                  000134 automatic       pointer                  dcl 242 set ref 265* 289 312 318 330 340
+temp_template                   000142 automatic       structure                level 1 unaligned dcl 249 set ref 402 402
+template                               based           bit                      packed unaligned dcl 545 set ref 607 610 613* 622
+template_length                 000167 automatic       fixed bin(35,0)          dcl 536 set ref 570* 607 610 613 622
+template_ptr                           parameter       pointer                  dcl 229 ref 224 269 282 283
+tp                                     parameter       pointer                  dcl 438 in procedure "init_zero" ref 417
+tp                              000110 automatic       pointer                  dcl 76 in procedure "list_init_" set ref 113* 118
+                                                                                  118* 121 122 122* 128 130* 131* 131 131 135 137*
+                                                                                  138* 138 138 142 145 153 154* 154 158* 159* 159
+                                                                                  159
+tp                                     parameter       pointer                  dcl 524 in procedure "set_value" set ref 496 553 561
+                                                                                  561 570 574 574* 589 589 592 592 595 607 607 610
+                                                                                  610 613 628
+unspec                                                 builtin function         dcl 83 set ref 277 279 294* 294 298* 298 324 324 340
+                                                                                  340 374* 374 378* 378 388* 388 392* 392 462* 477*
+                                                                                  595*
+var_p                           000112 automatic       pointer                  dcl 77 in procedure "list_init_" set ref 112* 115*
+                                                                                  116* 118* 130* 137* 145* 153* 158*
+var_p                                  parameter       pointer                  dcl 646 in procedure "p_inc" set ref 642 659* 660
+                                                                                  662 663
+var_p                                  parameter       pointer                  dcl 233 in procedure "initialize_ptr" set ref 224
+                                                                                  402*
+var_p                                  parameter       pointer                  dcl 436 in procedure "init_zero" set ref 417 447*
+                                                                                  458 458 460* 462 464* 474 474 476* 477 482*
+var_p                                  parameter       pointer                  dcl 523 in procedure "set_value" set ref 496 564*
+                                                                                  574* 585 585 587* 595 606 607 610 613 622 622 627*
+variable                               based           bit(1)                   array packed unaligned dcl 539 in procedure
+                                                                                  "set_value" set ref 595*
+variable                               based           bit(1)                   array packed unaligned dcl 445 in procedure
+                                                                                  "init_zero" set ref 462* 477*
+variable_p                             parameter       pointer                  dcl 60 ref 21 112 172
+vdone                           000155 automatic       fixed bin(35,0)          dcl 440 in procedure "init_zero" set ref 454* 469
+                                                                                  476 481* 481
+vdone                           000173 automatic       fixed bin(35,0)          dcl 540 in procedure "set_value" set ref 569* 579
+                                                                                  587 626* 626
+vlength                         000172 automatic       fixed bin(35,0)          dcl 540 in procedure "set_value" set ref 561* 564*
+                                                                                  574* 579 587
+vlength                         000114 automatic       fixed bin(35,0)          dcl 78 in procedure "list_init_" set ref 114* 115*
+                                                                                  118*
+vlength                                parameter       fixed bin(35,0)          dcl 437 in procedure "init_zero" set ref 417 447*
+                                                                                  453 460* 469 476
+vsize                                  parameter       fixed bin(35,0)          dcl 61 ref 21 114 172
+word_offset               1            based           fixed bin(18,0)          level 2 in structure "ptr_typed_datum" packed packed
+                                                                                  unsigned unaligned dcl 253 in procedure
+                                                                                  "initialize_ptr" ref 271
+word_offset                     000141 automatic       fixed bin(18,0)          unsigned dcl 245 in procedure "initialize_ptr" set
+                                                                                  ref 271* 291 369 385
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+EMPTY_AREA_INIT                        internal static fixed bin(17,0)          initial dcl 1-97
+INIT_DEFERRED                          internal static fixed bin(17,0)          initial dcl 1-99
+ITP_MODIFIER                           internal static bit(6)                   initial packed unaligned dcl 2-56
+LIST_TEMPLATE_INIT                     internal static fixed bin(17,0)          initial dcl 1-98
+NO_INIT                                internal static fixed bin(17,0)          initial dcl 1-95
+TEMPLATE_INIT                          internal static fixed bin(17,0)          initial dcl 1-96
+call_offset                            internal static fixed bin(17,0)          initial dcl 3-78
+entry_offset                           internal static fixed bin(17,0)          initial dcl 3-78
+init_info                              based           structure                level 1 dcl 1-30
+init_info_ptr                          automatic       pointer                  dcl 1-27
+init_info_single_word                  based           structure                level 1 dcl 1-35
+init_n_bits_in_datum                   automatic       fixed bin(35,0)          dcl 1-93
+init_size                              automatic       fixed bin(35,0)          dcl 1-28
+isotp                                  automatic       pointer                  dcl 4-12
+itp                                    based           structure                level 1 dcl 2-18
+itp_unsigned                           based           structure                level 1 dcl 2-43
+its                                    based           structure                level 1 packed packed unaligned dcl 549
+list_init_info                         based           structure                level 1 dcl 1-41
+lotp                                   automatic       pointer                  dcl 4-4
+push_offset                            internal static fixed bin(17,0)          initial dcl 3-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 3-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 3-78
+sb                                     automatic       pointer                  dcl 3-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 3-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 3-72
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ERROR_EXIT                      000237 constant        label                    dcl 163 ref 150 261 308 315 327 345 361 399 450 556
+                                                                                  567
+bit_logical                     001417 constant        entry                    internal dcl 677 ref 115 116 145 447 458 460 474 476
+                                                                                  564 585 587 659
+init_zero                       000630 constant        entry                    internal dcl 417 ref 118 574
+initialize_ptr                  000252 constant        entry                    internal dcl 224 ref 130 137
+join                            000024 constant        label                    dcl 109 ref 176
+list_init_                      000014 constant        entry                    external dcl 21
+p_inc                           001352 constant        entry                    internal dcl 642 ref 153 464 482 627
+set_value                       001033 constant        entry                    internal dcl 496 ref 158 402
+variable_already_zero           000242 constant        entry                    external dcl 172
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1650        1672    1531        1660
+Length      2134    1531        22         226     117           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+list_init_                          214 external procedure  is an external procedure.  
+initialize_ptr                          internal procedure  shares stack frame of external procedure list_init_.  
+init_zero                               internal procedure  shares stack frame of external procedure list_init_.  
+set_value                               internal procedure  shares stack frame of external procedure list_init_.  
+begin block on line 618                 begin block         shares stack frame of external procedure list_init_.  
+p_inc                                   internal procedure  shares stack frame of external procedure list_init_.  
+bit_logical                             internal procedure  shares stack frame of external procedure list_init_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+list_init_               000100 fill_in_zeroes              list_init_
+                         000101 max_bit                     list_init_
+                         000102 min_bit                     list_init_
+                         000103 seg_end                     list_init_
+                         000104 skip_addr                   list_init_
+                         000106 seg_ptr                     list_init_
+                         000110 tp                          list_init_
+                         000112 var_p                       list_init_
+                         000114 vlength                     list_init_
+                         000124 bit_offset                  initialize_ptr
+                         000126 datum_ptr                   initialize_ptr
+                         000130 packed_section_ptr          initialize_ptr
+                         000131 section_offset              initialize_ptr
+                         000132 section_ptr                 initialize_ptr
+                         000134 target_seg_ptr              initialize_ptr
+                         000136 target_ptr                  initialize_ptr
+                         000140 target_packed_ptr           initialize_ptr
+                         000141 word_offset                 initialize_ptr
+                         000142 temp_template               initialize_ptr
+                         000154 bsize                       init_zero
+                         000155 vdone                       init_zero
+                         000164 bsize                       set_value
+                         000165 bstart                      set_value
+                         000166 copy_offset                 set_value
+                         000167 template_length             set_value
+                         000170 p                           set_value
+                         000172 vlength                     set_value
+                         000173 vdone                       set_value
+                         000174 replications                set_value
+                         000204 address                     p_inc
+                         000214 address                     bit_logical
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          mdfx1               shorten_stack       ext_entry           repeat
+set_bits_eis        divide_fx3          set_support
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+hcs_$link_force
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$invalid_ptr_target                             error_table_$malformed_list_template_entry
+error_table_$null_info_ptr    pl1_operators_$VLA_words_per_seg_
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     21 000006       105 000022       109 000024       111 000026       112 000031       113 000034       114 000037
+    115 000042       116 000044       118 000047       121 000056       122 000062       128 000067       130 000076
+    131 000117       132 000126       135 000127       137 000131       138 000152       139 000161       142 000162
+    145 000165       147 000177       149 000204       150 000210       153 000211       154 000221       155 000224
+    158 000225       159 000227       162 000236       163 000237       172 000240       175 000250       176 000251
+    224 000252       258 000254       260 000260       261 000264       265 000265       269 000270       270 000274
+    271 000302       272 000310       277 000316       279 000326       281 000330       282 000332       283 000336
+    287 000340       289 000347       290 000350       291 000354       292 000357       294 000362       297 000371
+    298 000372       300 000375       303 000376       305 000402       307 000406       308 000412       312 000413
+    314 000426       315 000432       318 000433       324 000435       326 000442       327 000446       330 000447
+    340 000455       344 000467       345 000473       351 000474       353 000501       355 000505       357 000511
+    358 000526       360 000531       361 000534       369 000535       371 000542       374 000545       377 000556
+    378 000557       380 000562       382 000563       385 000565       386 000570       388 000573       391 000602
+    392 000603       395 000606       398 000607       399 000613       402 000614       404 000627       417 000630
+    447 000632       449 000650       450 000654       453 000655       454 000660       458 000661       460 000672
+    462 000710       464 000721       465 000732       469 000733       474 000740       476 000751       477 001005
+    481 001015       482 001021       483 001031       484 001032       496 001033       553 001035       555 001040
+    556 001044       561 001045       564 001052       566 001067       567 001073       569 001074       570 001076
+    574 001105       579 001126       585 001131       587 001143       589 001176       592 001212       595 001224
+    597 001243       606 001245       607 001250       610 001265       613 001271       618 001306       622 001307
+    626 001323       627 001327       628 001340       629 001350       630 001351       642 001352       659 001354
+    660 001367       661 001400       662 001403       663 001410       664 001416       677 001417       688 001421
+    690 001445
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

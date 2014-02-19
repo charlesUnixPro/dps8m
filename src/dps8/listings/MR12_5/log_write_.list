@@ -1,0 +1,1375 @@
+	COMPILATION LISTING OF SEGMENT log_write_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4 */
+       10 
+       11 log_write_:
+       12      procedure ();
+       13 
+       14 /* *	LOG_WRITE_
+       15*   *
+       16*   *	This is the user-ring program responsible for writing messages into a
+       17*   *	family of log segments. It keeps track (in log_write_data) of the
+       18*   *	current log, and switches log segments when it finds one full.
+       19*   *
+       20*   *	Modification history:
+       21*   *	84-05-29, W. Olin Sibert: Initial coding
+       22*   *	84-08-25, WOS: Added $open_for_migrate and related changes
+       23*   *	84-10-16, WOS: Changed to rename segments with suffix of last message time
+       24*   *	84-10-19, WOS: Changed to ignore segnamedup when renaming logs.
+       25*   *	84-12-21, WOS: Changed to handle uninitialized logs better.
+       26*   *	84-12-21, WOS: Changed data_class to 16 chars like it should be
+       27*   *      84-12-23, WOS: Changed to create segments with suffixes when migrating
+       28*   *	85-01-17, GMP: Changed to create segments with the proper access class
+       29*   *	85-03-03, EJ Sharpe: Changed name of entry in log_list_history_ from single_dir to
+       30*   *		single_dir_oldest_and_newest, added format
+       31*   *	85-03-27, EJ Sharpe: get masked for sleeping and for swapping to new log segment,
+       32*   *		open now fails if log is not in service
+       33**/
+       34 
+       35 declare  P_log_write_data_ptr pointer parameter;		/* Input: control information */
+       36 
+       37 declare  P_log_dname char (*) parameter;		/* Input: Log dname/ename when opening */
+       38 declare  P_log_ename char (*) parameter;
+       39 declare  P_create_sw bit (1) aligned parameter;		/* Input: Whether to create, at open, default log */
+       40 
+       41 declare  P_severity fixed bin parameter;		/* Input: Log message severity */
+       42 declare  P_message char (*) parameter;			/* Input: Text message */
+       43 declare  P_data_ptr pointer parameter;			/* Input: Binary data message location, size, class and type */
+       44 declare  P_data_lth fixed bin parameter;		/* Input: Length of data message */
+       45 declare  P_data_class char (16) varying parameter;	/* Input: Class of data message */
+       46 declare  P_sequence fixed bin (35) parameter;		/* Input: Special sequence for $general */
+       47 declare  P_message_lth fixed bin parameter;		/* Input: Length of text portion */
+       48 declare  P_log_message_ptr pointer parameter;		/* Output: Location of written message */
+       49 declare  P_code fixed bin (35) parameter;		/* Output: Status code */
+       50 
+       51 declare  code fixed bin (35);
+       52 declare  open_for_migrate bit (1) aligned;
+       53 declare  log_segment_damaged bit (1) aligned;
+       54 declare  log_not_initialized bit (1) aligned;
+       55 declare  service_bit bit (1) aligned;
+       56 declare  system_area_ptr pointer;
+       57 declare  system_area area based (system_area_ptr);
+       58 declare  based_word bit (36) aligned based;
+       59 declare  based_page (1024) bit (36) aligned based;
+       60 
+       61 /* Variables associated with mask manipulation.  Note that
+       62*   initializations are assumed by cleanup handler. */
+       63 dcl  ipc_mask_code fixed bin (35) init (-1);
+       64 dcl  ipc_unmask_code fixed bin (35) init (-1);
+       65 dcl  mask bit (36) aligned init (""b);
+       66 
+       67 declare  1 message_info aligned automatic,		/* Description of message being added */
+       68 	 2 time fixed bin (71),			/* Set for: $message, $data */
+       69 	 2 process_id bit (36) aligned,		/* Set for: $message, $data */
+       70 	 2 severity fixed bin (35),			/* Set for: $message, $data */
+       71 	 2 text_lth fixed bin,			/* Set for: $message, $data, $general */
+       72 	 2 text_ptr pointer,			/* Set for: $message, $data */
+       73 	 2 data_lth fixed bin,			/* Set for: $data, $general */
+       74 	 2 data_ptr pointer,			/* Set for: $data */
+       75 	 2 data_class char (16) varying,		/* Set for: $data, $general */
+       76 	 2 sequence fixed bin (35);			/* Set for: $general */
+       77 
+       78 declare  message_text char (message_info.text_lth) unaligned based (message_info.text_ptr);
+       79 declare  message_data dim (message_info.data_lth) bit (36) aligned based (message_info.data_ptr);
+       80 
+       81 declare  log_data_$default_log_size fixed bin (35) external static;
+       82 
+       83 declare  error_table_$log_out_of_service fixed bin (35) external static;
+       84 declare  error_table_$log_segment_damaged fixed bin (35) external static;
+       85 declare  error_table_$log_segment_full fixed bin (35) external static;
+       86 declare  error_table_$log_segment_invalid fixed bin (35) external static;
+       87 declare  error_table_$log_uninitialized fixed bin (35) external static;
+       88 declare  error_table_$namedup fixed bin (35) external static;
+       89 declare  error_table_$noentry fixed bin (35) external static;
+       90 declare  error_table_$nomatch fixed bin (35) external static;
+       91 declare  error_table_$no_w_permission fixed bin (35) external static;
+       92 declare  error_table_$segnamedup fixed bin (35) external static;
+       93 
+       94 declare  cu_$level_get entry () returns (fixed bin (3));
+       95 declare  get_process_access_class_ entry () returns (bit (72) aligned);
+       96 declare  get_process_id_ entry () returns (bit (36) aligned);
+       97 declare  get_system_free_area_ entry () returns (pointer);
+       98 declare  hcs_$chname_seg entry (pointer, char (*), char (*), fixed bin (35));
+       99 declare  hcs_$reset_ips_mask entry (bit (36) aligned, bit (36) aligned);
+      100 declare  hcs_$set_ips_mask entry (bit (36) aligned, bit (36) aligned);
+      101 declare  hcs_$terminate_noname entry (pointer, fixed bin (35));
+      102 declare  ipc_$mask_ev_calls entry (fixed bin (35));
+      103 declare  ipc_$unmask_ev_calls entry (fixed bin (35));
+      104 declare  log_create_$duplicate_segment entry (pointer, char (*), char (*), pointer, pointer, fixed bin (35));
+      105 declare  log_create_$get_info entry (pointer, pointer, fixed bin (35));
+      106 declare  log_create_$new_segment entry (pointer, pointer, fixed bin (35));
+      107 declare  log_initialize_ entry (pointer, pointer, fixed bin (18), char (*), fixed bin (35));
+      108 declare  log_initiate_ entry (char (*), char (*), fixed bin, pointer, fixed bin (35));
+      109 declare  log_list_history_$single_dir_oldest_and_newest entry (char (*), char (*), char (*), char (*), fixed bin, fixed bin (35));
+      110 declare  log_name_$name entry (char (*), fixed bin (71)) returns (char (32));
+      111 declare  log_segment_$create_message entry (pointer, fixed bin, fixed bin, char (16) varying, pointer, fixed bin (35));
+      112 declare  log_segment_$create_message_number entry
+      113 	    (pointer, fixed bin, fixed bin, char (16) varying, fixed bin (35), pointer, fixed bin (35));
+      114 declare  log_segment_$finish_message entry (pointer, pointer, fixed bin (35));
+      115 declare  log_segment_$get_service_bit entry (ptr, bit (1) aligned, fixed bin (35));
+      116 declare  log_segment_$place_in_service entry (pointer, fixed bin (35));
+      117 declare  log_segment_$remove_from_service entry (pointer, fixed bin (35));
+      118 declare  log_wakeup_$send_wakeups entry (pointer, pointer, fixed bin (35));
+      119 declare  sub_err_ entry options (variable);
+      120 declare  timer_manager_$sleep entry (fixed bin (71), bit (2));
+      121 
+      122 declare  seg_fault_error condition;
+      123 
+      124 declare  WHOAMI char (32) internal static options (constant) init ("log_write_");
+      125 declare  MAX_TRIES fixed bin internal static options (constant) init (10);
+      126 declare  RELATIVE_MICROSECONDS bit (2) internal static options (constant) init ("10"b);
+      127 declare  ONE_SECOND fixed bin (71) internal static options (constant) init (1000000);
+      128 declare  ONE_QUARTER_SECOND fixed bin (71) internal static options (constant) init (250000);
+      129 
+      130 declare  cleanup condition;
+      131 
+      132 declare  (addr, clock, length, null, substr, unspec) builtin;
+      133 
+      134 
+      135 MAIN_RETURN:
+      136 	return;
+      137 
+      138 
+      139 finished:
+      140      procedure (P_return_code);
+      141 
+      142 declare  P_return_code fixed bin (35) parameter;
+      143 
+      144 
+      145 	call CLEANUP;
+      146 	P_code = P_return_code;
+      147 	goto MAIN_RETURN;
+      148      end finished;
+      149 
+      150 
+      151 
+      152 abort_open:
+      153      procedure (P_error_code);
+      154 
+      155 declare  P_error_code fixed bin (35) parameter;
+      156 
+      157 
+      158 	call log_write_$close (log_write_data_ptr, (0));
+      159 	call finished (P_error_code);
+      160 
+      161      end abort_open;
+      162 
+      163 
+      164 
+      165 
+      166 
+      167 MASK:
+      168      procedure ();
+      169 
+      170 	call hcs_$set_ips_mask (""b, mask);		/* mask ips interrupts */
+      171 	call ipc_$mask_ev_calls (ipc_mask_code);	/* mask ipc calls */
+      172 
+      173      end MASK;
+      174 
+      175 
+      176 UNMASK:
+      177      procedure ();
+      178 
+      179 	call ipc_$unmask_ev_calls (ipc_unmask_code);
+      180 	ipc_mask_code = -1;
+      181 	ipc_unmask_code = -1;
+      182 	call hcs_$reset_ips_mask (mask, mask);
+      183 
+      184      end UNMASK;
+      185 
+      186 
+      187 
+      188 CLEANUP: procedure;
+      189 
+      190 /* put masks back the way we found 'em and reset variables so we don't try it twice */
+      191 
+      192 	if ipc_mask_code ^= -1 & ipc_unmask_code = -1 then
+      193 	     call ipc_$unmask_ev_calls (ipc_unmask_code);
+      194 	ipc_mask_code = -1;
+      195 	ipc_unmask_code = -1;
+      196 
+      197 	if substr(mask, 36, 1) = "1"b then
+      198 	     call hcs_$reset_ips_mask (mask, mask);
+      199 
+      200      end CLEANUP;
+      201 
+      202 
+      203 /* This entrypoint is called to put a text message into the log */
+      204 
+      205 log_write_$open:
+      206      entry (P_log_dname, P_log_ename, P_create_sw, P_log_write_data_ptr, P_code);
+      207 
+      208 	open_for_migrate = "0"b;
+      209 	goto OPEN_COMMON;
+      210 
+      211 
+      212 
+      213 log_write_$open_for_migrate:
+      214      entry (P_log_dname, P_log_ename, P_create_sw, P_log_write_data_ptr, P_code);
+      215 
+      216 	open_for_migrate = "1"b;			/* P_log_ename, in this case, is the primary name of the */
+      217 	goto OPEN_COMMON;				/* log, NOT the name of a specific segment */
+      218 
+      219 
+      220 
+      221 OPEN_COMMON:
+      222 	P_log_write_data_ptr = null ();
+      223 
+      224 	system_area_ptr = get_system_free_area_ ();
+      225 	allocate log_write_data in (system_area) set (log_write_data_ptr);
+      226 	unspec (log_write_data) = ""b;
+      227 
+      228 	log_write_data.log_ptr = null ();
+      229 	log_write_data.migrating = open_for_migrate;
+      230 
+      231 	on condition (cleanup) begin;
+      232 	     call log_write_$close (log_write_data_ptr, (0));
+      233 	end;
+      234 
+      235 /* For either open case, we take the dir name we received.	For the plain $open
+      236*   case, that's true of the entry name as well.  However, for the $open_for_migrate
+      237*   case, we have to find the newest in a series of already renamed logs, or, if
+      238*   there aren't any, create one with a name based on the current time.  The log_name
+      239*   itself is the entry name we were given, in either case. */
+      240 
+      241 	log_write_data.dname = P_log_dname;
+      242 	log_write_data.log_name = P_log_ename;
+      243 
+      244 	if log_write_data.migrating then do;
+      245 	     call log_list_history_$single_dir_oldest_and_newest /* See if we can find newest ename.YYYYMMDD.HHMMSS */
+      246 		(P_log_dname, P_log_ename, (""), log_write_data.ename, (0), code);
+      247 
+      248 	     if (code = 0) then ;			/* OK: we found some oldies */
+      249 
+      250 	     else if (code = error_table_$nomatch) then	/* Also OK: Nothing there now, so we create the first */
+      251 		log_write_data.ename = log_name_$name (P_log_ename, clock ()); /* Depending on P_create_sw, below */
+      252 
+      253 	     else call abort_open (code);		/* Otherwise, it's an error */
+      254 	end;
+      255 
+      256 	else log_write_data.ename = P_log_ename;	/* Vanilla case, use what we got */
+      257 
+      258 
+      259 /* What follows is the code common for both types of open operations */
+      260 
+      261 	call log_initiate_ (log_write_data.dname, log_write_data.ename, 10, log_write_data.log_ptr, code);
+      262 
+      263 	log_not_initialized = (code = error_table_$log_uninitialized);
+      264 
+      265 /* If it exists, we consider using it. First, check to see whether it can be
+      266*   written; if not, give up immediately. Next, if it wasn't initialized,
+      267*   check to see whether it's a whole empty page, and initialize it only if
+      268*   it is-- that avoids trashing a random segment that isn't actually a log.
+      269*   Finally, if migrating, put it back in service and be gone. */
+      270 
+      271 	if (code = 0) | log_not_initialized then do;	/* The named segment exists. Use it. */
+      272 GET_LOG_INFO:
+      273 	     call log_create_$get_info (addr (log_write_data.segment_info), log_write_data.log_ptr, code);
+      274 	     if (code ^= 0) then
+      275 		call abort_open (code);
+      276 
+      277 	     if (log_write_data.effective_mode ^= RW_ACCESS) & (log_write_data.effective_mode ^= REW_ACCESS) then
+      278 		call abort_open (error_table_$no_w_permission);
+      279 
+      280 	     if log_not_initialized then		/* Check whether anything is there */
+      281 		if (unspec (log_write_data.log_ptr -> based_page) ^= ""b) then
+      282 		     call abort_open (error_table_$log_segment_invalid);
+      283 
+      284 		else do;				/* It has nothing there, so initialize it */
+      285 		     call log_initialize_ (null (), log_write_data.log_ptr,
+      286 			(log_data_$default_log_size), log_write_data.dname, code);
+      287 		     if (code ^= 0) then
+      288 			call abort_open (code);
+      289 		     else log_not_initialized = "0"b;
+      290 		end;
+      291 
+      292 	     if log_write_data.migrating then		/* It's out of service now, so turn it back on */
+      293 		call log_segment_$place_in_service (log_write_data.log_ptr, (0)); /* but ignore errors */
+      294 	     else do;				/* Make sure we have a usable log since our caller apparently wants to write to it. */
+      295 		call log_segment_$get_service_bit (log_write_data.log_ptr, service_bit, code);
+      296 		if (code ^= 0) then			/* should always be possible */
+      297 		     call abort_open (code);
+      298 		if (service_bit ^= "1"b) then do;	/* need to wait for new log segment */
+      299 		     call initiate_new_log_segment$$open;
+      300 		     goto GET_LOG_INFO;		/* make sure the new one has proper access */
+      301 		end;
+      302 	     end;
+      303 	end;
+      304 
+      305 /* If it didn't exist, and we were supposed to create it, take care of that */
+      306 
+      307 	else if P_create_sw & (code = error_table_$noentry) then do;
+      308 	     log_write_data.rings (*) = cu_$level_get ();
+      309 	     log_write_data.access_class = get_process_access_class_ ();
+      310 	     log_write_data.max_length = log_data_$default_log_size;
+      311 	     call log_create_$new_segment (addr (log_write_data.segment_info), log_write_data.log_ptr, code);
+      312 	     if (code ^= 0) then
+      313 		call abort_open (code);
+      314 	end;
+      315 
+      316 	else call abort_open (code);
+      317 
+      318 	P_log_write_data_ptr = log_write_data_ptr;
+      319 	call finished (0);
+      320 
+      321 
+      322 log_write_$close:
+      323      entry (P_log_write_data_ptr, P_code);
+      324 
+      325 	log_write_data_ptr = P_log_write_data_ptr;
+      326 	if (log_write_data_ptr = null ()) then call finished (0);
+      327 
+      328 	P_log_write_data_ptr = null ();
+      329 	system_area_ptr = get_system_free_area_ ();
+      330 
+      331 	if (log_write_data.acl_count ^= 0) & (log_write_data.acl_ptr ^= null ()) then
+      332 	     free log_write_data.acl_ptr -> based_word in (system_area);
+      333 
+      334 	if (log_write_data.log_ptr ^= null ()) then do;
+      335 
+      336 /* If we are migrating, we take this segment out of service, and also give it
+      337*   a name more befitting its station-- a suffix accurately representing the
+      338*   newest message it contains.  This renaming, though, may result in name
+      339*   duplications, which we have no way to handle, so we just ignore the
+      340*   status code. */
+      341 
+      342 	     if log_write_data.migrating then do;
+      343 		call log_segment_$remove_from_service (log_write_data.log_ptr, (0));
+      344 		call rename_for_last_message (log_write_data.log_ptr, log_write_data.ename, (0));
+      345 	     end;
+      346 
+      347 	     call hcs_$terminate_noname (log_write_data.log_ptr, (0));
+      348 	     log_write_data.log_ptr = null ();
+      349 	end;
+      350 
+      351 	free log_write_data in (system_area);
+      352 
+      353 	call finished (0);
+      354 
+      355 
+      356 log_write_$message:
+      357      entry (P_log_write_data_ptr, P_severity, P_message, P_log_message_ptr, P_code);
+      358 
+      359 	log_write_data_ptr = P_log_write_data_ptr;
+      360 
+      361 	unspec (message_info) = ""b;
+      362 	message_info.time = clock ();
+      363 	message_info.process_id = get_process_id_ ();
+      364 	message_info.severity = P_severity;
+      365 	message_info.text_ptr = addr (P_message);
+      366 	message_info.text_lth = length (P_message);
+      367 
+      368 	call add_message ("1"b);
+      369 
+      370 	P_log_message_ptr = log_message_ptr;
+      371 	call finished (0);
+      372 
+      373 
+      374 /* This entrypoint is called to put a message in the log including binary data */
+      375 
+      376 log_write_$data:
+      377      entry (P_log_write_data_ptr, P_severity,
+      378 	P_message, P_data_ptr, P_data_lth, P_data_class, P_log_message_ptr, P_code);
+      379 
+      380 	log_write_data_ptr = P_log_write_data_ptr;
+      381 
+      382 	unspec (message_info) = ""b;
+      383 	message_info.time = clock ();
+      384 	message_info.process_id = get_process_id_ ();
+      385 	message_info.severity = P_severity;
+      386 	message_info.text_ptr = addr (P_message);
+      387 	message_info.text_lth = length (P_message);
+      388 	message_info.data_ptr = P_data_ptr;
+      389 	message_info.data_lth = P_data_lth;
+      390 	message_info.data_class = P_data_class;
+      391 
+      392 	call add_message ("1"b);
+      393 
+      394 	P_log_message_ptr = log_message_ptr;
+      395 	call finished (0);
+      396 
+      397 
+      398 /* This entrypoint is called to put a message in the log with arbitrary
+      399*   contents. The caller must fill it in after this returns, and then must
+      400*   call log_segment_$finish itself to complete the job. The caller has
+      401*   the option of setting a sequence number here, as well; if this number
+      402*   is non-zero, add_message will call log_segment_$create_message_number.
+      403**/
+      404 
+      405 
+      406 log_write_$general:
+      407      entry (P_log_write_data_ptr, P_sequence, P_message_lth, P_data_lth, P_data_class, P_log_message_ptr, P_code);
+      408 
+      409 	log_write_data_ptr = P_log_write_data_ptr;
+      410 
+      411 	unspec (message_info) = ""b;
+      412 	message_info.sequence = P_sequence;
+      413 	message_info.text_lth = P_message_lth;		/* Set only the length-determining information */
+      414 	message_info.data_lth = P_data_lth;
+      415 	message_info.data_class = P_data_class;
+      416 
+      417 	call add_message ("0"b);
+      418 
+      419 	P_log_message_ptr = log_message_ptr;
+      420 	call finished (0);
+      421 
+      422 
+      423 add_message:
+      424      procedure (P_finish_message);
+      425 
+      426 declare  P_finish_message bit (1) aligned parameter;
+      427 declare  fault_occurred bit (1) aligned;
+      428 
+      429 
+      430 	fault_occurred = "0"b;
+      431 	log_segment_damaged = "0"b;
+      432 
+      433 	on condition (seg_fault_error) begin;
+      434 	     if fault_occurred then do;
+      435 		code = error_table_$log_segment_damaged;
+      436 		goto MAIN_RETURN;
+      437 	     end;
+      438 
+      439 	     fault_occurred = "1"b;
+      440 	     call create_new_log_segment ();
+      441 	     goto TRY_TO_CREATE_MESSAGE;
+      442 	end;
+      443 
+      444 
+      445 TRY_TO_CREATE_MESSAGE:
+      446 	do while (^create_message ());
+      447 	end;
+      448 
+      449 	if ^P_finish_message then return;		/* Leave it to our caller to fill in and finish */
+      450 
+      451 	log_message.time = message_info.time;
+      452 	log_message.severity = message_info.severity;
+      453 	log_message.process_id = message_info.process_id;
+      454 
+      455 	log_message.text = message_text;
+      456 	if (message_info.data_lth > 0) then do;
+      457 	     log_message.data_class = message_info.data_class;
+      458 	     log_message.data = message_data;
+      459 	end;
+      460 
+      461 	call log_segment_$finish_message (log_write_data.log_ptr, log_message_ptr, code);
+      462 	if (code ^= 0) then call finished (code);
+      463 
+      464 	if log_write_data.log_ptr -> log_segment.listeners_registered then /* This test repeated here for efficiency */
+      465 	     call log_wakeup_$send_wakeups (log_write_data.log_ptr, log_message_ptr, (0));
+      466 
+      467 	revert condition (seg_fault_error);
+      468 
+      469 	return;
+      470      end add_message;
+      471 
+      472 
+      473 create_message:
+      474      procedure () returns (bit (1) aligned);
+      475 
+      476 	if (message_info.sequence > 0) then		/* Caller-supplied sequence number from log_write_$general */
+      477 	     call log_segment_$create_message_number (log_write_data.log_ptr,
+      478 		message_info.text_lth, message_info.data_lth, message_info.data_class, message_info.sequence,
+      479 		log_message_ptr, code);
+      480 
+      481 	else call log_segment_$create_message (log_write_data.log_ptr,
+      482 		message_info.text_lth, message_info.data_lth, message_info.data_class,
+      483 		log_message_ptr, code);
+      484 
+      485 	if (code = 0) then return ("1"b);
+      486 
+      487 /* If our message won't fit, we have to swap log segments. This is done by taking the old
+      488*   one out of service and creating a new one. However, it's quite possible that someone
+      489*   else has also found the log full, and taken it out of service before we could, so we
+      490*   have to pay close attention to what happens when we take it out of service. */
+      491 
+      492 	else if (code = error_table_$log_segment_full) then do;
+      493 	     on cleanup call CLEANUP;
+      494 	     call MASK;
+      495 	     call log_segment_$remove_from_service (log_write_data.log_ptr, code);
+      496 
+      497 	     if (code = 0) then
+      498 		call create_new_log_segment ();
+      499 	     else call initiate_new_log_segment ();
+      500 	     call UNMASK;
+      501 	     return ("0"b);				/* Come around and try again */
+      502 	end;
+      503 
+      504 	else if (code = error_table_$log_out_of_service) then do;
+      505 	     call initiate_new_log_segment ();
+      506 	     return ("0"b);
+      507 	end;
+      508 
+      509 /* If it got munched for some reason, we give up on this one, and try to create a
+      510*   new one. If we encounter this error more than once, though, we just give up--
+      511*   that probably indicates some fairly serious internal logic error. For politeness,
+      512*   we *try* to take the old segment out of service, though, really, its disposition
+      513*   doesn't matter in the slightest at this point. */
+      514 
+      515 	else if (code = error_table_$log_segment_damaged) then do;
+      516 	     if log_segment_damaged then
+      517 		call finished (code);
+      518 	     log_segment_damaged = "1"b;		/* Remember that this has been tried already */
+      519 
+      520 	     on cleanup call CLEANUP;
+      521 	     call MASK;
+      522 	     call log_segment_$remove_from_service (log_write_data.log_ptr, (0));
+      523 	     call create_new_log_segment ();
+      524 	     call UNMASK;
+      525 	end;
+      526 
+      527 	else call finished (code);			/* Any other error is fatal */
+      528 
+      529      end create_message;
+      530 
+      531 
+      532 initiate_new_log_segment:
+      533      procedure ();
+      534 
+      535 declare  old_log_ptr pointer;
+      536 declare  new_log_ptr pointer;
+      537 declare  retry_count fixed bin;
+      538 declare  abort_proc entry (fixed bin (35)) variable;
+      539 
+      540 /* This call will try several times, returning only when new_log_ptr is different
+      541*   from old_log_ptr.  When a log fills, it is renamed (in this case, by another
+      542*   process, so it won't affect our segment number), and this procedure tries to
+      543*   initiate with the old name, eventually (it hopes) getting the new segment of
+      544*   that name. */
+      545 
+      546 	abort_proc = finished;
+      547 	goto initiate_new_log_segment_join;
+      548 
+      549 initiate_new_log_segment$$open:
+      550      entry ();					/* entrypoint used when opeining a log for writing */
+      551 
+      552 	abort_proc = abort_open;
+      553 
+      554 initiate_new_log_segment_join:
+      555 	old_log_ptr = log_write_data.log_ptr;
+      556 
+      557 	do retry_count = 1 to 10;
+      558 	     call log_initiate_ (log_write_data.dname, log_write_data.ename, 1, new_log_ptr, code);
+      559 
+      560 	     if (code = 0) & (new_log_ptr ^= old_log_ptr) then do;
+      561 		call hcs_$terminate_noname (old_log_ptr, (0));
+      562 		log_write_data.log_ptr = new_log_ptr;
+      563 		return;
+      564 	     end;
+      565 
+      566 	     call sleep (ONE_QUARTER_SECOND);
+      567 	end;
+      568 
+      569 /* If we run out of tries at this, then the process that set the log out-of-service
+      570*   hasn't finished its job: no new log has been created, or, if it has been created,
+      571*   it has not been initialized. Our caller loses. This shouldn't happen, of course,
+      572*   since that whole task is handled by create_new_log_segment, below */
+      573 
+      574 	if (code = 0) then				/* Old log still exists (presumably, out of service) */
+      575 	     call abort_proc (error_table_$log_out_of_service);
+      576 	else call abort_proc (code);
+      577 
+      578      end initiate_new_log_segment;
+      579 
+      580 
+      581 create_new_log_segment:
+      582      procedure ();
+      583 
+      584 /* This procedure renames the old log segment and creates a new one */
+      585 
+      586 declare  new_log_ptr pointer;
+      587 declare  1 this_segment_info aligned like log_segment_info;
+      588 declare  orig_log_ptr pointer;
+      589 declare  rename_time fixed bin (71);
+      590 
+      591 
+      592 	this_segment_info = log_write_data.segment_info;
+      593 	orig_log_ptr = log_write_data.log_ptr;
+      594 
+      595 /* When a log segment fills, it gets a suffix that's guaranteed to be
+      596*   as late or later (by adding ONE_SECOND) than the last message in the log.
+      597*   Once it's full, we rename it to an appropriate name. */
+      598 
+      599 	call rename_for_last_message (orig_log_ptr, log_write_data.ename, rename_time);
+      600 
+      601 	if log_write_data.migrating then		/* These calls modify this_segment_info and leave */
+      602 	     call create_migration_segment (rename_time); /* code set to indicate their success or failure */
+      603 	else call create_initial_segment ();
+      604 
+      605 /* We terminate and give up on the old one, regardless-- WITHOUT modifying code */
+      606 
+      607 	call hcs_$terminate_noname (orig_log_ptr, (0));
+      608 	log_write_data.log_ptr = null ();
+      609 
+      610 	if (code ^= 0) then
+      611 	     call finished (code);
+      612 
+      613 	log_write_data.segment_info = this_segment_info;
+      614 	log_write_data.log_ptr = new_log_ptr;
+      615 
+      616 	return;
+      617 
+      618 
+      619 create_initial_segment:
+      620 	procedure ();
+      621 
+      622 	     call log_create_$duplicate_segment (addr (this_segment_info),
+      623 		log_write_data.dname, log_write_data.log_name, orig_log_ptr, new_log_ptr, code);
+      624 
+      625 	     if (code = 0) then			/* All went well, we managed to duplicate the segment */
+      626 		return;
+      627 
+      628 	     this_segment_info = log_write_data.segment_info; /* Since it may have been altered above */
+      629 	     this_segment_info.ename = log_write_data.log_name;
+      630 
+      631 	     call log_create_$new_segment (addr (this_segment_info), new_log_ptr, code);
+      632 
+      633 	     return;				/* code is set to indicate success/failure */
+      634 	end create_initial_segment;
+      635 
+      636 
+      637 create_migration_segment:
+      638 	procedure (P_start_time);
+      639 
+      640 declare  P_start_time fixed bin (71) parameter;
+      641 
+      642 declare  tries fixed bin;
+      643 declare  new_log_name char (32);
+      644 declare  keep_trying bit (1) aligned;
+      645 
+      646 
+      647 	     keep_trying = "1"b;
+      648 	     do tries = 1 to MAX_TRIES while (keep_trying);
+      649 		new_log_name = log_name_$name (log_write_data.log_name, (P_start_time + (tries * ONE_SECOND)));
+      650 		call log_create_$duplicate_segment (addr (this_segment_info),
+      651 		     log_write_data.dname, new_log_name, orig_log_ptr, new_log_ptr, code);
+      652 
+      653 		if (code = 0) then			/* If it's created, our job is done. */
+      654 		     return;			/* Otherwise, as long as we keep getting name duplications, */
+      655 		if (code ^= error_table_$namedup) then	/* Keep trying different names. Any other sort of error */
+      656 		     keep_trying = "0"b;		/* is cause for giving up and going on to the new-segment */
+      657 	     end;					/* case, the assumption being that duplication failed. */
+      658 
+      659 	     do tries = 1 to MAX_TRIES while (keep_trying);
+      660 		this_segment_info = log_write_data.segment_info; /* Since it may have been altered above */
+      661 		this_segment_info.ename = log_name_$name (log_write_data.log_name, (P_start_time + (tries * ONE_SECOND)));
+      662 		call log_create_$new_segment (addr (this_segment_info), new_log_ptr, code);
+      663 
+      664 		if (code = 0) then			/* Error return logic is as above. */
+      665 		     return;
+      666 		if (code ^= error_table_$namedup) then
+      667 		     keep_trying = "0"b;
+      668 	     end;
+      669 
+      670 	     return;
+      671 	end create_migration_segment;
+      672 
+      673      end create_new_log_segment;
+      674 
+      675 
+      676 rename_for_last_message:
+      677      procedure (P_log_ptr, P_current_name, P_rename_time);
+      678 
+      679 declare  P_log_ptr pointer parameter;
+      680 declare  P_current_name char (32) parameter;
+      681 declare  P_rename_time fixed bin (71) parameter;
+      682 
+      683 declare  name_time fixed bin (71);
+      684 declare  new_name char (32);
+      685 declare  tries fixed bin;
+      686 
+      687 	name_time = P_log_ptr -> log_segment.last_time;
+      688 
+      689 /* The idea here is to keep trying later names until it can be set to
+      690*   some name that is later than the last message in the segment. */
+      691 
+      692 	do tries = 1 to MAX_TRIES;			/* Don't try too many times.... */
+      693 	     name_time = name_time + ONE_SECOND;	/* Add a delta so the suffix is guaranteed to be later */
+      694 
+      695 	     new_name = log_name_$name (log_write_data.log_name, name_time);
+      696 
+      697 	     call hcs_$chname_seg (P_log_ptr, P_current_name, new_name, code);
+      698 
+      699 	     if (code = error_table_$segnamedup) then	/* If it's already this, we're restarting after an */
+      700 		code = 0;				/* error, and the code can be ignored. */
+      701 
+      702 	     if (code = 0) then do;			/* It worked */
+      703 		P_current_name = new_name;		/* Set it back for our caller */
+      704 		P_rename_time = name_time;		/* Say what time the old one has */
+      705 		return;
+      706 	     end;
+      707 
+      708 	     else if (code ^= error_table_$namedup) then	/* Nope, couldn't do it at all */
+      709 		call finished (code);
+      710 
+      711 	     if ((name_time + ONE_SECOND) > clock ()) then/* Come around for another try, */
+      712 		call sleep (ONE_SECOND);
+      713 	end;					/* but don't let it get ahea of the clock */
+      714 
+      715 	call sub_err_ (0, WHOAMI, ACTION_CANT_RESTART, null (), "",
+      716 	     "Tried (unsuccessfully) more than ^d times to rename log segment ^a (^p)",
+      717 	     (tries - 1), P_current_name, P_log_ptr);
+      718 
+      719      end rename_for_last_message;
+      720 
+      721 
+      722 sleep: procedure (interval);
+      723 
+      724 /* Internal procedure to pause for a specified interval.  It is
+      725*   used when we need to wait for some other process to finish some
+      726*   manipulation of the log segments. We perform our own mask
+      727*   setting here if our caller is not already masked. */
+      728 
+      729 dcl  interval fixed bin (71) parameter;			/* sleep time in microseconds */
+      730 
+      731 	if substr(mask, 36, 1) = "0"b
+      732 	then do;
+      733 	     on cleanup call CLEANUP;
+      734 	     call MASK;
+      735 	     call timer_manager_$sleep (interval, RELATIVE_MICROSECONDS);
+      736 	     call UNMASK;
+      737 	end;
+      738 	else call timer_manager_$sleep (interval, RELATIVE_MICROSECONDS);
+      739 
+      740      end sleep;
+      741 
+      742 
+      743 /* format: off */
+      744 
+      745  /* BEGIN INCLUDE FILE ... log_message.incl.pl1 ... 84-04-25 ... W. Olin Sibert */
+  1     2 
+  1     3 declare 1 log_message_header  aligned based,                /* Items marked "(SET)" are set by $create_message */
+  1     4           2 sentinel          bit (36) aligned,             /* Proper value declared in log_segment.incl.pl1 */
+  1     5           2 sequence          fixed bin (35),               /* Sequence number for this message (SET) */
+  1     6           2 severity          fixed bin (8) unaligned,      /* Severity of message */
+  1     7           2 data_class_lth    fixed bin (9) unaligned unsigned, /* Length of data class-- 0 to 16 (SET) */
+  1     8           2 time              fixed bin (53) unaligned,     /* Time message originated */
+  1     9           2 text_lth          fixed bin (17) unaligned,     /* Length of message text. Must be nonzero (SET) */
+  1    10           2 data_lth          fixed bin (17) unaligned,     /* Length of binary data. May be zero (SET) */
+  1    11           2 process_id        bit (36) aligned;             /* Process id of process writing message */
+  1    12 
+  1    13 declare 1 log_message         aligned based (log_message_ptr),
+  1    14           2 header            aligned like log_message_header,
+  1    15           2 text              char (log_message_text_lth         refer (log_message.text_lth)) unaligned,
+  1    16           2 data_class        char (log_message_data_class_lth   refer (log_message.data_class_lth)) unaligned,
+  1    17           2 data              dim (log_message_data_lth          refer (log_message.data_lth)) bit (36) aligned;
+  1    18 
+  1    19 declare   log_message_ptr pointer;
+  1    20 declare   log_message_text_lth fixed bin;
+  1    21 declare   log_message_data_class_lth fixed bin;
+  1    22 declare   log_message_data_lth fixed bin;
+  1    23 
+  1    24 /* END INCLUDE FILE ... log_message.incl.pl1 */
+      745 
+      746  /* BEGIN INCLUDE FILE ... log_segment.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  2     2 
+  2     3 declare   log_segment_ptr               pointer;
+  2     4 declare   log_segment_max_size          fixed bin (18);
+  2     5 declare   LOG_SEGMENT_VERSION_1         char (8) internal static options (constant) init ("SysLog01");
+  2     6 
+  2     7 
+  2     8 declare 1 log_segment                   aligned based (log_segment_ptr),
+  2     9           2 header                      aligned like log_segment_header,
+  2    10           2 data                        dim (log_segment_max_size refer (log_segment.max_size)) bit (36) aligned;
+  2    11 
+  2    12 
+  2    13 declare 1 log_segment_header            aligned based,
+  2    14           2 version                     char (8) unaligned, /* LOG_SEGMENT_VERSION_1 */
+  2    15           2 time_created                fixed bin (71),     /* When the segment header was initialized */
+  2    16           2 previous_log_dir            char (168) unaligned, /* Directory containing previous log segment */
+  2    17 
+  2    18           2 limits,
+  2    19             3 first_sequence            fixed bin (35),     /* First and last sequence numbers / time stamps */
+  2    20             3 last_sequence             fixed bin (35),     /* of messages in the log. These may be slightly */
+  2    21             3 first_time                fixed bin (71),     /* incorrect due to lockless updating strategy */
+  2    22             3 last_time                 fixed bin (71),
+  2    23 
+  2    24           2 alloc_info,                                     /* Complex STACQ hack for allocating and assigning */
+  2    25             3 word_1                    fixed bin (18),     /* sequence numbers locklessly. See log_segment_ */
+  2    26             3 word_2                    bit (36) aligned,   /* for details of strategy */
+  2    27           2 max_size                    fixed bin (18),     /* Total words in data area */
+  2    28 
+  2    29           2 listeners_registered        bit (1) aligned,    /* Set if ANY processes were ever registered-- it's only */
+  2    30           2 listener_bootload_time      fixed bin (71),     /* kept here for efficiency. The bootload time is used to */
+  2    31                                                             /* detect all the dead listeners after a reboot */
+  2    32           2 listener (25),                                  /* Processes waiting for messages in the log */
+  2    33             3 process_id                bit (36) aligned,
+  2    34             3 event_channel             fixed bin (71) unaligned, /* Saves space-- allows 3-word entries */
+  2    35 
+  2    36           2 last_wakeup_time            fixed bin (71),     /* When last wakeup was sent */
+  2    37           2 wakeup_delta                fixed bin (71),     /* Wakeups sent no more than once per this interval */
+  2    38 
+  2    39           2 pad (6)                     fixed bin (71);     /* Pad header to 150 words */
+  2    40 
+  2    41 
+  2    42 declare   LOG_SEGMENT_NEW_MESSAGE           init ("777111555333"b3) bit (36) aligned internal static options (constant);
+  2    43 declare   LOG_SEGMENT_COMPLETE_MESSAGE      init ("666000444222"b3) bit (36) aligned internal static options (constant);
+  2    44 
+  2    45 /* END INCLUDE FILE ... log_segment.incl.pl1 */
+      746 
+      747  /* BEGIN INCLUDE FILE ... log_write_data.incl.pl1 ... 84-05-03 ... W. Olin Sibert */
+  3     2 
+  3     3 declare   log_write_data_ptr            pointer;
+  3     4 declare   log_segment_info_ptr          pointer;
+  3     5 
+  3     6 declare 1 log_write_data                aligned based (log_write_data_ptr),
+  3     7           2 log_name                    char (32) unaligned,
+  3     8 
+  3     9           2 log_ptr                     pointer,
+  3    10           2 migrating                   bit (1) aligned,
+  3    11           2 pad (13)                    bit (36) aligned,
+  3    12 
+  3    13           2 segment_info                aligned like log_segment_info;
+  3    14 
+  3    15 
+  3    16 declare 1 log_segment_info              aligned based (log_segment_info_ptr),
+  3    17           2 dname                       char (168) unaligned,
+  3    18           2 ename                       char (32) unaligned,
+  3    19 
+  3    20           2 acl_ptr                     pointer,
+  3    21           2 acl_count                   fixed bin,
+  3    22           2 rings                       (3) fixed bin (3),
+  3    23           2 max_length                  fixed bin (19),
+  3    24           2 access_class                bit (72) aligned,
+  3    25           2 multi_class                 bit (1) aligned,
+  3    26 	2 effective_mode		bit (36) aligned;
+  3    27 
+  3    28 /* END INCLUDE FILE ... log_write_data.incl.pl1 */
+      747 
+      748  /* BEGIN INCLUDE FILE sub_err_flags.incl.pl1 BIM 11/81 */
+  4     2 /* format: style3 */
+  4     3 
+  4     4 /* These constants are to be used for the flags argument of sub_err_ */
+  4     5 /* They are just "string (condition_info_header.action_flags)" */
+  4     6 
+  4     7 declare	(
+  4     8 	ACTION_CAN_RESTART	init (""b),
+  4     9 	ACTION_CANT_RESTART init ("1"b),
+  4    10 	ACTION_DEFAULT_RESTART
+  4    11 			init ("01"b),
+  4    12 	ACTION_QUIET_RESTART
+  4    13 			init ("001"b),
+  4    14 	ACTION_SUPPORT_SIGNAL
+  4    15 			init ("0001"b)
+  4    16 	)		bit (36) aligned internal static options (constant);
+  4    17 
+  4    18 /* End include file */
+      748 
+      749  /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  5     2*
+  5     3*   Values for the "access mode" argument so often used in hardcore
+  5     4*   James R. Davis 26 Jan 81  MCR 4844
+  5     5*   Added constants for SM access 4/28/82 Jay Pattin
+  5     6*   Added text strings 03/19/85 Chris Jones
+  5     7**/
+  5     8 
+  5     9 
+  5    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  5    11 dcl	(
+  5    12 	N_ACCESS		   init ("000"b),
+  5    13 	R_ACCESS		   init ("100"b),
+  5    14 	E_ACCESS		   init ("010"b),
+  5    15 	W_ACCESS		   init ("001"b),
+  5    16 	RE_ACCESS		   init ("110"b),
+  5    17 	REW_ACCESS	   init ("111"b),
+  5    18 	RW_ACCESS		   init ("101"b),
+  5    19 	S_ACCESS		   init ("100"b),
+  5    20 	M_ACCESS		   init ("010"b),
+  5    21 	A_ACCESS		   init ("001"b),
+  5    22 	SA_ACCESS		   init ("101"b),
+  5    23 	SM_ACCESS		   init ("110"b),
+  5    24 	SMA_ACCESS	   init ("111"b)
+  5    25 	)		   bit (3) internal static options (constant);
+  5    26 
+  5    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  5    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  5    29 
+  5    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  5    31 			   static options (constant);
+  5    32 
+  5    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  5    34 			   static options (constant);
+  5    35 
+  5    36 dcl	(
+  5    37 	N_ACCESS_BIN	   init (00000b),
+  5    38 	R_ACCESS_BIN	   init (01000b),
+  5    39 	E_ACCESS_BIN	   init (00100b),
+  5    40 	W_ACCESS_BIN	   init (00010b),
+  5    41 	RW_ACCESS_BIN	   init (01010b),
+  5    42 	RE_ACCESS_BIN	   init (01100b),
+  5    43 	REW_ACCESS_BIN	   init (01110b),
+  5    44 	S_ACCESS_BIN	   init (01000b),
+  5    45 	M_ACCESS_BIN	   init (00010b),
+  5    46 	A_ACCESS_BIN	   init (00001b),
+  5    47 	SA_ACCESS_BIN	   init (01001b),
+  5    48 	SM_ACCESS_BIN	   init (01010b),
+  5    49 	SMA_ACCESS_BIN	   init (01011b)
+  5    50 	)		   fixed bin (5) internal static options (constant);
+  5    51 
+  5    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      749 
+      750 
+      751 	end log_write_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  log_write_.pl1                    >spec>install>1111>log_write_.pl1
+745          1    01/21/85  0912.2  log_message.incl.pl1              >ldd>include>log_message.incl.pl1
+746          2    12/04/84  2124.9  log_segment.incl.pl1              >ldd>include>log_segment.incl.pl1
+747          3    01/21/85  0912.3  log_write_data.incl.pl1           >ldd>include>log_write_data.incl.pl1
+748          4    04/16/82  0958.1  sub_err_flags.incl.pl1            >ldd>include>sub_err_flags.incl.pl1
+749          5    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ACTION_CANT_RESTART             000022 constant        bit(36)                  initial dcl 4-7 set ref 715*
+MAX_TRIES                              constant        fixed bin(17,0)          initial dcl 125 ref 648 659 692
+ONE_QUARTER_SECOND              000000 constant        fixed bin(71,0)          initial dcl 128 set ref 566*
+ONE_SECOND                      000002 constant        fixed bin(71,0)          initial dcl 127 set ref 649 661 693 711 711*
+P_code                                 parameter       fixed bin(35,0)          dcl 49 set ref 146* 205 213 322 356 376 406
+P_create_sw                            parameter       bit(1)                   dcl 39 ref 205 213 307
+P_current_name                         parameter       char(32)                 packed unaligned dcl 680 set ref 676 697* 703* 715*
+P_data_class                           parameter       varying char(16)         dcl 45 ref 376 390 406 415
+P_data_lth                             parameter       fixed bin(17,0)          dcl 44 ref 376 389 406 414
+P_data_ptr                             parameter       pointer                  dcl 43 ref 376 388
+P_error_code                           parameter       fixed bin(35,0)          dcl 155 set ref 152 159*
+P_finish_message                       parameter       bit(1)                   dcl 426 ref 423 449
+P_log_dname                            parameter       char                     packed unaligned dcl 37 set ref 205 213 241 245*
+P_log_ename                            parameter       char                     packed unaligned dcl 38 set ref 205 213 242 245*
+                                                                                  250* 256
+P_log_message_ptr                      parameter       pointer                  dcl 48 set ref 356 370* 376 394* 406 419*
+P_log_ptr                              parameter       pointer                  dcl 679 set ref 676 687 697* 715*
+P_log_write_data_ptr                   parameter       pointer                  dcl 35 set ref 205 213 221* 318* 322 325 328* 356
+                                                                                  359 376 380 406 409
+P_message                              parameter       char                     packed unaligned dcl 42 set ref 356 365 366 376 386
+                                                                                  387
+P_message_lth                          parameter       fixed bin(17,0)          dcl 47 ref 406 413
+P_rename_time                          parameter       fixed bin(71,0)          dcl 681 set ref 676 704*
+P_return_code                          parameter       fixed bin(35,0)          dcl 142 ref 139 146
+P_sequence                             parameter       fixed bin(35,0)          dcl 46 ref 406 412
+P_severity                             parameter       fixed bin(17,0)          dcl 41 ref 356 364 376 385
+P_start_time                           parameter       fixed bin(71,0)          dcl 640 ref 637 649 661
+RELATIVE_MICROSECONDS           000022 constant        bit(2)                   initial packed unaligned dcl 126 set ref 735* 738*
+REW_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 5-11 ref 277
+RW_ACCESS                              constant        bit(3)                   initial packed unaligned dcl 5-11 ref 277
+WHOAMI                          000004 constant        char(32)                 initial packed unaligned dcl 124 set ref 715*
+abort_proc                      000106 automatic       entry variable           dcl 538 set ref 546* 552* 574 576
+access_class            121            based           bit(72)                  level 3 dcl 3-6 set ref 309*
+acl_count               114            based           fixed bin(17,0)          level 3 dcl 3-6 set ref 331
+acl_ptr                 112            based           pointer                  level 3 dcl 3-6 set ref 331 331
+addr                                                   builtin function         dcl 132 ref 272 272 311 311 365 386 622 622 631 631
+                                                                                  650 650 662 662
+based_page                             based           bit(36)                  array dcl 59 ref 280
+based_word                             based           bit(36)                  dcl 58 ref 331
+cleanup                         000136 stack reference condition                dcl 130 ref 231 493 520 733
+clock                                                  builtin function         dcl 132 ref 250 250 362 383 711
+code                            000100 automatic       fixed bin(35,0)          dcl 51 set ref 245* 248 250 253* 261* 263 271 272*
+                                                                                  274 274* 285* 287 287* 295* 296 296* 307 311* 312
+                                                                                  312* 316* 435* 461* 462 462* 476* 481* 485 492
+                                                                                  495* 497 504 515 516* 527* 558* 560 574 576* 610
+                                                                                  610* 622* 625 631* 650* 653 655 662* 664 666 697*
+                                                                                  699 699* 702 708 708*
+cu_$level_get                   000036 constant        entry                    external dcl 94 ref 308
+data                                   based           bit(36)                  array level 2 dcl 1-13 set ref 458*
+data_class               14     000114 automatic       varying char(16)         level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 390* 415* 457
+                                                                                  476* 481*
+data_class                             based           char                     level 2 in structure "log_message" packed packed
+                                                                                  unaligned dcl 1-13 in procedure "log_write_" set
+                                                                                  ref 457*
+data_class_lth            2(09)        based           fixed bin(9,0)           level 3 packed packed unsigned unaligned dcl 1-13
+                                                                                  ref 457 458 458
+data_lth                  4(18)        based           fixed bin(17,0)          level 3 in structure "log_message" packed packed
+                                                                                  unaligned dcl 1-13 in procedure "log_write_" ref
+                                                                                  458
+data_lth                 10     000114 automatic       fixed bin(17,0)          level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 389* 414* 456
+                                                                                  458 476* 481*
+data_ptr                 12     000114 automatic       pointer                  level 2 dcl 67 set ref 388* 458
+dname                    30            based           char(168)                level 3 packed packed unaligned dcl 3-6 set ref 241*
+                                                                                  261* 285* 558* 622* 650*
+effective_mode          124            based           bit(36)                  level 3 dcl 3-6 set ref 277 277
+ename                   102            based           char(32)                 level 3 in structure "log_write_data" packed packed
+                                                                                  unaligned dcl 3-6 in procedure "log_write_" set
+                                                                                  ref 245* 250* 256* 261* 344* 558* 599*
+ename                    52     000102 automatic       char(32)                 level 2 in structure "this_segment_info" packed
+                                                                                  packed unaligned dcl 587 in procedure
+                                                                                  "create_new_log_segment" set ref 629* 661*
+error_table_$log_out_of_service 000012 external static fixed bin(35,0)          dcl 83 set ref 504 574*
+error_table_$log_segment_damaged
+                                000014 external static fixed bin(35,0)          dcl 84 ref 435 515
+error_table_$log_segment_full   000016 external static fixed bin(35,0)          dcl 85 ref 492
+error_table_$log_segment_invalid
+                                000020 external static fixed bin(35,0)          dcl 86 set ref 280*
+error_table_$log_uninitialized  000022 external static fixed bin(35,0)          dcl 87 ref 263
+error_table_$namedup            000024 external static fixed bin(35,0)          dcl 88 ref 655 666 708
+error_table_$no_w_permission    000032 external static fixed bin(35,0)          dcl 91 set ref 277*
+error_table_$noentry            000026 external static fixed bin(35,0)          dcl 89 ref 307
+error_table_$nomatch            000030 external static fixed bin(35,0)          dcl 90 ref 250
+error_table_$segnamedup         000034 external static fixed bin(35,0)          dcl 92 ref 699
+fault_occurred                  000100 automatic       bit(1)                   dcl 427 set ref 430* 434 439*
+get_process_access_class_       000040 constant        entry                    external dcl 95 ref 309
+get_process_id_                 000042 constant        entry                    external dcl 96 ref 363 384
+get_system_free_area_           000044 constant        entry                    external dcl 97 ref 224 329
+hcs_$chname_seg                 000046 constant        entry                    external dcl 98 ref 697
+hcs_$reset_ips_mask             000050 constant        entry                    external dcl 99 ref 182 197
+hcs_$set_ips_mask               000052 constant        entry                    external dcl 100 ref 170
+hcs_$terminate_noname           000054 constant        entry                    external dcl 101 ref 347 561 607
+header                                 based           structure                level 2 in structure "log_message" dcl 1-13
+                                                                                  in procedure "log_write_"
+header                                 based           structure                level 2 in structure "log_segment" dcl 2-8
+                                                                                  in procedure "log_write_"
+interval                               parameter       fixed bin(71,0)          dcl 729 set ref 722 735* 738*
+ipc_$mask_ev_calls              000056 constant        entry                    external dcl 102 ref 171
+ipc_$unmask_ev_calls            000060 constant        entry                    external dcl 103 ref 179 192
+ipc_mask_code                   000110 automatic       fixed bin(35,0)          initial dcl 63 set ref 63* 171* 180* 192 194*
+ipc_unmask_code                 000111 automatic       fixed bin(35,0)          initial dcl 64 set ref 64* 179* 181* 192 192* 195*
+keep_trying                     000231 automatic       bit(1)                   dcl 644 set ref 647* 648 655* 659 666*
+last_time                62            based           fixed bin(71,0)          level 4 dcl 2-8 ref 687
+length                                                 builtin function         dcl 132 ref 366 387
+limits                   56            based           structure                level 3 dcl 2-8
+listeners_registered     67            based           bit(1)                   level 3 dcl 2-8 ref 464
+log_create_$duplicate_segment   000062 constant        entry                    external dcl 104 ref 622 650
+log_create_$get_info            000064 constant        entry                    external dcl 105 ref 272
+log_create_$new_segment         000066 constant        entry                    external dcl 106 ref 311 631 662
+log_data_$default_log_size      000010 external static fixed bin(35,0)          dcl 81 ref 285 310
+log_initialize_                 000070 constant        entry                    external dcl 107 ref 285
+log_initiate_                   000072 constant        entry                    external dcl 108 ref 261 558
+log_list_history_$single_dir_oldest_and_newest
+                                000074 constant        entry                    external dcl 109 ref 245
+log_message                            based           structure                level 1 dcl 1-13
+log_message_header                     based           structure                level 1 dcl 1-3
+log_message_ptr                 000144 automatic       pointer                  dcl 1-19 set ref 370 394 419 451 452 453 455 457 458
+                                                                                  461* 464* 476* 481*
+log_name                               based           char(32)                 level 2 packed packed unaligned dcl 3-6 set ref 242*
+                                                                                  622* 629 649* 661* 695*
+log_name_$name                  000076 constant        entry                    external dcl 110 ref 250 649 661 695
+log_not_initialized             000103 automatic       bit(1)                   dcl 54 set ref 263* 271 280 289*
+log_ptr                  10            based           pointer                  level 2 dcl 3-6 set ref 228* 261* 272* 280 285* 292*
+                                                                                  295* 311* 334 343* 344* 347* 348* 461* 464 464*
+                                                                                  476* 481* 495* 522* 554 562* 593 608* 614*
+log_segment                            based           structure                level 1 dcl 2-8
+log_segment_$create_message     000100 constant        entry                    external dcl 111 ref 481
+log_segment_$create_message_number
+                                000102 constant        entry                    external dcl 112 ref 476
+log_segment_$finish_message     000104 constant        entry                    external dcl 114 ref 461
+log_segment_$get_service_bit    000106 constant        entry                    external dcl 115 ref 295
+log_segment_$place_in_service   000110 constant        entry                    external dcl 116 ref 292
+log_segment_$remove_from_service
+                                000112 constant        entry                    external dcl 117 ref 343 495 522
+log_segment_damaged             000102 automatic       bit(1)                   dcl 53 set ref 431* 516 518*
+log_segment_header                     based           structure                level 1 dcl 2-13
+log_segment_info                       based           structure                level 1 dcl 3-16
+log_wakeup_$send_wakeups        000114 constant        entry                    external dcl 118 ref 464
+log_write_data                         based           structure                level 1 dcl 3-6 set ref 225 226* 351
+log_write_data_ptr              000146 automatic       pointer                  dcl 3-3 set ref 158* 225* 226 228 229 232* 241 242
+                                                                                  244 245 250 256 261 261 261 272 272 272 277 277
+                                                                                  280 285 285 292 292 295 308 309 310 311 311 311
+                                                                                  318 325* 326 331 331 331 334 342 343 344 344 347
+                                                                                  348 351 359* 380* 409* 461 464 464 476 481 495 522
+                                                                                  554 558 558 562 592 593 599 601 608 613 614 622
+                                                                                  622 628 629 649 650 660 661 695
+mask                            000112 automatic       bit(36)                  initial dcl 65 set ref 65* 170* 182* 182* 197 197*
+                                                                                  197* 731
+max_length              120            based           fixed bin(19,0)          level 3 dcl 3-6 set ref 310*
+message_data                           based           bit(36)                  array dcl 79 ref 458
+message_info                    000114 automatic       structure                level 1 dcl 67 set ref 361* 382* 411*
+message_text                           based           char                     packed unaligned dcl 78 ref 455
+migrating                12            based           bit(1)                   level 2 dcl 3-6 set ref 229* 244 292 342 601
+name_time                       000100 automatic       fixed bin(71,0)          dcl 683 set ref 687* 693* 693 695* 704 711
+new_log_name                    000221 automatic       char(32)                 packed unaligned dcl 643 set ref 649* 650*
+new_log_ptr                     000100 automatic       pointer                  dcl 586 in procedure "create_new_log_segment" set
+                                                                                  ref 614 622* 631* 650* 662*
+new_log_ptr                     000102 automatic       pointer                  dcl 536 in procedure "initiate_new_log_segment" set
+                                                                                  ref 558* 560 562
+new_name                        000102 automatic       char(32)                 packed unaligned dcl 684 set ref 695* 697* 703
+null                                                   builtin function         dcl 132 ref 221 228 285 285 326 328 331 334 348 608
+                                                                                  715 715
+old_log_ptr                     000100 automatic       pointer                  dcl 535 set ref 554* 560 561*
+open_for_migrate                000101 automatic       bit(1)                   dcl 52 set ref 208* 216* 229
+orig_log_ptr                    000200 automatic       pointer                  dcl 588 set ref 593* 599* 607* 622* 650*
+process_id                2     000114 automatic       bit(36)                  level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 363* 384* 453
+process_id                5            based           bit(36)                  level 3 in structure "log_message" dcl 1-13
+                                                                                  in procedure "log_write_" set ref 453*
+rename_time                     000202 automatic       fixed bin(71,0)          dcl 589 set ref 599* 601*
+retry_count                     000104 automatic       fixed bin(17,0)          dcl 537 set ref 557*
+rings                   115            based           fixed bin(3,0)           array level 3 dcl 3-6 set ref 308*
+seg_fault_error                 000000 stack reference condition                dcl 122 ref 433 467
+segment_info             30            based           structure                level 2 dcl 3-6 set ref 272 272 311 311 592 613* 628
+                                                                                  660
+sequence                 21     000114 automatic       fixed bin(35,0)          level 2 dcl 67 set ref 412* 476 476*
+service_bit                     000104 automatic       bit(1)                   dcl 55 set ref 295* 298
+severity                  2            based           fixed bin(8,0)           level 3 in structure "log_message" packed packed
+                                                                                  unaligned dcl 1-13 in procedure "log_write_" set
+                                                                                  ref 452*
+severity                  3     000114 automatic       fixed bin(35,0)          level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 364* 385* 452
+sub_err_                        000116 constant        entry                    external dcl 119 ref 715
+substr                                                 builtin function         dcl 132 ref 197 731
+system_area                            based           area(1024)               dcl 57 ref 225 331 351
+system_area_ptr                 000106 automatic       pointer                  dcl 56 set ref 224* 225 329* 331 351
+text                      6            based           char                     level 2 packed packed unaligned dcl 1-13 set ref
+                                                                                  455*
+text_lth                  4            based           fixed bin(17,0)          level 3 in structure "log_message" packed packed
+                                                                                  unaligned dcl 1-13 in procedure "log_write_" ref
+                                                                                  455 457 458 458
+text_lth                  4     000114 automatic       fixed bin(17,0)          level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 366* 387* 413*
+                                                                                  455 476* 481*
+text_ptr                  6     000114 automatic       pointer                  level 2 dcl 67 set ref 365* 386* 455
+this_segment_info               000102 automatic       structure                level 1 dcl 587 set ref 592* 613 622 622 628* 631
+                                                                                  631 650 650 660* 662 662
+time                            000114 automatic       fixed bin(71,0)          level 2 in structure "message_info" dcl 67
+                                                                                  in procedure "log_write_" set ref 362* 383* 451
+time                      2(18)        based           fixed bin(53,0)          level 3 in structure "log_message" packed packed
+                                                                                  unaligned dcl 1-13 in procedure "log_write_" set
+                                                                                  ref 451*
+timer_manager_$sleep            000120 constant        entry                    external dcl 120 ref 735 738
+tries                           000112 automatic       fixed bin(17,0)          dcl 685 in procedure "rename_for_last_message" set
+                                                                                  ref 692* 715
+tries                           000220 automatic       fixed bin(17,0)          dcl 642 in procedure "create_migration_segment" set
+                                                                                  ref 648* 649* 659* 661*
+unspec                                                 builtin function         dcl 132 set ref 226* 280 361* 382* 411*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACTION_CAN_RESTART                     internal static bit(36)                  initial dcl 4-7
+ACTION_DEFAULT_RESTART                 internal static bit(36)                  initial dcl 4-7
+ACTION_QUIET_RESTART                   internal static bit(36)                  initial dcl 4-7
+ACTION_SUPPORT_SIGNAL                  internal static bit(36)                  initial dcl 4-7
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 5-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+LOG_SEGMENT_COMPLETE_MESSAGE           internal static bit(36)                  initial dcl 2-43
+LOG_SEGMENT_NEW_MESSAGE                internal static bit(36)                  initial dcl 2-42
+LOG_SEGMENT_VERSION_1                  internal static char(8)                  initial packed unaligned dcl 2-5
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 5-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 5-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 5-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 5-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 5-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 5-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 5-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 5-36
+log_message_data_class_lth             automatic       fixed bin(17,0)          dcl 1-21
+log_message_data_lth                   automatic       fixed bin(17,0)          dcl 1-22
+log_message_text_lth                   automatic       fixed bin(17,0)          dcl 1-20
+log_segment_info_ptr                   automatic       pointer                  dcl 3-4
+log_segment_max_size                   automatic       fixed bin(18,0)          dcl 2-4
+log_segment_ptr                        automatic       pointer                  dcl 2-3
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CLEANUP                         001612 constant        entry                    internal dcl 188 ref 145 493 520 733
+GET_LOG_INFO                    000453 constant        label                    dcl 272 ref 300
+MAIN_RETURN                     000116 constant        label                    dcl 135 ref 147 436
+MASK                            001526 constant        entry                    internal dcl 167 ref 494 521 734
+OPEN_COMMON                     000207 constant        label                    dcl 221 ref 209 217
+TRY_TO_CREATE_MESSAGE           001725 constant        label                    dcl 445 ref 441
+UNMASK                          001560 constant        entry                    internal dcl 176 ref 500 524 736
+abort_open                      001475 constant        entry                    internal dcl 152 ref 253 274 277 280 287 296 312 316
+                                                                                  552
+add_message                     001656 constant        entry                    internal dcl 423 ref 368 392 417
+create_initial_segment          002677 constant        entry                    internal dcl 619 ref 603
+create_message                  002116 constant        entry                    internal dcl 473 ref 445
+create_migration_segment        002771 constant        entry                    internal dcl 637 ref 601
+create_new_log_segment          002576 constant        entry                    internal dcl 581 ref 440 497 523
+finished                        001453 constant        entry                    internal dcl 139 ref 159 319 326 353 371 395 420 462
+                                                                                  516 527 546 610 708
+initiate_new_log_segment        002417 constant        entry                    internal dcl 532 ref 499 505
+initiate_new_log_segment$$open  002433 constant        entry                    internal dcl 549 ref 299
+initiate_new_log_segment_join   002445 constant        label                    dcl 554 ref 547
+log_write_                      000110 constant        entry                    external dcl 11
+log_write_$close                000774 constant        entry                    external dcl 322 ref 158 232
+log_write_$data                 001244 constant        entry                    external dcl 376
+log_write_$general              001364 constant        entry                    external dcl 406
+log_write_$message              001142 constant        entry                    external dcl 356
+log_write_$open                 000124 constant        entry                    external dcl 205
+log_write_$open_for_migrate     000156 constant        entry                    external dcl 213
+rename_for_last_message         003203 constant        entry                    internal dcl 676 ref 344 599
+sleep                           003431 constant        entry                    internal dcl 722 ref 566 711
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4526        4650    3531        4536
+Length      5274    3531       122         407     775           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+log_write_                          153 external procedure  is an external procedure.  
+finished                             64 internal procedure  is assigned to an entry variable.  
+abort_open                           72 internal procedure  is assigned to an entry variable.  
+MASK                                 72 internal procedure  is called by several nonquick procedures.  
+UNMASK                               74 internal procedure  is called by several nonquick procedures.  
+CLEANUP                              74 internal procedure  is called by several nonquick procedures.  
+on unit on line 231                  72 on unit               
+add_message                          90 internal procedure  enables or reverts conditions.  
+on unit on line 433                  64 on unit               
+create_message                       87 internal procedure  enables or reverts conditions.  
+on unit on line 493                  64 on unit               
+on unit on line 520                  64 on unit               
+initiate_new_log_segment             98 internal procedure  is called by several nonquick procedures.  
+create_new_log_segment              238 internal procedure  is called by several nonquick procedures.  
+create_initial_segment                  internal procedure  shares stack frame of internal procedure create_new_log_segment.  
+create_migration_segment                internal procedure  shares stack frame of internal procedure create_new_log_segment.  
+rename_for_last_message             152 internal procedure  is called by several nonquick procedures.  
+sleep                                76 internal procedure  enables or reverts conditions.  
+on unit on line 733                  64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+add_message              000100 fault_occurred              add_message
+create_new_log_segment   000100 new_log_ptr                 create_new_log_segment
+                         000102 this_segment_info           create_new_log_segment
+                         000200 orig_log_ptr                create_new_log_segment
+                         000202 rename_time                 create_new_log_segment
+                         000220 tries                       create_migration_segment
+                         000221 new_log_name                create_migration_segment
+                         000231 keep_trying                 create_migration_segment
+initiate_new_log_segment 000100 old_log_ptr                 initiate_new_log_segment
+                         000102 new_log_ptr                 initiate_new_log_segment
+                         000104 retry_count                 initiate_new_log_segment
+                         000106 abort_proc                  initiate_new_log_segment
+log_write_               000100 code                        log_write_
+                         000101 open_for_migrate            log_write_
+                         000102 log_segment_damaged         log_write_
+                         000103 log_not_initialized         log_write_
+                         000104 service_bit                 log_write_
+                         000106 system_area_ptr             log_write_
+                         000110 ipc_mask_code               log_write_
+                         000111 ipc_unmask_code             log_write_
+                         000112 mask                        log_write_
+                         000114 message_info                log_write_
+                         000144 log_message_ptr             log_write_
+                         000146 log_write_data_ptr          log_write_
+rename_for_last_message  000100 name_time                   rename_for_last_message
+                         000102 new_name                    rename_for_last_message
+                         000112 tries                       rename_for_last_message
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ent_var        call_ext_in         call_ext_out_desc   call_ext_out        call_int_this
+call_int_other      return_mac          move_label_var      make_label_var      tra_ext_1           bound_ck_signal
+mpfx2               signal_op           enable_op           ext_entry           ext_entry_desc      int_entry
+op_alloc_           op_freen_           clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$level_get                 get_process_access_class_     get_process_id_               get_system_free_area_
+hcs_$chname_seg               hcs_$reset_ips_mask           hcs_$set_ips_mask             hcs_$terminate_noname
+ipc_$mask_ev_calls            ipc_$unmask_ev_calls          log_create_$duplicate_segment log_create_$get_info
+log_create_$new_segment       log_initialize_               log_initiate_
+log_list_history_$single_dir_oldest_and_newest              log_name_$name                log_segment_$create_message
+log_segment_$create_message_number                          log_segment_$finish_message   log_segment_$get_service_bit
+log_segment_$place_in_service log_segment_$remove_from_service                            log_wakeup_$send_wakeups
+sub_err_                      timer_manager_$sleep
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$log_out_of_service                             error_table_$log_segment_damaged
+error_table_$log_segment_full error_table_$log_segment_invalid
+error_table_$log_uninitialized                              error_table_$namedup          error_table_$no_w_permission
+error_table_$noentry          error_table_$nomatch          error_table_$segnamedup       log_data_$default_log_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     63 000101        64 000103        65 000104        11 000107       135 000116       205 000117       208 000152
+    209 000153       213 000154       216 000204       217 000206       221 000207       224 000211       225 000220
+    226 000225       228 000230       229 000232       231 000234       232 000250       233 000262       241 000263
+    242 000272       244 000277       245 000301       248 000340       250 000343       253 000375       254 000403
+    256 000404       261 000407       263 000443       271 000450       272 000453       274 000472       277 000502
+    280 000517       285 000540       287 000574       289 000605       292 000606       295 000624       296 000637
+    298 000647       299 000653       300 000657       303 000660       307 000661       308 000667       309 000710
+    310 000717       311 000723       312 000737       314 000747       316 000750       318 000756       319 000760
+    322 000767       325 001007       326 001012       328 001025       329 001027       331 001036       334 001047
+    342 001054       343 001056       344 001070       347 001105       348 001120       351 001123       353 001125
+    356 001134       359 001165       361 001170       362 001173       363 001175       364 001204       365 001207
+    366 001211       368 001213       370 001223       371 001225       376 001234       380 001273       382 001276
+    383 001301       384 001303       385 001312       386 001315       387 001317       388 001321       389 001324
+    390 001326       392 001334       394 001344       395 001346       406 001355       409 001405       411 001410
+    412 001413       413 001416       414 001420       415 001422       417 001430       419 001440       420 001442
+    751 001451       139 001452       145 001460       146 001465       147 001471       152 001474       158 001502
+    159 001514       161 001524       167 001525       170 001533       171 001546       173 001556       176 001557
+    179 001565       180 001574       181 001577       182 001600       184 001610       188 001611       192 001617
+    194 001634       195 001637       197 001640       200 001654       423 001655       430 001663       431 001664
+    433 001666       434 001702       435 001705       436 001710       439 001713       440 001715       441 001722
+    445 001725       447 001740       449 001741       451 001745       452 001752       453 001755       455 001757
+    456 001765       457 001770       458 002001       461 002043       462 002060       464 002072       467 002113
+    469 002114       473 002115       476 002123       481 002152       485 002173       492 002202       493 002205
+    494 002227       495 002234       497 002247       499 002260       500 002265       501 002272       504 002275
+    505 002277       506 002304       515 002307       516 002311       518 002322       520 002325       521 002347
+    522 002354       523 002370       524 002375       525 002402       527 002403       529 002412       532 002416
+    546 002424       547 002431       549 002432       552 002440       554 002445       557 002451       558 002457
+    560 002514       561 002523       562 002535       563 002541       566 002542       567 002551       574 002553
+    576 002566       578 002574       581 002575       592 002603       593 002610       599 002613       601 002627
+    603 002636       607 002637       608 002651       610 002655       613 002666       614 002673       616 002676
+    619 002677       622 002700       625 002737       628 002743       629 002747       631 002753       633 002770
+    637 002771       647 002773       648 002775       649 003007       650 003035       653 003074       655 003100
+    657 003104       659 003106       660 003117       661 003124       662 003151       664 003167       666 003173
+    668 003177       670 003201       676 003202       687 003210       692 003215       693 003225       695 003230
+    697 003251       699 003277       702 003305       703 003307       704 003314       705 003316       708 003317
+    711 003330       713 003345       715 003347       719 003427       722 003430       731 003436       733 003442
+    734 003464       735 003471       736 003503       737 003510       738 003511       740 003522
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

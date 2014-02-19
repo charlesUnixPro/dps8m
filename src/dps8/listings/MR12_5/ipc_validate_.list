@@ -1,0 +1,363 @@
+	COMPILATION LISTING OF SEGMENT ipc_validate_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style2 */
+       10 
+       11 /* format: off */
+       12 /*
+       13*   IPC_VALIDATE_:  A collection of utilities available to both hardcore
+       14*   and user-ring IPC for event channel name validation support.  The
+       15*   following entries are provided:
+       16*
+       17*   encode_event_channel_name:  Given the values for the R-offset, R-factor,
+       18*   event channel index, event channel flags, ring number, event channel
+       19*   type, and event channel unique id, returns an encoded event channel
+       20*   name of datatype fixed bin (71).
+       21*
+       22*   decode_event_channel_name: Given an event channel name of datatype 
+       23*   fixed bin (71), and the values of R-offset and R_factor, decodes the
+       24*   values of the event channel index, the event channel flags, ring
+       25*   number, event channel type, and event channel unique id.  It returns
+       26*   error_table_$invalid channel if the supplied event channel name is
+       27*   incorrectly formatted or invalidly encoded.
+       28*
+       29*   validate_event_channel_name:  This entry is similar to 
+       30*   decode_event_channel_name and exists for efficiency.  It verifies that
+       31*   the encoded index and verify are correct for the event channel specified
+       32*   and decodes the index and flags.  It does nothing with the rest of the
+       33*   unencoded portion of the event channel name.  It is used by hc_ipc.
+       34**/
+       35 /* format: on */
+       36 
+       37 /* Written 1984-11-14 by E. Swenson */
+       38 
+       39 
+       40 /****^  HISTORY COMMENTS:
+       41*  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+       42*     audit(86-10-20,Fawcett), install(86-11-03,MR12.0-1206):
+       43*     Changed to move the structure declaration for encoded_index into the
+       44*     event_channel_name include file.  Also, renamed some automatic variables
+       45*     for clarity.  NOTE:  the algorithm for decoding the encoded_index is
+       46*     duplicated in pxss in ALM.  Therefore, any change must also be reflected
+       47*     there.
+       48*                                                   END HISTORY COMMENTS */
+       49 
+       50 
+       51 ipc_validate_:
+       52      procedure ();
+       53 	return;
+       54 
+       55 /* Parameters */
+       56 
+       57 	dcl     P_code		 fixed bin (35) parameter;
+       58 	dcl     P_ev_chn_index	 fixed bin (15) parameter;
+       59 	dcl     P_ev_chn_flags	 bit (3) aligned parameter;
+       60 	dcl     P_ev_chn_ring	 fixed bin (3) parameter;
+       61 	dcl     P_ev_chn_type	 bit (1) aligned parameter;
+       62 	dcl     P_ev_chn_unique_id	 fixed bin (18) parameter;
+       63 	dcl     P_event_channel_name	 fixed bin (71) parameter;
+       64 	dcl     P_r_offset		 fixed bin (18);
+       65 	dcl     P_r_factor		 fixed bin (35);
+       66 
+       67 /* Automatic */
+       68 
+       69 	dcl     decoded_index_binary	 fixed bin (18) unsigned;
+       70 	dcl     1 auto_decoded_index	 structure aligned like decoded_index;
+       71 	dcl     1 ev_chn_name	 structure aligned like event_channel_name;
+       72 	dcl     r_offset		 fixed bin (18) unsigned;
+       73 	dcl     r_factor		 fixed bin (35) unsigned;
+       74 	dcl     temp		 fixed bin (71);	/* temporary; large enough to avoid overflows */
+       75 
+       76 /* External */
+       77 
+       78 	dcl     error_table_$invalid_channel
+       79 				 fixed bin (35) external;
+       80 						/* Builtin */
+       81 
+       82 	dcl     (binary, mod, substr, unspec)
+       83 				 builtin;
+       84 
+       85 
+       86 encode_event_channel_name:
+       87      entry (P_r_offset, P_r_factor, P_ev_chn_flags, P_ev_chn_index, P_ev_chn_ring, P_ev_chn_type, P_ev_chn_unique_id,
+       88 	P_event_channel_name);
+       89 
+       90 /* This entry encodes an event channel name given the various values
+       91*   which make up an event channel name.  It uses the IPC event channel
+       92*   name validation algorithm to encode the supplied index and flags. */
+       93 
+       94 	auto_decoded_index.flags = P_ev_chn_flags;
+       95 	auto_decoded_index.index = P_ev_chn_index;
+       96 	decoded_index_binary = binary (substr (unspec (auto_decoded_index), 1, 18));
+       97 
+       98 	r_offset = P_r_offset;
+       99 	r_factor = P_r_factor;
+      100 
+      101 	unspec (ev_chn_name) = ""b;
+      102 
+      103 	temp = decoded_index_binary + r_offset;
+      104 	ev_chn_name.encoded_index = substr (unspec (temp), 55, 18);
+      105 
+      106 	temp = decoded_index_binary * r_factor;
+      107 	ev_chn_name.verifier = substr (unspec (temp), 37, 18);
+      108 
+      109 	ev_chn_name.ring = P_ev_chn_ring;
+      110 	ev_chn_name.type = P_ev_chn_type;
+      111 	ev_chn_name.unique_id = P_ev_chn_unique_id;
+      112 
+      113 	unspec (P_event_channel_name) = unspec (ev_chn_name);
+      114 	return;
+      115 
+      116 decode_event_channel_name:
+      117      entry (P_r_offset, P_r_factor, P_event_channel_name, P_ev_chn_flags, P_ev_chn_index, P_ev_chn_ring, P_ev_chn_type,
+      118 	P_ev_chn_unique_id, P_code);
+      119 
+      120 /* This entry decodes an event channel name into its constituent parts.
+      121*   At the same time, it validates the event channel name. */
+      122 
+      123 	unspec (ev_chn_name) = unspec (P_event_channel_name);
+      124 
+      125 	if ev_chn_name.mbz ^= ""b
+      126 	then do;
+      127 		P_code = error_table_$invalid_channel;
+      128 		return;
+      129 	     end;
+      130 
+      131 	r_offset = P_r_offset;
+      132 	r_factor = P_r_factor;
+      133 	temp = binary (ev_chn_name.encoded_index, 18);
+      134 	decoded_index_binary = mod (temp - r_offset, ENCODED_INDEX_CONSTANT);
+      135 	temp = decoded_index_binary * r_factor;
+      136 
+      137 	if ev_chn_name.verifier ^= substr (unspec (temp), 37, 18)
+      138 	then do;
+      139 		P_code = error_table_$invalid_channel;
+      140 		return;
+      141 	     end;
+      142 
+      143 	unspec (auto_decoded_index) = substr (unspec (decoded_index_binary), 19, 18);
+      144 	P_ev_chn_index = auto_decoded_index.index;
+      145 	P_ev_chn_flags = auto_decoded_index.flags;
+      146 
+      147 	P_ev_chn_ring = ev_chn_name.ring;
+      148 	P_ev_chn_type = ev_chn_name.type;
+      149 	P_ev_chn_unique_id = ev_chn_name.unique_id;
+      150 	P_code = 0;
+      151 	return;
+      152 
+      153 validate_event_channel_name:
+      154      entry (P_r_offset, P_r_factor, P_event_channel_name, P_ev_chn_flags, P_ev_chn_index, P_code);
+      155 
+      156 
+      157 	r_offset = P_r_offset;			/* change to unsigned data type */
+      158 	r_factor = P_r_factor;
+      159 	unspec (ev_chn_name) = unspec (P_event_channel_name);
+      160 	temp = binary (ev_chn_name.encoded_index, 18);
+      161 	decoded_index_binary = mod (temp - r_offset, ENCODED_INDEX_CONSTANT);
+      162 	temp = decoded_index_binary * r_factor;
+      163 
+      164 	if ev_chn_name.verifier ^= substr (unspec (temp), 37, 18)
+      165 	then do;
+      166 		P_code = error_table_$invalid_channel;
+      167 		return;
+      168 	     end;
+      169 
+      170 	unspec (auto_decoded_index) = substr (unspec (decoded_index_binary), 19, 18);
+      171 	P_ev_chn_index = auto_decoded_index.index;
+      172 	P_ev_chn_flags = auto_decoded_index.flags;
+      173 	P_code = 0;
+      174 	return;
+      175 
+      176 /* format: off */
+      177  /* Begin include file event_channel_name.incl.pl1 */
+  1     2 
+  1     3 /* format: style4 */
+  1     4 
+  1     5 /* Written 1984-11-02 by E. Swenson */
+  1     6 
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+  1    10*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  1    11*     Added constants for the flag values and declared a structure to describe
+  1    12*     the encoded_index after it is decoded.  This include file has also been
+  1    13*     converted to ALM for use by pxss.
+  1    14*                                                   END HISTORY COMMENTS */
+  1    15 
+  1    16 
+  1    17 dcl  1 event_channel_name structure aligned based,
+  1    18        2 encoded_index bit (18) unaligned,
+  1    19        2 verifier bit (18) unaligned,
+  1    20        2 ring fixed bin (3) unsigned unaligned,
+  1    21        2 type bit (1) unaligned,			/* "1"b for regular, "0"b for fast */
+  1    22        2 mbz bit (14) unaligned,
+  1    23        2 unique_id fixed bin (18) unsigned unaligned;
+  1    24 
+  1    25 dcl  FAST_CHANNEL_TYPE bit (1) aligned initial ("0"b) internal static options (constant);
+  1    26 dcl  REGULAR_CHANNEL_TYPE bit (1) aligned initial ("1"b) internal static options (constant);
+  1    27 
+  1    28 dcl  NORMAL_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("000"b);
+  1    29 dcl  SEND_IPS_WKP_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("001"b);
+  1    30 
+  1    31 /* Structure for use after the encoded_index in the event_channel_name has been decoded. */
+  1    32 
+  1    33 dcl  1 decoded_index structure aligned based,
+  1    34        2 flags bit (3) unaligned,
+  1    35        2 index fixed bin (15) unsigned unaligned;
+  1    36 
+  1    37 dcl  ENCODED_INDEX_CONSTANT fixed bin (35) internal static options (constant) init (262144);
+  1    38 
+  1    39 /* End include file event_channel_name.incl.pl1 */
+      177 
+      178 /* format: on */
+      179 
+      180      end ipc_validate_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.8  ipc_validate_.pl1                 >spec>install>1110>ipc_validate_.pl1
+177          1    11/07/86  1550.3  event_channel_name.incl.pl1       >ldd>include>event_channel_name.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ENCODED_INDEX_CONSTANT          000366 constant        fixed bin(35,0)          initial dcl 1-37 ref 134 161
+P_code                                 parameter       fixed bin(35,0)          dcl 57 set ref 116 127* 139* 150* 153 166* 173*
+P_ev_chn_flags                         parameter       bit(3)                   dcl 59 set ref 86 94 116 145* 153 172*
+P_ev_chn_index                         parameter       fixed bin(15,0)          dcl 58 set ref 86 95 116 144* 153 171*
+P_ev_chn_ring                          parameter       fixed bin(3,0)           dcl 60 set ref 86 109 116 147*
+P_ev_chn_type                          parameter       bit(1)                   dcl 61 set ref 86 110 116 148*
+P_ev_chn_unique_id                     parameter       fixed bin(18,0)          dcl 62 set ref 86 111 116 149*
+P_event_channel_name                   parameter       fixed bin(71,0)          dcl 63 set ref 86 113* 116 123 153 159
+P_r_factor                             parameter       fixed bin(35,0)          dcl 65 ref 86 99 116 132 153 158
+P_r_offset                             parameter       fixed bin(18,0)          dcl 64 ref 86 98 116 131 153 157
+auto_decoded_index              000101 automatic       structure                level 1 dcl 70 set ref 96 143* 170*
+binary                                                 builtin function         dcl 82 ref 96 133 160
+decoded_index                          based           structure                level 1 dcl 1-33
+decoded_index_binary            000100 automatic       fixed bin(18,0)          unsigned dcl 69 set ref 96* 103 106 134* 135 143
+                                                                                  161* 162 170
+encoded_index                   000102 automatic       bit(18)                  level 2 packed packed unaligned dcl 71 set ref 104*
+                                                                                  133 160
+error_table_$invalid_channel    000010 external static fixed bin(35,0)          dcl 78 ref 127 139 166
+ev_chn_name                     000102 automatic       structure                level 1 dcl 71 set ref 101* 113 123* 159*
+event_channel_name                     based           structure                level 1 dcl 1-17
+flags                           000101 automatic       bit(3)                   level 2 packed packed unaligned dcl 70 set ref 94*
+                                                                                  145 172
+index                     0(03) 000101 automatic       fixed bin(15,0)          level 2 packed packed unsigned unaligned dcl 70 set
+                                                                                  ref 95* 144 171
+mbz                       1(04) 000102 automatic       bit(14)                  level 2 packed packed unaligned dcl 71 set ref 125
+mod                                                    builtin function         dcl 82 ref 134 161
+r_factor                        000105 automatic       fixed bin(35,0)          unsigned dcl 73 set ref 99* 106 132* 135 158* 162
+r_offset                        000104 automatic       fixed bin(18,0)          unsigned dcl 72 set ref 98* 103 131* 134 157* 161
+ring                      1     000102 automatic       fixed bin(3,0)           level 2 packed packed unsigned unaligned dcl 71 set
+                                                                                  ref 109* 147
+substr                                                 builtin function         dcl 82 ref 96 104 107 137 143 164 170
+temp                            000106 automatic       fixed bin(71,0)          dcl 74 set ref 103* 104 106* 107 133* 134 135* 137
+                                                                                  160* 161 162* 164
+type                      1(03) 000102 automatic       bit(1)                   level 2 packed packed unaligned dcl 71 set ref 110*
+                                                                                  148
+unique_id                 1(18) 000102 automatic       fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 71 set
+                                                                                  ref 111* 149
+unspec                                                 builtin function         dcl 82 set ref 96 101* 104 107 113* 113 123* 123 137
+                                                                                  143* 143 159* 159 164 170* 170
+verifier                  0(18) 000102 automatic       bit(18)                  level 2 packed packed unaligned dcl 71 set ref 107*
+                                                                                  137 164
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+FAST_CHANNEL_TYPE                      internal static bit(1)                   initial dcl 1-25
+NORMAL_CHANNEL_FLAGS                   internal static bit(3)                   initial dcl 1-28
+REGULAR_CHANNEL_TYPE                   internal static bit(1)                   initial dcl 1-26
+SEND_IPS_WKP_CHANNEL_FLAGS             internal static bit(3)                   initial dcl 1-29
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+decode_event_channel_name       000143 constant        entry                    external dcl 116
+encode_event_channel_name       000030 constant        entry                    external dcl 86
+ipc_validate_                   000013 constant        entry                    external dcl 51
+validate_event_channel_name     000273 constant        entry                    external dcl 153
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       466         500     367         476
+Length       672     367        12         156      76           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ipc_validate_                        87 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ipc_validate_            000100 decoded_index_binary        ipc_validate_
+                         000101 auto_decoded_index          ipc_validate_
+                         000102 ev_chn_name                 ipc_validate_
+                         000104 r_offset                    ipc_validate_
+                         000105 r_factor                    ipc_validate_
+                         000106 temp                        ipc_validate_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          mdfx3               ext_entry
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$invalid_channel
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     51 000012        53 000020        86 000021        94 000052        95 000056        96 000063        98 000066
+     99 000071       101 000073       103 000075       104 000102       106 000105       107 000110       109 000113
+    110 000120       111 000125       113 000127       114 000133       116 000134       123 000167       125 000173
+    127 000176       128 000201       131 000202       132 000205       133 000207       134 000214       135 000222
+    137 000224       139 000233       140 000236       143 000237       144 000242       145 000246       147 000251
+    148 000254       149 000260       150 000263       151 000264       153 000265       157 000311       158 000314
+    159 000316       160 000322       161 000327       162 000335       164 000337       166 000346       167 000351
+    170 000352       171 000355       172 000361       173 000364       174 000365
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

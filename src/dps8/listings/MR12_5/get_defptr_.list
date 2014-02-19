@@ -1,0 +1,562 @@
+ASSEMBLY LISTING OF SEGMENT >spec>install>1110>get_defptr_.alm                                                                                                                                      
+ASSEMBLED ON:	11/11/89  0949.8 mst Sat
+OPTIONS USED:	-target l68                              list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1002.3 mst Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  "
+                                    13  "	get_defptr_
+                                    14  "
+                                    15  "	Usage:
+                                    16  "
+                                    17  "	call get_defptr_ (defp, segnamep, extnamep, definitionp, code)
+                                    18  "
+                                    19  "	where
+                                    20  "
+                                    21  "	defp	is a pointer to definition section for segment whose defs are
+                                    22  "		to be searched
+                                    23  "	segnamep	is a pointer to the segment name of segment
+                                    24  "
+                                    25  "	extnamep	is a pointer to the symbol being searched for
+                                    26  "
+                                    27  "	definitionp  returned pointing to the definition containing the matched name
+                                    28  "
+                                    29  "	code	returned error code.
+                                    30  "
+                                    31  "	First written by Steve Webber.
+                                    32  "	Calling seq. changed 8/18/76, B. Greenberg
+                                    33  "	Further modified 8/24/76 by Noel I. Morris
+                                    34  "	Modified for defs hash table 12/6/76 by Noel I. Morris
+                                    35  "	Modified to get around hardware bug 095 10/13/77 by Richard A. Barnes
+                                    36  "
+                                    37  " 
+                                    38  "	The following code searches in the external segment's
+                                    39  "	definition section for an offset designated by an external symbol.
+                                    40  "	It does this in one or two passes.  For the new object format (new
+                                    41  "	format bit on), a pass is made over the definitions for the
+                                    42  "	designated segment name, and, if it is found, a search is made in its
+                                    43  "	definition block for the designated external symbol.  If either of
+                                    44  "	segment name or the external symbol name is not found, then in a
+                                    45  "	second pass, a search is made of all external symbols in the
+                                    46  "	definition section for the designated external symbol.
+                                    47  "	This external symbol name mustt be unique.
+                                    48  "
+                                    49  "
+                                    50  "	The following register assignments are used:
+                                    51  "
+                                    52  "	ab	points to the extname or segname.
+                                    53  "	lp	points to the current definition we are looking at.
+                                    54  "	bp	points to the definitions header.
+                                    55  "	bb	points to a definitions hash table.
+                                    56  "	lb	is a temporary used for string copies and compares.
+                                    57  "	lp	points to the definition.
+                                    58  "
+                                    59  "	X0	holds count and first char of extname or segname.
+                                    60  "	X1	is loop counter.
+                                    61  "	X2	is used to save def ptr.
+                                    62  "	X3	has the length of the extname or segname.
+                                    63  "	X4	has the offset of the next definition.
+                                    64  "	X5	is definitions thread offset index.
+                                    65  "	X6	is 0 for new format defs, 2 for old.
+                                    66  "	X7	is used for internal calls.
+                                    67  "
+                                    68  
+                                    69  " 
+                                    70  
+                        000000      71  	segdef	get_defptr_
+                                    72  
+    000000                          73  get_defptr_:
+    000000  aa  0 00002 3521 20     74  	eppbp	ap|2,*		bp -> definitions section
+    000001  aa  2 00000 3521 20     75  	eppbp	bp|0,*		..
+                                    76  
+    000002  aa   000000 6260 00     77  	eax6	0		turn off old format flag
+    000003  aa  2 00001 7201 00     78  	lxl0	bp|1		old or new format?
+    000004  0a   000076 6050 00     79  	tpl	old_format	TRA if old format
+    000005  aa   200000 3000 03     80  	canx0	=o200000,du	first def an ignore def?
+    000006  0a   000077 6000 00     81  	tze	no_hash		if not, cannot have hash table
+                                    82  
+    000007  aa  2 00001 2201 00     83  	ldx0	bp|1		get addr of symbol hash table
+    000010  0a   000077 6000 00     84  	tze	no_hash		if zero, no hash table
+                                    85  
+                                    86  " Look for symbol in hash table.
+                                    87  
+    000011  aa  2 00000 3535 10     88  	eppbb	bp|0,0		bb -> sym hash table
+                                    89  
+    000012  aa  0 00006 3515 20     90  	eppab	ap|6,*		ab -> symbol name ptr
+    000013  0a   000174 7070 00     91  	tsx7	acc_setup		get pointer and length
+                                    92  
+    000014  0a   000043 7070 00     93  	tsx7	hash_search	search for symbol
+    000015  0a   000205 7100 00     94  	tra	no_sym		if not found, return error
+                                    95  
+    000016  aa   000000 6220 16     96  	eax2	0,6		was name unique?
+    000017  0a   000202 6000 00     97  	tze	found		if so, found definition
+                                    98  
+                                    99  " Look for segment name in hash table.
+                                   100  
+    000020  aa  3 00000 7201 00    101  	lxl0	bb|0		get size of sym hash table
+    000021  aa  3 00001 3535 10    102  	eppbb	bb|1,0		bb -> segment name hash table
+                                   103  
+    000022  aa  0 00004 3515 20    104  	eppab	ap|4,*		ab -> segment name ptr
+    000023  0a   000174 7070 00    105  	tsx7	acc_setup		get pointer and length
+                                   106  
+    000024  0a   000043 7070 00    107  	tsx7	hash_search	search for segment name
+    000025  0a   000210 7100 00    108  	tra	dup_name		if not found, ambiguous name
+                                   109  
+                                   110  " Look for definition matching segment name.
+                                   111  
+    000026  aa  3 00001 2351 05    112  	lda	bb|1,al		head segname def pointer in AL
+    000027  aa  2 00000 3535 12    113  	eppbb	bp|0,2		bb -> list of duplicate symbol defs
+    000030  aa  3 00000 2361 00    114  	ldq	bb|0		get count of duplicates in Q
+    000031  aa   000034 7360 00    115  	qls	36-8		shift to position for RPT
+    000032  aa   000100 6200 02    116  	eax0	64,qu		place in X0 with TZE bit
+                                   117  
+    000033  aa   777777 2360 03    118  	ldq	=o777777,du	comparison mask in Q
+    000034  aa   000001 6260 00    119  	eax6	1		initialize index
+    000035  aa   000000 5202 01    120  	rptx	0,1		search list
+    000036  aa  3 00000 2111 16    121  	cmk	bb|0,6		..
+    000037  0a   000210 6064 00    122  	ttn	dup_name		if not found, give error
+                                   123  
+    000040  aa  3 77777 2241 16    124  	ldx4	bb|-1,6		get def pointer in X4
+    000041  aa  2 00000 3701 14    125  	epplp	bp|0,4		lp -> definition
+    000042  0a   000202 7100 00    126  	tra	found		got it
+                                   127  
+                                   128  " 
+                                   129  
+                                   130  "	The following internal subroutine is called to search
+                                   131  "	a symbol definition or segment name definition hash table.
+                                   132  "	It is used as follows:
+                                   133  "
+                                   134  "	eppbb	hash_table_head
+                                   135  "	tsx7	hash_search
+                                   136  "	tra	notfound
+                                   137  "
+                                   138  
+    000043                         139  hash_search:
+    000043  aa  1 00000 2361 00    140  	ldq	ab|0		first word of symbol in Q
+    000044  aa  3 00000 5061 00    141  	div	bb|0		compute hash code in A
+    000045  aa  3 00000 7211 00    142  	lxl1	bb|0		X1 is loop counter
+                                   143  
+    000046                         144  hash_loop:
+    000046  aa  3 00001 2241 05    145  	ldx4	bb|1,al		pick up hash table entry
+    000047  aa   000000 6000 17    146  	tze	0,7		if zero, name not found
+                                   147  
+    000050  aa   777777 6210 11    148  	eax1	-1,1		count interations
+    000051  0a   000213 6044 00    149  	tmoz	defs_loop		error if too many
+                                   150  
+    000052  aa  2 00000 2261 14    151  	ldx6	bp|0,4		look at definition forward pointer
+    000053  0a   000056 6000 00    152  	tze	dup_hash		if zero, we have duplicate names
+    000054  aa   000000 6260 00    153  	eax6	0		if unique name, clear X6
+    000055  0a   000060 7100 00    154  	tra	no_dup_hash	and continue
+    000056                         155  dup_hash:
+    000056  aa   000000 6260 14    156  	eax6	0,4		save offset of duplicate table
+    000057  aa  2 00001 2241 14    157  	ldx4	bp|1,4		use first duplicate name def
+    000060                         158  no_dup_hash:
+    000060  aa  2 00000 3701 14    159  	epplp	bp|0,4		lp -> definition
+                                   160  
+    000061  aa  4 00002 2361 00    161  	ldq	lp|2		get name ptr from definition
+    000062  aa  2 00000 3715 02    162  	epplb	bp|0,qu		lb -> name
+    000063  aa  5 00000 1001 00    163  	cmpx0	lb|0		quicky compare of first word
+    000064  0a   000071 6010 00    164  	tnz	hash_next		if not equal, try another
+    000065  aa  0 00140 1065 40    165  	cmpc	(pr,rl),(pr,rl)	now do full compare
+    000066  aa   100000 000013     166  	desc9a	ab|0,x3
+    000067  aa   500000 000013     167  	desc9a	lb|0,x3
+    000070  aa   000001 6000 17    168  	tze	1,7		if equal, success
+                                   169  
+    000071                         170  hash_next:
+    000071  aa   000001 0750 07    171  	ada	1,dl		bump hash index
+    000072  aa  3 00000 1151 00    172  	cmpa	bb|0		check for end of table
+    000073  0a   000046 6040 00    173  	tmi	hash_loop		if not, continue search
+    000074  aa   000000 2350 07    174  	lda	0,dl		go back to top of table
+    000075  0a   000046 7100 00    175  	tra	hash_loop		..
+                                   176  
+                                   177  " 
+                                   178  
+                                   179  " Look for first class 3 def.
+                                   180  
+    000076                         181  old_format:
+    000076  aa   000002 6260 00    182  	eax6	2		old format, set index
+    000077                         183  no_hash:
+    000077  aa   000000 6240 00    184  	eax4	0		start at beginning of defs
+    000100  aa   000000 6250 00    185  	eax5	0		follow thread at lp|0
+    000101  0a   000141 7070 00    186  	tsx7	searchd		look for first class 3 def
+    000102  0a   000123 7100 00    187  	tra	pass_2		if none, do second pass
+    000103  0a   000104 7100 00    188  	tra	*+1		wrest control from subroutine
+    000104  0a   000143 6010 00    189  	tnz	nextd		if not class 3, keep looking
+                                   190  
+                                   191  " Now look for segment name.
+                                   192  
+    000105  aa  0 00004 3515 20    193  	eppab	ap|4,*		ab -> segment name pointer
+    000106  0a   000174 7070 00    194  	tsx7	acc_setup		get pointer and length
+                                   195  
+    000107  aa   000001 6250 00    196  	eax5	1		follow thread at lp|1
+    000110  0a   000157 7070 00    197  	tsx7	searchd3		follow thread of class 3 defs
+    000111  0a   000123 7100 00    198  	tra	pass_2		at end of thread, do second pass
+    000112  0a   000123 6010 00    199  	tnz	pass_2		if non class 3 encountered, do second pass
+                                   200  
+                                   201  " Segment name found.  Search for symbol.
+                                   202  
+    000113  aa  0 00006 3515 20    203  	eppab	ap|6,*		ab -> external symbol pointer
+    000114  0a   000174 7070 00    204  	tsx7	acc_setup		make ab -> external name
+                                   205  
+    000115  aa  4 00002 7241 00    206  	lxl4	lp|2		get pointer to defs for this seg
+    000116  aa   000000 6250 00    207  	eax5	0		follow thread at lp|0
+    000117  0a   000141 7070 00    208  	tsx7	searchd		search them
+    000120  0a   000123 7100 00    209  	tra	pass_2		if not found, do second pass
+    000121  0a   000123 6000 00    210  	tze	pass_2		if another class 3 found, do second pass
+                                   211  
+    000122  0a   000202 7100 00    212  	tra	found		gotcha!
+                                   213  
+                                   214  " Do second pass over definitions.
+                                   215  
+    000123  aa  0 00006 3515 20    216  pass_2:	eppab	ap|6,*		ab -> external symbol pointer
+    000124  0a   000174 7070 00    217  	tsx7	acc_setup		make ap -> external name
+                                   218  
+    000125  aa   000000 6240 00    219  	eax4	0		start at beginning of defs
+    000126  aa   000000 6250 00    220  	eax5	0		follow thread at lp|0
+    000127  0a   000141 7070 00    221  	tsx7	searchd		and search all of them
+    000130  0a   000205 7100 00    222  	tra	no_sym		to the end of the thread
+    000131  0a   000143 6000 00    223  	tze	nextd		ignore class 3 defs
+                                   224  
+    000132  aa   000000 6220 14    225  	eax2	0,4		save def ptr in X2
+    000133  0a   000143 7070 00    226  	tsx7	nextd		continue search to check for dup
+    000134  0a   000137 7100 00    227  	tra	unique		success, if never found again
+    000135  0a   000143 6000 00    228  	tze	nextd		ignore class 3 defs
+    000136  0a   000210 7100 00    229  	tra	dup_name		if found, we have a name conflict
+                                   230  
+    000137  aa  2 00000 3701 12    231  unique:	epplp	bp|0,2		lp -> unique definition
+    000140  0a   000202 7100 00    232  	tra	found		definition found
+                                   233  
+                                   234  " 
+                                   235  
+                                   236  "	The following internal subroutine is called to follow a definitions
+                                   237  "	thread.  It is used as follows:
+                                   238  "
+                                   239  "	eppab	name		pointer to segname or extname
+                                   240  "	lxl3	length		length of segname or extname
+                                   241  "	eax4	defoffset		offset from base of defs to start search
+                                   242  "	tsx7	searchd
+                                   243  "	tra	endofthread	return here at end of thread
+                                   244  "	...			execute this if class 3 def
+                                   245  "	...			name found, normal return
+                                   246  "
+                                   247  
+    000141  aa   020000 6210 00    248  searchd:	eax1	8192		initialize infinite loop counter
+    000142  0a   000146 7100 00    249  	tra	nextd1		enter loop
+                                   250  
+    000143  aa  4 00000 2241 15    251  nextd:	ldx4	lp|0,5		step to next def
+    000144  aa   777777 6210 11    252  	eax1	-1,1		check for infinite loop
+    000145  0a   000213 6044 00    253  	tmoz	defs_loop		..
+                                   254  
+    000146  aa  2 00000 3701 14    255  nextd1:	epplp	bp|0,4		lp -> next def
+    000147  aa  4 00000 2341 00    256  	szn	lp|0		at end of thread?
+    000150  aa   000000 6000 17    257  	tze	0,7		take return if so
+                                   258  
+    000151  aa  4 00001 2351 00    259  	lda	lp|1		look at class
+    000152  aa   200000 3150 07    260  	cana	=o200000,dl	ignore bit on?
+    000153  0a   000143 6010 00    261  	tnz	nextd		if so, try next def
+    000154  aa   000007 3750 07    262  	ana	=o7,dl		mask the class
+    000155  aa   000003 1150 07    263  	cmpa	3,dl		class 3?
+    000156  aa   000001 7160 17    264  	xec	1,7		take appropriate action
+                                   265  
+    000157                         266  searchd3:
+    000157  aa   000000 0110 03    267  	even			"GET AROUND HARDWARE BUG 095
+    000160  0a   000170 7170 16    268  	xed	point_to_name,6	make lb point to name
+    000161  aa  5 00000 1001 00    269  	cmpx0	lb|0		quicky compare first
+    000162  0a   000143 6010 00    270  	tnz	nextd		..
+    000163  aa  0 40140 1065 40    271  	cmpc	(pr,rl),(pr,rl),fill(040)  compare names
+    000164  aa   100000 000013     272  	desc9a	ab|0,x3
+    000165  aa   500000 000013     273  	desc9a	lb|0,x3
+    000166  0a   000143 6010 00    274  	tnz	nextd		not found, keep looking
+    000167  aa   000002 7100 17    275  	tra	2,7		name found, return
+                                   276  
+                                   277  
+                                   278  
+                                   279  	even
+    000170                         280  point_to_name:
+    000170  aa  4 00002 2361 00    281  	ldq	lp|2		new format, use pointer
+    000171  aa  2 00000 3715 02    282  	epplb	bp|0,qu
+                                   283  
+    000172  aa  4 00002 3715 00    284  	epplb	lp|2		old format, name follows def
+    000173  aa   000000 0110 03    285  	nop	0,du
+                                   286  
+                                   287  " 
+                                   288  
+    000174                         289  acc_setup:
+    000174  aa  1 00000 3515 20    290  	eppab	ab|0,*		ab -> acc string
+    000175  aa  1 00000 2351 00    291  	lda	ab|0		first word in A
+    000176  aa   000000 6200 01    292  	eax0	0,au		count and first char retained in X0
+    000177  aa   000033 7710 00    293  	arl	27		extract character count
+    000200  aa   000001 6230 05    294  	eax3	1,al		in X3
+    000201  aa   000000 7100 17    295  	tra	0,7		return to caller
+                                   296  
+                                   297  
+                                   298  
+    000202  aa  0 00010 6501 20    299  found:	sprilp	ap|8,*		return def pointer
+    000203  aa  0 00012 4501 20    300  	stz	ap|10,*		clear error code
+                                   301  
+    000204  aa  7 00044 7101 20    302  	short_return
+                                   303  
+                                   304  
+                                   305  
+    000205  aa  7 00046 2721 20    306  no_sym:	getlp
+    000206  4a  4 00010 2351 20    307  	lda	error_table_$no_ext_sym
+    000207  0a   000215 7100 00    308  	tra	error
+                                   309  
+    000210  aa  7 00046 2721 20    310  dup_name:	getlp
+    000211  4a  4 00012 2351 20    311  	lda	error_table_$dup_ent_name
+    000212  0a   000215 7100 00    312  	tra	error
+                                   313  
+    000213  aa  7 00046 2721 20    314  defs_loop:getlp
+    000214  4a  4 00014 2351 20    315  	lda	error_table_$defs_loop
+                                   316  
+    000215  aa  0 00012 7551 20    317  error:	sta	ap|10,*		return error code
+    000216  0a   000222 3700 20    318  	epplp	=its(-1,1),*	make lp null
+    000217  aa  0 00010 6501 20    319  	sprilp	ap|8,*		return null pointer
+    000220  aa  7 00044 7101 20    320  	short_return
+                                   321  
+                                   322  
+                                   323  
+                                   324  	end
+LITERALS
+     
+    000222  aa   077777 000043 
+    000223  aa   000001 000000 
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000224  5a   000003 000000 
+    000225  5a   000026 600000 
+    000226  aa   000000 000000 
+    000227  55   000011 000002 
+    000230  5a   000002 400003 
+    000231  55   000006 000011 
+    000232  aa  013 147 145 164
+    000233  aa  137 144 145 146
+    000234  aa  160 164 162 137
+    000235  55   000017 000003 
+    000236  0a   000000 400000 
+    000237  55   000014 000003 
+    000240  aa  013 147 145 164         get_defptr_
+    000241  aa  137 144 145 146
+    000242  aa  160 164 162 137
+    000243  55   000002 000011 
+    000244  6a   000000 400002 
+    000245  55   000022 000003 
+    000246  aa  014 163 171 155         symbol_table
+    000247  aa  142 157 154 137
+    000250  aa  164 141 142 154
+    000251  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000252  aa   000000 000015 
+    000253  aa   000000 000000 
+    000254  aa   000000 000000 
+    000255  aa   000000 000000 
+    000256  aa   000000 000000 
+    000257  aa   000000 000000 
+    000260  aa   000000 000000 
+    000261  5a   000017 000000 
+    000262  aa   000000 000000 
+    000263  5a   000011 000000 
+    000264  aa   000000 000000 
+    000265  aa   000000 000000 
+    000266  aa   000000 000000 
+    000267  aa   000000 000000 
+
+EXTERNAL NAMES
+
+    000270  aa  011 144 145 146         defs_loop
+    000271  aa  163 137 154 157
+    000272  aa  157 160 000 000
+    000273  aa  014 144 165 160         dup_ent_name
+    000274  aa  137 145 156 164
+    000275  aa  137 156 141 155
+    000276  aa  145 000 000 000
+    000277  aa  012 156 157 137         no_ext_sym
+    000300  aa  145 170 164 137
+    000301  aa  163 171 155 000
+    000302  aa  014 145 162 162         error_table_
+    000303  aa  157 162 137 164
+    000304  aa  141 142 154 145
+    000305  aa  137 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000306  aa   000004 000000 
+    000307  55   000056 000044 
+    000310  aa   000004 000000 
+    000311  55   000056 000047 
+    000312  aa   000004 000000 
+    000313  55   000056 000053 
+    000314  aa   000001 000000 
+    000315  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000316  5a   000062 000000 
+    000317  5a   000064 000000 
+    000320  5a   000066 000000 
+    000321  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000224 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000016 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         error_table_|no_ext_sym
+    000011  5a   000074 0000 00
+    000012  9a   777766 0000 46         error_table_|dup_ent_name
+    000013  5a   000073 0000 00
+    000014  9a   777764 0000 46         error_table_|defs_loop
+    000015  5a   000072 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 117547 
+    000007  aa   255504 657734 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000146 
+    000020  aa   000000 000103 
+    000021  aa   000127 000123 
+    000022  aa   000140 000103 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   110151 162156 
+    000035  aa   145151 163145 
+    000036  aa   156056 123171 
+    000037  aa   163115 141151 
+    000040  aa   156164 056141 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   055164 141162 
+    000045  aa   147145 164040 
+    000046  aa   154066 070040 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040154 151163 
+    000057  aa   164040 163171 
+    000060  aa   155142 157154 
+    000061  aa   163040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000001 
+    000066  aa   000072 000042 
+    000067  aa   175453 017615 
+    000070  aa   000000 117547 
+    000071  aa   176236 400000 
+    000072  aa   076163 160145          >spec>install>1110>get_defptr_.alm
+    000073  aa   143076 151156 
+    000074  aa   163164 141154 
+    000075  aa   154076 061061 
+    000076  aa   061060 076147 
+    000077  aa   145164 137144 
+    000100  aa   145146 160164 
+    000101  aa   162137 056141 
+    000102  aa   154155 040040 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+         174    acc_setup                get_defptr_:   91,  105,  194,  204,  217,  289.
+         213    defs_loop                get_defptr_:  149,  253,  314,  315.
+                dup_ent_name             get_defptr_:  311.
+          56    dup_hash                 get_defptr_:  152,  155.
+         210    dup_name                 get_defptr_:  108,  122,  229,  310.
+         215    error                    get_defptr_:  308,  312,  317.
+                error_table_             get_defptr_:  307,  311,  315.
+         202    found                    get_defptr_:   97,  126,  212,  232,  299.
+           0    get_defptr_              get_defptr_:   71,   73.
+          46    hash_loop                get_defptr_:  144,  173,  175.
+          71    hash_next                get_defptr_:  164,  170.
+          43    hash_search              get_defptr_:   93,  107,  139.
+         143    nextd                    get_defptr_:  189,  223,  226,  228,  251,  261,  270,  274.
+         146    nextd1                   get_defptr_:  249,  255.
+          60    no_dup_hash              get_defptr_:  154,  158.
+                no_ext_sym               get_defptr_:  307.
+          77    no_hash                  get_defptr_:   81,   84,  183.
+         205    no_sym                   get_defptr_:   94,  222,  306.
+          76    old_format               get_defptr_:   79,  181.
+         123    pass_2                   get_defptr_:  187,  198,  199,  209,  210,  216.
+         170    point_to_name            get_defptr_:  268,  280.
+         141    searchd                  get_defptr_:  186,  208,  221,  248.
+         157    searchd3                 get_defptr_:  197,  266.
+         137    unique                   get_defptr_:  227,  231.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,539 @@
+	COMPILATION LISTING OF SEGMENT dir_lock_init
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0948.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /* dir_lock_init.pl1 -- intialization (collection 2) of dir_lock_seg. */
+        9 /* format: style2 */
+       10 
+       11 dir_lock_init:
+       12      procedure;
+       13 
+       14 /* BIM 830212 */
+       15 /* Modified 831107 BIM for readers seperate from locks proper */
+       16 /* Modified 831111 BIM to remove threads. */
+       17 
+       18 	declare make_sdw$unthreaded	 entry (fixed binary (18), fixed binary (71), pointer, pointer);
+       19 	declare pmut$swap_sdw	 entry (ptr, ptr);
+       20 	declare syserr		 entry options (variable);
+       21 
+       22 	declare dir_lock_seg_size	 fixed bin;
+       23 	declare n_dir_locks		 fixed bin;
+       24 	declare code		 fixed bin (35);
+       25 	declare tsdw		 fixed bin (71);
+       26 	declare ptp		 pointer;
+       27 	declare astep		 pointer;
+       28 	declare i			 fixed bin;
+       29 
+       30 	declare slt$		 external static;
+       31 	declare tc_data$max_max_eligible
+       32 				 fixed bin (35, 18) external static;
+       33 	declare active_all_rings_data$max_tree_depth
+       34 				 fixed bin external static;
+       35 
+       36 	declare (addr, divide, segno, size)
+       37 				 builtin;
+       38 
+       39 	declare 1 local_dir_lock_header
+       40 				 aligned like dir_lock_seg_header;
+       41 
+       42 
+       43 	dir_lock_segp = addr (local_dir_lock_header);
+       44 	dir_lock_seg.max_readers = tc_data$max_max_eligible;
+       45 	n_dir_locks, dir_lock_seg.n_dir_locks = tc_data$max_max_eligible * active_all_rings_data$max_tree_depth;
+       46 	dir_lock_seg_size = size (dir_lock_seg);	/* auto header makes reference to size of dir_lock possible */
+       47 
+       48 	dir_lock_segp = addr (dir_lock_seg$);
+       49 	sltp = addr (slt$);
+       50 	sltep = addr (slt.seg (segno (dir_lock_segp)));
+       51 
+       52 	slte_uns.abs_seg = "0"b;
+       53 	slte_uns.cur_length, slte_uns.max_length = divide (dir_lock_seg_size + 1023, 1024, 18, 0);
+       54 	call make_sdw$unthreaded (segno (dir_lock_segp), tsdw, astep, ptp);
+       55 
+       56 	if astep = null ()
+       57 	then call syserr (CRASH, "dir_lock_init: Cannot get ASTE for dir_lock_seg.");
+       58 	call pmut$swap_sdw (dir_lock_segp, addr (tsdw));
+       59 
+       60 	unspec (dir_lock_seg.header) = ""b;
+       61 
+       62 	dir_lock_seg.n_dir_locks = n_dir_locks;
+       63 	dir_lock_seg.header.highest_in_use = 0;
+       64 	dir_lock_seg.header.max_readers = tc_data$max_max_eligible;
+       65 	dir_lock_seg.header.readers_ptr = addr (dir_lock_seg.readers);
+       66 	dir_lock_seg.header.locks_ptr = addr (dir_lock_seg.dir_locks);
+       67 	unspec (dir_lock_seg.dir_locks) = ""b;
+       68 	dir_lock_seg.readers (*, *) = ""b;
+       69 
+       70 	unspec (dir_lock_seg.seg_lock.event) = unspec (DIR_LOCK_SEG_EVENT);
+       71 	return;
+       72 
+       73 /* format: off */
+       74  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  1     2 
+  1     3 /* Declarations for Segment Loading Table header and array.
+  1     4*
+  1     5*   Used by Initialization and MST Checker subroutines */
+  1     6 
+  1     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  1     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  1     9     namep ptr,					/* pointer to segment name list block */
+  1    10     pathp ptr,					/* pointer to segment's directory path name */
+  1    11     aclp ptr;					/* pointer to acl structure */
+  1    12 
+  1    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  1    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  1    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  1    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  1    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  1    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  1    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  1    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  1    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  1    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  1    23 
+  1    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  1    25 
+  1    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  1    27 	2 pad bit (18) unal,
+  1    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  1    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  1    30 
+  1    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  1    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  1    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  1    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  1    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  1    36 	  3 pad bit (5) unal,
+  1    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  1    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  1    39 
+  1    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  1    41 	2 size fixed bin (17),			/* length of pathname */
+  1    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  1    43 	2 acls fixed bin;				/* ACL list starts here */
+  1    44 
+  1    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  1    46 	2 count fixed bin,				/* number of entries in acl list */
+  1    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  1    48 	  3 userid char (32),			/* user specification */
+  1    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  1    50 	  3 pad bit (36) aligned,
+  1    51 	  3 code fixed bin;
+  1    52 
+  1    53 
+  1    54 /* END INCLUDE FILE slt.incl.pl1 */
+       74 
+       75  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  2     2 /* Declaration for Segment Loading Table Entry structure.
+  2     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  2     4 /* modified 5/4/76 by Noel I. Morris	*/
+  2     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  2     6 /* format: style3 */
+  2     7 
+  2     8 dcl	sltep		ptr;
+  2     9 
+  2    10 dcl	1 slte_uns	based (sltep) aligned,
+  2    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  2    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  2    13 /**** End of word 1 */
+  2    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  2    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  2    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  2    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  2    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  2    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  2    20 	  2 pad1		bit (3),			/* unused */
+  2    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  2    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  2    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  2    24 	  2 pad3		bit (2),
+  2    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  2    26 /**** End of 1st half of word 2 */
+  2    27 	  2 pad4		bit (3),
+  2    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  2    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  2    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  2    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  2    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  2    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  2    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  2    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  2    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  2    37 /***** End of word 2 */
+  2    38 	  2 pad5		bit (6),
+  2    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  2    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  2    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  2    42 /***** End of word 3 */
+  2    43 	  2 pad7		bit (3),
+  2    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  2    45 	  2 bit_count	fixed bin (24) uns
+  2    46 	  )		unaligned;		/* bitcount of segment */
+  2    47 
+  2    48 dcl	1 slte		based (sltep) aligned,
+  2    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  2    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  2    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  2    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  2    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  2    54 	  2 firmware_seg    bit (1),
+  2    55 	  2 layout_seg      bit (1),
+  2    56 	  2 breakpointable  bit (1),
+  2    57 	  2 pad2		bit (3),
+  2    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  2    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  2    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  2    61 	  2 pad3		bit (2),
+  2    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  2    63 	  2 pad4		bit (3),
+  2    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  2    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  2    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  2    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  2    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  2    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  2    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  2    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  2    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  2    73 	  2 pad5		bit (6),
+  2    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  2    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  2    76 	  2 segno		bit (18),			/* text/link segment number */
+  2    77 	  2 pad6		bit (3),
+  2    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  2    79 	  2 bit_count	bit (24)
+  2    80 	  )		unaligned;		/* bitcount of segment */
+  2    81 
+  2    82 /* END INCLUDE FILE slte.incl.pl1 */
+       75 
+       76  /* Begin include file dir_lock_seg_.incl.pl1 BIM 830312 */
+  3     2 /* From dirlockt.incl.pl1 */
+  3     3 
+  3     4 /* format: style3,idind25,indcomtxt */
+  3     5 
+  3     6 /**** Several arrays in this program are zero based. The zero-th
+  3     7*      entries are NEVER USED. referencers should start at 1, not lbound.
+  3     8*      The zero entries are there to improve the compiler's subscript
+  3     9*      calculations. The compiler can fetch dir_lock_all_dir_locks (foo).uid
+  3    10*      with an lda pr6|FOO,*ql */
+  3    11 
+  3    12 dcl	dir_lock_seg$	     external static;	/* name of the segment containing the directory locks */
+  3    13 
+  3    14 dcl	dir_lock_segp	     pointer;		/* pointer to the dirlock table */
+  3    15 
+  3    16 dcl	1 dir_lock_seg	     based (dir_lock_segp) aligned,
+  3    17 	  2 header	     aligned like dir_lock_seg_header,
+  3    18 	  2 dir_locks	     (0:dir_lock_seg.header.n_dir_locks) aligned like dir_lock,
+  3    19 	  2 readers	     (0:dir_lock_seg.header.n_dir_locks, dir_lock_seg.header.max_readers) bit (36) aligned;
+  3    20 
+  3    21 declare	(dir_lock_all_locksp, dir_lock_all_readersp)
+  3    22 			     pointer;
+  3    23 
+  3    24 declare	1 dir_lock_all_dir_locks (0:dir_lock_seg.header.n_dir_locks) aligned like dir_lock based (dir_lock_all_locksp);
+  3    25 declare	dir_lock_all_readers     (0:dir_lock_seg.header.n_dir_locks, dir_lock_seg.header.max_readers) bit (36)
+  3    26 			     aligned based (dir_lock_all_readersp);
+  3    27 
+  3    28 declare	DIR_LOCK_SEG_EVENT	     char (4) aligned init ("drls") int static options (constant);
+  3    29 
+  3    30 declare	1 dir_lock_seg_header    aligned based,
+  3    31 	  2 seg_lock	     aligned like lock,
+  3    32 	  2 n_dir_locks	     fixed bin,		/* max number */
+  3    33 	  2 highest_in_use	     fixed bin,
+  3    34 	  2 max_readers	     fixed bin,
+  3    35 	  2 pad_even	     bit (36) aligned,
+  3    36 	  2 readers_ptr	     pointer,
+  3    37 	  2 locks_ptr	     pointer,
+  3    38 	  2 meters	     aligned,
+  3    39 	    3 find_calls	     fixed bin (35),
+  3    40 	    3 find_failures	     fixed bin (35),
+  3    41 	    3 max_in_use	     fixed bin (35),
+  3    42 	    3 pad_meters	     fixed bin (35),
+  3    43 	  2 pad		     (16) bit (36) aligned;	/* to 32 */
+  3    44 
+  3    45 declare	dir_lockp		     pointer;
+  3    46 declare	1 dir_lock	     aligned based (dir_lockp),
+  3    47 	  2 uid		     bit (36) aligned,
+  3    48 	  2 flags		     aligned,
+  3    49 	    3 notify_sw	     bit (1) unaligned,
+  3    50 	    3 salvage_sw	     bit (1) unaligned,	/* ON if dir was locked for salvage */
+  3    51 	    3 pad		     bit (34) unaligned,
+  3    52 	  2 lock_count	     fixed bin (17),	/* POSITIVE --> write_lock */
+  3    53 						/* NEGATIVE --> -number of lockers */
+  3    54 						/* ZERO --> not locked */
+  3    55 	  2 write_locker	     bit (36) aligned;	/* in case of read, see next declaration, and expect this 0 */
+  3    56 
+  3    57 declare	dir_read_lockers_ptr     pointer;
+  3    58 declare	dir_read_lockers	     (dir_lock_seg.header.max_readers) bit (36) aligned based (dir_read_lockers_ptr);
+  3    59 
+  3    60 /* End include file dir_lock_seg_.incl.pl1 */
+       76 
+       77  /* Begin include file hc_lock.incl.pl1 BIM 2/82 */
+  4     2 /* Replaced by hc_fast_lock.incl.pl1 RSC 11/84 because name of structure
+  4     3*   encourages name conflicts.
+  4     4*   USE HC_FAST_LOCK INSTEAD!
+  4     5**/
+  4     6 
+  4     7 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  4     8 
+  4     9 /* format: style3 */
+  4    10 
+  4    11 declare	lock_ptr		pointer;
+  4    12 declare	1 lock		aligned based (lock_ptr),
+  4    13 	  2 pid		bit (36) aligned,		/* holder of lock */
+  4    14 	  2 event		bit (36) aligned,		/* event associated with lock */
+  4    15 	  2 flags		aligned,
+  4    16 	    3 notify_sw	bit (1) unaligned,
+  4    17 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  4    18 
+  4    19 /* End include file hc_lock.incl.pl1 */
+       77 
+       78  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  5     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  5     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  5     4 
+  5     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  5     6 
+  5     7 dcl (
+  5     8 
+  5     9 /* The following constants define the message action codes.  This indicates
+  5    10*how a message is to be handled.  */
+  5    11 
+  5    12      SYSERR_CRASH_SYSTEM	init (1),			
+  5    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  5    14 
+  5    15      SYSERR_TERMINATE_PROCESS	init (2),
+  5    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  5    17 
+  5    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  5    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  5    20 
+  5    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  5    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  5    23 
+  5    24      SYSERR_LOG_OR_PRINT	init (4),
+  5    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  5    26 
+  5    27      SYSERR_LOG_OR_DISCARD	init (5),
+  5    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  5    29 
+  5    30 
+  5    31 /* The following constants are added to the normal severities to indicate
+  5    32*different sorting classes of messages.  */
+  5    33 
+  5    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  5    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  5    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  5    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  5    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  5    39 	) fixed bin internal static options (constant);
+  5    40 
+  5    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       78 
+       79 
+       80 /* BEGIN MESSAGE DOCUMENTATION
+       81*
+       82*Message:
+       83*dir_lock_init: cannot get ASTE for dir_lock_seg.
+       84*
+       85*S:       $crash
+       86*
+       87*T:       $init
+       88*
+       89*M:       No space could be obtained for dir_lock_seg. This can result from inadequate ASTE pools or hardcore partition.
+       90*
+       91*A:       $recover
+       92*$boot_tape
+       93*
+       94*END MESSAGE DOCUMENTATION */
+       95 
+       96        end dir_lock_init;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.9  dir_lock_init.pl1                 >spec>install>1112>dir_lock_init.pl1
+74           1    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+75           2    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+76           3    11/29/83  0931.2  dir_lock_seg_.incl.pl1            >ldd>include>dir_lock_seg_.incl.pl1
+77           4    01/06/85  1422.1  hc_lock.incl.pl1                  >ldd>include>hc_lock.incl.pl1
+78           5    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000003 constant        fixed bin(17,0)          initial dcl 5-7 set ref 56*
+DIR_LOCK_SEG_EVENT              000000 constant        char(4)                  initial dcl 3-28 ref 70
+abs_seg                   1(05)        based           bit(1)                   level 2 packed packed unaligned dcl 2-10 set ref 52*
+active_all_rings_data$max_tree_depth
+                                000022 external static fixed bin(17,0)          dcl 33 ref 45
+addr                                                   builtin function         dcl 36 ref 43 48 49 50 58 58 65 66
+astep                           000106 automatic       pointer                  dcl 27 set ref 54* 56
+cur_length                2            based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 2-10
+                                                                                  set ref 53*
+dir_lock                               based           structure                level 1 dcl 3-46
+dir_lock_seg                           based           structure                level 1 dcl 3-16 set ref 46
+dir_lock_seg$                   000024 external static fixed bin(17,0)          dcl 3-12 set ref 48
+dir_lock_seg_header                    based           structure                level 1 dcl 3-30
+dir_lock_seg_size               000100 automatic       fixed bin(17,0)          dcl 22 set ref 46* 53
+dir_lock_segp                   000154 automatic       pointer                  dcl 3-14 set ref 43* 44 45 46 46 46 46 48* 50 54 54
+                                                                                  58* 60 62 63 64 65 65 65 66 66 67 67 68 68 68 68
+                                                                                  68 70
+dir_locks                40            based           structure                array level 2 dcl 3-16 set ref 66 67*
+divide                                                 builtin function         dcl 36 ref 53
+event                     1            based           bit(36)                  level 4 dcl 3-16 set ref 70*
+header                                 based           structure                level 2 dcl 3-16 set ref 60*
+highest_in_use            4            based           fixed bin(17,0)          level 3 dcl 3-16 set ref 63*
+local_dir_lock_header           000110 automatic       structure                level 1 dcl 39 set ref 43
+lock                                   based           structure                level 1 dcl 4-12
+locks_ptr                12            based           pointer                  level 3 dcl 3-16 set ref 66*
+make_sdw$unthreaded             000010 constant        entry                    external dcl 18 ref 54
+max_length                3(03)        based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 2-10
+                                                                                  set ref 53*
+max_readers               5            based           fixed bin(17,0)          level 3 dcl 3-16 set ref 44* 46 64* 68 68
+n_dir_locks               3            based           fixed bin(17,0)          level 3 in structure "dir_lock_seg" dcl 3-16
+                                                                                  in procedure "dir_lock_init" set ref 45* 46 46 62*
+                                                                                  65 67 68 68
+n_dir_locks                     000101 automatic       fixed bin(17,0)          dcl 23 in procedure "dir_lock_init" set ref 45* 62
+pmut$swap_sdw                   000012 constant        entry                    external dcl 19 ref 58
+ptp                             000104 automatic       pointer                  dcl 26 set ref 54*
+readers                                based           bit(36)                  array level 2 dcl 3-16 set ref 65 68*
+readers_ptr              10            based           pointer                  level 3 dcl 3-16 set ref 65*
+seg                      10            based           structure                array level 2 dcl 1-13 set ref 50
+seg_lock                               based           structure                level 3 dcl 3-16
+segno                                                  builtin function         dcl 36 ref 50 54 54
+size                                                   builtin function         dcl 36 ref 46
+slt                                    based           structure                level 1 dcl 1-13
+slt$                            000016 external static fixed bin(17,0)          dcl 30 set ref 49
+slte_uns                               based           structure                level 1 dcl 2-10
+sltep                           000152 automatic       pointer                  dcl 2-8 set ref 50* 52 53 53
+sltp                            000150 automatic       pointer                  dcl 1-7 set ref 49* 50
+syserr                          000014 constant        entry                    external dcl 20 ref 56
+tc_data$max_max_eligible        000020 external static fixed bin(35,18)         dcl 31 ref 44 45 64
+tsdw                            000102 automatic       fixed bin(71,0)          dcl 25 set ref 54* 58 58
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 5-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 5-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 5-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 5-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 5-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 5-7
+aclp                                   automatic       pointer                  dcl 1-7
+acls                                   based           structure                level 1 dcl 1-45
+code                                   automatic       fixed bin(35,0)          dcl 24
+dir_lock_all_dir_locks                 based           structure                array level 1 dcl 3-24
+dir_lock_all_locksp                    automatic       pointer                  dcl 3-21
+dir_lock_all_readers                   based           bit(36)                  array dcl 3-25
+dir_lock_all_readersp                  automatic       pointer                  dcl 3-21
+dir_lockp                              automatic       pointer                  dcl 3-45
+dir_read_lockers                       based           bit(36)                  array dcl 3-58
+dir_read_lockers_ptr                   automatic       pointer                  dcl 3-57
+i                                      automatic       fixed bin(17,0)          dcl 28
+lock_ptr                               automatic       pointer                  dcl 4-11
+name_seg                               based           structure                level 1 dcl 1-26
+namep                                  automatic       pointer                  dcl 1-7
+names_ptr                              automatic       pointer                  dcl 1-7
+path                                   based           structure                level 1 dcl 1-40
+pathp                                  automatic       pointer                  dcl 1-7
+segnam                                 based           structure                level 1 dcl 1-31
+slte                                   based           structure                level 1 dcl 2-48
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+dir_lock_init                   000023 constant        entry                    external dcl 11
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+null                                                   builtin function         ref 56
+unspec                                                 builtin function         set ref 60 67* 70* 70
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       372         420     254         402
+Length       672     254        26         235     115           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+dir_lock_init                       138 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+dir_lock_init            000100 dir_lock_seg_size           dir_lock_init
+                         000101 n_dir_locks                 dir_lock_init
+                         000102 tsdw                        dir_lock_init
+                         000104 ptp                         dir_lock_init
+                         000106 astep                       dir_lock_init
+                         000110 local_dir_lock_header       dir_lock_init
+                         000150 sltp                        dir_lock_init
+                         000152 sltep                       dir_lock_init
+                         000154 dir_lock_segp               dir_lock_init
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry           trunc_fx1           trunc_fx2
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+make_sdw$unthreaded           pmut$swap_sdw                 syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+active_all_rings_data$max_tree_depth                        dir_lock_seg$                 slt$
+tc_data$max_max_eligible
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     11 000022        43 000030        44 000032        45 000036        46 000046        48 000057        49 000061
+     50 000063        52 000072        53 000074        54 000107        56 000125        58 000151        60 000164
+     62 000170        63 000172        64 000173        65 000200        66 000204        67 000206        68 000220
+     70 000250        71 000252
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

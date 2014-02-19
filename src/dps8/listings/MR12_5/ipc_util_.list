@@ -1,0 +1,1336 @@
+	COMPILATION LISTING OF SEGMENT ipc_util_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1009.7 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 /* format: style3 */
+       13 
+       14 /* IPC_UTIL_:  This is a collection of primitives used by the Interprocess
+       15*   Communication Facility (IPC).  These are internal interfaces and not
+       16*   intended to be called by any modules outside of IPC.  The entries
+       17*   within ipc_util_ include those to create, retrieve, and delete event
+       18*   channels as well as those to validate, encode, and decode the 
+       19*   event channel names. */
+       20 
+       21 /*
+       22*   Rewritten from ipcprm_ for new ipc by E Donner Jan l981
+       23*   Modified 1984-10-28 by E. Swenson for new IPC validation.
+       24**/
+       25 
+       26 
+       27 /****^  HISTORY COMMENTS:
+       28*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+       29*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+       30*     Changed to support control point management.  These changes were actually
+       31*     made in February 1985 by G. Palter.
+       32*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+       33*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+       34*     Changed entry_type to fixed bin (8) and changed the code to verify the
+       35*     encoded flags in an event channel name.  All this to support async event
+       36*     channels.
+       37*                                                   END HISTORY COMMENTS */
+       38 
+       39 
+       40 ipc_util_:
+       41      procedure ();
+       42 	return;					/* not an entry */
+       43 
+       44 /* Automatic */
+       45 
+       46 dcl	code		fixed bin (35);
+       47 dcl	ecit_idx		fixed bin (15) unsigned;	/* Index into ECIT */
+       48 dcl	ect_area_ptr	ptr;
+       49 dcl	ect_area_size	fixed bin (19);
+       50 dcl	entry_type	fixed bin (8);
+       51 dcl	1 info_for_area	like area_info aligned;
+       52 dcl	system_area_ptr	ptr;
+       53 
+       54 /* Based */
+       55 
+       56 dcl	ect_area		area (ect_area_size) based (ect_area_ptr);
+       57 dcl	system_area	area based (system_area_ptr);
+       58 
+       59 /* Constants */
+       60 
+       61 dcl	AREA_OVERHEAD	fixed bin (17) initial (36) internal static options (constant);
+       62 						/* area header + extend block */
+       63 dcl	BLOCK_OVERHEAD	fixed bin (17) initial (2) internal static options (constant);
+       64 						/* for each allocation */
+       65 dcl	DEFAULT_N_ECT_ENTRIES
+       66 			fixed bin (17) initial (64) internal static options (constant);
+       67 						/* default number used in calculating initial area size */
+       68 dcl	INITIAL_SEED	fixed bin (33) initial (1) internal static options (constant);
+       69 dcl	ON		bit (1) aligned static options (constant) init ("1"b);
+       70 dcl	NO		bit (1) aligned static options (constant) init ("0"b);
+       71 dcl	ALLOW_FAST_CHANNELS bit (1) aligned initial ("1"b) internal static options (constant);
+       72 dcl	DO_NOT_ALLOW_FAST_CHANNELS
+       73 			bit (1) aligned initial ("0"b) internal static options (constant);
+       74 
+       75 /* External Entries */
+       76 
+       77 dcl	define_area_	entry (ptr, fixed bin (35));
+       78 dcl	get_ring_		entry returns (fixed bin (3));
+       79 dcl	get_system_free_area_
+       80 			entry returns (ptr);
+       81 dcl	hcs_$get_ipc_operands
+       82 			entry (fixed bin (18), fixed bin (35));
+       83 dcl	ipc_real_$create_fast_ev_chn
+       84 			entry (fixed binary (18), fixed binary (35));
+       85 dcl	ipc_validate_$decode_event_channel_name
+       86 			entry (fixed bin (18), fixed bin (35), fixed bin (71), bit (3) aligned, fixed bin (15),
+       87 			fixed bin (3), bit (1) aligned, fixed bin (18), fixed bin (35));
+       88 
+       89 /* External Static */
+       90 
+       91 dcl	error_table_$ect_already_initialized
+       92 			fixed bin (35) external;
+       93 dcl	error_table_$ect_full
+       94 			fixed bin (35) external;
+       95 dcl	error_table_$inconsistent_ect
+       96 			fixed bin (35) external;
+       97 dcl	error_table_$invalid_channel
+       98 			fixed bin (35) external;
+       99 dcl	error_table_$special_channel
+      100 			fixed bin (35) external;
+      101 dcl	error_table_$wrong_channel_ring
+      102 			fixed bin (35) external;
+      103 dcl	ipc_data_$fast_channel_events
+      104 			bit (36) aligned external;
+      105 dcl	sys_info$max_seg_size
+      106 			fixed bin (19) external;
+      107 
+      108 /* Conditions */
+      109 
+      110 dcl	area		condition;
+      111 
+      112 /* Builtins */
+      113 
+      114 dcl	addr		builtin;
+      115 dcl	binary		builtin;
+      116 dcl	empty		builtin;
+      117 dcl	length		builtin;
+      118 dcl	mod		builtin;
+      119 dcl	null		builtin;
+      120 dcl	size		builtin;
+      121 dcl	stackbaseptr	builtin;
+      122 dcl	string		builtin;
+      123 dcl	substr		builtin;
+      124 dcl	unspec		builtin;
+      125 
+      126 create_ect:
+      127      entry (a_ect_ptr);
+      128 
+      129 /**** Entry to create the Event Channel Table for the current ring.  It
+      130*      initializes the ECT header and creates the Event Channel Index
+      131*      Table. */
+      132 
+      133 dcl	a_ect_ptr		ptr parameter;
+      134 
+      135 	on area call ect_error_handler (error_table_$ect_full);
+      136 	call CREATE_ECT ();
+      137 	a_ect_ptr = ect_ptr;
+      138 	return;
+      139 
+      140 create_single_seg_ect:
+      141      entry (a_code);
+      142 
+      143 /**** This entry creates an Event Channel Table for the current ring that
+      144*      is not located in the system area, but is located in a segment
+      145*      dedicated to the ECT. */
+      146 
+      147 dcl	a_code		fixed bin (35) parameter;
+      148 
+      149 	if stackbaseptr () -> stack_header.ect_ptr ^= null
+      150 	then do;					/* ect has been created before */
+      151 		a_code = error_table_$ect_already_initialized;
+      152 		return;
+      153 	     end;
+      154 
+      155 	a_code = 0;
+      156 	ect_area_size = sys_info$max_seg_size;
+      157 	ect_area_ptr = null;			/* This causes define_area_ to create new seg */
+      158 
+      159 	on area call ect_error_handler (error_table_$ect_full);
+      160 
+      161 	call initialize_ect;
+      162 
+      163 	return;
+      164 
+      165 make_entry:
+      166      entry (a_ect_ptr, a_type, a_ectep, a_ecit_idx);
+      167 
+      168 /**** This entry creates a fresh ECTE.  The type created (WAIT or CALL)
+      169*      is specified in the parameter a_type.  It returns a pointer to this
+      170*      ECTE in a_ectep.  Currently this entry is only used to create WAIT
+      171*      and CALL ECTEs.  If it is ever used to create other types (e.g.
+      172*      EV_WAIT_MESSAGE, etc.), then care must be taken to avoid setting up an
+      173*      ECITE for the ECTE.  delete_entry must be made aware of these changes
+      174*      as well.  This entry returns the ECIT index for use in event
+      175*      channel name manipulation.  The modularization here should be
+      176*      changed to maintain the ECIT index as an internal value to ipc_util_,
+      177*      but this can be done at a later time. */
+      178 
+      179 dcl	a_ectep		ptr parameter;
+      180 dcl	a_type		fixed bin (8) parameter;
+      181 dcl	a_ecit_idx	fixed bin (15);
+      182 
+      183 	call SETUP ();
+      184 
+      185 	entry_type = a_type;
+      186 
+      187 /* check for inconsistency before creating new entry */
+      188 
+      189 	call check_ect_consistency;
+      190 
+      191 /* allocate new entry - assume that entries of all types are the same size */
+      192 
+      193 	ect_area_size = ect_header.ect_area_size;
+      194 	on area call ect_error_handler (error_table_$ect_full);
+      195 	allocate wait_channel in (ect_header.ect_areap -> ect_area) set (ectep);
+      196 	unspec (wait_channel) = ""b;
+      197 	wait_channel.type = entry_type;
+      198 
+      199 /* make an entry in the event_channel_index table */
+      200 
+      201 	ecit_idx = 0;
+      202 	if entry_type = CALL | entry_type = WAIT
+      203 	then do;
+      204 		ecit_idx = FIND_ECIT_ENTRY ();
+      205 		if ecit_idx = 0
+      206 		then /* Should never happen */
+      207 		     call ect_error_handler (error_table_$ect_full);
+      208 
+      209 		ecit.ecte_ptr (ecit_idx) = ectep;
+      210 	     end;
+      211 
+      212 /* update count in ect header */
+      213 	ect_header.count (TOTAL) = ect_header.count (TOTAL) + 1;
+      214 	if entry_type = WAITING_CP
+      215 	then ect_header.count (WAITING_CP) = ect_header.count (WAITING_CP) + 1;
+      216 
+      217 	a_ectep = ectep;
+      218 	a_ecit_idx = ecit_idx;
+      219 	return;
+      220 
+      221 delete_entry:
+      222      entry (a_ect_ptr, a_ectep);
+      223 
+      224 /**** This entry will delete an ECTE entry.  It is used to delete entries
+      225*      like WAIT and CALL entries as well as EV_WAIT_MESSAGE and other entry
+      226*      types.  Care must be taken to "do the right thing" with respect
+      227*      to the ECITEs. */
+      228 
+      229 	call SETUP ();
+      230 	ectep = a_ectep;
+      231 	entry_type = wait_channel.type;
+      232 
+      233 /**** Remove the event channel index table entry from use.  Note that
+      234*      delete_entry is called to delete entries which are other than
+      235*      CALL or WAIT (e.g., EV_CALL_MESSAGE or WAITING_CP).
+      236*      Therefore, since we only set up ECIT entries for WAITs or CALLs,
+      237*      we mustn't try to search for the ECITE for other types. */
+      238 
+      239 	if entry_type = WAIT | entry_type = CALL
+      240 	then do;
+      241 		ecit_idx = GET_ECIT_IDX (ectep);
+      242 		if ecit_idx = 0
+      243 		then /* Should never happen */
+      244 		     call ect_error_handler (error_table_$inconsistent_ect);
+      245 		else ecit.ecte_ptr (ecit_idx) = null ();
+      246 	     end;
+      247 
+      248 /* update count in header */
+      249 	if entry_type = WAITING_CP
+      250 	then ect_header.count (WAITING_CP) = ect_header.count (WAITING_CP) - 1;
+      251 	ect_header.count (TOTAL) = ect_header.count (TOTAL) - 1;
+      252 
+      253 /* free entry */
+      254 	free wait_channel;
+      255 
+      256 	call check_ect_consistency;
+      257 
+      258 	a_ectep = null;
+      259 	return;
+      260 
+      261 verify_channel:
+      262      entry (P_event_channel_name, P_ectep, P_fast_channel, P_code);
+      263 
+      264 /**** This entrypoint verifies a given event channel name.  P_code
+      265*      can be error_table_$invalid_channel_ring, error_table_$invalid_channel,
+      266*      or 0.  P_fast_channel is set to "1"b if the channel is a fast channel, 
+      267*      otherwise it is set to "0"b. */
+      268 
+      269 dcl	P_event_channel_name
+      270 			fixed binary (71) parameter;
+      271 dcl	P_ectep		pointer parameter;
+      272 dcl	P_fast_channel	bit (1) aligned parameter;
+      273 dcl	P_code		fixed binary (35) parameter;
+      274 
+      275 	on area call ect_error_handler (error_table_$ect_full);
+      276 	call FIND_ECTP ();
+      277 	call VERIFY_CHANNEL (ALLOW_FAST_CHANNELS);
+      278 	return;
+      279 
+      280 verify_regular_channel:
+      281      entry (P_event_channel_name, P_ectep, P_code);
+      282 
+      283 /**** This entrypoint verifies a given event channel name.  If the 
+      284*      event channel name is invalid, P_code is set to 
+      285*      error_table_$invalid_channel.  If the event channel name specifies
+      286*      a fast channel, P_code is set to error_table_$special_channel. 
+      287*      Otherwise P_ectep will point to a valid ECTE describing the
+      288*      channel. */
+      289 
+      290 	on area call ect_error_handler (error_table_$ect_full);
+      291 	call FIND_ECTP ();
+      292 	call VERIFY_CHANNEL (DO_NOT_ALLOW_FAST_CHANNELS);
+      293 	return;
+      294 
+      295 ect_error_handler:
+      296      entry (a_status_code);
+      297 
+      298 /**** This entry is called when some fatal situation is detected in
+      299*      the ECT structures.  It destroys the process with an appropriate
+      300*      error message. */
+      301 
+      302 dcl	a_status_code	fixed bin (35) parameter;
+      303 
+      304 dcl	1 term_structure	aligned,
+      305 	  2 version	fixed bin,
+      306 	  2 fatal_code	fixed bin (35);
+      307 
+      308 dcl	terminate_process_	entry (char (*), ptr);
+      309 
+      310 	term_structure.version = 0;
+      311 	term_structure.fatal_code = a_status_code;
+      312 
+      313 	call terminate_process_ ("fatal_error", addr (term_structure));
+      314 
+      315 	return;
+      316 
+      317 check_ect_consistency:
+      318      procedure ();
+      319 
+      320 /**** This internal procedure attempts to check the consistency of the
+      321*      counts in the ECT header. */
+      322 
+      323 	if ect_header.count (TOTAL)
+      324 	     ^= ect_header.count (WAIT) + ect_header.count (CALL) + ect_header.count (ITT_MESSAGE)
+      325 	     + ect_header.count (EV_CALL_MESSAGE) + ect_header.count (EV_WAIT_MESSAGE) + ect_header.count (WAITING_CP)
+      326 	then call ect_error_handler (error_table_$inconsistent_ect);
+      327 
+      328      end check_ect_consistency;
+      329 
+      330 initialize_ect:
+      331      procedure ();
+      332 
+      333 /**** This internal procedure is called if no ECT exists for the current
+      334*      ring.  It initializes the ECT. */
+      335 
+      336 dcl	ev_chn_unique_id	fixed binary (18);
+      337 dcl	code		fixed binary (35);
+      338 
+      339 /* now define characteristics of ect area  */
+      340 	info_for_area.version = area_info_version_1;
+      341 	info_for_area.owner = "ipc";
+      342 	info_for_area.size = ect_area_size;
+      343 	info_for_area.areap = ect_area_ptr;
+      344 	string (info_for_area.control) = "0"b;
+      345 	info_for_area.control.extend = ON;
+      346 	info_for_area.control.zero_on_free = ON;
+      347 	info_for_area.control.system = ON;
+      348 	call define_area_ (addr (info_for_area), code);
+      349 	if code ^= 0
+      350 	then call ect_error_handler (code);
+      351 
+      352 	ect_area_ptr = info_for_area.areap;		/* may have been set by define_area_ */
+      353 
+      354 /* allocate header in new ect area */
+      355 /* and set initial values */
+      356 	allocate ect_header in (ect_area) set (ect_ptr);
+      357 	unspec (ect_header) = ""b;
+      358 	ect_header.firstp (*), ect_header.lastp (*) = null;
+      359 	ect_header.ect_area_size = ect_area_size;
+      360 	ect_header.ect_areap = ect_area_ptr;
+      361 	ect_header.seed = INITIAL_SEED;
+      362 
+      363 /* Allocate the Event Channel Index Table */
+      364 
+      365 	call ALLOCATE_ECIT (DEFAULT_N_ECT_ENTRIES);
+      366 	ect_header.ecit_ptr = ecit_ptr;
+      367 	ect_header.ecit_lth = ecit_lth;
+      368 
+      369 /**** Retrieve the IPC validation operands from the APTE.  These values
+      370*      were initialized at process creation time and are used to validate
+      371*      event channel wakeups destined for this process.  They are also 
+      372*      used to decode the event channel name and to extract the ECIT
+      373*      index from the event channel name. */
+      374 
+      375 	call hcs_$get_ipc_operands (ect_header.r_offset, ect_header.r_factor);
+      376 
+      377 /* set ect_ptr in stack header */
+      378 
+      379 	stackbaseptr () -> stack_header.ect_ptr = ect_ptr;
+      380 
+      381 
+      382 /* Create WAIT channel definitions for all possible fast channels.  These
+      383*   entries are only used when control point management is enabled to track the
+      384*   control points which have blocked on the fast channels. */
+      385 
+      386 		do ev_chn_unique_id = 1 to length (ipc_data_$fast_channel_events);
+      387 		     call ipc_real_$create_fast_ev_chn (ev_chn_unique_id, code);
+      388 		     if code ^= 0
+      389 		     then call ect_error_handler (code);
+      390 		end;
+      391 
+      392 	return;
+      393 
+      394      end initialize_ect;
+      395 
+      396 ALLOCATE_ECIT:
+      397      procedure (size);
+      398 
+      399 /**** This procedure allocates and initializes an Event Channel Index
+      400*      Table (ECIT) in the current ECT area. */
+      401 
+      402 dcl	size		fixed bin (17) parameter;
+      403 
+      404 	ecit_ptr = null ();				/* Nullify this global variable */
+      405 	ecit_lth = size;
+      406 
+      407 /**** Already have a handler for the "area" condition */
+      408 
+      409 	allocate ecit in (ect_header.ect_areap -> ect_area) set (ecit_ptr);
+      410 	ecit.ecte_ptr (*) = null ();
+      411 	return;
+      412      end ALLOCATE_ECIT;
+      413 
+      414 
+      415 FIND_ECIT_ENTRY:
+      416      procedure () returns (fixed bin (15) unsigned);
+      417 
+      418 /**** This procedure searches through the current event channel index table
+      419*      for a free entry.  If one is found, the index of this entry is returned.
+      420*      If none is available, then a new ECIT is allocated, the old ECIT entries
+      421*      copied into the new table and the old table freed.*/
+      422 
+      423 dcl	ecit_idx		fixed bin (15) unsigned;
+      424 
+      425 dcl	old_ecit_ptr	ptr;
+      426 dcl	old_ecit_lth	fixed bin (17);
+      427 
+      428 dcl	1 old_ecit	aligned based (old_ecit_ptr),
+      429 	  2 ecte_ptr	(old_ecit_lth) ptr unaligned;
+      430 
+      431 	do ecit_idx = 1 to ecit_lth;
+      432 	     if ecit.ecte_ptr (ecit_idx) = null ()
+      433 	     then return (ecit_idx);			/* found a free slot */
+      434 	end;
+      435 
+      436 /**** There are no free entries in the current ECIT table.  For the time
+      437*      being, until we come up with a better algorithm, allocate a new
+      438*      table twice the size of the current table. */
+      439 
+      440 	old_ecit_ptr = ecit_ptr;
+      441 	old_ecit_lth = ecit_lth;
+      442 
+      443 	call ALLOCATE_ECIT (ecit_lth * 2);
+      444 	ect_header.ecit_ptr = ecit_ptr;
+      445 	ect_header.ecit_lth = ecit_lth;
+      446 
+      447 /**** Copy old table into the new table */
+      448 
+      449 	do ecit_idx = 1 to old_ecit_lth;
+      450 	     ecit.ecte_ptr (ecit_idx) = old_ecit.ecte_ptr (ecit_idx);
+      451 	end;
+      452 
+      453 	free old_ecit;				/* Free up the old table */
+      454 
+      455 	return (old_ecit_lth + 1);			/* one past end of old data */
+      456 
+      457      end FIND_ECIT_ENTRY;
+      458 
+      459 GET_ECIT_IDX:
+      460      procedure (P_ectep) returns (fixed bin (15) unsigned);
+      461 
+      462 /**** This internal procedure returns the ECIT index given a pointer to
+      463*      the event channel entry. */
+      464 
+      465 dcl	P_ectep		ptr parameter;
+      466 dcl	1 ev_chn_name	aligned like event_channel_name automatic;
+      467 dcl	ecit_idx		fixed bin (15) unsigned;
+      468 dcl	temp		fixed bin (71);
+      469 dcl	encoded_index_binary
+      470 			fixed bin (18) unsigned;
+      471 dcl	1 encoded_index	structure aligned automatic,
+      472 	  2 flags		bit (3) unaligned,
+      473 	  2 index		fixed bin (15) unsigned unaligned;
+      474 
+      475 	unspec (ev_chn_name) = unspec (P_ectep -> wait_channel.name);
+      476 	temp = binary (ev_chn_name.encoded_index, 18);
+      477 	encoded_index_binary = mod (temp - ect_header.r_offset, 262144);
+      478 	unspec (encoded_index) = substr (unspec (encoded_index_binary), 19, 18);
+      479 	ecit_idx = encoded_index.index;
+      480 	if ecit_idx > ect_header.ecit_lth
+      481 	then ecit_idx = 0;
+      482 	return (ecit_idx);
+      483      end GET_ECIT_IDX;
+      484 
+      485 VERIFY_CHANNEL:
+      486      procedure (allow_fast_channels);
+      487 
+      488 /**** This internal procedure uses the implicit arguments from the
+      489*      verify_channel and verify_regular_channel entrypoints. */
+      490 
+      491 dcl	allow_fast_channels bit (1) aligned parameter;
+      492 
+      493 dcl	code		fixed bin (35);
+      494 dcl	ecit_idx		fixed bin (15) unsigned;
+      495 dcl	ev_chn_flags	bit (3) aligned;
+      496 dcl	ev_chn_index	fixed bin (15);
+      497 dcl	ev_chn_ring	fixed bin (3);
+      498 dcl	ev_chn_type	bit (1) aligned;
+      499 dcl	ev_chn_unique_id	fixed bin (18);
+      500 dcl	event_channel_name	fixed bin (71);
+      501 
+      502 	P_ectep = null ();
+      503 	P_code = 0;
+      504 
+      505 	event_channel_name = P_event_channel_name;
+      506 	call ipc_validate_$decode_event_channel_name (ect_header.r_offset, ect_header.r_factor, event_channel_name,
+      507 	     ev_chn_flags, ev_chn_index, ev_chn_ring, ev_chn_type, ev_chn_unique_id, code);
+      508 	if code ^= 0
+      509 	then do;
+      510 		P_code = code;
+      511 		return;
+      512 	     end;
+      513 
+      514 	if ev_chn_flags ^= NORMAL_CHANNEL_FLAGS & ev_chn_flags ^= SEND_IPS_WKP_CHANNEL_FLAGS
+      515 	then
+      516 INVALID_CHANNEL:
+      517 	     do;
+      518 		P_code = error_table_$invalid_channel;
+      519 		return;
+      520 	     end;
+      521 
+      522 	if ev_chn_ring ^= get_ring_ ()
+      523 	then do;
+      524 		P_code = error_table_$wrong_channel_ring;
+      525 		return;
+      526 	     end;
+      527 
+      528 	if ev_chn_type = FAST_CHANNEL_TYPE		/* claims to be a fast channel */
+      529 	then if ev_chn_unique_id > length (ipc_data_$fast_channel_events)
+      530 	     then goto INVALID_CHANNEL;
+      531 
+      532 	ecit_idx = ev_chn_index;
+      533 
+      534 	if ecit_idx > ecit_lth
+      535 	then goto INVALID_CHANNEL;
+      536 
+      537 	ectep = ecit.ecte_ptr (ecit_idx);
+      538 	if ectep = null ()
+      539 	then goto INVALID_CHANNEL;
+      540 
+      541 	if ectep -> wait_channel.name ^= unspec (event_channel_name)
+      542 	then goto INVALID_CHANNEL;
+      543 
+      544 /**** Things look ok, give caller what he/she wanted. */
+      545 
+      546 	if allow_fast_channels
+      547 	then P_fast_channel = (ev_chn_type = FAST_CHANNEL_TYPE);
+      548 	else if ev_chn_type = FAST_CHANNEL_TYPE
+      549 	then do;					/* a fast channel and the caller doesn't want one */
+      550 		P_code = error_table_$special_channel;
+      551 		return;
+      552 	     end;
+      553 
+      554 	P_ectep = ectep;
+      555 
+      556 	return;
+      557 
+      558      end VERIFY_CHANNEL;
+      559 
+      560 FIND_ECTP:
+      561      procedure ();
+      562 
+      563 /**** Internal procedure to get a pointer to the ECT for this ring.
+      564*      If there is none, one will be created. */
+      565 
+      566 	ect_ptr = stackbaseptr () -> stack_header.ect_ptr;
+      567 	if ect_ptr = null ()
+      568 	then call CREATE_ECT ();
+      569 	ecit_ptr = ect_header.ecit_ptr;
+      570 	ecit_lth = ect_header.ecit_lth;
+      571 	return;
+      572 
+      573      end FIND_ECTP;
+      574 
+      575 SETUP:
+      576      procedure ();
+      577 
+      578 /**** This internal procedure copies the parameter a_ect_ptr into
+      579*      ect_ptr and gets the ECIT variables necessary to reference
+      580*      the ECIT. */
+      581 
+      582 	ect_ptr = a_ect_ptr;
+      583 	ecit_ptr = ect_header.ecit_ptr;
+      584 	ecit_lth = ect_header.ecit_lth;
+      585 	return;
+      586      end SETUP;
+      587 
+      588 CREATE_ECT:
+      589      procedure ();
+      590 
+      591 /* The ect is an extensible area which is allocated in system free area */
+      592 /* it is an area so that header and ect entries will be clustered */
+      593 
+      594 	system_area_ptr = get_system_free_area_ ();
+      595 
+      596 /* calculate room for reasonable number of ectes, ect header and extend block */
+      597 	ect_area_size =
+      598 	     AREA_OVERHEAD + size (ect_header) + DEFAULT_N_ECT_ENTRIES * size (wait_channel)
+      599 	     + (DEFAULT_N_ECT_ENTRIES + 2) * BLOCK_OVERHEAD + DEFAULT_N_ECT_ENTRIES + BLOCK_OVERHEAD;
+      600 						/* one word for each entry in ecit */
+      601 
+      602 	allocate ect_area in (system_area) set (ect_area_ptr);
+      603 
+      604 	call initialize_ect;
+      605 	return;
+      606      end CREATE_ECT;
+      607 
+      608 /* format: off */
+      609  /* BEGIN INCLUDE FILE area_info.incl.pl1  12/75 */
+  1     2 
+  1     3 dcl  area_info_version_1 fixed bin static init (1) options (constant);
+  1     4 
+  1     5 dcl  area_infop ptr;
+  1     6 
+  1     7 dcl 1 area_info aligned based (area_infop),
+  1     8     2 version fixed bin,				/* version number for this structure is 1 */
+  1     9     2 control aligned like area_control,		/* control bits for the area */
+  1    10     2 owner char (32) unal,				/* creator of the area */
+  1    11     2 n_components fixed bin,				/* number of components in the area (returned only) */
+  1    12     2 size fixed bin (18),				/* size of the area in words */
+  1    13     2 version_of_area fixed bin,			/* version of area (returned only) */
+  1    14     2 areap ptr,					/* pointer to the area (first component on multisegment area) */
+  1    15     2 allocated_blocks fixed bin,			/* number of blocks allocated */
+  1    16     2 free_blocks fixed bin,				/* number of free blocks not in virgin */
+  1    17     2 allocated_words fixed bin (30),			/* number of words allocated in the area */
+  1    18     2 free_words fixed bin (30);			/* number of words free in area not in virgin */
+  1    19 
+  1    20 dcl 1 area_control aligned based,
+  1    21     2 extend bit (1) unal,				/* says area is extensible */
+  1    22     2 zero_on_alloc bit (1) unal,			/* says block gets zerod at allocation time */
+  1    23     2 zero_on_free bit (1) unal,			/* says block gets zerod at free time */
+  1    24     2 dont_free bit (1) unal,			/* debugging aid, turns off free requests */
+  1    25     2 no_freeing bit (1) unal,			/* for allocation method without freeing */
+  1    26     2 system bit (1) unal,				/* says area is managed by system */
+  1    27     2 pad bit (30) unal;
+  1    28 
+  1    29 /* END INCLUDE FILE area_info.incl.pl1 */
+      609 
+      610  /*	BEGIN INCLUDE FILE ... ect_structures.incl.pl1 ... Jan 1981 */
+  2     2 
+  2     3 /* Modified 1984-10-28 by E. Swenson for new ipc validation and to move
+  2     4*   event_channel_name declarations from here to event_channel_name.incl.pl1 */
+  2     5 
+  2     6 
+  2     7 /****^  HISTORY COMMENTS:
+  2     8*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  2     9*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  2    10*     Changed to support control point management.  These changes were actually
+  2    11*     done in February 1985 by G. Palter.
+  2    12*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+  2    13*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  2    14*     Modified to eke out some flag bits by making the type fixed bin (8) in
+  2    15*     order to support async event channels.
+  2    16*                                                   END HISTORY COMMENTS */
+  2    17 
+  2    18 
+  2    19 /* format: style3 */
+  2    20 
+  2    21 
+  2    22 /* Definition of the Event Channel Table (ECT) header */
+  2    23 
+  2    24 dcl	1 ect_header	aligned based (ect_ptr),
+  2    25 	  2 ect_areap	ptr,			/* pointer to area in which ECT entries are allocated */
+  2    26 	  2 ect_area_size	fixed bin (19),		/* number of words in ECT area */
+  2    27 	  2 count		(-1:5) fixed bin,		/* totals of entries allocated */
+  2    28 						/* -1 = waiting control points */
+  2    29 						/* 0 = total entries, 1 = wait channels */
+  2    30 						/* 2 = call channels, 3 = call channel messages */
+  2    31 						/* 4 = ITT messages, 5 = wait channel messages */
+  2    32 	  2 entry_list_ptrs (5),			/* head and tail of lists in ECT */
+  2    33 						/* 1 = wait channels, 2 = call channels */
+  2    34 						/* 3 = call channel messages, 4 = ITT messages */
+  2    35 						/* 5 = wait channel messages */
+  2    36 	    3 firstp	ptr,			/* head of list */
+  2    37 	    3 lastp	ptr,			/* tail of list */
+  2    38 	  2 meters,
+  2    39 	    3 total_wakeups fixed bin (33),		/* total wakeups sent on all channels */
+  2    40 	    3 total_wait_wakeups
+  2    41 			fixed bin (33),		/* wakeups sent on wait channels */
+  2    42 	    3 total_call_wakeups
+  2    43 			fixed bin (33),		/* wakeups sent on call channels */
+  2    44 	    3 ittes_tossed	fixed bin (33),		/* number invalid ITT messages received, ignored */
+  2    45 	  2 seed		fixed bin (33),		/* used to generate uid portion of channel name */
+  2    46 	  2 flags,
+  2    47 	    3 call_priority bit (1) unal,		/* = "0"b if wait chns have priority - default */
+  2    48 						/* = "1"b if call chans have priority */
+  2    49 	    3 wakeup_control_points			/** ON => we must wakeup other control points before */
+  2    50 			bit (1) unaligned,		/* ... processing any event messages */
+  2    51 	    3 unused1	bit (16) unaligned,
+  2    52 	    3 mask_call_count
+  2    53 			fixed bin (17) unal,	/* number times event call chans masked */
+  2    54 	  2 ecit_ptr	ptr,			/* pointer to the ECIT */
+  2    55 	  2 ecit_lth	fixed bin (17),		/* length of the ECIT (see below) */
+  2    56 	  2 r_offset	fixed bin (18),		/* operand used to encode/decode channel names */
+  2    57 	  2 r_factor	fixed bin (35),		/* operand used to encode/decode channel names */
+  2    58 	  2 last_fast_channel_events			/** prior fast channel settings */
+  2    59 			bit (36) aligned;
+  2    60 
+  2    61 dcl	ect_ptr		pointer;
+  2    62 
+  2    63 dcl	TOTAL		fixed bin (8) static options (constant) init (0);
+  2    64 dcl	WAIT		fixed bin (8) static options (constant) init (1);
+  2    65 dcl	CALL		fixed bin (8) static options (constant) init (2);
+  2    66 dcl	EV_CALL_MESSAGE	fixed bin (8) static options (constant) init (3);
+  2    67 dcl	ITT_MESSAGE	fixed bin (8) static options (constant) init (4);
+  2    68 dcl	EV_WAIT_MESSAGE	fixed bin (8) static options (constant) init (5);
+  2    69 dcl	WAITING_CP	fixed bin (8) static options (constant) init (-1);
+  2    70 						/* used to index count and entry_list_ptrs arrays */
+  2    71 
+  2    72 
+  2    73 /* Definition of the Event Channel Index Table (ECIT) -- Given an event channel
+  2    74*   name, ipc_validate_$decode_event_channel_name will yield an index into this
+  2    75*   table which contains a pointer to the definition of the channel (its ECT) */
+  2    76 
+  2    77 dcl	1 ecit		aligned based (ecit_ptr),
+  2    78 	  2 ecte_ptr	(ecit_lth) pointer unaligned;
+  2    79 
+  2    80 dcl	ecit_ptr		pointer;
+  2    81 dcl	ecit_lth		fixed binary (17);
+  2    82 
+  2    83 
+  2    84 /* Definition of an event wait channel */
+  2    85 
+  2    86 dcl	1 wait_channel	aligned based (ectep),
+  2    87 	  2 word_0,
+  2    88 	    3 unused1	fixed bin (17) unal,
+  2    89 	    3 flags	unal,
+  2    90 	      4 async_call	bit (1) unal,		/* Only checked for call channels. */
+  2    91 	      4 pad	bit (8) unal,
+  2    92 	    3 type	fixed bin (8) unal,		/* = WAIT */
+  2    93 	  2 next_chanp	ptr unal,			/* pointer to next wait channel */
+  2    94 	  2 prev_chanp	ptr unal,			/* pointer to previous wait channel */
+  2    95 	  2 word_3,
+  2    96 	    3 fast_channel	bit (1) unal,		/* ON => this is a fast channel */
+  2    97 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  2    98 	    3 wakeup_control_points			/** ON => wakeup the control points waiting on this channel */
+  2    99 			bit (1) unaligned,
+  2   100 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  2   101 	  2 name		bit (72),			/* event channel name associated with this channel */
+  2   102 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  2   103 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  2   104 	  2 first_wcpp	ptr unal,			/* pointer to first control point waiting on this channel */
+  2   105 	  2 last_wcpp	ptr unal,			/* pointer to last control point waiting on this channel */
+  2   106 	  2 fast_channel_id fixed binary,		/* index into ipc_data_$fast_channel_events */
+  2   107 	  2 unused2	fixed binary;		/* pad to 12 words */
+  2   108 
+  2   109 
+  2   110 /* Definition of an event call channel */
+  2   111 
+  2   112 dcl	1 call_channel	aligned based (ectep),
+  2   113 	  2 word_0,
+  2   114 	    3 priority	fixed bin (17) unal,	/* indicated priority relative to other call chns */
+  2   115 	    3 flags	unal,
+  2   116 	      4 async_call	bit (1) unal,		/* Send IPS "wkp_" on wakeup. */
+  2   117 	      4 pad	bit (8) unal,
+  2   118 	    3 type	fixed bin (8) unal,		/* = CALL */
+  2   119 	  2 next_chanp	ptr unal,			/* pointer to next call channel */
+  2   120 	  2 prev_chanp	ptr unal,			/* pointer to prev call channel */
+  2   121 	  2 word_3,
+  2   122 	    3 call_inhibit	bit (1) unal,		/* = "1"b if call to associated proc in progress */
+  2   123 	    3 inhibit_count fixed bin (16) unal,	/* number of times message reception has been inhibited */
+  2   124 	    3 wakeup_control_points			/** ON => wakeup the control point waiting on this channel */
+  2   125 			bit (1) unaligned,
+  2   126 	    3 wakeup_count	fixed bin (17) unal unsigned, /* number of wakeups received over this channel */
+  2   127 	  2 name		bit (72),			/* event channel name associated with this channel */
+  2   128 	  2 first_ev_msgp	ptr unal,			/* pointer to first message in queue */
+  2   129 	  2 last_ev_msgp	ptr unal,			/* pointer to last message in queue */
+  2   130 	  2 data_ptr	ptr unal,			/* pointer to associated data base */
+  2   131 	  2 procedure_value,			/* procedure to call when message arrives */
+  2   132 	    3 procedure_ptr ptr unal,			/* pointer to entry point */
+  2   133 	    3 environment_ptr
+  2   134 			ptr unal,			/* pointer to stack frame */
+  2   135 	  2 control_point_id			/** ID of control point which "owns" this channel */
+  2   136 			bit (36) aligned;
+  2   137 
+  2   138 dcl	ectep		pointer;
+  2   139 
+  2   140 
+  2   141 /* Definition of a message for either an event wait or an event call channel */
+  2   142 
+  2   143 dcl	1 event_message	aligned based,
+  2   144 	  2 word_0,
+  2   145 	    3 priority	fixed bin (17) unal,	/* priority of call channel */
+  2   146 	    3 type	fixed bin (17) unal,	/* = EV_CALL_MESSAGE or EV_WAIT_MESSAGE */
+  2   147 	  2 chanp		ptr unal,			/* pointer to associated event channel */
+  2   148 	  2 message_data	like event_message_data aligned,
+  2   149 						/* event message as returned from ipc_$block */
+  2   150 	  2 next_ev_msgp	ptr unal,			/* pointer to next event call/wait channel message */
+  2   151 	  2 prev_ev_msgp	ptr unal,			/* pointer to previous event call/wait channel message */
+  2   152 	  2 next_chan_msgp	ptr unal,			/* pointer to next message for this channel */
+  2   153 	  2 prev_chan_msgp	ptr unal;			/* pointer to previous message for this channel */
+  2   154 
+  2   155 
+  2   156 /* Definition of an ITT message as returned from ring 0 */
+  2   157 
+  2   158 dcl	1 itt_message	aligned based,
+  2   159 	  2 word_0,
+  2   160 	    3 unused1	fixed bin (17) unal,
+  2   161 	    3 type	fixed bin (17) unal,
+  2   162 	  2 next_itt_msgp	ptr unal,			/* pointer to next itt message entry in ECT currently */
+  2   163 	  2 message_data	like event_message_data aligned,
+  2   164 	  2 unused2	(4) fixed bin;		/* pad to 12 words */
+  2   165 
+  2   166 
+  2   167 /* Definition of an event message as returned from ring 0 */
+  2   168 
+  2   169 dcl	1 event_message_data
+  2   170 			aligned based,
+  2   171 	  2 channel_id	fixed bin (71),		/* event channel name */
+  2   172 	  2 message	fixed bin (71),		/* 72 bit message associated with wakeup */
+  2   173 	  2 sender	bit (36),			/* process ID of sender */
+  2   174 	  2 origin,
+  2   175 	    3 dev_signal	bit (18) unal,		/* "1"b if device signal */
+  2   176 						/* "0"b if user event */
+  2   177 	    3 ring	fixed bin (17) unal;	/* ring of sending process */
+  2   178 
+  2   179 
+  2   180 /* Definition of a control point which is blocked on a channel */
+  2   181 
+  2   182 dcl	1 waiting_control_point
+  2   183 			aligned based (wcpp),
+  2   184 	  2 word_0,
+  2   185 	    3 block_count	fixed binary (17) unaligned,	/* # of in-progress ipc_$block calls by this control point */
+  2   186 	    3 type	fixed binary (17) unaligned,	/* = WAITING_CP */
+  2   187 	  2 control_point_id			/** ID of the waiting control point */
+  2   188 			bit (36) aligned,
+  2   189 	  2 chain,
+  2   190 	    3 next_wcpp	pointer,			/* pointer to previous waiting control point */
+  2   191 	    3 prev_wcpp	pointer,			/* pointer to next waiting control point */
+  2   192 	  2 unused	(6) bit (36) aligned;	/* pad to 12 words */
+  2   193 
+  2   194 dcl	wcpp		pointer;
+  2   195 
+  2   196 /* 	END INCLUDE file ... ect_structures.incl.pl1 */
+      610 
+      611  /* Begin include file event_channel_name.incl.pl1 */
+  3     2 
+  3     3 /* format: style4 */
+  3     4 
+  3     5 /* Written 1984-11-02 by E. Swenson */
+  3     6 
+  3     7 
+  3     8 /****^  HISTORY COMMENTS:
+  3     9*  1) change(86-08-09,Kissel), approve(86-08-12,MCR7479),
+  3    10*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  3    11*     Added constants for the flag values and declared a structure to describe
+  3    12*     the encoded_index after it is decoded.  This include file has also been
+  3    13*     converted to ALM for use by pxss.
+  3    14*                                                   END HISTORY COMMENTS */
+  3    15 
+  3    16 
+  3    17 dcl  1 event_channel_name structure aligned based,
+  3    18        2 encoded_index bit (18) unaligned,
+  3    19        2 verifier bit (18) unaligned,
+  3    20        2 ring fixed bin (3) unsigned unaligned,
+  3    21        2 type bit (1) unaligned,			/* "1"b for regular, "0"b for fast */
+  3    22        2 mbz bit (14) unaligned,
+  3    23        2 unique_id fixed bin (18) unsigned unaligned;
+  3    24 
+  3    25 dcl  FAST_CHANNEL_TYPE bit (1) aligned initial ("0"b) internal static options (constant);
+  3    26 dcl  REGULAR_CHANNEL_TYPE bit (1) aligned initial ("1"b) internal static options (constant);
+  3    27 
+  3    28 dcl  NORMAL_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("000"b);
+  3    29 dcl  SEND_IPS_WKP_CHANNEL_FLAGS bit (3) aligned internal static options (constant) init ("001"b);
+  3    30 
+  3    31 /* Structure for use after the encoded_index in the event_channel_name has been decoded. */
+  3    32 
+  3    33 dcl  1 decoded_index structure aligned based,
+  3    34        2 flags bit (3) unaligned,
+  3    35        2 index fixed bin (15) unsigned unaligned;
+  3    36 
+  3    37 dcl  ENCODED_INDEX_CONSTANT fixed bin (35) internal static options (constant) init (262144);
+  3    38 
+  3    39 /* End include file event_channel_name.incl.pl1 */
+      611 
+      612  /* 	BEGIN INCLUDE FILE ... stack_header.incl.pl1 .. 3/72 Bill Silver  */
+  4     2 /*	modified 7/76 by M. Weaver for *system links and more system use of areas */
+  4     3 /*	modified 3/77 by M. Weaver to add rnt_ptr */
+  4     4 /*	Modified April 1983 by C. Hornig for tasking */
+  4     5 
+  4     6 /****^  HISTORY COMMENTS:
+  4     7*  1) change(86-06-24,DGHowe), approve(86-06-24,MCR7396),
+  4     8*     audit(86-08-05,Schroth), install(86-11-03,MR12.0-1206):
+  4     9*     added the heap_header_ptr definition.
+  4    10*  2) change(86-08-12,Kissel), approve(86-08-12,MCR7473),
+  4    11*     audit(86-10-10,Fawcett), install(86-11-03,MR12.0-1206):
+  4    12*     Modified to support control point management.  These changes were actually
+  4    13*     made in February 1985 by G. Palter.
+  4    14*  3) change(86-10-22,Fawcett), approve(86-10-22,MCR7473),
+  4    15*     audit(86-10-22,Farley), install(86-11-03,MR12.0-1206):
+  4    16*     Remove the old_lot pointer and replace it with cpm_data_ptr. Use the 18
+  4    17*     bit pad after cur_lot_size for the cpm_enabled. This was done to save some
+  4    18*     space int the stack header and change the cpd_ptr unal to cpm_data_ptr
+  4    19*     (ITS pair).
+  4    20*                                                   END HISTORY COMMENTS */
+  4    21 
+  4    22 /* format: style2 */
+  4    23 
+  4    24      dcl	   sb		      ptr;		/* the  main pointer to the stack header */
+  4    25 
+  4    26      dcl	   1 stack_header	      based (sb) aligned,
+  4    27 	     2 pad1	      (4) fixed bin,	/*  (0) also used as arg list by outward_call_handler  */
+  4    28 	     2 cpm_data_ptr	      ptr,		/*  (4)  pointer to control point which owns this stack */
+  4    29 	     2 combined_stat_ptr  ptr,		/*  (6)  pointer to area containing separate static */
+  4    30 	     2 clr_ptr	      ptr,		/*  (8)  pointer to area containing linkage sections */
+  4    31 	     2 max_lot_size	      fixed bin (17) unal,	/*  (10) DU  number of words allowed in lot */
+  4    32 	     2 main_proc_invoked  fixed bin (11) unal,	/*  (10) DL  nonzero if main procedure invoked in run unit */
+  4    33 	     2 have_static_vlas   bit (1) unal,		/*  (10) DL  "1"b if (very) large arrays are being used in static */
+  4    34 	     2 pad4	      bit (2) unal,
+  4    35 	     2 run_unit_depth     fixed bin (2) unal,	/*  (10) DL  number of active run units stacked */
+  4    36 	     2 cur_lot_size	      fixed bin (17) unal,	/*  (11) DU  number of words (entries) in lot */
+  4    37 	     2 cpm_enabled	      bit (18) unal,	/*  (11) DL  non-zero if control point management is enabled */
+  4    38 	     2 system_free_ptr    ptr,		/*  (12)  pointer to system storage area */
+  4    39 	     2 user_free_ptr      ptr,		/*  (14)  pointer to user storage area */
+  4    40 	     2 null_ptr	      ptr,		/*  (16)  */
+  4    41 	     2 stack_begin_ptr    ptr,		/*  (18)  pointer to first stack frame on the stack */
+  4    42 	     2 stack_end_ptr      ptr,		/*  (20)  pointer to next useable stack frame */
+  4    43 	     2 lot_ptr	      ptr,		/*  (22)  pointer to the lot for the current ring */
+  4    44 	     2 signal_ptr	      ptr,		/*  (24)  pointer to signal procedure for current ring */
+  4    45 	     2 bar_mode_sp	      ptr,		/*  (26)  value of sp before entering bar mode */
+  4    46 	     2 pl1_operators_ptr  ptr,		/*  (28)  pointer to pl1_operators_$operator_table */
+  4    47 	     2 call_op_ptr	      ptr,		/*  (30)  pointer to standard call operator */
+  4    48 	     2 push_op_ptr	      ptr,		/*  (32)  pointer to standard push operator */
+  4    49 	     2 return_op_ptr      ptr,		/*  (34)  pointer to standard return operator */
+  4    50 	     2 return_no_pop_op_ptr
+  4    51 			      ptr,		/*  (36)  pointer to standard return / no pop operator */
+  4    52 	     2 entry_op_ptr	      ptr,		/*  (38)  pointer to standard entry operator */
+  4    53 	     2 trans_op_tv_ptr    ptr,		/*  (40)  pointer to translator operator ptrs */
+  4    54 	     2 isot_ptr	      ptr,		/*  (42)  pointer to ISOT */
+  4    55 	     2 sct_ptr	      ptr,		/*  (44)  pointer to System Condition Table */
+  4    56 	     2 unwinder_ptr	      ptr,		/*  (46)  pointer to unwinder for current ring */
+  4    57 	     2 sys_link_info_ptr  ptr,		/*  (48)  pointer to *system link name table */
+  4    58 	     2 rnt_ptr	      ptr,		/*  (50)  pointer to Reference Name Table */
+  4    59 	     2 ect_ptr	      ptr,		/*  (52)  pointer to event channel table */
+  4    60 	     2 assign_linkage_ptr ptr,		/*  (54)  pointer to storage for (obsolete) hcs_$assign_linkage */
+  4    61 	     2 heap_header_ptr     ptr,		/*  (56)  pointer to the heap header for this ring */
+  4    62 	     2 trace,
+  4    63 	       3 frames,
+  4    64 	         4 count	      fixed bin,		/*  (58)  number of trace frames */
+  4    65 	         4 top_ptr	      ptr unal,		/*  (59)  pointer to last trace frame */
+  4    66 	       3 in_trace	      bit (36) aligned,	/*  (60)  trace antirecursion flag */
+  4    67 	     2 pad2	      bit (36),		/*  (61) */
+  4    68                2 pad5	      pointer;		/*  (62)  pointer to future stuff */
+  4    69 
+  4    70 /*	The following offset refers to a table within the  pl1  operator table.  */
+  4    71 
+  4    72      dcl	   tv_offset	      fixed bin init (361) internal static;
+  4    73 						/* (551) octal */
+  4    74 
+  4    75 
+  4    76 /*	The following constants are offsets within this transfer vector table.  */
+  4    77 
+  4    78      dcl	   (
+  4    79 	   call_offset	      fixed bin init (271),
+  4    80 	   push_offset	      fixed bin init (272),
+  4    81 	   return_offset	      fixed bin init (273),
+  4    82 	   return_no_pop_offset   fixed bin init (274),
+  4    83 	   entry_offset	      fixed bin init (275)
+  4    84 	   )		      internal static;
+  4    85 
+  4    86 
+  4    87 
+  4    88 
+  4    89 
+  4    90 /*	The following declaration  is an overlay of the whole stack header.   Procedures which
+  4    91*	move the whole stack header should use this overlay.
+  4    92**/
+  4    93 
+  4    94      dcl	   stack_header_overlay   (size (stack_header)) fixed bin based (sb);
+  4    95 
+  4    96 
+  4    97 
+  4    98 /* 	END INCLUDE FILE ... stack_header.incl.pl1 */
+      612 
+      613 /* format: on */
+      614      end ipc_util_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.3  ipc_util_.pl1                     >spec>install>1110>ipc_util_.pl1
+609          1    06/11/76  1043.4  area_info.incl.pl1                >ldd>include>area_info.incl.pl1
+610          2    11/07/86  1550.3  ect_structures.incl.pl1           >ldd>include>ect_structures.incl.pl1
+611          3    11/07/86  1550.3  event_channel_name.incl.pl1       >ldd>include>event_channel_name.incl.pl1
+612          4    11/07/86  1550.3  stack_header.incl.pl1             >ldd>include>stack_header.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ALLOW_FAST_CHANNELS                    constant        bit(1)                   initial dcl 71 set ref 277*
+AREA_OVERHEAD                          constant        fixed bin(17,0)          initial dcl 61 ref 597
+BLOCK_OVERHEAD                         constant        fixed bin(17,0)          initial dcl 63 ref 597 597
+CALL                                   constant        fixed bin(8,0)           initial dcl 2-65 ref 202 239 323
+DEFAULT_N_ECT_ENTRIES           000001 constant        fixed bin(17,0)          initial dcl 65 set ref 365* 597 597 597
+DO_NOT_ALLOW_FAST_CHANNELS             constant        bit(1)                   initial dcl 72 set ref 292*
+EV_CALL_MESSAGE                        constant        fixed bin(8,0)           initial dcl 2-66 ref 323
+EV_WAIT_MESSAGE                        constant        fixed bin(8,0)           initial dcl 2-68 ref 323
+FAST_CHANNEL_TYPE                      constant        bit(1)                   initial dcl 3-25 ref 528 546 548
+INITIAL_SEED                           constant        fixed bin(33,0)          initial dcl 68 ref 361
+ITT_MESSAGE                            constant        fixed bin(8,0)           initial dcl 2-67 ref 323
+NORMAL_CHANNEL_FLAGS                   constant        bit(3)                   initial dcl 3-28 ref 514
+ON                              000000 constant        bit(1)                   initial dcl 69 ref 345 346 347
+P_code                                 parameter       fixed bin(35,0)          dcl 273 set ref 261 280 503* 510* 518* 524* 550*
+P_ectep                                parameter       pointer                  dcl 465 in procedure "GET_ECIT_IDX" ref 459 475
+P_ectep                                parameter       pointer                  dcl 271 in procedure "ipc_util_" set ref 261 280
+                                                                                  502* 554*
+P_event_channel_name                   parameter       fixed bin(71,0)          dcl 269 ref 261 280 505
+P_fast_channel                         parameter       bit(1)                   dcl 272 set ref 261 546*
+SEND_IPS_WKP_CHANNEL_FLAGS             constant        bit(3)                   initial dcl 3-29 ref 514
+TOTAL                                  constant        fixed bin(8,0)           initial dcl 2-63 ref 213 213 251 251 323
+WAIT                                   constant        fixed bin(8,0)           initial dcl 2-64 ref 202 239 323
+WAITING_CP                      001430 constant        fixed bin(8,0)           initial dcl 2-69 ref 214 214 214 249 249 249 323
+a_code                                 parameter       fixed bin(35,0)          dcl 147 set ref 140 151* 155*
+a_ecit_idx                             parameter       fixed bin(15,0)          dcl 181 set ref 165 218*
+a_ect_ptr                              parameter       pointer                  dcl 133 set ref 126 137* 165 221 582
+a_ectep                                parameter       pointer                  dcl 179 set ref 165 217* 221 230 258*
+a_status_code                          parameter       fixed bin(35,0)          dcl 302 ref 295 311
+a_type                                 parameter       fixed bin(8,0)           dcl 180 ref 165 185
+addr                                                   builtin function         dcl 114 ref 313 313 348 348
+allow_fast_channels                    parameter       bit(1)                   dcl 491 ref 485 546
+area                            000134 stack reference condition                dcl 110 ref 135 159 194 275 290
+area_control                           based           structure                level 1 dcl 1-20
+area_info                              based           structure                level 1 dcl 1-7
+area_info_version_1                    constant        fixed bin(17,0)          initial dcl 1-3 ref 340
+areap                    16     000106 automatic       pointer                  level 2 dcl 51 set ref 343* 352
+binary                                                 builtin function         dcl 115 ref 476
+code                            000175 automatic       fixed bin(35,0)          dcl 337 in procedure "initialize_ect" set ref 348*
+                                                                                  349 349* 387* 388 388*
+code                            000252 automatic       fixed bin(35,0)          dcl 493 in procedure "VERIFY_CHANNEL" set ref 506*
+                                                                                  508 510
+control                   1     000106 automatic       structure                level 2 dcl 51 set ref 344*
+count                     3            based           fixed bin(17,0)          array level 2 dcl 2-24 set ref 213* 213 214* 214
+                                                                                  249* 249 251* 251 323 323 323 323 323 323 323
+define_area_                    000010 constant        entry                    external dcl 77 ref 348
+ecit                                   based           structure                level 1 dcl 2-77 set ref 409
+ecit_idx                        000216 automatic       fixed bin(15,0)          unsigned dcl 423 in procedure "FIND_ECIT_ENTRY" set
+                                                                                  ref 431* 432 432* 449* 450 450*
+ecit_idx                        000236 automatic       fixed bin(15,0)          unsigned dcl 467 in procedure "GET_ECIT_IDX" set ref
+                                                                                  479* 480 480* 482
+ecit_idx                        000100 automatic       fixed bin(15,0)          unsigned dcl 47 in procedure "ipc_util_" set ref
+                                                                                  201* 204* 205 209 218 241* 242 245
+ecit_idx                        000253 automatic       fixed bin(15,0)          unsigned dcl 494 in procedure "VERIFY_CHANNEL" set
+                                                                                  ref 532* 534 537
+ecit_lth                        000150 automatic       fixed bin(17,0)          dcl 2-81 in procedure "ipc_util_" set ref 367 405*
+                                                                                  409 410 431 441 443 445 534 570* 584*
+ecit_lth                 46            based           fixed bin(17,0)          level 2 in structure "ect_header" dcl 2-24
+                                                                                  in procedure "ipc_util_" set ref 367* 445* 480 570
+                                                                                  584
+ecit_ptr                        000146 automatic       pointer                  dcl 2-80 in procedure "ipc_util_" set ref 209 245
+                                                                                  366 404* 409* 410 432 440 444 450 537 569* 583*
+ecit_ptr                 44            based           pointer                  level 2 in structure "ect_header" dcl 2-24
+                                                                                  in procedure "ipc_util_" set ref 366* 444* 569 583
+ect_area                               based           area                     dcl 56 set ref 195 356 409 602 602*
+ect_area_ptr                    000102 automatic       pointer                  dcl 48 set ref 157* 343 352* 356 360 602*
+ect_area_size                   000104 automatic       fixed bin(19,0)          dcl 49 in procedure "ipc_util_" set ref 156* 193*
+                                                                                  342 359 597* 602 602
+ect_area_size             2            based           fixed bin(19,0)          level 2 in structure "ect_header" dcl 2-24
+                                                                                  in procedure "ipc_util_" set ref 193 359*
+ect_areap                              based           pointer                  level 2 dcl 2-24 set ref 195 360* 409
+ect_header                             based           structure                level 1 dcl 2-24 set ref 356 357* 597
+ect_ptr                         000144 automatic       pointer                  dcl 2-61 in procedure "ipc_util_" set ref 137 193
+                                                                                  195 213 213 214 214 249 249 251 251 323 323 323
+                                                                                  323 323 323 323 356* 357 358 358 359 360 361 366
+                                                                                  367 375 375 379 409 444 445 477 480 506 506 566*
+                                                                                  567 569 570 582* 583 584 597
+ect_ptr                  64            based           pointer                  level 2 in structure "stack_header" dcl 4-26
+                                                                                  in procedure "ipc_util_" set ref 149 379* 566
+ecte_ptr                               based           pointer                  array level 2 in structure "old_ecit" packed packed
+                                                                                  unaligned dcl 428 in procedure "FIND_ECIT_ENTRY"
+                                                                                  ref 450
+ecte_ptr                               based           pointer                  array level 2 in structure "ecit" packed packed
+                                                                                  unaligned dcl 2-77 in procedure "ipc_util_" set
+                                                                                  ref 209* 245* 410* 432 450* 537
+ectep                           000152 automatic       pointer                  dcl 2-138 set ref 195* 196 197 209 217 230* 231 241*
+                                                                                  254 537* 538 541 554 597
+empty                                                  builtin function         dcl 116 ref 602
+encoded_index                   000234 automatic       bit(18)                  level 2 in structure "ev_chn_name" packed packed
+                                                                                  unaligned dcl 466 in procedure "GET_ECIT_IDX" set
+                                                                                  ref 476
+encoded_index                   000243 automatic       structure                level 1 dcl 471 in procedure "GET_ECIT_IDX" set ref
+                                                                                  478*
+encoded_index_binary            000242 automatic       fixed bin(18,0)          unsigned dcl 469 set ref 477* 478
+entry_list_ptrs          12            based           structure                array level 2 dcl 2-24
+entry_type                      000105 automatic       fixed bin(8,0)           dcl 50 set ref 185* 197 202 202 214 231* 239 239 249
+error_table_$ect_already_initialized
+                                000024 external static fixed bin(35,0)          dcl 91 ref 151
+error_table_$ect_full           000026 external static fixed bin(35,0)          dcl 93 set ref 135* 159* 194* 205* 275* 290*
+error_table_$inconsistent_ect   000030 external static fixed bin(35,0)          dcl 95 set ref 242* 323*
+error_table_$invalid_channel    000032 external static fixed bin(35,0)          dcl 97 ref 518
+error_table_$special_channel    000034 external static fixed bin(35,0)          dcl 99 ref 550
+error_table_$wrong_channel_ring 000036 external static fixed bin(35,0)          dcl 101 ref 524
+ev_chn_flags                    000254 automatic       bit(3)                   dcl 495 set ref 506* 514 514
+ev_chn_index                    000255 automatic       fixed bin(15,0)          dcl 496 set ref 506* 532
+ev_chn_name                     000234 automatic       structure                level 1 dcl 466 set ref 475*
+ev_chn_ring                     000256 automatic       fixed bin(3,0)           dcl 497 set ref 506* 522
+ev_chn_type                     000257 automatic       bit(1)                   dcl 498 set ref 506* 528 546 548
+ev_chn_unique_id                000174 automatic       fixed bin(18,0)          dcl 336 in procedure "initialize_ect" set ref 386*
+                                                                                  387*
+ev_chn_unique_id                000260 automatic       fixed bin(18,0)          dcl 499 in procedure "VERIFY_CHANNEL" set ref 506*
+                                                                                  528
+event_channel_name              000262 automatic       fixed bin(71,0)          dcl 500 in procedure "VERIFY_CHANNEL" set ref 505*
+                                                                                  506* 541
+event_channel_name                     based           structure                level 1 dcl 3-17 in procedure "ipc_util_"
+event_message_data                     based           structure                level 1 dcl 2-169
+extend                    1     000106 automatic       bit(1)                   level 3 packed packed unaligned dcl 51 set ref 345*
+fatal_code                1     000142 automatic       fixed bin(35,0)          level 2 dcl 304 set ref 311*
+firstp                   12            based           pointer                  array level 3 dcl 2-24 set ref 358*
+get_ring_                       000012 constant        entry                    external dcl 78 ref 522
+get_system_free_area_           000014 constant        entry                    external dcl 79 ref 594
+hcs_$get_ipc_operands           000016 constant        entry                    external dcl 81 ref 375
+index                     0(03) 000243 automatic       fixed bin(15,0)          level 2 packed packed unsigned unaligned dcl 471 set
+                                                                                  ref 479
+info_for_area                   000106 automatic       structure                level 1 dcl 51 set ref 348 348
+ipc_data_$fast_channel_events   000040 external static bit(36)                  dcl 103 ref 386 528
+ipc_real_$create_fast_ev_chn    000020 constant        entry                    external dcl 83 ref 387
+ipc_validate_$decode_event_channel_name
+                                000022 constant        entry                    external dcl 85 ref 506
+lastp                    14            based           pointer                  array level 3 dcl 2-24 set ref 358*
+length                                                 builtin function         dcl 117 ref 386 528
+mod                                                    builtin function         dcl 118 ref 477
+name                      4            based           bit(72)                  level 2 dcl 2-86 set ref 475 541
+null                                                   builtin function         dcl 119 ref 149 157 245 258 358 404 410 432 502 538
+                                                                                  567
+old_ecit                               based           structure                level 1 dcl 428 ref 453
+old_ecit_lth                    000222 automatic       fixed bin(17,0)          dcl 426 set ref 441* 449 453 455
+old_ecit_ptr                    000220 automatic       pointer                  dcl 425 set ref 440* 450 453
+owner                     2     000106 automatic       char(32)                 level 2 packed packed unaligned dcl 51 set ref 341*
+r_factor                 50            based           fixed bin(35,0)          level 2 dcl 2-24 set ref 375* 506*
+r_offset                 47            based           fixed bin(18,0)          level 2 dcl 2-24 set ref 375* 477 506*
+seed                     42            based           fixed bin(33,0)          level 2 dcl 2-24 set ref 361*
+size                                   parameter       fixed bin(17,0)          dcl 402 in procedure "ALLOCATE_ECIT" ref 396 405
+size                     13     000106 automatic       fixed bin(18,0)          level 2 in structure "info_for_area" dcl 51
+                                                                                  in procedure "ipc_util_" set ref 342*
+size                                                   builtin function         dcl 120 in procedure "ipc_util_" ref 597 597
+stack_header                           based           structure                level 1 dcl 4-26
+stackbaseptr                                           builtin function         dcl 121 ref 149 379 566
+string                                                 builtin function         dcl 122 set ref 344*
+substr                                                 builtin function         dcl 123 ref 478
+sys_info$max_seg_size           000042 external static fixed bin(19,0)          dcl 105 ref 156
+system                    1(05) 000106 automatic       bit(1)                   level 3 packed packed unaligned dcl 51 set ref 347*
+system_area                            based           area(1024)               dcl 57 ref 602
+system_area_ptr                 000132 automatic       pointer                  dcl 52 set ref 594* 602
+temp                            000240 automatic       fixed bin(71,0)          dcl 468 set ref 476* 477
+term_structure                  000142 automatic       structure                level 1 dcl 304 set ref 313 313
+terminate_process_              000044 constant        entry                    external dcl 308 ref 313
+type                      0(27)        based           fixed bin(8,0)           level 3 packed packed unaligned dcl 2-86 set ref
+                                                                                  197* 231
+unspec                                                 builtin function         dcl 124 set ref 196* 357* 475* 475 478* 478 541
+version                         000142 automatic       fixed bin(17,0)          level 2 in structure "term_structure" dcl 304
+                                                                                  in procedure "ipc_util_" set ref 310*
+version                         000106 automatic       fixed bin(17,0)          level 2 in structure "info_for_area" dcl 51
+                                                                                  in procedure "ipc_util_" set ref 340*
+wait_channel                           based           structure                level 1 dcl 2-86 set ref 195 196* 254 597
+word_0                                 based           structure                level 2 dcl 2-86
+zero_on_free              1(02) 000106 automatic       bit(1)                   level 3 packed packed unaligned dcl 51 set ref 346*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ENCODED_INDEX_CONSTANT                 internal static fixed bin(35,0)          initial dcl 3-37
+NO                                     internal static bit(1)                   initial dcl 70
+REGULAR_CHANNEL_TYPE                   internal static bit(1)                   initial dcl 3-26
+area_infop                             automatic       pointer                  dcl 1-5
+call_channel                           based           structure                level 1 dcl 2-112
+call_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+code                                   automatic       fixed bin(35,0)          dcl 46
+decoded_index                          based           structure                level 1 dcl 3-33
+entry_offset                           internal static fixed bin(17,0)          initial dcl 4-78
+event_message                          based           structure                level 1 dcl 2-143
+itt_message                            based           structure                level 1 dcl 2-158
+push_offset                            internal static fixed bin(17,0)          initial dcl 4-78
+return_no_pop_offset                   internal static fixed bin(17,0)          initial dcl 4-78
+return_offset                          internal static fixed bin(17,0)          initial dcl 4-78
+sb                                     automatic       pointer                  dcl 4-24
+stack_header_overlay                   based           fixed bin(17,0)          array dcl 4-94
+tv_offset                              internal static fixed bin(17,0)          initial dcl 4-72
+waiting_control_point                  based           structure                level 1 dcl 2-182
+wcpp                                   automatic       pointer                  dcl 2-194
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ALLOCATE_ECIT                   000761 constant        entry                    internal dcl 396 ref 365 443
+CREATE_ECT                      001337 constant        entry                    internal dcl 588 ref 136 567
+FIND_ECIT_ENTRY                 001011 constant        entry                    internal dcl 415 ref 204
+FIND_ECTP                       001305 constant        entry                    internal dcl 560 ref 276 291
+GET_ECIT_IDX                    001077 constant        entry                    internal dcl 459 ref 241
+INVALID_CHANNEL                 001212 constant        label                    dcl 514 ref 528 534 538 541
+SETUP                           001325 constant        entry                    internal dcl 575 ref 183 229
+VERIFY_CHANNEL                  001140 constant        entry                    internal dcl 485 ref 277 292
+check_ect_consistency           000537 constant        entry                    internal dcl 317 ref 189 256
+create_ect                      000037 constant        entry                    external dcl 126
+create_single_seg_ect           000077 constant        entry                    external dcl 140
+delete_entry                    000304 constant        entry                    external dcl 221
+ect_error_handler               000502 constant        entry                    external dcl 295 ref 135 159 194 205 242 275 290 323
+                                                                                  349 388
+initialize_ect                  000570 constant        entry                    internal dcl 330 ref 161 604
+ipc_util_                       000026 constant        entry                    external dcl 40
+make_entry                      000160 constant        entry                    external dcl 165
+verify_channel                  000376 constant        entry                    external dcl 261
+verify_regular_channel          000441 constant        entry                    external dcl 280
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2002        2050    1432        2012
+Length      2354    1432        46         267     350           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+ipc_util_                           255 external procedure  is an external procedure.  
+on unit on line 135                  68 on unit               
+on unit on line 159                  68 on unit               
+on unit on line 194                  68 on unit               
+on unit on line 275                  68 on unit               
+on unit on line 290                  68 on unit               
+check_ect_consistency                   internal procedure  shares stack frame of external procedure ipc_util_.  
+initialize_ect                          internal procedure  shares stack frame of external procedure ipc_util_.  
+ALLOCATE_ECIT                           internal procedure  shares stack frame of external procedure ipc_util_.  
+FIND_ECIT_ENTRY                         internal procedure  shares stack frame of external procedure ipc_util_.  
+GET_ECIT_IDX                            internal procedure  shares stack frame of external procedure ipc_util_.  
+VERIFY_CHANNEL                          internal procedure  shares stack frame of external procedure ipc_util_.  
+FIND_ECTP                               internal procedure  shares stack frame of external procedure ipc_util_.  
+SETUP                                   internal procedure  shares stack frame of external procedure ipc_util_.  
+CREATE_ECT                              internal procedure  shares stack frame of external procedure ipc_util_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+ipc_util_                000100 ecit_idx                    ipc_util_
+                         000102 ect_area_ptr                ipc_util_
+                         000104 ect_area_size               ipc_util_
+                         000105 entry_type                  ipc_util_
+                         000106 info_for_area               ipc_util_
+                         000132 system_area_ptr             ipc_util_
+                         000142 term_structure              ipc_util_
+                         000144 ect_ptr                     ipc_util_
+                         000146 ecit_ptr                    ipc_util_
+                         000150 ecit_lth                    ipc_util_
+                         000152 ectep                       ipc_util_
+                         000174 ev_chn_unique_id            initialize_ect
+                         000175 code                        initialize_ect
+                         000216 ecit_idx                    FIND_ECIT_ENTRY
+                         000220 old_ecit_ptr                FIND_ECIT_ENTRY
+                         000222 old_ecit_lth                FIND_ECIT_ENTRY
+                         000234 ev_chn_name                 GET_ECIT_IDX
+                         000236 ecit_idx                    GET_ECIT_IDX
+                         000240 temp                        GET_ECIT_IDX
+                         000242 encoded_index_binary        GET_ECIT_IDX
+                         000243 encoded_index               GET_ECIT_IDX
+                         000252 code                        VERIFY_CHANNEL
+                         000253 ecit_idx                    VERIFY_CHANNEL
+                         000254 ev_chn_flags                VERIFY_CHANNEL
+                         000255 ev_chn_index                VERIFY_CHANNEL
+                         000256 ev_chn_ring                 VERIFY_CHANNEL
+                         000257 ev_chn_type                 VERIFY_CHANNEL
+                         000260 ev_chn_unique_id            VERIFY_CHANNEL
+                         000262 event_channel_name          VERIFY_CHANNEL
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_in         call_ext_out_desc   call_ext_out        return_mac          mdfx3
+enable_op           ext_entry           int_entry           op_alloc_           op_freen_           op_empty_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+define_area_                  get_ring_                     get_system_free_area_         hcs_$get_ipc_operands
+ipc_real_$create_fast_ev_chn  ipc_validate_$decode_event_channel_name                     terminate_process_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$ect_already_initialized                        error_table_$ect_full         error_table_$inconsistent_ect
+error_table_$invalid_channel  error_table_$special_channel  error_table_$wrong_channel_ring
+ipc_data_$fast_channel_events sys_info$max_seg_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     40 000025        42 000033       126 000034       135 000044       136 000067       137 000070       138 000073
+    140 000074       149 000104       151 000112       152 000116       155 000117       156 000121       157 000124
+    159 000126       161 000151       163 000152       165 000153       183 000170       185 000171       189 000174
+    193 000175       194 000200       195 000223       196 000231       197 000234       201 000236       202 000237
+    204 000243       205 000245       209 000256       213 000262       214 000265       217 000272       218 000274
+    219 000277       221 000300       229 000314       230 000315       231 000320       239 000324       241 000330
+    242 000332       245 000344       249 000350       251 000357       254 000363       256 000365       258 000366
+    259 000370       261 000371       275 000406       276 000431       277 000432       278 000434       280 000435
+    290 000451       291 000474       292 000475       293 000477       295 000500       310 000507       311 000510
+    313 000513       315 000536       317 000537       323 000540       328 000567       330 000570       340 000571
+    341 000573       342 000576       343 000600       344 000602       345 000603       346 000605       347 000607
+    348 000611       349 000624       352 000634       356 000636       357 000643       358 000646       359 000677
+    360 000701       361 000703       365 000705       366 000707       367 000712       375 000714       379 000725
+    386 000730       387 000735       388 000746       390 000756       392 000760       396 000761       404 000763
+    405 000765       409 000767       410 000775       411 001010       415 001011       431 001013       432 001023
+    434 001033       440 001035       441 001037       443 001041       444 001045       445 001050       449 001052
+    450 001061       451 001066       453 001070       455 001072       459 001077       475 001101       476 001106
+    477 001113       478 001122       479 001125       480 001131       482 001134       485 001140       502 001142
+    503 001145       505 001146       506 001150       508 001200       510 001202       511 001203       514 001204
+    518 001212       519 001215       522 001216       524 001230       525 001233       528 001234       532 001242
+    534 001244       537 001246       538 001251       541 001255       546 001261       548 001273       550 001276
+    551 001301       554 001302       556 001304       560 001305       566 001306       567 001311       569 001316
+    570 001321       571 001324       575 001325       582 001326       583 001332       584 001334       585 001336
+    588 001337       594 001340       597 001347       602 001363       604 001372       605 001373
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

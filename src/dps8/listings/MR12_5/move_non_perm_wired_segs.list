@@ -1,0 +1,979 @@
+	COMPILATION LISTING OF SEGMENT move_non_perm_wired_segs
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0950.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 
+       11 /****^  HISTORY COMMENTS:
+       12*  1) change(86-05-13,GJohnson), approve(86-05-13,MCR7387),
+       13*     audit(86-05-13,Martinson), install(86-05-14,MR12.0-1056):
+       14*     Correct error message documentation.
+       15*                                                   END HISTORY COMMENTS */
+       16 
+       17 
+       18 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+       19 
+       20 move_non_perm_wired_segs:
+       21      procedure;
+       22 
+       23 /* bootload_loader loads collection 1 into an artficially restricted */
+       24 /* memory area, currently the first 512K of absolute addresses. */
+       25 /* In a service environment, this may conflict with the desired */
+       26 /* layout of the low controller -- SST and Core Map high, firmware */
+       27 /* and I/O buffers low. Thus init_segs and to-be-made-paged segs */
+       28 /* are moved into high memory by this program, where bootstrap1 */
+       29 /* used to put them. This program does not work on dseg, or the 
+       30*unpaged page tables, but these won't be moved, anyway. */
+       31 /* BIM 7/82 */
+       32 /* Modified 9/83 by Keith Loepere for paged, wired segment support */
+       33 /* Modified 12/83 by Keith Loepere for breakpoint page support. */
+       34 /* Modified 10/84 by Allen Ball to fix a bad call to syserr. */
+       35 /* Modified 3/85 by Keith Loepere for one more attempt to tell apart the
+       36*   segments that should be moved from those that shouldn't. */
+       37 
+       38 declare  int_unpaged_page_tables$	  ext static;
+       39 declare  unpaged_page_tables$		  ext static;
+       40 declare  slt$			  ext static;
+       41 
+       42 declare  absadr			  entry (ptr, fixed bin (35)) returns (fixed bin (26));
+       43 declare  config_$find		  entry (char (4) aligned, pointer);
+       44 declare  pmut$camp			  entry;
+       45 declare  pmut$swap_sdw		  entry (ptr, ptr);
+       46 declare  ptw_util_$make_core		  entry (ptr, fixed bin (26));
+       47 declare  rsw_util$port_info		  entry (fixed bin (3), bit (1) aligned, fixed bin (17), fixed bin (17), fixed bin (3));
+       48 declare  sdw_util_$construct		  entry (ptr, ptr);
+       49 declare  sdw_util_$dissect		  entry (ptr, ptr);
+       50 declare  sdw_util_$get_address	  entry (ptr, fixed bin (26));
+       51 declare  syserr			  entry options (variable);
+       52 
+       53 declare  top			  fixed bin (18);	/* K words of it */
+       54 declare  new_free_core_size		  fixed bin (26);	/* words of it */
+       55 declare  new_abs_sdw		  fixed bin (71);
+       56 declare  port_base			  fixed bin;
+       57 declare  port_size			  fixed bin;
+       58 declare  port_tag			  fixed bin (3);
+       59 declare  port_enabled		  bit (1) aligned;
+       60 declare  port_interlaced		  fixed bin (3);
+       61 
+       62 declare  (init_segnum, sup_segnum)
+       63 				  fixed bin (18);
+       64 
+       65 declare  sys_boot_info$bootload_mem_size
+       66 				  fixed bin (26) ext static;
+       67 declare  sys_boot_info$contig_mem_size
+       68 				  fixed bin (26) ext static;
+       69 
+       70 declare  ME			  char (32) init ("move_non_perm_wired_segs") int static options (constant);
+       71 
+  1     1 /* BEGIN INCLUDE FILE ... config_mem_card.incl.pl1 ... 11/27/80 W. Olin Sibert */
+  1     2 
+  1     3 dcl  mem_cardp pointer;				/* pointer to MEM card */
+  1     4 
+  1     5 dcl 1 mem_card aligned based (mem_cardp),		/* MEM card declaration */
+  1     6     2 word char (4),				/* "mem" */
+  1     7     2 tag fixed bin (3),				/* One more than module port to which controller is attached */
+  1     8     2 size fixed bin (18),				/* Number of pages in memory controller */
+  1     9     2 state char (4),				/* State: "on" or "off" */
+  1    10 
+  1    11     2 pad (11) bit (36) aligned,			/* Pad to 15 fields */
+  1    12 
+  1    13     2 type_word aligned,
+  1    14       3 field_type (14) bit (2) unaligned,		/* type of each field; see config_deck.incl.pl1 */
+  1    15       3 pad1 bit (4) unaligned,
+  1    16       3 n_fields fixed bin (4) unsigned unaligned;	/* number of fields used on card */
+  1    17 
+  1    18 dcl  MEM_CARD_WORD char (4) aligned internal static options (constant) init ("mem");
+  1    19 
+  1    20 /* END INCLUDE FILE ... config_mem_card.incl.pl1 */
+       72 
+  2     1 /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  2     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  2     3 
+  2     4 dcl  sdw_info_ptr pointer;
+  2     5 
+  2     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  2     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  2     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  2     9 
+  2    10     2 access unaligned,				/* REWP */
+  2    11       3 read bit (1) unaligned,
+  2    12       3 execute bit (1) unaligned,
+  2    13       3 write bit (1) unaligned,
+  2    14       3 privileged bit (1) unaligned,
+  2    15 
+  2    16     2 pad1 bit (32) unaligned,
+  2    17 
+  2    18     2 rings unaligned,				/* Ring brackets */
+  2    19       3 r1 bit (3) unaligned,
+  2    20       3 r2 bit (3) unaligned,
+  2    21       3 r3 bit (3) unaligned,
+  2    22 
+  2    23     2 pad2 bit (27) unaligned,
+  2    24 
+  2    25     2 flags aligned,
+  2    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  2    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  2    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  2    29       3 pad3 bit (33) unaligned,
+  2    30 
+  2    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  2    32 
+  2    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+       73 
+       74 
+       75 declare  upt_absloc			  fixed bin (26);
+       76 declare  iupt_absloc		  fixed bin (26);
+       77 declare  abs_page_table_absloc	  fixed bin (26);
+       78 declare  abs_page_table_ptr		  ptr;
+       79 declare  abs_seg$			  ext static;	/* for referencing new address for copy */
+       80 declare  abs_seg0$			  ext static;	/* for copying paged segments */
+       81 declare  abs_seg_ptr		  pointer;
+       82 declare  old_abs_seg_sdw		  fixed bin (71);
+       83 
+       84 declare  1 abs_si			  aligned like sdw_info;
+       85 declare  1 (init_si, sup_si)		  aligned like sdw_info;
+       86 
+       87 declare  dseg$			  (0:4095) fixed bin (71) ext;
+       88 declare  (addr, baseno, baseptr, bin, null, segno, substr)
+       89 				  builtin;
+       90 
+       91  /* 	BEGIN INCLUDE FILE ... stack_frame.incl.pl1 ... */
+  3     2 
+  3     3 /* format: off */
+  3     4 
+  3     5 /* Modified: 16 Dec 1977, D. Levin - to add fio_ps_ptr and pl1_ps_ptr */
+  3     6 /* Modified:  3 Feb 1978, P. Krupp - to add run_unit_manager bit & main_proc bit */
+  3     7 /* Modified: 21 March 1978, D. Levin - change fio_ps_ptr to support_ptr */
+  3     8 /* Modified: 03/01/84, S. Herbst - Added RETURN_PTR_MASK */
+  3     9 
+  3    10 
+  3    11 /****^  HISTORY COMMENTS:
+  3    12*  1) change(86-09-15,Kissel), approve(86-09-15,MCR7473),
+  3    13*     audit(86-10-01,Fawcett), install(86-11-03,MR12.0-1206):
+  3    14*     Modified to add constants for the translator_id field in the stack_frame
+  3    15*     structure.
+  3    16*                                                   END HISTORY COMMENTS */
+  3    17 
+  3    18 
+  3    19 dcl RETURN_PTR_MASK bit (72) int static options (constant)  /* mask to be AND'd with stack_frame.return_ptr */
+  3    20 	init ("777777777777777777000000"b3);		/* when copying, to ignore bits that a call fills */
+  3    21 						/* with indicators (nonzero for Fortran hexfp caller) */
+  3    22 			/* say: unspec(ptr) = unspec(stack_frame.return_ptr) & RETURN_PTR_MASK; */
+  3    23 
+  3    24 dcl TRANSLATOR_ID_PL1V2 bit (18) internal static options (constant) init ("000000"b3);
+  3    25 dcl TRANSLATOR_ID_ALM bit (18) internal static options (constant) init ("000001"b3);
+  3    26 dcl TRANSLATOR_ID_PL1V1 bit (18) internal static options (constant) init ("000002"b3);
+  3    27 dcl TRANSLATOR_ID_SIGNAL_CALLER bit (18) internal static options (constant) init ("000003"b3);
+  3    28 dcl TRANSLATOR_ID_SIGNALLER bit (18) internal static options (constant) init ("000004"b3);
+  3    29 
+  3    30 
+  3    31 dcl  sp pointer;					/* pointer to beginning of stack frame */
+  3    32 
+  3    33 dcl  stack_frame_min_length fixed bin static init(48);
+  3    34 
+  3    35 
+  3    36 dcl 1 stack_frame based(sp) aligned,
+  3    37     2 pointer_registers(0 : 7) ptr,
+  3    38     2 prev_sp pointer,
+  3    39     2 next_sp pointer,
+  3    40     2 return_ptr pointer,
+  3    41     2 entry_ptr pointer,
+  3    42     2 operator_and_lp_ptr ptr,			/* serves as both */
+  3    43     2 arg_ptr pointer,
+  3    44     2 static_ptr ptr unaligned,
+  3    45     2 support_ptr ptr unal, /* only used by fortran I/O */
+  3    46     2 on_unit_relp1 bit(18) unaligned,
+  3    47     2 on_unit_relp2 bit(18) unaligned,
+  3    48     2 translator_id bit(18) unaligned,			/* Translator ID (see constants above)
+  3    49*						   0 => PL/I version II
+  3    50*						   1 => ALM
+  3    51*						   2 => PL/I version I   
+  3    52*						   3 => signal caller frame
+  3    53*						   4 => signaller frame */
+  3    54     2 operator_return_offset bit(18) unaligned,
+  3    55     2 x(0: 7) bit(18) unaligned,			/* index registers */
+  3    56     2 a bit(36),					/* accumulator */
+  3    57     2 q bit(36),					/* q-register */
+  3    58     2 e bit(36),					/* exponent */
+  3    59     2 timer bit(27) unaligned,				/* timer */
+  3    60     2 pad bit(6) unaligned,
+  3    61     2 ring_alarm_reg bit(3) unaligned;
+  3    62 
+  3    63 
+  3    64 dcl 1 stack_frame_flags based(sp) aligned,
+  3    65     2 pad(0 : 7) bit(72),				/* skip over prs */
+  3    66     2 xx0 bit(22) unal,
+  3    67     2 main_proc bit(1) unal,				/* on if frame belongs to a main procedure */
+  3    68     2 run_unit_manager bit(1) unal,			/* on if frame belongs to run unit manager */
+  3    69     2 signal bit(1) unal,				/* on if frame belongs to logical signal_ */
+  3    70     2 crawl_out bit(1) unal,				/* on if this is a signal caller frame */
+  3    71     2 signaller bit(1) unal,				/* on if next frame is signaller's */
+  3    72     2 link_trap bit(1) unal,				/* on if this frame was made by the linker */
+  3    73     2 support bit(1) unal,				/* on if frame belongs to a support proc */
+  3    74     2 condition bit(1) unal,				/* on if condition established in this frame */
+  3    75     2 xx0a bit(6) unal,
+  3    76     2 xx1 fixed bin,
+  3    77     2 xx2 fixed bin,
+  3    78     2 xx3 bit(25) unal,
+  3    79     2 old_crawl_out bit (1) unal,			/* on if this is a signal caller frame */
+  3    80     2 old_signaller bit(1) unal,			/* on if next frame is signaller's */
+  3    81     2 xx3a bit(9) unaligned,
+  3    82     2 xx4(9) bit(72) aligned,
+  3    83     2 v2_pl1_op_ret_base ptr,				/* When a V2 PL/I program calls an operator the
+  3    84*						*  operator puts a pointer to the base of
+  3    85*						*  the calling procedure here. (text base ptr)  */
+  3    86     2 xx5 bit(72) aligned,
+  3    87     2 pl1_ps_ptr ptr;				/* ptr to ps for this frame; also used by fio. */
+  3    88 
+  3    89 /* format: on */
+  3    90 
+  3    91 /* 	END INCLUDE FILE ... stack_frame.incl.pl1 */
+       91 
+       92  /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  4     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  4     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  4     4 
+  4     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  4     6 
+  4     7 dcl (
+  4     8 
+  4     9 /* The following constants define the message action codes.  This indicates
+  4    10*how a message is to be handled.  */
+  4    11 
+  4    12      SYSERR_CRASH_SYSTEM	init (1),			
+  4    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  4    14 
+  4    15      SYSERR_TERMINATE_PROCESS	init (2),
+  4    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  4    17 
+  4    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  4    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  4    20 
+  4    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  4    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  4    23 
+  4    24      SYSERR_LOG_OR_PRINT	init (4),
+  4    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  4    26 
+  4    27      SYSERR_LOG_OR_DISCARD	init (5),
+  4    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  4    29 
+  4    30 
+  4    31 /* The following constants are added to the normal severities to indicate
+  4    32*different sorting classes of messages.  */
+  4    33 
+  4    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  4    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  4    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  4    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  4    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  4    39 	) fixed bin internal static options (constant);
+  4    40 
+  4    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+       92 
+       93  /* BEGIN INCLUDE FILE slt.incl.pl1 --- Last modified 2/76 SHW */
+  5     2 
+  5     3 /* Declarations for Segment Loading Table header and array.
+  5     4*
+  5     5*   Used by Initialization and MST Checker subroutines */
+  5     6 
+  5     7 dcl sltp ptr,					/* pointer to base of SLT segment */
+  5     8     names_ptr ptr,					/* pointer to base of SLT names segment */
+  5     9     namep ptr,					/* pointer to segment name list block */
+  5    10     pathp ptr,					/* pointer to segment's directory path name */
+  5    11     aclp ptr;					/* pointer to acl structure */
+  5    12 
+  5    13 declare 1 slt based (sltp) aligned,			/* declaration of Segment Loading Table (SLT) */
+  5    14 	2 name_seg_ptr ptr,				/* words 0-1, pointer (ITS pair) to name segment */
+  5    15 	2 free_core_start fixed bin (24),		/* word 2, start of free core after perm-wired */
+  5    16 	2 first_sup_seg fixed bin (18),		/* word 3, first supervisor segment number */
+  5    17 	2 last_sup_seg fixed bin (18), 		/* word 4, last supervisor segment number */
+  5    18 	2 first_init_seg fixed bin (18),		/* word 5, first initializer segment number */
+  5    19 	2 last_init_seg fixed bin (18),		/* word 6, last initializer segment number */
+  5    20 	2 free_core_size fixed bin (24),		/* size (in words) of free core after perm-wired */
+  5    21 	2 seg (0:8191) aligned,			/* segment entries (4 words each) */
+  5    22 	  3 slte (4) fixed bin (35);			/* Space for SLT entries */
+  5    23 
+  5    24 /* auxiliary segment of SLT for storing of segment names and directory path names */
+  5    25 
+  5    26 declare 1 name_seg based (names_ptr) aligned,		/* name segment header */
+  5    27 	2 pad bit (18) unal,
+  5    28 	2 next_loc bit (18) unal,			/* Next available free location in name seg */
+  5    29 	2 ht (0:127) bit (18) aligned;		/* Names hash table */
+  5    30 
+  5    31 declare 1 segnam based (namep) aligned,			/* declaration for segment name block */
+  5    32 	2 count fixed bin (17),			/* number of segment names in this block */
+  5    33 	2 names (50 refer (segnam.count)),		/* segment name array */
+  5    34 	  3 hp bit (18) unal,			/* hash thread pointer */
+  5    35 	  3 ref bit (1) unal,			/* "1"b if name referenced */
+  5    36 	  3 pad bit (5) unal,
+  5    37 	  3 segno bit (12) unal,			/* segment number associated with this name */
+  5    38 	  3 name char (32) unal;			/* space for name (max 32 characters) */
+  5    39 
+  5    40 declare 1 path based (pathp) aligned,			/* declaration for directory path name */
+  5    41 	2 size fixed bin (17),			/* length of pathname */
+  5    42 	2 name char (168 refer (path.size)) unal,	/* directory path name */
+  5    43 	2 acls fixed bin;				/* ACL list starts here */
+  5    44 
+  5    45 declare 1 acls based (aclp) aligned,			/* declaration for acl list */
+  5    46 	2 count fixed bin,				/* number of entries in acl list */
+  5    47 	2 acl (50 refer (acls.count)),		/* array of acl entries */
+  5    48 	  3 userid char (32),			/* user specification */
+  5    49 	  3 mode bit (36) aligned,			/* mode for the specified user */
+  5    50 	  3 pad bit (36) aligned,
+  5    51 	  3 code fixed bin;
+  5    52 
+  5    53 
+  5    54 /* END INCLUDE FILE slt.incl.pl1 */
+       93 
+       94  /* BEGIN INCLUDE FILE slte.incl.pl1 */
+  6     2 /* Declaration for Segment Loading Table Entry structure.
+  6     3*   Used by Initialization, MST Generation, and MST Checker subroutines */
+  6     4 /* modified 5/4/76 by Noel I. Morris	*/
+  6     5 /* last modified 12/12/83 by Keith Loepere for breakpointable */
+  6     6 /* format: style3 */
+  6     7 
+  6     8 dcl	sltep		ptr;
+  6     9 
+  6    10 dcl	1 slte_uns	based (sltep) aligned,
+  6    11 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  6    12 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  6    13 /**** End of word 1 */
+  6    14 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  6    15 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  6    16 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  6    17 	  2 firmware_seg	bit (1),			/* load in low 256 */
+  6    18 	  2 layout_seg	bit (1),			/* mailbox & such */
+  6    19 	  2 breakpointable  bit (1),			/* includes breakpoint_page */
+  6    20 	  2 pad1		bit (3),			/* unused */
+  6    21 	  2 wired		bit (1),			/* segment is wired if ON */
+  6    22 	  2 paged		bit (1),			/* segment is paged if ON */
+  6    23 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  6    24 	  2 pad3		bit (2),
+  6    25 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  6    26 /**** End of 1st half of word 2 */
+  6    27 	  2 pad4		bit (3),
+  6    28 	  2 branch_required bit (1),			/* path name supplied if ON */
+  6    29 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  6    30 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  6    31 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  6    32 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  6    33 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  6    34 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  6    35 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  6    36 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  6    37 /***** End of word 2 */
+  6    38 	  2 pad5		bit (6),
+  6    39 	  2 cur_length	fixed bin (9) uns,		/* current length of segment (in 1024 word blocks) */
+  6    40 	  2 ringbrack	(3) fixed bin (3) uns,	/* ringbrackets */
+  6    41 	  2 segno		fixed bin (18) uns,		/* text/link segment number */
+  6    42 /***** End of word 3 */
+  6    43 	  2 pad7		bit (3),
+  6    44 	  2 max_length	fixed bin (9) uns,		/* maximum length for segment */
+  6    45 	  2 bit_count	fixed bin (24) uns
+  6    46 	  )		unaligned;		/* bitcount of segment */
+  6    47 
+  6    48 dcl	1 slte		based (sltep) aligned,
+  6    49 	( 2 names_ptr	bit (18),			/* rel pointer to thread of names */
+  6    50 	  2 path_ptr	bit (18),			/* rel pointer to pathname (if present) */
+  6    51 	  2 access	bit (4),			/* SDW access bit (REWP) */
+  6    52 	  2 cache		bit (1),			/* Segment to be allowed in cache */
+  6    53 	  2 abs_seg	bit (1),			/* segment is an abs seg if ON */
+  6    54 	  2 firmware_seg    bit (1),
+  6    55 	  2 layout_seg      bit (1),
+  6    56 	  2 breakpointable  bit (1),
+  6    57 	  2 pad2		bit (3),
+  6    58 	  2 wired		bit (1),			/* segment is wired if ON */
+  6    59 	  2 paged		bit (1),			/* segment is paged if ON */
+  6    60 	  2 per_process	bit (1),			/* segment is per-process if ON */
+  6    61 	  2 pad3		bit (2),
+  6    62 	  2 acl_provided	bit (1),			/* ON if acl structure follows path_name on MST */
+  6    63 	  2 pad4		bit (3),
+  6    64 	  2 branch_required bit (1),			/* path name supplied if ON */
+  6    65 	  2 init_seg	bit (1),			/* segment is init_seg if ON */
+  6    66 	  2 temp_seg	bit (1),			/* segment is temp_seg if ON */
+  6    67 	  2 link_provided	bit (1),			/* linkage segment provided if ON */
+  6    68 	  2 link_sect	bit (1),			/* segment is linkage segment if ON */
+  6    69 	  2 link_sect_wired bit (1),			/* linkage segment is wired if ON */
+  6    70 	  2 combine_link	bit (1),			/* linkage is combined if ON */
+  6    71 	  2 pre_linked	bit (1),			/* lot entry has been made if ON */
+  6    72 	  2 defs		bit (1),			/* segment is definitions segment if ON */
+  6    73 	  2 pad5		bit (6),
+  6    74 	  2 cur_length	bit (9),			/* current length of segment (in 1024 word blocks) */
+  6    75 	  2 ringbrack	(3) bit (3),		/* ringbrackets */
+  6    76 	  2 segno		bit (18),			/* text/link segment number */
+  6    77 	  2 pad6		bit (3),
+  6    78 	  2 max_length	bit (9),			/* maximum length for segment */
+  6    79 	  2 bit_count	bit (24)
+  6    80 	  )		unaligned;		/* bitcount of segment */
+  6    81 
+  6    82 /* END INCLUDE FILE slte.incl.pl1 */
+       94 
+       95 
+       96 
+       97 	sltp = addr (slt$);
+       98 	top = 0;
+       99 	port_size = 0;
+      100 	port_base = 0;
+      101 
+      102 	mem_cardp = null;
+      103 	do while ("1"b);				/* a goto will leave the loop */
+      104 NEXT_CARD:
+      105 	     call config_$find (MEM_CARD_WORD, mem_cardp);
+      106 	     if mem_cardp = null then go to DONE_LOOP;
+      107 
+      108 	     if mem_card.state = "off" then go to NEXT_CARD;
+      109 
+      110 	     port_tag = mem_card.tag - 1;
+      111 
+      112 	     call rsw_util$port_info (port_tag, port_enabled, port_base, port_size, port_interlaced);
+      113 
+      114 	     if ^port_enabled then call syserr (CRASH, "^a: mem ^a on in config, but port off.", ME,
+      115 		     substr ("abcdefgh", mem_card.tag, 1));
+      116 
+      117 	     if port_size > mem_card.size then port_size = mem_card.size; /* obey config */
+      118 	     if port_size < mem_card.size then call syserr (CRASH, "^a: mem ^a size ^dK in config, ^dK on port.", ME, substr ("abcdefgh", (port_tag), 1), mem_card.size, port_size);
+      119 
+      120 	     if port_base > top then go to DONE_LOOP;	/* hit a hole */
+      121 
+      122 	     top = top + port_size;			/* count in new data */
+      123 	end;					/* loop to next mem card */
+      124 
+      125 DONE_LOOP:
+      126 	if top = 0 then call syserr (CRASH, "^a: no main memory configured.", ME);
+      127 
+      128 	sys_boot_info$contig_mem_size = top * 1024;
+      129 
+      130 	if sys_boot_info$contig_mem_size <= sys_boot_info$bootload_mem_size then return;
+      131 
+      132 /* This free core size will have each high-loaded segment subtracted */
+      133 /* from it as it is moved into its new home. */
+      134 
+      135 	new_free_core_size = sys_boot_info$contig_mem_size - slt.free_core_start;
+      136 
+      137 	iupt_absloc = absadr (addr (int_unpaged_page_tables$), (0));
+      138 	call sdw_util_$get_address (addr (dseg$ (segno (addr (abs_seg0$)))), abs_page_table_absloc);
+      139 	abs_page_table_ptr = ptr (addr (int_unpaged_page_tables$), abs_page_table_absloc - iupt_absloc);
+      140 
+      141 /* set up some static data about abs_seg$ */
+      142 
+      143 	old_abs_seg_sdw = dseg$ (bin (baseno (addr (abs_seg$)), 18));
+      144 						/* saved sdw */
+      145 
+      146 /* Now the segments that were loaded high are to be moved up, */
+      147 /* starting from the highest. */
+      148 /* bootload_loader was known to */
+      149 /* start at the top and work down, but to intersperse init_seg's */
+      150 /* and paged segs. Thus by working up the two lists of SLTE's */
+      151 /* we can get the ordered list */
+      152 
+      153 	init_segnum = slt.first_init_seg - 1;
+      154 	sup_segnum = slt.first_sup_seg - 1;
+      155 
+      156 /* Here they start out faulted. When we find a seg to move, we */
+      157 /* turn off the faulted bit. When we move it, we turn it back on. */
+      158 
+      159 	unspec (init_si), unspec (sup_si) = ""b;
+      160 	init_si.faulted, sup_si.faulted = "1"b;		/* for do loops */
+      161 
+      162 	do while ("1"b);				/* exited in middle with goto */
+      163 	     if init_segnum <= slt.last_init_seg then do while (init_si.faulted);
+      164 		init_segnum = init_segnum + 1;
+      165 		if init_segnum > slt.last_init_seg then go to NO_MORE_INIT;
+      166 		sltep = addr (slt.seg (init_segnum));
+      167 		if slte_uns.layout_seg | slte_uns.abs_seg then init_si.faulted = "1"b;
+      168 		else do;
+      169 		     call sdw_util_$dissect (addr (dseg$ (init_segnum)), addr (init_si));
+      170 		     if ^init_si.faulted then do;
+      171 			init_si.address = absadr (baseptr (init_segnum), (0));
+      172 			if init_si.address <= slt.free_core_start + slt.free_core_size then init_si.faulted = "1"b;
+      173 		     end;				/* move anybody in high memory */
+      174 		end;
+      175 	     end;
+      176 
+      177 NO_MORE_INIT:					/* Now we have the topmost non-abs-seg init_seg disected, and segnum in init_segnum */
+      178 	     if sup_segnum <= slt.last_sup_seg then do while (sup_si.faulted);
+      179 		sup_segnum = sup_segnum + 1;
+      180 		if sup_segnum > slt.last_sup_seg then go to NO_MORE_SUP;
+      181 		sltep = addr (slt.seg (sup_segnum));
+      182 		if slte_uns.layout_seg | slte_uns.abs_seg then sup_si.faulted = "1"b; /* force it to be ignored */
+      183 		else do;
+      184 		     call sdw_util_$dissect (addr (dseg$ (sup_segnum)), addr (sup_si));
+      185 		     if ^sup_si.faulted then do;
+      186 			sup_si.address = absadr (baseptr (sup_segnum), (0));
+      187 			if sup_si.address <= slt.free_core_start + slt.free_core_size then sup_si.faulted = "1"b;
+      188 		     end;				/* move anybody in high memory */
+      189 		end;
+      190 	     end;
+      191 
+      192 NO_MORE_SUP:
+      193 	     if (sup_segnum > slt.last_sup_seg & init_segnum > slt.last_init_seg) | (sup_si.faulted & init_si.faulted) then go to DONE_MOVE;
+      194 
+      195 /* Now the two si structures contain the lowest segnum'd (and by implication  */
+      196 /* highest addr'd) sdw's */
+      197 /* if we have run out of either, their address will show as zero */
+      198 
+      199 	     if sup_si.faulted | (^init_si.faulted & (init_si.address > sup_si.address)) then do; /* they CANNOT both be faulted */
+      200 		call MOVE (init_segnum, init_si);
+      201 		init_si.faulted = "1"b;
+      202 	     end;
+      203 	     else do;
+      204 		call MOVE (sup_segnum, sup_si);
+      205 		sup_si.faulted = "1"b;
+      206 	     end;
+      207 	end;					/* loop moving segments */
+      208 
+      209 DONE_MOVE:
+      210 	slt.free_core_size = new_free_core_size;	/* update SLT header */
+      211 	new_abs_sdw = 0;
+      212 	call pmut$swap_sdw (addr (abs_seg$), addr (new_abs_sdw));
+      213 	return;
+      214 
+      215 MOVE:
+      216      procedure (segnum, si);
+      217 declare  segnum			  fixed bin (18);
+      218 declare  1 si			  aligned like sdw_info;
+      219 declare  new_abs_sdw		  fixed bin (71);
+      220 declare  new_address		  fixed bin (26);
+      221 declare  new_seg_sdw		  fixed bin (71);
+      222 declare  old_seg_sdw		  fixed bin (71);
+      223 declare  page			  fixed bin;
+      224 declare  page_table_absloc		  fixed bin (26);
+      225 declare  page_table_ptr		  ptr;
+      226 
+      227 declare  seg_ptr			  pointer;
+      228 declare  copy_the_seg		  (si.size) bit (36) aligned based;
+      229 
+      230 	seg_ptr = baseptr (segnum);
+      231 
+      232 /* First, allocate some space */
+      233 
+      234 	if si.paged then do;
+      235 
+      236 /* paged segment; build paged abs_seg0 onto it and move. */
+      237 
+      238 	     sltep = addr (slt.seg (segnum));		/* subtract off breakpoint page from amt to move */
+      239 	     if slte.breakpointable then si.size = si.size - 1024;
+      240 
+      241 	     call sdw_util_$get_address (addr (dseg$ (segnum)), page_table_absloc);
+      242 	     page_table_ptr = ptr (addr (int_unpaged_page_tables$), page_table_absloc - iupt_absloc);
+      243 
+      244 	     new_address = new_free_core_size + slt.free_core_start - si.size;
+      245 
+      246 /* copy page table to abs seg page table with new addresses */
+      247 
+      248 	     do page = 0 to divide (si.size, 1024, 17) - 1;
+      249 		call ptw_util_$make_core (addrel (abs_page_table_ptr, page), new_address + page * 1024);
+      250 	     end;
+      251 	     call pmut$camp;
+      252 	     abs_seg_ptr = addr (abs_seg0$);
+      253 
+      254 	     new_free_core_size = new_free_core_size - si.size;
+      255 	     old_seg_sdw = dseg$ (segnum);
+      256 	     new_seg_sdw = dseg$ (segno (abs_seg_ptr));
+      257 	end;
+      258 	else do;
+      259 
+      260 /* Simple unpaged segment; build unpaged abs_seg onto it and move. */
+      261 
+      262 	     unspec (abs_si) = ""b;			/* no attributes when we rearrange it */
+      263 	     abs_si.read, abs_si.write = "1"b;		/* always RW for copying */
+      264 	     abs_si.address = new_free_core_size + slt.free_core_start - si.size;
+      265 	     new_free_core_size = new_free_core_size - si.size;
+      266 	     abs_si.size = si.size;
+      267 
+      268 	     call sdw_util_$construct (addr (new_abs_sdw), addr (abs_si));
+      269 
+      270 	     si.address = abs_si.address;		/* move it */
+      271 	     call sdw_util_$construct (addr (new_seg_sdw), addr (si));
+      272 
+      273 	     call pmut$swap_sdw (abs_seg_ptr, addr (new_abs_sdw));
+      274 	     abs_seg_ptr = addr (abs_seg$);
+      275 	end;
+      276 
+      277 /* Move the contents */
+      278 
+      279 /* Now move the real segment onto the new copy */
+      280 /* if it is this program's text that just got moved, it is pure, and all is 
+      281*/* jolly. */
+      282 /* inzr_stk0, though, is another kettle of fish. If we swapped its sdw */
+      283 /* with the return address put on it after the copy, the return */
+      284 /* address would vanish.  So we patch the return address in in advance */
+      285 
+      286 	stackframeptr () -> stack_frame.return_ptr = codeptr (PMUT_RETURN_HERE);
+      287 						/* please */
+      288 
+      289 	abs_seg_ptr -> copy_the_seg = seg_ptr -> copy_the_seg;
+      290 
+      291 	call pmut$swap_sdw (seg_ptr, addr (new_seg_sdw));
+      292 
+      293 PMUT_RETURN_HERE:
+      294 	;
+      295 	if si.paged then do;
+      296 
+      297 /* We now have both abs_seg$ and the seg in question pointing to the abs_seg0
+      298*page table and the new memory.  We need to fix up the orig seg's page table
+      299*and get it's sdw back to pointing there. */
+      300 
+      301 	     do page = 0 to divide (si.size, 1024, 17) - 1;
+      302 		call ptw_util_$make_core (addrel (page_table_ptr, page), new_address + page * 1024);
+      303 	     end;
+      304 	     call pmut$camp;
+      305 	     call pmut$swap_sdw (seg_ptr, addr (old_seg_sdw));
+      306 	end;
+      307 
+      308 	return;
+      309      end MOVE;
+      310 
+      311 /* BEGIN MESSAGE DOCUMENTATION
+      312*
+      313*   Message:
+      314*   move_non_perm_wired_segs: mem TAG on in config deck, but port off.
+      315*
+      316*   S:  $crash
+      317*
+      318*   T:  $init
+      319*
+      320*   M:  Memory controller TAG is specified ON on its MEM card,
+      321*   but its port is disabled on the bootload CPU.
+      322*
+      323*   A:  Enable the port or set the MEM OFF and reboot.
+      324*
+      325*   Message:
+      326*   move_non_perm_wired_segs: mem TAG size nK in config, mK on port.
+      327*
+      328*   S:  $crash
+      329*
+      330*   T:  $init
+      331*
+      332*   M:  Memory controller TAG has a size of nK in the config deck,
+      333*   but the address assignment and port size switches specify mK.
+      334*
+      335*   A:  Fix the switches or config deck and reboot.
+      336*
+      337*   Message:
+      338*   move_non_perm_wired_segs: no main memory configured.
+      339*
+      340*   S:  $crash
+      341*
+      342*   T:  $init
+      343*
+      344*   M:  No MEM cards were found ON in the config deck.
+      345*
+      346*   A:  Fix the config deck and reboot.
+      347*
+      348*   END MESSAGE DOCUMENTATION */
+      349 
+      350      end move_non_perm_wired_segs;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0816.1  move_non_perm_wired_segs.pl1      >spec>install>1112>move_non_perm_wired_segs.pl1
+72           1    05/08/81  1853.6  config_mem_card.incl.pl1          >ldd>include>config_mem_card.incl.pl1
+73           2    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+91           3    11/07/86  1550.3  stack_frame.incl.pl1              >ldd>include>stack_frame.incl.pl1
+92           4    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+93           5    05/24/82  1005.0  slt.incl.pl1                      >ldd>include>slt.incl.pl1
+94           6    07/11/84  0937.3  slte.incl.pl1                     >ldd>include>slte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CRASH                           000021 constant        fixed bin(17,0)          initial dcl 4-7 set ref 114* 118* 125*
+ME                              000001 constant        char(32)                 initial packed unaligned dcl 70 set ref 114* 118*
+                                                                                  125*
+MEM_CARD_WORD                   000000 constant        char(4)                  initial dcl 1-18 set ref 104*
+abs_page_table_absloc           000117 automatic       fixed bin(26,0)          dcl 77 set ref 138* 139
+abs_page_table_ptr              000120 automatic       pointer                  dcl 78 set ref 139* 249 249
+abs_seg                   1(05)        based           bit(1)                   level 2 packed packed unaligned dcl 6-10 ref 167 182
+abs_seg$                        000044 external static fixed bin(17,0)          dcl 79 set ref 143 212 212 274
+abs_seg0$                       000046 external static fixed bin(17,0)          dcl 80 set ref 138 138 252
+abs_seg_ptr                     000122 automatic       pointer                  dcl 81 set ref 252* 256 273* 274* 289
+abs_si                          000126 automatic       structure                level 1 dcl 84 set ref 262* 268 268
+absadr                          000014 constant        entry                    external dcl 42 ref 137 171 186
+access                    2     000126 automatic       structure                level 2 packed packed unaligned dcl 84
+addr                                                   builtin function         dcl 88 ref 97 137 137 138 138 138 138 139 143 166
+                                                                                  169 169 169 169 181 184 184 184 184 212 212 212
+                                                                                  212 238 241 241 242 252 268 268 268 268 271 271
+                                                                                  271 271 273 273 274 291 291 305 305
+address                         000142 automatic       fixed bin(26,0)          level 2 in structure "sup_si" dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 186* 187 199
+address                                parameter       fixed bin(26,0)          level 2 in structure "si" dcl 218 in procedure
+                                                                                  "MOVE" set ref 270*
+address                         000134 automatic       fixed bin(26,0)          level 2 in structure "init_si" dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 171* 172 199
+address                         000126 automatic       fixed bin(26,0)          level 2 in structure "abs_si" dcl 84 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 264* 270
+baseno                                                 builtin function         dcl 88 ref 143
+baseptr                                                builtin function         dcl 88 ref 171 171 186 186 230
+bin                                                    builtin function         dcl 88 ref 143
+breakpointable            1(08)        based           bit(1)                   level 2 packed packed unaligned dcl 6-48 ref 239
+config_$find                    000016 constant        entry                    external dcl 43 ref 104
+copy_the_seg                           based           bit(36)                  array dcl 228 set ref 289* 289
+dseg$                           000050 external static fixed bin(71,0)          array dcl 87 set ref 138 138 143 169 169 184 184 241
+                                                                                  241 255 256
+faulted                   4(01) 000142 automatic       bit(1)                   level 3 in structure "sup_si" packed packed
+                                                                                  unaligned dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 160* 177 182*
+                                                                                  185 187* 192 199 205*
+faulted                   4(01) 000134 automatic       bit(1)                   level 3 in structure "init_si" packed packed
+                                                                                  unaligned dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 160* 163 167*
+                                                                                  170 172* 192 199 201*
+first_init_seg            5            based           fixed bin(18,0)          level 2 dcl 5-13 ref 153
+first_sup_seg             3            based           fixed bin(18,0)          level 2 dcl 5-13 ref 154
+flags                     4            parameter       structure                level 2 in structure "si" dcl 218 in procedure
+                                                                                  "MOVE"
+flags                     4     000134 automatic       structure                level 2 in structure "init_si" dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs"
+flags                     4     000142 automatic       structure                level 2 in structure "sup_si" dcl 85 in procedure
+                                                                                  "move_non_perm_wired_segs"
+free_core_size            7            based           fixed bin(24,0)          level 2 dcl 5-13 set ref 172 187 209*
+free_core_start           2            based           fixed bin(24,0)          level 2 dcl 5-13 ref 135 172 187 244 264
+init_segnum                     000111 automatic       fixed bin(18,0)          dcl 62 set ref 153* 163 164* 164 165 166 169 169 171
+                                                                                  171 192 200*
+init_si                         000134 automatic       structure                level 1 dcl 85 set ref 159* 169 169 200*
+int_unpaged_page_tables$        000010 external static fixed bin(17,0)          dcl 38 set ref 137 137 139 242
+iupt_absloc                     000116 automatic       fixed bin(26,0)          dcl 76 set ref 137* 139 242
+last_init_seg             6            based           fixed bin(18,0)          level 2 dcl 5-13 ref 163 165 192
+last_sup_seg              4            based           fixed bin(18,0)          level 2 dcl 5-13 ref 177 180 192
+layout_seg                1(07)        based           bit(1)                   level 2 packed packed unaligned dcl 6-10 ref 167 182
+mem_card                               based           structure                level 1 dcl 1-5
+mem_cardp                       000114 automatic       pointer                  dcl 1-3 set ref 102* 104* 106 108 110 114 114 117
+                                                                                  117 118 118
+new_abs_sdw                     000162 automatic       fixed bin(71,0)          dcl 219 in procedure "MOVE" set ref 268 268 273 273
+new_abs_sdw                     000102 automatic       fixed bin(71,0)          dcl 55 in procedure "move_non_perm_wired_segs" set
+                                                                                  ref 211* 212 212
+new_address                     000164 automatic       fixed bin(26,0)          dcl 220 set ref 244* 249 302
+new_free_core_size              000101 automatic       fixed bin(26,0)          dcl 54 set ref 135* 209 244 254* 254 264 265* 265
+new_seg_sdw                     000166 automatic       fixed bin(71,0)          dcl 221 set ref 256* 271 271 291 291
+null                                                   builtin function         dcl 88 ref 102 106
+old_abs_seg_sdw                 000124 automatic       fixed bin(71,0)          dcl 82 set ref 143*
+old_seg_sdw                     000170 automatic       fixed bin(71,0)          dcl 222 set ref 255* 305 305
+page                            000172 automatic       fixed bin(17,0)          dcl 223 set ref 248* 249 249 249* 301* 302 302 302*
+page_table_absloc               000173 automatic       fixed bin(26,0)          dcl 224 set ref 241* 242
+page_table_ptr                  000174 automatic       pointer                  dcl 225 set ref 242* 302 302
+paged                     4            parameter       bit(1)                   level 3 packed packed unaligned dcl 218 set ref 234
+                                                                                  295
+pmut$camp                       000020 constant        entry                    external dcl 44 ref 251 304
+pmut$swap_sdw                   000022 constant        entry                    external dcl 45 ref 212 273 291 305
+port_base                       000104 automatic       fixed bin(17,0)          dcl 56 set ref 100* 112* 120
+port_enabled                    000107 automatic       bit(1)                   dcl 59 set ref 112* 114
+port_interlaced                 000110 automatic       fixed bin(3,0)           dcl 60 set ref 112*
+port_size                       000105 automatic       fixed bin(17,0)          dcl 57 set ref 99* 112* 117 117* 118 118* 122
+port_tag                        000106 automatic       fixed bin(3,0)           dcl 58 set ref 110* 112* 118 118
+ptw_util_$make_core             000024 constant        entry                    external dcl 46 ref 249 302
+read                      2     000126 automatic       bit(1)                   level 3 packed packed unaligned dcl 84 set ref 263*
+return_ptr               24            based           pointer                  level 2 dcl 3-36 set ref 286*
+rsw_util$port_info              000026 constant        entry                    external dcl 47 ref 112
+sdw_info                               based           structure                level 1 dcl 2-6
+sdw_util_$construct             000030 constant        entry                    external dcl 48 ref 268 271
+sdw_util_$dissect               000032 constant        entry                    external dcl 49 ref 169 184
+sdw_util_$get_address           000034 constant        entry                    external dcl 50 ref 138 241
+seg                      10            based           structure                array level 2 dcl 5-13 set ref 166 181 238
+seg_ptr                         000176 automatic       pointer                  dcl 227 set ref 230* 289 291* 305*
+segno                                                  builtin function         dcl 88 ref 138 138 256
+segnum                                 parameter       fixed bin(18,0)          dcl 217 ref 215 230 238 241 241 255
+si                                     parameter       structure                level 1 dcl 218 set ref 215 271 271
+size                      1            parameter       fixed bin(19,0)          level 2 in structure "si" dcl 218 in procedure
+                                                                                  "MOVE" set ref 239* 239 244 248 254 264 265 266
+                                                                                  289 301
+size                      2            based           fixed bin(18,0)          level 2 in structure "mem_card" dcl 1-5 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 117 117 118
+                                                                                  118*
+size                      1     000126 automatic       fixed bin(19,0)          level 2 in structure "abs_si" dcl 84 in procedure
+                                                                                  "move_non_perm_wired_segs" set ref 266*
+slt                                    based           structure                level 1 dcl 5-13
+slt$                            000012 external static fixed bin(17,0)          dcl 40 set ref 97
+slte                                   based           structure                level 1 dcl 6-48
+slte_uns                               based           structure                level 1 dcl 6-10
+sltep                           000152 automatic       pointer                  dcl 6-8 set ref 166* 167 167 181* 182 182 238* 239
+sltp                            000150 automatic       pointer                  dcl 5-7 set ref 97* 135 153 154 163 165 166 172 172
+                                                                                  177 180 181 187 187 192 192 209 238 244 264
+stack_frame                            based           structure                level 1 dcl 3-36
+state                     3            based           char(4)                  level 2 dcl 1-5 ref 108
+substr                                                 builtin function         dcl 88 ref 114 114 118 118
+sup_segnum                      000112 automatic       fixed bin(18,0)          dcl 62 set ref 154* 177 179* 179 180 181 184 184 186
+                                                                                  186 192 204*
+sup_si                          000142 automatic       structure                level 1 dcl 85 set ref 159* 184 184 204*
+sys_boot_info$bootload_mem_size 000040 external static fixed bin(26,0)          dcl 65 ref 130
+sys_boot_info$contig_mem_size   000042 external static fixed bin(26,0)          dcl 67 set ref 128* 130 135
+syserr                          000036 constant        entry                    external dcl 51 ref 114 118 125
+tag                       1            based           fixed bin(3,0)           level 2 dcl 1-5 ref 110 114 114
+top                             000100 automatic       fixed bin(18,0)          dcl 53 set ref 98* 120 122* 122 125 128
+write                     2(02) 000126 automatic       bit(1)                   level 3 packed packed unaligned dcl 84 set ref 263*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 4-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 4-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 4-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 4-7
+RETURN_PTR_MASK                        internal static bit(72)                  initial packed unaligned dcl 3-19
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 4-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 4-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 4-7
+TRANSLATOR_ID_ALM                      internal static bit(18)                  initial packed unaligned dcl 3-25
+TRANSLATOR_ID_PL1V1                    internal static bit(18)                  initial packed unaligned dcl 3-26
+TRANSLATOR_ID_PL1V2                    internal static bit(18)                  initial packed unaligned dcl 3-24
+TRANSLATOR_ID_SIGNALLER                internal static bit(18)                  initial packed unaligned dcl 3-28
+TRANSLATOR_ID_SIGNAL_CALLER            internal static bit(18)                  initial packed unaligned dcl 3-27
+aclp                                   automatic       pointer                  dcl 5-7
+acls                                   based           structure                level 1 dcl 5-45
+name_seg                               based           structure                level 1 dcl 5-26
+namep                                  automatic       pointer                  dcl 5-7
+names_ptr                              automatic       pointer                  dcl 5-7
+path                                   based           structure                level 1 dcl 5-40
+pathp                                  automatic       pointer                  dcl 5-7
+sdw_info_ptr                           automatic       pointer                  dcl 2-4
+segnam                                 based           structure                level 1 dcl 5-31
+sp                                     automatic       pointer                  dcl 3-31
+stack_frame_flags                      based           structure                level 1 dcl 3-64
+stack_frame_min_length                 internal static fixed bin(17,0)          initial dcl 3-33
+unpaged_page_tables$                   external static fixed bin(17,0)          dcl 39
+upt_absloc                             automatic       fixed bin(26,0)          dcl 75
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+DONE_LOOP                       000320 constant        label                    dcl 125 ref 106 120
+DONE_MOVE                       000721 constant        label                    dcl 209 ref 192
+MOVE                            000744 constant        entry                    internal dcl 215 ref 200 204
+NEXT_CARD                       000130 constant        label                    dcl 104 ref 108
+NO_MORE_INIT                    000555 constant        label                    dcl 177 ref 165
+NO_MORE_SUP                     000655 constant        label                    dcl 192 ref 180
+PMUT_RETURN_HERE                001225 constant        label                    dcl 293 ref 286
+move_non_perm_wired_segs        000114 constant        entry                    external dcl 20
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addrel                                                 builtin function         ref 249 249 302 302
+codeptr                                                builtin function         ref 286
+divide                                                 builtin function         ref 248 301
+ptr                                                    builtin function         ref 139 242
+stackframeptr                                          builtin function         ref 286
+unspec                                                 builtin function         set ref 159 159* 262*
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1536        1610    1322        1546
+Length      2136    1322        52         312     214           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+move_non_perm_wired_segs            218 external procedure  is an external procedure.  
+MOVE                                    internal procedure  shares stack frame of external procedure move_non_perm_wired_segs.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+move_non_perm_wired_segs 000100 top                         move_non_perm_wired_segs
+                         000101 new_free_core_size          move_non_perm_wired_segs
+                         000102 new_abs_sdw                 move_non_perm_wired_segs
+                         000104 port_base                   move_non_perm_wired_segs
+                         000105 port_size                   move_non_perm_wired_segs
+                         000106 port_tag                    move_non_perm_wired_segs
+                         000107 port_enabled                move_non_perm_wired_segs
+                         000110 port_interlaced             move_non_perm_wired_segs
+                         000111 init_segnum                 move_non_perm_wired_segs
+                         000112 sup_segnum                  move_non_perm_wired_segs
+                         000114 mem_cardp                   move_non_perm_wired_segs
+                         000116 iupt_absloc                 move_non_perm_wired_segs
+                         000117 abs_page_table_absloc       move_non_perm_wired_segs
+                         000120 abs_page_table_ptr          move_non_perm_wired_segs
+                         000122 abs_seg_ptr                 move_non_perm_wired_segs
+                         000124 old_abs_seg_sdw             move_non_perm_wired_segs
+                         000126 abs_si                      move_non_perm_wired_segs
+                         000134 init_si                     move_non_perm_wired_segs
+                         000142 sup_si                      move_non_perm_wired_segs
+                         000150 sltp                        move_non_perm_wired_segs
+                         000152 sltep                       move_non_perm_wired_segs
+                         000162 new_abs_sdw                 MOVE
+                         000164 new_address                 MOVE
+                         000166 new_seg_sdw                 MOVE
+                         000170 old_seg_sdw                 MOVE
+                         000172 page                        MOVE
+                         000173 page_table_absloc           MOVE
+                         000174 page_table_ptr              MOVE
+                         000176 seg_ptr                     MOVE
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        config_$find                  pmut$camp                     pmut$swap_sdw
+ptw_util_$make_core           rsw_util$port_info            sdw_util_$construct           sdw_util_$dissect
+sdw_util_$get_address         syserr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+abs_seg$                      abs_seg0$                     dseg$                         int_unpaged_page_tables$
+slt$                          sys_boot_info$bootload_mem_size                             sys_boot_info$contig_mem_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     20 000113        97 000121        98 000123        99 000124       100 000125       102 000126       104 000130
+    106 000141       108 000145       110 000153       112 000156       114 000175       117 000236       118 000244
+    120 000312       122 000315       123 000317       125 000320       128 000346       130 000352       135 000354
+    137 000357       138 000374       139 000415       143 000424       153 000433       154 000437       159 000442
+    160 000450       162 000454       163 000456       164 000465       165 000466       166 000472       167 000475
+    169 000503       170 000522       171 000525       172 000545       175 000554       177 000555       179 000565
+    180 000566       181 000572       182 000575       184 000603       185 000622       186 000625       187 000645
+    190 000654       192 000655       199 000700       200 000707       201 000711       202 000713       204 000714
+    205 000716       207 000720       209 000721       211 000724       212 000726       213 000743       215 000744
+    230 000746       234 000752       238 000756       239 000762       241 000767       242 001004       244 001013
+    248 001022       249 001034       250 001053       251 001055       252 001062       254 001065       255 001071
+    256 001075       257 001103       262 001104       263 001107       264 001113       265 001120       266 001122
+    268 001124       270 001141       271 001144       273 001161       274 001174       286 001177       289 001202
+    291 001213       293 001225       295 001226       301 001233       302 001243       303 001262       304 001264
+    305 001271       308 001304
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

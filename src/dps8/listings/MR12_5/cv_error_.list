@@ -1,0 +1,197 @@
+	COMPILATION LISTING OF SEGMENT cv_error_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1000.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 /*
+        9*   Function to return an error code from an error name.  This entry can be called by programs written in languages
+       10*   which can not directly reference names of the form "reference$entry".
+       11**/
+       12 /* Originally written 22 March 1982 by Chris Jones */
+       13 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+       14 cv_error_:
+       15      proc;
+       16 	signal bad_call_;				/* not a valid entry */
+       17 	return;
+       18 
+       19 name:
+       20      entry (error_name, converted_code, code);
+       21 
+       22 dcl	code		   fixed bin (35) parameter;	/* the result of this operation */
+       23 dcl	converted_code	   fixed bin (35) parameter;	/* the answer to the question */
+       24 dcl	error_name	   char (*) parameter;	/* the error name (e.g. "error_table_$bad_arg" */
+       25 
+       26 dcl	et_ptr		   ptr;			/* pointer to the error code */
+       27 
+       28 dcl	based_code	   fixed bin (35) based (et_ptr);
+       29 dcl	1 cc		   aligned based,		/* this structure is laid over converted_code */
+       30 	  2 segno		   bit (18) unal,
+       31 	  2 pad		   bit (18) unal;
+       32 
+       33 dcl	cv_ptr_		   entry (char (*), fixed bin (35)) returns (ptr);
+       34 dcl	cv_ptr_$terminate	   entry (ptr);
+       35 dcl	hcs_$make_ptr	   entry (ptr, char (*), char (*), ptr, fixed bin (35));
+       36 
+       37 dcl	error_table_$	   fixed bin (35) ext static;
+       38 dcl	error_table_$bad_arg   fixed bin (35) ext static;
+       39 
+       40 dcl	any_other		   condition;
+       41 dcl	bad_call_		   condition;
+       42 dcl	cleanup		   condition;
+       43 
+       44 dcl	(addr, after, baseno, before, null)
+       45 			   builtin;
+       46 
+       47 	call hcs_$make_ptr (null (), before (error_name, "$"), after (error_name, "$"), et_ptr, code);
+       48 	if code ^= 0 then
+       49 	     return;
+       50 
+       51 	et_ptr = null ();
+       52 	on cleanup call CLEAN_UP;
+       53 
+       54 	et_ptr = cv_ptr_ (error_name, code);
+       55 	if code ^= 0 then do;
+       56 ERROR_RETURN:
+       57 	     call CLEAN_UP;
+       58 	     return;
+       59 	end;
+       60 
+       61 	on any_other
+       62 	     begin;
+       63 		code = error_table_$bad_arg;
+       64 		goto ERROR_RETURN;
+       65 	     end;
+       66 
+       67 	converted_code = based_code;
+       68 	if baseno (et_ptr) ^= baseno (addr (error_table_$)) then
+       69 	     addr (converted_code) -> cc.segno = baseno (et_ptr);
+       70 						/* put in segment number for non error_table_ codes */
+       71 	call CLEAN_UP;
+       72 	code = 0;
+       73 	return;
+       74 
+       75 CLEAN_UP:
+       76      proc;
+       77 
+       78 	if et_ptr ^= null () then
+       79 	     call cv_ptr_$terminate (et_ptr);
+       80 	et_ptr = null ();
+       81 
+       82      end CLEAN_UP;
+       83 
+       84      end cv_error_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0838.7  cv_error_.pl1                     >special_ldd>install>MR12.3-1114>cv_error_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+addr                                                   builtin function         dcl 44 ref 68 68
+after                                                  builtin function         dcl 44 ref 47 47
+any_other                       000102 stack reference condition                dcl 40 ref 61
+bad_call_                       000110 stack reference condition                dcl 41 ref 16
+based_code                             based           fixed bin(35,0)          dcl 28 ref 67
+baseno                                                 builtin function         dcl 44 ref 68 68 68
+before                                                 builtin function         dcl 44 ref 47 47
+cc                                     based           structure                level 1 dcl 29
+cleanup                         000116 stack reference condition                dcl 42 ref 52
+code                                   parameter       fixed bin(35,0)          dcl 22 set ref 19 47* 48 54* 55 63* 72*
+converted_code                         parameter       fixed bin(35,0)          dcl 23 set ref 19 67* 68
+cv_ptr_                         000010 constant        entry                    external dcl 33 ref 54
+cv_ptr_$terminate               000012 constant        entry                    external dcl 34 ref 78
+error_name                             parameter       char                     packed unaligned dcl 24 set ref 19 47 47 47 47 54*
+error_table_$                   000016 external static fixed bin(35,0)          dcl 37 set ref 68
+error_table_$bad_arg            000020 external static fixed bin(35,0)          dcl 38 ref 63
+et_ptr                          000100 automatic       pointer                  dcl 26 set ref 47* 51* 54* 67 68 68 78 78* 80*
+hcs_$make_ptr                   000014 constant        entry                    external dcl 35 ref 47
+null                                                   builtin function         dcl 44 ref 47 47 51 78 80
+segno                                  based           bit(18)                  level 2 packed packed unaligned dcl 29 set ref 68*
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CLEAN_UP                        000301 constant        entry                    internal dcl 75 ref 52 56 71
+ERROR_RETURN                    000220 constant        label                    dcl 56 ref 64
+cv_error_                       000017 constant        entry                    external dcl 14
+name                            000034 constant        entry                    external dcl 19
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       440         462     325         450
+Length       642     325        22         144     112           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+cv_error_                           118 external procedure  is an external procedure.  
+on unit on line 52                   64 on unit               
+on unit on line 61                   64 on unit               
+CLEAN_UP                             68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+cv_error_                000100 et_ptr                      cv_error_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+tra_ext_1           signal_op           enable_op           shorten_stack       ext_entry           ext_entry_desc
+int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cv_ptr_                       cv_ptr_$terminate             hcs_$make_ptr
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$                 error_table_$bad_arg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000016        16 000024        17 000027        19 000030        47 000047        48 000142        51 000146
+     52 000150        54 000172        55 000215        56 000220        58 000224        61 000225        63 000241
+     64 000245        67 000250        68 000253        71 000271        72 000275        73 000277        75 000300
+     78 000306        80 000321        82 000324
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

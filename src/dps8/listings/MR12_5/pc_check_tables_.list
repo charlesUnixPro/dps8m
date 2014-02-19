@@ -1,0 +1,2096 @@
+	COMPILATION LISTING OF SEGMENT pc_check_tables_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0953.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2,indcomtxt */
+       14 
+       15 pc_check_tables_:
+       16      procedure (Info_pointer, Code);
+       17 
+       18 /**** This procedure is invoked at fault recovery/ESD time to place the
+       19*      SST in a consistent state, assuming consistent interruption of  page control.
+       20*
+       21*      It is also called from the user ring to report on the state
+       22*      of a file system. In this case, it changes nothing.
+       23*
+       24*      This procedure's function is to reconstruct SST based on critical
+       25*      sequences in all of ALM pc and pc.pl1. Every line
+       26*      of this procedure that changes SST is critical by same standard, and must
+       27*      follow same rules.
+       28*
+       29*      This procedure assumes the following conventions, which ALM page control
+       30*      must continue to follow:
+       31*
+       32*      *	A ptw may be moved to full incore state. A cme with ptwp nonzero is wholly
+       33*      *	valid.
+       34*
+       35*      *	Any out of service page can be taken non-out of service- if it was a write,
+       36*      *	phm may be turned on. If it was a read, it may be taken out of core.
+       37*
+       38*
+       39*      *	The disk dim has been trained to throw away all requests at
+       40*      *	recovery time to validate these assumptions.
+       41*
+       42*
+       43*      An attempt is made to repair "impossible" damage, i.e., that which could
+       44*      not have occured as a result of clean interruption of a properly functioning
+       45*      page control. Rather than report each such lossage, about which nothing
+       46*      consistent can be done, segments so affected are marked as
+       47*      damaged, and pages so involved made null where possible.
+       48*
+       49*      We even attempt to repair "garbage" in the SST (see reasonable_devaddp s/r),
+       50*      although in this case and the previous one, segment damage will surely result.
+       51*
+       52*      No attempt is made to handle move_page_table in this version.
+       53*
+       54*      A creation of Bernard Greenberg, May 1977.
+       55*      Modified, minimally, 03/06/81, W. Olin Sibert, for ADP conversion
+       56*      Modified, minutely,  06/21/82, E. N. Kittlitz, to move core map and not so minutely (auditor's orders) zap page-multilevel.
+       57*      Modified, 831220, E. N. Kittlitz, for pc$segmove support.
+       58*      Modified, 84-01-05, BIM, to finish above and use debug_check for stats.
+       59*      Modified, 84-01-05, BIM, to abstract as subroutine callable from user
+       60*      ring. */
+       61 
+       62 
+       63 	declare Info_pointer	 pointer;
+       64 	declare Code		 fixed bin (35);
+       65 
+       66 	dcl     cmap		 ptr;		/* Core map array ppr */
+       67 	dcl     ptp		 pointer;
+       68 	dcl     (new_nused, new_nwired)
+       69 				 fixed bin;	/* Counters for re-computation */
+       70 	dcl     (curused, csl, nincore)
+       71 				 fixed bin (9);	/* Ast remputation stats */
+       72 	dcl     (cbno, ptsi, pts, astx, pno)
+       73 				 fixed bin;	/* Walking indices */
+       74 	declare reported_aste	 bit (1) aligned;
+       75 
+       76 	declare 1 stats		 aligned,
+       77 		2 bad_cme_devadds	 fixed bin,
+       78 		2 bad_cme_add_types	 fixed bin,
+       79 		2 bad_ptw_devadds	 fixed bin,
+       80 		2 cme_ptw_devadd_diffs
+       81 				 fixed bin,
+       82 		2 bad_cme_ptwps	 fixed bin,
+       83 		2 ptws_os_2nd_pass	 fixed bin,
+       84 		2 bad_ptw_addrs	 fixed bin,
+       85 		2 valid_not_core	 fixed bin;
+       86 
+       87 	dcl     (offs, offdif, bno)	 fixed bin (18);	/* used in validation */
+       88 	dcl     (addr, addrel, bit, divide, fixed, null, ptr, rel, size, string, substr, unspec)
+       89 				 builtin;
+       90 
+       91 	dcl     page$cam		 entry;		/* used in damaging */
+       92 	dcl     fcmep		 ptr;		/* thread heads */
+       93 	dcl     lcmep		 ptr;		/* thread tails */
+       94 	dcl     astagp		 ptr;		/* AST group (pool) ptr for walk */
+       95 	dcl     astesize		 fixed bin;	/* Size of whole ASTE in that pool */
+       96 	dcl     astagps		 (0:3) ptr;	/* ast pool ptrs */
+       97 	dcl     (astlowers, astuppers, astesizes)
+       98 				 (0:3) fixed bin (18);
+       99 
+      100 /* Structures */
+      101 
+      102 	dcl     1 ptwdevadd,			/* Devadd  from PTW */
+      103 		2 add		 fixed bin (18) unsigned unal,
+      104 						/* Record number (REALLY UNSIGNED!) */
+      105 		2 add_type	 like badd_type unal;
+      106 						/* add type */
+      107 
+      108 	dcl     1 cmedevadd,			/* Devadd from CME */
+      109 		2 cmeadd		 fixed bin (18) unsigned unal,
+      110 		2 cmeaddtype	 like badd_type unal;
+      111 
+      112 	dcl     1 fdevadd		 aligned,		/* for general work */
+      113 		2 add		 fixed bin (18) unsigned unal,
+      114 		2 add_type	 bit (4) unal;
+      115 	dcl     1 based_comp_devadd	 like ptwdevadd aligned based;
+      116 						/* ditto */
+      117 
+      118 	declare error_table_$unimplemented_version
+      119 				 fixed bin (35) ext static;
+      120 
+      121 
+      122 
+      123 	dcl     1 ex_aste		 aligned based (astep),
+      124 						/* large aste */
+      125 		2 aste_proper	 like aste,
+      126 		2 aste_ptw	 (0:pts - 1) like ptw aligned;
+      127 
+      128 	dcl     1 astage		 (0:fixed (sst.no_aste (ptsi), 18) - 1) like ex_aste based (astagp) aligned;
+      129 						/* array group elements */
+      130 
+      131 /* Set up some pointers. */
+      132 
+      133 	check_tables_info_ptr = Info_pointer;
+      134 	Code = 0;
+      135 	if check_tables_info.version ^= PC_CHECK_TABLES_INFO_VERSION_1
+      136 	then do;
+      137 		Code = error_table_$unimplemented_version;
+      138 		return;
+      139 	     end;
+      140 
+      141 	sstp = check_tables_info.sst_ptr;
+      142 	cmap = setwordno (check_tables_info.core_map_ptr, wordno (sst.cmp));
+      143 	pvtp = check_tables_info.pvt_ptr;
+      144 	pvt_arrayp = addr (pvt.array);
+      145 
+      146 	stats = 0;				/* aggregately */
+      147 
+      148 	astagp = setwordno (sstp, wordno (sst.astap));
+      149 	do ptsi = 0 to 3;
+      150 	     pts = sst.pts (ptsi);
+      151 	     astagps (ptsi) = astagp;
+      152 	     astesizes (ptsi) = size (ex_aste);
+      153 	     astlowers (ptsi) = wordno (astagp);
+      154 	     astagp = addwordno (astagp, size (astage));
+      155 	     astuppers (ptsi) = wordno (astagp);
+      156 	end;
+      157 
+      158 	call CHECK_SEGMOVE;
+      159 	call CHECK_EVICT_PAGE;
+      160 
+      161 /**** First, loop through the core map. In any conflict, the core map
+      162*      is right. */
+      163 
+      164 	if check_tables_info.recover_errors
+      165 	then sst.usedp, sst.wusedp = "000000"b3;	/* Clear thread heads */
+      166 
+      167 	new_nused = 0;				/* Init new used count */
+      168 
+      169 	do cbno = sst.first_core_block to sst.last_core_block;
+      170 	     cmep = addr (cmap -> cma (cbno));		/* Address each block */
+      171 
+      172 	     if cme.fp & "400000"b3
+      173 	     then do;
+      174 		     if check_tables_info.recover_errors
+      175 		     then cme.fp, cme.bp = "777777"b3;	/* Any negative goes deconf */
+      176 		end;
+      177 	     else if (cme.fp | cme.bp | cme.ptwp) = "000000"b3
+      178 	     then go to free_cme;			/* unpaged space */
+      179 
+      180 	     else if cme.ptwp = "000000"b3
+      181 	     then ;				/* Was really free to start with. */
+      182 
+      183 	     else do;
+      184 		     unspec (cmedevadd) = cme.devadd;
+      185 		     if ^reasonable_devaddp (cme.devadd)
+      186 		     then do;
+      187 			     if check_tables_info.flags.report_errors
+      188 			     then do;
+      189 				     call check_tables_info.report ("Bad devadd in CME.");
+      190 				     call check_tables_info.display_cme (cmep);
+      191 				end;
+      192 			     stats.bad_cme_devadds = stats.bad_cme_devadds + 1;
+      193 			     go to clear_cme;
+      194 			end;
+      195 		     if cmeaddtype.core
+      196 		     then do;
+      197 			     if check_tables_info.report_errors
+      198 			     then do;
+      199 				     call check_tables_info.report ("Core devadd in CME.");
+      200 				     call check_tables_info.display_cme (cmep);
+      201 				end;
+      202 			     stats.bad_cme_add_types = stats.bad_cme_add_types + 1;
+      203 			     go to clear_cme;
+      204 			end;
+      205 		     if (string (cmeaddtype) = "0000"b)
+      206 		     then do;
+      207 			     if check_tables_info.report_errors
+      208 			     then do;
+      209 				     call check_tables_info.report ("Null add_type in CME.");
+      210 				     call check_tables_info.display_cme (cmep);
+      211 				end;
+      212 			     go to clear_cme;
+      213 			end;
+      214 		     ptp = ptr (sstp, cme.ptwp);	/* address ptw */
+      215 		     if ^reasonable_ptwpp (ptp, astep)
+      216 		     then do;
+      217 			     if check_tables_info.report_errors
+      218 			     then do;
+      219 				     call check_tables_info.report ("Bad ptwp ^o in CME.", cme.ptwp);
+      220 				     call check_tables_info.display_cme (cmep);
+      221 				end;
+      222 			     stats.bad_cme_ptwps = stats.bad_cme_ptwps + 1;
+      223 			     go to clear_cme;
+      224 			end;
+      225 		     else do;			/* ptw is legit */
+      226 			     fdevadd.add = cbno * 16; /* set up coreadd */
+      227 			     fdevadd.add_type = add_type.core;
+      228 			     if ^reasonable_devaddp (mptw.devadd)
+      229 			     then do;
+      230 				     if check_tables_info.report_errors
+      231 				     then do;
+      232 					     call check_tables_info.report ("Bad devadd in PTW.");
+      233 					     call check_tables_info.display_ptw (ptp);
+      234 					end;
+      235 				     stats.bad_ptw_devadds = stats.bad_ptw_devadds + 1;
+      236 				     if check_tables_info.recover_errors
+      237 				     then mptw.devadd = unspec (fdevadd);
+      238 						/* bust segment */
+      239 				     go to clear_cme;
+      240 				end;
+      241 
+      242 			     if check_tables_info.recover_errors
+      243 			     then cme.astep = rel (astep);
+      244 
+      245 			     if ptw.os & check_tables_info.recover_errors
+      246 			     then do;		/* out of service, may have to free cme */
+      247 				     if cme.notify_requested
+      248 				     then call pnotify (ptp);
+      249 				     if cme.io
+      250 				     then ptw.phm1 = "1"b;
+      251 						/* was write */
+      252 				     else do;	/* was a read -- evict. */
+      253 					     cme.fp = "066666"b3;
+      254 						/* Cause core to be counted used */
+      255 					     ptw.valid = "0"b;
+      256 					     call page$cam;
+      257 					     mptw.devadd = unspec (cmedevadd);
+      258 					     cme.ptwp = "000000"b3;
+      259 						/* Will cause freeing */
+      260 					end;
+      261 				     ptw.os = "0"b; /* This should turn off all legit o/s */
+      262 				end;
+      263 			     if mptw.devadd ^= unspec (fdevadd) & mptw.devadd ^= unspec (cmedevadd)
+      264 			     then do;
+      265 				     if check_tables_info.report_errors
+      266 				     then do;
+      267 					     call check_tables_info
+      268 						.report ("PTW devadd inconsistent with CME.");
+      269 					     call check_tables_info.display_ptw (ptp);
+      270 					end;
+      271 				     stats.cme_ptw_devadd_diffs = stats.cme_ptw_devadd_diffs + 1;
+      272 				     if check_tables_info.recover_errors
+      273 				     then do;
+      274 					     aste.damaged = "1"b;
+      275 					     ptw.valid = "0"b;
+      276 					     call page$cam;
+      277 					     mptw.devadd = page_problem_null_addr;
+      278 					end;
+      279 				end;		/* gonna get the asteps later */
+      280 			end;
+      281 		end;
+      282 
+      283 	     if cme.ptwp = "000000"b3
+      284 	     then do;				/* Free it */
+      285 		     if cme.fp ^= "777777"b3
+      286 		     then
+      287 clear_cme:
+      288 			if check_tables_info.recover_errors
+      289 			then cme.fp = "066666"b3;
+      290 free_cme:
+      291 		     if check_tables_info.recover_errors
+      292 		     then do;
+      293 			     cme.astep, cme.ptwp = "000000"b3;
+      294 			     cme.notify_requested = "0"b;
+      295 			end;
+      296 		end;
+      297 
+      298 	     if check_tables_info.recover_errors
+      299 	     then do;
+      300 
+      301 		     if ((cme.fp | cme.ptwp | cme.bp) ^= "000000"b3) & (cme.fp ^= "777777"b3)
+      302 		     then do;
+      303 			     new_nused = new_nused + 1;
+      304 						/* count it */
+      305 			     if sst.usedp = "0"b
+      306 			     then do;
+      307 				     sst.usedp, sst.wusedp = rel (cmep);
+      308 				     fcmep, lcmep = cmep;
+      309 				end;
+      310 			     cme.fp = rel (fcmep);
+      311 			     cme.bp = rel (lcmep);
+      312 			     lcmep -> cme.fp = rel (cmep);
+      313 			     fcmep -> cme.bp = rel (cmep);
+      314 						/* continue thread */
+      315 			     lcmep = cmep;
+      316 			end;
+      317 		end;
+      318 
+      319 	     sst.nused = new_nused;
+      320 	end;
+      321 
+      322 	/*** Now loop through the AST. There should be no OS ptw's,
+      323*	     except those in beginning of readin or end of io window.
+      324*	     Any inconsistency still left is simply wrong. Damage segments. */
+      325 
+      326 	do ptsi = 0 to 3;
+      327 	     astagp = astagps (ptsi);
+      328 	     pts = sst.pts (ptsi);
+      329 	     astesize = size (ex_aste);		/* get real size */
+      330 	     do astx = 0 to fixed (sst.no_aste (ptsi), 18) - 1;
+      331 		astep = addr (astage (astx));		/* address aste */
+      332 
+      333 		curused, nincore, csl = 0;		/* init stats */
+      334 		reported_aste = "0"b;
+      335 		do pno = 0 to pts - 1;		/* scan page table */
+      336 		     ptp = addr (ex_aste.aste_ptw (pno));
+      337 		     if ^reasonable_devaddp (mptw.devadd)
+      338 		     then do;
+      339 			     if check_tables_info.report_errors
+      340 			     then do;
+      341 				     call check_tables_info
+      342 					.report ("Bad PTW devadd for aste at ^o, ptw ^d", rel (astep), pno);
+      343 				     if ^reported_aste
+      344 				     then do;
+      345 					     call check_tables_info.display_aste (astep);
+      346 					     reported_aste = "1"b;
+      347 					end;
+      348 				     call check_tables_info.display_ptw (ptp);
+      349 				end;
+      350 			     stats.bad_ptw_devadds = stats.bad_ptw_devadds + 1;
+      351 			     go to ptwdamage;
+      352 			end;
+      353 
+      354 		     unspec (ptwdevadd) = mptw.devadd;	/* get stuff out */
+      355 
+      356 		     if string (ptwdevadd.add_type) = "0000"b
+      357 		     then ;			/* true null */
+      358 		     else if ptwdevadd.disk
+      359 		     then do;
+      360 			     if ^substr (ptw.add, 1, 1)
+      361 			     then do;		/* not nulled */
+      362 				     csl = pno + 1;
+      363 				     curused = curused + 1;
+      364 						/* count rec used */
+      365 				end;
+      366 			end;
+      367 		     else if ptwdevadd.core
+      368 		     then do;
+      369 			     cmep = addr (cmap -> cma (divide (fixed (ptw.add, 18), 16, 17, 0)));
+      370 			     if reasonable_cmepp (cmep)
+      371 			     then do;
+      372 				     if cme.ptwp = rel (ptp)
+      373 				     then do;	/* all good here */
+      374 					     if ptw.os & check_tables_info.recover_errors
+      375 					     then do;
+      376 						/* This is a complete lie-- not window, as coreadd here.
+      377*						   cme pass should have turned these all off. */
+      378 
+      379 						     stats.ptws_os_2nd_pass = stats.ptws_os_2nd_pass + 1;
+      380 						     ptw.os = "0"b;
+      381 						     go to ptwdamage;
+      382 						end;
+      383 					     nincore = nincore + 1;
+      384 					     csl = pno + 1;
+      385 					     curused = curused + 1;
+      386 					end;
+      387 				     else do;
+      388 					     if check_tables_info.report_errors
+      389 					     then do;
+      390 						     call check_tables_info
+      391 							.report ("CME ptwp ^= ptw address.");
+      392 						     call check_tables_info.display_ptw (ptp);
+      393 						     call check_tables_info.display_cme (cmep);
+      394 						end;
+      395 					     stats.bad_cme_ptwps = stats.bad_cme_ptwps + 1;
+      396 					     go to ptwdamage;
+      397 					end;
+      398 				end;
+      399 			     else do;
+      400 				     if check_tables_info.report_errors
+      401 				     then do;
+      402 					     call check_tables_info.report ("Bad cmep in PTW.");
+      403 					     call check_tables_info.display_ptw (ptp);
+      404 					end;
+      405 				     stats.bad_ptw_addrs = stats.bad_ptw_addrs + 1;
+      406 				     go to ptwdamage;
+      407 				end;
+      408 			end;
+      409 		     else do;
+      410 			     if check_tables_info.report_errors
+      411 			     then do;
+      412 				     call check_tables_info.report ("PTW devadd not core, disk, or null.");
+      413 				     call check_tables_info.display_ptw (ptp);
+      414 				end;
+      415 
+      416 			     stats.bad_ptw_addrs = stats.bad_ptw_addrs + 1;
+      417 ptwdamage:
+      418 			     if check_tables_info.recover_errors
+      419 			     then do;
+      420 				     ptw.valid = "0"b;
+      421 				     aste.damaged = "1"b;
+      422 				     call page$cam;
+      423 				     mptw.devadd = page_problem_null_addr;
+      424 				     unspec (ptwdevadd) = page_problem_null_addr;
+      425 				end;
+      426 			end;
+      427 		     if check_tables_info.recover_errors
+      428 		     then ptw.os = "0"b;
+      429 		     if ptwdevadd.core
+      430 		     then do;
+      431 			     if check_tables_info.recover_errors
+      432 			     then ptw.valid = "1"b;	/* Assume NO FAULTED INCORES IN THIS VERSION OF SYS */
+      433 			end;
+      434 		     else do;			/* next check should never happen */
+      435 			     if ptw.valid
+      436 			     then do;
+      437 				     if check_tables_info.report_errors
+      438 				     then do;
+      439 					     call check_tables_info.report ("Core PTW not valid.");
+      440 					     call check_tables_info.display_ptw (ptp);
+      441 					end;
+      442 				     stats.valid_not_core = stats.valid_not_core + 1;
+      443 				     if check_tables_info.recover_errors
+      444 				     then do;
+      445 					     ptw.valid = "0"b;
+      446 					     call page$cam;
+      447 					end;
+      448 				end;
+      449 			     if check_tables_info.recover_errors
+      450 			     then ptw.phm, ptw.phm1 = "0"b;
+      451 						/* these bother pc */
+      452 			end;
+      453 		     if ptw.wired
+      454 		     then new_nwired = new_nwired + 1;
+      455 
+      456 		     if check_tables_info.recover_errors
+      457 		     then ptw.df_no = "01"b;		/* I hate illegal segfault msgs -- Level 68 only */
+      458 		end;				/* page table loop */
+      459 
+      460 /* CAREFUL THESE ALL DECLARED FIXED 9 */
+      461 
+      462 		if check_tables_info.report_errors
+      463 		then do;
+      464 			if aste.csl ^= bit (csl, 9) | aste.records ^= bit (curused, 9) | aste.np ^= bit (nincore, 9)
+      465 			then do;
+      466 				call check_tables_info.display_aste (astep);
+      467 				call check_tables_info.report ("Bad counter for ASTE.");
+      468 				if aste.csl ^= bit (csl, 9)
+      469 				then call check_tables_info
+      470 					.report (" csl = ^d, should be ^d", bin (aste.csl), csl);
+      471 				if aste.records ^= bit (curused, 9)
+      472 				then call check_tables_info
+      473 					.report (" records = ^d, should be ^d", bin (aste.records), curused);
+      474 
+      475 				if aste.np ^= bit (nincore, 9)
+      476 				then call check_tables_info
+      477 					.report (" np = ^d, should be ^d", bin (aste.np), nincore);
+      478 
+      479 			     end;
+      480 		     end;
+      481 		if check_tables_info.recover_errors
+      482 		then do;
+      483 			aste.csl = bit (csl, 9);
+      484 			aste.records = bit (curused, 9);
+      485 			aste.np = bit (nincore, 9);
+      486 		     end;
+      487 	     end;					/* end ast group */
+      488 	end;					/* end ast pool */
+      489 
+      490 	if check_tables_info.recover_errors
+      491 	then sst.wired = new_nwired;
+      492 
+      493 	sst.wtct = 0;				/* we  stopped 'em all. */
+      494 	if check_tables_info.report_error_counts
+      495 	then if unspec (stats) ^= ""b
+      496 	     then do;
+      497 		     call check_tables_info.report ("Statistics:");
+      498 		     call stat_print ("Bad cme.devadd", stats.bad_cme_devadds);
+      499 		     call stat_print ("Bad cme add_type", stats.bad_cme_add_types);
+      500 		     call stat_print ("Bad ptw devadd", stats.bad_ptw_devadds);
+      501 		     call stat_print ("ptw/cme devadd mismatch", stats.cme_ptw_devadd_diffs);
+      502 		     call stat_print ("Bad cme ptwp", stats.bad_cme_ptwps);
+      503 		     call stat_print ("ptw os on second pass", stats.ptws_os_2nd_pass);
+      504 		     call stat_print ("Bad ptw address", stats.bad_ptw_addrs);
+      505 		     call stat_print ("Valid ptw not in memory", stats.valid_not_core);
+      506 		end;
+      507 
+      508 /* Subroutines */
+      509 
+      510 stat_print:
+      511      procedure (what, how_many);
+      512 
+      513 	declare what		 char (*);
+      514 	declare how_many		 fixed bin;
+      515 
+      516 	if how_many > 0
+      517 	then call check_tables_info.report ("^5x^5d^12t^a", how_many, what);
+      518 	return;
+      519      end stat_print;
+      520 
+      521 
+      522 CHECK_SEGMOVE:
+      523      procedure;
+      524 
+      525 	declare old_astep		 pointer;
+      526 	declare old_ptp		 pointer;
+      527 	declare new_astep		 pointer;
+      528 	declare new_ptp		 pointer;
+      529 	declare px		 fixed bin;
+      530 
+      531 	if sst.segmove_lock.pid = ""b
+      532 	then return;
+      533 
+      534 	astep = setwordno (sstp, wordno (sst.segmove_astep));
+      535 	old_astep = setwordno (sstp, wordno (sst.segmove_old_addr_astep));
+      536 	new_astep = setwordno (sstp, wordno (sst.segmove_new_addr_astep));
+      537 
+      538 	if check_tables_info.flags.report_state
+      539 	then do;
+      540 		call check_tables_info.report ("Segmove in progress, PID: ^w.", sst.segmove_lock.pid);
+      541 		if sst.segmove_astep = null ()
+      542 		then call check_tables_info.report (" move astep is NULL.");
+      543 		else call check_tables_info
+      544 			.
+      545 			report (" move astep:  ^p, size = ^d.", check_tables_info.display_ptr ((sst.segmove_astep)),
+      546 			sst.pts (bin (astep -> aste.ptsi)));
+      547 
+      548 		if sst.segmove_old_addr_astep = null ()
+      549 		then call check_tables_info.report (" old addr astep is NULL.");
+      550 		else call check_tables_info
+      551 			.
+      552 			report (" old addr astep:  ^p, size = ^d.",
+      553 			check_tables_info.display_ptr ((sst.segmove_old_addr_astep)),
+      554 			sst.pts (bin (old_astep -> aste.ptsi)));
+      555 
+      556 		if sst.segmove_new_addr_astep = null ()
+      557 		then call check_tables_info.report (" new addr astep is NULL.");
+      558 		else call check_tables_info
+      559 			.
+      560 			report (" new addr astep:  ^p, size = ^d.",
+      561 			check_tables_info.display_ptr ((sst.segmove_new_addr_astep)),
+      562 			sst.pts (bin (new_astep -> aste.ptsi)));
+      563 
+      564 		if astep ^= null ()
+      565 		then call check_tables_info
+      566 			.
+      567 			report (" Old PV ^a (Vtocx ^d).", check_tables_info.display_pvname (sst.segmove_pvtx),
+      568 			sst.segmove_vtocx);
+      569 
+      570 	     end;
+      571 /**** to make code clearer, first we do display loop, then real work */
+      572 /**** old_astep need not be displayed unless move_astep ^= null indicating
+      573*      that some ptws have possibly been changed. */
+      574 						/* leave out extensive display, you can poke w/azm */
+      575 	if ^check_tables_info.recover_errors
+      576 	then return;				/* done */
+      577 
+      578 	if old_astep ^= null ()
+      579 	then old_ptp = addwordno (old_astep, sst.astsize);
+      580 	if new_astep ^= null ()
+      581 	then new_ptp = addwordno (new_astep, sst.astsize);
+      582 	if astep ^= null ()
+      583 	then ptp = addwordno (astep, sst.astsize);
+      584 
+      585 	begin;
+      586 	     declare pt		      (1:sst.pts (bin (astep -> aste.ptsi))) bit (36) aligned based;
+      587 	     if sst.segmove_astep ^= null ()
+      588 	     then ptp -> pt = old_ptp -> pt;
+      589 	     if sst.segmove_old_addr_astep ^= null ()
+      590 	     then call NULL_PT (old_ptp, segmove_old_addr_null_addr);
+      591 	     if sst.segmove_new_addr_astep ^= null ()
+      592 	     then do;
+      593 		     call NULL_PT (new_ptp, segmove_new_addr_null_addr);
+      594 		     pvtep = addr (pvt_array (bin (new_astep -> aste.pvtx)));
+      595 		     pvte.vol_trouble_count = pvte.vol_trouble_count + 1;
+      596 		end;
+      597 
+      598 NULL_PT:
+      599      procedure (PTP, NullAddr);
+      600 
+      601 	declare PTP		 pointer;
+      602 	declare NullAddr		 bit (22) aligned;
+      603 	declare px		 fixed bin;
+      604 	declare ptwp		 pointer;
+      605 
+      606 	do px = lbound (PTP -> pt, 1) to hbound (PTP -> pt, 1);
+      607 	     unspec (ptwdevadd) = PTP -> pt (px);
+      608 	     if string (ptwdevadd.add_type) ^= "0000"b
+      609 	     then PTP -> pt (px) = NullAddr;
+      610 	end;
+      611      end NULL_PT;
+      612 	end;
+      613 
+      614 
+      615 	aste.pvtx = sst.segmove_pvtx;
+      616 	aste.vtocx = sst.segmove_vtocx;
+      617 
+      618 	sst.segmove_astep, sst.segmove_old_addr_astep, sst.segmove_new_addr_astep = null ();
+      619 	sst.segmove_vtocx, sst.segmove_pvtx = 0;
+      620 	return;
+      621 
+      622      end CHECK_SEGMOVE;
+      623 
+      624 CHECK_EVICT_PAGE:
+      625      procedure;
+      626 
+      627 /**** If evict_page was moving a page, restore the sequestered modify bit. */
+      628 
+      629 	if sst.evict_ptp = "000000"b3
+      630 	then return;
+      631 
+      632 	if check_tables_info.report_state
+      633 	then do;
+      634 		call check_tables_info.report ("Evict page in progess, ptw at ^o.", sst.evict_ptp);
+      635 		call check_tables_info.display_ptw (pointer (sstp, sst.evict_ptp));
+      636 	     end;
+      637 
+      638 	ptp = ptr (sstp, sst.evict_ptp);
+      639 	if ^reasonable_ptwpp (ptp, astep)
+      640 	then do;
+      641 		if check_tables_info.report_errors
+      642 		then call check_tables_info.report ("Invalid sst.evict_ptwp");
+      643 		return;				/* no repair */
+      644 	     end;
+      645 	else do;
+      646 		if ^check_tables_info.recover_errors
+      647 		then return;
+      648 		if sst.evict_phmbit ^= "000000"b3
+      649 		then ptw.phm1 = "1"b;
+      650 		sst.evict_phmbit = "000000"b3;
+      651 		sst.evict_ptp = "000000"b3;
+      652 	     end;
+      653 	return;
+      654      end CHECK_EVICT_PAGE;
+      655 
+      656 pnotify:
+      657      proc (p);					/* Notify page control event */
+      658 
+      659 	dcl     p			 ptr;
+      660 	dcl     pxss$notify		 entry (bit (36) aligned);
+      661 
+      662 	call pxss$notify ("000000"b3 || rel (p));
+      663 
+      664      end;
+      665 
+      666 
+      667 reasonable_cmepp:
+      668      proc (tcmep) returns (bit (1) aligned);		/* test reasonable cmep */
+      669 
+      670 	dcl     tcmep		 ptr;
+      671 	dcl     offs		 fixed bin (18);
+      672 
+      673 	offs = fixed (rel (tcmep), 18);
+      674 	offdif = offs - fixed (rel (cmap), 18);
+      675 	if offdif < 0
+      676 	then return ("0"b);
+      677 	bno = offdif / size (cme);
+      678 	if bno * size (cme) ^= offdif
+      679 	then return ("0"b);
+      680 	if bno < sst.first_core_block | bno > sst.last_core_block
+      681 	then return ("0"b);
+      682 	return ("1"b);
+      683 
+      684      end;
+      685 
+      686 reasonable_ptwpp:
+      687      proc (tptp, rastep) returns (bit (1) aligned);
+      688 
+      689 	dcl     tptp		 ptr;
+      690 	dcl     rastep		 ptr;
+      691 
+      692 	offs = fixed (rel (tptp), 18);
+      693 	if offs < astlowers (0)
+      694 	then return ("0"b);
+      695 
+      696 	do ptsi = 0 to 3;
+      697 	     if offs < astuppers (ptsi)
+      698 	     then do;
+      699 		     offdif = offs - astlowers (ptsi);
+      700 		     bno = offdif / astesizes (ptsi);
+      701 		     if offdif - bno * astesizes (ptsi) < size (aste)
+      702 		     then return ("0"b);
+      703 		     rastep = ptr (sstp, bno * astesizes (ptsi) + astlowers (ptsi));
+      704 		     return ("1"b);
+      705 		end;
+      706 	end;
+      707 	return ("0"b);
+      708 
+      709      end;
+      710 
+      711 reasonable_devaddp:
+      712      proc (arg_devadd) returns (bit (1) aligned);		/* tests non-garbage devadd */
+      713 
+      714 	dcl     arg_devadd		 bit (22) unaligned;
+      715 	dcl     1 test_devadd,
+      716 		2 add		 bit (18) unal,
+      717 		2 add_type	 like badd_type unal;
+      718 
+      719 	dcl     LEGAL_ADD_TYPES	 bit (16) unal init ("1010100010000000"b) options (constant) static;
+      720 
+      721 	unspec (test_devadd) = arg_devadd;
+      722 	if ^substr (LEGAL_ADD_TYPES, fixed (string (test_devadd.add_type), 4) + 1, 1)
+      723 	then return ("0"b);
+      724 	if test_devadd.add_type.core
+      725 	then if substr (test_devadd.add, 15, 4)
+      726 	     then return ("0"b);
+      727 	return ("1"b);
+      728 
+      729      end;
+      730 
+      731 
+      732 /* format: off */
+      733  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  1     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  1     3 
+  1     4 dcl  cmep ptr;					/* pointer to core map entry */
+  1     5 
+  1     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  1     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  1     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  1     9 
+  1    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  1    11     2 pad5 bit (1) unaligned,
+  1    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  1    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  1    14     2 pad2 bit (1) unaligned,
+  1    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  1    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  1    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  1    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  1    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  1    20     2 pad3 bit (1) unaligned,
+  1    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  1    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  1    23 
+  1    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  1    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  1    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  1    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  1    28 
+  1    29 
+  1    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  1    31 
+  1    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  1    33     2 pad bit (36) unaligned,
+  1    34     2 record_no bit (18) unaligned,			/* record number of device */
+  1    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  1    36     2 flags bit (14) unal,
+  1    37     2 pad1 bit (18) unal;
+  1    38 
+  1    39 
+  1    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      733 
+      734  /*   BEGIN INCLUDE FILE ... sst.incl.pl1 ... January 1971 */
+  2     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  2     3 /* Deleted paging device info and added pc segmove info, Benson Margulies 84-01-03 */
+  2     4 /* Added covert channel meters, Keith Loepere 85-01-08. */
+  2     5 
+  2     6 dcl  sst_seg$ external;
+  2     7 dcl  sstp ptr;
+  2     8 
+  2     9 dcl 1 sst based (sstp) aligned,
+  2    10     2 space (8) fixed bin,				/* empty space to watch for bugs */
+  2    11 
+  2    12 /* SST HEADER */
+  2    13 
+  2    14     2 pre_page_time fixed bin (71),			/* total time spent pre-paging */
+  2    15     2 post_purge_time fixed bin (71),			/* total time spent post-purging */
+  2    16     2 post_in_core fixed bin,				/* total pages in core (and in list) at purge time */
+  2    17     2 thrashing fixed bin,				/* meter of thrashing being done on system */
+  2    18     2 npfs_misses fixed bin,				/* meter of times npfs was on when pre-paging */
+  2    19     2 salv fixed bin,				/* flag which is ^=0 if and only if salvaging */
+  2    20 
+  2    21     2 ptl bit (36),					/* global page table loop lock */
+  2    22     2 astl bit (36),				/* global ast allocation block lock */
+  2    23     2 astl_event bit (36),				/* event used when waiting for AST lock */
+  2    24     2 astl_notify_requested bit (1) aligned,		/* flag to notify AST lock */
+  2    25     2 nused fixed bin,				/* number of pages on used list */
+  2    26     2 ptwbase fixed bin (24),				/* absolute address of page table array */
+  2    27     2 tfreep ptr,					/* pointer to first trailer on free list */
+  2    28 
+  2    29     2 astap ptr,					/* aste array pointer */
+  2    30     2 ptl_wait_ct fixed bin,				/* pxss: number is >= # of processes waiting to ptl */
+  2    31     2 astsize fixed bin,				/* size of an AST entry */
+  2    32     2 cmesize fixed bin,				/* size of a CME entry */
+  2    33     2 root_astep ptr,				/* pointer to the root AST entry */
+  2    34 
+  2    35     2 pts (0: 3) fixed bin,				/* array of page table sizes */
+  2    36     2 level (0:3),					/* per-list information about ASTE's */
+  2    37       3 (ausedp, no_aste) bit (18) unaligned,		/* used list and count of number of entries */
+  2    38 
+  2    39     2 (atempp, atempp1) bit (18) unal,			/* temp seg list pointer */
+  2    40     2 dm_enabled bit (1) aligned,			/* ON => journal seg exists */
+  2    41     2 (ainitp, ainitp1) bit (18) unal,			/* init seg list pointer */
+  2    42     2 strsize fixed bin,				/* Trailer size in words. */
+  2    43 
+  2    44 /* CORE MAP HEADER */
+  2    45 
+  2    46     2 cmp ptr,					/* pointer to start of core map */
+  2    47     2 usedp bit (18),				/* pointer to first used core block */
+  2    48     2 wtct fixed bin,				/* count of pages being written */
+  2    49 
+  2    50     2 startp bit (18),				/* pointer to solid page for lap counting (fsdct) */
+  2    51     2 removep bit (18),				/* pointer to list of pages being removed from use */
+  2    52 						/* MISC */
+  2    53 
+  2    54     2 double_write fixed bin,				/* trigger for store through scheme */
+  2    55 						/* 0 = no double writes,
+  2    56*						   1 = all non-pd pages get written,
+  2    57*						   2 = all directories get written */
+  2    58     2 temp_w_event bit (36) aligned,			/* wait event for temp wiring lock */
+  2    59     2 root_pvtx fixed bin,				/* pvtx or rpv */
+  2    60     2 nolock bit (1) aligned,				/* if on, don't lock ptl on interrupts */
+  2    61 
+  2    62     2 fc_skips_pinned fixed bin (35),			/* number of skips over pinned page in find_core */
+  2    63     2 cl_skips_pinned fixed bin (35),			/* number of skips over pinned page in claim_mod_core */
+  2    64     2 ast_ht_ptr ptr,				/* AST hast table pointer */
+  2    65     2 ast_ht_n_buckets fixed bin,			/* number of buckets in AST hash table */
+  2    66     2 ast_ht_uid_mask bit (36) aligned,			/* mask to strip out low-order bits of uid */
+  2    67     2 meter_ast_locking fixed bin,			/* non-zero enables AST lock meters */
+  2    68     2 checksum_filemap fixed bin,			/* non-zero enables filemap checksumming */
+  2    69 
+  2    70     2 page_read_errors fixed bin,			/* read errors posted to page control */
+  2    71     2 page_write_errors fixed bin,			/* write errors posted to page control */
+  2    72 
+  2    73     2 cycle_pv_allocation fixed bin,			/* flag to cycle VTOCE allocation among PVs */
+  2    74 
+  2    75     2 n_trailers fixed bin,				/* Number of trailer entries in str_seg */
+  2    76     2 synch_activations fixed bin (35),			/* Activation attempts for synchronized segs */
+  2    77     2 synch_skips fixed bin (35),			/* get_aste skips because not synchronized */
+  2    78 
+  2    79     2 lock_waits fixed bin,				/* Number of times we had to wait for a lock */
+  2    80     2 total_locks_set fixed bin,			/* Total number of block locks set */
+  2    81     2 pdir_page_faults fixed bin,			/* total page faults off >pdd */
+  2    82     2 level_1_page_faults fixed bin,			/* total page faults in sys libes */
+  2    83     2 dir_page_faults fixed bin,			/* Total page faults on directories */
+  2    84     2 ring_0_page_faults fixed bin,			/* page faults in ring 0 */
+  2    85     2 rqover fixed bin (35),				/* errcode for record quota overflow */
+  2    86     2 pc_io_waits fixed bin,				/* Number of times pc had to wait on io */
+  2    87 
+  2    88 
+  2    89 /*  The following (until pdmap) used to be the 'cnt' in cnt.incl.pl1 */
+  2    90 
+  2    91     2 steps fixed bin,				/* number of steps taken around used list */
+  2    92     2 needc fixed bin,				/* number of times core page needed */
+  2    93     2 ceiling fixed bin,				/* number of times ceiling hit */
+  2    94     2 ctwait fixed bin,				/* number of times write counter was full */
+  2    95     2 wired fixed bin,				/* number of pages wired by pc */
+  2    96     2 laps fixed bin,				/* number of times around used list */
+  2    97     2 skipw fixed bin,				/* number of pages skiped because they were wired */
+  2    98     2 skipu fixed bin,				/* because of being used */
+  2    99 
+  2   100     2 skipm fixed bin,				/* because of being modified */
+  2   101     2 skipos fixed bin,				/* because out of service */
+  2   102     2 aused fixed bin,				/* number of AST entries on used list */
+  2   103     2 damaged_ct fixed bin,				/* count of segments that system damaged */
+  2   104     2 deact_count fixed bin,				/* count of deactivations */
+  2   105     2 demand_deact_attempts fixed bin,			/* user requested deactivations */
+  2   106     2 demand_deactivations fixed bin,			/* user instigated deactivations */
+  2   107 
+  2   108     2 reads (8) fixed bin,				/* number of reads for each did */
+  2   109     2 writes (8) fixed bin,				/* number of writes for each did */
+  2   110 
+  2   111     2 short_pf_count fixed bin,			/* count of page faults on out of service pages */
+  2   112     2 loop_locks fixed bin,				/* count of times locked PTL */
+  2   113     2 loop_lock_time fixed bin (71),			/* time spent looping on PTL */
+  2   114     2 cpu_sf_time fixed bin (71),			/* cpu time spent in seg_fault */
+  2   115     2 total_sf_pf fixed bin,				/* total page faults while in seg_fault */
+  2   116     2 total_sf fixed bin,				/* total number of seg_faults */
+  2   117     2 pre_page_size fixed bin,			/* total pre-pagings expected */
+  2   118     2 post_list_size fixed bin,
+  2   119     2 post_purgings fixed bin,			/* total number of post-purgings */
+  2   120     2 post_purge_calls fixed bin,			/* total number of calls to post-purge */
+  2   121     2 pre_page_calls fixed bin,			/* total number of calls tp pre-page */
+  2   122     2 pre_page_list_size fixed bin,
+  2   123     2 pre_page_misses fixed bin,			/* total number of misses in pre-page list */
+  2   124     2 pre_pagings fixed bin,				/* total number of pre-pagings */
+  2   125 
+  2   126 /*  TEMPORARY WIRED PROCEDURE INFO  */
+  2   127 
+  2   128     2 wire_proc_data (8) fixed bin (71),		/* data for wire_proc */
+  2   129 
+  2   130 /* MAIN MEMORY USAGE INFORMATION */
+  2   131 
+  2   132     2 abs_wired_count fixed bin,			/* count of abs-wired pages */
+  2   133     2 system_type fixed bin,				/* ADP_SYSTEM or L68_SYSTEM */
+  2   134     2 wired_copies fixed bin,				/* number of times a wired page was copied */
+  2   135     2 recopies fixed bin,				/* number of times recopied because modified */
+  2   136     2 first_core_block fixed bin,			/* core map index for first block of core */
+  2   137     2 last_core_block fixed bin,			/* core map index for last block of core */
+  2   138     2 fw_retries fixed bin (35),			/* force_write retries due to ASTE move */
+  2   139     2 pvhtp ptr unaligned,				/* ptr to PV hold table for debugging */
+  2   140 
+  2   141 /*  AST METERS  */
+  2   142 
+  2   143     2 askipsize (0: 3) fixed bin,			/* array of skips because wrong AST size */
+  2   144     2 aneedsize (0: 3) fixed bin,			/* array of times needed each size */
+  2   145 
+  2   146     2 stepsa fixed bin,				/* count of steps taken looking for an AST entry */
+  2   147     2 askipsehs fixed bin,				/* count of skips because EHS was ON */
+  2   148     2 asearches fixed bin,				/* count of full searches made */
+  2   149     2 askipslevel fixed bin,				/* count of skips because pages were in core */
+  2   150     2 askipsinit fixed bin,				/* count of times turned OFF init switch */
+  2   151     2 acost fixed bin,				/* cumulative cost of deactivations */
+  2   152     2 askipslock fixed bin,				/* count of skips because couldn't lock parent */
+  2   153     2 askipdius fixed bin,				/* count of skips because DIUS was on */
+  2   154 
+  2   155     2 alaps fixed bin,				/* lap counter for AST list */
+  2   156     2 updates fixed bin,				/* calls to updateb */
+  2   157     2 setfaults_all fixed bin,			/* setfaults done to the entire SDW */
+  2   158     2 setfaults_acc fixed bin,			/* setfaults done to the access field */
+  2   159     2 total_bf fixed bin,				/* count of bound faults */
+  2   160     2 total_bf_pf fixed bin,				/* page faults during bound faults */
+  2   161     2 cpu_bf_time fixed bin (71),			/* cpu time spent in bound fault */
+  2   162 
+  2   163     2 asteps (0: 3) fixed bin,			/* per-size AST step counters */
+  2   164 
+  2   165     2 ast_locked_at_time fixed bin (71),		/* clock reading when ast last locked */
+  2   166     2 ast_locked_total_time fixed bin (71),		/* total real time the ast lock was locked */
+  2   167     2 ast_lock_wait_time fixed bin (71),		/* total real time of all waiting on ast lock */
+  2   168     2 ast_locking_count fixed bin (35),			/* number of times ast was locked */
+  2   169     2 cleanup_count fixed bin,			/* calls to pc$cleanup */
+  2   170     2 cleanup_real_time fixed bin (71),			/* total real time in pc$cleanup */
+  2   171 
+  2   172 /* PRE-PAGE METERS */
+  2   173 
+  2   174     2 tree_count (0: 63) fixed bin,			/* counters for pre-page decisions */
+  2   175 
+  2   176     2 pp_meters (0: 63) fixed bin,			/* counters for measuring pre-page success */
+  2   177 
+  2   178 
+  2   179     2 wusedp bit (18) aligned,			/* Relative cmep to next cme for writing */
+  2   180     2 write_hunts fixed bin,				/* Times claim_mod_core invoked */
+  2   181     2 claim_skip_cme fixed bin,			/* Times unacceptable cme found by c_m_c */
+  2   182     2 claim_skip_free fixed bin,			/* Times free cme passed by c_m_c */
+  2   183     2 claim_notmod fixed bin,				/* Times c_m_c passed pure page */
+  2   184     2 claim_passed_used fixed bin,			/* Times used page seen */
+  2   185     2 claim_skip_ptw fixed bin,			/* Times c_m_c saw unacceptable ptw */
+  2   186     2 claim_writes fixed bin,				/* Writes queued by c_m_c */
+  2   187     2 claim_steps fixed bin,				/* Steps passed in core claiming */
+  2   188     2 pre_seeks_failed fixed bin,			/* counter of times quick find_core_ failed */
+  2   189     2 resurrections fixed bin,			/* nulled addresses reinstated */
+  2   190     2 volmap_seg_page_faults fixed bin (35),		/* Pseudo-page faults on volmap_seg */
+  2   191     2 oopv fixed bin,				/* out-of-physical-volume page faults */
+  2   192     2 dblw_resurrections fixed bin,			/* addresses resurrected by double-writing */
+  2   193     2 sgm_time fixed bin (71),			/* Time (VCPU) in seg mover */
+  2   194     2 sgm_pf fixed bin,				/* Page faults in seg moving */
+  2   195     2 bad_sgms fixed bin,				/* Seg moves that failed */
+  2   196     2 sgm_sgft fixed bin,				/* Seg faults in seg moves */
+  2   197     2 good_sgms fixed bin,				/* Seg moves that completed */
+  2   198     2 claim_runs fixed bin,				/* Times claim_mod_core had to run */
+  2   199     2 activations fixed bin,				/* total count of activations */
+  2   200     2 dir_activations fixed bin,			/* count of directory activations */
+  2   201     2 hedge_updatevs fixed bin,			/* call-in updatevs */
+  2   202     2 hedge_writes fixed bin,				/* call in core flush writes */
+  2   203     2 evict_recover_data,				/* see evict_page.alm */
+  2   204      3 evict_ptp bit (18) unal,			/* ptp of page being moved */
+  2   205      3 evict_phmbit bit (18) unal,			/* N/Z if page was mod */
+  2   206 
+  2   207 /* Data for metering force_write facility 08/19/78 */
+  2   208 
+  2   209     2 force_swrites fixed bin,			/* Calls on segments to force write */
+  2   210     2 force_pwrites fixed bin,			/* Mod pages so written */
+  2   211     2 fw_none fixed bin,				/* Force write wrote none */
+  2   212     2 force_updatevs fixed bin,			/* Updatev's so forced */
+  2   213 
+  2   214     2 pf_unlock_ptl_time fixed bin (71),		/* Time unlocking ptln page faults */
+  2   215     2 pf_unlock_ptl_meterings fixed bin,
+  2   216 
+  2   217     2 makeknown_activations fixed bin (35),		/* activations at makeknown time */
+  2   218     2 backup_activations fixed bin (35),		/* activations for backup */
+  2   219     2 metering_flags aligned,				/* small chunks of misc. information */
+  2   220       3 activate_activated bit (1) unal,		/* ON => last call to activate entry actually activated something */
+  2   221       3 pad bit (35) unal,
+  2   222     2 seg_fault_calls fixed bin (35),			/* number calls to seg_fault for explicit activation */
+  2   223 
+  2   224 /* METERS FOR STACK TRUNCATION */
+  2   225 
+  2   226     2 (stk_truncate_should_didnt,			/* counts */
+  2   227        stk_truncate_should_did,
+  2   228        stk_truncate_shouldnt_didnt,
+  2   229        stk_truncate_shouldnt_did) fixed bin (35),
+  2   230     2 stk_pages_truncated fixed bin (35),
+  2   231     2 stk_pages_truncated_in_core fixed bin (35),
+  2   232 
+  2   233 /* SUPPORT FOR PC SEGMOVES */
+  2   234 
+  2   235     2 segmove_lock aligned,
+  2   236       3 pid bit (36) aligned,
+  2   237       3 event bit (36) aligned,
+  2   238       3 notify bit (1) aligned,
+  2   239     2 segmove_io_limit fixed bin, /* max read aheads */
+  2   240     2 segmove_found_synch fixed bin (35), /* cme.synch_held */
+  2   241     2 segmove_synch_disappeared fixed bin (35), /* page$check_synch fixed */
+  2   242     2 segmove_n_reads fixed bin (35), /* total IO's queued. */
+  2   243     2 segmove_max_tries fixed bin (35), /* max times through the read loop */
+  2   244 
+  2   245     2 segmove_astep ptr unal,				/* if non-null, addresses to be rescued from old_addr_astep */
+  2   246     2 segmove_pvtx fixed bin,				/* if segmove_astep nonnull, valid */
+  2   247     2 segmove_vtocx fixed bin,			/* ditto */
+  2   248     2 segmove_old_addr_astep ptr unaligned,		/* ditto */
+  2   249     2 segmove_new_addr_astep ptr unaligned,		/* if non-null, the addresses must be deposited. */
+  2   250 
+  2   251     2 mod_during_write fixed bin,			/* times a page was modified while it was being written */
+  2   252     2 zero_pages fixed bin,				/* count of pages truncated because all zero */
+  2   253     2 trace_sw aligned,				/* tracing control flags */
+  2   254       3 pad_trace bit (32) unaligned,
+  2   255       3 pc_trace_pf bit (1) unaligned,			/* tracing for page faults, done, etc. */
+  2   256       3 tty_trace bit (1) unaligned,
+  2   257       3 pc_trace bit (1) unaligned,			/* flag used by page control primitives */
+  2   258       3 sc_trace bit (1) unaligned,			/* flag used by segment control primitives */
+  2   259     2 new_pages fixed bin,				/* newly created pages */
+  2   260     2 ast_track bit (1) aligned,			/* "1"b => keep SST name table */
+  2   261     2 dirlock_writebehind fixed bin,			/* =1 to flush modified dir pages in lock$unlock */
+  2   262     2 write_limit fixed bin,				/* Max # of outstanding writes by page control */
+  2   263     2 crash_test_segmove bit (1) aligned,		/* crash in mid-segmove */
+  2   264     2 delayed_seg_state_chg fixed bin (35),		/* count of times a process was delayed in affecting a seg state */
+  2   265     2 audit_seg_state_chg fixed bin (35),		/* count of times a process was audited for excessive seg state changes */
+  2   266     2 seg_state_chg_delay fixed bin (52),		/* total times processes were delayed for covert channels */
+  2   267     2 seg_state_change_limit fixed bin,			/* number of events over which we determine covert channel bandwidth */
+  2   268     2 max_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we delay */
+  2   269     2 audit_seg_state_change_bw fixed bin,		/* maximum bps for covert channel before we audit */
+  2   270     2 seg_state_chg_operation bit (36) aligned,		/* access_operation_ value for excessive_seg_state_chg */
+  2   271     2 pad4 (126) bit (36) aligned;			/* padding to 512 words (1000)8 */
+  2   272 
+  2   273 /* END INCLUDE FILE sst.incl.pl1 */
+      734 
+      735  
+  3     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  3     3 	/* 02/26/75 by Bernard S. Greenberg */
+  3     4 
+  3     5 	/* This file provides a structure for checking
+  3     6*		PTW/CME address type fields in PL/I */
+  3     7 
+  3     8 dcl 1 add_type unaligned static internal,
+  3     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  3    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  3    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  3    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  3    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  3    14 
+  3    15 dcl 1 badd_type unaligned based,
+  3    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  3    17 
+  3    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      735 
+      736  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  4     2 
+  4     3 /* Template for an AST entry. Length = 12 words. */
+  4     4 
+  4     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  4     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  4     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  4     8 
+  4     9 dcl  astep ptr;
+  4    10 
+  4    11 dcl 1 aste based (astep) aligned,
+  4    12 
+  4    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  4    14     2 bp bit (18),					/* backward used list rel pointer */
+  4    15 
+  4    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  4    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  4    18 
+  4    19     2 strp bit (18),				/* rel pointer to process trailer */
+  4    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  4    21 
+  4    22     2 uid bit (36),					/* segment unique id */
+  4    23 
+  4    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  4    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  4    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  4    27 
+  4    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  4    29     2 init bit (1),					/* used bit - insure 1 lap */
+  4    30     2 gtus bit (1),					/* global transparent usage switch */
+  4    31     2 gtms bit (1),					/* global transparent modified switch */
+  4    32     2 hc bit (1),					/* hard core segment */
+  4    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  4    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  4    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  4    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  4    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  4    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  4    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  4    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  4    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  4    42     2 pad1 bit (2),					/* OO */
+  4    43     2 dius bit (1),					/* dumper in use switch */
+  4    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  4    45     2 dmpr_pad bit (1),
+  4    46     2 ehs bit (1),					/* entry hold switch */
+  4    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  4    48     2 dirsw bit (1),				/* directory switch */
+  4    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  4    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  4    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  4    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  4    53 
+  4    54     2 dtu bit (36),					/* date and time segment last used */
+  4    55 
+  4    56     2 dtm bit (36),					/* date and time segment last modified */
+  4    57 
+  4    58 
+  4    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  4    60 
+  4    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  4    62 
+  4    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  4    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  4    65     2 fms bit (1),					/* file modified switch */
+  4    66     2 npfs bit (1),					/* no page fault switch */
+  4    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  4    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  4    69     2 per_process bit (1),				/* use master quota for this entry */
+  4    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  4    71     2 pad2 bit (2),
+  4    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  4    73     2 np bit (9),					/* number of pages in core */
+  4    74 
+  4    75 
+  4    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  4    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  4    78     2 damaged bit (1),				/* PC declared segment unusable */
+  4    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  4    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  4    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  4    82     2 ptsi bit (2),					/* page table size index */
+  4    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  4    84 
+  4    85 
+  4    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  4    87 
+  4    88 
+  4    89 dcl 1 aste_part aligned based (astep),
+  4    90 
+  4    91     2 one bit (36) unaligned,				/* fp and bp */
+  4    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  4    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  4    94 
+  4    95 
+  4    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  4    97     2 pad1 bit (8*36),
+  4    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  4    99     2 pad2 bit (3*36);
+  4   100 
+  4   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      736 
+      737  /* BEGIN INCLUDE FILE  null_addresses.incl.pl1 */
+  5     2 /* Added segmove values, Benson Margulies, 84-01 */
+  5     3 
+  5     4 dcl (pc_move_page_table_1_null_addr init	("3770070"b3),
+  5     5      pc_move_page_table_2_null_addr init	("3770100"b3),
+  5     6      get_aste_null_addr init			("3770110"b3),
+  5     7      make_sdw_null_addr init			("3770120"b3),
+  5     8      put_aste_null_addr init			("3770130"b3),
+  5     9      page_bad_pd_null_addr init		("3770150"b3),
+  5    10      list_deposit_null_addr init		("3770160"b3),
+  5    11      get_file_map_null_addr init		("3770170"b3),
+  5    12      fill_page_table_null_addr init		("3770200"b3),
+  5    13      init_sst_null_addr init			("3770210"b3),
+  5    14      get_file_map_vt_null_addr init		("3770220"b3),
+  5    15      unprotected_null_addr init		("3770230"b3),
+  5    16      page_bad_null_addr init			("3770240"b3),
+  5    17      page_problem_null_addr init		("3770250"b3),
+  5    18      page_parity_null_addr init		("3770260"b3),
+  5    19      page_devparity_null_addr init		("3770270"b3),
+  5    20      segmove_old_addr_null_addr init              ("3770300"b3),
+  5    21      segmove_new_addr_null_addr init		("3770310"b3),
+  5    22      get_file_map_dumper_non_null_addr init	("3777720"b3),
+  5    23      append_null_addr	         init       ("3777770"b3)) bit (22) aligned static options (constant);
+  5    24 dcl create_vtoce_four_null_addrs fixed bin (71) int static init (-1);/* 777777 777777 777777 777777 */
+  5    25 
+  5    26 dcl (create_vtoce_null_addr init		("777777"b3),
+  5    27      update_vtoce_null_addr init		("777776"b3),
+  5    28      truncate_vtoce_fill_null_addr init		("777775"b3),
+  5    29      truncate_vtoce_null_addr init		("777002"b3),
+  5    30      pv_salv_null_addr init			("777004"b3),
+  5    31      pv_scav_null_addr init			("777006"b3),
+  5    32      volume_reloader_null_addr init		("777774"b3),
+  5    33      volume_retriever_null_addr init		("777773"b3),
+  5    34      salv_truncate_null_addr init		("777005"b3)) bit (18) aligned static options (constant);
+  5    35 
+  5    36 /* END INCLUDE FILE null_addresses.incl.pl1 */
+      737 
+      738  /* BEGIN INCLUDE FILE ... ptw.l68.incl.pl1 ... 02/26/81, for ADP conversion */
+  6     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  6     3 
+  6     4 dcl 1 l68_core_ptw aligned based (ptp), 		/* In-core page descriptor */
+  6     5     2 frame fixed bin (14) unsigned unaligned,		/* Core frame number */
+  6     6     2 pad1 bit (4) unaligned,
+  6     7     2 flags unaligned like l68_ptw_flags;
+  6     8 
+  6     9 dcl 1 l68_ptw aligned based (ptp),			/* General declaration for out-of-core PTW */
+  6    10     2 add bit (18) unaligned,
+  6    11     2 flags like l68_ptw_flags unaligned;
+  6    12 
+  6    13 dcl 1 l68_special_ptw aligned based (ptp) like l68_ptw;	/* Page is somewhere peculiar -- add_type = "01"b */
+  6    14 dcl 1 l68_real_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page actually on disk -- add_type = "10"b */
+  6    15 dcl 1 l68_null_disk_ptw aligned based (ptp) like l68_ptw;	/* PTW for page not yet on disk -- add_type = "11"b */
+  6    16 
+  6    17 dcl 1 l68_ptw_flags unaligned based,			/* Various software/hardware flags */
+  6    18    (2 add_type bit (4),				/* 0000=null, 1000=core, 0100=disk, 0010=pd, 0001=swap */
+  6    19     2 first bit (1),				/* the page has not yet been written out */
+  6    20     2 er bit (1),					/* error on last page I/O (also used by post-purge as temp) */
+  6    21 
+  6    22     2 pad1 bit (1),
+  6    23     2 unusable1 bit (1),				/* can't be used because hardware resets this bit */
+  6    24     2 phu bit (1),					/* page has been used bit */
+  6    25 
+  6    26     2 phm1 bit (1), 				/* Cumulative OR of hardware phm's */
+  6    27     2 nypd bit (1), 				/* must be moved to paging device */
+  6    28     2 phm bit (1),					/* page has been modified bit */
+  6    29 
+  6    30     2 phu1 bit (1), 				/* page has been used in the quantum */
+  6    31     2 wired bit (1),				/* page is to remain in core */
+  6    32     2 os bit (1),					/* page is out-of-service (I/O in progress) */
+  6    33     2 valid bit (1),				/* directed fault if this is 0 (page not in core) */
+  6    34     2 df_no bit (2)) unaligned;			/* directed fault number for page faults */
+  6    35 
+  6    36 /* END INCLUDE FILE ... ptw.l68.incl.pl1 */
+      738 
+      739 /* format: on */
+      740 
+      741 	dcl     1 ptw		 aligned based (ptp) like l68_ptw;
+      742 	dcl     1 ptw_flags		 unaligned like l68_ptw_flags based;
+      743 	dcl     1 core_ptw		 aligned based (ptp) like l68_core_ptw;
+      744 	dcl     1 special_ptw	 aligned based (ptp) like l68_special_ptw;
+      745 	dcl     1 real_disk_ptw	 aligned based (ptp) like l68_real_disk_ptw;
+      746 	dcl     1 null_disk_ptw	 aligned based (ptp) like l68_null_disk_ptw;
+      747 
+      748 /* Arrays and overlays for various purposes */
+      749 
+      750 	dcl     1 ptwa		 (0:255) based (ptp) aligned like ptw;
+      751 						/* page table */
+      752 
+      753 	dcl     ptwa_bits		 (0:255) based (ptp) bit (36) aligned;
+      754 						/* page table array as raw bits */
+      755 
+      756 	dcl     1 mptw		 based (ptp) aligned,
+      757 						/* page table word while page is not in core */
+      758 		2 devadd		 bit (22) unaligned,/* device address where page resides */
+      759 		2 pad		 bit (14) unaligned;
+      760 
+      761 	dcl     1 mptwa		 (0:1) based (ptp) aligned,
+      762 						/* page table while pages are not in core */
+      763 		2 devadd		 bit (22) unaligned,/* device address where page resides */
+      764 		2 pad		 bit (14) unaligned;
+      765 
+      766 	dcl     1 atptw		 based (ptp) aligned,
+      767 						/* PL/I has problems on overlay-def based */
+      768 		2 add		 bit (18) unal,
+      769 		2 (core, disk, pd, reserved)
+      770 				 bit (1) unal,	/* address types */
+      771 		2 pad		 bit (14) unal;
+      772 
+      773 	dcl     1 atptwa		 (0:255) based (ptp) aligned like atptw;
+      774 
+      775 /* format: off */
+      776 
+  7     1 /*	BEGIN INCLUDE FILE ... pvt.incl.pl1 ... last modified January 1982 */
+  7     2 
+  7     3 
+  7     4 /* The physical volume table (PVT) is a wired-down table.
+  7     5*   It has one entry for each spindle present, be it for
+  7     6*   Storage System or "I/O" use.
+  7     7**/
+  7     8 
+  7     9      dcl	   pvt$		      ext,
+  7    10 	   pvtp		      ptr;
+  7    11 
+  7    12 
+  7    13      dcl	   1 pvt		      based (pvtp) aligned,
+  7    14 
+  7    15 	     2 n_entries	      fixed bin (17),	/* number of PVT entries */
+  7    16 	     2 max_n_entries      fixed bin (17),	/* max number of PVT entries */
+  7    17 	     2 n_in_use	      fixed bin (17),	/* number of PVT entries in use */
+  7    18 	     2 rwun_pvtx	      fixed bin,		/* rewind_unloading pvtx */
+  7    19 	     2 shutdown_state     fixed bin,		/* state of previous shutdown */
+  7    20 	     2 esd_state	      fixed bin,		/* state of ESD, >0 iff in ESD */
+  7    21 	     2 prev_shutdown_state fixed bin,		/* shutdown state of previous bootload */
+  7    22 	     2 prev_esd_state     fixed bin,		/* ESD state of previous bootload */
+  7    23 
+  7    24 	     2 time_of_bootload fixed bin (71),		/* Time of bootload */
+  7    25 	     2 root_lvid	      bit (36) aligned,	/* Logical volume ID of Root Logical Volume (RLV) */
+  7    26 	     2 root_pvid	      bit (36) aligned,	/* Physical volume ID of Root Physical Volume (RPV) */
+  7    27 	     2 root_pvtx	      fixed bin,		/* Index to PVTE for Root Physical Volume (RPV) */
+  7    28 	     2 root_vtocx	      fixed bin,		/* VTOCE index for root (>) */
+  7    29 	     2 disk_table_vtocx   fixed bin,		/* VTOCE index for disk table on RPV */
+  7    30 	     2 disk_table_uid     bit (36) aligned,	/* File System UID for disk_table */
+  7    31 
+  7    32 	     2 rpvs_requested     bit (1) aligned,	/* RPVS keyword given on BOOT */
+  7    33 	     2 rpv_needs_salv     bit (1) aligned,	/* RPV required (not requested) salvage */
+  7    34 	     2 rlv_needs_salv     bit (1) aligned,	/* RLV required (not requested) salvage */
+  7    35 	     2 volmap_lock_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  7    36 	     2 volmap_idle_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+  7    37 	     2 vtoc_map_lock_wait_constant bit (36) aligned, /* For constructing wait event: OR pvte_rel into lower */
+  7    38 	     2 n_volmap_locks_held fixed bin (17),	/* Current number of volmap locks held */
+  7    39 	     2 n_vtoc_map_locks_held fixed bin (17),	/* Current number of VTOC Map locks held */
+  7    40 
+  7    41 	     2 last_volmap_time   fixed bin (71),	/* Time a volmap was last locked/unlocked */
+  7    42 	     2 last_vtoc_map_time fixed bin (71),	/* Time a VTOC Map was last locked/unlocked */
+  7    43 	     2 total_volmap_lock_time fixed bin (71),	/* Total time volmap's were locked (integral) */
+  7    44 	     2 total_vtoc_map_lock_time fixed bin (71),	/* Total time VTOC Maps were locked (integral) */
+  7    45 
+  7    46 	     2 n_volmap_locks     fixed bin (35),	/* Number times a volmap was locked */
+  7    47 	     2 n_vtoc_map_locks   fixed bin (35),	/* Number times a vtoc_map was locked */
+  7    48 	     2 volmap_lock_nowait_calls fixed bin (35),	/* Number calls to lock volmap, no wait */
+  7    49 	     2 volmap_lock_nowait_fails fixed bin (35),	/* Number times lock failed */
+  7    50 	     2 volmap_lock_wait_calls fixed bin (35),	/* Number calls to lock volmap, wait */
+  7    51 	     2 volmap_lock_wait_fails fixed bin (35),	/* Number times lock failed */
+  7    52 	     2 pad (2) bit (36) aligned,
+  7    53 
+  7    54 	     2 array	      fixed bin (71);	/* Array of PVTE's -- must be double-word aligned */
+  7    55 
+  7    56 
+  7    57 
+  7    58 /*	END INCLUDE FILE ...pvt.incl.pl1 */
+      777 
+  8     1 /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  8     2 
+  8     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+  8     4 
+  8     5 /****^  HISTORY COMMENTS:
+  8     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+  8     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  8     8*     Add the support for subvolumes
+  8     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+  8    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+  8    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+  8    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+  8    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+  8    14*     Added inconsistent_dbm bit for determining the status of volume
+  8    15*     dumper bit maps.
+  8    16*                                                   END HISTORY COMMENTS */
+  8    17 
+  8    18      dcl	   pvt$array	      aligned external;
+  8    19      dcl	   pvt$max_n_entries      fixed bin external;
+  8    20 
+  8    21      dcl	   pvt_arrayp	      ptr;
+  8    22      dcl	   pvtep		      ptr;
+  8    23 
+  8    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+  8    25 
+  8    26      dcl	   1 pvte		      based (pvtep) aligned,
+  8    27 
+  8    28 	     2 pvid	      bit (36),		/* physical volume ID */
+  8    29 
+  8    30 	     2 lvid	      bit (36),		/* logical volume ID */
+  8    31 
+  8    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+  8    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+  8    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+  8    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+  8    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+  8    37 	     2 pad3	      bit (2) unaligned,
+  8    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+  8    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+  8    40 
+  8    41 
+  8    42 
+  8    43 	     2 devname	      char (4),		/* device name */
+  8    44 
+  8    45 	     (2 device_type	      fixed bin (8),	/* device type */
+  8    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+  8    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+  8    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+  8    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+  8    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+  8    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+  8    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+  8    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+  8    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+  8    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+  8    56 	     2 scav_check_address
+  8    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+  8    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+  8    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+  8    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+  8    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+  8    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+  8    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+  8    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+  8    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+  8    66 
+  8    67 
+  8    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+  8    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+  8    70 
+  8    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+  8    72 
+  8    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+  8    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+  8    75 
+  8    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+  8    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+  8    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+  8    79 	     2 records_per_cyl    fixed bin,
+  8    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+  8    81 	     2 sv_name            char (2) aligned,
+  8    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+  8    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+  8    84 
+  8    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+  8    86 	     2 pad2	      bit (18) unaligned,
+  8    87 
+  8    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+  8    89 
+  8    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+  8    91 
+  8    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+  8    93 
+  8    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+  8    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+  8    96 
+  8    97 
+  8    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+  8    99 
+  8   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+  8   101 
+  8   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+  8   103 
+  8   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+  8   105 
+  8   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+  8   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+  8   108 
+  8   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+  8   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+  8   111 
+  8   112 
+  8   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+  8   114 	   VOLMAP_ASYNC_READ      init (1),
+  8   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+  8   116 
+  8   117 
+  8   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      778 
+  9     1 /* BEGIN INCLUDE FILE syserr_constants.incl.pl1 ... 11/11/80 W. Olin Sibert */
+  9     2 /* 85-02-12, EJ Sharpe - Added sorting class constants, removed AIM_MESSAGE, added new action code names. */
+  9     3 /* 85-04-24, G. Palter - Renamed SYSERR_UNUSED_10 to SYSERR_RING1_ERROR to reflect its actual use. */
+  9     4 
+  9     5 /* This include file has an ALM version.  Keep 'em in sync! */
+  9     6 
+  9     7 dcl (
+  9     8 
+  9     9 /* The following constants define the message action codes.  This indicates
+  9    10*how a message is to be handled.  */
+  9    11 
+  9    12      SYSERR_CRASH_SYSTEM	init (1),			
+  9    13      CRASH		init (1), 		/* Crash the system, and bleat plaintively. */
+  9    14 
+  9    15      SYSERR_TERMINATE_PROCESS	init (2),
+  9    16      TERMINATE_PROCESS	init (2), 		/* Terminate the process, print the message, and beep. */
+  9    17 
+  9    18      SYSERR_PRINT_WITH_ALARM	init (3),
+  9    19      BEEP 		init (3), 		/* Beep and print the message on the console. */
+  9    20 
+  9    21      SYSERR_PRINT_ON_CONSOLE	init (0),
+  9    22      ANNOUNCE		init (0), 		/* Just print the message on the console. */
+  9    23 
+  9    24      SYSERR_LOG_OR_PRINT	init (4),
+  9    25      LOG			init (4), 		/* Log the message, or print it if it can't be logged */
+  9    26 
+  9    27      SYSERR_LOG_OR_DISCARD	init (5),
+  9    28      JUST_LOG		init (5), 		/* Just try to log the message, and discard it if it can't be */
+  9    29 
+  9    30 
+  9    31 /* The following constants are added to the normal severities to indicate
+  9    32*different sorting classes of messages.  */
+  9    33 
+  9    34      SYSERR_SYSTEM_ERROR	init (00),		/* indicates a standard level system error */
+  9    35      SYSERR_RING1_ERROR	init (10),		/* indicates an error detected in ring 1 (mseg_, RCP) */
+  9    36      SYSERR_COVERT_CHANNEL	init (20),		/* indicates covert channel audit trail message */
+  9    37      SYSERR_UNSUCCESSFUL_ACCESS init (30),		/* indicates access denial audit trail message */
+  9    38      SYSERR_SUCCESSFUL_ACCESS	init (40)			/* indicates access grant audit trail message */
+  9    39 	) fixed bin internal static options (constant);
+  9    40 
+  9    41 /* END INCLUDE FILE syserr_constants.incl.pl1 */
+      779 
+ 10     1 /* Begin include file pc_check_tables_info.incl.pl1 */
+ 10     2 /* format: style3,indcomtxt,idind25 */
+ 10     3 
+ 10     4 /**** This include file is the driver for pv_check_tables_.
+ 10     5*      It is used by pc_recover_sst and various user ring
+ 10     6*      analysis tools to
+ 10     7*
+ 10     8*      1) report on the state of an SST/CoreMap.
+ 10     9*      2) Make repairs for emergency shutdown.
+ 10    10*
+ 10    11*      BIM 84-01-10 */
+ 10    12 
+ 10    13 declare	check_tables_info_ptr    pointer;
+ 10    14 declare	1 check_tables_info	     aligned based (check_tables_info_ptr),
+ 10    15 	  2 version	     char (8) aligned,
+ 10    16 	  2 system_type	     fixed bin,
+ 10    17 	  2 flags		     aligned,
+ 10    18 	    3 report_error_counts
+ 10    19 			     bit (1) unaligned,	/* total errors found */
+ 10    20 	    3 report_errors	     bit (1) unaligned,	/* report each error */
+ 10    21 	    3 report_statistics  bit (1) unaligned,	/* totals of CME's, PTW's, and ASTE's in interesting states */
+ 10    22 	    3 report_state       bit (1) unaligned,       /* things interrupted */
+ 10    23 	    3 recover_errors     bit (1) unaligned,	/* you are pc_recover_sst,
+ 10    24*						   and you should fix things,
+ 10    25*						   calling page control etc. */
+ 10    26 	    3 errors_found	     bit (1) unaligned,	/* OUTPUT */
+ 10    27 	    3 pad		     bit (32) unaligned,	/* someday, maybe show whole works */
+ 10    28 	  2 sst_ptr	     pointer,
+ 10    29 	  2 core_map_ptr	     pointer,
+ 10    30 	  2 pvt_ptr	     pointer,
+ 10    31 	  2 pad_ptr	     (7) pointer,		/* future expansion */
+ 10    32 	  2 report	     entry options (variable),/* ioa */
+ 10    33 	  2 display_cme	     entry (pointer),/* (cmep) show a CME */
+ 10    34 	  2 display_ptw	     entry (pointer),/* (ptwp) show a PTW */
+ 10    35 	  2 display_aste	     entry (pointer),/* (astep) show ASTE (not page table) */
+ 10    36 	  2 display_pvname       entry (fixed bin) returns (char (32)), /* pvname = (pxtx) */
+ 10    37 	  2 display_ptr	     entry (pointer) returns (char (*)), /* ptrname = (ctip, ptr); */
+ 10    38 	  2 pad_entries	     (5) entry;
+ 10    39 
+ 10    40 declare	PC_CHECK_TABLES_INFO_VERSION_1
+ 10    41 			     char (8) aligned init ("pcct0001") int static options (constant);
+ 10    42 
+ 10    43 /* End include file pc_check_tables_info.incl.pl1 */
+      780 
+      781 
+      782      end pc_check_tables_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.5  pc_check_tables_.pl1              >spec>install>1110>pc_check_tables_.pl1
+733          1    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+734          2    01/30/85  1523.9  sst.incl.pl1                      >ldd>include>sst.incl.pl1
+735          3    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+736          4    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+737          5    07/11/84  0937.3  null_addresses.incl.pl1           >ldd>include>null_addresses.incl.pl1
+738          6    03/27/82  0430.2  ptw.l68.incl.pl1                  >ldd>include>ptw.l68.incl.pl1
+777          7    05/27/82  1525.8  pvt.incl.pl1                      >ldd>include>pvt.incl.pl1
+778          8    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+779          9    05/17/85  0615.7  syserr_constants.incl.pl1         >ldd>include>syserr_constants.incl.pl1
+780         10    07/11/84  0937.3  pc_check_tables_info.incl.pl1     >ldd>include>pc_check_tables_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Code                                   parameter       fixed bin(35,0)          dcl 64 set ref 15 134* 137*
+Info_pointer                           parameter       pointer                  dcl 63 ref 15 133
+LEGAL_ADD_TYPES                 004040 constant        bit(16)                  initial packed unaligned dcl 719 ref 722
+NullAddr                               parameter       bit(22)                  dcl 602 ref 598 608
+PC_CHECK_TABLES_INFO_VERSION_1  000002 constant        char(8)                  initial dcl 10-40 ref 135
+PTP                                    parameter       pointer                  dcl 601 ref 598 606 606 607 608
+add                             000310 automatic       bit(18)                  level 2 in structure "test_devadd" packed packed
+                                                                                  unaligned dcl 715 in procedure
+                                                                                  "reasonable_devaddp" set ref 724
+add                             000170 automatic       fixed bin(18,0)          level 2 in structure "fdevadd" packed packed
+                                                                                  unsigned unaligned dcl 112 in procedure
+                                                                                  "pc_check_tables_" set ref 226*
+add                                    based           bit(18)                  level 2 in structure "ptw" packed packed unaligned
+                                                                                  dcl 741 in procedure "pc_check_tables_" ref 360
+                                                                                  369
+add_type                        000000 constant        structure                level 1 packed packed unaligned dcl 3-8 in procedure
+                                                                                  "pc_check_tables_"
+add_type                  0(18) 000166 automatic       structure                level 2 in structure "ptwdevadd" packed packed
+                                                                                  unaligned dcl 102 in procedure "pc_check_tables_"
+                                                                                  set ref 356 608
+add_type                  0(18) 000310 automatic       structure                level 2 in structure "test_devadd" packed packed
+                                                                                  unaligned dcl 715 in procedure
+                                                                                  "reasonable_devaddp" set ref 722
+add_type                  0(18) 000170 automatic       bit(4)                   level 2 in structure "fdevadd" packed packed
+                                                                                  unaligned dcl 112 in procedure "pc_check_tables_"
+                                                                                  set ref 227*
+addr                                                   builtin function         dcl 88 ref 144 170 331 336 369 594
+arg_devadd                             parameter       bit(22)                  packed unaligned dcl 714 ref 711 721
+array                    50            based           fixed bin(71,0)          level 2 dcl 7-13 set ref 144
+astage                                 based           structure                array level 1 dcl 128 set ref 154 331
+astagp                          000136 automatic       pointer                  dcl 94 set ref 148* 151 153 154* 154 154 155 327*
+                                                                                  331
+astagps                         000142 automatic       pointer                  array dcl 96 set ref 151* 327
+astap                    30            based           pointer                  level 2 dcl 2-9 ref 148
+aste                                   based           structure                level 1 dcl 4-11 set ref 701
+aste_ptw                 14            based           structure                array level 2 dcl 123 set ref 336
+astep                           000176 automatic       pointer                  dcl 4-9 in procedure "pc_check_tables_" set ref 152
+                                                                                  215* 242 274 329 331* 336 341 341 345* 421 464 464
+                                                                                  464 466* 468 468 468 471 471 471 475 475 475 483
+                                                                                  484 485 534* 543 564 582 582 587 606 615 616 639*
+                                                                                  701
+astep                     2(18)        based           bit(18)                  level 2 in structure "cme" packed packed unaligned
+                                                                                  dcl 1-6 in procedure "pc_check_tables_" set ref
+                                                                                  242* 293*
+astesize                        000140 automatic       fixed bin(17,0)          dcl 95 set ref 329*
+astesizes                       000162 automatic       fixed bin(18,0)          array dcl 97 set ref 152* 700 701 703
+astlowers                       000152 automatic       fixed bin(18,0)          array dcl 97 set ref 153* 693 699 703
+astsize                  33            based           fixed bin(17,0)          level 2 dcl 2-9 ref 578 580 582
+astuppers                       000156 automatic       fixed bin(18,0)          array dcl 97 set ref 155* 697
+astx                            000114 automatic       fixed bin(17,0)          dcl 72 set ref 330* 331*
+atptw                                  based           structure                level 1 dcl 766
+bad_cme_add_types         1     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 202* 202 499*
+bad_cme_devadds                 000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 192* 192 498*
+bad_cme_ptwps             4     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 222* 222 395* 395 502*
+bad_ptw_addrs             6     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 405* 405 416* 416 504*
+bad_ptw_devadds           2     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 235* 235 350* 350 500*
+badd_type                              based           structure                level 1 packed packed unaligned dcl 3-15
+bit                                                    builtin function         dcl 88 ref 464 464 464 468 471 475 483 484 485
+bno                             000131 automatic       fixed bin(18,0)          dcl 87 set ref 677* 678 680 680 700* 701 703
+bp                        0(18)        based           bit(18)                  level 2 packed packed unaligned dcl 1-6 set ref 174*
+                                                                                  177 301 311* 313*
+cbno                            000111 automatic       fixed bin(17,0)          dcl 72 set ref 169* 170 226*
+check_tables_info                      based           structure                level 1 dcl 10-14
+check_tables_info_ptr           000206 automatic       pointer                  dcl 10-13 set ref 133* 135 141 142 143 164 174 187
+                                                                                  189 190 197 199 200 207 209 210 217 219 220 230
+                                                                                  232 233 236 242 245 265 267 269 272 285 290 298
+                                                                                  339 341 345 348 374 388 390 392 393 400 402 403
+                                                                                  410 412 413 417 427 431 437 439 440 443 449 456
+                                                                                  462 466 467 468 471 475 481 490 494 497 516 538
+                                                                                  540 541 543 543 548 550 550 556 558 558 564 564
+                                                                                  564 575 632 634 635 641 641 646
+cma                                    based           structure                array level 1 dcl 1-30 set ref 170 369
+cmap                            000100 automatic       pointer                  dcl 66 set ref 142* 170 369 674
+cme                                    based           structure                level 1 dcl 1-6 set ref 677 678
+cme_ptw_devadd_diffs      3     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 271* 271 501*
+cmeaddtype                0(18) 000167 automatic       structure                level 2 packed packed unaligned dcl 108 set ref 205
+cmedevadd                       000167 automatic       structure                level 1 packed packed unaligned dcl 108 set ref 184*
+                                                                                  257 263
+cmep                            000172 automatic       pointer                  dcl 1-4 set ref 170* 172 174 174 177 177 177 180 184
+                                                                                  185 190* 200* 210* 214 219 220* 242 247 249 253
+                                                                                  258 283 285 285 293 293 294 301 301 301 301 307
+                                                                                  308 310 311 312 313 315 369* 370* 372 393* 677 678
+cmp                      54            based           pointer                  level 2 dcl 2-9 ref 142
+core                      0(18) 000310 automatic       bit(1)                   level 3 in structure "test_devadd" packed packed
+                                                                                  unaligned dcl 715 in procedure
+                                                                                  "reasonable_devaddp" set ref 724
+core                      0(18) 000167 automatic       bit(1)                   level 3 in structure "cmedevadd" packed packed
+                                                                                  unaligned dcl 108 in procedure "pc_check_tables_"
+                                                                                  set ref 195
+core                            000000 constant        bit(4)                   initial level 2 in structure "add_type" packed
+                                                                                  packed unaligned dcl 3-8 in procedure
+                                                                                  "pc_check_tables_" ref 227
+core                      0(18) 000166 automatic       bit(1)                   level 3 in structure "ptwdevadd" packed packed
+                                                                                  unaligned dcl 102 in procedure "pc_check_tables_"
+                                                                                  set ref 367 429
+core_map_ptr             10            based           pointer                  level 2 dcl 10-14 ref 142
+csl                      12            based           bit(9)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 4-11 in procedure "pc_check_tables_" set ref
+                                                                                  464 468 468 468 483*
+csl                             000107 automatic       fixed bin(9,0)           dcl 70 in procedure "pc_check_tables_" set ref 333*
+                                                                                  362* 384* 464 468 468* 483
+curused                         000106 automatic       fixed bin(9,0)           dcl 70 set ref 333* 363* 363 385* 385 464 471 471*
+                                                                                  484
+damaged                  13(19)        based           bit(1)                   level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  274* 421*
+devadd                    1            based           bit(22)                  level 2 in structure "cme" packed packed unaligned
+                                                                                  dcl 1-6 in procedure "pc_check_tables_" set ref
+                                                                                  184 185*
+devadd                                 based           bit(22)                  level 2 in structure "mptw" packed packed unaligned
+                                                                                  dcl 756 in procedure "pc_check_tables_" set ref
+                                                                                  228* 236* 257* 263 263 277* 337* 354 423*
+df_no                     0(34)        based           bit(2)                   level 3 packed packed unaligned dcl 741 set ref 456*
+disk                      0(19) 000166 automatic       bit(1)                   level 3 packed packed unaligned dcl 102 set ref 358
+display_aste             46            based           entry variable           level 2 dcl 10-14 ref 345 466
+display_cme              36            based           entry variable           level 2 dcl 10-14 ref 190 200 210 220 393
+display_ptr              56            based           entry variable           level 2 dcl 10-14 ref 543 550 558
+display_ptw              42            based           entry variable           level 2 dcl 10-14 ref 233 269 348 392 403 413 440
+                                                                                  635
+display_pvname           52            based           entry variable           level 2 dcl 10-14 ref 564 564
+divide                                                 builtin function         dcl 88 ref 369
+error_table_$unimplemented_version
+                                000012 external static fixed bin(35,0)          dcl 118 ref 137
+evict_phmbit            523(18)        based           bit(18)                  level 3 packed packed unaligned dcl 2-9 set ref 648
+                                                                                  650*
+evict_ptp               523            based           bit(18)                  level 3 packed packed unaligned dcl 2-9 set ref 629
+                                                                                  634* 635 635 638 651*
+evict_recover_data      523            based           structure                level 2 dcl 2-9
+ex_aste                                based           structure                level 1 dcl 123 set ref 152 329
+fcmep                           000132 automatic       pointer                  dcl 92 set ref 308* 310 313
+fdevadd                         000170 automatic       structure                level 1 dcl 112 set ref 236 263
+first_core_block        220            based           fixed bin(17,0)          level 2 dcl 2-9 ref 169 680
+fixed                                                  builtin function         dcl 88 ref 154 330 369 673 674 692 722
+flags                     0(18)        based           structure                level 2 in structure "ptw" packed packed unaligned
+                                                                                  dcl 741 in procedure "pc_check_tables_"
+flags                     3            based           structure                level 2 in structure "check_tables_info" dcl 10-14
+                                                                                  in procedure "pc_check_tables_"
+fp                                     based           bit(18)                  level 2 packed packed unaligned dcl 1-6 set ref 172
+                                                                                  174* 177 253* 285 285* 301 301 310* 312*
+how_many                               parameter       fixed bin(17,0)          dcl 514 set ref 510 516 516*
+io                        1(24)        based           bit(1)                   level 2 packed packed unaligned dcl 1-6 ref 249
+l68_core_ptw                           based           structure                level 1 dcl 6-4
+l68_null_disk_ptw                      based           structure                level 1 dcl 6-15
+l68_ptw                                based           structure                level 1 dcl 6-9
+l68_ptw_flags                          based           structure                level 1 packed packed unaligned dcl 6-17
+l68_real_disk_ptw                      based           structure                level 1 dcl 6-14
+l68_special_ptw                        based           structure                level 1 dcl 6-13
+last_core_block         221            based           fixed bin(17,0)          level 2 dcl 2-9 ref 169 680
+lcmep                           000134 automatic       pointer                  dcl 93 set ref 308* 311 312 315*
+level                    44            based           structure                array level 2 dcl 2-9
+mptw                                   based           structure                level 1 dcl 756
+new_astep                       000234 automatic       pointer                  dcl 527 set ref 536* 558 580 580 594
+new_nused                       000104 automatic       fixed bin(17,0)          dcl 68 set ref 167* 303* 303 319
+new_nwired                      000105 automatic       fixed bin(17,0)          dcl 68 set ref 453* 453 490
+new_ptp                         000236 automatic       pointer                  dcl 528 set ref 580* 593*
+nincore                         000110 automatic       fixed bin(9,0)           dcl 70 set ref 333* 383* 383 464 475 475* 485
+no_aste                  44(18)        based           bit(18)                  array level 3 packed packed unaligned dcl 2-9 ref
+                                                                                  154 330
+notify_requested          1(30)        based           bit(1)                   level 2 packed packed unaligned dcl 1-6 set ref 247
+                                                                                  294*
+np                       12(27)        based           bit(9)                   level 2 packed packed unaligned dcl 4-11 set ref 464
+                                                                                  475 475 475 485*
+null                                                   builtin function         dcl 88 ref 541 548 556 564 578 580 582 587 589 591
+                                                                                  618
+nused                    24            based           fixed bin(17,0)          level 2 dcl 2-9 set ref 319*
+offdif                          000130 automatic       fixed bin(18,0)          dcl 87 set ref 674* 675 677 678 699* 700 701
+offs                            000272 automatic       fixed bin(18,0)          dcl 671 in procedure "reasonable_cmepp" set ref 673*
+                                                                                  674
+offs                            000127 automatic       fixed bin(18,0)          dcl 87 in procedure "pc_check_tables_" set ref 692*
+                                                                                  693 697 699
+old_astep                       000230 automatic       pointer                  dcl 525 set ref 535* 550 578 578
+old_ptp                         000232 automatic       pointer                  dcl 526 set ref 578* 587 589*
+os                        0(32)        based           bit(1)                   level 3 packed packed unaligned dcl 741 set ref 245
+                                                                                  261* 374 380* 427*
+p                                      parameter       pointer                  dcl 659 ref 656 662
+page$cam                        000010 constant        entry                    external dcl 91 ref 256 276 422 446
+page_problem_null_addr                 constant        bit(22)                  initial dcl 5-4 ref 277 423 424
+phm                       0(29)        based           bit(1)                   level 3 packed packed unaligned dcl 741 set ref 449*
+phm1                      0(27)        based           bit(1)                   level 3 packed packed unaligned dcl 741 set ref 249*
+                                                                                  449* 648*
+pid                     545            based           bit(36)                  level 3 dcl 2-9 set ref 531 540*
+pno                             000115 automatic       fixed bin(17,0)          dcl 72 set ref 335* 336 341* 362 384*
+pt                                     based           bit(36)                  array dcl 586 set ref 587* 587 606 606 607 608*
+ptp                             000102 automatic       pointer                  dcl 67 set ref 214* 215* 228 233* 236 245 247* 249
+                                                                                  255 257 261 263 263 269* 275 277 336* 337 348* 354
+                                                                                  360 369 372 374 380 392* 403* 413* 420 423 427 431
+                                                                                  435 440* 445 449 449 453 456 582* 587 638* 639*
+                                                                                  648
+ptr                                                    builtin function         dcl 88 ref 214 638 703
+pts                             000113 automatic       fixed bin(17,0)          dcl 72 in procedure "pc_check_tables_" set ref 150*
+                                                                                  152 154 328* 329 331 335
+pts                      40            based           fixed bin(17,0)          array level 2 in structure "sst" dcl 2-9
+                                                                                  in procedure "pc_check_tables_" set ref 150 328
+                                                                                  543* 550* 558* 587 606
+ptsi                            000112 automatic       fixed bin(17,0)          dcl 72 in procedure "pc_check_tables_" set ref 149*
+                                                                                  150 151 152 153 154 155* 326* 327 328 330* 696*
+                                                                                  697 699 700 701 703 703*
+ptsi                     13(28)        based           bit(2)                   level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 4-11 in procedure "pc_check_tables_" ref 543
+                                                                                  550 558 587 606
+ptw                                    based           structure                level 1 dcl 741
+ptwdevadd                       000166 automatic       structure                level 1 packed packed unaligned dcl 102 set ref 354*
+                                                                                  424* 607*
+ptwp                      2            based           bit(18)                  level 2 packed packed unaligned dcl 1-6 set ref 177
+                                                                                  180 214 219* 258* 283 293* 301 372
+ptws_os_2nd_pass          5     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 379* 379 503*
+pvt                                    based           structure                level 1 dcl 7-13
+pvt_array                              based           structure                array level 1 dcl 8-24 set ref 594
+pvt_arrayp                      000202 automatic       pointer                  dcl 8-21 set ref 144* 594
+pvt_ptr                  12            based           pointer                  level 2 dcl 10-14 ref 143
+pvte                                   based           structure                level 1 dcl 8-26
+pvtep                           000204 automatic       pointer                  dcl 8-22 set ref 594* 595 595
+pvtp                            000200 automatic       pointer                  dcl 7-9 set ref 143* 144
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 4-11 set ref 594
+                                                                                  615*
+px                              000246 automatic       fixed bin(17,0)          dcl 603 set ref 606* 607 608*
+pxss$notify                     000014 constant        entry                    external dcl 660 ref 662
+rastep                                 parameter       pointer                  dcl 690 set ref 686 703*
+records                  12(18)        based           bit(9)                   level 2 packed packed unaligned dcl 4-11 set ref 464
+                                                                                  471 471 471 484*
+recover_errors            3(04)        based           bit(1)                   level 3 packed packed unaligned dcl 10-14 ref 164
+                                                                                  174 236 242 245 272 285 290 298 374 417 427 431
+                                                                                  443 449 456 481 490 575 646
+rel                                                    builtin function         dcl 88 ref 242 307 310 311 312 313 341 341 372 662
+                                                                                  673 674 692
+report                   32            based           entry variable           level 2 dcl 10-14 ref 189 199 209 219 232 267 341
+                                                                                  390 402 412 439 467 468 471 475 497 516 540 541
+                                                                                  543 548 550 556 558 564 634 641
+report_error_counts       3            based           bit(1)                   level 3 packed packed unaligned dcl 10-14 ref 494
+report_errors             3(01)        based           bit(1)                   level 3 packed packed unaligned dcl 10-14 ref 187
+                                                                                  197 207 217 230 265 339 388 400 410 437 462 641
+report_state              3(03)        based           bit(1)                   level 3 packed packed unaligned dcl 10-14 ref 538
+                                                                                  632
+reported_aste                   000116 automatic       bit(1)                   dcl 74 set ref 334* 343 346*
+segmove_astep           555            based           pointer                  level 2 packed packed unaligned dcl 2-9 set ref 534
+                                                                                  541 543 587 618*
+segmove_lock            545            based           structure                level 2 dcl 2-9
+segmove_new_addr_astep
+                        561            based           pointer                  level 2 packed packed unaligned dcl 2-9 set ref 536
+                                                                                  556 558 591 618*
+segmove_new_addr_null_addr      000004 constant        bit(22)                  initial dcl 5-4 set ref 593*
+segmove_old_addr_astep
+                        560            based           pointer                  level 2 packed packed unaligned dcl 2-9 set ref 535
+                                                                                  548 550 589 618*
+segmove_old_addr_null_addr      000005 constant        bit(22)                  initial dcl 5-4 set ref 589*
+segmove_pvtx            556            based           fixed bin(17,0)          level 2 dcl 2-9 set ref 564* 564* 615 619*
+segmove_vtocx           557            based           fixed bin(17,0)          level 2 dcl 2-9 set ref 564* 616 619*
+size                                                   builtin function         dcl 88 ref 152 154 329 677 678 701
+sst                                    based           structure                level 1 dcl 2-9
+sst_ptr                   6            based           pointer                  level 2 dcl 10-14 ref 141
+sstp                            000174 automatic       pointer                  dcl 2-7 set ref 141* 142 148 148 150 154 164 164 169
+                                                                                  169 214 305 307 307 319 328 330 490 493 531 534
+                                                                                  534 535 535 536 536 540 541 543 543 548 550 550
+                                                                                  556 558 558 564 564 564 578 580 582 587 587 589
+                                                                                  591 606 615 616 618 618 618 619 619 629 634 635
+                                                                                  635 635 635 638 638 648 650 651 680 680 703
+stats                           000117 automatic       structure                level 1 dcl 76 set ref 146* 494
+string                                                 builtin function         dcl 88 ref 205 356 608 722
+substr                                                 builtin function         dcl 88 ref 360 722 724
+tcmep                                  parameter       pointer                  dcl 670 ref 667 673
+test_devadd                     000310 automatic       structure                level 1 packed packed unaligned dcl 715 set ref 721*
+tptp                                   parameter       pointer                  dcl 689 ref 686 692
+unspec                                                 builtin function         dcl 88 set ref 184* 236 257 263 263 354* 424* 494
+                                                                                  607* 721*
+usedp                    56            based           bit(18)                  level 2 dcl 2-9 set ref 164* 305 307*
+valid                     0(33)        based           bit(1)                   level 3 packed packed unaligned dcl 741 set ref 255*
+                                                                                  275* 420* 431* 435 445*
+valid_not_core            7     000117 automatic       fixed bin(17,0)          level 2 dcl 76 set ref 442* 442 505*
+version                                based           char(8)                  level 2 dcl 10-14 ref 135
+vol_trouble_count        33            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 8-26 set ref
+                                                                                  595* 595
+vtocx                     4(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-11 set ref
+                                                                                  616*
+what                                   parameter       char                     packed unaligned dcl 513 set ref 510 516*
+wired                     0(31)        based           bit(1)                   level 3 in structure "ptw" packed packed unaligned
+                                                                                  dcl 741 in procedure "pc_check_tables_" ref 453
+wired                   120            based           fixed bin(17,0)          level 2 in structure "sst" dcl 2-9 in procedure
+                                                                                  "pc_check_tables_" set ref 490*
+wtct                     57            based           fixed bin(17,0)          level 2 dcl 2-9 set ref 493*
+wusedp                  472            based           bit(18)                  level 2 dcl 2-9 set ref 164* 307*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANNOUNCE                               internal static fixed bin(17,0)          initial dcl 9-7
+BEEP                                   internal static fixed bin(17,0)          initial dcl 9-7
+CRASH                                  internal static fixed bin(17,0)          initial dcl 9-7
+JUST_LOG                               internal static fixed bin(17,0)          initial dcl 9-7
+LOG                                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_COVERT_CHANNEL                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_CRASH_SYSTEM                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_DISCARD                  internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_LOG_OR_PRINT                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_ON_CONSOLE                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_PRINT_WITH_ALARM                internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_RING1_ERROR                     internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SUCCESSFUL_ACCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_SYSTEM_ERROR                    internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_TERMINATE_PROCESS               internal static fixed bin(17,0)          initial dcl 9-7
+SYSERR_UNSUCCESSFUL_ACCESS             internal static fixed bin(17,0)          initial dcl 9-7
+TERMINATE_PROCESS                      internal static fixed bin(17,0)          initial dcl 9-7
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 8-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 8-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 8-113
+addrel                                                 builtin function         dcl 88
+append_null_addr                       internal static bit(22)                  initial dcl 5-4
+asta                                   based           bit(432)                 array dcl 4-86
+aste_part                              based           structure                level 1 dcl 4-89
+atptwa                                 based           structure                array level 1 dcl 773
+based_comp_devadd                      based           structure                level 1 dcl 115
+core_ptw                               based           structure                level 1 dcl 743
+create_vtoce_four_null_addrs           internal static fixed bin(71,0)          initial dcl 5-24
+create_vtoce_null_addr                 internal static bit(18)                  initial dcl 5-26
+fill_page_table_null_addr              internal static bit(22)                  initial dcl 5-4
+get_aste_null_addr                     internal static bit(22)                  initial dcl 5-4
+get_file_map_dumper_non_null_addr      internal static bit(22)                  initial dcl 5-4
+get_file_map_null_addr                 internal static bit(22)                  initial dcl 5-4
+get_file_map_vt_null_addr              internal static bit(22)                  initial dcl 5-4
+init_sst_null_addr                     internal static bit(22)                  initial dcl 5-4
+list_deposit_null_addr                 internal static bit(22)                  initial dcl 5-4
+make_sdw_null_addr                     internal static bit(22)                  initial dcl 5-4
+mcme                                   based           structure                level 1 dcl 1-32
+mptwa                                  based           structure                array level 1 dcl 761
+null_disk_ptw                          based           structure                level 1 dcl 746
+page_bad_null_addr                     internal static bit(22)                  initial dcl 5-4
+page_bad_pd_null_addr                  internal static bit(22)                  initial dcl 5-4
+page_devparity_null_addr               internal static bit(22)                  initial dcl 5-4
+page_parity_null_addr                  internal static bit(22)                  initial dcl 5-4
+pc_move_page_table_1_null_addr         internal static bit(22)                  initial dcl 5-4
+pc_move_page_table_2_null_addr         internal static bit(22)                  initial dcl 5-4
+ptw_flags                              based           structure                level 1 packed packed unaligned dcl 742
+ptwa                                   based           structure                array level 1 dcl 750
+ptwa_bits                              based           bit(36)                  array dcl 753
+ptwp                                   automatic       pointer                  dcl 604
+put_aste_null_addr                     internal static bit(22)                  initial dcl 5-4
+pv_salv_null_addr                      internal static bit(18)                  initial dcl 5-26
+pv_scav_null_addr                      internal static bit(18)                  initial dcl 5-26
+pvt$                                   external static fixed bin(17,0)          dcl 7-9
+pvt$array                              external static fixed bin(17,0)          dcl 8-18
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 8-19
+px                                     automatic       fixed bin(17,0)          dcl 529
+real_disk_ptw                          based           structure                level 1 dcl 745
+salv_truncate_null_addr                internal static bit(18)                  initial dcl 5-26
+seg_aste                               based           structure                level 1 dcl 4-96
+special_ptw                            based           structure                level 1 dcl 744
+sst_seg$                               external static fixed bin(17,0)          dcl 2-6
+truncate_vtoce_fill_null_addr          internal static bit(18)                  initial dcl 5-26
+truncate_vtoce_null_addr               internal static bit(18)                  initial dcl 5-26
+unprotected_null_addr                  internal static bit(22)                  initial dcl 5-4
+update_vtoce_null_addr                 internal static bit(18)                  initial dcl 5-26
+volume_reloader_null_addr              internal static bit(18)                  initial dcl 5-26
+volume_retriever_null_addr             internal static bit(18)                  initial dcl 5-26
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+CHECK_EVICT_PAGE                003304 constant        entry                    internal dcl 624 ref 159
+CHECK_SEGMOVE                   002526 constant        entry                    internal dcl 522 ref 158
+NULL_PT                         003226 constant        entry                    internal dcl 598 ref 589 593
+clear_cme                       001226 constant        label                    dcl 285 ref 193 203 212 223 239
+free_cme                        001235 constant        label                    dcl 290 ref 177
+pc_check_tables_                000372 constant        entry                    external dcl 15
+pnotify                         003425 constant        entry                    internal dcl 656 ref 247
+ptwdamage                       001706 constant        label                    dcl 417 ref 351 381 396 406
+reasonable_cmepp                003444 constant        entry                    internal dcl 667 ref 370
+reasonable_devaddp              003605 constant        entry                    internal dcl 711 ref 185 228 337
+reasonable_ptwpp                003520 constant        entry                    internal dcl 686 ref 215 639
+stat_print                      002463 constant        entry                    internal dcl 510 ref 498 499 500 501 502 503 504 505
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+addwordno                                              builtin function         ref 154 578 580 582
+bin                                                    builtin function         ref 468 468 471 471 475 475 543 550 558 587 594 606
+hbound                                                 builtin function         ref 606
+lbound                                                 builtin function         ref 606
+pointer                                                builtin function         ref 635 635
+setwordno                                              builtin function         ref 142 148 534 535 536
+wordno                                                 builtin function         ref 142 148 153 155 534 535 536
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4122        4140    4042        4132
+Length      4512    4042        16         335      60           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+pc_check_tables_                    357 external procedure  is an external procedure.  
+stat_print                              internal procedure  shares stack frame of external procedure pc_check_tables_.  
+CHECK_SEGMOVE                           internal procedure  shares stack frame of external procedure pc_check_tables_.  
+begin block on line 585                 begin block         shares stack frame of external procedure pc_check_tables_.  
+NULL_PT                                 internal procedure  shares stack frame of external procedure pc_check_tables_.  
+CHECK_EVICT_PAGE                        internal procedure  shares stack frame of external procedure pc_check_tables_.  
+pnotify                                 internal procedure  shares stack frame of external procedure pc_check_tables_.  
+reasonable_cmepp                        internal procedure  shares stack frame of external procedure pc_check_tables_.  
+reasonable_ptwpp                        internal procedure  shares stack frame of external procedure pc_check_tables_.  
+reasonable_devaddp                      internal procedure  shares stack frame of external procedure pc_check_tables_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+pc_check_tables_         000100 cmap                        pc_check_tables_
+                         000102 ptp                         pc_check_tables_
+                         000104 new_nused                   pc_check_tables_
+                         000105 new_nwired                  pc_check_tables_
+                         000106 curused                     pc_check_tables_
+                         000107 csl                         pc_check_tables_
+                         000110 nincore                     pc_check_tables_
+                         000111 cbno                        pc_check_tables_
+                         000112 ptsi                        pc_check_tables_
+                         000113 pts                         pc_check_tables_
+                         000114 astx                        pc_check_tables_
+                         000115 pno                         pc_check_tables_
+                         000116 reported_aste               pc_check_tables_
+                         000117 stats                       pc_check_tables_
+                         000127 offs                        pc_check_tables_
+                         000130 offdif                      pc_check_tables_
+                         000131 bno                         pc_check_tables_
+                         000132 fcmep                       pc_check_tables_
+                         000134 lcmep                       pc_check_tables_
+                         000136 astagp                      pc_check_tables_
+                         000140 astesize                    pc_check_tables_
+                         000142 astagps                     pc_check_tables_
+                         000152 astlowers                   pc_check_tables_
+                         000156 astuppers                   pc_check_tables_
+                         000162 astesizes                   pc_check_tables_
+                         000166 ptwdevadd                   pc_check_tables_
+                         000167 cmedevadd                   pc_check_tables_
+                         000170 fdevadd                     pc_check_tables_
+                         000172 cmep                        pc_check_tables_
+                         000174 sstp                        pc_check_tables_
+                         000176 astep                       pc_check_tables_
+                         000200 pvtp                        pc_check_tables_
+                         000202 pvt_arrayp                  pc_check_tables_
+                         000204 pvtep                       pc_check_tables_
+                         000206 check_tables_info_ptr       pc_check_tables_
+                         000230 old_astep                   CHECK_SEGMOVE
+                         000232 old_ptp                     CHECK_SEGMOVE
+                         000234 new_astep                   CHECK_SEGMOVE
+                         000236 new_ptp                     CHECK_SEGMOVE
+                         000246 px                          NULL_PT
+                         000272 offs                        reasonable_cmepp
+                         000310 test_devadd                 reasonable_devaddp
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var_desc   call_ent_var        call_ext_out        return_mac          shorten_stack       ext_entry
+trunc_fx2           divide_fx1
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+page$cam                      pxss$notify
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$unimplemented_version
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000366       133 000377       134 000403       135 000404       137 000410       138 000412       141 000413
+    142 000415       143 000422       144 000424       146 000426       148 000436       149 000444       150 000451
+    151 000454       152 000460       153 000464       154 000470       155 000475       156 000500       158 000502
+    159 000503       164 000504       167 000513       169 000514       170 000525       172 000530       174 000535
+    176 000545       177 000546       180 000556       184 000561       185 000565       187 000600       189 000604
+    190 000622       192 000631       193 000632       195 000633       197 000636       199 000642       200 000655
+    202 000664       203 000665       205 000666       207 000671       209 000675       210 000710       212 000717
+    214 000720       215 000726       217 000733       219 000737       220 000762       222 000771       223 000772
+    226 000773       227 000777       228 001002       230 001015       232 001021       233 001034       235 001043
+    236 001044       239 001054       242 001055       245 001065       247 001073       249 001101       253 001110
+    255 001112       256 001114       257 001121       258 001125       261 001130       263 001132       265 001145
+    267 001151       269 001164       271 001173       272 001174       274 001200       275 001203       276 001205
+    277 001212       283 001216       285 001222       290 001235       293 001241       294 001246       298 001250
+    301 001254       303 001273       305 001274       307 001277       308 001302       310 001304       311 001307
+    312 001313       313 001316       315 001322       319 001324       320 001327       326 001331       327 001335
+    328 001340       329 001344       330 001346       331 001357       333 001364       334 001367       335 001370
+    336 001377       337 001402       339 001415       341 001421       343 001446       345 001450       346 001457
+    348 001461       350 001470       351 001471       354 001472       356 001476       358 001502       360 001505
+    362 001510       363 001513       366 001514       367 001515       369 001520       370 001526       372 001533
+    374 001542       379 001551       380 001552       381 001554       383 001555       384 001556       385 001561
+    386 001562       388 001563       390 001567       392 001602       393 001611       395 001620       396 001621
+    398 001622       400 001623       402 001627       403 001645       405 001654       406 001655       408 001656
+    410 001657       412 001663       413 001676       416 001705       417 001706       420 001712       421 001714
+    422 001717       423 001724       424 001730       427 001734       429 001742       431 001745       433 001752
+    435 001753       437 001756       439 001761       440 001777       442 002006       443 002007       445 002013
+    446 002015       449 002022       453 002032       456 002036       458 002045       462 002047       464 002053
+    466 002110       467 002116       468 002132       471 002174       475 002235       481 002277       483 002303
+    484 002311       485 002317       487 002324       488 002326       490 002330       493 002337       494 002341
+    497 002350       498 002364       499 002375       500 002406       501 002417       502 002425       503 002435
+    504 002443       505 002454       782 002462       510 002463       516 002474       518 002525       522 002526
+    531 002527       534 002533       535 002540       536 002545       538 002552       540 002556       541 002575
+    543 002616       548 002666       550 002710       556 002760       558 003002       564 003052       575 003116
+    578 003123       580 003134       582 003145       587 003156       589 003175       591 003202       593 003206
+    594 003210       595 003220       612 003225       598 003226       606 003230       607 003245       608 003254
+    610 003263       611 003265       615 003266       616 003273       618 003275       619 003301       620 003303
+    624 003304       629 003305       632 003312       634 003316       635 003335       638 003352       639 003360
+    641 003365       643 003404       646 003405       648 003412       650 003420       651 003422       653 003424
+    656 003425       662 003427       664 003443       667 003444       673 003446       674 003453       675 003461
+    677 003464       678 003472       680 003503       682 003514       686 003520       692 003522       693 003527
+    696 003533       697 003537       699 003543       700 003545       701 003553       703 003567       704 003575
+    706 003600       707 003602       711 003605       721 003607       722 003613       724 003626       727 003636
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

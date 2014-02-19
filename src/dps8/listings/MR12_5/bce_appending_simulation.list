@@ -1,0 +1,2003 @@
+	COMPILATION LISTING OF SEGMENT bce_appending_simulation
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1024.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(86-01-14,Fawcett), approve(86-04-11,MCR7383),
+       12*     audit(86-05-12,Farley), install(86-07-17,MR12.0-1097):
+       13*     Changed to add Subvolume support.
+       14*                                                   END HISTORY COMMENTS */
+       15 
+       16 
+       17 bce_appending_simulation: proc;
+       18 
+       19 /* Routine to access segments in the saved Multics memory image.
+       20*   Written October 1983 and beyond by Keith Loepere.
+       21*   Modified to better handle a few unusual occurences by Allen Ball, July 1984.
+       22*   Modified to correctly set cmep, Keith Loepere, November 1984. */
+       23 
+       24 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+       25 
+       26 dcl  Read				bit (1) aligned static options (constant) init ("1"b);
+       27 dcl  Write			bit (1) aligned static options (constant) init ("0"b);
+       28 dcl  abs_seg0$			(0:256 * 1024 - 1) bit (36) aligned ext;
+       29 dcl  abs_seg_pt			(0:255) bit (36) aligned based (static.abs_seg_ptp);
+       30 dcl  abs_seg_pt_addr		fixed bin (26);	/* address of page table for abs_seg0 */
+       31 dcl  absadr			entry (ptr, fixed bin (35)) returns (fixed bin (26));
+       32 dcl  addr				builtin;
+       33 dcl  address			fixed bin (26);	/* absolute address to get */
+       34 dcl  addwordno			builtin;
+       35 dcl  bin				builtin;
+       36 dcl  code				fixed bin (35) parameter;
+       37 dcl  core_map$			external;
+       38 dcl  core_map_ptw			bit (36) aligned;	/* for finding its absadr */
+       39 dcl  core_map_sdw			fixed bin (71);	/* for finding its absadr */
+       40 dcl  core_map_segnum		fixed bin (15);	/* for getting its absadr */
+       41 dcl  data_length			fixed bin (18);	/* amount left to get/put */
+       42 dcl  data_part			(data_part_length) bit (36) aligned based (data_ptr);
+       43 dcl  data_part_length		fixed bin (18);	/* of desired that fits (in page) under examination */
+       44 dcl  data_ptr			ptr;		/* where to get/put */
+       45 dcl  dbr_util_$dissect		entry (ptr, ptr);
+       46 dcl  dbr_value			bit (72) aligned parameter; /* descriptor base register value for simulation */
+       47 dcl  desired_segnum			fixed bin (15) parameter;
+       48 dcl  divide			builtin;
+       49 dcl  dseg$			(0:511) fixed bin (71) ext;
+       50 dcl  dseg_page_address		fixed bin (26);	/* for finding dseg sdw */
+       51 dcl  dseg_sdw			fixed bin (71);
+       52 dcl  error_table_$argerr		fixed bin (35) ext static;
+       53 dcl  error_table_$boundviol		fixed bin (35) ext static;
+       54 dcl  error_table_$dev_offset_out_of_bounds fixed bin (35) ext static;
+       55 dcl  error_table_$fsdisk_pvtx_oob	fixed bin (35) ext static;
+       56 dcl  error_table_$fsdisk_phydev_err	fixed bin (35) ext static;
+       57 dcl  error_table_$invalidsegno	fixed bin (35) ext static;
+       58 dcl  get_ptrs_$given_segno		entry (fixed bin (15)) returns (ptr);
+       59 dcl  int_unpaged_page_tables$		external;
+       60 dcl  min				builtin;
+       61 dcl  mod				builtin;
+       62 dcl  multics_data_ptr		ptr;
+       63 dcl  multics_high_mem$		(0:256 * 1024 - 1) bit (36) aligned ext;
+       64 dcl  multics_low_mem$		(0:256 * 1024 - 1) bit (36) aligned ext;
+       65 dcl  1 my_cme			aligned like cme;
+       66 dcl  my_dbr			bit (72) aligned;	/* either mine, or from crash */
+       67 dcl  1 my_dbr_info			aligned like dbr_info;
+       68 dcl  1 my_ptw_info			aligned like ptw_info;
+       69 dcl  1 my_sdw_info			aligned like sdw_info;
+       70 dcl  op_not_complete		condition;
+       71 dcl  parity			condition;
+       72 dcl  p_address			fixed bin (26) parameter; /* absolute address desired */
+       73 dcl  p_data_length			fixed bin (18) parameter; /* length desired */
+       74 dcl  p_data_ptr			ptr parameter;	/* user's area */
+       75 dcl  p_examine_crash		bit (1) aligned parameter; /* as opposed to bce */
+       76 dcl  p_last_segnum			fixed bin (15) parameter;
+       77 dcl  p_seg_info_ptr			ptr parameter;
+       78 dcl  p_seg_sdw			fixed bin (71) parameter;
+       79 dcl  page_fault_error		condition;
+       80 dcl  page_num			fixed bin;	/* loop counter */
+       81 dcl  page_offset			fixed bin (10);	/* start of desired data in this page */
+       82 dcl  pc$cleanup			entry (ptr);
+       83 dcl  pc_wired$write_wait		entry (ptr, fixed bin, fixed bin);
+       84 dcl  pmut$camp			entry;
+       85 dcl  ptr				builtin;
+       86 dcl  ptw_util_$dissect		entry (ptr, ptr);
+       87 dcl  ptw_util_$make_core		entry (ptr, fixed bin (26));
+       88 dcl  ptw_util_$make_disk		entry (ptr, fixed bin (20));
+       89 dcl  ptw_util_$make_null_disk		entry (ptr, fixed bin (20));
+       90 dcl  ptw_util_$reset_phm		entry (ptr);
+       91 dcl  ptw_util_$set_phm		entry (ptr);
+       92 dcl  pvt$root_pvtx			fixed bin external;
+       93 dcl  rdisk_seg$			external;		/* for reading/writing disk pages */
+       94 dcl  read_write			bit (1) aligned;	/* get versus put operation */
+       95 dcl  sdw_util_$dissect		entry (ptr, ptr);
+       96 dcl  sdw_util_$get_address		entry (ptr, fixed bin (26));
+       97 dcl  seg_sdw			fixed bin (71);	/* describe new segment */
+       98 dcl  segno			builtin;
+       99 dcl  1 static			aligned internal static, /* things remembered about current simulation */
+      100        2 abs_seg_ptp		ptr,		/* page table ptr for abs_seg0 */
+      101        2 core_map_address		fixed bin (26),	/* for finding cme entries */
+      102        2 core_map_present		bit (1) aligned,	/* coremap exists to resolve out-of-service pages */
+      103        2 current_abs_seg_addr		fixed bin (26) init (-256 * 1024), /* current absolute address of pages described by abs_seg0
+      104*						initial value is such as to be not confused with a good abs-seg addr */
+      105        2 dseg_info			aligned like seg_info,
+      106        2 examine_crash		bit (1) aligned,	/* as opposed to bce memory */
+      107        2 high_mem_astep		ptr,		/* astep for multics_high_mem */
+      108        2 last_segnum		fixed bin (15) init (-1), /* highest valid segno for this dbr */
+      109        2 low_mem_astep		ptr,		/* astep for multics_low_mem */
+      110        2 rdisk_astep		ptr,		/* for reading page of arbitrary disk */
+      111        2 rdisk_ptp			ptr,		/* to ptw for rdisk_seg */
+      112        2 rdisk_ptr			ptr,		/* to seg for reading arbitrary disk pages */
+      113        2 toehold_addr		fixed bin (26),	/* absadr of toehold */
+      114        2 toehold_data_addr		fixed bin (26);	/* absadr of toehold_data (holder of first two pages of low mem) */
+      115 dcl  size				builtin;
+      116 dcl  store			condition;
+      117 dcl  substr			builtin;
+      118 dcl  sys_boot_info$bce_dbr		bit (72) aligned external;
+      119 dcl  1 toehold$			external aligned like toe_hold;
+      120 dcl  toehold_data$			external;
+      121 dcl  unspec			builtin;
+      122 
+      123 init: entry (p_examine_crash, code);
+      124 
+      125 /* Initialize various static variables. */
+      126 
+      127 	code = 0;
+      128 	static.examine_crash = p_examine_crash;
+      129 	call sdw_util_$get_address (addr (dseg$ (segno (addr (abs_seg0$)))), abs_seg_pt_addr);
+      130 	static.abs_seg_ptp = ptr (addr (int_unpaged_page_tables$), abs_seg_pt_addr - absadr (addr (int_unpaged_page_tables$), (0)));
+      131 	static.toehold_data_addr = absadr (addr (toehold_data$), (0));
+      132 	static.toehold_addr = absadr (addr (toehold$), (0));
+      133 
+      134 	static.low_mem_astep = get_ptrs_$given_segno (segno (addr (multics_low_mem$)));
+      135 	static.high_mem_astep = get_ptrs_$given_segno (segno (addr (multics_high_mem$)));
+      136 
+      137 	static.rdisk_ptr = addr (rdisk_seg$);
+      138 	static.rdisk_astep = get_ptrs_$given_segno (segno (static.rdisk_ptr));
+      139 	static.rdisk_ptp = addwordno (static.rdisk_astep, size (aste));
+      140 	static.rdisk_astep -> aste.pvtx = pvt$root_pvtx;	/* good initial state */
+      141 	call ptw_util_$make_disk (static.rdisk_ptp, 0);
+      142 
+      143 	static.current_abs_seg_addr = -256 * 1024;
+      144 	if static.examine_crash then my_dbr = toehold$.multics_state.dbr; /* assume dbr from mc */
+      145 	else my_dbr = sys_boot_info$bce_dbr;
+      146 	call new_dbr (my_dbr, (0), code);
+      147 
+      148 abort:	return;
+      149 
+      150 new_dbr: entry (dbr_value, p_last_segnum, code);
+      151 
+      152 /* Supply a new dseg for the simulation. */
+      153 
+      154 	code = 0;
+      155 	dbr_info_ptr = addr (my_dbr_info);
+      156 	sdw_info_ptr = addr (my_sdw_info);
+      157 	ptw_info_ptr = addr (my_ptw_info);
+      158 
+      159 	on page_fault_error call page_error;
+      160 
+      161 /* Examine the new dbr. */
+      162 
+      163 	call dbr_util_$dissect (addr (dbr_value), dbr_info_ptr);
+      164 	static.last_segnum, p_last_segnum = divide (dbr_info.bound, 2, 15) - 1;
+      165 	static.dseg_info.sdwi.paged = dbr_info.paged;
+      166 	static.dseg_info.sdwi.address = dbr_info.address;
+      167 
+      168 /* Get the sdw & page table for dseg. */
+      169 
+      170 	if static.dseg_info.sdwi.paged then do;
+      171 	     call get_absolute (static.dseg_info.sdwi.address - size (aste), size (aste) + divide (dbr_info.bound + 1023, 1024, 8), addr (static.dseg_info.sst_data), code);
+      172 	     if code ^= 0 then return;
+      173 	     call ptw_util_$dissect (addr (static.dseg_info.page_table (0)), ptw_info_ptr);
+      174 	     call get_absolute (ptw_info.address, 2, addr (dseg_sdw), code);
+      175 	     if code ^= 0 then return;
+      176 	end;
+      177 	else do;
+      178 	     call get_absolute (static.dseg_info.sdwi.address, 2, addr (dseg_sdw), code);
+      179 	     if code ^= 0 then return;
+      180 	end;
+      181 	call sdw_util_$dissect (addr (dseg_sdw), addr (static.dseg_info.sdwi));
+      182 
+      183 /* Find the core_map, if present, which is needed to resolve pages that were
+      184*out of service for io. */
+      185 
+      186 	static.core_map_present = "0"b;
+      187 	if segno (addr (core_map$)) <= p_last_segnum then do;
+      188 	     core_map_segnum = segno (addr (core_map$));	/* in first dseg page - known to be in memory */
+      189 	     if static.dseg_info.sdwi.paged then dseg_page_address = ptw_info.address;
+      190 	     else dseg_page_address = static.dseg_info.sdwi.address;
+      191 	     call get_absolute (dseg_page_address + 2 * core_map_segnum, 1, addr (core_map_sdw), code);
+      192 	     if code ^= 0 then return;
+      193 	     call sdw_util_$dissect (addr (core_map_sdw), sdw_info_ptr);
+      194 	     if sdw_info.paged then do;
+      195 		call get_absolute (sdw_info.address, 1, addr (core_map_ptw), code);
+      196 		if code ^= 0 then return;
+      197 		call ptw_util_$dissect (addr (core_map_ptw), ptw_info_ptr);
+      198 		static.core_map_address = ptw_info.address;
+      199 	     end;
+      200 	     else static.core_map_address = sdw_info.address;
+      201 	     static.core_map_present = static.core_map_address ^= 0;
+      202 	end;
+      203 	return;
+      204 
+      205 get_absolute: entry (p_address, p_data_length, p_data_ptr, code);
+      206 
+      207 	read_write = Read;
+      208 	go to absolute;
+      209 
+      210 put_absolute: entry (p_address, p_data_length, p_data_ptr, code);
+      211 
+      212 	read_write = Write;
+      213 
+      214 absolute:
+      215 
+      216 /* Get or put a range of memory given an absolute address. 
+      217*We access Multics memory through one of three segments.  The segment 
+      218*multics_low_mem maps onto the first 256k of memory (saved to disk).  (Actually,
+      219*pages 0 and 1 of this memory are actually in toehold_data within this segment.)
+      220*multics_high_mem is the next 256k.  The abs-seg abs_seg0 is mapped onto the nth
+      221*256k;  its page table is changed as needed.  We do all of this one page at a
+      222*time, backwards, to provide better disk latency. */
+      223 
+      224 	code = 0;
+      225 	on page_fault_error call page_error;
+      226 	on parity call mem_error;
+      227 	on store call mem_error;
+      228 	on op_not_complete call mem_error;
+      229 
+      230 	data_length = p_data_length;
+      231 
+      232 /* We march the address we desire downwards, by at most a page at a time. */
+      233 
+      234 	do while (data_length > 0);
+      235 
+      236 /* Find amount of data in this page. */
+      237 
+      238 	     data_part_length = mod (p_address + data_length - 1, 1024) + 1; /* amount from start of page to last word */
+      239 	     if data_part_length <= data_length then address = p_address + data_length - data_part_length; /* data crosses into this page */
+      240 	     else do;				/* data within a page */
+      241 		address = p_address;
+      242 		data_part_length = data_length;
+      243 	     end;
+      244 	     page_num = divide (address, 1024, 16);
+      245 
+      246 	     data_ptr = addwordno (p_data_ptr, address - p_address);
+      247 
+      248 	     if ^static.examine_crash | (address >= (512 * 1024)) then
+      249 		if (static.current_abs_seg_addr <= address) & (address < (static.current_abs_seg_addr + 256 * 1024)) then do; /* memory extent we already have mapped */
+      250 		     multics_data_ptr = ptr (addr (abs_seg0$), address - static.current_abs_seg_addr);
+      251 		     if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      252 		     else multics_data_ptr -> data_part = data_ptr -> data_part;
+      253 		end;
+      254 		else do;				/* we must re-map abs_seg0$ */
+      255 		     static.current_abs_seg_addr = divide (address, 256 * 1024, 8) * 256 * 1024;
+      256 		     do page_num = 0 to 255;
+      257 			call ptw_util_$make_core (addr (abs_seg_pt (page_num)), static.current_abs_seg_addr + page_num * 1024);
+      258 		     end;
+      259 		     call pmut$camp;
+      260 		     multics_data_ptr = ptr (addr (abs_seg0$), address - static.current_abs_seg_addr);
+      261 		     if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      262 		     else multics_data_ptr -> data_part = data_ptr -> data_part;
+      263 		end;
+      264 	     else if address >= 256 * 1024 then do;	/* Must be low memory of crash image to examine */
+      265 		multics_data_ptr = ptr (addr (multics_high_mem$), address - 256 * 1024);
+      266 		if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      267 		else do;
+      268 		     multics_data_ptr -> data_part = data_ptr -> data_part;
+      269 		     call pc_wired$write_wait (static.high_mem_astep, page_num - 256, 1);
+      270 		end;
+      271 	     end;
+      272 	     else if address >= static.toehold_addr + 2048 then do;
+      273 		multics_data_ptr = ptr (addr (multics_low_mem$), address);
+      274 		if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      275 		else do;
+      276 		     multics_data_ptr -> data_part = data_ptr -> data_part;
+      277 		     call pc_wired$write_wait (static.low_mem_astep, page_num, 1);
+      278 		end;
+      279 	     end;
+      280 	     else if address >= static.toehold_addr then do; /* toehold stays in memory */
+      281 		multics_data_ptr = ptr (addr (toehold$), address - static.toehold_addr);
+      282 		if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      283 		else multics_data_ptr -> data_part = data_ptr -> data_part;
+      284 	     end;
+      285 	     else if address >= 2 * 1024 then do;	/* below toehold */
+      286 		multics_data_ptr = ptr (addr (multics_low_mem$), address);
+      287 		if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      288 		else do;
+      289 		     multics_data_ptr -> data_part = data_ptr -> data_part;
+      290 		     call pc_wired$write_wait (static.low_mem_astep, page_num, 1);
+      291 		end;
+      292 	     end;
+      293 	     else do;				/* page is in toehold_data area of saved memory */
+      294 		multics_data_ptr = ptr (addr (multics_low_mem$), static.toehold_data_addr + address);
+      295 		if read_write = Read then data_ptr -> data_part = multics_data_ptr -> data_part;
+      296 		else do;
+      297 		     multics_data_ptr -> data_part = data_ptr -> data_part;
+      298 		     call pc_wired$write_wait (static.low_mem_astep, divide (static.toehold_data_addr, 1024, 16) + page_num, 1);
+      299 		end;
+      300 	     end;
+      301 	     data_length = data_length - data_part_length;
+      302 	end;
+      303 	return;
+      304 
+      305 new_segment: entry (desired_segnum, p_seg_info_ptr, code);
+      306 
+      307 /* This entry specifies what segment future calls to put/get_virtual will
+      308*reference.  The virtual operations are broken apart into this routine (which
+      309*specifies the segment number portion of an address) and the get/put_virtual 
+      310*entries which supply the word number.  This is done for efficiency. */
+      311 
+      312 	code = 0;
+      313 	seg_info_ptr = p_seg_info_ptr;
+      314 	on page_fault_error call page_error;
+      315 
+      316 	if desired_segnum > static.last_segnum then do;
+      317 	     code = error_table_$invalidsegno;
+      318 	     go to bad_segment;
+      319 	end;
+      320 
+      321 /*  We will get the user's new segment's sdw and page table.  We use virtual
+      322*to get the seg's sdw. */
+      323 
+      324 	call get_virtual (addr (static.dseg_info), desired_segnum * 2, 2, addr (seg_sdw), code);
+      325 	if code ^= 0 then go to bad_segment;
+      326 	go to new_sdw_join;
+      327 
+      328 new_sdw: entry (p_seg_sdw, p_seg_info_ptr, code);
+      329 
+      330 	code = 0;
+      331 	seg_sdw = p_seg_sdw;
+      332 	seg_info_ptr = p_seg_info_ptr;
+      333 	on page_fault_error call page_error;
+      334 
+      335 new_sdw_join:
+      336 	call sdw_util_$dissect (addr (seg_sdw), addr (seg_info.sdwi));
+      337 	if seg_info.sdwi.faulted then do;
+      338 	     code = error_table_$invalidsegno;
+      339 	     go to bad_segment;
+      340 	end;
+      341 	if seg_info.sdwi.paged then do;		/* Get the seg's aste/page table */
+      342 	     call get_absolute (seg_info.sdwi.address - size (aste), size (aste) + divide (seg_info.sdwi.size + 1023, 1024, 8), addr (seg_info.sst_data), code);
+      343 	     if code ^= 0 then do;			/* It could just be that the page table is in good memory and has no aste in front of it, but... */
+      344 		seg_info.sdwi.faulted = "1"b;
+      345 bad_segment:	return;
+      346 	     end;
+      347 	end;
+      348 	return;
+      349 
+      350 get_virtual: entry (p_seg_info_ptr, p_address, p_data_length, p_data_ptr, code);
+      351 
+      352 	read_write = Read;
+      353 	go to virtual;
+      354 
+      355 put_virtual: entry (p_seg_info_ptr, p_address, p_data_length, p_data_ptr, code);
+      356 
+      357 	read_write = Write;
+      358 
+      359 virtual:
+      360 
+      361 /* Fetch a given set of words from the current segment. */
+      362 
+      363 	code = 0;
+      364 	seg_info_ptr = p_seg_info_ptr;
+      365 	on page_fault_error call page_error;
+      366 
+      367 	ptw_info_ptr = addr (my_ptw_info);
+      368 	data_length = p_data_length;
+      369 	if p_address + data_length > seg_info.sdwi.size then do;
+      370 	     data_part_length = min (data_length, p_address + data_length - seg_info.sdwi.size);
+      371 	     data_ptr = addwordno (p_data_ptr, data_length - data_part_length);
+      372 	     unspec (data_ptr -> data_part) = "0"b;
+      373 	     code = error_table_$boundviol;
+      374 	     data_length = data_length - data_part_length;
+      375 	end;
+      376 	if seg_info.sdwi.paged then do;
+      377 	     do while (data_length > 0);
+      378 		data_part_length = mod (p_address + data_length - 1, 1024) + 1; /* amount from start of page to last word */
+      379 		if data_part_length <= data_length then address = p_address + data_length - data_part_length; /* data crosses into this page */
+      380 		else do;				/* data within a page */
+      381 		     address = p_address;
+      382 		     data_part_length = data_length;
+      383 		end;
+      384 		data_ptr = addwordno (p_data_ptr, address - p_address);
+      385 		page_num = divide (address, 1024, 8);
+      386 		page_offset = mod (address, 1024);
+      387 
+      388 /* Find the appropriate page.  Move the amount found in that page to the
+      389*user's area. */
+      390 
+      391 		if page_num < 0 | page_num > 255 then go to bad_page;
+      392 		call ptw_util_$dissect (addr (seg_info.page_table (page_num)), ptw_info_ptr);
+      393 		if ptw_info.valid then		/* properly in memory */
+      394 		     if read_write = Read then call get_absolute (ptw_info.address + page_offset, data_part_length, data_ptr, code);
+      395 		     else do;
+      396 			call put_absolute (ptw_info.address + page_offset, data_part_length, data_ptr, code);
+      397 			if ^ptw_info.phm then do;	/* must update phm in ptw */
+      398 			     call ptw_util_$set_phm (addr (seg_info.page_table (page_num)));
+      399 			     call put_absolute (seg_info.sdwi.address + page_num, 1, addr (seg_info.page_table (page_num)), code);
+      400 			end;
+      401 		     end;
+      402 		else if ptw_info.add_type = add_type.disk then do;
+      403 		     if ptw_info.null_disk then
+      404 			if read_write = Read then go to zero_page;
+      405 			else go to bad_page;
+      406 		     else if read_write = Read then do;
+      407 			call map_for_read ((ptw_info.address), code);
+      408 			if code = 0 then do;
+      409 			     data_ptr -> data_part = addwordno (static.rdisk_ptr, page_offset) -> data_part;
+      410 			     call pc$cleanup (static.rdisk_astep);
+      411 			end;
+      412 			else go to bad_page;
+      413 		     end;
+      414 		     else do;
+      415 			call map_for_update ((ptw_info.address), code);
+      416 			if code = 0 then do;
+      417 			     addwordno (static.rdisk_ptr, page_offset) -> data_part = data_ptr -> data_part;
+      418 			     call pc$cleanup (static.rdisk_astep);
+      419 			end;
+      420 			else go to bad_page;
+      421 		     end;
+      422 		end;
+      423 		else if ptw_info.add_type = add_type.core then do;
+      424 		     if ^ptw_info.os then go to bad_page;
+      425 		     if ^static.core_map_present then go to bad_page;
+      426 
+      427 /* find core map entry */
+      428 
+      429 		     cmep = addr (my_cme);
+      430 		     call get_absolute (static.core_map_address + 8 + size (cme) * divide (ptw_info.address, 1024, 16), size (cme), cmep, code);
+      431 		     if code ^= 0 then go to bad_page;
+      432 		     if substr (cme.devadd, 19, 4) ^= add_type.disk then go to bad_page;
+      433 		     if substr (cme.devadd, 1, 1) then go to bad_page;
+      434 		     if read_write = Read then do;
+      435 			if cme.io then call get_absolute (ptw_info.address + page_offset, data_part_length, data_ptr, code); /* page was being written -> memory good */
+      436 			else do;			/* reading -> disk is better */
+      437 			     call map_for_read (bin (substr (cme.devadd, 1, 18), 18), code);
+      438 			     if code = 0 then do;
+      439 				data_ptr -> data_part = addwordno (static.rdisk_ptr, page_offset) -> data_part;
+      440 				call pc$cleanup (static.rdisk_astep);
+      441 			     end;
+      442 			     else go to bad_page;
+      443 			end;
+      444 		     end;
+      445 		     else do;
+      446 			if cme.io then do;		/* was being written - memory is best */
+      447 			     call put_absolute (ptw_info.address + page_offset, data_part_length, data_ptr, code); /* page was being written -> memory good */
+      448 			     call map_for_write (bin (substr (cme.devadd, 1, 18), 18), code); /* save on disk */
+      449 			     if code = 0 then do;
+      450 				call get_absolute (ptw_info.address, 1024, static.rdisk_ptr, code);
+      451 				call pc$cleanup (static.rdisk_astep);
+      452 			     end;
+      453 			     else go to bad_page;
+      454 			end;
+      455 			else do;			/* reading -> disk is better */
+      456 			     call map_for_update (bin (substr (cme.devadd, 1, 18), 18), code);
+      457 			     if code = 0 then do;
+      458 				addwordno (static.rdisk_ptr, page_offset) -> data_part = data_ptr -> data_part;
+      459 				call put_absolute (ptw_info.address, 1024, static.rdisk_ptr, code);
+      460 				call pc$cleanup (static.rdisk_astep);
+      461 			     end;
+      462 			     else go to bad_page;
+      463 			end;
+      464 		     end;
+      465 		end;
+      466 		else do;
+      467 bad_page:		     if code = 0 then code = error_table_$argerr;
+      468 zero_page:	     if read_write = Read then unspec (data_ptr -> data_part) = "0"b;
+      469 		end;
+      470 		data_length = data_length - data_part_length;
+      471 	     end;
+      472 	end;
+      473 	else do;					/* in memory (unpaged) */
+      474 	     address = seg_info.sdwi.address + p_address;
+      475 	     if read_write = Read then call get_absolute (address, p_data_length, p_data_ptr, code);
+      476 	     else call put_absolute (address, p_data_length, p_data_ptr, code);
+      477 	end;
+      478 	return;
+      479 
+      480 map_for_read: proc (record_num, code);
+      481 
+      482 /* Map rdisk_seg onto the desired page.  This routine is actually a
+      483*streamlined version of read_disk for this purpose and uses the nice rdisk_seg
+      484*aste built by read_disk. */
+      485 
+      486 dcl  code				fixed bin (35) parameter;
+      487 dcl  record_num			fixed bin (20) parameter;
+      488 dcl  write_op			bit (1) aligned;
+      489 
+      490 map_for_update: entry (record_num, code);
+      491 
+      492 	write_op = "0"b;
+      493 	go to map;
+      494 
+      495 map_for_write: entry (record_num, code);		/* previous contents don't matter */
+      496 
+      497 	write_op = "1"b;
+      498 
+      499 map:	pvtp = addr (pvt$);
+      500 	code = 0;
+      501 	if seg_info.sst_data.pvtx < 1 | seg_info.sst_data.pvtx > pvt.n_entries then do;
+      502 	     code = error_table_$fsdisk_pvtx_oob;
+      503 	     return;
+      504 	end;
+      505 
+      506 	pvtep = addr (addr (pvt.array) -> pvt_array (seg_info.sst_data.pvtx));
+      507 	if record_num < 0 | record_num >= rec_per_sv (pvte.device_type) then do;
+      508 	     code = error_table_$dev_offset_out_of_bounds;
+      509 	     return;
+      510 	end;
+      511 
+      512 	static.rdisk_astep -> aste.pvtx = seg_info.sst_data.pvtx;
+      513 	static.rdisk_astep -> aste.npfs = "0"b;
+      514 
+      515 	if write_op then call ptw_util_$make_null_disk (static.rdisk_ptp, record_num);
+      516 	else call ptw_util_$make_disk (static.rdisk_ptp, record_num);
+      517 	return;
+      518      end;
+      519 
+      520 page_error: proc;
+      521 
+      522 /* Abort rdisk activity, return error code. */
+      523 
+      524 	call ptw_util_$reset_phm (static.rdisk_ptp);	/* don't let pc try to write */
+      525 	call pc$cleanup (static.rdisk_astep);
+      526 
+      527 mem_error: entry;
+      528 
+      529 	code = error_table_$fsdisk_phydev_err;
+      530 	go to abort;
+      531      end;
+      532  
+  1     2 	/* BEGIN INCLUDE FILE add_type.incl.pl1 */
+  1     3 	/* 02/26/75 by Bernard S. Greenberg */
+  1     4 
+  1     5 	/* This file provides a structure for checking
+  1     6*		PTW/CME address type fields in PL/I */
+  1     7 
+  1     8 dcl 1 add_type unaligned static internal,
+  1     9 	2 core bit (4) init ("1000"b),		/* in core- S/B only in PTW */
+  1    10 	2 disk bit (4) init ("0100"b),		/* Disk address */
+  1    11 	2 pd   bit (4) init ("0010"b),		/* Paging Device */
+  1    12 	2 reserved bit (4) init ("0001"b),		/* Reserved */
+  1    13 	2 non_null bit (4) init ("1111"b);		/* Not null address */
+  1    14 
+  1    15 dcl 1 badd_type unaligned based,
+  1    16     2 (core, disk, pd, reserved) bit (1) unaligned;
+  1    17 
+  1    18 	/* END INCLUDE FILE add_type.incl.pl1 */
+      532 
+      533  /* BEGIN include file bce_appending_seg_info.incl.pl1 */
+  2     2 
+  2     3 /* Description of data returned by bce_appending_simulation$new_segment. 
+  2     4*Keith Loepere, November 1983. */
+  2     5 
+  2     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  2     7 
+  2     8 dcl  seg_info_ptr		        ptr;
+  2     9 dcl  1 seg_info		        aligned based (seg_info_ptr),
+  2    10        2 sst_data		        aligned like aste,
+  2    11        2 page_table		        (0:255) bit (36) aligned,
+  2    12        2 sdwi		        aligned like sdw_info;
+  2    13 
+  2    14  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  3     2 
+  3     3 /* Template for an AST entry. Length = 12 words. */
+  3     4 
+  3     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  3     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  3     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  3     8 
+  3     9 dcl  astep ptr;
+  3    10 
+  3    11 dcl 1 aste based (astep) aligned,
+  3    12 
+  3    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  3    14     2 bp bit (18),					/* backward used list rel pointer */
+  3    15 
+  3    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  3    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  3    18 
+  3    19     2 strp bit (18),				/* rel pointer to process trailer */
+  3    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  3    21 
+  3    22     2 uid bit (36),					/* segment unique id */
+  3    23 
+  3    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  3    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  3    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    27 
+  3    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  3    29     2 init bit (1),					/* used bit - insure 1 lap */
+  3    30     2 gtus bit (1),					/* global transparent usage switch */
+  3    31     2 gtms bit (1),					/* global transparent modified switch */
+  3    32     2 hc bit (1),					/* hard core segment */
+  3    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  3    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  3    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  3    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  3    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  3    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  3    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  3    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  3    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  3    42     2 pad1 bit (2),					/* OO */
+  3    43     2 dius bit (1),					/* dumper in use switch */
+  3    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  3    45     2 dmpr_pad bit (1),
+  3    46     2 ehs bit (1),					/* entry hold switch */
+  3    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  3    48     2 dirsw bit (1),				/* directory switch */
+  3    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  3    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  3    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  3    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  3    53 
+  3    54     2 dtu bit (36),					/* date and time segment last used */
+  3    55 
+  3    56     2 dtm bit (36),					/* date and time segment last modified */
+  3    57 
+  3    58 
+  3    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  3    60 
+  3    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  3    62 
+  3    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  3    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  3    65     2 fms bit (1),					/* file modified switch */
+  3    66     2 npfs bit (1),					/* no page fault switch */
+  3    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  3    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  3    69     2 per_process bit (1),				/* use master quota for this entry */
+  3    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  3    71     2 pad2 bit (2),
+  3    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  3    73     2 np bit (9),					/* number of pages in core */
+  3    74 
+  3    75 
+  3    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  3    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  3    78     2 damaged bit (1),				/* PC declared segment unusable */
+  3    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  3    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  3    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  3    82     2 ptsi bit (2),					/* page table size index */
+  3    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  3    84 
+  3    85 
+  3    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  3    87 
+  3    88 
+  3    89 dcl 1 aste_part aligned based (astep),
+  3    90 
+  3    91     2 one bit (36) unaligned,				/* fp and bp */
+  3    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  3    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  3    94 
+  3    95 
+  3    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  3    97     2 pad1 bit (8*36),
+  3    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  3    99     2 pad2 bit (3*36);
+  3   100 
+  3   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+  2    14 
+  2    15  /* BEGIN INCLUDE FILE ... sdw_info.incl.pl1 ... 12/16/80, for ADP conversion */
+  4     2 /* Note: This include file has an ALM counterpart made with cif. Keep it up to date */
+  4     3 
+  4     4 dcl  sdw_info_ptr pointer;
+  4     5 
+  4     6 dcl 1 sdw_info aligned based (sdw_info_ptr),		/* Structure describing SDW contents */
+  4     7     2 address fixed bin (26), 			/* Address of seg base or of page table */
+  4     8     2 size fixed bin (19),				/* Max length of segment (NOT offset of last word) */
+  4     9 
+  4    10     2 access unaligned,				/* REWP */
+  4    11       3 read bit (1) unaligned,
+  4    12       3 execute bit (1) unaligned,
+  4    13       3 write bit (1) unaligned,
+  4    14       3 privileged bit (1) unaligned,
+  4    15 
+  4    16     2 pad1 bit (32) unaligned,
+  4    17 
+  4    18     2 rings unaligned,				/* Ring brackets */
+  4    19       3 r1 bit (3) unaligned,
+  4    20       3 r2 bit (3) unaligned,
+  4    21       3 r3 bit (3) unaligned,
+  4    22 
+  4    23     2 pad2 bit (27) unaligned,
+  4    24 
+  4    25     2 flags aligned,
+  4    26       3 paged bit (1) unaligned,			/* "1"b => Segment is paged */
+  4    27       3 faulted bit (1) unaligned,			/* "1"b => SDW has fault set */
+  4    28       3 cache bit (1) unaligned,			/* "1"b => Segment is encacheable */
+  4    29       3 pad3 bit (33) unaligned,
+  4    30 
+  4    31     2 gate_entry_bound fixed bin (14);			/* Number of entrypoints in gate, or zero */
+  4    32 
+  4    33 /* END INCLUDE FILE ... sdw_info.incl.pl1 */
+  2    15 
+  2    16 
+  2    17 /* END include file bce_appending_seg_info.incl.pl1 */
+      533 
+      534  /* BEGIN INCLUDE FILE cmp.incl.pl1 --- October 1982 */
+  5     2 /* Note: This include file has an ALM counterpart NOT made with cif (for historical reasons). Keep it up to date */
+  5     3 
+  5     4 dcl  cmep ptr;					/* pointer to core map entry */
+  5     5 
+  5     6 dcl 1 cme based (cmep) aligned,			/* core map entry */
+  5     7     2 fp bit (18) unaligned,				/* forward pointer to next entry */
+  5     8     2 bp bit (18) unaligned,				/* backward pointer to previous entry */
+  5     9 
+  5    10     2 devadd bit (22) unaligned,			/* device address of page in the core block */
+  5    11     2 pad5 bit (1) unaligned,
+  5    12     2 synch_held bit (1) unaligned,			/* Page of synchronized seg held in memory */
+  5    13     2 io bit (1) unaligned,				/* input/output indicator 1=output, 0=input */
+  5    14     2 pad2 bit (1) unaligned,
+  5    15     2 er bit (1) unaligned,				/* indicates error in previous IO activity */
+  5    16     2 removing bit (1) unaligned,			/* core is being removed by reconfiguration */
+  5    17     2 abs_w bit (1) unaligned,			/* absolute address must not be changed for page */
+  5    18     2 abs_usable bit (1) unaligned,			/* page may be assigned with fixed absolute address */
+  5    19     2 notify_requested bit (1) unaligned,		/* notify requested on I/O completion */
+  5    20     2 pad3 bit (1) unaligned,
+  5    21     2 phm_hedge bit (1) unaligned,			/* on => pc$flush_core ought write. */
+  5    22     2 contr bit (3) unaligned,			/* controller in which core block is located */
+  5    23 
+  5    24     2 ptwp bit (18) unaligned,			/* pointer to page table word for the page */
+  5    25     2 astep bit (18) unaligned,			/* relative AST entry pointer of page */
+  5    26     2 pin_counter fixed bin (17) unaligned,		/* number of times to skip eviction */
+  5    27     2 synch_page_entryp bit (18) unaligned;		/* relp to synch page entry */
+  5    28 
+  5    29 
+  5    30 dcl 1 cma (0: 1) based aligned like cme;		/* Core map array */
+  5    31 
+  5    32 dcl 1 mcme based (cmep) aligned,			/* core map entry for extracting DID */
+  5    33     2 pad bit (36) unaligned,
+  5    34     2 record_no bit (18) unaligned,			/* record number of device */
+  5    35     2 add_type bit (4) unaligned,			/* see add_type.incl.pl1 */
+  5    36     2 flags bit (14) unal,
+  5    37     2 pad1 bit (18) unal;
+  5    38 
+  5    39 
+  5    40 /* END INCLUDE FILE  cmp.incl.pl1 */
+      534 
+      535  /* BEGIN include file dbr_info.incl.pl1 */
+  6     2 
+  6     3 /* This include file describes the structure returned by dbr_util_$dissect.
+  6     4*Keith Loepere, October 1983. */
+  6     5 
+  6     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  6     7 
+  6     8 dcl  dbr_info_ptr		        ptr;
+  6     9 
+  6    10 dcl  1 dbr_info		        aligned based (dbr_info_ptr),
+  6    11        2 address		        fixed bin (26),	/* of dseg or dseg page table */
+  6    12        2 bound		        fixed bin (18),	/* length of dseg in words */
+  6    13        2 stack_base_segnum	        fixed bin (15),	/* segment number of ring 0 stack */
+  6    14        2 paged		        bit (1);		/* is dseg paged? */
+  6    15 
+  6    16 /* END include file dbr_info.incl.pl1 */
+      535 
+      536  /* Begin include file ...... fs_dev_types.incl.pl1 */
+  7     2 
+  7     3 /****^  HISTORY COMMENTS:
+  7     4*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  7     5*     audit(86-01-17,CLJones), install(86-03-21,MR12.0-1033):
+  7     6*     Add support for FIPS
+  7     7*     3380.
+  7     8*  2) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  7     9*     audit(86-05-15,Coppola), install(86-07-18,MR12.0-1098):
+  7    10*     Add the support for subvolumes for the MSU3380 and MSU3390.
+  7    11*  3) change(86-10-02,Fawcett), approve(86-10-02,PBF7383),
+  7    12*     audit(86-10-23,Farley), install(86-10-28,MR12.0-1200):
+  7    13*     Changed 3390 to 3381, "d338" to "3380" & "d339" to "3381".
+  7    14*                                                   END HISTORY COMMENTS */
+  7    15 
+  7    16 /* Modified 5/19/76 by N. I. Morris */
+  7    17 /* Modified 12/27/78 by Michael R. Jordan to correct MSS0500 information */
+  7    18 /* Modified 4/79 by R.J.C. Kissel to add msu0501 information. */
+  7    19 /* Modified '82 by BIM for needs_alt_part */
+  7    20 /* Modified 4/84 by Chris Jones for FIPS disks */
+  7    21 /* Modified 12/84 by Paul Farley for FIPS disks formatted for 512wd sectors */
+  7    22 /* Modified 1/85 by Paul Farley to decrease the size of the 3380, until the
+  7    23*   volmap and record stock can be expanded. */
+  7    24 
+  7    25 /*
+  7    26********************************************************************************
+  7    27**							        *
+  7    28**                           WARNING:                                          *
+  7    29**							        *
+  7    30**   There exists fs_dev_types.incl.alm that must me updated when a new device *
+  7    31**   type is added.						        *
+  7    32**							        *
+  7    33**   There are other include files that contain arrays indexed by the device   *
+  7    34**   index obtained by references to MODELX or MODELN in this include file.    *
+  7    35**   These must be modified when a new device type is added:		        *
+  7    36**   disk_pack.incl.pl1					        *
+  7    37**   fs_dev_types_sector.incl.pl1 (included in this include)		        *
+  7    38**							        *
+  7    39********************************************************************************
+  7    40**/
+  7    41 
+  7    42 
+  7    43 dcl (maxdevt init (9),				/* maximum legal devt */
+  7    44      bulkdevt init (1),				/* bulk store devt */
+  7    45      msu0500devt init (2),				/* MSU0500 device type */
+  7    46      msu0451devt init (3),				/* MSU0451 device type */
+  7    47      msu0450devt init (3),				/* MSU0450 device type */
+  7    48      msu0400devt init (4),				/* MSU0400 device type */
+  7    49      dsu191devt init (4),				/* DSU191 device type */
+  7    50      dsu190devt init (5),				/* DSU190 device type */
+  7    51      dsu181devt init (6),				/* DSU181 device type */
+  7    52      msu0501devt init (7),				/* MSU0501 device type */
+  7    53      fips3380devt init (8),				/* 3380D FIPS device type */
+  7    54      fips3381devt init (9)				/* 3380E FIPS device type */
+  7    55      ) fixed bin (4) static options (constant);
+  7    56 
+  7    57 dcl  MODEL (12) fixed bin static options (constant) init	/* Known device model numbers */
+  7    58      (0, 500, 451, 450, 400, 402, 191, 190, 181, 501, 3380, 3381);
+  7    59 
+  7    60 dcl  MODELX (12) fixed bin static options (constant) init	/* translation from model number to device type */
+  7    61      (1, 2, 3, 3, 4, 4, 4, 5, 6, 7, 8, 9);
+  7    62 
+  7    63 dcl  MODELN (9) fixed bin static options (constant) init	/* translation from device type to model number */
+  7    64      (0, 500, 451, 400, 190, 181, 501, 3380, 3381);
+  7    65 
+  7    66 dcl  device_names (9) char (4) aligned static options (constant) init /* device names indexed by device type */
+  7    67      ("bulk", "d500", "d451", "d400", "d190", "d181", "d501", "3380", "3381");
+  7    68 
+  7    69 dcl  first_dev_number (9) fixed bin (17) static options (constant) init /* First valid device_number */
+  7    70      (1, 1, 1, 1, 1, 1, 1, 0, 0);
+  7    71 
+  7    72 dcl  fips_type_disk (9) bit (1) unal static options (constant) init /* ON => FIPS disk */
+  7    73      ("0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"0"b,"1"b,"1"b);
+  7    74 
+  7    75 dcl  media_removable (9) bit (1) static options (constant) init /* ON => demountable pack on device */
+  7    76      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  7    77 
+  7    78 dcl  shared_spindle (9) bit (1) static options (constant) init /* ON => 2 devices per spindle */
+  7    79      ("0"b, "1"b, "0"b, "0"b, "0"b, "0"b, "1"b, "0"b, "0"b);
+  7    80 
+  7    81 dcl  needs_alt_part (9) bit (1) static options (constant) init /* ON => needs alternate partition to run alternate tracks */
+  7    82      ("0"b, "0"b, "1"b, "1"b, "1"b, "1"b, "0"b, "0"b, "0"b);
+  7    83 
+  7    84 dcl  seek_command (9) bit (6) init /* Seek command: 00 => N/A, 30 => Seek_512, 34 => seek_64 */
+  7    85      ("00"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"34"b3,"30"b3, "30"b3);
+  7    86 
+  7    87 dcl  rec_per_dev (9) fixed bin (21) static options (constant) init /* table of # of records on each device */
+  7    88      (0, 38258, 38258, 19270, 14760, 4444, 67200, 112395, 224790);
+  7    89 
+  7    90 dcl  rec_per_sv (9) fixed bin static options (constant) init /* table of  # of records on each subvol */
+  7    91      (0, 38258, 38258, 19270, 14760, 4444, 67200, 56134, 74930);
+  7    92 
+  7    93 dcl  number_of_sv (9) fixed bin static options (constant) init /* table of subvolumes */
+  7    94      (0, 0, 0, 0, 0, 0, 0, 2, 3);
+  7    95 
+  7    96 dcl  valid_sv_string char (3) static options (constant) init  /* string of valid subvolume names */
+  7    97      ("abc");
+  7    98 
+  7    99 dcl  valid_sv_array (0:2) char (1) static options (constant) /* array of valid subvolume names */
+  7   100      init ("a","b","c");
+  7   101 
+  7   102 dcl  cyl_per_dev (9) fixed bin static options (constant) init /* table of # of cylinders on each device */
+  7   103      (0, 814, 814, 410, 410, 202, 840, 885, 1770);
+  7   104 
+  7   105 dcl  cyl_per_sv (9) fixed bin static options (constant) init /* table of # of cylinders on each subvolume */
+  7   106      (0, 814, 814, 410, 410, 202, 840, 442, 590);
+  7   107 
+  7   108 dcl  rec_per_cyl (9) fixed bin static options (constant) init /* table of # of records per cylinder on each device */
+  7   109      (0, 47, 47, 47, 36, 22, 80, 127, 127);
+  7   110 
+  7   111 dcl  tracks_per_cyl (9) fixed bin static options (constant) init /* table of # of tracks per cylinder on each device */
+  7   112      (0, 19, 19, 19, 19, 20, 20, 15, 15);
+  7   113 
+  7   114 
+  7   115 dcl  first_rec_num (9) fixed bin static options (constant) init /* table of # of first record on each device */
+  7   116      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  7   117 
+  7   118 dcl  last_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each device */
+  7   119      (0, 38257, 38116, 19128, 14651, 4399, 67199, 112394, 224789);
+  7   120 
+  7   121 dcl  last_sv_rec_num (9) fixed bin (18) static options (constant) init /* table of # of last record on each subvolume */
+  7   122      (0, 38257, 38116, 19128, 14651, 4399, 67199, 56133, 74929);
+  7   123 
+  7   124 dcl  first_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector for each device */
+  7   125      (0, 0, 0, 0, 0, 0, 0, 0, 0);
+  7   126 
+  7   127 dcl  last_sect_num (9) fixed bin (24) static options (constant) init /* table of # last sector number for each device */
+  7   128      (0, 618639, 616359, 309319, 239722, 71999, 1075199, 225674, 451349);
+  7   129 
+  7   130 dcl  first_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of first sector of alt partition */
+  7   131      (0, 638400, 616360, 309320, 239723, 72000, 1075200, 225675, 451350);
+  7   132 
+  7   133 dcl  last_alt_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector of alt partition */
+  7   134      (0, 639919, 618639, 311599, 241489, 72719, 1077759, 225930, 451605);
+  7   135 
+  7   136 dcl  last_physical_sect_num (9) fixed bin (24) static options (constant) init /* table of # of last sector on device (includes T&D cylinders) */
+  7   137      (0, 639919, 619399, 312359, 242249, 72359, 1077759, 225674, 451859);
+  7   138 
+  7   139 dcl  dev_time (9) float bin (27) static options (constant) init /* table of average access times for each device */
+  7   140      (384e0, 33187e0, 33187e0, 34722e0, 46935e0, 52631e0, 33187e0, 26260e0, 26260e0);
+  7   141 
+  8     1 /* Begin fs_dev_types_sector.incl.pl1 */
+  8     2 
+  8     3 
+  8     4 /****^  HISTORY COMMENTS:
+  8     5*  1) change(86-04-21,Fawcett), approve(86-04-21,MCR7383),
+  8     6*     audit(86-05-12,Coppola), install(86-07-18,MR12.0-1098):
+  8     7*     Add the sector differance for devices that do 64 word IO and devices that
+  8     8*     do 512 word IO.
+  8     9*                                                   END HISTORY COMMENTS */
+  8    10 
+  8    11 /* Created by R. A. Fawcett for 512 word IO. for procedures that do not
+  8    12*	 need all the data in fs_dev_types. This is also included in
+  8    13*	 fs_dev_types.incl.pl1  */
+  8    14 
+  8    15 dcl  sect_per_cyl (9) fixed bin static options (constant) init /* table of # of sectors per cylinder on each device */
+  8    16     (0, 760, 760, 760, 589, 360, 1280, 255, 255);
+  8    17 
+  8    18 dcl  sect_per_sv (9) fixed bin (24) static options (constant) init /* table of # of sectors per cylinder on each subvolume */
+  8    19      (0, 0, 0, 0, 0, 0, 0, 112710, 150450);
+  8    20 
+  8    21 dcl  sect_per_rec (9) fixed bin static options (constant) init
+  8    22  /* table of # of sectors per record on each device */
+  8    23  /* coresponding array in disk_pack.incl.pl1 called SECTORS_PER_RECORD */
+  8    24     (0, 16, 16, 16, 16, 16, 16, 2, 2);
+  8    25 
+  8    26 dcl  sect_per_vtoc (9) fixed bin static options (constant) init
+  8    27      (0, 3, 3, 3, 3, 3, 3, 1, 1);
+  8    28 	
+  8    29 dcl  vtoc_per_rec (9) fixed bin  static options  (constant) init
+  8    30 /* corespending array in disk_pack.incl.pl1 named VTOCES_PER_RECORD */
+  8    31      (0, 5, 5, 5, 5, 5, 5, 2, 2);
+  8    32 
+  8    33 dcl  sect_per_track (9) fixed bin static options (constant) init /* table of # of sectors per track on each device */
+  8    34     (0, 40, 40, 40, 31, 18, 64, 17, 17);
+  8    35 
+  8    36 dcl  words_per_sect (9) fixed bin static options (constant) init /* table of # of words per sector on each device */
+  8    37     (0, 64, 64, 64, 64, 64, 64, 512, 512);
+  8    38 
+  8    39 /* End fs_dev_types_sector.incl.pl1 */
+  8    40 
+  7   142 
+  7   143 
+  7   144 /* End of include file ...... fs_dev_types.incl.pl1 */
+      536 
+      537  /* BEGIN include file ptw_info.incl.pl1 */
+  9     2 
+  9     3 /* Description of the info returned by ptw_util_$dissect.  
+  9     4*Keith Loepere, October 1983. */
+  9     5 
+  9     6 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+  9     7 
+  9     8 dcl  ptw_info_ptr		        ptr;
+  9     9 
+  9    10 dcl  1 ptw_info		        aligned based (ptw_info_ptr),
+  9    11        2 address		        fixed bin (26),	/* memory or device number */
+  9    12        2 add_type		        bit (4) unal,
+  9    13        2 null_disk		        bit (1) unal,
+  9    14        2 er		        bit (1) unal,
+  9    15        2 wired		        bit (1) unal,
+  9    16        2 os		        bit (1) unal,
+  9    17        2 phu1		        bit (1) unal,	/* used in quantum */
+  9    18        2 phm1		        bit (1) unal,	/* modified in quantum */
+  9    19        2 valid		        bit (1) unal,
+  9    20        2 phu		        bit (1) unal,
+  9    21        2 phm		        bit (1) unal;
+  9    22 
+  9    23 /* END include file ptw_info.incl.pl1 */
+      537 
+      538  /*	BEGIN INCLUDE FILE ... pvt.incl.pl1 ... last modified January 1982 */
+ 10     2 
+ 10     3 
+ 10     4 /* The physical volume table (PVT) is a wired-down table.
+ 10     5*   It has one entry for each spindle present, be it for
+ 10     6*   Storage System or "I/O" use.
+ 10     7**/
+ 10     8 
+ 10     9      dcl	   pvt$		      ext,
+ 10    10 	   pvtp		      ptr;
+ 10    11 
+ 10    12 
+ 10    13      dcl	   1 pvt		      based (pvtp) aligned,
+ 10    14 
+ 10    15 	     2 n_entries	      fixed bin (17),	/* number of PVT entries */
+ 10    16 	     2 max_n_entries      fixed bin (17),	/* max number of PVT entries */
+ 10    17 	     2 n_in_use	      fixed bin (17),	/* number of PVT entries in use */
+ 10    18 	     2 rwun_pvtx	      fixed bin,		/* rewind_unloading pvtx */
+ 10    19 	     2 shutdown_state     fixed bin,		/* state of previous shutdown */
+ 10    20 	     2 esd_state	      fixed bin,		/* state of ESD, >0 iff in ESD */
+ 10    21 	     2 prev_shutdown_state fixed bin,		/* shutdown state of previous bootload */
+ 10    22 	     2 prev_esd_state     fixed bin,		/* ESD state of previous bootload */
+ 10    23 
+ 10    24 	     2 time_of_bootload fixed bin (71),		/* Time of bootload */
+ 10    25 	     2 root_lvid	      bit (36) aligned,	/* Logical volume ID of Root Logical Volume (RLV) */
+ 10    26 	     2 root_pvid	      bit (36) aligned,	/* Physical volume ID of Root Physical Volume (RPV) */
+ 10    27 	     2 root_pvtx	      fixed bin,		/* Index to PVTE for Root Physical Volume (RPV) */
+ 10    28 	     2 root_vtocx	      fixed bin,		/* VTOCE index for root (>) */
+ 10    29 	     2 disk_table_vtocx   fixed bin,		/* VTOCE index for disk table on RPV */
+ 10    30 	     2 disk_table_uid     bit (36) aligned,	/* File System UID for disk_table */
+ 10    31 
+ 10    32 	     2 rpvs_requested     bit (1) aligned,	/* RPVS keyword given on BOOT */
+ 10    33 	     2 rpv_needs_salv     bit (1) aligned,	/* RPV required (not requested) salvage */
+ 10    34 	     2 rlv_needs_salv     bit (1) aligned,	/* RLV required (not requested) salvage */
+ 10    35 	     2 volmap_lock_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+ 10    36 	     2 volmap_idle_wait_constant bit (36) aligned,/* For constructing wait event: OR pvte_rel into lower */
+ 10    37 	     2 vtoc_map_lock_wait_constant bit (36) aligned, /* For constructing wait event: OR pvte_rel into lower */
+ 10    38 	     2 n_volmap_locks_held fixed bin (17),	/* Current number of volmap locks held */
+ 10    39 	     2 n_vtoc_map_locks_held fixed bin (17),	/* Current number of VTOC Map locks held */
+ 10    40 
+ 10    41 	     2 last_volmap_time   fixed bin (71),	/* Time a volmap was last locked/unlocked */
+ 10    42 	     2 last_vtoc_map_time fixed bin (71),	/* Time a VTOC Map was last locked/unlocked */
+ 10    43 	     2 total_volmap_lock_time fixed bin (71),	/* Total time volmap's were locked (integral) */
+ 10    44 	     2 total_vtoc_map_lock_time fixed bin (71),	/* Total time VTOC Maps were locked (integral) */
+ 10    45 
+ 10    46 	     2 n_volmap_locks     fixed bin (35),	/* Number times a volmap was locked */
+ 10    47 	     2 n_vtoc_map_locks   fixed bin (35),	/* Number times a vtoc_map was locked */
+ 10    48 	     2 volmap_lock_nowait_calls fixed bin (35),	/* Number calls to lock volmap, no wait */
+ 10    49 	     2 volmap_lock_nowait_fails fixed bin (35),	/* Number times lock failed */
+ 10    50 	     2 volmap_lock_wait_calls fixed bin (35),	/* Number calls to lock volmap, wait */
+ 10    51 	     2 volmap_lock_wait_fails fixed bin (35),	/* Number times lock failed */
+ 10    52 	     2 pad (2) bit (36) aligned,
+ 10    53 
+ 10    54 	     2 array	      fixed bin (71);	/* Array of PVTE's -- must be double-word aligned */
+ 10    55 
+ 10    56 
+ 10    57 
+ 10    58 /*	END INCLUDE FILE ...pvt.incl.pl1 */
+      538 
+      539  /*  START OF:	pvte.incl.pl1	July 1982	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+ 11     2 
+ 11     3 /* Added pc_vacating, Benson Margulies 84-10-17 */
+ 11     4 
+ 11     5 /****^  HISTORY COMMENTS:
+ 11     6*  1) change(86-04-11,Fawcett), approve(86-04-11,MCR7383),
+ 11     7*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+ 11     8*     Add the support for subvolumes
+ 11     9*  2) change(86-04-11,Lippard), approve(86-04-11,MCR7309),
+ 11    10*     audit(86-05-29,GDixon), install(86-07-18,MR12.0-1098):
+ 11    11*     Add root_lv flag to mount RLVs that do not have hardcore partitions.
+ 11    12*  3) change(88-05-27,GWMay), approve(88-05-27,MCR7883),
+ 11    13*     audit(88-06-14,Beattie), install(88-07-19,MR12.2-1061):
+ 11    14*     Added inconsistent_dbm bit for determining the status of volume
+ 11    15*     dumper bit maps.
+ 11    16*                                                   END HISTORY COMMENTS */
+ 11    17 
+ 11    18      dcl	   pvt$array	      aligned external;
+ 11    19      dcl	   pvt$max_n_entries      fixed bin external;
+ 11    20 
+ 11    21      dcl	   pvt_arrayp	      ptr;
+ 11    22      dcl	   pvtep		      ptr;
+ 11    23 
+ 11    24      dcl	   1 pvt_array	      (pvt$max_n_entries) aligned like pvte based (pvt_arrayp);
+ 11    25 
+ 11    26      dcl	   1 pvte		      based (pvtep) aligned,
+ 11    27 
+ 11    28 	     2 pvid	      bit (36),		/* physical volume ID */
+ 11    29 
+ 11    30 	     2 lvid	      bit (36),		/* logical volume ID */
+ 11    31 
+ 11    32 	     2 dmpr_in_use	      (3) bit (1) unaligned,	/* physical volume dumper interlock */
+ 11    33                2 is_sv              bit (1) unaligned,	/* true if this entry defines a subvolume */
+ 11    34 	     2 root_lv	      bit (1) unaligned,	/* true if this is on the root LV */
+ 11    35                2 removable_pack     bit (1) unaligned,	/* true if packs are eremoveable */
+ 11    36 	     2 inconsistent_dbm   bit (1) unaligned,      /* true if trouble count is incremented */
+ 11    37 	     2 pad3	      bit (2) unaligned,
+ 11    38 	     2 brother_pvtx	      fixed bin (8) unaligned,/* next pvte in lv chain */
+ 11    39 	     2 skip_queue_count   fixed bin (18) unsigned unaligned, /* number of times this pv skipped for per-proc allocation due to saturation */
+ 11    40 
+ 11    41 
+ 11    42 
+ 11    43 	     2 devname	      char (4),		/* device name */
+ 11    44 
+ 11    45 	     (2 device_type	      fixed bin (8),	/* device type */
+ 11    46 	     2 logical_area_number fixed bin (8),	/* disk drive number */
+ 11    47 	     2 used	      bit (1),		/* TRUE if this entry is used */
+ 11    48 	     2 storage_system     bit (1),		/* TRUE for storage system (vs io disk) */
+ 11    49 	     2 permanent	      bit (1),		/* TRUE if cannot be demounted */
+ 11    50 	     2 testing	      bit (1),		/* Protocol bit for read_disk$test */
+ 11    51 	     2 being_mounted      bit (1),		/* TRUE if the physical volume is being mounted */
+ 11    52 	     2 being_demounted    bit (1),		/* TRUE if the pysical volume is being demounted */
+ 11    53 	     2 check_read_incomplete bit (1),		/* page control should check read incomplete */
+ 11    54 	     2 device_inoperative bit (1),		/* TRUE if disk_control decides dev busted */
+ 11    55 	     2 rpv	      bit (1),		/* TRUE if this is the root physical volume */
+ 11    56 	     2 scav_check_address
+ 11    57                                     bit (1),		/* TRUE is page control should check deposits/withdrawals against scavenger table */
+ 11    58 	     2 deposit_to_volmap  bit (1),		/* TRUE if deposits should got to volume map, not stock */
+ 11    59 	     2 being_demounted2   bit (1),		/* No more vtoc I/O during demount */
+ 11    60 	     2 pc_vacating	      bit (1),		/* No more withdraws from this volume -- for debugging */
+ 11    61 	     2 vacating	      bit (1),		/* don't put new segs on this vol */
+ 11    62 	     2 hc_part_used	      bit (1),		/* HC part set up by init_pvt */
+ 11    63 	     2 volmap_lock_notify bit (1) unal,		/* TRUE if notify required when volmap lock is unlocked */
+ 11    64 	     2 volmap_idle_notify bit (1) unal,		/* TRUE if notify required when volmap state is idle */
+ 11    65 	     2 vtoc_map_lock_notify bit (1) unal,	/* TRUE if notify required when vtoc map lock is unlocked */
+ 11    66 
+ 11    67 
+ 11    68 	     2 n_free_vtoce	      fixed bin (17),	/* number of free VTOC entries */
+ 11    69 	     2 vtoc_size	      fixed bin (17),	/* size of the VTOC part of the disk - in records */
+ 11    70 
+ 11    71 	     2 dbmrp	      (2) bit (18),		/* rel ptr to dumber bit maps for this volume */
+ 11    72 
+ 11    73 	     2 nleft	      fixed bin (17),	/* number of records left */
+ 11    74 	     2 totrec	      fixed bin (17)) unaligned, /* Total records in this map */
+ 11    75 
+ 11    76 	     2 dim_info	      bit (36),		/* Information peculiar to DIM */
+ 11    77 	     2 sv_num	      fixed bin,		/* the number of this subvolume starting at 0 */
+ 11    78 	     2 num_of_svs	      fixed bin,              /* number of subvolumes for this device */
+ 11    79 	     2 records_per_cyl    fixed bin,
+ 11    80                2 record_factor      fixed bin,		/* the record factor for logical to real seek calculation */
+ 11    81 	     2 sv_name            char (2) aligned,
+ 11    82 	     2 curn_dmpr_vtocx    (3) fixed bin unaligned,/* current vtocx being dumped */
+ 11    83 	     2 n_vtoce	      fixed bin unaligned,	/* number of vtoce on this volume */
+ 11    84 
+ 11    85 	     2 baseadd	      fixed bin (18) uns unaligned, /* Base of paging region */
+ 11    86 	     2 pad2	      bit (18) unaligned,
+ 11    87 
+ 11    88                2 pad_for_mod_2      fixed bin (35),	/* Make volmap_seg_sdw double word aligned */
+ 11    89 
+ 11    90 	     2 volmap_seg_sdw     fixed bin (71),	/* SDW describing volmap_seg */
+ 11    91 
+ 11    92 	     2 volmap_astep	      ptr unal,		/* Packed pointer to ASTE for volmap_seg */
+ 11    93 
+ 11    94 	     2 volmap_offset      bit (18) unal,	/* Offset in volmap_seg of volume map */
+ 11    95 	     2 vtoc_map_offset    bit (18) unal,	/* Offset in volmap_seg of VTOC map */
+ 11    96 
+ 11    97 
+ 11    98 	     2 volmap_lock	      bit (36) aligned,	/* Lock on volume map operations */
+ 11    99 
+ 11   100 	     2 vtoc_map_lock      bit (36) aligned,	/* Lock on VTOC map operations */
+ 11   101 
+ 11   102 	     2 volmap_stock_ptr   ptr unal,		/* Packed pointer to record stock */
+ 11   103 
+ 11   104 	     2 vtoc_map_stock_ptr ptr unal,		/* Packed pointer to VTOCE stock */
+ 11   105 
+ 11   106 	     2 volmap_async_state fixed bin (17) unaligned, /* Asynchronous update state of Volume Map */
+ 11   107 	     2 volmap_async_page  fixed bin (17) unaligned, /* Page number for asynchronous update */
+ 11   108 
+ 11   109 	     2 vol_trouble_count  fixed bin (17) unaligned, /* Count of inconsistencies since last salvage */
+ 11   110 	     2 scavenger_block_rel bit (18) unaligned;	  /* Offset to scavenger block,  ^0 => scavenging */
+ 11   111 
+ 11   112 
+ 11   113      dcl	   (VOLMAP_ASYNC_IDLE     init (0),		/* for volmap_async_state */
+ 11   114 	   VOLMAP_ASYNC_READ      init (1),
+ 11   115 	   VOLMAP_ASYNC_WRITE     init (2)) fixed bin int static options (constant);
+ 11   116 
+ 11   117 
+ 11   118 /*  END OF:	pvte.incl.pl1			  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      539 
+      540  /* BEGIN include file toehold.incl.pl1 */
+ 12     2 
+ 12     3 /* Various reserved entrypoints into the bce toehold.
+ 12     4*Also, only those things one really needs to know about the toehold.
+ 12     5*Keith Loepere, October 1983. */
+ 12     6 
+ 12     7 /* Exclude prn, prv and pad when converting to alm version. */
+ 12     8 
+ 12     9 /* format: style4,indattr,ifthenstmt,ifthen,idind33,^indcomtxt */
+ 12    10 
+ 12    11 dcl  1 toe_hold		        aligned based,	/* name so alm likes */
+ 12    12        2 entry_sequences	        (0:15) bit (72) aligned, /* described below */
+ 12    13        2 flagbox		        (64) bit (36) aligned,
+ 12    14        2 pad1		        (48) bit (36) aligned,
+ 12    15        2 paths		        (4) like io_path,
+ 12    16        2 n_paths_used	        fixed bin,
+ 12    17        2 memory_state	        fixed bin,		/* of memory/disk swapping, etc. */
+ 12    18        2 bce_dbr		        bit (72) aligned,	/* of bce */
+ 12    19        2 pad2		        (1355) bit (36) aligned,
+ 12    20        2 multics_state	        aligned like mc_state;
+ 12    21 
+ 12    22 dcl  1 io_path		        aligned based,
+ 12    23        2 pcw		        fixed bin (71) aligned,
+ 12    24 
+ 12    25        2 port_number	        fixed bin (3) uns unal, /* these fields form the word that */
+ 12    26        2 iom_number		        fixed bin (15) uns unal, /* must be changed upon */
+ 12    27        2 channel_number	        fixed bin unal,	/* reconfiguration of channels */
+ 12    28 
+ 12    29        2 pad		        bit (36) aligned;
+ 12    30 
+ 12    31 dcl  TOE_HOLD_CRASH_ENTRY	        fixed bin init (0) static options (constant); /* operator causes crash by xed'ind here */
+ 12    32 dcl  TOE_HOLD_ESD_ENTRY	        fixed bin init (1) static options (constant);
+ 12    33 dcl  TOE_HOLD_DUMP_ENTRY	        fixed bin init (2) static options (constant); /* place that causes an early dump */
+ 12    34 dcl  TOE_HOLD_MULTICS_ENTRY	        fixed bin init (3) static options (constant); /* Multics crashes by drl'ing here */
+ 12    35 dcl  TOE_HOLD_RESTART_ENTRY	        fixed bin init (4) static options (constant); /* bce restarts Multics by drl'ing here */
+ 12    36 dcl  TOE_HOLD_BOOT_ENTRY	        fixed bin init (5) static options (constant); /* bootload_tape_label starts init by tra'ing here */
+ 12    37 dcl  TOE_HOLD_BOS_ENTRY	        fixed bin init (12) static options (constant);
+ 12    38 dcl  TOE_HOLD_BOS_NO_SAVE_ENTRY       fixed bin init (13) static options (constant);
+ 12    39 dcl  TOE_HOLD_BOS_MULTICS_ENTRY       fixed bin init (14) static options (constant);
+ 12    40 
+ 12    41 declare  mc_state_ptr	        ptr;	/* to toehold$.multics_state */
+ 12    42 declare 1 mc_state		        aligned based (mc_state_ptr),
+ 12    43        2 mc_		        aligned like mc,		        
+ 12    44        2 masks		        (16) bit (36) aligned,
+ 12    45        2 interrupt		        bit (72) aligned,
+ 12    46        2 mode_reg		        bit (36) aligned,	/* mode_reg and cache_mode_reg form a double word pair */
+ 12    47        2 cache_mode_reg	        bit (36) aligned,
+ 12    48        2 dbr		        bit (72) aligned,
+ 12    49        2 cfg		        bit (72) aligned,
+ 12    50        2 bar		        bit (36) aligned,
+ 12    51        2 old_memory_state	        fixed bin,
+ 12    52        2 pad16		        (6) bit (36) aligned,
+ 12    53        2 ou_history_registers	        (0: 15) bit (72) aligned,
+ 12    54        2 cu_history_registers	        (0: 15) bit (72) aligned,
+ 12    55        2 du_history_registers	        (0: 15) bit (72) aligned,
+ 12    56        2 apu_history_registers        (0: 15) bit (72) aligned,
+ 12    57        2 ptwam_ptrs		        (0: 63) bit (36) aligned,	/* word alignment (mod 16, 32) of these am's matters */
+ 12    58        2 ptwam_regs		        (0: 63) bit (36) aligned,
+ 12    59        2 sdwam_ptrs		        (0: 63) bit (36) aligned,
+ 12    60        2 sdwam_regs		        (0: 63) bit (72) aligned;
+ 12    61 
+ 12    62 /* values for memory_state */
+ 12    63 
+ 12    64 dcl  Initial_undefined	        fixed bin init (0) static options (constant);  /* initial coming to bce */
+ 12    65 dcl  At_bce__early		        fixed bin init (1) static options (constant);
+ 12    66 dcl  At_bce__boot		        fixed bin init (2) static options (constant);  /* at bce during cool boot phase */
+ 12    67 dcl  Multics		        fixed bin init (3) static options (constant);  /* Multics coming up */
+ 12    68 dcl  Undefined_saving_state	        fixed bin init (4) static options (constant);  /* saving state during coming down */
+ 12    69 dcl  Undefined_reading_bce	        fixed bin init (5) static options (constant);  /* reading in bce */
+ 12    70 dcl  At_bce__crash		        fixed bin init (6) static options (constant);  /* disk holds Multics, at bce */
+ 12    71 dcl  At_bce__shutdown	        fixed bin init (7) static options (constant);  /* disk holds (nothing), coming to bce */
+ 12    72 dcl  Undefined_continue	        fixed bin init (8) static options (constant);  /* swapping memory back */
+ 12    73 dcl  Undefined_saving_mem	        fixed bin init (9) static options (constant);
+ 12    74 
+ 12    75  /*  */
+ 13     2 /* BEGIN INCLUDE FILE  mc.incl.pl1   Created Dec 72 for 6180 - WSS. */
+ 13     3 /* Modified 06/07/76 by Greenberg for mc.resignal */
+ 13     4 /* Modified 07/07/76 by Morris for fault register data */
+ 13     5 /* Modified 08/28/80 by J. A. Bush for the DPS8/70M CVPU */
+ 13     6 /* Modified '82 to make values constant */
+ 13     7 
+ 13     8 /* words 0-15 pointer registers */
+ 13     9 
+ 13    10 dcl  mcp ptr;
+ 13    11 
+ 13    12 dcl 1 mc based (mcp) aligned,
+ 13    13     2 prs (0:7) ptr,				/* POINTER  REGISTERS */
+ 13    14    (2 regs,					/* registers */
+ 13    15       3 x (0:7) bit (18),				/* index registers */
+ 13    16       3 a bit (36),					/* accumulator */
+ 13    17       3 q bit (36),					/* q-register */
+ 13    18       3 e bit (8),					/* exponent */
+ 13    19       3 pad1 bit (28),
+ 13    20       3 t bit (27),					/* timer register */
+ 13    21       3 pad2 bit (6),
+ 13    22       3 ralr bit (3),				/* ring alarm register */
+ 13    23 
+ 13    24     2 scu (0:7) bit (36),
+ 13    25 
+ 13    26     2 mask bit (72),				/* mem controller mask at time of fault */
+ 13    27     2 ips_temp bit (36),				/* Temporary storage for IPS info */
+ 13    28     2 errcode fixed bin (35),				/* fault handler's error code */
+ 13    29     2 fim_temp,
+ 13    30       3 unique_index bit (18) unal,			/* unique index for restarting faults */
+ 13    31       3 resignal bit (1) unal,			/* recompute signal name with fcode below */
+ 13    32       3 fcode bit (17) unal,				/* fault code used as index to FIM table and SCT */
+ 13    33     2 fault_reg bit (36),				/* fault register */
+ 13    34     2 pad2 bit (1),
+ 13    35     2 cpu_type fixed bin (2) unsigned,			/* L68 = 0, DPS8/70M = 1 */
+ 13    36     2 ext_fault_reg bit (15),				/* extended fault reg for DPS8/70M CPU */
+ 13    37     2 fault_time bit (54),				/* time of fault */
+ 13    38 
+ 13    39     2 eis_info (0:7) bit (36)) unaligned;
+ 13    40 
+ 13    41 
+ 13    42 dcl (apx fixed bin init (0),
+ 13    43      abx fixed bin init (1),
+ 13    44      bpx fixed bin init (2),
+ 13    45      bbx fixed bin init (3),
+ 13    46      lpx fixed bin init (4),
+ 13    47      lbx fixed bin init (5),
+ 13    48      spx fixed bin init (6),
+ 13    49      sbx fixed bin init (7)) internal static options (constant);
+ 13    50 
+ 13    51 
+ 13    52 
+ 13    53 
+ 13    54 dcl  scup ptr;
+ 13    55 
+ 13    56 dcl 1 scu based (scup) aligned,			/* SCU DATA */
+ 13    57 
+ 13    58 
+ 13    59 /*	WORD (0)		*/
+ 13    60 
+ 13    61    (2 ppr,					/* PROCEDURE POINTER REGISTER */
+ 13    62       3 prr bit (3),				/* procedure ring register */
+ 13    63       3 psr bit (15),				/* procedure segment register */
+ 13    64       3 p bit (1),					/* procedure privileged bit */
+ 13    65 
+ 13    66     2 apu,					/* APPENDING UNIT STATUS */
+ 13    67       3 xsf bit (1),				/* ext seg flag - IT modification */
+ 13    68       3 sdwm bit (1),				/* match in SDW Ass. Mem. */
+ 13    69       3 sd_on bit (1),				/* SDW Ass. Mem.  ON */
+ 13    70       3 ptwm bit (1),				/* match in PTW Ass. Mem. */
+ 13    71       3 pt_on bit (1),				/* PTW Ass. Mem.  ON */
+ 13    72       3 pi_ap bit (1),				/* Instr Fetch or Append cycle */
+ 13    73       3 dsptw bit (1),				/* Fetch of DSPTW */
+ 13    74       3 sdwnp bit (1),				/* Fetch of SDW non paged */
+ 13    75       3 sdwp bit (1),				/* Fetch of SDW paged */
+ 13    76       3 ptw bit (1),				/* Fetch of PTW */
+ 13    77       3 ptw2 bit (1),				/* Fetch of pre-paged PTW */
+ 13    78       3 fap bit (1),				/* Fetch of final address paged */
+ 13    79       3 fanp bit (1),				/* Fetch of final address non-paged */
+ 13    80       3 fabs bit (1),				/* Fetch of final address absolute */
+ 13    81 
+ 13    82     2 fault_cntr bit (3),				/* number of retrys of EIS instructions */
+ 13    83 
+ 13    84 
+ 13    85 /*	WORD (1)		*/
+ 13    86 
+ 13    87     2 fd,						/* FAULT  DATA */
+ 13    88       3 iro bit (1),				/* illegal ring order */
+ 13    89       3 oeb bit (1),				/* out of execute bracket */
+ 13    90       3 e_off bit (1),				/* no execute */
+ 13    91       3 orb bit (1),				/* out of read bracket */
+ 13    92       3 r_off bit (1),				/* no read */
+ 13    93       3 owb bit (1),				/* out of write bracket */
+ 13    94       3 w_off bit (1),				/* no write */
+ 13    95       3 no_ga bit (1),				/* not a gate */
+ 13    96       3 ocb bit (1),				/* out of call bracket */
+ 13    97       3 ocall bit (1),				/* outward call */
+ 13    98       3 boc bit (1),				/* bad outward call */
+ 13    99       3 inret bit (1),				/* inward return */
+ 13   100       3 crt bit (1),				/* cross ring transfer */
+ 13   101       3 ralr bit (1),				/* ring alarm register */
+ 13   102       3 am_er bit (1),				/* associative memory fault */
+ 13   103       3 oosb bit (1),				/* out of segment bounds */
+ 13   104       3 paru bit (1),				/* processor parity upper */
+ 13   105       3 parl bit (1),				/* processor parity lower */
+ 13   106       3 onc_1 bit (1),				/* op not complete type 1 */
+ 13   107       3 onc_2 bit (1),				/* op not complete type 2 */
+ 13   108 
+ 13   109     2 port_stat,					/* PORT  STATUS */
+ 13   110       3 ial bit (4),				/* illegal action lines */
+ 13   111       3 iac bit (3),				/* illegal action channel */
+ 13   112       3 con_chan bit (3),				/* connect channel */
+ 13   113 
+ 13   114     2 fi_num bit (5),				/* (fault/interrupt)  number */
+ 13   115     2 fi_flag bit (1),				/*  1 => fault,  0 => interrupt  */
+ 13   116 
+ 13   117 
+ 13   118 /*	WORD (2)		*/
+ 13   119 
+ 13   120     2 tpr,					/* TEMPORARY POINTER REGISTER */
+ 13   121       3 trr bit (3),				/* temporary ring register */
+ 13   122       3 tsr bit (15),				/* temporary segment register */
+ 13   123 
+ 13   124     2 pad2 bit (9),
+ 13   125 
+ 13   126     2 cpu_no bit (3),				/* CPU number */
+ 13   127 
+ 13   128     2 delta bit (6),				/* tally modification DELTA */
+ 13   129 
+ 13   130 
+ 13   131 /*	WORD (3)		*/
+ 13   132 
+ 13   133     2 word3 bit (18),
+ 13   134 
+ 13   135     2 tsr_stat,					/* TSR STATUS for 1,2,&3 word instructions */
+ 13   136       3 tsna,					/* Word 1 status */
+ 13   137         4 prn bit (3),				/* Word 1  PR  number */
+ 13   138         4 prv bit (1),				/* Word 1  PR  valid bit */
+ 13   139       3 tsnb,					/* Word 2  status */
+ 13   140         4 prn bit (3),				/* Word 2  PR  number */
+ 13   141         4 prv bit (1),				/* Word 2  PR  valid bit */
+ 13   142       3 tsnc,					/* Word 3  status */
+ 13   143         4 prn bit (3),				/* Word 3  PR  number */
+ 13   144         4 prv bit (1),				/* Word 3  PR  valid bit */
+ 13   145 
+ 13   146     2 tpr_tbr bit (6),				/* TPR.TBR  field */
+ 13   147 
+ 13   148 
+ 13   149 /* 	WORD (4)		*/
+ 13   150 
+ 13   151     2 ilc bit (18),					/* INSTRUCTION  COUNTER */
+ 13   152 
+ 13   153     2 ir,						/* INDICATOR  REGISTERS */
+ 13   154       3 zero bit (1),				/* zero indicator */
+ 13   155       3 neg bit (1),				/* negative indicator */
+ 13   156       3 carry bit (1),				/* carryry indicator */
+ 13   157       3 ovfl bit (1),				/* overflow indicator */
+ 13   158       3 eovf bit (1),				/* eponent overflow */
+ 13   159       3 eufl bit (1),				/* exponent underflow */
+ 13   160       3 oflm bit (1),				/* overflow mask */
+ 13   161       3 tro bit (1),				/* tally runout */
+ 13   162       3 par bit (1),				/* parity error */
+ 13   163       3 parm bit (1),				/* parity mask */
+ 13   164       3 bm bit (1),					/* ^bar mode */
+ 13   165       3 tru bit (1),				/* truncation mode */
+ 13   166       3 mif bit (1),				/* multi-word instruction mode */
+ 13   167       3 abs bit (1),				/* absolute mode */
+ 13   168       3 hex bit (1),				/* hexadecimal exponent mode */
+ 13   169       3 pad bit (3),
+ 13   170 
+ 13   171 
+ 13   172 /*	WORD (5)		*/
+ 13   173 
+ 13   174     2 ca bit (18),					/* COMPUTED  ADDRESS */
+ 13   175 
+ 13   176     2 cu,						/* CONTROL UNIT STATUS */
+ 13   177       3 rf bit (1),					/* on first cycle of repeat instr */
+ 13   178       3 rpt bit (1),				/* repeat instruction */
+ 13   179       3 rd bit (1),					/* repeat double instruction */
+ 13   180       3 rl bit (1),					/* repeat link instruciton */
+ 13   181       3 pot bit (1),				/* IT  modification */
+ 13   182       3 pon bit (1),				/* return type instruction */
+ 13   183       3 xde bit (1),				/* XDE from Even location */
+ 13   184       3 xdo bit (1),				/* XDE from Odd  location */
+ 13   185       3 poa bit (1),				/* operation preparation */
+ 13   186       3 rfi bit (1),				/* tells CPU to refetch instruction */
+ 13   187       3 its bit (1),				/* ITS modification */
+ 13   188       3 if bit (1),					/* fault occured during instruction fetch */
+ 13   189 
+ 13   190     2 cpu_tag bit (6)) unaligned,			/* computed tag field */
+ 13   191 
+ 13   192 
+ 13   193 /*	WORDS (6,7)	*/
+ 13   194 
+ 13   195     2 even_inst bit (36),				/* even instruction of faulting pair */
+ 13   196 
+ 13   197     2 odd_inst bit (36);				/* odd  instruction of faulting pair */
+ 13   198 
+ 13   199 
+ 13   200 
+ 13   201 
+ 13   202 
+ 13   203 
+ 13   204 /*	ALTERNATE   SCU  DECLARATION		*/
+ 13   205 
+ 13   206 
+ 13   207 dcl 1 scux based (scup) aligned,
+ 13   208 
+ 13   209    (2 pad0 bit (36),
+ 13   210 
+ 13   211     2 fd,						/* GROUP II  FAULT DATA */
+ 13   212       3 isn bit (1),				/* illegal segment number */
+ 13   213       3 ioc bit (1),				/* illegal op  code  */
+ 13   214       3 ia_am bit (1),				/* illegal address - modifier */
+ 13   215       3 isp bit (1),				/* illegal slave  procedure */
+ 13   216       3 ipr bit (1),				/* illegal procedure */
+ 13   217       3 nea bit (1),				/* non existent address */
+ 13   218       3 oobb bit (1),				/* out of bounds */
+ 13   219       3 pad bit (29),
+ 13   220 
+ 13   221     2 pad2 bit (36),
+ 13   222 
+ 13   223     2 pad3a bit (18),
+ 13   224 
+ 13   225     2 tsr_stat (0:2),				/* TSR  STATUS  as an  ARRAY */
+ 13   226       3 prn bit (3),				/* PR  number */
+ 13   227       3 prv bit (1),				/* PR  valid bit */
+ 13   228 
+ 13   229     2 pad3b bit (6)) unaligned,
+ 13   230 
+ 13   231     2 pad45 (0:1) bit (36),
+ 13   232 
+ 13   233     2 instr (0:1) bit (36);				/* Instruction ARRAY */
+ 13   234 
+ 13   235 
+ 13   236 
+ 13   237 /*  END INCLUDE FILE   mc.incl.pl1 */
+ 12    75 
+ 12    76 
+ 12    77 /* END include file toehold.incl.pl1 */
+      540 
+      541      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0826.1  bce_appending_simulation.pl1      >special_ldd>install>MR12.3-1114>bce_appending_simulation.pl1
+532          1    09/29/77  1502.7  add_type.incl.pl1                 >ldd>include>add_type.incl.pl1
+533          2    07/11/84  0937.3  bce_appending_seg_info.incl.pl1   >ldd>include>bce_appending_seg_info.incl.pl1
+2-14         3    01/30/85  1523.9  aste.incl.pl1                     >ldd>include>aste.incl.pl1
+2-15         4    03/27/82  0430.3  sdw_info.incl.pl1                 >ldd>include>sdw_info.incl.pl1
+534          5    11/23/82  0953.7  cmp.incl.pl1                      >ldd>include>cmp.incl.pl1
+535          6    07/11/84  0937.3  dbr_info.incl.pl1                 >ldd>include>dbr_info.incl.pl1
+536          7    10/30/86  2010.5  fs_dev_types.incl.pl1             >ldd>include>fs_dev_types.incl.pl1
+7-142        8    07/24/86  2051.8  fs_dev_types_sector.incl.pl1      >ldd>include>fs_dev_types_sector.incl.pl1
+537          9    07/11/84  0937.3  ptw_info.incl.pl1                 >ldd>include>ptw_info.incl.pl1
+538         10    05/27/82  1525.8  pvt.incl.pl1                      >ldd>include>pvt.incl.pl1
+539         11    07/21/88  2036.0  pvte.incl.pl1                     >ldd>include>pvte.incl.pl1
+540         12    07/11/84  0937.3  toe_hold.incl.pl1                 >ldd>include>toe_hold.incl.pl1
+12-75       13    12/15/83  1100.4  mc.incl.pl1                       >ldd>include>mc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Read                                   constant        bit(1)                   initial dcl 26 ref 207 251 261 266 274 282 287 295
+                                                                                  352 393 403 406 434 468 475
+Write                                  constant        bit(1)                   initial dcl 27 ref 212 357
+abs_seg0$                       000456 external static bit(36)                  array dcl 28 set ref 129 129 250 260
+abs_seg_pt                             based           bit(36)                  array dcl 29 set ref 257 257
+abs_seg_pt_addr                 000100 automatic       fixed bin(26,0)          dcl 30 set ref 129* 130
+abs_seg_ptp                     000010 internal static pointer                  level 2 dcl 99 set ref 130* 257 257
+absadr                          000460 constant        entry                    external dcl 31 ref 130 131 132
+add_type                        000000 constant        structure                level 1 packed packed unaligned dcl 1-8 in procedure
+                                                                                  "bce_appending_simulation"
+add_type                  1            based           bit(4)                   level 2 in structure "ptw_info" packed packed
+                                                                                  unaligned dcl 9-10 in procedure
+                                                                                  "bce_appending_simulation" ref 402 423
+addr                                                   builtin function         dcl 32 ref 129 129 129 129 130 130 130 131 131 132
+                                                                                  132 134 134 135 135 137 155 156 157 163 163 171
+                                                                                  171 173 173 174 174 178 178 181 181 181 181 187
+                                                                                  188 191 191 193 193 195 195 197 197 250 257 257
+                                                                                  260 265 273 281 286 294 324 324 324 324 335 335
+                                                                                  335 335 342 342 367 392 392 398 398 399 399 429
+                                                                                  499 506 506
+address                 421     000010 internal static fixed bin(26,0)          level 4 in structure "static" dcl 99 in procedure
+                                                                                  "bce_appending_simulation" set ref 166* 171 178*
+                                                                                  190
+address                                based           fixed bin(26,0)          level 2 in structure "sdw_info" dcl 4-6 in procedure
+                                                                                  "bce_appending_simulation" set ref 195* 200
+address                                based           fixed bin(26,0)          level 2 in structure "dbr_info" dcl 6-10
+                                                                                  in procedure "bce_appending_simulation" ref 166
+address                                based           fixed bin(26,0)          level 2 in structure "ptw_info" dcl 9-10
+                                                                                  in procedure "bce_appending_simulation" set ref
+                                                                                  174* 189 198 393 396 407 415 430 435 447 450* 459*
+address                         000101 automatic       fixed bin(26,0)          dcl 33 in procedure "bce_appending_simulation" set
+                                                                                  ref 239* 241* 244 246 248 248 248 250 255 260 264
+                                                                                  265 272 273 280 281 285 286 294 379* 381* 384 385
+                                                                                  386 474* 475* 476*
+address                 414            based           fixed bin(26,0)          level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 342 399 474
+addwordno                                              builtin function         dcl 34 ref 139 246 371 384 409 417 439 458
+array                    50            based           fixed bin(71,0)          level 2 dcl 10-13 set ref 506
+aste                                   based           structure                level 1 dcl 3-11 set ref 139 171 171 342 342
+astep                                  automatic       pointer                  dcl 3-9 ref 139 171 171 342 342
+bin                                                    builtin function         dcl 35 ref 437 437 448 448 456 456
+bound                     1            based           fixed bin(18,0)          level 2 dcl 6-10 ref 164 171
+cme                                    based           structure                level 1 dcl 5-6 ref 430 430 430
+cmep                            000206 automatic       pointer                  dcl 5-4 set ref 429* 430 430 430 430* 432 433 435
+                                                                                  437 437 446 448 448 456 456
+code                                   parameter       fixed bin(35,0)          dcl 486 in procedure "map_for_read" set ref 480 490
+                                                                                  495 500* 502* 508*
+code                                   parameter       fixed bin(35,0)          dcl 36 in procedure "bce_appending_simulation" set
+                                                                                  ref 123 127* 146* 150 154* 171* 172 174* 175 178*
+                                                                                  179 191* 192 195* 196 205 210 214* 305 312* 317*
+                                                                                  324* 325 328 330* 338* 342* 343 350 355 359* 373*
+                                                                                  393* 396* 399* 407* 408 415* 416 430* 431 435*
+                                                                                  437* 438 447* 448* 449 450* 456* 457 459* 467 467*
+                                                                                  475* 476* 529*
+core                            000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 1-8 ref
+                                                                                  423
+core_map$                       000462 external static fixed bin(17,0)          dcl 37 set ref 187 188
+core_map_address          2     000010 internal static fixed bin(26,0)          level 2 dcl 99 set ref 198* 200* 201 430
+core_map_present          3     000010 internal static bit(1)                   level 2 dcl 99 set ref 186* 201* 425
+core_map_ptw                    000102 automatic       bit(36)                  dcl 38 set ref 195 195 197 197
+core_map_sdw                    000104 automatic       fixed bin(71,0)          dcl 39 set ref 191 191 193 193
+core_map_segnum                 000106 automatic       fixed bin(15,0)          dcl 40 set ref 188* 191
+current_abs_seg_addr      4     000010 internal static fixed bin(26,0)          initial level 2 dcl 99 set ref 143* 248 248 250 255*
+                                                                                  257 260
+data_length                     000107 automatic       fixed bin(18,0)          dcl 41 set ref 230* 234 238 239 239 242 301* 301
+                                                                                  368* 369 370 370 371 374* 374 377 378 379 379 382
+                                                                                  470* 470
+data_part                              based           bit(36)                  array dcl 42 set ref 251* 251 252* 252 261* 261 262*
+                                                                                  262 266* 266 268* 268 274* 274 276* 276 282* 282
+                                                                                  283* 283 287* 287 289* 289 295* 295 297* 297 372*
+                                                                                  409* 409 417* 417 439* 439 458* 458 468*
+data_part_length                000110 automatic       fixed bin(18,0)          dcl 43 set ref 238* 239 239 242* 251 252 261 262 266
+                                                                                  268 274 276 282 283 287 289 295 297 301 370* 371
+                                                                                  372 374 378* 379 379 382* 393* 396* 409 417 435*
+                                                                                  439 447* 458 468 470
+data_ptr                        000112 automatic       pointer                  dcl 44 set ref 246* 251 252 261 262 266 268 274 276
+                                                                                  282 283 287 289 295 297 371* 372 384* 393* 396*
+                                                                                  409 417 435* 439 447* 458 468
+dbr                    3064     000550 external static bit(72)                  level 3 dcl 119 set ref 144
+dbr_info                               based           structure                level 1 dcl 6-10
+dbr_info_ptr                    000210 automatic       pointer                  dcl 6-8 set ref 155* 163* 164 165 166 171
+dbr_util_$dissect               000464 constant        entry                    external dcl 45 ref 163
+dbr_value                              parameter       bit(72)                  dcl 46 set ref 150 163 163
+desired_segnum                         parameter       fixed bin(15,0)          dcl 47 ref 305 316 324
+devadd                    1            based           bit(22)                  level 2 packed packed unaligned dcl 5-6 ref 432 433
+                                                                                  437 437 448 448 456 456
+device_type               4            based           fixed bin(8,0)           level 2 packed packed unaligned dcl 11-26 ref 507
+disk                      0(04) 000000 constant        bit(4)                   initial level 2 packed packed unaligned dcl 1-8 ref
+                                                                                  402 432
+divide                                                 builtin function         dcl 48 ref 164 171 244 255 298 342 385 430
+dseg$                           000466 external static fixed bin(71,0)          array dcl 49 set ref 129 129
+dseg_info                 5     000010 internal static structure                level 2 dcl 99 set ref 324 324
+dseg_page_address               000114 automatic       fixed bin(26,0)          dcl 50 set ref 189* 190* 191
+dseg_sdw                        000116 automatic       fixed bin(71,0)          dcl 51 set ref 174 174 178 178 181 181
+error_table_$argerr             000470 external static fixed bin(35,0)          dcl 52 ref 467
+error_table_$boundviol          000472 external static fixed bin(35,0)          dcl 53 ref 373
+error_table_$dev_offset_out_of_bounds
+                                000474 external static fixed bin(35,0)          dcl 54 ref 508
+error_table_$fsdisk_phydev_err  000500 external static fixed bin(35,0)          dcl 56 ref 529
+error_table_$fsdisk_pvtx_oob    000476 external static fixed bin(35,0)          dcl 55 ref 502
+error_table_$invalidsegno       000502 external static fixed bin(35,0)          dcl 57 ref 317 338
+examine_crash           427     000010 internal static bit(1)                   level 2 dcl 99 set ref 128* 144 248
+faulted                 420(01)        based           bit(1)                   level 4 packed packed unaligned dcl 2-9 set ref 337
+                                                                                  344*
+flags                     4            based           structure                level 2 in structure "sdw_info" dcl 4-6 in procedure
+                                                                                  "bce_appending_simulation"
+flags                   425     000010 internal static structure                level 4 in structure "static" dcl 99 in procedure
+                                                                                  "bce_appending_simulation"
+flags                   420            based           structure                level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation"
+get_ptrs_$given_segno           000504 constant        entry                    external dcl 58 ref 134 135 138
+high_mem_astep          430     000010 internal static pointer                  level 2 dcl 99 set ref 135* 269*
+int_unpaged_page_tables$        000506 external static fixed bin(17,0)          dcl 59 set ref 130 130 130
+io                        1(24)        based           bit(1)                   level 2 packed packed unaligned dcl 5-6 ref 435 446
+io_path                                based           structure                level 1 dcl 12-22
+last_segnum             432     000010 internal static fixed bin(15,0)          initial level 2 dcl 99 set ref 164* 316
+low_mem_astep           434     000010 internal static pointer                  level 2 dcl 99 set ref 134* 277* 290* 298*
+mc                                     based           structure                level 1 dcl 13-12
+mc_state                               based           structure                level 1 dcl 12-42
+min                                                    builtin function         dcl 60 ref 370
+mod                                                    builtin function         dcl 61 ref 238 378 386
+multics_data_ptr                000120 automatic       pointer                  dcl 62 set ref 250* 251 252 260* 261 262 265* 266
+                                                                                  268 273* 274 276 281* 282 283 286* 287 289 294*
+                                                                                  295 297
+multics_high_mem$               000510 external static bit(36)                  array dcl 63 set ref 135 135 265
+multics_low_mem$                000512 external static bit(36)                  array dcl 64 set ref 134 134 273 286 294
+multics_state          2760     000550 external static structure                level 2 dcl 119
+my_cme                          000122 automatic       structure                level 1 dcl 65 set ref 429
+my_dbr                          000126 automatic       bit(72)                  dcl 66 set ref 144* 145* 146*
+my_dbr_info                     000130 automatic       structure                level 1 dcl 67 set ref 155
+my_ptw_info                     000134 automatic       structure                level 1 dcl 68 set ref 157 367
+my_sdw_info                     000136 automatic       structure                level 1 dcl 69 set ref 156
+n_entries                              based           fixed bin(17,0)          level 2 dcl 10-13 ref 501
+npfs                     12(11)        based           bit(1)                   level 2 packed packed unaligned dcl 3-11 set ref
+                                                                                  513*
+null_disk                 1(04)        based           bit(1)                   level 2 packed packed unaligned dcl 9-10 ref 403
+op_not_complete                 000144 stack reference condition                dcl 70 ref 228
+os                        1(07)        based           bit(1)                   level 2 packed packed unaligned dcl 9-10 ref 424
+p_address                              parameter       fixed bin(26,0)          dcl 72 ref 205 210 238 239 241 246 350 355 369 370
+                                                                                  378 379 381 384 474
+p_data_length                          parameter       fixed bin(18,0)          dcl 73 set ref 205 210 230 350 355 368 475* 476*
+p_data_ptr                             parameter       pointer                  dcl 74 set ref 205 210 246 350 355 371 384 475* 476*
+p_examine_crash                        parameter       bit(1)                   dcl 75 ref 123 128
+p_last_segnum                          parameter       fixed bin(15,0)          dcl 76 set ref 150 164* 187
+p_seg_info_ptr                         parameter       pointer                  dcl 77 ref 305 313 328 332 350 355 364
+p_seg_sdw                              parameter       fixed bin(71,0)          dcl 78 ref 328 331
+page_fault_error                000160 stack reference condition                dcl 79 ref 159 225 314 333 365
+page_num                        000166 automatic       fixed bin(17,0)          dcl 80 set ref 244* 256* 257 257 257* 269 277* 290*
+                                                                                  298 385* 391 391 392 392 398 398 399 399 399
+page_offset                     000167 automatic       fixed bin(10,0)          dcl 81 set ref 386* 393 396 409 417 435 439 447 458
+page_table               21     000010 internal static bit(36)                  array level 3 in structure "static" dcl 99
+                                                                                  in procedure "bce_appending_simulation" set ref
+                                                                                  173 173
+page_table               14            based           bit(36)                  array level 2 in structure "seg_info" dcl 2-9
+                                                                                  in procedure "bce_appending_simulation" set ref
+                                                                                  392 392 398 398 399 399
+paged                     3            based           bit(1)                   level 2 in structure "dbr_info" dcl 6-10
+                                                                                  in procedure "bce_appending_simulation" ref 165
+paged                   420            based           bit(1)                   level 4 in structure "seg_info" packed packed
+                                                                                  unaligned dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 341 376
+paged                     4            based           bit(1)                   level 3 in structure "sdw_info" packed packed
+                                                                                  unaligned dcl 4-6 in procedure
+                                                                                  "bce_appending_simulation" ref 194
+paged                   425     000010 internal static bit(1)                   level 5 in structure "static" packed packed
+                                                                                  unaligned dcl 99 in procedure
+                                                                                  "bce_appending_simulation" set ref 165* 170 189
+parity                          000152 stack reference condition                dcl 71 ref 226
+pc$cleanup                      000514 constant        entry                    external dcl 82 ref 410 418 440 451 460 525
+pc_wired$write_wait             000516 constant        entry                    external dcl 83 ref 269 277 290 298
+phm                       1(12)        based           bit(1)                   level 2 packed packed unaligned dcl 9-10 ref 397
+pmut$camp                       000520 constant        entry                    external dcl 84 ref 259
+ptr                                                    builtin function         dcl 85 ref 130 250 260 265 273 281 286 294
+ptw_info                               based           structure                level 1 dcl 9-10
+ptw_info_ptr                    000214 automatic       pointer                  dcl 9-8 set ref 157* 173* 174 189 197* 198 367* 392*
+                                                                                  393 393 396 397 402 403 407 415 423 424 430 435
+                                                                                  447 450 459
+ptw_util_$dissect               000522 constant        entry                    external dcl 86 ref 173 197 392
+ptw_util_$make_core             000524 constant        entry                    external dcl 87 ref 257
+ptw_util_$make_disk             000526 constant        entry                    external dcl 88 ref 141 516
+ptw_util_$make_null_disk        000530 constant        entry                    external dcl 89 ref 515
+ptw_util_$reset_phm             000532 constant        entry                    external dcl 90 ref 524
+ptw_util_$set_phm               000534 constant        entry                    external dcl 91 ref 398
+pvt                                    based           structure                level 1 dcl 10-13
+pvt$                            000554 external static fixed bin(17,0)          dcl 10-9 set ref 499
+pvt$root_pvtx                   000536 external static fixed bin(17,0)          dcl 92 ref 140
+pvt_array                              based           structure                array level 1 dcl 11-24 set ref 506
+pvte                                   based           structure                level 1 dcl 11-26
+pvtep                           000220 automatic       pointer                  dcl 11-22 set ref 506* 507
+pvtp                            000216 automatic       pointer                  dcl 10-9 set ref 499* 501 506
+pvtx                      4(09)        based           fixed bin(8,0)           level 3 in structure "seg_info" packed packed
+                                                                                  unaligned dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 501 501 506 512
+pvtx                      4(09)        based           fixed bin(8,0)           level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 3-11 in procedure "bce_appending_simulation"
+                                                                                  set ref 140* 512*
+rdisk_astep             436     000010 internal static pointer                  level 2 dcl 99 set ref 138* 139 140 410* 418* 440*
+                                                                                  451* 460* 512 513 525*
+rdisk_ptp               440     000010 internal static pointer                  level 2 dcl 99 set ref 139* 141* 515* 516* 524*
+rdisk_ptr               442     000010 internal static pointer                  level 2 dcl 99 set ref 137* 138 138 409 417 439 450*
+                                                                                  458 459*
+rdisk_seg$                      000540 external static fixed bin(17,0)          dcl 93 set ref 137
+read_write                      000170 automatic       bit(1)                   dcl 94 set ref 207* 212* 251 261 266 274 282 287 295
+                                                                                  352* 357* 393 403 406 434 468 475
+rec_per_sv                      000001 constant        fixed bin(17,0)          initial array dcl 7-90 ref 507
+record_num                             parameter       fixed bin(20,0)          dcl 487 set ref 480 490 495 507 507 515* 516*
+sdw_info                               based           structure                level 1 dcl 4-6
+sdw_info_ptr                    000204 automatic       pointer                  dcl 4-4 set ref 156* 193* 194 195 200
+sdw_util_$dissect               000542 constant        entry                    external dcl 95 ref 181 193 335
+sdw_util_$get_address           000544 constant        entry                    external dcl 96 ref 129
+sdwi                    421     000010 internal static structure                level 3 in structure "static" dcl 99 in procedure
+                                                                                  "bce_appending_simulation" set ref 181 181
+sdwi                    414            based           structure                level 2 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 335 335
+seek_command                    000212 automatic       bit(6)                   initial array packed unaligned dcl 7-84 set ref
+                                                                                  7-84* 7-84* 7-84* 7-84* 7-84* 7-84* 7-84* 7-84*
+                                                                                  7-84*
+seg_info                               based           structure                level 1 dcl 2-9
+seg_info_ptr                    000202 automatic       pointer                  dcl 2-8 set ref 313* 332* 335 335 337 341 342 342
+                                                                                  342 342 344 364* 369 370 376 392 392 398 398 399
+                                                                                  399 399 474 501 501 506 512
+seg_sdw                         000172 automatic       fixed bin(71,0)          dcl 97 set ref 324 324 331* 335 335
+segno                                                  builtin function         dcl 98 ref 129 129 134 134 135 135 138 138 187 188
+size                    415            based           fixed bin(19,0)          level 3 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 342 369 370
+size                                                   builtin function         dcl 115 in procedure "bce_appending_simulation" ref
+                                                                                  139 171 171 342 342 430 430 430
+sst_data                               based           structure                level 2 in structure "seg_info" dcl 2-9 in procedure
+                                                                                  "bce_appending_simulation" set ref 342 342
+sst_data                  5     000010 internal static structure                level 3 in structure "static" dcl 99 in procedure
+                                                                                  "bce_appending_simulation" set ref 171 171
+static                          000010 internal static structure                level 1 dcl 99
+store                           000174 stack reference condition                dcl 116 ref 227
+substr                                                 builtin function         dcl 117 ref 432 433 437 437 448 448 456 456
+sys_boot_info$bce_dbr           000546 external static bit(72)                  dcl 118 ref 145
+toe_hold                               based           structure                level 1 dcl 12-11
+toehold$                        000550 external static structure                level 1 dcl 119 set ref 132 132 281
+toehold_addr            444     000010 internal static fixed bin(26,0)          level 2 dcl 99 set ref 132* 272 280 281
+toehold_data$                   000552 external static fixed bin(17,0)          dcl 120 set ref 131 131
+toehold_data_addr       445     000010 internal static fixed bin(26,0)          level 2 dcl 99 set ref 131* 294 298
+unspec                                                 builtin function         dcl 121 set ref 372* 468*
+valid                     1(10)        based           bit(1)                   level 2 packed packed unaligned dcl 9-10 ref 393
+write_op                        000244 automatic       bit(1)                   dcl 488 set ref 492* 497* 515
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+At_bce__boot                           internal static fixed bin(17,0)          initial dcl 12-66
+At_bce__crash                          internal static fixed bin(17,0)          initial dcl 12-70
+At_bce__early                          internal static fixed bin(17,0)          initial dcl 12-65
+At_bce__shutdown                       internal static fixed bin(17,0)          initial dcl 12-71
+Initial_undefined                      internal static fixed bin(17,0)          initial dcl 12-64
+MODEL                                  internal static fixed bin(17,0)          initial array dcl 7-57
+MODELN                                 internal static fixed bin(17,0)          initial array dcl 7-63
+MODELX                                 internal static fixed bin(17,0)          initial array dcl 7-60
+Multics                                internal static fixed bin(17,0)          initial dcl 12-67
+TOE_HOLD_BOOT_ENTRY                    internal static fixed bin(17,0)          initial dcl 12-36
+TOE_HOLD_BOS_ENTRY                     internal static fixed bin(17,0)          initial dcl 12-37
+TOE_HOLD_BOS_MULTICS_ENTRY             internal static fixed bin(17,0)          initial dcl 12-39
+TOE_HOLD_BOS_NO_SAVE_ENTRY             internal static fixed bin(17,0)          initial dcl 12-38
+TOE_HOLD_CRASH_ENTRY                   internal static fixed bin(17,0)          initial dcl 12-31
+TOE_HOLD_DUMP_ENTRY                    internal static fixed bin(17,0)          initial dcl 12-33
+TOE_HOLD_ESD_ENTRY                     internal static fixed bin(17,0)          initial dcl 12-32
+TOE_HOLD_MULTICS_ENTRY                 internal static fixed bin(17,0)          initial dcl 12-34
+TOE_HOLD_RESTART_ENTRY                 internal static fixed bin(17,0)          initial dcl 12-35
+Undefined_continue                     internal static fixed bin(17,0)          initial dcl 12-72
+Undefined_reading_bce                  internal static fixed bin(17,0)          initial dcl 12-69
+Undefined_saving_mem                   internal static fixed bin(17,0)          initial dcl 12-73
+Undefined_saving_state                 internal static fixed bin(17,0)          initial dcl 12-68
+VOLMAP_ASYNC_IDLE                      internal static fixed bin(17,0)          initial dcl 11-113
+VOLMAP_ASYNC_READ                      internal static fixed bin(17,0)          initial dcl 11-113
+VOLMAP_ASYNC_WRITE                     internal static fixed bin(17,0)          initial dcl 11-113
+abx                                    internal static fixed bin(17,0)          initial dcl 13-42
+apx                                    internal static fixed bin(17,0)          initial dcl 13-42
+asta                                   based           bit(432)                 array dcl 3-86
+aste_part                              based           structure                level 1 dcl 3-89
+badd_type                              based           structure                level 1 packed packed unaligned dcl 1-15
+bbx                                    internal static fixed bin(17,0)          initial dcl 13-42
+bpx                                    internal static fixed bin(17,0)          initial dcl 13-42
+bulkdevt                               internal static fixed bin(4,0)           initial dcl 7-43
+cma                                    based           structure                array level 1 dcl 5-30
+cyl_per_dev                            internal static fixed bin(17,0)          initial array dcl 7-102
+cyl_per_sv                             internal static fixed bin(17,0)          initial array dcl 7-105
+dev_time                               internal static float bin(27)            initial array dcl 7-139
+device_names                           internal static char(4)                  initial array dcl 7-66
+dsu181devt                             internal static fixed bin(4,0)           initial dcl 7-43
+dsu190devt                             internal static fixed bin(4,0)           initial dcl 7-43
+dsu191devt                             internal static fixed bin(4,0)           initial dcl 7-43
+fips3380devt                           internal static fixed bin(4,0)           initial dcl 7-43
+fips3381devt                           internal static fixed bin(4,0)           initial dcl 7-43
+fips_type_disk                         internal static bit(1)                   initial array packed unaligned dcl 7-72
+first_alt_sect_num                     internal static fixed bin(24,0)          initial array dcl 7-130
+first_dev_number                       internal static fixed bin(17,0)          initial array dcl 7-69
+first_rec_num                          internal static fixed bin(17,0)          initial array dcl 7-115
+first_sect_num                         internal static fixed bin(24,0)          initial array dcl 7-124
+last_alt_sect_num                      internal static fixed bin(24,0)          initial array dcl 7-133
+last_physical_sect_num                 internal static fixed bin(24,0)          initial array dcl 7-136
+last_rec_num                           internal static fixed bin(18,0)          initial array dcl 7-118
+last_sect_num                          internal static fixed bin(24,0)          initial array dcl 7-127
+last_sv_rec_num                        internal static fixed bin(18,0)          initial array dcl 7-121
+lbx                                    internal static fixed bin(17,0)          initial dcl 13-42
+lpx                                    internal static fixed bin(17,0)          initial dcl 13-42
+maxdevt                                internal static fixed bin(4,0)           initial dcl 7-43
+mc_state_ptr                           automatic       pointer                  dcl 12-41
+mcme                                   based           structure                level 1 dcl 5-32
+mcp                                    automatic       pointer                  dcl 13-10
+media_removable                        internal static bit(1)                   initial array packed unaligned dcl 7-75
+msu0400devt                            internal static fixed bin(4,0)           initial dcl 7-43
+msu0450devt                            internal static fixed bin(4,0)           initial dcl 7-43
+msu0451devt                            internal static fixed bin(4,0)           initial dcl 7-43
+msu0500devt                            internal static fixed bin(4,0)           initial dcl 7-43
+msu0501devt                            internal static fixed bin(4,0)           initial dcl 7-43
+needs_alt_part                         internal static bit(1)                   initial array packed unaligned dcl 7-81
+number_of_sv                           internal static fixed bin(17,0)          initial array dcl 7-93
+pvt$array                              external static fixed bin(17,0)          dcl 11-18
+pvt$max_n_entries                      external static fixed bin(17,0)          dcl 11-19
+pvt_arrayp                             automatic       pointer                  dcl 11-21
+rec_per_cyl                            internal static fixed bin(17,0)          initial array dcl 7-108
+rec_per_dev                            internal static fixed bin(21,0)          initial array dcl 7-87
+sbx                                    internal static fixed bin(17,0)          initial dcl 13-42
+scu                                    based           structure                level 1 dcl 13-56
+scup                                   automatic       pointer                  dcl 13-54
+scux                                   based           structure                level 1 dcl 13-207
+sect_per_cyl                           internal static fixed bin(17,0)          initial array dcl 8-15
+sect_per_rec                           internal static fixed bin(17,0)          initial array dcl 8-21
+sect_per_sv                            internal static fixed bin(24,0)          initial array dcl 8-18
+sect_per_track                         internal static fixed bin(17,0)          initial array dcl 8-33
+sect_per_vtoc                          internal static fixed bin(17,0)          initial array dcl 8-26
+seg_aste                               based           structure                level 1 dcl 3-96
+shared_spindle                         internal static bit(1)                   initial array packed unaligned dcl 7-78
+spx                                    internal static fixed bin(17,0)          initial dcl 13-42
+tracks_per_cyl                         internal static fixed bin(17,0)          initial array dcl 7-111
+valid_sv_array                         internal static char(1)                  initial array packed unaligned dcl 7-99
+valid_sv_string                        internal static char(3)                  initial packed unaligned dcl 7-96
+vtoc_per_rec                           internal static fixed bin(17,0)          initial array dcl 8-29
+words_per_sect                         internal static fixed bin(17,0)          initial array dcl 8-36
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+abort                           000415 constant        label                    dcl 148 ref 530
+absolute                        001055 constant        label                    dcl 214 ref 208
+bad_page                        003063 constant        label                    dcl 467 ref 391 405 408 416 424 425 431 432 433 438
+                                                                                  449 457
+bad_segment                     002074 constant        label                    dcl 345 ref 318 325 339
+bce_appending_simulation        000133 constant        entry                    external dcl 17
+get_absolute                    001011 constant        entry                    external dcl 205 ref 171 174 178 191 195 342 393 430
+                                                                                  435 450 475
+get_virtual                     002103 constant        entry                    external dcl 350 ref 324
+init                            000146 constant        entry                    external dcl 123
+map                             003162 constant        label                    dcl 499 ref 493
+map_for_read                    003147 constant        entry                    internal dcl 480 ref 407 437
+map_for_update                  003152 constant        entry                    internal dcl 490 ref 415 456
+map_for_write                   003156 constant        entry                    internal dcl 495 ref 448
+mem_error                       003300 constant        entry                    internal dcl 527 ref 226 227 228
+new_dbr                         000422 constant        entry                    external dcl 150 ref 146
+new_sdw                         001744 constant        entry                    external dcl 328
+new_sdw_join                    002010 constant        label                    dcl 335 ref 326
+new_segment                     001636 constant        entry                    external dcl 305
+page_error                      003254 constant        entry                    internal dcl 520 ref 159 225 314 333 365
+put_absolute                    001035 constant        entry                    external dcl 210 ref 396 399 447 459 476
+put_virtual                     002131 constant        entry                    external dcl 355
+virtual                         002153 constant        label                    dcl 359 ref 353
+zero_page                       003070 constant        label                    dcl 468 ref 403
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4070        4646    3320        4100
+Length      5440    3320       556         555     547         446
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bce_appending_simulation            240 external procedure  is an external procedure.  
+on unit on line 159                  64 on unit               
+on unit on line 225                  64 on unit               
+on unit on line 226                  64 on unit               
+on unit on line 227                  64 on unit               
+on unit on line 228                  64 on unit               
+on unit on line 314                  64 on unit               
+on unit on line 333                  64 on unit               
+on unit on line 365                  64 on unit               
+map_for_read                            internal procedure  shares stack frame of external procedure bce_appending_simulation.  
+page_error                           68 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 static                      bce_appending_simulation
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bce_appending_simulation 000100 abs_seg_pt_addr             bce_appending_simulation
+                         000101 address                     bce_appending_simulation
+                         000102 core_map_ptw                bce_appending_simulation
+                         000104 core_map_sdw                bce_appending_simulation
+                         000106 core_map_segnum             bce_appending_simulation
+                         000107 data_length                 bce_appending_simulation
+                         000110 data_part_length            bce_appending_simulation
+                         000112 data_ptr                    bce_appending_simulation
+                         000114 dseg_page_address           bce_appending_simulation
+                         000116 dseg_sdw                    bce_appending_simulation
+                         000120 multics_data_ptr            bce_appending_simulation
+                         000122 my_cme                      bce_appending_simulation
+                         000126 my_dbr                      bce_appending_simulation
+                         000130 my_dbr_info                 bce_appending_simulation
+                         000134 my_ptw_info                 bce_appending_simulation
+                         000136 my_sdw_info                 bce_appending_simulation
+                         000166 page_num                    bce_appending_simulation
+                         000167 page_offset                 bce_appending_simulation
+                         000170 read_write                  bce_appending_simulation
+                         000172 seg_sdw                     bce_appending_simulation
+                         000202 seg_info_ptr                bce_appending_simulation
+                         000204 sdw_info_ptr                bce_appending_simulation
+                         000206 cmep                        bce_appending_simulation
+                         000210 dbr_info_ptr                bce_appending_simulation
+                         000212 seek_command                bce_appending_simulation
+                         000214 ptw_info_ptr                bce_appending_simulation
+                         000216 pvtp                        bce_appending_simulation
+                         000220 pvtep                       bce_appending_simulation
+                         000244 write_op                    map_for_read
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_ne_as             call_ext_in         call_ext_out        call_int_other      return_mac          tra_ext_1
+mdfx1               enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+absadr                        dbr_util_$dissect             get_ptrs_$given_segno         pc$cleanup
+pc_wired$write_wait           pmut$camp                     ptw_util_$dissect             ptw_util_$make_core
+ptw_util_$make_disk           ptw_util_$make_null_disk      ptw_util_$reset_phm           ptw_util_$set_phm
+sdw_util_$dissect             sdw_util_$get_address
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+abs_seg0$                     core_map$                     dseg$                         error_table_$argerr
+error_table_$boundviol        error_table_$dev_offset_out_of_bounds
+error_table_$fsdisk_phydev_err                              error_table_$fsdisk_pvtx_oob  error_table_$invalidsegno
+int_unpaged_page_tables$      multics_high_mem$             multics_low_mem$              pvt$
+pvt$root_pvtx                 rdisk_seg$                    sys_boot_info$bce_dbr         toehold$
+toehold_data$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+ 7   84 000041        17 000132       123 000141       127 000157       128 000160       129 000165       130 000205
+    131 000233       132 000250       134 000266       135 000305       137 000324       138 000327       139 000343
+    140 000347       141 000353       143 000364       144 000367       145 000376       146 000402       148 000415
+    150 000416       154 000433       155 000434       156 000436       157 000440       159 000442       163 000464
+    164 000500       165 000510       166 000514       170 000516       171 000521       172 000546       173 000550
+    174 000563       175 000603       176 000605       178 000606       179 000626       181 000630       186 000645
+    187 000647       188 000656       189 000657       190 000666       191 000670       192 000714       193 000716
+    194 000731       195 000735       196 000755       197 000757       198 000772       199 000775       200 000776
+    201 001001       203 001003       205 001004       207 001030       208 001032       210 001033       212 001054
+    214 001055       225 001056       226 001100       227 001122       228 001144       230 001166       234 001170
+    238 001172       239 001201       241 001207       242 001211       244 001213       246 001216       248 001224
+    250 001240       251 001246       252 001260       253 001265       255 001266       256 001273       257 001277
+    258 001315       259 001317       260 001324       261 001333       262 001346       263 001354       264 001355
+    265 001357       266 001364       268 001376       269 001403       271 001422       272 001423       273 001427
+    274 001434       276 001446       277 001453       279 001467       280 001470       281 001473       282 001500
+    283 001512       284 001517       285 001520       286 001522       287 001526       289 001540       290 001545
+    292 001561       294 001562       295 001567       297 001601       298 001606       301 001626       302 001630
+    303 001631       305 001632       312 001651       313 001652       314 001655       316 001677       317 001704
+    318 001706       324 001707       325 001735       326 001737       328 001740       330 001757       331 001760
+    332 001763       333 001766       335 002010       337 002026       338 002032       339 002035       341 002036
+    342 002041       343 002067       344 002071       345 002074       348 002075       350 002076       352 002124
+    353 002126       355 002127       357 002152       359 002153       364 002154       365 002157       367 002201
+    368 002203       369 002205       370 002211       371 002216       372 002224       373 002233       374 002236
+    376 002240       377 002243       378 002246       379 002255       381 002263       382 002265       384 002267
+    385 002275       386 002300       391 002303       392 002307       393 002323       396 002352       397 002371
+    398 002375       399 002410       401 002435       402 002436       403 002446       405 002454       406 002455
+    407 002460       408 002472       409 002474       410 002506       413 002514       415 002515       416 002527
+    417 002531       418 002543       422 002551       423 002552       424 002556       425 002561       429 002564
+    430 002566       431 002614       432 002616       433 002630       434 002633       435 002636       437 002661
+    438 002674       439 002676       440 002710       444 002716       446 002717       447 002722       448 002741
+    449 002755       450 002757       451 002776       454 003005       456 003006       457 003021       458 003023
+    459 003035       460 003053       465 003062       467 003063       468 003070       470 003103       471 003105
+    472 003106       474 003107       475 003112       476 003132       478 003146       480 003147       490 003151
+    492 003154       493 003155       495 003156       497 003160       499 003162       500 003165       501 003167
+    502 003200       503 003202       506 003203       507 003206       508 003216       509 003220       512 003221
+    513 003225       515 003227       516 003242       517 003252       520 003253       524 003261       525 003267
+    527 003276       529 003305       530 003311
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,1293 @@
+	COMPILATION LISTING OF SEGMENT rcp_audit
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0953.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+       10 rcp_audit:
+       11      procedure (a_caller, a_operation, a_req_info_ptr, a_res_info_ptr, a_owner, a_effmode, a_raw_mode, a_rbs, a_rm_on,
+       12 	a_error_code);
+       13 
+       14 /*            This internal subroutine determines if auditing is
+       15*   *	    required for an RCP event.
+       16*   *            Created 841112 by Maria M. Pozzo
+       17*   *
+       18**/
+       19 
+       20 
+       21 /****^  HISTORY COMMENTS:
+       22*  1) change(87-07-14,Rauschelbach), approve(87-08-07,MCR7748),
+       23*     audit(87-11-11,Farley), install(87-11-30,MR12.2-1004):
+       24*     Removed signal to vfile_error condition as it was erroneously left from
+       25*     debugging.
+       26*                                                   END HISTORY COMMENTS */
+       27 
+       28 
+       29 /*            ARGUMENTS                       */
+       30 
+       31 dcl	a_caller		   char (*);		/* (I) Identifies the program that made the call. */
+       32 dcl	a_operation	   bit (36) aligned;	/* (I) The RCP operation as defined in rcp_operations.incl.pl1 */
+       33 dcl	a_req_info_ptr	   ptr;			/* (I) Pointer to requestor information. */
+       34 dcl	a_res_info_ptr	   ptr;			/* (I) Pointer to object information. */
+       35 dcl	a_owner		   char (*);		/* (I) Resource Owner. */
+       36 dcl	a_effmode		   bit (3);		/* (I) "0"b3 if access was denied */
+       37 dcl	a_raw_mode	   bit (3);		/* (I) Raw mode used in auditing. */
+       38 dcl	a_rbs		   (2) fixed bin (3);	/* (I) Ring brackets of the ACS segment if there was one. */
+       39 dcl	a_rm_on		   bit (1);		/* (I) True = resource management enabled */
+       40 dcl	a_error_code	   fixed bin (35);		/* (I) Error code */
+       41 
+       42 /*            AUTOMATIC                       */
+       43 
+       44 dcl	audit		   bit (1);		/* Is audit needed. */
+       45 dcl	1 auto_rcp_obj_info	   like rcp_obj_info;
+       46 dcl	based_bits	   bit (bl * 9) aligned based (bp);
+       47 dcl	rm_on		   bit (1);
+       48 dcl	effmode		   bit (3);
+       49 dcl	raw_mode		   bit (3);
+       50 dcl	rbs		   (2) fixed bin (3);
+       51 dcl	object_access_class	   (2) bit (72) aligned;
+       52 dcl	event_flags	   bit (36) aligned;
+       53 dcl	operation		   bit (36) aligned;	/* Local operation */
+       54 dcl	base_op		   bit (36) aligned;	/* oper_code for audit. */
+       55 
+       56 dcl	caller		   char (32);		/* Local caller */
+       57 dcl	msg_str		   char (256);		/* Format string for audit message. */
+       58 dcl	object_name	   char (177);		/* Object name is "Registry " plus the pathname of the registry, at it's largest. */
+       59 dcl	owner		   char (32);		/* Current resource owner. */
+       60 dcl	registry_dir	   char (168);		/* directory registry is contained in */
+       61 dcl	registry_name	   char (32);		/* name of registry (for registry operations) */
+       62 dcl	bl		   fixed bin (21);
+       63 dcl	error_code	   fixed bin (35);
+       64 dcl	local_code	   fixed bin (35);
+       65 
+       66 dcl	bp		   ptr;
+       67 dcl	operation_ptr	   ptr;
+       68 
+       69 dcl	1 en_access_op	   like encoded_access_op aligned based (operation_ptr);
+       70 
+       71 dcl	addr		   builtin;
+       72 dcl	bin		   builtin;
+       73 dcl	null		   builtin;
+       74 dcl	rtrim		   builtin;
+       75 dcl	size		   builtin;
+       76 dcl	unspec		   builtin;
+       77 
+       78 /*            EXTERNAL                       */
+       79 
+       80 dcl	access_audit_r1_$check_obj_class_range
+       81 			   entry (bit (36) aligned, bit (36) aligned, (2) bit (72) aligned) returns (bit (1));
+       82 dcl	access_audit_r1_$log_obj_class_range
+       83 			   entry options (variable);
+       84 dcl	hcs_$get_access_class  entry (char (*), char (*), bit (72) aligned, fixed bin (35));
+       85 dcl	ioa_$rsnnl	   entry () options (variable);
+       86 dcl	pathname_		   entry (char (*), char (*)) returns (char (168));
+       87 dcl	rcp_setup_event	   entry (bit (36) aligned, bit (3), bit (36) aligned, fixed bin (35));
+       88 dcl	resource_info_$get_type
+       89 			   entry (char (*), bit (1), fixed bin (35));
+       90 dcl	suffixed_name_$make	   entry (char (*), char (*), char (32), fixed bin (35));
+       91 
+       92 dcl	access_operations_$rcp_set
+       93 			   bit (36) aligned ext static;
+       94 dcl	access_operations_$rcp_set_access
+       95 			   bit (36) aligned ext static;
+       96 dcl	access_operations_$rcp_delete_registry
+       97 			   bit (36) aligned external;
+       98 dcl	access_operations_$rcp_copy_registry
+       99 			   bit (36) aligned external;
+      100 dcl	access_operations_$rcp_update_registry_header
+      101 			   bit (36) aligned external;
+      102 dcl	access_operations_$rcp_reconstruct_registry
+      103 			   bit (36) aligned external;
+      104 
+      105 /*	CONSTANTS		*/
+      106 
+      107 dcl	COMPONENT_0_NAME	   char (1) static options (constant) init ("0");
+      108 dcl	REGISTRY_SUFFIX	   char (4) static options (constant) init ("rcpr");
+      109 dcl	REGISTRY_OLD_SUFFIX	   char (3) static options (constant) init ("old");
+      110 
+      111 /*  Copy argument data */
+      112 
+      113 	caller = a_caller;
+      114 	operation = a_operation;
+      115 	base_op = operation;
+      116 	addr (base_op) -> en_access_op.detailed_operation = 0;
+      117 	ops_ptr = addr (addr (operation) -> en_access_op.detailed_operation);
+      118 	requestor_info_ptr = a_req_info_ptr;
+      119 	resource_info_ptr = a_res_info_ptr;
+      120 	owner = a_owner;
+      121 	effmode = a_effmode;
+      122 	raw_mode = a_raw_mode;
+      123 	rbs = a_rbs;
+      124 	rm_on = a_rm_on;
+      125 	error_code = a_error_code;
+      126 
+      127 /*  Initialize local variables. */
+      128 
+      129 	audit = "0"b;
+      130 	event_flags = "0"b;
+      131 	object_name = "";
+      132 	local_code = 0;
+      133 	bp = null ();
+      134 	bl = 0;
+      135 
+      136 /*  If resource management is not enabled then don't audit.  If this is */
+      137 /*  a search operation then we don't audit either. */
+      138 /*  If it's a reconstruct operation we are in the Initializer process and */
+      139 /*  rm is not turned on, since reconstructs are done in "stan". */
+      140 
+      141 	if (^rm_on & (base_op ^= access_operations_$rcp_reconstruct_registry)) | detailed_operation.search then
+      142 	     goto MAIN_RETURN;
+      143 
+      144 /*  Set up the RCP event.  We already have the oper_code in base_op. */
+      145 
+      146 	call rcp_setup_event (operation, effmode, event_flags, local_code);
+      147 	if local_code ^= 0 then
+      148 	     goto MAIN_RETURN;
+      149 
+      150 /*  Get the access class range of the object. */
+      151 
+      152 	registry_dir = resource_info.registry_dir;
+      153 	if registry_operation (base_op) then do;	/* the registry itself is the object */
+      154 	     if base_op = access_operations_$rcp_delete_registry then
+      155 		call suffixed_name_$make (resource_info.resource_type, REGISTRY_OLD_SUFFIX, registry_name, local_code)
+      156 		     ;
+      157 	     else call suffixed_name_$make (resource_info.resource_type, REGISTRY_SUFFIX, registry_name, local_code);
+      158 	     if local_code ^= 0 then
+      159 		goto MAIN_RETURN;
+      160 /**** Low end of access class range is access class of the directory (registry), high end is that of component 0. ****/
+      161 	     call hcs_$get_access_class (registry_dir, registry_name, object_access_class (1), local_code);
+      162 	     if local_code ^= 0 then
+      163 		goto MAIN_RETURN;
+      164 	     call hcs_$get_access_class (pathname_ (registry_dir, registry_name), COMPONENT_0_NAME,
+      165 		object_access_class (2), local_code);
+      166 	     if local_code ^= 0 then
+      167 		goto MAIN_RETURN;
+      168 	end;
+      169 	else do;					/* we can use the registry to find out the access class range */
+      170 	     record_ptr = resource_info.registry_record_ptr;
+      171 	     if registry_record.free then
+      172 		call chase (registry_record.potential_aim_range_desc, bp, bl, local_code);
+      173 	     else call chase (registry_record.aim_range_desc, bp, bl, local_code);
+      174 	     if local_code ^= 0 then
+      175 		goto MAIN_RETURN;
+      176 	     if bl > 0 then addr (object_access_class) -> based_bits = based_bits;
+      177 	     else unspec (object_access_class) = ""b;	/* no range, set to lowest possible */
+      178 	end;
+      179 
+      180 /*  Determine if access is needed. */
+      181 
+      182 	audit = access_audit_r1_$check_obj_class_range (event_flags, base_op, object_access_class);
+      183 
+      184 /*  If auditing is required then do it. */
+      185 
+      186 	if audit then do;
+      187 	     call get_obj_name ();
+      188 	     audit_rcp_obj_ptr = addr (auto_rcp_obj_info);
+      189 	     call fill_audit_record (local_code);
+      190 	     if local_code ^= 0 then
+      191 		goto MAIN_RETURN;
+      192 	     call get_msg_str ();
+      193 	     call access_audit_r1_$log_obj_class_range (caller, (requestor_info.validation_level), event_flags, base_op,
+      194 		object_access_class, rtrim (object_name), error_code, addr (rcp_obj_info), (size (rcp_obj_info)),
+      195 		msg_str);
+      196 	end;
+      197 
+      198 MAIN_RETURN:
+      199 	return;
+      200 
+      201 chase:
+      202      proc (descriptor, bp, bl, a_error_code);
+      203 
+      204 dcl	(
+      205 	descriptor	   fixed bin (35),
+      206 	a_error_code	   fixed bin (35),
+      207 	bp		   pointer,
+      208 	bl		   fixed bin (21)
+      209 	)		   parameter;
+      210 
+      211 dcl	1 rs		   like rs_info aligned automatic;
+      212 dcl	local_code	   fixed bin (35);
+      213 dcl	error_table_$action_not_performed
+      214 			   ext static fixed bin (35);
+      215 
+      216 	a_error_code = 0;
+      217 	if descriptor = 0 then do;
+      218 	     bp = addr (bp);			/* gotta point somewhere */
+      219 	     bl = 0;
+      220 	     return;
+      221 	end;
+      222 
+      223 	unspec (rs) = ""b;
+      224 	rs.version = rs_info_version_2;
+      225 	rs.locate_sw = "1"b;
+      226 	rs.descriptor = descriptor;
+      227 	local_code = 0;
+      228 
+      229 	call iox_$control (resource_info.registry_switch_ptr, "record_status", addr (rs), local_code);
+      230 	if local_code ^= 0 then do;
+      231 	     a_error_code = error_table_$action_not_performed;
+      232 	     return;
+      233 	end;
+      234 	bl = rs.record_length;
+      235 	bp = rs.record_ptr;
+      236 
+      237 	return;
+  1     1 /* include file for info structure used with record_status control order
+  1     2*   created by M. Asherman 1/6/76 */
+  1     3 /* modified 6/15/77 to support stationary type records */
+  1     4 
+  1     5      dcl	   rs_info_ptr	      ptr;
+  1     6      dcl	   1 rs_info	      based (rs_info_ptr) aligned,
+  1     7 	     2 version	      fixed,		/* must be set to 1 or 2 (Input) */
+  1     8 	     2 flags	      aligned,
+  1     9 	       3 lock_sw	      bit (1) unal,		/* Input -- if ="1"b  try to lock record */
+  1    10 	       3 unlock_sw	      bit (1) unal,		/* Input -- if ="1"b try to unlock record */
+  1    11 	       3 create_sw	      bit (1) unal,		/* Input--if set creat new record */
+  1    12 	       3 locate_sw	      bit (1) unal,		/* Input--if set causes current rec to be
+  1    13*						   located outside the index by descrip, or created without key */
+  1    14 	       3 inc_ref_count    bit (1) unal,		/* Input--bump reference count of record, if stationary */
+  1    15 	       3 dec_ref_count    bit (1) unal,		/* Input--decrement ref count if this flag set and record stationary */
+  1    16 	       3 locate_pos_sw    bit (1) unal,		/* Input--if set the record_length is taken
+  1    17*						   as an input argument specifying the absolute logical record positioni	  to which both the current and next positions will be set */
+  1    18 	       3 mbz1	      bit (29) unal,	/* must be set to "0"b, reserved for future use */
+  1    19 	     2 record_length      fixed (21),		/* length in bytes, Input if create_sw set */
+  1    20 	     2 max_rec_len	      fixed (21),		/* max length of contained record
+  1    21*						   Input if create_sw is set--overrides min_block_size in effect */
+  1    22 	     2 record_ptr	      ptr,		/* points to first byte of record--will be word aligned */
+  1    23 	     2 descriptor	      fixed (35),		/* Input if locate_sw set and create_sw="0"b */
+  1    24 	     2 ref_count	      fixed (34),		/* Output--should match number of keys on this record-- = -1 if non-stationary record */
+  1    25 	     2 time_last_modified fixed (71),		/* Output */
+  1    26 	     2 modifier	      fixed (35),		/* Output--also Input when locking */
+  1    27 	     2 block_ptr	      ptr unal,		/* Output */
+  1    28 	     2 last_image_modifier
+  1    29 			      fixed (35),
+  1    30 	     2 mbz2	      fixed;
+  1    31 
+  1    32      dcl	   1 rs_desc	      based (addr (rs_info.descriptor)),
+  1    33 						/* record block descriptor structure */
+  1    34 	     2 comp_num	      fixed (17) unal,	/* msf component number */
+  1    35 	     2 offset	      bit (18) unal;	/* word offset of record block */
+  1    36 
+  1    37      dcl	   1 seq_desc	      based (addr (rs_info.descriptor)),
+  1    38 						/* for sequential files */
+  1    39 	     2 bitno	      bit (6) unal,
+  1    40 	     2 comp_num	      fixed (11) unal,	/* msf component number */
+  1    41 	     2 wordno	      bit (18) unal;	/* word offset */
+  1    42 
+  1    43      dcl	   rs_info_version_1      static internal fixed init (1);
+  1    44      dcl	   rs_info_version_2      static internal fixed init (2);
+  1    45 
+      238 
+  2     1 /* --------------- BEGIN include file iox_dcls.incl.pl1 --------------- */
+  2     2 
+  2     3 /* Written 05/04/78 by C. D. Tavares */
+  2     4 /* Fixed declaration of iox_$find_iocb_n 05/07/80 by R. Holmstedt */
+  2     5 /* Modified 5/83 by S. Krupp to add declarations for:  iox_$open_file,
+  2     6*     iox_$close_file, iox_$detach and iox_$attach_loud entries. */
+  2     7 
+  2     8 dcl  iox_$attach_name entry (char (*), pointer, char (*), pointer, fixed bin (35)),
+  2     9      iox_$attach_ptr entry (pointer, char (*), pointer, fixed bin (35)),
+  2    10      iox_$close entry (pointer, fixed bin (35)),
+  2    11      iox_$control entry (pointer, char (*), pointer, fixed bin (35)),
+  2    12      iox_$delete_record entry (pointer, fixed bin (35)),
+  2    13      iox_$destroy_iocb entry (pointer, fixed bin (35)),
+  2    14      iox_$detach_iocb entry (pointer, fixed bin (35)),
+  2    15      iox_$err_not_attached entry options (variable),
+  2    16      iox_$err_not_closed entry options (variable),
+  2    17      iox_$err_no_operation entry options (variable),
+  2    18      iox_$err_not_open entry options (variable),
+  2    19      iox_$find_iocb entry (char (*), pointer, fixed bin (35)),
+  2    20      iox_$find_iocb_n entry (fixed bin, ptr, fixed bin(35)),
+  2    21      iox_$get_chars entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    22      iox_$get_line entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    23      iox_$look_iocb entry (char (*), pointer, fixed bin (35)),
+  2    24      iox_$modes entry (pointer, char (*), char (*), fixed bin (35)),
+  2    25      iox_$move_attach entry (pointer, pointer, fixed bin (35)),
+  2    26      iox_$open entry (pointer, fixed bin, bit (1) aligned, fixed bin (35)),
+  2    27      iox_$position entry (pointer, fixed bin, fixed bin (21), fixed bin (35)),
+  2    28      iox_$propagate entry (pointer),
+  2    29      iox_$put_chars entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    30      iox_$read_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    31      iox_$read_length entry (pointer, fixed bin (21), fixed bin (35)),
+  2    32      iox_$read_record entry (pointer, pointer, fixed bin (21), fixed bin (21), fixed bin (35)),
+  2    33      iox_$rewrite_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    34      iox_$seek_key entry (pointer, char (256) varying, fixed bin (21), fixed bin (35)),
+  2    35      iox_$write_record entry (pointer, pointer, fixed bin (21), fixed bin (35)),
+  2    36      iox_$open_file entry(ptr, fixed bin, char(*), bit(1) aligned, fixed bin(35)),
+  2    37      iox_$close_file entry(ptr, char(*), fixed bin(35)),
+  2    38      iox_$detach entry(ptr, char(*), fixed bin(35)),
+  2    39      iox_$attach_loud entry(ptr, char(*), ptr, fixed bin(35));
+  2    40 
+  2    41 dcl (iox_$user_output,
+  2    42      iox_$user_input,
+  2    43      iox_$user_io,
+  2    44      iox_$error_output) external static pointer;
+  2    45 
+  2    46 /* ---------------- END include file iox_dcls.incl.pl1 ---------------- */
+      239 
+      240      end chase;
+      241 
+      242 get_obj_name:
+      243      proc ();
+      244 
+      245 	if registry_operation (base_op) then
+      246 	     object_name = "Registry " || pathname_ (registry_dir, resource_info.resource_type);
+      247 
+      248 	else object_name = (rtrim (resource_info.resource_type)) || " " || resource_info.resource_name;
+      249 
+      250 	return;
+      251 
+      252      end get_obj_name;
+      253 
+      254 registry_operation:
+      255      proc (op) returns (bit (1) aligned);
+      256 
+      257 dcl	op		   bit (36) aligned;
+      258 
+      259 	return (op = access_operations_$rcp_copy_registry | op = access_operations_$rcp_delete_registry
+      260 	     | op = access_operations_$rcp_reconstruct_registry | op = access_operations_$rcp_update_registry_header);
+      261 
+      262      end registry_operation;
+      263 
+      264 fill_audit_record:
+      265      proc (a_code);
+      266 
+      267 dcl	a_code		   fixed bin (35);
+      268 
+      269 dcl	is_vol		   bit (1);
+      270 dcl	fill_code		   fixed bin (35);
+      271 
+      272 	fill_code = 0;
+      273 	is_vol = "0"b;
+      274 	unspec (rcp_obj_info) = ""b;
+      275 	rcp_obj_info.info_type = AAB_rcp_object;
+      276 	rcp_obj_info.version = AUDIT_RCP_OBJ_INFO_VERSION_1;
+      277 	rcp_obj_info.pad = "0"b;
+      278 	rcp_obj_info.resource_type = resource_info.resource_type;
+      279 	rcp_obj_info.resource_name = resource_info.resource_name;
+      280 	rcp_obj_info.owner_id = owner;
+      281 	rcp_obj_info.access_class = object_access_class;
+      282 	rcp_obj_info.raw_mode = raw_mode;
+      283 	rcp_obj_info.rcp_ring_brackets = rbs;
+      284 	if registry_operation (base_op) then
+      285 	     rcp_obj_info.registry = "1"b;
+      286 	else do;
+      287 	     call resource_info_$get_type (resource_info.resource_type, is_vol, fill_code);
+      288 	     if fill_code ^= 0 then
+      289 		goto FILL_RETURN;
+      290 	     rcp_obj_info.device = ^is_vol;
+      291 	     rcp_obj_info.volume = is_vol;
+      292 	     rcp_obj_info.usage_locked = registry_record.usage_lock;
+      293 	     rcp_obj_info.release_locked = registry_record.release_lock;
+      294 	     rcp_obj_info.awaiting_clear = registry_record.awaiting_clear;
+      295 	     rcp_obj_info.has_acs_path = (registry_record.acs_path_desc ^= 0);
+      296 	     rcp_obj_info.flags.pad = "0"b;
+      297 	     rcp_obj_info.attributes = registry_record.attributes;
+      298 	end;
+      299 
+      300 FILL_RETURN:
+      301 	a_code = fill_code;
+      302 	return;
+      303      end fill_audit_record;
+      304 
+      305 get_msg_str:
+      306      proc ();
+      307 
+      308 	call ioa_$rsnnl (
+      309 	     "^[raw_mode=^a ^;^s^]^[rcp_ring_brackets=^d,^d ^;^2s^]^[^[potential_attributes ^]^[desired_attributes ^]^[potential_aim_range ^]^[aim_range ^]^[owner ^]^[acs_path ^]^[location ^]^[comment ^]^[charge_type ^]^[usage_lock ^]^[release_lock ^]^[user_alloc^]^]",
+      310 	     msg_str, (0), (raw_mode ^= ""b), SEG_ACCESS_MODE_NAMES (bin (rcp_obj_info.raw_mode)), (rbs (1) ^= -1),
+      311 	     rcp_obj_info.rcp_ring_brackets,
+      312 	     (base_op = access_operations_$rcp_set | base_op = access_operations_$rcp_set_access),
+      313 	     detailed_operation.given.potential_attributes, detailed_operation.given.desired_attributes,
+      314 	     detailed_operation.given.potential_aim_range, detailed_operation.given.aim_range,
+      315 	     detailed_operation.given.owner, detailed_operation.given.acs_path, detailed_operation.given.location,
+      316 	     detailed_operation.given.comment, detailed_operation.given.charge_type,
+      317 	     detailed_operation.given.usage_lock, detailed_operation.given.release_lock,
+      318 	     detailed_operation.given.user_alloc);
+      319 
+      320      end get_msg_str;
+      321 
+  3     1 /* begin include file - access_audit_binary_def */
+  3     2 
+  3     3 /* 1985-02-26 EJ Sharpe: added rcp object definition */
+  3     4 /* 1985-01-25 E. Swenson: added pnt definition */
+  3     5 /* 1985-01-22 EJ Sharpe: created */
+  3     6 
+  3     7 /****
+  3     8*	Each access audit log message has binary data including
+  3     9*	the audit record header and optionally some extended
+  3    10*	binary information.  The first 9 bits (fixed bin (9) uns unal)
+  3    11*	if the extended binary defines the type of the data
+  3    12*	and, thus, what structure may be used to interpret it.
+  3    13*
+  3    14*	This include file is a registry of the extended binary
+  3    15*	type values.
+  3    16*****/
+  3    17 
+  3    18 dcl  (
+  3    19 	/*type identifier*/	/*type*/	     /*include where defined*/
+  3    20 
+  3    21 	AAB_ss_object	init (1),	/* access_audit_ssobj_info.incl.pl1 */
+  3    22 	AAB_ss_link	init (2),	/* access_audit_ssobj_info.incl.pl1 */
+  3    23 	AAB_ia_int_dmn	init (3),	/* as_audit_structures.incl.pl1 */
+  3    24 	AAB_ia_abs	init (4),	/* as_audit_structures.incl.pl1 */
+  3    25 	AAB_ia_abs_proxy	init (5),	/* as_audit_structures.incl.pl1 */
+  3    26 	AAB_channel	init (6),	/* as_audit_structures.incl.pl1 */
+  3    27 	AAB_dial_service	init (7),	/* as_audit_structures.incl.pl1 */
+  3    28 	AAB_pnt_entry       init (8), /* access_audit_pnt_info.incl.pl1 */
+  3    29 	AAB_rcp_object	init (9),	/* access_audit_rcp_info.incl.pl1 */
+  3    30 	AAB_mseg_msg       init (10) /* access_audit_mseg_info.incl.pl1 */
+  3    31      )	fixed bin (9) uns unal static options (constant);
+  3    32 
+  3    33 /****
+  3    34*	The following array contains entry name fragments for the
+  3    35*	expander procedure associated with the respective binary
+  3    36*	data type.  The actual entry name is generated like:
+  3    37*
+  3    38*	entryname = "expand_"||audit_binary_expanders(TYPE)||"_audit_info_"
+  3    39*
+  3    40*	Note that expand_access_audit_msg_.pl1 keeps a cache of
+  3    41*	extended binary expander procedure entries.  The cache
+  3    42*	should be enlarged when the following array grows to more
+  3    43*	than 36 entries.
+  3    44*****/
+  3    45 
+  3    46 dcl  audit_binary_expanders (10) char (13) varying internal static options (constant)
+  3    47 	init (	"ssobj",		/* 1 (first two are internal */
+  3    48 		"sslnk",		/* 2  procedures in expand_access_audit_msg_) */
+  3    49 		"as_ia",		/* 3 (ia_int_dmn) */
+  3    50 		"as_ia",		/* 4 (ia_abs) */
+  3    51 		"as_ia",		/* 5 (ia_abs_proxy) */
+  3    52 		"channel",	/* 6 */
+  3    53 		"dial_serv",	/* 7 */
+  3    54 		"pnt",		/* 8 */
+  3    55 		"rcp_obj",	/* 9 */
+  3    56 		"mseg_msg"          /* 10 */
+  3    57 		);
+  3    58 
+  3    59 /* end include file - access_audit_binary_def.incl.pl1 */
+      322 
+      323 
+  4     1 /* begin include file - access_audit_encoded_op.incl.pl1 */
+  4     2 
+  4     3 dcl 1 encoded_access_op	aligned based,
+  4     4       2 audit_type	unal,
+  4     5         3 object_type	fixed bin (4) uns unal,
+  4     6         3 access_type	fixed bin (2) uns unal,
+  4     7       2 operation_index	fixed bin (12) uns unal,
+  4     8       2 detailed_operation	fixed bin (18) uns unal;
+  4     9 
+  4    10 /* object_type = Seg, Dir, Rcp, Admin, Special, Other
+  4    11*   access_type = None, Modify_Acl, Modify, Read
+  4    12*   operation_index is the index of this code in
+  4    13*     access_operations_$oper_codes and the index of
+  4    14*     the text descriptor in access_operations_$text_offest_table
+  4    15*     (see access_operations_.incl.pl1)
+  4    16*   detailed_operation is additional info inserted by the
+  4    17*     caller of the subsystem performing the operation
+  4    18**/
+  4    19 
+  4    20 /* end include file - access_audit_encoded_op.incl.pl1 */
+      324 
+      325 
+  5     1 /* ***********************************************************
+  5     2*   *                                                         *
+  5     3*   * Copyright, (C) Honeywell Information Systems Inc., 1985 *
+  5     4*   *                                                         *
+  5     5*   *********************************************************** */
+  5     6 /* begin include file - access_audit_rcp_info.incl.pl1 */
+  5     7 
+  5     8 /* format: off */
+  5     9 
+  5    10 
+  5    11 dcl	audit_rcp_obj_ptr		pointer;
+  5    12 
+  5    13 dcl     1	rcp_obj_info		aligned based (audit_rcp_obj_ptr),
+  5    14 	2 info_type		fixed bin (9) uns unal,	/* AAB_rcp_object */
+  5    15 	2 version			fixed bin (9) uns unal,
+  5    16 	2 pad			bit (18) unal,
+  5    17 	2 resource_type		char (32),
+  5    18 	2 resource_name		char (32),
+  5    19 	2 owner_id		char (32),
+  5    20 	2 flags,
+  5    21 	  3 device		bit (1) unal,
+  5    22 	  3 volume		bit (1) unal,
+  5    23 	  3 registry		bit (1) unal,
+  5    24 	  3 usage_locked		bit (1) unal,
+  5    25 	  3 release_locked		bit (1) unal,
+  5    26 	  3 awaiting_clear		bit (1) unal,
+  5    27 	  3 has_acs_path    	bit (1) unal,
+  5    28 	  3 pad			bit (29) unal,
+  5    29 	2 attributes		(2) bit (72),
+  5    30 	2 access_class		(2) bit (72),
+  5    31           2 raw_mode		bit (3),
+  5    32 	2 rcp_ring_brackets		(2) fixed bin (3);
+  5    33 
+  5    34 dcl	AUDIT_RCP_OBJ_INFO_VERSION_1	fixed bin (9) uns unal static options (constant) init (1);
+  5    35 
+  5    36 /* end include file - access_audit_rcp_info.incl.pl1 */
+  5    37 
+  5    38 	  
+      326 
+      327 
+  6     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  6     2*
+  6     3*   Values for the "access mode" argument so often used in hardcore
+  6     4*   James R. Davis 26 Jan 81  MCR 4844
+  6     5*   Added constants for SM access 4/28/82 Jay Pattin
+  6     6*   Added text strings 03/19/85 Chris Jones
+  6     7**/
+  6     8 
+  6     9 
+  6    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  6    11 dcl	(
+  6    12 	N_ACCESS		   init ("000"b),
+  6    13 	R_ACCESS		   init ("100"b),
+  6    14 	E_ACCESS		   init ("010"b),
+  6    15 	W_ACCESS		   init ("001"b),
+  6    16 	RE_ACCESS		   init ("110"b),
+  6    17 	REW_ACCESS	   init ("111"b),
+  6    18 	RW_ACCESS		   init ("101"b),
+  6    19 	S_ACCESS		   init ("100"b),
+  6    20 	M_ACCESS		   init ("010"b),
+  6    21 	A_ACCESS		   init ("001"b),
+  6    22 	SA_ACCESS		   init ("101"b),
+  6    23 	SM_ACCESS		   init ("110"b),
+  6    24 	SMA_ACCESS	   init ("111"b)
+  6    25 	)		   bit (3) internal static options (constant);
+  6    26 
+  6    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  6    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  6    29 
+  6    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  6    31 			   static options (constant);
+  6    32 
+  6    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  6    34 			   static options (constant);
+  6    35 
+  6    36 dcl	(
+  6    37 	N_ACCESS_BIN	   init (00000b),
+  6    38 	R_ACCESS_BIN	   init (01000b),
+  6    39 	E_ACCESS_BIN	   init (00100b),
+  6    40 	W_ACCESS_BIN	   init (00010b),
+  6    41 	RW_ACCESS_BIN	   init (01010b),
+  6    42 	RE_ACCESS_BIN	   init (01100b),
+  6    43 	REW_ACCESS_BIN	   init (01110b),
+  6    44 	S_ACCESS_BIN	   init (01000b),
+  6    45 	M_ACCESS_BIN	   init (00010b),
+  6    46 	A_ACCESS_BIN	   init (00001b),
+  6    47 	SA_ACCESS_BIN	   init (01001b),
+  6    48 	SM_ACCESS_BIN	   init (01010b),
+  6    49 	SMA_ACCESS_BIN	   init (01011b)
+  6    50 	)		   fixed bin (5) internal static options (constant);
+  6    51 
+  6    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      328 
+      329 
+  7     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  7     2 /*  BEGIN include rcp_ops.incl.pl1  */
+  7     3 
+  7     4 /* Written 02/27/85 by Chris Jones, Maria Pozzo */
+  7     5 
+  7     6 dcl	ops_ptr		   ptr;
+  7     7 
+  7     8 dcl	1 detailed_operation   unaligned based (ops_ptr),
+  7     9 	  2 given,
+  7    10 	    3 potential_attributes
+  7    11 			   bit (1),
+  7    12 	    3 desired_attributes
+  7    13 			   bit (1),
+  7    14 	    3 potential_aim_range
+  7    15 			   bit (1),
+  7    16 	    3 aim_range	   bit (1),
+  7    17 	    3 owner	   bit (1),
+  7    18 	    3 acs_path	   bit (1),
+  7    19 	    3 location	   bit (1),
+  7    20 	    3 comment	   bit (1),
+  7    21 	    3 charge_type	   bit (1),
+  7    22 	    3 usage_lock	   bit (1),
+  7    23 	    3 release_lock	   bit (1),
+  7    24 	    3 user_alloc	   bit (1),
+  7    25 	  2 priv_gate_call	   bit (1),
+  7    26 	  2 search	   bit (1),
+  7    27 	  2 force		   bit (1),
+  7    28 	  2 process	   bit (1),
+  7    29 	  2 owner		   bit (1),
+  7    30 	  2 pad		   bit (1);
+  7    31 
+      330 
+      331 
+  8     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  8     2 /*       Begin include file rcp_requestor_info.incl.pl1
+  8     3* *       
+  8     4* *       This include file gives information about the subject,
+  8     5* *       or requestor of the RCP operation.  In one case, absentee
+  8     6* *       requests, the user is the Initializer, so this piece of
+  8     7* *       information tells us about the real requestor of the RCP
+  8     8* *       operation.
+  8     9**/
+  8    10 
+  8    11 dcl requestor_info_ptr ptr;
+  8    12 
+  8    13 dcl 1 requestor_info aligned based (requestor_info_ptr),
+  8    14     2 user_id char (32),
+  8    15     2 current_authorization bit (72) aligned,
+  8    16     2 validation_level fixed bin (3);
+  8    17 
+  8    18 /*  end include file .. rcp_requestor_info.incl.pl1 */
+      332 
+      333 
+  9     1 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  9     2 /*       Begin include file rcp_resource_info.incl.pl1
+  9     3*   *
+  9     4*   *       This include file gives information about the object,
+  9     5*   *       or resource for the RCP operation.  If RM is enabled this
+  9     6*   *       information will provide the registry name and switch pointer
+  9     7*   *       for the registry so additional resource information can be
+  9     8*   *       determined.  If RM is disabled, this information will include
+  9     9*   *       the resource name and/or type.
+  9    10**/
+  9    11 
+  9    12 dcl	resource_info_ptr	   ptr;
+  9    13 
+  9    14 dcl	1 resource_info	   based (resource_info_ptr),
+  9    15 	  2 registry_dir	   aligned char (64),	/*  Could be a different if it is reconstruct operation */
+  9    16 	  2 registry_switch_ptr
+  9    17 			   ptr,			/*  Switch to the registry */
+  9    18 	  2 registry_record_ptr
+  9    19 			   ptr,			/*  Pointer to the registry record */
+  9    20 	  2 resource_type	   char (32),		/*  Resource type */
+  9    21 	  2 resource_name	   char (32);		/*  Resource name */
+  9    22 
+  9    23 /*  end include file .. rcp_resource_info.incl.pl1 */
+      334 
+      335 
+ 10     1 /* --------------- BEGIN include file rcp_registry.incl.pl1 --------------- */
+ 10     2 
+ 10     3 /* Written 05/04/78 by C. D. Tavares */
+ 10     4 
+ 10     5 dcl 1 registry_record aligned based (record_ptr),
+ 10     6     2 dynamic_info aligned,
+ 10     7       3 attributes (2) bit (72) aligned,
+ 10     8       3 (location_desc,
+ 10     9          comment_desc,
+ 10    10          pad (2)) fixed bin (35) aligned,
+ 10    11     2 acquisition_info aligned,
+ 10    12       3 (owner_desc,
+ 10    13          acs_path_desc,
+ 10    14          aim_range_desc) fixed bin (35) aligned,
+ 10    15       3 flags unaligned,
+ 10    16         4 (usage_lock,
+ 10    17 	 release_lock,
+ 10    18 	 awaiting_clear,
+ 10    19 	 user_alloc,
+ 10    20 	 system,
+ 10    21 	 free) bit (1) unaligned,
+ 10    22         4 pad bit (12) unaligned,
+ 10    23       3 reserver_chain bit (18) unaligned,
+ 10    24       3 pad (2) fixed bin (35) aligned,
+ 10    25     2 registration_info aligned,
+ 10    26       3 uid bit (36) aligned,
+ 10    27       3 (potential_attributes_desc,
+ 10    28          potential_aim_range_desc,
+ 10    29          charge_type_desc,
+ 10    30          pad (2)) fixed bin (35) aligned,
+ 10    31       3 name unaligned,
+ 10    32         4 n fixed bin (8) unaligned,
+ 10    33         4 string char (rr_strl refer (registry_record.name.n)) unaligned;
+ 10    34 
+ 10    35 dcl 1 registry_header aligned based (header_ptr),
+ 10    36     2 rtde_size fixed bin (18),
+ 10    37     2 rtde_copy (RTDE_SIZE refer (registry_header.rtde_size)) bit (36) aligned,
+ 10    38     2 other aligned,
+ 10    39       3 last_transaction_time fixed bin (71),
+ 10    40       3 pad (18) bit (36) aligned;
+ 10    41 
+ 10    42 dcl RTDE_SIZE fixed bin (18);
+ 10    43 
+ 11     1 /* --------------- BEGIN include file rtdt.incl.pl1 --------------- */
+ 11     2 
+ 11     3 dcl 1 rtdt aligned based (rtdtp),			/* resource type description table */
+ 12     1 /* BEGIN INCLUDE FILE author.incl.pl1 */
+ 12     2 
+ 12     3 /* the "author" items must always be the first ones in the table. The
+ 12     4*   module which moves the converted table to the System Control process
+ 12     5*   fills in these data items and assumes them to be at the head of the segment
+ 12     6*   regardless of the specific table's actual declaration. The variables
+ 12     7*   "lock" and "last_install_time" used to be "process_id" and "ev_channel"
+ 12     8*    respectively. For tables installed in multiple processes, these
+ 12     9*    are to be used to lock out multiple installations. */
+ 12    10 
+ 12    11 /*  Lock should be used as a modification lock. Since, in general,
+ 12    12*    entries may not be moved in system tables, even by installations,
+ 12    13*    it is sufficient for only installers and programs that change threads
+ 12    14*    to set or respect the lock. Simply updating data in an entry
+ 12    15*    requires no such protection.
+ 12    16*
+ 12    17*    Last_install_time is used by readers of system tables to detect
+ 12    18*    installations or other serious modifications. By checking it before
+ 12    19*    and after copying a block of data, they can be protected against
+ 12    20*    modifications.
+ 12    21*
+ 12    22*    Modules that set the lock should save proc_group_id, and then
+ 12    23*    put their group id there for the time they hold the lock.
+ 12    24*    if they do not actually install the, they should restore the group id.
+ 12    25**/
+ 12    26 
+ 12    27     2 author aligned,				/* validation data about table's author */
+ 12    28       3 proc_group_id char (32),			/* process-group-id  (personid.projectid.tag) */
+ 12    29       3 lock bit (36),				/* installation lock */
+ 12    30       3 update_attributes bit (1) unal,			/* update/add/delete attributes */
+ 12    31       3 update_authorization bit (1) unal,		/* update only authorizations */
+ 12    32       3 deferral_notified bit (1) unal,			/* installer notified of deferral of installation */
+ 12    33       3 pad bit (33) unaligned,
+ 12    34       3 last_install_time fixed bin (71),
+ 12    35       3 table char (4),				/* name of table, e.g., SAT MGT TTT RTDT PDT etc. */
+ 12    36       3 w_dir char (64),				/* author's working directory */
+ 12    37 
+ 12    38 /* END INCLUDE FILE author.incl.pl1 */
+ 11     4 
+ 11     5     2 version fixed bin,				/* version number */
+ 11     6     2 installed_under_resource_mgt bit (1) aligned,	/* resource mgt. was ON when this was installed */
+ 11     7     2 charge_type_table_ptr offset,			/* points to charge_type_table */
+ 11     8     2 first_resource offset,				/* chain for RTDE's */
+ 11     9     2 rtdt_area area (RTDT_area_len);			/* all following items allocated here */
+ 11    10 
+ 11    11 dcl 1 charge_type_table aligned based (cttp),		/* describes charges for resource types */
+ 11    12     2 n_charge_types fixed bin,			/* number of distinct charge types */
+ 11    13     2 charge_types (N_CHARGE_TYPES refer (charge_type_table.n_charge_types)) aligned char (32),
+ 11    14     2 flagword fixed bin (35) aligned;			/* this word simply help us set bitcount properly */
+ 11    15 
+ 11    16 dcl 1 rtde aligned based (rtdep),			/* describes one resource type */
+ 11    17     2 fixed_info aligned,
+ 11    18       3 next_resource offset,				/* chains to next type, or nullo */
+ 11    19       3 name char (32),				/* name of resource type, e.g. "tape_drive" */
+ 11    20       3 syn_to char (32),				/* if is_synonym this is master syn */
+ 11    21       3 precanon_proc char (64),			/* name of routine to standardize resource name */
+ 11    22       3 pad_1 (16) fixed bin (35),
+ 11    23       3 flags unaligned,
+ 11    24         4 (valid,					/* resource type hasn't been deleted */
+ 11    25      is_volume,					/* specifies volume or device type */
+ 11    26      manual_clear,					/* volumes of this type to be "degaussed" between owners */
+ 11    27      addition_pending,				/* bookkeeping bit for upd_rtdt_ */
+ 11    28      deletion_pending,
+ 11    29      is_synonym) bit (1) unaligned,			/* ditto */
+ 11    30         4 pad bit (12) unaligned,
+ 11    31       3 (process_limit,				/* how many can you assign at one time */
+ 11    32      default_time,					/* implicit reservations are for how many minutes */
+ 11    33      max_time,					/* how long can you reserve it for */
+ 11    34      advance_notice_time,				/* warn operator to prepare mount ahead of time */
+ 11    35      pad2,
+ 11    36      n_exclusion_specs,				/* number of distinct "name=" fields in attributes */
+ 11    37      n_mates,					/* number of mating devs/vols for this vol/dev */
+ 11    38      n_subtypes,					/* number of registration subtypes */
+ 11    39      n_defined_attributes) fixed bin (17) unaligned,	/* number of defined attributes */
+ 11    40       3 pad_2 (8) fixed bin (35),
+ 11    41       3 attributes_valid bit (72) aligned,		/* "1"b if corresp. attribute undeleted */
+ 11    42       3 attributes_to_match bit (72) aligned,		/* potential mate must possess these attributes */
+ 11    43       3 attribute_names (72) char (12) aligned,		/* all possible attributes for this resource */
+ 11    44       3 exclusion_specs (36) bit (72) aligned,		/* each masks all attrributes of the form "key=val" */
+ 11    45       3 pad_3 (32) fixed bin (35),
+ 11    46       3 registration_defaults aligned,			/* applied at reg. time if none given */
+ 11    47         4 default_flags aligned,
+ 11    48 	5 (potential_attributes_given,		/* "1"b = there are default potential_attributes */
+ 11    49      attributes_given,				/* and similarly, etc. */
+ 11    50      aim_range_given,
+ 11    51      charge_type_given) bit (1) unaligned,
+ 11    52 	5 pad bit (31) unaligned,
+ 11    53         4 potential_attributes bit (72) aligned,		/* for registration, if given */
+ 11    54         4 attributes bit (72) aligned,			/* for registration and also for runtime "I-don't-care" */
+ 11    55         4 aim_range (2) bit (72) aligned,		/* and similarly, etc. */
+ 11    56         4 charge_type fixed bin,
+ 11    57         4 pad_4 (8) fixed bin (35) aligned,
+ 11    58     2 mates (N_MATES refer (rtde.n_mates)) char (32) aligned,
+ 11    59 						/* the volume type that mounts on this device, or vice versa */
+ 11    60     2 subtypes (N_SUBTYPES refer (rtde.n_subtypes)) aligned, /* named registration default groups */
+ 11    61       3 subtype_name char (32),			/* name of the group */
+ 11    62       3 subtype_defaults like rtde.registration_defaults aligned;
+ 11    63 
+ 11    64 dcl  RTDT_version_3 fixed bin static options (constant) initial (3),
+ 11    65      RTDT_version_2 fixed bin static options (constant) initial (2),
+ 11    66 						/* same format, but without precanon_proc */
+ 11    67     (N_MATES, N_SUBTYPES, N_CHARGE_TYPES) fixed bin,
+ 11    68      RTDT_area_len fixed bin (18);
+ 11    69 
+ 11    70 dcl (rtdep, rtdtp, cttp) pointer;
+ 11    71 
+ 11    72 /* ---------------- END include file rtdt.incl.pl1 ---------------- */
+ 10    44 
+ 10    45 
+ 10    46 dcl (record_ptr, header_ptr) pointer,
+ 10    47      rr_strl fixed bin;
+ 10    48 
+ 10    49 /* ---------------- END include file rcp_registry.incl.pl1 ---------------- */
+      336 
+      337      end rcp_audit;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.7  rcp_audit.pl1                     >spec>install>1111>rcp_audit.pl1
+238          1    07/19/79  1547.0  rs_info.incl.pl1                  >ldd>include>rs_info.incl.pl1
+239          2    05/23/83  0916.6  iox_dcls.incl.pl1                 >ldd>include>iox_dcls.incl.pl1
+322          3    05/17/85  0615.5  access_audit_binary_def.incl.pl1  >ldd>include>access_audit_binary_def.incl.pl1
+324          4    01/30/85  1523.9  access_audit_encoded_op.incl.pl1  >ldd>include>access_audit_encoded_op.incl.pl1
+326          5    04/11/85  1452.5  access_audit_rcp_info.incl.pl1    >ldd>include>access_audit_rcp_info.incl.pl1
+328          6    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+330          7    03/15/85  0953.1  rcp_ops.incl.pl1                  >ldd>include>rcp_ops.incl.pl1
+332          8    03/15/85  0953.1  rcp_requestor_info.incl.pl1       >ldd>include>rcp_requestor_info.incl.pl1
+334          9    03/15/85  0953.1  rcp_resource_info.incl.pl1        >ldd>include>rcp_resource_info.incl.pl1
+336         10    11/20/79  2015.5  rcp_registry.incl.pl1             >ldd>include>rcp_registry.incl.pl1
+10-44       11    11/20/79  2015.6  rtdt.incl.pl1                     >ldd>include>rtdt.incl.pl1
+11-4        12    04/21/82  1211.8  author.incl.pl1                   >ldd>include>author.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+AAB_rcp_object                         constant        fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18 ref 275
+AUDIT_RCP_OBJ_INFO_VERSION_1           constant        fixed bin(9,0)           initial packed unsigned unaligned dcl 5-34 ref 276
+COMPONENT_0_NAME                000012 constant        char(1)                  initial packed unaligned dcl 107 set ref 164*
+REGISTRY_OLD_SUFFIX             000010 constant        char(3)                  initial packed unaligned dcl 109 set ref 154*
+REGISTRY_SUFFIX                 000011 constant        char(4)                  initial packed unaligned dcl 108 set ref 157*
+SEG_ACCESS_MODE_NAMES           000000 constant        char(4)                  initial array packed unaligned dcl 6-30 set ref 308*
+a_caller                               parameter       char                     packed unaligned dcl 31 ref 10 113
+a_code                                 parameter       fixed bin(35,0)          dcl 267 set ref 264 300*
+a_effmode                              parameter       bit(3)                   packed unaligned dcl 36 ref 10 121
+a_error_code                           parameter       fixed bin(35,0)          dcl 40 in procedure "rcp_audit" ref 10 125
+a_error_code                           parameter       fixed bin(35,0)          dcl 204 in procedure "chase" set ref 201 216* 231*
+a_operation                            parameter       bit(36)                  dcl 32 ref 10 114
+a_owner                                parameter       char                     packed unaligned dcl 35 ref 10 120
+a_raw_mode                             parameter       bit(3)                   packed unaligned dcl 37 ref 10 122
+a_rbs                                  parameter       fixed bin(3,0)           array dcl 38 ref 10 123
+a_req_info_ptr                         parameter       pointer                  dcl 33 ref 10 118
+a_res_info_ptr                         parameter       pointer                  dcl 34 ref 10 119
+a_rm_on                                parameter       bit(1)                   packed unaligned dcl 39 ref 10 124
+access_audit_r1_$check_obj_class_range
+                                000010 constant        entry                    external dcl 80 ref 182
+access_audit_r1_$log_obj_class_range
+                                000012 constant        entry                    external dcl 82 ref 193
+access_class             36            based           bit(72)                  array level 2 dcl 5-13 set ref 281*
+access_operations_$rcp_copy_registry
+                                000036 external static bit(36)                  dcl 98 ref 259
+access_operations_$rcp_delete_registry
+                                000034 external static bit(36)                  dcl 96 ref 154 259
+access_operations_$rcp_reconstruct_registry
+                                000042 external static bit(36)                  dcl 102 ref 141 259
+access_operations_$rcp_set      000030 external static bit(36)                  dcl 92 ref 308
+access_operations_$rcp_set_access
+                                000032 external static bit(36)                  dcl 94 ref 308
+access_operations_$rcp_update_registry_header
+                                000040 external static bit(36)                  dcl 100 ref 259
+acquisition_info         10            based           structure                level 2 dcl 10-5
+acs_path                  0(05)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+acs_path_desc            11            based           fixed bin(35,0)          level 3 dcl 10-5 ref 295
+addr                                                   builtin function         dcl 71 ref 116 117 117 176 188 193 193 218 229 229
+aim_range                 0(03)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+aim_range_desc           12            based           fixed bin(35,0)          level 3 dcl 10-5 set ref 173*
+attributes                             based           bit(72)                  array level 3 in structure "registry_record"
+                                                                                  dcl 10-5 in procedure "rcp_audit" ref 297
+attributes               32            based           bit(72)                  array level 2 in structure "rcp_obj_info" dcl 5-13
+                                                                                  in procedure "rcp_audit" set ref 297*
+audit                           000100 automatic       bit(1)                   packed unaligned dcl 44 set ref 129* 182* 186
+audit_rcp_obj_ptr               000450 automatic       pointer                  dcl 5-11 set ref 188* 193 193 193 274 275 276 277
+                                                                                  278 279 280 281 282 283 284 290 291 292 293 294
+                                                                                  295 296 297 308 308
+auto_rcp_obj_info               000101 automatic       structure                level 1 unaligned dcl 45 set ref 188
+awaiting_clear           31(05)        based           bit(1)                   level 3 in structure "rcp_obj_info" packed packed
+                                                                                  unaligned dcl 5-13 in procedure "rcp_audit" set
+                                                                                  ref 294*
+awaiting_clear           13(02)        based           bit(1)                   level 4 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 10-5 in procedure "rcp_audit" ref
+                                                                                  294
+base_op                         000162 automatic       bit(36)                  dcl 54 set ref 115* 116 141 153* 154 182* 193* 245*
+                                                                                  284* 308 308
+based_bits                             based           bit                      dcl 46 set ref 176* 176
+bin                                                    builtin function         dcl 72 ref 308
+bl                              000442 automatic       fixed bin(21,0)          dcl 62 in procedure "rcp_audit" set ref 134* 171*
+                                                                                  173* 176 176 176
+bl                                     parameter       fixed bin(21,0)          dcl 204 in procedure "chase" set ref 201 219* 234*
+bp                                     parameter       pointer                  dcl 204 in procedure "chase" set ref 201 218* 218
+                                                                                  235*
+bp                              000446 automatic       pointer                  dcl 66 in procedure "rcp_audit" set ref 133* 171*
+                                                                                  173* 176
+caller                          000163 automatic       char(32)                 packed unaligned dcl 56 set ref 113* 193*
+charge_type               0(08)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+comment                   0(07)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+descriptor                6     000470 automatic       fixed bin(35,0)          level 2 in structure "rs" dcl 211 in procedure
+                                                                                  "chase" set ref 226*
+descriptor                             parameter       fixed bin(35,0)          dcl 204 in procedure "chase" ref 201 217 226
+desired_attributes        0(01)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+detailed_operation        0(18)        based           fixed bin(18,0)          level 2 in structure "en_access_op" packed packed
+                                                                                  unsigned unaligned dcl 69 in procedure "rcp_audit"
+                                                                                  set ref 116* 117
+detailed_operation                     based           structure                level 1 packed packed unaligned dcl 7-8 in procedure
+                                                                                  "rcp_audit"
+device                   31            based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  290*
+dynamic_info                           based           structure                level 2 dcl 10-5
+effmode                         000147 automatic       bit(3)                   packed unaligned dcl 48 set ref 121* 146*
+en_access_op                           based           structure                level 1 dcl 69
+encoded_access_op                      based           structure                level 1 dcl 4-3
+error_code                      000443 automatic       fixed bin(35,0)          dcl 63 set ref 125* 193*
+error_table_$action_not_performed
+                                000044 external static fixed bin(35,0)          dcl 213 ref 231
+event_flags                     000160 automatic       bit(36)                  dcl 52 set ref 130* 146* 182* 193*
+fill_code                       000533 automatic       fixed bin(35,0)          dcl 270 set ref 272* 287* 288 300
+fixed_info                             based           structure                level 2 dcl 11-16
+flags                    31            based           structure                level 2 in structure "rcp_obj_info" dcl 5-13
+                                                                                  in procedure "rcp_audit"
+flags                     1     000470 automatic       structure                level 2 in structure "rs" dcl 211 in procedure
+                                                                                  "chase"
+flags                    13            based           structure                level 3 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 10-5 in procedure "rcp_audit"
+free                     13(05)        based           bit(1)                   level 4 packed packed unaligned dcl 10-5 ref 171
+given                                  based           structure                level 2 packed packed unaligned dcl 7-8
+has_acs_path             31(06)        based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  295*
+hcs_$get_access_class           000014 constant        entry                    external dcl 84 ref 161 164
+info_type                              based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 5-13
+                                                                                  set ref 275*
+ioa_$rsnnl                      000016 constant        entry                    external dcl 85 ref 308
+iox_$control                    000046 constant        entry                    external dcl 2-8 ref 229
+is_vol                          000532 automatic       bit(1)                   packed unaligned dcl 269 set ref 273* 287* 290 291
+local_code                      000506 automatic       fixed bin(35,0)          dcl 212 in procedure "chase" set ref 227* 229* 230
+local_code                      000444 automatic       fixed bin(35,0)          dcl 64 in procedure "rcp_audit" set ref 132* 146*
+                                                                                  147 154* 157* 158 161* 162 164* 166 171* 173* 174
+                                                                                  189* 190
+locate_sw                 1(03) 000470 automatic       bit(1)                   level 3 packed packed unaligned dcl 211 set ref 225*
+location                  0(06)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+msg_str                         000173 automatic       char(256)                packed unaligned dcl 57 set ref 193* 308*
+null                                                   builtin function         dcl 73 ref 133
+object_access_class             000154 automatic       bit(72)                  array dcl 51 set ref 161* 164* 176 177* 182* 193*
+                                                                                  281
+object_name                     000273 automatic       char(177)                packed unaligned dcl 58 set ref 131* 193 193 245*
+                                                                                  248*
+op                                     parameter       bit(36)                  dcl 257 ref 254 259 259 259 259
+operation                       000161 automatic       bit(36)                  dcl 53 set ref 114* 115 117 146*
+ops_ptr                         000452 automatic       pointer                  dcl 7-6 set ref 117* 141 308 308 308 308 308 308 308
+                                                                                  308 308 308 308 308
+owner                           000350 automatic       char(32)                 packed unaligned dcl 59 in procedure "rcp_audit" set
+                                                                                  ref 120* 280
+owner                     0(04)        based           bit(1)                   level 3 in structure "detailed_operation" packed
+                                                                                  packed unaligned dcl 7-8 in procedure "rcp_audit"
+                                                                                  set ref 308*
+owner_id                 21            based           char(32)                 level 2 dcl 5-13 set ref 280*
+pad                      31(07)        based           bit(29)                  level 3 in structure "rcp_obj_info" packed packed
+                                                                                  unaligned dcl 5-13 in procedure "rcp_audit" set
+                                                                                  ref 296*
+pad                       0(18)        based           bit(18)                  level 2 in structure "rcp_obj_info" packed packed
+                                                                                  unaligned dcl 5-13 in procedure "rcp_audit" set
+                                                                                  ref 277*
+pathname_                       000020 constant        entry                    external dcl 86 ref 164 164 245
+potential_aim_range       0(02)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+potential_aim_range_desc
+                         20            based           fixed bin(35,0)          level 3 dcl 10-5 set ref 171*
+potential_attributes                   based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+raw_mode                        000150 automatic       bit(3)                   packed unaligned dcl 49 in procedure "rcp_audit" set
+                                                                                  ref 122* 282 308
+raw_mode                 42            based           bit(3)                   level 2 in structure "rcp_obj_info" dcl 5-13
+                                                                                  in procedure "rcp_audit" set ref 282* 308
+rbs                             000152 automatic       fixed bin(3,0)           array dcl 50 set ref 123* 283 308
+rcp_obj_info                           based           structure                level 1 dcl 5-13 set ref 193 193 193 274*
+rcp_ring_brackets        43            based           fixed bin(3,0)           array level 2 dcl 5-13 set ref 283* 308*
+rcp_setup_event                 000022 constant        entry                    external dcl 87 ref 146
+record_length             2     000470 automatic       fixed bin(21,0)          level 2 dcl 211 set ref 234
+record_ptr                4     000470 automatic       pointer                  level 2 in structure "rs" dcl 211 in procedure
+                                                                                  "chase" set ref 235
+record_ptr                      000460 automatic       pointer                  dcl 10-46 in procedure "rcp_audit" set ref 170* 171
+                                                                                  171 173 292 293 294 295 297
+registration_defaults
+                        602            based           structure                level 3 dcl 11-16
+registration_info        16            based           structure                level 2 dcl 10-5
+registry                 31(02)        based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  284*
+registry_dir                    000360 automatic       char(168)                packed unaligned dcl 60 in procedure "rcp_audit" set
+                                                                                  ref 152* 161* 164* 164* 245*
+registry_dir                           based           char(64)                 level 2 in structure "resource_info" dcl 9-14
+                                                                                  in procedure "rcp_audit" ref 152
+registry_name                   000432 automatic       char(32)                 packed unaligned dcl 61 set ref 154* 157* 161* 164*
+                                                                                  164*
+registry_record                        based           structure                level 1 dcl 10-5
+registry_record_ptr      22            based           pointer                  level 2 dcl 9-14 ref 170
+registry_switch_ptr      20            based           pointer                  level 2 dcl 9-14 set ref 229*
+release_lock             13(01)        based           bit(1)                   level 4 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 10-5 in procedure "rcp_audit" ref
+                                                                                  293
+release_lock              0(10)        based           bit(1)                   level 3 in structure "detailed_operation" packed
+                                                                                  packed unaligned dcl 7-8 in procedure "rcp_audit"
+                                                                                  set ref 308*
+release_locked           31(04)        based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  293*
+requestor_info                         based           structure                level 1 dcl 8-13
+requestor_info_ptr              000454 automatic       pointer                  dcl 8-11 set ref 118* 193
+resource_info                          based           structure                level 1 unaligned dcl 9-14
+resource_info_$get_type         000024 constant        entry                    external dcl 88 ref 287
+resource_info_ptr               000456 automatic       pointer                  dcl 9-12 set ref 119* 152 154 157 170 229 245 248
+                                                                                  248 278 279 287
+resource_name            11            based           char(32)                 level 2 in structure "rcp_obj_info" dcl 5-13
+                                                                                  in procedure "rcp_audit" set ref 279*
+resource_name            34            based           char(32)                 level 2 in structure "resource_info" packed packed
+                                                                                  unaligned dcl 9-14 in procedure "rcp_audit" ref
+                                                                                  248 279
+resource_type            24            based           char(32)                 level 2 in structure "resource_info" packed packed
+                                                                                  unaligned dcl 9-14 in procedure "rcp_audit" set
+                                                                                  ref 154* 157* 245* 248 278 287*
+resource_type             1            based           char(32)                 level 2 in structure "rcp_obj_info" dcl 5-13
+                                                                                  in procedure "rcp_audit" set ref 278*
+rm_on                           000146 automatic       bit(1)                   packed unaligned dcl 47 set ref 124* 141
+rs                              000470 automatic       structure                level 1 dcl 211 set ref 223* 229 229
+rs_info                                based           structure                level 1 dcl 1-6
+rs_info_version_2                      constant        fixed bin(17,0)          initial dcl 1-44 ref 224
+rtde                                   based           structure                level 1 dcl 11-16
+rtrim                                                  builtin function         dcl 74 ref 193 193 248
+search                    0(13)        based           bit(1)                   level 2 packed packed unaligned dcl 7-8 ref 141
+size                                                   builtin function         dcl 75 ref 193
+suffixed_name_$make             000026 constant        entry                    external dcl 90 ref 154 157
+unspec                                                 builtin function         dcl 76 set ref 177* 223* 274*
+usage_lock               13            based           bit(1)                   level 4 in structure "registry_record" packed packed
+                                                                                  unaligned dcl 10-5 in procedure "rcp_audit" ref
+                                                                                  292
+usage_lock                0(09)        based           bit(1)                   level 3 in structure "detailed_operation" packed
+                                                                                  packed unaligned dcl 7-8 in procedure "rcp_audit"
+                                                                                  set ref 308*
+usage_locked             31(03)        based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  292*
+user_alloc                0(11)        based           bit(1)                   level 3 packed packed unaligned dcl 7-8 set ref 308*
+validation_level         12            based           fixed bin(3,0)           level 2 dcl 8-13 ref 193
+version                         000470 automatic       fixed bin(17,0)          level 2 in structure "rs" dcl 211 in procedure
+                                                                                  "chase" set ref 224*
+version                   0(09)        based           fixed bin(9,0)           level 2 in structure "rcp_obj_info" packed packed
+                                                                                  unsigned unaligned dcl 5-13 in procedure
+                                                                                  "rcp_audit" set ref 276*
+volume                   31(01)        based           bit(1)                   level 3 packed packed unaligned dcl 5-13 set ref
+                                                                                  291*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+AAB_channel                            internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_dial_service                       internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_ia_abs                             internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_ia_abs_proxy                       internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_ia_int_dmn                         internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_mseg_msg                           internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_pnt_entry                          internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_ss_link                            internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+AAB_ss_object                          internal static fixed bin(9,0)           initial packed unsigned unaligned dcl 3-18
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 6-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+N_CHARGE_TYPES                         automatic       fixed bin(17,0)          dcl 11-64
+N_MATES                                automatic       fixed bin(17,0)          dcl 11-64
+N_SUBTYPES                             automatic       fixed bin(17,0)          dcl 11-64
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 6-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 6-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 6-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 6-36
+RTDE_SIZE                              automatic       fixed bin(18,0)          dcl 10-42
+RTDT_area_len                          automatic       fixed bin(18,0)          dcl 11-64
+RTDT_version_2                         internal static fixed bin(17,0)          initial dcl 11-64
+RTDT_version_3                         internal static fixed bin(17,0)          initial dcl 11-64
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 6-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 6-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 6-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 6-36
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 6-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 6-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 6-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 6-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 6-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 6-36
+audit_binary_expanders                 internal static varying char(13)         initial array dcl 3-46
+charge_type_table                      based           structure                level 1 dcl 11-11
+cttp                                   automatic       pointer                  dcl 11-70
+header_ptr                             automatic       pointer                  dcl 10-46
+iox_$attach_loud                000000 constant        entry                    external dcl 2-8
+iox_$attach_name                000000 constant        entry                    external dcl 2-8
+iox_$attach_ptr                 000000 constant        entry                    external dcl 2-8
+iox_$close                      000000 constant        entry                    external dcl 2-8
+iox_$close_file                 000000 constant        entry                    external dcl 2-8
+iox_$delete_record              000000 constant        entry                    external dcl 2-8
+iox_$destroy_iocb               000000 constant        entry                    external dcl 2-8
+iox_$detach                     000000 constant        entry                    external dcl 2-8
+iox_$detach_iocb                000000 constant        entry                    external dcl 2-8
+iox_$err_no_operation           000000 constant        entry                    external dcl 2-8
+iox_$err_not_attached           000000 constant        entry                    external dcl 2-8
+iox_$err_not_closed             000000 constant        entry                    external dcl 2-8
+iox_$err_not_open               000000 constant        entry                    external dcl 2-8
+iox_$error_output                      external static pointer                  dcl 2-41
+iox_$find_iocb                  000000 constant        entry                    external dcl 2-8
+iox_$find_iocb_n                000000 constant        entry                    external dcl 2-8
+iox_$get_chars                  000000 constant        entry                    external dcl 2-8
+iox_$get_line                   000000 constant        entry                    external dcl 2-8
+iox_$look_iocb                  000000 constant        entry                    external dcl 2-8
+iox_$modes                      000000 constant        entry                    external dcl 2-8
+iox_$move_attach                000000 constant        entry                    external dcl 2-8
+iox_$open                       000000 constant        entry                    external dcl 2-8
+iox_$open_file                  000000 constant        entry                    external dcl 2-8
+iox_$position                   000000 constant        entry                    external dcl 2-8
+iox_$propagate                  000000 constant        entry                    external dcl 2-8
+iox_$put_chars                  000000 constant        entry                    external dcl 2-8
+iox_$read_key                   000000 constant        entry                    external dcl 2-8
+iox_$read_length                000000 constant        entry                    external dcl 2-8
+iox_$read_record                000000 constant        entry                    external dcl 2-8
+iox_$rewrite_record             000000 constant        entry                    external dcl 2-8
+iox_$seek_key                   000000 constant        entry                    external dcl 2-8
+iox_$user_input                        external static pointer                  dcl 2-41
+iox_$user_io                           external static pointer                  dcl 2-41
+iox_$user_output                       external static pointer                  dcl 2-41
+iox_$write_record               000000 constant        entry                    external dcl 2-8
+operation_ptr                          automatic       pointer                  dcl 67
+registry_header                        based           structure                level 1 dcl 10-35
+rr_strl                                automatic       fixed bin(17,0)          dcl 10-46
+rs_desc                                based           structure                level 1 packed packed unaligned dcl 1-32
+rs_info_ptr                            automatic       pointer                  dcl 1-5
+rs_info_version_1                      internal static fixed bin(17,0)          initial dcl 1-43
+rtdep                                  automatic       pointer                  dcl 11-70
+rtdt                                   based           structure                level 1 dcl 11-3
+rtdtp                                  automatic       pointer                  dcl 11-70
+seq_desc                               based           structure                level 1 packed packed unaligned dcl 1-37
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+FILL_RETURN                     001324 constant        label                    dcl 300 ref 288
+MAIN_RETURN                     000730 constant        label                    dcl 198 set ref 141 147 158 162 166 174 190
+chase                           000731 constant        entry                    internal dcl 201 ref 171 173
+fill_audit_record               001155 constant        entry                    internal dcl 264 ref 189
+get_msg_str                     001330 constant        entry                    internal dcl 305 ref 192
+get_obj_name                    001026 constant        entry                    internal dcl 242 ref 187
+rcp_audit                       000173 constant        entry                    external dcl 10
+registry_operation              001126 constant        entry                    internal dcl 254 ref 153 245 284
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2016        2066    1552        2026
+Length      2522    1552        50         420     244           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_audit                           686 external procedure  is an external procedure.  
+chase                                   internal procedure  shares stack frame of external procedure rcp_audit.  
+get_obj_name                            internal procedure  shares stack frame of external procedure rcp_audit.  
+registry_operation                      internal procedure  shares stack frame of external procedure rcp_audit.  
+fill_audit_record                       internal procedure  shares stack frame of external procedure rcp_audit.  
+get_msg_str                             internal procedure  shares stack frame of external procedure rcp_audit.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+rcp_audit                000100 audit                       rcp_audit
+                         000101 auto_rcp_obj_info           rcp_audit
+                         000146 rm_on                       rcp_audit
+                         000147 effmode                     rcp_audit
+                         000150 raw_mode                    rcp_audit
+                         000152 rbs                         rcp_audit
+                         000154 object_access_class         rcp_audit
+                         000160 event_flags                 rcp_audit
+                         000161 operation                   rcp_audit
+                         000162 base_op                     rcp_audit
+                         000163 caller                      rcp_audit
+                         000173 msg_str                     rcp_audit
+                         000273 object_name                 rcp_audit
+                         000350 owner                       rcp_audit
+                         000360 registry_dir                rcp_audit
+                         000432 registry_name               rcp_audit
+                         000442 bl                          rcp_audit
+                         000443 error_code                  rcp_audit
+                         000444 local_code                  rcp_audit
+                         000446 bp                          rcp_audit
+                         000450 audit_rcp_obj_ptr           rcp_audit
+                         000452 ops_ptr                     rcp_audit
+                         000454 requestor_info_ptr          rcp_audit
+                         000456 resource_info_ptr           rcp_audit
+                         000460 record_ptr                  rcp_audit
+                         000470 rs                          chase
+                         000506 local_code                  chase
+                         000532 is_vol                      fill_audit_record
+                         000533 fill_code                   fill_audit_record
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              r_ne_as             alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out
+return_mac          shorten_stack       ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+access_audit_r1_$check_obj_class_range                      access_audit_r1_$log_obj_class_range
+hcs_$get_access_class         ioa_$rsnnl                    iox_$control                  pathname_
+rcp_setup_event               resource_info_$get_type       suffixed_name_$make
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+access_operations_$rcp_copy_registry                        access_operations_$rcp_delete_registry
+access_operations_$rcp_reconstruct_registry                 access_operations_$rcp_set
+access_operations_$rcp_set_access                           access_operations_$rcp_update_registry_header
+error_table_$action_not_performed
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     10 000163       113 000213       114 000221       115 000223       116 000224       117 000226       118 000232
+    119 000235       120 000240       121 000244       122 000251       123 000256       124 000262       125 000267
+    129 000271       130 000272       131 000273       132 000276       133 000277       134 000301       141 000302
+    146 000313       147 000327       152 000331       153 000335       154 000342       157 000373       158 000417
+    161 000421       162 000446       164 000450       166 000515       168 000517       170 000520       171 000523
+    173 000543       174 000557       176 000561       177 000571       182 000574       186 000611       187 000614
+    188 000615       189 000617       190 000621       192 000623       193 000624       196 000727       198 000730
+    201 000731       216 000733       217 000734       218 000736       219 000740       220 000741       223 000742
+    224 000745       225 000747       226 000751       227 000753       229 000754       230 001011       231 001013
+    232 001017       234 001020       235 001023       237 001025       242 001026       245 001027       248 001064
+    250 001124       254 001126       259 001130       264 001155       272 001157       273 001160       274 001161
+    275 001165       276 001167       277 001171       278 001173       279 001177       280 001202       281 001205
+    282 001213       283 001215       284 001220       287 001231       288 001253       290 001255       291 001264
+    292 001271       293 001277       294 001304       295 001311       296 001317       297 001321       300 001324
+    302 001327       305 001330       308 001331       320 001520
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

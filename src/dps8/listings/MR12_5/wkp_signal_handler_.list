@@ -1,0 +1,202 @@
+	COMPILATION LISTING OF SEGMENT wkp_signal_handler_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1009.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style3,linecom,ifthenstmt,indthenelse,^indnoniterdo,indnoniterend,initcol3,dclind5,idind32 */
+       14 
+       15 wkp_signal_handler_:
+       16      procedure;
+       17 
+       18 /*****************************************************************************/
+       19 /*							       */
+       20 /*   This is the default handler for the "wkp_" IPS signal.  Its job is to   */
+       21 /*   make one pass through the pending IPC events, and run any event call    */
+       22 /*   handlers that have wakeups.				       */
+       23 /*							       */
+       24 /*****************************************************************************/
+       25 
+       26 /* Written by C. Hornig, January 1979. (to do nothing) */
+       27 
+       28 
+       29 /****^  HISTORY COMMENTS:
+       30*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+       31*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+       32*     Modified to do its thing to support async event channels.
+       33*                                                   END HISTORY COMMENTS */
+       34 
+       35 
+       36 dcl  quit_signalled		       bit (1) aligned;
+       37 
+       38 dcl  ipc_$run_event_calls	       entry (fixed bin, fixed bin (35));
+       39 
+       40 dcl  quit			       condition;
+       41 
+       42 /*
+       43*   If any of the call handlers that are run during this time signal quit, we
+       44*   will remember it, and signal it ourself when they are all done.  This is
+       45*   because ipc_ currently has a flag which prevents event call handlers from
+       46*   being run recursively.  In particular, for DSA this means that we can't have
+       47*   two quits in a row because it is the event call handler which signals quit.
+       48*   If there are ever event call handlers that want to signal other things, this
+       49*   code should be changed to catch those conditions and signal them later as
+       50*   well.
+       51**/
+       52 
+       53 	quit_signalled = "0"b;
+       54 
+       55 	on quit quit_signalled = "1"b;
+       56 
+       57 /* Just run the handlers for any asynchronous type of event call channels which have pending wakeups. */
+       58 
+       59 	call ipc_$run_event_calls (ASYNC_CALL_EVENT_CHANNEL_TYPE, (0));
+       60 
+       61 /* Signal quit if anyone wanted us to, but revert first to avoid self-flagellation. */
+       62 
+       63 	revert quit;
+       64 
+       65 	if quit_signalled then signal quit;
+       66 
+       67 	return;
+       68 
+  1     1 /*----------BEGIN ipc_create_arg.incl.pl1------------------------------------*/
+  1     2 
+  1     3 /*
+  1     4*   This include file declares the structure which is the input argument to
+  1     5*   ipc_$create_event_channel.
+  1     6**/
+  1     7 
+  1     8 /****^  HISTORY COMMENTS:
+  1     9*  1) change(86-08-12,Kissel), approve(86-08-12,MCR7479),
+  1    10*     audit(86-10-08,Fawcett), install(86-11-03,MR12.0-1206):
+  1    11*     New include file added to support async event channels.
+  1    12*                                                   END HISTORY COMMENTS */
+  1    13 
+  1    14 /* format: style3,linecom,ifthenstmt,indthenelse,^indnoniterdo,indnoniterend,initcol3,dclind5,idind32 */
+  1    15 
+  1    16 dcl  ipc_create_arg_structure_ptr    ptr;
+  1    17 dcl  ipc_create_arg_structure_v1     char (8) internal static options (constant) init ("ipcarg01");
+  1    18 
+  1    19 dcl  1 ipc_create_arg_structure      aligned based (ipc_create_arg_structure_ptr),
+  1    20        2 version		       char (8) unaligned,	/* From above. */
+  1    21        2 channel_type	       fixed bin,		/* See constants below. */
+  1    22        2 call_entry		       variable entry (ptr),	/* For event call channels -- who to call. */
+  1    23        2 call_data_ptr	       ptr,		/* For event call channels -- something to tell them. */
+  1    24        2 call_priority	       fixed bin (17);	/* For event call channels -- who's first? */
+  1    25 
+  1    26 /* Constants for the event channel type. */
+  1    27 
+  1    28 dcl  FAST_EVENT_CHANNEL_TYPE	       fixed bin internal static options (constant) init (1);
+  1    29 dcl  WAIT_EVENT_CHANNEL_TYPE	       fixed bin internal static options (constant) init (2);
+  1    30 dcl  CALL_EVENT_CHANNEL_TYPE	       fixed bin internal static options (constant) init (3);
+  1    31 dcl  ASYNC_CALL_EVENT_CHANNEL_TYPE   fixed bin internal static options (constant) init (4);
+  1    32 
+  1    33 dcl  ANY_CALL_EVENT_CHANNEL_TYPE     fixed bin internal static options (constant) init (10);
+  1    34 
+  1    35 /*----------END ipc_create_arg.incl.pl1--------------------------------------*/
+       69 
+       70 
+       71      end wkp_signal_handler_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.5  wkp_signal_handler_.pl1           >spec>install>1110>wkp_signal_handler_.pl1
+69           1    11/07/86  1550.3  ipc_create_arg.incl.pl1           >ldd>include>ipc_create_arg.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+ASYNC_CALL_EVENT_CHANNEL_TYPE   000000 constant        fixed bin(17,0)          initial dcl 1-31 set ref 59*
+ipc_$run_event_calls            000010 constant        entry                    external dcl 38 ref 59
+quit                            000102 stack reference condition                dcl 40 ref 55 63 65
+quit_signalled                  000100 automatic       bit(1)                   dcl 36 set ref 53* 55* 65
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ANY_CALL_EVENT_CHANNEL_TYPE            internal static fixed bin(17,0)          initial dcl 1-33
+CALL_EVENT_CHANNEL_TYPE                internal static fixed bin(17,0)          initial dcl 1-30
+FAST_EVENT_CHANNEL_TYPE                internal static fixed bin(17,0)          initial dcl 1-28
+WAIT_EVENT_CHANNEL_TYPE                internal static fixed bin(17,0)          initial dcl 1-29
+ipc_create_arg_structure               based           structure                level 1 dcl 1-19
+ipc_create_arg_structure_ptr           automatic       pointer                  dcl 1-16
+ipc_create_arg_structure_v1            internal static char(8)                  initial packed unaligned dcl 1-17
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+wkp_signal_handler_             000003 constant        entry                    external dcl 15
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       116         130      52         126
+Length       312      52        12         146      44           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+wkp_signal_handler_                  80 external procedure  is an external procedure.  
+on unit on line 55                   64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+wkp_signal_handler_      000100 quit_signalled              wkp_signal_handler_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out        return_mac          signal_op           enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ipc_$run_event_calls
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     15 000002        53 000010        55 000011        59 000031        63 000043        65 000044        67 000051
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

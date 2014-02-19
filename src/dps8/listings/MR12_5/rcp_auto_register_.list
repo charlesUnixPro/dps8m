@@ -1,0 +1,451 @@
+	COMPILATION LISTING OF SEGMENT rcp_auto_register_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0952.8 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 rcp_auto_register_: proc (rsct, resource_name, group_id, code);
+       14 
+       15 
+       16 /*
+       17*
+       18*   This procedure will register the specified resource for the specified user.  It is called
+       19*   when a volume must be automatically registered for a user.
+       20*
+       21*   Initially coded 3/79 by Michael R. Jordan for MR7.0R
+       22*
+       23**/
+       24 
+       25 /*		PARAMETERS		*/
+       26 
+       27 
+       28 dcl  code fixed bin (35);				/* Error code. */
+       29 dcl  group_id char (*);				/* Nmae of the user. */
+       30 dcl  resource_name char (*);				/* Name of the resource to be registered. */
+       31 dcl  rsct char (*);					/* Type of resource to register. */
+       32 
+       33 
+       34 /*		ENTRIES CALLED		*/
+       35 
+       36 
+       37 dcl  admin_gate_$syserr entry options (variable);
+       38 dcl  rcp_pointers_$com_seg entry () returns (ptr);
+       39 dcl  rcprm_find_resource_$auto_register entry (ptr, char (*), fixed bin (35));
+       40 dcl  resource_info_$defaults entry (char (*), char (*), ptr, fixed bin, fixed bin (35));
+       41 
+       42 
+       43 /*		ERROR CODES		*/
+       44 
+       45 
+       46 dcl  error_table_$action_not_performed fixed bin (35) ext;
+       47 dcl  error_table_$rcp_no_auto_reg fixed bin (35) ext;
+       48 
+       49 
+       50 /*		BUILTIN FUNCTIONS		*/
+       51 
+       52 
+       53 dcl  addr builtin;
+       54 dcl  size builtin;
+       55 dcl  string builtin;
+       56 
+  1     1 /*	Begin  include file ... rcp_com_seg.incl.pl1
+  1     2*   *
+  1     3*   *	Created on 11/20/74 by Bill Silver.
+  1     4*   *	Modified on 09/19/77 by R.J.C. Kissel to add label authentication bits.
+  1     5*   *	Modified on 12/09/78 by Michael R. Jordan to add removable media bit and label_type.
+  1     6*   *	Modified 1/79 by R.J.C. Kissel to add disk label authentication bits.
+  1     7*   *	Modified 2/79 by Michael R. Jordan to add volume_density.
+  1     8*   *	Modified 11/84 by Paul Farley to add fips flag.
+  1     9*   *      Modified 1/3/85 by Fawcett to allow room for mca device type
+  1    10*   *	Modified 02/85 by Paul Farley to add no_protect and opr_int_available flags.
+  1    11*   *	This include file defines the Resource Control Package communication segment.
+  1    12*   *	This segment is used to communicate requests between the various internal
+  1    13*   *	parts of RCP.
+  1    14**/
+  1    15 
+  1    16 /****^  HISTORY COMMENTS:
+  1    17*  1) change(85-09-09,Farley), approve(85-09-09,MCR6979),
+  1    18*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  1    19*     Support MCA and FIPS.
+  1    20*                                                   END HISTORY COMMENTS */
+  1    21 
+  1    22 dcl  lock_info_ptr ptr;				/* Pointer to lock info structure. */
+  1    23 dcl  rcs_ptr ptr;					/* Pointer to base of RCS. */
+  1    24 dcl  rcse_ptr ptr;					/* Pointer to an RCS entry. */
+  1    25 
+  1    26 dcl 1 based_rcp_id based aligned,			/* Overlay of an rcp_id. */
+  1    27    (2 id_count fixed bin (17),			/* Unique count index. */
+  1    28     2 rcse_off bit (18)) unaligned;			/* Offset of rcp_com_seg entry. */
+  1    29 
+  1    30 dcl 1 rcs based (rcs_ptr) aligned,			/* Begin at word zero of rcp_com_seg. */
+  1    31     2 lock_info like lock_info,			/* Data used to lock this segment. */
+  1    32     2 ws_maxs (8) fixed bin (19),			/* Max IOI workspace size in words. */
+  1    33     2 ws_pmaxs (8) fixed bin (19),			/* Max IOI workspace size for priv attachments. */
+  1    34     2 to_maxs (8) fixed bin (71),			/* Max IOI time-out intervals in microseconds. */
+  1    35     2 sys_directory char (32),			/* Directory  used to define a system process. */
+  1    36     2 sys_acs char (32),				/* Entry name used to define a system process. */
+  1    37     2 acs_directory char (32),			/* Directory containing device ACSs. */
+  1    38     2 id_count fixed bin (35),			/* Counter used to form rcp_id. */
+  1    39     2 max_entries fixed bin,				/* Maximum number of entries allowed. */
+  1    40     2 num_entries fixed bin,				/* Total number of entries. */
+  1    41     2 first_free_off bit (18),			/* Offset of first free entry. */
+  1    42     2 entry (0 refer (rcs.num_entries))			/* Array of request entries. */
+  1    43      like rcse,					/* See structure below. */
+  1    44     2 end bit (36);					/* End of rcp_com_seg. */
+  1    45 
+  1    46 dcl 1 lock_info based (lock_info_ptr) aligned,		/* Used to meter locking. */
+  1    47     2 lock bit (36),				/* The lock itself. */
+  1    48     2 num_locks fixed bin (35),			/* Number of times locked. */
+  1    49     2 num_lock_waits fixed bin (35),			/* Number of lock waits. */
+  1    50     2 time_of_lock fixed bin (71),			/* Time of last lock. */
+  1    51     2 tot_lock_time fixed bin (71),			/* Total time locked. */
+  1    52     2 tot_wait_time fixed bin (71),			/* Total time waiting for lock. */
+  1    53     2 starting_time fixed bin (71);			/* Time metering started. */
+  1    54 
+  1    55 dcl 1 rcse based (rcse_ptr) aligned,			/* Up to state must = rcpd.device. */
+  1    56     2 device_name char (8),				/* Name of device associated with this entry. */
+  1    57     2 volume_name char (32),				/* Volume name.  Blank => no volume. */
+  1    58     2 dtypex fixed bin,				/* Device type index. */
+  1    59     2 model fixed bin,				/* Device model number. */
+  1    60     2 num_qualifiers fixed bin,			/* Number of device qualifiers. */
+  1    61     2 qualifiers (4) fixed bin (35),			/* Device qualifiers. */
+  1    62     2 state_time fixed bin (71),			/* Time device put into current state. */
+  1    63     2 state fixed bin,				/* 0 - free       1 - assigning  2 - assigned */
+  1    64 						/* 3 - attaching  4 - attached   5 - completed. */
+  1    65 
+  1    66 /*	*	*	*	*	** Following fields are unique to RCS entry. */
+  1    67     2 kind fixed bin,				/* 1 => attach, 2 => assign */
+  1    68     2 free_off bit (18),				/* Offset of next free entry.  0 => not free. */
+  1    69     2 user_off bit (18),				/* Offset of next entry in user list. */
+  1    70     2 device_off bit (18),				/* Offset of device entry in RCPD. */
+  1    71     2 volume_off bit (18),				/* Offset of volume entry in RCPD. */
+  1    72     2 rcse_off bit (18),				/* Offset of associated RCS entry. */
+  1    73     2 caller_level fixed bin,				/* Caller's validation level. */
+  1    74     2 disposition bit (1),				/* ON => retain, OFF => unassign. */
+  1    75     2 flags,					/* Special info flags. */
+  1    76      (3 device bit (1),				/* ON => assigning a specific device. */
+  1    77       3 priv bit (1),				/* ON => attached with IOI privilege. */
+  1    78       3 system bit (1),				/* ON => assigned to a system process. */
+  1    79       3 t_and_d bit (1),				/* ON => T&D attachment. */
+  1    80       3 volume bit (1),				/* ON => volume associated with this device. */
+  1    81       3 writing bit (1),				/* ON => writing on volume. */
+  1    82       3 have_auth bit (1),				/* ON => tape volume authenticated. */
+  1    83       3 need_auth bit (1),				/* ON => tape volume needs authentication. */
+  1    84       3 auth_set bit (1),				/* ON => "have_auth" has been set. */
+  1    85       3 preload_allowed bit (1),			/* ON => preloading of volumes is allowed. */
+  1    86       3 preloaded bit (1),				/* ON => volume may be loaded on device. */
+  1    87       3 not_removable_media bit (1),			/* ON => cannot remove volume from device. */
+  1    88       3 disk_ss_pack bit (1),				/* ON => disk is a storage system volume. */
+  1    89       3 disk_copy_of_ss_pack bit (1),			/* ON => disk is a copy of a storage system volume. */
+  1    90       3 disk_io_pack bit (1),				/* ON => disk has label but is not storage system. */
+  1    91       3 disk_unregistered bit (1),			/* ON => disk is unregistered storage system volume. */
+  1    92       3 disk_unreadable bit (1),			/* ON => io error reading disk label. */
+  1    93       3 must_auto_register bit (1),			/* ON => unregistered volume requested */
+  1    94       3 fips bit (1),				/* ON => FIPS device. */
+  1    95       3 no_protect bit (1),				/* ON => device has no protect sw. */
+  1    96       3 opr_int_available bit (1),			/* ON => device connected to MPC with OI button. */
+  1    97       3 unused bit (6),
+  1    98       3 volume_density_index fixed bin (3) unsigned,	/* Density of volume */
+  1    99       3 label_type fixed bin (6) unsigned)unaligned,	/* Type of label read by RCP. */
+  1   100     2 rcp_id bit (36),				/* ID of this entry. */
+  1   101     2 event_id fixed bin (71),			/* Caller's event channel ID. */
+  1   102     2 process_id bit (36),				/* ID of calling process. */
+  1   103     2 group_id char (32),				/* Group ID of calling process. */
+  1   104     2 ecode fixed bin (35),				/* Assignment error code. */
+  1   105     2 version_num fixed bin,				/* Device info version number. */
+  1   106     2 workspace_max fixed bin (19),			/* Max size of IOI workspace buffer. */
+  1   107     2 timeout_max fixed bin (71),			/* Max IOI time-out interval. */
+  1   108     2 ioi_index fixed bin,				/* IOI device index. */
+  1   109     2 workspace_ptr ptr,				/* Pointer to IOI workspace buffer. */
+  1   110     2 caller_comment char (64);			/* Caller's comment. */
+  1   111 
+  1   112 /*	End of include file ... rcp_com_seg.incl.pl1	*/
+       57 
+       58 
+  2     1 /* --------------- BEGIN include file resource_control_desc.incl.pl1 --------------- */
+  2     2 
+  2     3 /* Written by R.J.C. Kissel 3/78. */
+  2     4 /* Modified 09/28/78 by C. D. Tavares */
+  2     5 
+  2     6 dcl 1 resource_descriptions based (resource_desc_ptr) aligned,
+  2     7     2 version_no fixed bin,				/* caller must set this to resource_desc_version_1 */
+  2     8     2 n_items fixed bin,				/* Number of resources described by this structure. */
+  2     9     2 item (Resource_count refer (resource_descriptions.n_items)) aligned,
+  2    10       3 type char (32),				/* e.g., "tape_drive" */
+  2    11       3 name char (32),				/* e.g., "tapa_03" */
+  2    12       3 uid bit (36),				/* The resource unique id. */
+  2    13       3 potential_attributes bit (72),			/* resource's permissible attributes */
+  2    14       3 attributes (2) bit (72),			/* RCP attribute description (output) */
+  2    15       3 desired_attributes (4) bit (72),		/* desired attributes (input) */
+  2    16       3 potential_aim_range (2) bit (72),		/* Lowest and highest possible AIM bounds for resource */
+  2    17       3 aim_range (2) bit (72),			/* Current AIM range */
+  2    18       3 owner char (32),				/* e.g., "Smith.Project" */
+  2    19       3 acs_path char (168),				/* Access control segment pathname. */
+  2    20       3 location char (168),				/* String describing location in unusual cases */
+  2    21       3 comment char (168),				/* User-settable comment string */
+  2    22       3 charge_type char (32),			/* accounting identifier for this resource */
+  2    23       3 rew bit (3) unaligned,			/* user's effective access to resource */
+  2    24       3 (usage_lock,				/* This resource may not be acquired or used. */
+  2    25          release_lock,				/* The owner is not allowed to release the resource. */
+  2    26          awaiting_clear,				/* Resource awaiting manual clear */
+  2    27          user_alloc) bit (1) unaligned,			/* User claims volume contains useful data */
+  2    28       3 pad2 bit (29) unaligned,			/* Ignored field. */
+  2    29       3 given aligned,				/* each of these bits says the corresponding */
+  2    30 						/* item is significant on input */
+  2    31        (4 (name,
+  2    32 	 uid,
+  2    33 	 potential_attributes,
+  2    34 	 desired_attributes,
+  2    35 	 potential_aim_range,
+  2    36 	 aim_range,
+  2    37 	 owner,
+  2    38 	 acs_path,
+  2    39 	 location,
+  2    40 	 comment,
+  2    41 	 charge_type,
+  2    42 	 usage_lock,
+  2    43 	 release_lock,
+  2    44 	 user_alloc) bit (1),
+  2    45         4 pad1 bit (22)) unaligned,
+  2    46       3 state bit (36) aligned,			/* For use of resource_control_ only */
+  2    47       3 status_code fixed bin (35);			/* Standard system status code for this resource. */
+  2    48 
+  2    49 
+  2    50 /* Note that the reservation description must always be used with a resource
+  2    51*   description structure.  When they are used together the two structures must
+  2    52*   have the same number of entries, i.e. Resource_count is the same for both. */
+  2    53 
+  2    54 
+  2    55 dcl 1 reservation_description based (resource_res_ptr) aligned,
+  2    56     2 version_no fixed bin,				/* The version number for this structure. */
+  2    57     2 reserved_for char (32),				/* Group id of reserved for process. */
+  2    58     2 reserved_by char (32),				/* Group id of reserved by process. */
+  2    59     2 reservation_id fixed bin (71),			/* Reservation id of this reservation group. */
+  2    60     2 group_starting_time fixed bin (71),		/* Starting time for this reservation group. */
+  2    61     2 asap_duration fixed bin (71),			/* Duration after which as soon as possible is no longer good. */
+  2    62     2 flags aligned,
+  2    63      (3 auto_expire bit (1),				/* Should reservation expire when this process terminates. */
+  2    64       3 asap bit (1),				/* Make this reservation group as soon as possible. */
+  2    65       3 rel bit (1),				/* Times are relative/absolute. */
+  2    66       3 sec bit (1)) unaligned,			/* Times are in sec/microsec. */
+  2    67     2 n_items fixed bin,				/* Number of resources reserved in this group. */
+  2    68     2 reservation_group (Resource_count refer (reservation_description.n_items)),
+  2    69       3 starting_time fixed bin (71),			/* When this resource res. starts in the group. */
+  2    70       3 duration fixed bin (71);			/* Duration of this resource res. in the group. */
+  2    71 
+  2    72 dcl (resource_desc_ptr,
+  2    73      resource_res_ptr) pointer;
+  2    74 
+  2    75 dcl (resource_desc_version_1 initial (1),
+  2    76      resource_res_version_1 initial (1)) internal static options (constant);
+  2    77 
+  2    78 dcl  Resource_count fixed bin;			/* The number of resources described in the structures. */
+  2    79 
+  2    80 /* ---------------- END include file resource_control_desc.incl.pl1 ---------------- */
+       59 
+       60 
+       61 	code = 0;					/* No error, yet. */
+       62 	Resource_count = 1 ;			/* Just one resource to register. */
+       63 
+       64 	begin;
+       65 dcl  garbage (size (resource_descriptions)) bit (36);
+       66 
+       67 	     string (garbage) = "0"b;
+       68 	     resource_desc_ptr = addr (garbage);
+       69 	     resource_descriptions.version_no = resource_desc_version_1;
+       70 	     resource_descriptions.n_items = 1;
+       71 	     call resource_info_$defaults (rsct, "", resource_desc_ptr, 0, code);
+       72 	     if code ^= 0 then return;
+       73 	     if ^resource_descriptions.item (1).given.potential_attributes
+       74 	     | ^resource_descriptions.item (1).given.potential_aim_range
+       75 	     | ^resource_descriptions.item (1).given.charge_type
+       76 	     then do;
+       77 		code = error_table_$rcp_no_auto_reg;
+       78 		return;
+       79 	     end;
+       80 	     resource_descriptions.item (1).name = resource_name;
+       81 	     resource_descriptions.item (1).given.name = "1"b;
+       82 	     resource_descriptions.item (1).owner = group_id;
+       83 	     resource_descriptions.item (1).given.owner = "1"b;
+       84 	     call rcprm_find_resource_$auto_register (resource_desc_ptr, (rcp_pointers_$com_seg () -> rcs.acs_directory), code);
+       85 	     if code = error_table_$action_not_performed
+       86 	     then code = resource_descriptions.item (1).status_code;
+       87 	end;
+       88 
+       89 	if code = 0
+       90 	then call admin_gate_$syserr (0, "RCP: ^a ^a registered and acquired to ^a.",
+       91 	     rsct, resource_name, group_id);
+       92 
+       93 	return;
+       94 
+       95 /* BEGIN MESSAGE DOCUMENTATION
+       96*
+       97*   Message:
+       98*   RCP: RESOURCE_TYPE RESOURCE_NAME registered and acquired to USER.
+       99*
+      100*   S:	$info
+      101*
+      102*   T:	$run
+      103*
+      104*   M:	The resource RESOURCE_NAME has been automatically registered and acquired to
+      105*   USER.  It is a resource of the type RESCOURCE_TYPE.
+      106*
+      107*   A:	$ignore
+      108*
+      109*
+      110*   END MESSAGE DOCUMENTATION */
+      111 
+      112 
+      113      end rcp_auto_register_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.9  rcp_auto_register_.pl1            >spec>install>1111>rcp_auto_register_.pl1
+57           1    03/27/86  1120.0  rcp_com_seg.incl.pl1              >ldd>include>rcp_com_seg.incl.pl1
+59           2    02/13/79  1715.0  resource_control_desc.incl.pl1    >ldd>include>resource_control_desc.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Resource_count                  000102 automatic       fixed bin(17,0)          dcl 2-78 set ref 62* 65
+acs_directory            74            based           char(32)                 level 2 dcl 1-30 ref 84
+addr                                                   builtin function         dcl 53 ref 68
+admin_gate_$syserr              000010 constant        entry                    external dcl 37 ref 89
+charge_type             270(10)        based           bit(1)                   array level 4 packed packed unaligned dcl 2-6 ref 73
+code                                   parameter       fixed bin(35,0)          dcl 28 set ref 13 61* 71* 72 77* 84* 85 85* 89
+error_table_$action_not_performed
+                                000020 external static fixed bin(35,0)          dcl 46 ref 85
+error_table_$rcp_no_auto_reg    000022 external static fixed bin(35,0)          dcl 47 ref 77
+garbage                         000100 automatic       bit(36)                  array packed unaligned dcl 65 set ref 67* 68
+given                   270            based           structure                array level 3 dcl 2-6
+group_id                               parameter       char                     packed unaligned dcl 29 set ref 13 82 89*
+item                      2            based           structure                array level 2 dcl 2-6
+lock_info                              based           structure                level 1 dcl 1-46
+n_items                   1            based           fixed bin(17,0)          level 2 dcl 2-6 set ref 70*
+name                    270            based           bit(1)                   array level 4 in structure "resource_descriptions"
+                                                                                  packed packed unaligned dcl 2-6 in procedure
+                                                                                  "rcp_auto_register_" set ref 81*
+name                     12            based           char(32)                 array level 3 in structure "resource_descriptions"
+                                                                                  dcl 2-6 in procedure "rcp_auto_register_" set ref
+                                                                                  80*
+owner                    51            based           char(32)                 array level 3 in structure "resource_descriptions"
+                                                                                  dcl 2-6 in procedure "rcp_auto_register_" set ref
+                                                                                  82*
+owner                   270(06)        based           bit(1)                   array level 4 in structure "resource_descriptions"
+                                                                                  packed packed unaligned dcl 2-6 in procedure
+                                                                                  "rcp_auto_register_" set ref 83*
+potential_aim_range     270(04)        based           bit(1)                   array level 4 packed packed unaligned dcl 2-6 ref 73
+potential_attributes    270(02)        based           bit(1)                   array level 4 packed packed unaligned dcl 2-6 ref 73
+rcp_pointers_$com_seg           000012 constant        entry                    external dcl 38 ref 84
+rcprm_find_resource_$auto_register
+                                000014 constant        entry                    external dcl 39 ref 84
+rcs                                    based           structure                level 1 dcl 1-30
+rcse                                   based           structure                level 1 dcl 1-55
+resource_desc_ptr               000100 automatic       pointer                  dcl 2-72 set ref 65 68* 69 70 71* 73 73 73 80 81 82
+                                                                                  83 84* 85
+resource_desc_version_1                constant        fixed bin(17,0)          initial dcl 2-75 ref 69
+resource_descriptions                  based           structure                level 1 dcl 2-6 set ref 65
+resource_info_$defaults         000016 constant        entry                    external dcl 40 ref 71
+resource_name                          parameter       char                     packed unaligned dcl 30 set ref 13 80 89*
+rsct                                   parameter       char                     packed unaligned dcl 31 set ref 13 71* 89*
+size                                                   builtin function         dcl 54 ref 65
+status_code             272            based           fixed bin(35,0)          array level 3 dcl 2-6 ref 85
+string                                                 builtin function         dcl 55 set ref 67*
+version_no                             based           fixed bin(17,0)          level 2 dcl 2-6 set ref 69*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+based_rcp_id                           based           structure                level 1 dcl 1-26
+lock_info_ptr                          automatic       pointer                  dcl 1-22
+rcs_ptr                                automatic       pointer                  dcl 1-23
+rcse_ptr                               automatic       pointer                  dcl 1-24
+reservation_description                based           structure                level 1 dcl 2-55
+resource_res_ptr                       automatic       pointer                  dcl 2-72
+resource_res_version_1                 internal static fixed bin(17,0)          initial dcl 2-75
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+rcp_auto_register_              000030 constant        entry                    external dcl 13
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       434         460     312         444
+Length       672     312        24         175     122           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+rcp_auto_register_                  106 external procedure  is an external procedure.  
+begin block on line 64              108 begin block         uses auto adjustable storage.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 64   000100 garbage                     begin block on line 64
+rcp_auto_register_       000100 resource_desc_ptr           rcp_auto_register_
+                         000102 Resource_count              rcp_auto_register_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+enter_begin_block   leave_begin_block   call_ext_out_desc   call_ext_out        begin_return_mac    return_mac
+alloc_auto_adj      ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$syserr            rcp_pointers_$com_seg         rcprm_find_resource_$auto_register
+resource_info_$defaults
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$rcp_no_auto_reg
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     13 000023        61 000055        62 000057        64 000061        65 000064        67 000073        68 000100
+     69 000102        70 000104        71 000106        72 000142        73 000150        77 000155        78 000160
+     80 000162        81 000167        82 000171        83 000176        84 000200        85 000236        87 000247
+     89 000250        93 000311
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

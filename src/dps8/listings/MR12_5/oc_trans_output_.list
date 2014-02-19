@@ -1,0 +1,295 @@
+	COMPILATION LISTING OF SEGMENT oc_trans_output_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0954.4 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 
+       10 /****^  HISTORY COMMENTS:
+       11*  1) change(87-07-16,Farley), approve(87-07-17,MCR7735),
+       12*     audit(87-07-20,Fawcett), install(87-07-22,MR12.1-1044):
+       13*     Changed to allow PAD (\177) characters to pass through without being
+       14*     interpreted.
+       15*                                                   END HISTORY COMMENTS */
+       16 
+       17 
+       18 /* format: style4,delnl,insnl,tree,ifthenstmt,indnoniterend */
+       19 oc_trans_output_:
+       20      procedure (In_ptr, In_len, In_proc, Out_ptr, Out_words, Line_leng, Cont);
+       21 
+       22 /* Written by C. Hornig, April 1982 */
+       23 /* Modified 830620 to support consoles with different line lengths and to 
+       24*   delete support of non-ASCII console types... -E. A. Ranzenbach */
+       25 
+       26 dcl  (In_ptr, Out_ptr) ptr parameter;
+       27 dcl  (In_len, In_proc) fixed bin (21) parameter;
+       28 dcl  Out_words fixed bin (19) parameter;
+       29 dcl  Cont bit (1) aligned parameter;
+       30 dcl  Line_leng fixed bin (17) parameter;
+       31 
+       32 dcl  in_string char (In_len) based (In_ptr);
+       33 dcl  out_string char (256) based (Out_ptr);
+       34 
+       35 dcl  c char (1) aligned;
+       36 dcl  b fixed bin (9);
+       37 dcl  out_pos fixed bin;
+       38 dcl  out_proc fixed bin (21);
+       39 dcl  n fixed bin;
+       40 dcl  done bit (1) aligned;
+       41 
+       42 dcl  (byte, copy, divide, hbound, lbound, length, mod, rank, string, substr, unspec) builtin;
+       43 
+       44 	In_proc, Out_words = 0;
+       45 	out_proc, out_pos = 0;
+       46 
+       47 	if In_len <= 0 then return;			/* ignore null string */
+       48 
+       49 	if Cont then do;
+       50 	     substr (out_string, 1, 2) = "\c";
+       51 	     out_proc, out_pos = 2;
+       52 	     Cont = "0"b;
+       53 	     end;
+       54 
+       55 	done = "0"b;
+       56 	do while ((In_proc < In_len) & ^done);
+       57 	     c = substr (in_string, In_proc + 1, 1);
+       58 	     b = rank (c);
+       59 
+       60 	     if /* case */ (b >= 32) & (b <= 127) then do;
+       61 		call inc_pos (1);
+       62 		goto copy_char;
+       63 		end;
+       64 
+       65 	     else if (b < lbound (cc, 1)) | (b > hbound (cc, 1)) then do;
+       66 cc (11):
+       67 cc (12):
+       68 		call inc_pos (4);
+       69 		call inc_proc (4);
+       70 		begin;
+       71 dcl  oe (4) char (1) unaligned;
+       72 
+       73 		     oe (1) = "\";
+       74 		     unspec (oe (2)) = "06"b3 || substr (unspec (c), 1, 3);
+       75 		     unspec (oe (3)) = "06"b3 || substr (unspec (c), 4, 3);
+       76 		     unspec (oe (4)) = "06"b3 || substr (unspec (c), 7, 3);
+       77 		     substr (out_string, out_proc - 3, 4) = string (oe);
+       78 		end;
+       79 		goto done_cc;
+       80 		end;
+       81 
+       82 	     else goto cc (b);
+       83 
+       84 cc (8):						/* BS */
+       85 	     if out_pos > 0 then out_pos = out_pos - 1;
+       86 	     goto copy_char;
+       87 
+       88 cc (9):						/* HT */
+       89 	     n = 1 + mod (-out_pos - 1, 10);
+       90 	     call inc_pos (n);
+       91 	     call inc_proc (n);
+       92 	     substr (out_string, out_proc - n + 1, n) = "";
+       93 	     goto done_cc;
+       94 
+       95 cc (10):						/* NL */
+       96 	     call add_nl;
+       97 	     done = "1"b;
+       98 	     goto done_cc;
+       99 
+      100 cc (13):						/* CR */
+      101 	     out_pos = 0;
+      102 	     goto copy_char;
+      103 
+      104 cc (7):						/* BEL */
+      105 copy_char:
+      106 	     call inc_proc (1);
+      107 	     substr (out_string, out_proc, 1) = c;
+      108 
+      109 done_cc:
+      110 	     In_proc = In_proc + 1;
+      111 	end;
+      112 
+      113 finish_up:
+      114 	Out_words = divide (out_proc + 3, 4, 19, 0);
+      115 	n = 4 * Out_words - out_proc;
+      116 	substr (out_string, out_proc + 1, n) = copy (byte (127), n);
+      117 
+      118 	return;
+      119 
+      120 /* * * * * * * * * INC_PROC * * * * * * * * */
+      121 
+      122 inc_proc:
+      123      procedure (N);
+      124 dcl  N fixed bin parameter;
+      125 
+      126 	if out_proc + N > length (out_string) then goto finish_up;
+      127 	out_proc = out_proc + N;
+      128 	return;
+      129      end inc_proc;
+      130 
+      131 /* * * * * * * * * * INC_POS * * * * * * * * * */
+      132 
+      133 inc_pos:
+      134      procedure (N);
+      135 dcl  N fixed bin parameter;
+      136 
+      137 	if out_pos + N > Line_leng then do;
+      138 	     Cont = "1"b;
+      139 	     call add_nl;
+      140 	     goto finish_up;
+      141 	     end;
+      142 	out_pos = out_pos + N;
+      143 	return;
+      144      end inc_pos;
+      145 
+      146 /* * * * * * * * * * ADD_NL * * * * * * * * * * */
+      147 
+      148 add_nl:
+      149      procedure;
+      150 	call inc_proc (2);
+      151 	substr (out_string, out_proc - 1, 2) = byte (13) || byte (10);
+      152 	out_pos = 0;
+      153 	return;
+      154      end add_nl;
+      155 
+      156      end oc_trans_output_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.2  oc_trans_output_.pl1              >spec>install>1110>oc_trans_output_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Cont                                   parameter       bit(1)                   dcl 29 set ref 19 49 52* 138*
+In_len                                 parameter       fixed bin(21,0)          dcl 27 ref 19 47 56 57
+In_proc                                parameter       fixed bin(21,0)          dcl 27 set ref 19 44* 56 57 109* 109
+In_ptr                                 parameter       pointer                  dcl 26 ref 19 57
+Line_leng                              parameter       fixed bin(17,0)          dcl 30 ref 19 137
+N                                      parameter       fixed bin(17,0)          dcl 135 in procedure "inc_pos" ref 133 137 142
+N                                      parameter       fixed bin(17,0)          dcl 124 in procedure "inc_proc" ref 122 126 127
+Out_ptr                                parameter       pointer                  dcl 26 ref 19 50 77 92 107 116 126 151
+Out_words                              parameter       fixed bin(19,0)          dcl 28 set ref 19 44* 113* 115
+b                               000101 automatic       fixed bin(9,0)           dcl 36 set ref 58* 60 60 65 65 65
+byte                                                   builtin function         dcl 42 ref 116 151 151
+c                               000100 automatic       char(1)                  dcl 35 set ref 57* 58 74 75 76 107
+copy                                                   builtin function         dcl 42 ref 116
+divide                                                 builtin function         dcl 42 ref 113
+done                            000105 automatic       bit(1)                   dcl 40 set ref 55* 56 97*
+hbound                                                 builtin function         dcl 42 ref 65
+in_string                              based           char                     packed unaligned dcl 32 ref 57
+lbound                                                 builtin function         dcl 42 ref 65
+length                                                 builtin function         dcl 42 ref 126
+mod                                                    builtin function         dcl 42 ref 88
+n                               000104 automatic       fixed bin(17,0)          dcl 39 set ref 88* 90* 91* 92 92 115* 116 116
+oe                              000106 automatic       char(1)                  array packed unaligned dcl 71 set ref 73* 74* 75*
+                                                                                  76* 77
+out_pos                         000102 automatic       fixed bin(17,0)          dcl 37 set ref 45* 51* 84 84* 84 88 100* 137 142*
+                                                                                  142 152*
+out_proc                        000103 automatic       fixed bin(21,0)          dcl 38 set ref 45* 51* 77 92 107 113 115 116 126
+                                                                                  127* 127 151
+out_string                             based           char(256)                packed unaligned dcl 33 set ref 50* 77* 92* 107*
+                                                                                  116* 126 151*
+rank                                                   builtin function         dcl 42 ref 58
+string                                                 builtin function         dcl 42 ref 77
+substr                                                 builtin function         dcl 42 set ref 50* 57 74 75 76 77* 92* 107* 116*
+                                                                                  151*
+unspec                                                 builtin function         dcl 42 set ref 74* 74 75* 75 76* 76
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+add_nl                          000314 constant        entry                    internal dcl 148 ref 95 139
+cc                              000000 constant        label                    array(7:13) dcl 66 ref 65 65 65
+copy_char                       000216 constant        label                    dcl 104 ref 62 86 102
+done_cc                         000231 constant        label                    dcl 109 ref 79 93 98
+finish_up                       000234 constant        label                    dcl 113 ref 126 140
+inc_pos                         000276 constant        entry                    internal dcl 133 ref 61 66 90
+inc_proc                        000265 constant        entry                    internal dcl 122 ref 69 91 104 150
+oc_trans_output_                000022 constant        entry                    external dcl 19
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       406         416     360         416
+Length       560     360        10         126      26           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+oc_trans_output_                     92 external procedure  is an external procedure.  
+begin block on line 70                  begin block         shares stack frame of external procedure oc_trans_output_.  
+inc_proc                                internal procedure  shares stack frame of external procedure oc_trans_output_.  
+inc_pos                                 internal procedure  shares stack frame of external procedure oc_trans_output_.  
+add_nl                                  internal procedure  shares stack frame of external procedure oc_trans_output_.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+oc_trans_output_         000100 c                           oc_trans_output_
+                         000101 b                           oc_trans_output_
+                         000102 out_pos                     oc_trans_output_
+                         000103 out_proc                    oc_trans_output_
+                         000104 n                           oc_trans_output_
+                         000105 done                        oc_trans_output_
+                         000106 oe                          begin block on line 70
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          mdfx1               shorten_stack       ext_entry           repeat              set_chars_eis
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     19 000014        44 000027        45 000032        47 000034        49 000036        50 000041        51 000046
+     52 000052        55 000053        56 000054        57 000062        58 000070        60 000073        61 000077
+     62 000103        65 000104        66 000111        69 000115        73 000121        74 000123        75 000131
+     76 000140        77 000147        79 000156        84 000157        86 000163        88 000164        90 000172
+     91 000174        92 000176        93 000207        95 000210        97 000211        98 000213       100 000214
+    102 000215       104 000216       107 000222       109 000231       111 000233       113 000234       115 000241
+    116 000244       118 000263       122 000265       126 000267       127 000273       128 000275       133 000276
+    137 000300       138 000305       139 000307       140 000310       142 000311       143 000313       148 000314
+    150 000315       151 000321       152 000340       153 000341
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

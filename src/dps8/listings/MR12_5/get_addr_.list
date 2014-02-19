@@ -1,0 +1,671 @@
+	COMPILATION LISTING OF SEGMENT get_addr_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) BULL HN Information Systems Inc., 1989   *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        6*        *                                                         *
+        7*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        8*        *                                                         *
+        9*        * Copyright (c) 1972 by Massachusetts Institute of        *
+       10*        * Technology and Honeywell Information Systems, Inc.      *
+       11*        *                                                         *
+       12*        *********************************************************** */
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(89-04-05,Huen), approve(89-04-05,MCR8093), audit(89-05-24,RWaters),
+       17*     install(89-05-31,MR12.3-1051):
+       18*     Fix Bug 209 in qedx
+       19*     editor - Extend the ignoring of leading spaces to include <TAB> character.
+       20*                                                   END HISTORY COMMENTS */
+       21 
+       22 /* format: off */
+       23 
+       24 /* get_addr_ .......... subroutine to find address portion of qedx request and locate addressed line in buffer */
+       25 
+       26 /* Initial coding by R. C. Daley, August 1970 */
+       27 /* Modified for gapped buffer by T. Oke, June 1980 */
+       28 /* Changes merged and edited 03/03/82 S. Herbst */
+       29 /* Modified: January 1983 by G. Palter as part of making qedx reentrant */
+       30 /* Modified: March 1989 by S Huen - Extend the ignoring of leading spaces to
+       31*     include <TAB> character. (209) */
+       32 /* format: on,style4,delnl,insnl,ifthenstmt,ifthen */
+       33 
+       34 get_addr_:
+       35      procedure (aqidp, atp, ati, ate, afp, alb, aft, afe, ali, ale, api, ape, acode);
+       36 
+       37 dcl  aqidp ptr,					/* pointer to qedx per-invocation data */
+       38      atp ptr,					/* pointer to current typewriter input request line */
+       39      ati fixed bin (21),				/* index of first unprocessed character in tw line */
+       40      ate fixed bin (21),				/* index of last character in tw line */
+       41      afp ptr,					/* pointer to current buffer file */
+       42      alb fixed bin (21),				/* index of last character in lower half */
+       43      aft fixed bin (21),				/* index of first character in upper half */
+       44      afe fixed bin (21),				/* index of last character in buffer file */
+       45      ali fixed bin (21),				/* index of first character of current line */
+       46      ale fixed bin (21),				/* index of last character of current line */
+       47      api fixed bin (21),				/* index of first character of addressed line (output) */
+       48      ape fixed bin (21),				/* index of last character of addressed line (output) */
+       49      acode fixed bin;				/* status code, 0= null address, 1= single address,
+       50*						   2= address pair expected (comma seen),
+       51*						   3= address pair expected (semi-colon seen),
+       52*						   4= search failed, 5= other error */
+       53 
+       54 
+       55 dcl  (tp, fp) ptr,					/* temporary storage */
+       56      (ti, te, lb, ft, fe, li, le, i, j, num, code) fixed bin (21),
+       57      temp_reg fixed bin init (0),
+       58      digit fixed bin (9),
+       59      (relsw, negsw, evalsw) bit (1) init ("0"b),
+       60      (ch, nl) char (1);
+       61 
+       62 dcl  last_index fixed bin (21);			/* used in last_line scan */
+       63 
+       64 dcl  1 t based (tp) aligned,				/* structure to treat tw line as character array */
+       65        2 c (1048576) char (1) unaligned;
+       66 
+       67 dcl  1 f based (fp) aligned,				/* structure to treat buffer file as character array */
+       68        2 c (1048576) char (1) unaligned;
+       69 
+       70 dcl  string char (1048576) based aligned;		/* based character string for use with substr and index */
+       71 
+       72 dcl  ioa_ entry options (variable),			/* external procedures used by get_addr_ */
+       73      qx_search_file_
+       74 	entry (ptr, ptr, fixed bin (21), fixed bin (21), ptr, fixed bin (21), fixed bin (21), fixed bin (21),
+       75 	fixed bin (21), fixed bin (21), fixed bin (21), fixed bin (21));
+       76 
+       77 dcl  (fixed, index, reverse, substr, unspec) builtin;
+       78 
+       79 	tp = atp;					/* pointer to tw line buffer */
+       80 	ti = ati;					/* index to next character in tw line */
+       81 	te = ate;					/* index of last character in tw line */
+       82 	fp = afp;					/* pointer to input file */
+       83 	lb = alb;					/* index of last character of bottom half */
+       84 	ft = aft;					/* index of first character of top half */
+       85 	fe = afe;					/* index of last character in input file */
+       86 	li = ali;					/* index of first character of current line */
+       87 	le = ale;					/* index of last character of current line */
+       88 	acode = 0;				/* initialize acode to indicate null address */
+       89 
+       90 	unspec (nl) = "000001010"b;			/* initialize nl character */
+       91 	go to scan2;				/* begin (or resume) scan of tw input line */
+       92 
+       93 
+       94 scan:
+       95 	acode = 1;				/* resume scan after processing address component */
+       96 	relsw = "1"b;				/* number are relative after first address component */
+       97 scan1:
+       98 	ti = ti + 1;				/* bump tw input character index */
+       99 scan2:
+      100 	if ti > te then do;				/* check for end of line */
+      101 bad_addr:
+      102 	     call ioa_ ("Address syntax error.");
+      103 	     go to fail;
+      104 	end;
+      105 	ch = t.c (ti);				/* pick up next character from tw input line */
+      106 	/* Bug 209: Extend the ignoring of leading spaces to include the <TAB> char */
+      107 	if (ch = " " | ch = "	")
+      108 	     then go to scan1;                            /* ignore whitespace at this level */
+      109 	if ch = "/" then go to reg;			/* "/" indicates start of regular expression */
+      110 	if ch = "$" then go to last;			/* "$" go to end of input file */
+      111 	if ch = "-" then go to neg;			/* "-" note minus sign seen */
+      112 	if ch = "+" then go to pos;			/* "+" note plus sign seen */
+      113 	if ch = "." then go to scan;			/* ignore "." for compatability */
+      114 	if ch >= "0" then
+      115 	     if ch <= "9" then go to get_num;		/* check for integer 0-9 */
+      116 	if ch = "," then do;			/* "," delimits line addresses */
+      117 	     ti = ti + 1;				/* bump tw input line index */
+      118 	     acode = 2;				/* indicate second address expected ("," seen) */
+      119 	end;
+      120 	if ch = ";" then do;			/* ";" also delimits line addresses */
+      121 	     ti = ti + 1;				/* bump tw input line index */
+      122 	     acode = 3;				/* indicate second address expected (";" seen) */
+      123 	end;
+      124 
+      125 	if evalsw then call eval;			/* if numerically addressed line, get begin and end indices */
+      126 
+      127 	if li > lb & li < ft then
+      128 	     api = ft;
+      129 	else api = li;				/* exit from scan on comma or unrecognized character */
+      130 	if le > lb & le < ft then
+      131 	     ape = ft;
+      132 	else ape = le;				/* return current line address */
+      133 	ati = ti;					/* update caller's tw line index to point after address */
+      134 	return;					/* normal return to caller (acode= 0, 1 or 2) */
+      135 
+      136 
+      137 reg_fail:
+      138 	acode = 4;				/* here if regular expression search failed */
+      139 	return;
+      140 
+      141 fail:
+      142 	acode = 5;				/* here on any other failure during address scan */
+      143 	return;
+      144 
+      145 reg:
+      146 	if evalsw then call eval;			/* if numerically addressed line, get begin and end indices first */
+      147 
+      148 	i = ti + 1;				/*  look for regular expression */
+      149 	do ti = i to te;				/* scan expression and try to find matching "/" */
+      150 	     if t.c (ti) = "/" then go to reg1;		/* found match */
+      151 	     if t.c (ti) = "" then ti = ti + 1;	/* skip next if conceal character */
+      152 	     else if t.c (ti) = "\" then
+      153 		if te > ti then
+      154 		     if t.c (ti + 1) = "c" then ti = ti + 2;
+      155 						/* two character conceal symbol */
+      156 	end;
+      157 
+      158 	call ioa_ ("Syntax error in regular expression.");/* error if no terminal "/" found */
+      159 	go to fail;
+      160 
+      161 reg1:
+      162 	j = ti - i;				/* compute length of regular expression */
+      163 
+      164 /* Processing is broken into two parts, starting in the top, and starting
+      165*   in the bottom.  Processing then enters into a string of part processing.
+      166*   If in the bottom, we either search to whole bottom, or part of the bottom.
+      167*   If searching the bottom, and we were in the top then we quit, else we search
+      168*   the top next.  Sounds complex (and it is) but perservere and the mud thins */
+      169 
+      170 	if le + 1 <= lb then do;			/* we are starting in the bottom */
+      171 	     call search_section ((le + 1), (lb), (ft), (fe), (1), (le));
+      172 						/* search rest bot, top, bot */
+      173 	end;
+      174 	else do;
+      175 	     call search_section ((le + 1), (fe), (1), (lb), (ft), (le));
+      176 	end;
+      177 	goto scan;
+      178 
+      179 
+      180 last:
+      181 	if ft > fe & lb < 1 then go to scan;		/* here after "$" found, find last line */
+      182 	if fe < ft then
+      183 	     le = lb;				/* look in the bottom */
+      184 	else le = fe;				/* set current line end to last character in buffer */
+      185 						/* Modified last_line search to use index function across gapped buffer. */
+      186 
+      187 	li = le - 1;				/* miss current nl */
+      188 
+      189 retry:
+      190 	if li >= ft then do;
+      191 	     last_index = index (reverse (substr (fp -> string, ft, li - ft + 1)), nl);
+      192 						/* search upper */
+      193 	     if last_index = 0 then
+      194 		if lb > 0 then do;			/* move across gap to lower and re-try search */
+      195 		     li = lb;
+      196 		     goto retry;
+      197 		end;
+      198 		else do;				/* this must be the first line */
+      199 		     li = ft;
+      200 		     goto scan;			/* limit to section for line */
+      201 		end;
+      202 	end;
+      203 	else do;					/* search lower section */
+      204 	     if li < 1 then do;			/* limit to 1st line */
+      205 		li = 1;
+      206 		goto scan;
+      207 	     end;
+      208 	     if li > lb then li = lb;			/* force across gap */
+      209 	     last_index = index (reverse (substr (fp -> string, 1, li)), nl);
+      210 	     if last_index = 0 then do;		/* not found - force to 1st character */
+      211 		li = 1;
+      212 		goto scan;			/* continue address scan */
+      213 	     end;
+      214 	end;
+      215 	li = li - last_index + 1;			/* setup start index */
+      216 
+      217 /* correct for overstep */
+      218 
+      219 	if li = lb then
+      220 	     li = ft;				/* force up */
+      221 	else li = li + 1;				/* correct for pointing at nl */
+      222 
+      223 	go to scan;				/* and resume address scan */
+      224 
+      225 
+      226 neg:
+      227 	negsw = "1"b;				/* here after "-" found, note that minus sign seen */
+      228 	go to scan;				/* and continue address scan */
+      229 
+      230 
+      231 pos:
+      232 	negsw = "0"b;				/* here after "+" found, note that plus sign seen */
+      233 	go to scan;				/* and continue address scan */
+      234 
+      235 
+      236 get_num:
+      237 	num = 0;					/* here after digit (0-9) found */
+      238 	do i = ti to te;				/* convert ingeter to binary */
+      239 	     ch = t.c (i);				/* pick up first or next digit of integer */
+      240 	     if ch < "0" then go to end_num;		/* terminate conversion on first non-digit (0-9) */
+      241 	     if ch > "9" then go to end_num;		/* .. */
+      242 	     digit = fixed (unspec (ch) & "000001111"b, 9);
+      243 						/* get numerical portion of ascii digit */
+      244 	     num = (num * 10) + digit;		/* convert into binary number */
+      245 	end;
+      246 	go to bad_addr;				/* error if no nl character to terminate conversion */
+      247 
+      248 end_num:
+      249 	ti = i - 1;				/* here after non-digit found, re-adjust line index */
+      250 	evalsw = "1"b;				/* set switch to later evaluate */
+      251 
+      252 	if ^relsw then do;				/* if line number address is absolute */
+      253 	     li, le = 0;				/* reset line indexes to beginning of buffer */
+      254 	     if num = 0 then li = 1;			/* special case for 0th line of buffer (li=1, le=0) */
+      255 	end;
+      256 
+      257 	if negsw then do;				/* backup */
+      258 	     negsw = "0"b;				/* first turn off sw */
+      259 	     temp_reg = temp_reg - num;		/* then subtract */
+      260 	end;
+      261 
+      262 	else temp_reg = temp_reg + num;		/* else go forward */
+      263 
+      264 	go to scan;				/* continue address scan */
+      265 
+      266 
+      267 eval:
+      268      proc;
+      269 
+      270 /* Internal proceedure to evaluate numerical addresses and return character indices
+      271*   of beginning and end of addressed line. */
+      272 
+      273 	evalsw = "0"b;				/* numerical address evaluated */
+      274 
+      275 	if fe = 0 then
+      276 	     if temp_reg ^= 0 then do;		/* check for empty buffer */
+      277 		call ioa_ ("Buffer empty.");
+      278 		go to fail;
+      279 	     end;
+      280 
+      281 	if temp_reg > 0				/* if positive address then go forward */
+      282 	then do i = 1 to temp_reg;			/*  skip foreward temp_reg lines in buffer */
+      283 	     if le + 1 > lb & le + 1 < ft then		/* move to upper half */
+      284 		le = ft - 1;
+      285 retry_forward:
+      286 	     if le = fe then do;			/* check if already at end of buffer */
+      287 		call ioa_ ("Address out of buffer (too big).");
+      288 		go to fail;
+      289 	     end;
+      290 	     li = le + 1;				/* move line index foreward one line */
+      291 	     if li <= lb then do;			/* search in bottom */
+      292 		j = index (substr (fp -> string, li, (lb - li + 1)), nl);
+      293 						/* find end of line */
+      294 		if j = 0 & ft <= fe then do;
+      295 		     j = index (substr (fp -> string, ft, (fe - ft + 1)), nl);
+      296 						/* find end of line split */
+      297 		     le = ft - 1;			/* jump last end of line to start of top */
+      298 		end;
+      299 	     end;
+      300 	     else j = index (substr (fp -> string, li, (fe - li + 1)), nl);
+      301 						/* find end of line in top */
+      302 	     if j = 0 then
+      303 		le = fe;				/* worry about buffer with no nl on last line */
+      304 	     else le = le + j;			/* otherwise, adjust index to last char of line in file */
+      305 	end;
+      306 
+      307 	else do i = 1 to -temp_reg;			/* loop to move backward temp_reg lines in buffer */
+      308 	     if li - 1 < ft & li - 1 > lb then		/* move to lower buffer */
+      309 		li = lb + 1;
+      310 	     if li = 1 then do;			/* check if already at first line */
+      311 		call ioa_ ("Address out of buffer (negative address).");
+      312 		go to fail;
+      313 	     end;
+      314 	     le = li - 1;				/* set current line end back one line */
+      315 						/* Modified last_line search to use index function across gapped buffer. */
+      316 
+      317 	     li = le - 1;				/* miss current nl */
+      318 
+      319 retry:
+      320 	     if li >= ft then do;
+      321 		last_index = index (reverse (substr (fp -> string, ft, li - ft + 1)), nl);
+      322 						/* search upper */
+      323 		if last_index = 0 then
+      324 		     if lb > 0 then do;		/* move across gap to lower and re-try search */
+      325 			li = lb;
+      326 			goto retry;
+      327 		     end;
+      328 		     else do;			/* this must be the first line */
+      329 			li = ft;
+      330 			go to bk_next;
+      331 		     end;
+      332 	     end;
+      333 	     else do;				/* search lower section */
+      334 		if li < 1 then do;
+      335 		     li = 1;			/* limit to 1st line */
+      336 		     go to bk_next;
+      337 		end;
+      338 		if li > lb then li = lb;		/* force across gap */
+      339 		last_index = index (reverse (substr (fp -> string, 1, li)), nl);
+      340 		if last_index = 0 then do;		/* not found - force to 1st character */
+      341 		     li = 1;
+      342 		     go to bk_next;
+      343 		end;
+      344 	     end;
+      345 	     li = li - last_index + 1;		/* setup start index */
+      346 
+      347 /* correct for overstep */
+      348 
+      349 	     if li = lb then
+      350 		li = ft;				/* force up */
+      351 	     else li = li + 1;			/* correct for pointing at nl */
+      352 
+      353 bk_next:
+      354 	end;
+      355 
+      356 	temp_reg = 0;				/* clear temp register before returning */
+      357 
+      358 	return;
+      359 
+      360      end;
+      361 
+      362 /* Search sections of the gapped text buffer. */
+      363 
+      364 search_section:
+      365      proc (x1, y1, x2, y2, x3, y3);
+      366 
+      367 dcl  (x1, x2, x3, y1, y2, y3) fixed bin (21);
+      368 
+      369 dcl  (x, y, xx, yy) fixed bin (21);
+      370 
+      371 /* search_section is a recursive searching routine which will search
+      372*   each of up to three sections of text in turn and order.  It is passed
+      373*   a series of three indicies governing search extents, and then goes through
+      374*   them to pick out a textual match.  This routine is only called after i and
+      375*   j have been setup to limit the search master string extents in the tw
+      376*   buffer. */
+      377 
+      378 /* At the end and return of search_section the values of li and le delimit
+      379*   the matched line.  Any other return is a non-local error exit goto. */
+      380 
+      381 	if x1 > lb & x1 < ft then
+      382 	     x = ft;
+      383 	else x = x1;
+      384 
+      385 	if y1 > lb & y1 < ft then
+      386 	     y = ft;
+      387 	else y = y1;
+      388 
+      389 	if y > x then do;				/* and extent to search */
+      390 	     call qx_search_file_ (aqidp, tp, i, j, fp, x, y, li, le, lb, ft, code);
+      391 	     if code = 0 then goto breakout_line;	/* string find - delimit line */
+      392 	     if code = 2 then goto fail;		/* bad master search string */
+      393 
+      394 	end;
+      395 
+      396 	if x1 = 0 then goto reg_fail;			/* couldn't find string in three tries */
+      397 
+      398 	call search_section ((x2), (y2), (x3), (y3), (0), (0));
+      399 	return;
+      400 
+      401 breakout_line:
+      402 	le = index (substr (fp -> string, li, (y - li + 1)), nl);
+      403 						/* delimit start and end of line containing text match. */
+      404 
+      405 	if le = 0 then do;				/* section end without nl */
+      406 	     if x2 > lb & x2 < ft then
+      407 		xx = ft;
+      408 	     else xx = x2;
+      409 	     if y2 > lb & y2 < ft then
+      410 		yy = ft;
+      411 	     else yy = y2;
+      412 
+      413 /* search in next section, if it exists, for end of line */
+      414 
+      415 	     if xx > y then				/* search superior section */
+      416 		le = index (substr (fp -> string, xx, (yy - xx + 1)), nl);
+      417 
+      418 	     if le = 0 then
+      419 		le = y;
+      420 	     else le = xx + le - 1;			/* find true end of line */
+      421 	end;
+      422 	else le = li + le - 1;
+      423 
+      424 	do li = (li - 1) by -1 to x;			/* find previous nl */
+      425 	     if f.c (li) = nl then do;
+      426 		li = li + 1;
+      427 		return;				/* found and delimited */
+      428 	     end;
+      429 	end;
+      430 	li = x;					/* must be start of buffer */
+      431      end;
+      432 
+      433 
+      434      end get_addr_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.6  get_addr_.pl1                     >spec>install>1111>get_addr_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+acode                                  parameter       fixed bin(17,0)          dcl 37 set ref 34 88* 94* 118* 122* 137* 141*
+afe                                    parameter       fixed bin(21,0)          dcl 37 ref 34 85
+afp                                    parameter       pointer                  dcl 37 ref 34 82
+aft                                    parameter       fixed bin(21,0)          dcl 37 ref 34 84
+alb                                    parameter       fixed bin(21,0)          dcl 37 ref 34 83
+ale                                    parameter       fixed bin(21,0)          dcl 37 ref 34 87
+ali                                    parameter       fixed bin(21,0)          dcl 37 ref 34 86
+ape                                    parameter       fixed bin(21,0)          dcl 37 set ref 34 130* 132*
+api                                    parameter       fixed bin(21,0)          dcl 37 set ref 34 127* 129*
+aqidp                                  parameter       pointer                  dcl 37 set ref 34 390*
+ate                                    parameter       fixed bin(21,0)          dcl 37 ref 34 81
+ati                                    parameter       fixed bin(21,0)          dcl 37 set ref 34 80 133*
+atp                                    parameter       pointer                  dcl 37 ref 34 79
+c                                      based           char(1)                  array level 2 in structure "t" packed packed
+                                                                                  unaligned dcl 64 in procedure "get_addr_" ref 105
+                                                                                  150 151 152 152 239
+c                                      based           char(1)                  array level 2 in structure "f" packed packed
+                                                                                  unaligned dcl 67 in procedure "get_addr_" ref 425
+ch                              000124 automatic       char(1)                  packed unaligned dcl 55 set ref 105* 107 107 109 110
+                                                                                  111 112 113 114 114 116 120 239* 240 241 242
+code                            000116 automatic       fixed bin(21,0)          dcl 55 set ref 390* 391 392
+digit                           000120 automatic       fixed bin(9,0)           dcl 55 set ref 242* 244
+evalsw                          000123 automatic       bit(1)                   initial packed unaligned dcl 55 set ref 55* 125 145
+                                                                                  250* 273*
+f                                      based           structure                level 1 dcl 67
+fe                              000110 automatic       fixed bin(21,0)          dcl 55 set ref 85* 171 175 180 182 184 275 285 294
+                                                                                  295 300 302
+fixed                                                  builtin function         dcl 77 ref 242
+fp                              000102 automatic       pointer                  dcl 55 set ref 82* 191 209 292 295 300 321 339 390*
+                                                                                  401 415 425
+ft                              000107 automatic       fixed bin(21,0)          dcl 55 set ref 84* 127 127 130 130 171 175 180 182
+                                                                                  189 191 191 199 219 283 283 294 295 295 297 308
+                                                                                  319 321 321 329 349 381 381 385 385 390* 406 406
+                                                                                  409 409
+i                               000113 automatic       fixed bin(21,0)          dcl 55 set ref 148* 149 161 238* 239* 248 281* 307*
+                                                                                  390*
+index                                                  builtin function         dcl 77 ref 191 209 292 295 300 321 339 401 415
+ioa_                            000010 constant        entry                    external dcl 72 ref 101 158 277 287 311
+j                               000114 automatic       fixed bin(21,0)          dcl 55 set ref 161* 292* 294 295* 300* 302 304 390*
+last_index                      000126 automatic       fixed bin(21,0)          dcl 62 set ref 191* 193 209* 210 215 321* 323 339*
+                                                                                  340 345
+lb                              000106 automatic       fixed bin(21,0)          dcl 55 set ref 83* 127 130 170 171 175 180 182 193
+                                                                                  195 208 208 219 283 291 292 308 308 323 325 338
+                                                                                  338 349 381 385 390* 406 409
+le                              000112 automatic       fixed bin(21,0)          dcl 55 set ref 87* 130 130 132 170 171 171 175 175
+                                                                                  182* 184* 187 253* 283 283 283* 285 290 297* 302*
+                                                                                  304* 304 314* 317 390* 401* 405 415* 418 418* 420*
+                                                                                  420 422* 422
+li                              000111 automatic       fixed bin(21,0)          dcl 55 set ref 86* 127 127 129 187* 189 191 195*
+                                                                                  199* 204 205* 208 208* 209 211* 215* 215 219 219*
+                                                                                  221* 221 253* 254* 290* 291 292 292 300 300 308
+                                                                                  308 308* 310 314 317* 319 321 325* 329* 334 335*
+                                                                                  338 338* 339 341* 345* 345 349 349* 351* 351 390*
+                                                                                  401 401 422 424* 424* 425 426* 426* 430*
+negsw                           000122 automatic       bit(1)                   initial packed unaligned dcl 55 set ref 55* 226*
+                                                                                  231* 257 258*
+nl                              000125 automatic       char(1)                  packed unaligned dcl 55 set ref 90* 191 209 292 295
+                                                                                  300 321 339 401 415 425
+num                             000115 automatic       fixed bin(21,0)          dcl 55 set ref 236* 244* 244 254 259 262
+qx_search_file_                 000012 constant        entry                    external dcl 72 ref 390
+relsw                           000121 automatic       bit(1)                   initial packed unaligned dcl 55 set ref 55* 96* 252
+reverse                                                builtin function         dcl 77 ref 191 209 321 339
+string                                 based           char(1048576)            dcl 70 ref 191 209 292 295 300 321 339 401 415
+substr                                                 builtin function         dcl 77 ref 191 209 292 295 300 321 339 401 415
+t                                      based           structure                level 1 dcl 64
+te                              000105 automatic       fixed bin(21,0)          dcl 55 set ref 81* 99 149 152 238
+temp_reg                        000117 automatic       fixed bin(17,0)          initial dcl 55 set ref 55* 259* 259 262* 262 275 281
+                                                                                  281 307 356*
+ti                              000104 automatic       fixed bin(21,0)          dcl 55 set ref 80* 97* 97 99 105 117* 117 121* 121
+                                                                                  133 148 149* 150 151 151* 151 152 152 152 152*
+                                                                                  152* 161 238 248*
+tp                              000100 automatic       pointer                  dcl 55 set ref 79* 105 150 151 152 152 239 390*
+unspec                                                 builtin function         dcl 77 set ref 90* 242
+x                               000100 automatic       fixed bin(21,0)          dcl 369 set ref 381* 383* 389 390* 424 430
+x1                                     parameter       fixed bin(21,0)          dcl 367 ref 364 381 381 383 396
+x2                                     parameter       fixed bin(21,0)          dcl 367 ref 364 398 406 406 408
+x3                                     parameter       fixed bin(21,0)          dcl 367 ref 364 398
+xx                              000102 automatic       fixed bin(21,0)          dcl 369 set ref 406* 408* 415 415 415 420
+y                               000101 automatic       fixed bin(21,0)          dcl 369 set ref 385* 387* 389 390* 401 415 418
+y1                                     parameter       fixed bin(21,0)          dcl 367 ref 364 385 385 387
+y2                                     parameter       fixed bin(21,0)          dcl 367 ref 364 398 409 409 411
+y3                                     parameter       fixed bin(21,0)          dcl 367 ref 364 398
+yy                              000103 automatic       fixed bin(21,0)          dcl 369 set ref 409* 411* 415
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_addr                        000142 constant        label                    dcl 101 ref 246
+bk_next                         001203 constant        label                    dcl 353 ref 330 336 342
+breakout_line                   001353 constant        label                    dcl 401 ref 391
+end_num                         000634 constant        label                    dcl 248 ref 240 241
+eval                            000661 constant        entry                    internal dcl 267 ref 125 145
+fail                            000265 constant        label                    dcl 141 ref 103 159 278 288 312 392
+get_addr_                       000067 constant        entry                    external dcl 34
+get_num                         000575 constant        label                    dcl 236 ref 114
+last                            000455 constant        label                    dcl 180 ref 110
+neg                             000570 constant        label                    dcl 226 ref 111
+pos                             000573 constant        label                    dcl 231 ref 112
+reg                             000271 constant        label                    dcl 145 ref 109
+reg1                            000353 constant        label                    dcl 161 ref 150
+reg_fail                        000261 constant        label                    dcl 137 ref 396
+retry                           001110 constant        label                    dcl 319 in procedure "eval" ref 326
+retry                           000474 constant        label                    dcl 189 in procedure "get_addr_" ref 196
+retry_forward                   000726 constant        label                    dcl 285
+scan                            000131 constant        label                    dcl 94 ref 113 177 180 200 206 212 223 228 233 264
+scan1                           000136 constant        label                    dcl 97 ref 107
+scan2                           000137 constant        label                    dcl 99 ref 91
+search_section                  001210 constant        entry                    internal dcl 364 ref 171 175 398
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1550        1564    1500        1560
+Length      1734    1500        14         133      47           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+get_addr_                           172 external procedure  is an external procedure.  
+eval                                    internal procedure  shares stack frame of external procedure get_addr_.  
+search_section                      101 internal procedure  calls itself recursively.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+get_addr_                000100 tp                          get_addr_
+                         000102 fp                          get_addr_
+                         000104 ti                          get_addr_
+                         000105 te                          get_addr_
+                         000106 lb                          get_addr_
+                         000107 ft                          get_addr_
+                         000110 fe                          get_addr_
+                         000111 li                          get_addr_
+                         000112 le                          get_addr_
+                         000113 i                           get_addr_
+                         000114 j                           get_addr_
+                         000115 num                         get_addr_
+                         000116 code                        get_addr_
+                         000117 temp_reg                    get_addr_
+                         000120 digit                       get_addr_
+                         000121 relsw                       get_addr_
+                         000122 negsw                       get_addr_
+                         000123 evalsw                      get_addr_
+                         000124 ch                          get_addr_
+                         000125 nl                          get_addr_
+                         000126 last_index                  get_addr_
+search_section           000100 x                           search_section
+                         000101 y                           search_section
+                         000102 xx                          search_section
+                         000103 yy                          search_section
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac          tra_ext_1
+ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+ioa_                          qx_search_file_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     34 000056        55 000074        79 000100        80 000104        81 000106        82 000110        83 000113
+     84 000115        85 000117        86 000121        87 000123        88 000125        90 000126        91 000130
+     94 000131        96 000134        97 000136        99 000137       101 000142       103 000161       105 000162
+    107 000167       109 000174       110 000176       111 000200       112 000202       113 000204       114 000206
+    116 000213       117 000215       118 000216       120 000221       121 000223       122 000224       125 000227
+    127 000232       129 000243       130 000245       132 000255       133 000256       134 000260       137 000261
+    139 000264       141 000265       143 000270       145 000271       148 000274       149 000277       150 000307
+    151 000316       152 000322       156 000334       158 000336       159 000352       161 000353       170 000355
+    171 000361       173 000416       175 000417       177 000454       180 000455       182 000463       184 000471
+    187 000472       189 000474       191 000477       193 000515       195 000520       196 000521       199 000522
+    200 000524       202 000525       204 000526       205 000530       206 000532       208 000533       209 000537
+    210 000551       211 000552       212 000554       215 000555       219 000561       221 000566       223 000567
+    226 000570       228 000572       231 000573       233 000574       236 000575       238 000576       239 000605
+    240 000612       241 000615       242 000620       244 000625       245 000631       246 000633       248 000634
+    250 000636       252 000640       253 000642       254 000644       257 000650       258 000652       259 000653
+    260 000655       262 000656       264 000660       267 000661       273 000662       275 000663       277 000667
+    278 000704       281 000705       283 000715       285 000726       287 000731       288 000745       290 000746
+    291 000750       292 000752       294 000770       295 000774       297 001011       299 001014       300 001015
+    302 001033       304 001040       305 001041       307 001044       308 001053       310 001064       311 001067
+    312 001103       314 001104       317 001106       319 001110       321 001113       323 001131       325 001134
+    326 001135       329 001136       330 001140       332 001141       334 001142       335 001144       336 001146
+    338 001147       339 001153       340 001165       341 001166       342 001170       345 001171       349 001175
+    351 001202       353 001203       356 001205       358 001206       364 001207       381 001215       383 001227
+    385 001230       387 001240       389 001241       390 001243       391 001300       392 001303       396 001310
+    398 001316       399 001352       401 001353       405 001371       406 001372       408 001403       409 001404
+    411 001414       415 001415       418 001435       420 001442       421 001445       422 001446       424 001451
+    425 001462       426 001467       427 001470       429 001471       430 001474       431 001476
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

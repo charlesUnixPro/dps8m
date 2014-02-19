@@ -1,0 +1,3416 @@
+	COMPILATION LISTING OF SEGMENT priv_polled_vip_mpx
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1113.54_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 /* format: style4,delnl,insnl,^ifthendo */
+       15 priv_polled_vip_mpx:
+       16      proc;
+       17 
+       18 /* This procedure contains the privileged entry points to the polled
+       19*   vip multiplexer.  These entries are never referenced at interrupt
+       20*   time and therefore need not be wired.
+       21*
+       22*   Coded December 1978 by J. Stern
+       23*   Modified November 1984 by Robert Coren to use tty_area_manager entries
+       24**/
+       25 
+       26 
+       27 /* Parameters */
+       28 
+       29 dcl  pm_code fixed bin (35);				/* error code */
+       30 dcl  pm_devx fixed bin;				/* device (LCT) index */
+       31 dcl  pm_infop ptr;					/* ptr to control order info structure */
+       32 dcl  pm_miip ptr;					/* ptr to mux_init_info structure */
+       33 dcl  pm_order char (*);				/* control order name */
+       34 dcl  pm_pvmdp ptr;					/* ptr to pvmd (polled vip multiplexer data base) */
+       35 
+       36 
+       37 /* Automatic */
+       38 
+       39 dcl  code fixed bin (35);
+       40 dcl  devx fixed bin;
+       41 dcl  meter_ptr ptr;
+       42 dcl  infop ptr;
+       43 
+       44 dcl  1 lc_info aligned,				/* info structure for line control order */
+       45        2 type fixed bin (17) unal,
+       46        2 arg1 fixed bin (17) unal,
+       47        2 station_mask (0:35) bit (1) unal;
+       48 
+       49 dcl  major_name_len fixed bin;
+       50 dcl  order char (32);
+       51 dcl  subchan fixed bin;
+       52 
+       53 
+       54 /* Internal static */
+       55 
+       56 dcl  init_sw bit (1) int static init ("0"b);
+       57 
+       58 
+       59 /* External static */
+       60 
+       61 dcl  error_table_$action_not_performed fixed bin (35) ext;
+       62 dcl  error_table_$bad_channel fixed bin (35) ext;
+       63 dcl  error_table_$bad_mode fixed bin (35) ext;
+       64 dcl  error_table_$bad_mpx_load_data fixed bin (35) ext;
+       65 dcl  error_table_$bigarg fixed bin (35) ext;
+       66 dcl  error_table_$invalid_state fixed bin (35) ext;
+       67 dcl  error_table_$noalloc fixed bin (35) ext;
+       68 dcl  error_table_$undefined_order_request fixed bin (35) ext;
+       69 dcl  error_table_$unimplemented_version fixed bin (35) ext;
+       70 dcl  pds$process_id bit (36) aligned ext;
+       71 
+       72 /* Constants */
+       73 
+       74 dcl  (
+       75      CONTROLLER_POLL fixed bin init (2),
+       76      ECHO_MASK fixed bin init (5),
+       77      PAUSE_TIME fixed bin init (4),
+       78      STATION_POLL fixed bin init (1)
+       79      ) int static options (constant);
+       80 
+       81 
+       82 /* Conditions */
+       83 
+       84 dcl  (area, cleanup) condition;
+       85 
+       86 
+       87 /* Builtins */
+       88 
+       89 dcl  (addr, bin, length, max, min, null, rtrim, size, string, substr, verify) builtin;
+       90 
+       91 
+       92 /* Entries */
+       93 
+       94 dcl  tty_area_manager$allocate entry (fixed bin, ptr);
+       95 dcl  tty_area_manager$free entry (fixed bin, ptr);
+       96 dcl  polled_vip_mpx$crash entry (ptr);
+       97 dcl  polled_vip_mpx$dialup entry (ptr, fixed bin);
+       98 dcl  polled_vip_mpx$system_init entry;
+       99 
+  1     1 /* BEGIN INCLUDE FILE ... polled_vip_mpx_data.incl.pl1 */
+  1     2 /* Created 12/20/78 by J. Stern */
+  1     3 
+  1     4 
+  1     5 dcl pvmdp ptr;
+  1     6 dcl pvmd_nchan fixed bin;				/* hbound of pvmd.subchan_table */
+  1     7 
+  1     8 dcl 1 pvmd aligned based (pvmdp),			/* polled vip multiplexer data */
+  1     9       2 devx fixed bin,				/* device (LCT) index */
+  1    10       2 nchan fixed bin,				/* number of subchannels */
+  1    11       2 name char (32) unal,				/* major channel name */
+  1    12       2 writep ptr,					/* ptr to frame now being written */
+  1    13       2 write_chan fixed bin,				/* subchan that owns current write frame */
+  1    14       2 nstation fixed bin (17) unal,			/* number of stations initially configured */
+  1    15       2 cur_nstation fixed bin (17) unal,		/* number of stations currently configured */
+  1    16       2 station_to_subchan (0:31) unal,
+  1    17         3 display fixed bin (8) unal,			/* display subchan for given station */
+  1    18         3 printer fixed bin (8) unal,			/* printer subchan for given station */
+  1    19       2 station_mask (0:35) bit (1) unal,		/* bit i ON if station i initially configured */
+  1    20       2 cur_station_mask (0:35) bit (1) unal,		/* bit i ON if station i currently configured */
+  1    21       2 load_proc_id bit (36),			/* bootload process id */
+  1    22       2 load_ev_chan fixed bin (71),			/* bootload event channel */
+  1    23       2 dialup_info bit (72),				/* dialup interrupt info */
+  1    24       2 pause_time fixed bin,				/* pause time between polling cycles */
+  1    25       2 max_text_len fixed bin,			/* max data chars in output text message */
+  1    26       2 max_message_len fixed bin,			/* max number of characters in input message */
+  1    27       2 function_codes,				/* chars having special meanings as function codes */
+  1    28         3 quit char (1) unal,
+  1    29         3 formfeed char (1) unal,
+  1    30         3 pad char (2) unal,
+  1    31       2 flags,
+  1    32         3 send_output bit (1) unal,			/* ON if ok to send more output */
+  1    33         3 mpx_started bit (1) unal,			/* ON if multiplexer started */
+  1    34         3 mpx_loading bit (1) unal,			/* ON if multiplexer load in progress */
+  1    35         3 mpx_loaded bit (1) unal,			/* ON if multiplexer loaded */
+  1    36         3 polling_started bit (1) unal,			/* ON if polling started */
+  1    37         3 controller_poll bit (1) unal,			/* ON if controller polling; OFF if station polling */
+  1    38         3 partial_frame bit (1) unal,			/* ON if partial frame has been written */
+  1    39         3 crlf_echo bit (1) unal,			/* ON to enable CRLF echoing */
+  1    40         3 omit_nl bit (1) unal,			/* ON to omit adding NL to received msgs */
+  1    41         3 omit_ff bit (1) unal,			/* ON to omit sending FF at top of page */
+  1    42         3 gcos_break bit (1) unal,			/* ON to accept $*$BRK as quit indication */
+  1    43         3 etb_mode bit (1) unal,			/* ON to terminate partial messages with ETB */
+  1    44         3 unused bit (24) unal,
+  1    45       2 error_counters like pvip_mpx_meters,		/* counters for errors reported by the FNP */
+  1    46       2 saved_meters_ptr ptr,				/* pointer to target for copy_meters order */
+  1    47       2 subchan_table (pvmd_nchan refer (pvmd.nchan)) like pvste; /* subchannel table */
+  1    48 
+  1    49 
+  1    50 dcl pvstep ptr;
+  1    51 
+  1    52 dcl 1 pvste aligned based (pvstep),			/* polled vip subchannel table entry */
+  1    53       2 station_addr fixed bin (9) unsigned unal,		/* station address (0 - 31) */
+  1    54       2 name char (3) unal,				/* subchan component name */
+  1    55       2 devx fixed bin (17) unal,			/* subchan device (LCT) index */
+  1    56       2 write_chain fixed bin (18) unsigned unal,		/* offset of first write buffer */
+  1    57       2 flags unal,
+  1    58         3 printer bit (1) unal,			/* ON if printer;  OFF if display */
+  1    59         3 hold_output bit (1) unal,			/* ON if waiting for FF (display) or ACK (printer) */
+  1    60         3 eop bit (1) unal,				/* ON if next output must clear screen */
+  1    61         3 hndlquit bit (1) unal,			/* ON if in hndlquit mode */
+  1    62         3 listen bit (1) unal,			/* ON if listening for dialup */
+  1    63         3 dialed bit (1) unal,			/* ON if subchan is dialed up */
+  1    64         3 slave bit (1) unal,				/* ON for slave subchans */
+  1    65         3 unused bit (2) unal,
+  1    66       2 naks fixed bin (8) unal,			/* printer status NAK counter */
+  1    67       2 baud_rate fixed bin (17) unal,			/* printer baud rate, 300 or 1200 */
+  1    68       2 pgofs fixed bin (8) unal,			/* page overflow counter (display only) */
+  1    69       2 writes fixed bin (8) unal,			/* count of frames written since first page overflow */
+  1    70       2 pad fixed bin (17) unal,
+  1    71       2 meters like pvip_subchan_meters,
+  1    72       2 saved_meters_ptr ptr;
+  1    73 
+  1    74 /* END INCLUDE FILE ... polled_vip_mpx_data.incl.pl1 */
+      100 
+      101 
+  2     1 /* BEGIN INCLUDE FILE ... polled_vip_load_info.incl.pl1 */
+  2     2 /* Created 12/21/78 by J. Stern */
+  2     3 
+  2     4 
+  2     5 dcl pv_load_infop ptr;
+  2     6 
+  2     7 dcl 1 pv_load_info aligned based (pv_load_infop),		/* info for "load_mpx" control order */
+  2     8       2 ev_chan fixed bin (71),			/* event channel to signal load completion */
+  2     9       2 pause_time fixed bin,				/* poll cycle pause time (miliseconds) */
+  2    10       2 max_text_len fixed bin,			/* max data chars in output text message */
+  2    11       2 function_codes,				/* chars having special meanings as function codes */
+  2    12         3 quit char (1) unal,
+  2    13         3 formfeed char (1) unal,
+  2    14         3 pad char (2) unal,
+  2    15       2 flags,
+  2    16         3 controller_poll bit (1) unal,			/* ON if controller polling desired */
+  2    17         3 crlf_echo bit (1) unal,			/* ON to enable CRLF echoing */
+  2    18         3 omit_nl bit (1) unal,			/* ON to omit adding NL to received msgs */
+  2    19         3 omit_ff bit (1) unal,			/* ON to omit sending FF at top of page */
+  2    20         3 gcos_break bit (1) unal,			/* ON to accept $*$BRK as quit indication */
+  2    21         3 etb_mode bit (1) unal,			/* On to terminate partial messages with ETB */
+  2    22         3 unused bit (30) unal,
+  2    23       2 max_message_len fixed bin,			/* maximum input message size */
+  2    24       2 pad1 (4) fixed bin,
+  2    25       2 nchan fixed bin,				/* number of subchannels configured */
+  2    26       2 subchans (32),
+  2    27         3 devx fixed bin (17) unal,				/* device index */
+  2    28         3 baud_rate fixed bin (17) unal,		/* baud rate for printers only (300 or 1200) */
+  2    29         3 flags,
+  2    30 	4 slave bit (1) unal,			/* ON for slave subchans */
+  2    31 	4 unused bit (35) unal,
+  2    32         3 pad2 (2) fixed bin;
+  2    33 
+  2    34 
+  2    35 /* Event message values for the bootload event channel. */
+  2    36 
+  2    37 dcl PV_MPX_UP fixed bin (71) int static options (constant) init (1);
+  2    38 dcl PV_MPX_DOWN fixed bin (71) int static options (constant) init (2);
+  2    39 dcl PV_MPX_MASKED fixed bin (71) int static options (constant) init (3);
+  2    40 
+  2    41 
+  2    42 /* END INCLUDE FILE ... polled_vip_load_info.incl.pl1 */
+      102 
+      103 
+  3     1 /* BEGIN INCLUDE FILE ... mux_init_info.incl.pl1 */
+  3     2 
+  3     3 /* Created 8/2/78 by J. Stern */
+  3     4 
+  3     5 
+  3     6 dcl  miip ptr;					/* ptr to mux_init_info structure */
+  3     7 dcl  mii_chan_count fixed bin;			/* channel count when allocating mux_init_info */
+  3     8 
+  3     9 
+  3    10 dcl 1 mux_init_info aligned based (miip),		/* multiplexer initialization info */
+  3    11       2 no_channels fixed bin,			/* number of multiplexed channels */
+  3    12       2 channels (mii_chan_count refer (mux_init_info.no_channels)), /* one entry per channel */
+  3    13         3 name char (32) unal,			/* channel name */
+  3    14         3 devx fixed bin;				/* device index for channel */
+  3    15 
+  3    16 
+  3    17 /* END INCLUDE FILE ... mux_init_info.incl.pl1 */
+      104 
+      105 
+  4     1 /* BEGIN INCLUDE FILE ... lct.incl.pl1 */
+  4     2 
+  4     3 /* Created by J. Stern 7/26/78 */
+  4     4 /* Metering information added by C. Hornig, March 1980. */
+  4     5 /* Unwired saved meters added by Robert Coren, December 1980 */
+  4     6 
+  4     7 dcl  lctp ptr;					/* ptr to logical channel table */
+  4     8 dcl  lctep ptr;					/* ptr to logical channel table entry */
+  4     9 dcl  lct_size fixed bin;				/* size of lcte_array when allocated */
+  4    10 
+  4    11 dcl 1 lct aligned based (lctp),			/* logical channel table */
+  4    12     2 max_no_lctes fixed bin,				/* maximum number of lct entries */
+  4    13     2 cur_no_lctes fixed bin,				/* current number of lct entries used */
+  4    14     2 lcnt_ptr ptr,					/* ptr to logical channel name table */
+  4    15     2 queue_lock bit (36),				/* lock used to serialize queueing operations */
+  4    16     2 pad (11) fixed bin,
+  4    17     2 lcte_array (lct_size refer (lct.max_no_lctes)) like lcte; /* lct entries */
+  4    18 
+  4    19 
+  4    20 dcl 1 lcte aligned based (lctep),			/* logical channel table entry */
+  4    21     2 lock bit (36),				/* channel lock */
+  4    22     2 data_base_ptr ptr unal,				/* ptr to channel data base */
+  4    23     2 channel_type fixed bin (8) unal,			/* identifies channel manager program */
+  4    24     2 flags unal,
+  4    25       3 entry_in_use bit (1) unal,			/* ON if this entry in use */
+  4    26       3 initialized bit (1) unal,			/* ON if this channel initialized */
+  4    27       3 notify_reqd bit (1) unal,			/* ON if must notify when unlocking this channel */
+  4    28       3 locked_for_interrupt bit (1) unal,		/* ON if lock set by interrupt handler */
+  4    29       3 space_needed bit (1) unal,			/* ON if this channel needs buffer space */
+  4    30       3 special_lock bit (1) unal,			/* ON if lock is managed by multiplexer */
+  4    31       3 trace_force bit (1) unal,			/* ON to trace based on next bit only */
+  4    32 						/* OFF to XOR next bit with tty_buf.default_tracing */
+  4    33       3 trace bit (1) unal,				/* ON to trace this channel */
+  4    34       3 unused bit (1) unal,
+  4    35     2 physical_channel_devx fixed bin (17) unal,		/* devx of physical chan from which logical chan is derived */
+  4    36     2 major_channel_info,
+  4    37       3 major_channel_devx fixed bin unal,		/* major channel device index */
+  4    38       3 subchannel fixed bin (17) unal,			/* subchannel id (or data ptr) wrt major channel */
+  4    39     2 queue_entries,
+  4    40       3 queue_head bit (18) unal,			/* ptr to first queue entry for this channel */
+  4    41       3 queue_tail bit (18) unal,			/* ptr to last queue entry for this channel */
+  4    42     2 word_counts,
+  4    43       3 input_words fixed bin (17) unal,		/* number of input words charged to this channel */
+  4    44       3 output_words fixed bin (17) unal,		/* number of output words charged to this channel */
+  4    45 
+  4    46     2 meters,
+  4    47       3 in_bytes fixed bin (35),
+  4    48       3 out_bytes fixed bin (35),
+  4    49       3 in,
+  4    50         4 calls fixed bin (35),
+  4    51         4 interrupts fixed bin (35),
+  4    52         4 call_time fixed bin (71),
+  4    53         4 interrupt_time fixed bin (71),
+  4    54       3 out like lcte.meters.in,
+  4    55       3 control like lcte.meters.in,
+  4    56     2 saved_meters_ptr ptr,				/* pointer to unwired copy of meters saved at last dialup */
+  4    57 
+  4    58     2 timer_offset bit (18) aligned,			/* Head of list of timers for this channel */
+  4    59 
+  4    60     2 pad (3) fixed bin (35);
+  4    61 
+  4    62 
+  4    63 dcl  lcntp ptr;					/* ptr to logical channel name table */
+  4    64 
+  4    65 dcl 1 lcnt aligned based (lcntp),			/* logical channel name table */
+  4    66     2 names (lct.max_no_lctes) char (32) unal;		/* channel names */
+  4    67 
+  4    68 dcl 1 saved_meters aligned based like lcte.meters;	/* meters saved at dialup, allocated in tty_area */
+  4    69 
+  4    70 
+  4    71 /* END INCLUDE FILE ... lct.incl.pl1 */
+      106 
+      107 
+  5     1 /* BEGIN INCLUDE FILE ... tty_buf.incl.pl1 */
+  5     2 
+  5     3 /* Date Last Modified and Reason
+  5     4*   Created 04/19/77 by J. Stern (from part of tty.incl.pl1)
+  5     5*   Modified January 1978 by Robert Coren and Larry Johnson for variable-size buffers
+  5     6*   Modified 2/6/78 by Robert Coren to make circular_queue size settable
+  5     7*   Modified Aug 78 by J. Nicholls to move the buffer block format to a file of its own
+  5     8*   and wtcb to its own plus other modification for ring 0 multiplexing, tty_buffer_block.incl.pl1
+  5     9*   Modified 7/17/79 by B. Greenberg for echo negotiation meters.
+  5    10*   Modified November 1979 by C. Hornig for MCS tracing.
+  5    11*   Modified December 1979 by Robert Coren to add FNP channel lock meter
+  5    12*   Modified February 1980 by Robert Coren to remove all references to circular buffer
+  5    13*   Modified March 1980 by Robert Coren to reorganize metering information
+  5    14*   Modified December 1980 by Robert Coren to add FNP-specific events
+  5    15*   Modified 24 March 1982, W. Olin Sibert, to add mcs_timer support, recoverable_error_severity
+  5    16*   Modified November 1984 by Robert Coren to add tty_area_lock
+  5    17**/
+  5    18 
+  5    19 dcl  ttybp ptr,
+  5    20      tty_buf$ ext static,				/* tty buffer segment */
+  5    21      tty_ev fixed bin int static options (constant) init (57), /* event used for wait and notify */
+  5    22      abs_buf_limit fixed bin (18) static options (constant) init (64), /* minimum number of words we will leave free */
+  5    23      input_bpart fixed bin (18) static options (constant) init (2), /* fraction of bleft we will allow for input */
+  5    24      output_bpart fixed bin (18) static options (constant) init (4); /* fraction of bleft we will allow for output */
+  5    25 
+  5    26 
+  5    27 dcl  qblock_size fixed bin int static options (constant) init (16); /* size in words of a delay queue block */
+  5    28 dcl  bsizec fixed bin int static options (constant) init (60); /* number of characters in smallest buffer */
+  5    29 dcl  buf_per_second fixed bin int static options (constant) init (10); /* for figuring out max. buffer size based on speed */
+  5    30 
+  5    31 dcl  FNP_DUMP_PATCH_EVENT fixed bin int static options (constant) init (58);
+  5    32 dcl  FNP_METER_EVENT fixed bin int static options (constant) init (59);
+  5    33 dcl  TTY_AREA_LOCK_EVENT bit (36) aligned int static options (constant) init ("74"b3);
+  5    34 
+  5    35 dcl 1 tty_buf aligned based (ttybp),			/* declaration of tty buffer seg */
+  5    36     2 slock bit (36),				/* per system lock */
+  5    37     2 absorig fixed bin (24),				/* abs address of this seg */
+  5    38     2 borig bit (18),				/* index of start of buffer area */
+  5    39     2 bleft fixed bin (18),				/* words left in pool */
+  5    40     2 free bit (18),				/* pointer to start of free pool */
+  5    41     2 fnp_config_flags (8) bit (1) unal,		/* flag(i) ON if fnp(i) configured */
+  5    42     2 padb1 bit (28) unaligned,
+  5    43     2 lct_ptr ptr,					/* pointer to logical channel table */
+  5    44 
+  5    45     2 nrawread fixed bin (35),			/* number of raw chars input, total */
+  5    46     2 nrawwrite fixed bin (35),			/* number of raw characters output */
+  5    47     2 ninchars fixed bin (35),			/* total input chars after conversion */
+  5    48     2 noutchars fixed bin (35),			/* total output chars before conversion */
+  5    49     2 readblocked fixed bin (35),			/* number of times go input blocked */
+  5    50     2 nblocked fixed bin (35),			/* number of times process output blocked */
+  5    51     2 minbuf fixed bin (18),				/* min output buffer size */
+  5    52     2 totbuf fixed bin (35),				/* divide by nblocked to get ave buffer size */
+  5    53 
+  5    54     2 preconverted fixed bin (35),			/* number of converted chars held in tty_buf */
+  5    55     2 input_restart fixed bin,			/* number of times tty_read had to start over */
+  5    56     2 output_restart fixed bin,			/* number of times tty_write has had to start over */
+  5    57     2 output_buffer_overflow fixed bin,			/* number of times tty_write has run out of buffers */
+  5    58     2 read_time fixed bin (71),			/* total time spent in tty_read */
+  5    59     2 write_time fixed bin (71),			/* total time spent in tty_write */
+  5    60 
+  5    61     2 read_calls fixed bin (35),			/* number of calls to tty_read */
+  5    62     2 write_calls fixed bin (35),			/* number of calls to tty_write */
+  5    63     2 bfx fixed bin,				/* used in calls to iobm */
+  5    64     2 nquits fixed bin (35),				/* number of quits */
+  5    65     2 space_needed_data,
+  5    66       3 space_needed bit (1) unal,			/* space_needed bit on in at least 1 lcte */
+  5    67       3 space_needed_calls fixed bin (34) unal,		/* meter of uses of this facility */
+  5    68     2 space_lock_count fixed bin (35),			/* count of times tty_buf.slock locked */
+  5    69     2 space_lock_wait_count fixed bin (35),		/* count of times necessary to loop to lock it */
+  5    70     2 space_lock_wait_time fixed bin (35),		/* total time looped trying to lock it */
+  5    71 
+  5    72     2 alloc_calls fixed bin (35),			/* total number of allocations performed in tty_buf */
+  5    73     2 free_calls fixed bin (35),			/* total number of freeings in tty_buf */
+  5    74     2 alloc_time fixed bin (35),			/* time spent masked in tty_space_man$get entries */
+  5    75     2 free_time fixed bin (35),			/* time spent masked in tty_space_man$free entries */
+  5    76     2 total_alloc_steps fixed bin (35),			/* number of steps thru free chain while doing above */
+  5    77     2 alloc_failures fixed bin (35),			/* number of unsuccessful attempts to allocate space */
+  5    78     2 cumulative_input_space fixed bin (71),		/* cumulative amount of space allocated for input */
+  5    79 
+  5    80     2 cumulative_output_space fixed bin (71),		/* cumulative amount of space allocated for output */
+  5    81     2 cumulative_control_space fixed bin (71),		/* cumulative amount of space allocated by tty_space_man$get_space */
+  5    82     2 input_space_updates fixed bin (35),		/* number of increments to cumulative_input_space */
+  5    83     2 output_space_updates fixed bin (35),		/* number of increments to cumulative_output_space */
+  5    84     2 control_space_updates fixed bin (35),		/* number of increments to cumulative_control_space */
+  5    85     2 minimum_free_space fixed bin (18),		/* smallest amount of free space ever available */
+  5    86 
+  5    87     2 current_input_space fixed bin (18),		/* amount of space currently allocated for input */
+  5    88     2 current_output_space fixed bin (18),		/* amount of space currently allocated for output */
+  5    89     2 current_control_space fixed bin (18),		/* amount of space currently allocated by get_space */
+  5    90     2 tty_lock_calls fixed bin (35),			/* number of calls to tty_lock$lock entries */
+  5    91     2 found_channel_locked fixed bin (35),		/* number of times tty_lock found channel already locked */
+  5    92     2 max_wait_time fixed bin (35),			/* longest time waited for any channel lock */
+  5    93     2 total_wait_time fixed bin (71),			/* total amount of time spent waiting for channel locks */
+  5    94 
+  5    95     2 echo_neg_time fixed bin (71),			/* cumulative time spent doing echo negotiation */
+  5    96     2 echo_neg_interrupts fixed bin (35),		/* Echo-negotiated shipments */
+  5    97     2 echo_neg_r0_chars fixed bin (35),			/* Chars echoed by ring 0 */
+  5    98     2 echo_neg_mux_chars fixed bin (35),		/* Chars echoed by mux */
+  5    99     2 echo_neg_sndopt_restarts fixed bin (35),		/* Echo reinits */
+  5   100     2 echo_neg_mux_nonecho fixed bin (35),
+  5   101     2 echo_neg_entries fixed bin (35),			/* Entries into negotiate */
+  5   102 
+  5   103     2 echo_neg_mux_inhibit bit (1) aligned,		/* For testing */
+  5   104     2 n_queued_interrupts fixed bin (35),		/* number of interrupts queued by tty_lock */
+  5   105     2 trace unaligned,				/* tracing information */
+  5   106       3 flags,
+  5   107       4 enable bit,					/* global tracing control */
+  5   108       4 default_mode bit,				/* whether to trace channels by default */
+  5   109       4 read bit,					/* read */
+  5   110       4 write bit,					/* write */
+  5   111       4 data bit,					/* buffers on reads and writes */
+  5   112       4 control bit,				/* control, priv_control, and hpriv_control */
+  5   113       4 modes bit,					/* (get set check)_modes */
+  5   114       4 interrupt bit,				/* interrupt, interrupt_later */
+  5   115       4 init bit,					/* init_multiplexer, terminate_multiplexer */
+  5   116       4 start bit,					/* start, stop */
+  5   117       4 shutdown bit,				/* shutdown */
+  5   118       4 space_man bit,				/* tty_space_man$* */
+  5   119       4 pad_flags bit (6),
+  5   120       3 data_offset bit (18),				/* offset of tracing data */
+  5   121 
+  5   122     2 recoverable_error_severity fixed bin,		/* Syserr severity for recoverable MCS errors */
+  5   123 
+  5   124     2 timer_lock bit (36) aligned,			/* Lock owned by mcs_timer */
+  5   125     2 next_timer_offset bit (18) aligned,		/* Offset of next timer to come due */
+  5   126     2 timer_count fixed bin,				/* Number of timers outstanding */
+  5   127     2 timer_process bit (36) aligned,			/* Who is doing timers? */
+  5   128 
+  5   129     2 timer_ev_chn fixed bin (71),			/* How get get him */
+  5   130     2 timer_lock_wait_time fixed bin (71),		/* CPU time spent spinning on timer lock */
+  5   131 
+  5   132     2 timer_lock_count fixed bin (35),			/* Number of times timer lock locked */
+  5   133     2 timer_lock_wait_count fixed bin (35),		/* Number of times imer lock waited on */
+  5   134     2 timer_call_time fixed bin (71),			/* CPU time spent in call side timer operations */
+  5   135 
+  5   136     2 timer_polling_time fixed bin (71),		/* CPU time spent polling (including channel_manager) */
+  5   137     2 timer_set_calls fixed bin (35),			/* Number of calls to mcs_timer$set, set_wired */
+  5   138     2 timer_reset_calls fixed bin (35), 		/* Number of calls to mcs_timer$reset, reset_wired */
+  5   139 
+  5   140     2 timer_change_calls fixed bin (35),		/* Number of calls to mcs_timer$change, change_wired */
+  5   141     2 timer_poll_calls fixed bin (35),			/* Number of calls to mcs_timer$poll */
+  5   142     2 timer_error_calls fixed bin (35), 		/* Number of mcs_timer calls ending with recoverable errors */
+  5   143     2 timer_duplicate_pollings fixed bin (35),		/* Number of timer polling found in progress on other CPU */
+  5   144 
+  5   145     2 tty_area_lock like hc_fast_lock,			/* to prevent contention in allocating/freeing in tty_area */
+  5   146 
+  5   147     2 pad2 (13) fixed bin (35),
+  5   148 
+  5   149     2 free_space fixed bin;				/* start of free space region */
+  5   150 
+  5   151 
+  6     1 /* BEGIN INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  6     2 
+  6     3 /* Created November 1984 by Robert Coren to replace hc_lock.incl.pl1 */
+  6     4 
+  6     5 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  6     6 
+  6     7 /* format: style3 */
+  6     8 
+  6     9 declare	lock_ptr		pointer;
+  6    10 declare	1 hc_fast_lock	aligned based (lock_ptr),
+  6    11 	  2 pid		bit (36) aligned,		/* holder of lock */
+  6    12 	  2 event		bit (36) aligned,		/* event associated with lock */
+  6    13 	  2 flags		aligned,
+  6    14 	    3 notify_sw	bit (1) unaligned,
+  6    15 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  6    16 
+  6    17 /* END INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  5   152 
+  5   153 
+  5   154 /* END INCLUDE FILE ... tty_buf.incl.pl1 */
+      108 
+      109 
+  7     1 /* BEGIN INCLUDE FILE ... channel_manager_dcls.incl.pl1 */
+  7     2 
+  7     3 /* Created 8/25/78 by J. Stern */
+  7     4 
+  7     5 
+  7     6 /* call channel_manager$read (devx, chain_ptr, more_input_flag, code) */
+  7     7 dcl channel_manager$read entry (fixed bin, ptr, bit (1) aligned, fixed bin (35));
+  7     8 
+  7     9 /* call channel_manager$write (devx, output_ptr, code) */
+  7    10 dcl channel_manager$write entry (fixed bin, ptr, fixed bin (35));
+  7    11 
+  7    12 /* call channel_manager$control (devx, control_type, info_ptr, code) */
+  7    13 dcl channel_manager$control entry (fixed bin, char (*), ptr, fixed bin (35));
+  7    14 
+  7    15 /* call channel_manager$set_modes (devx, mode_change_list_ptr, code) */
+  7    16 dcl channel_manager$set_modes entry (fixed bin, ptr, fixed bin (35));
+  7    17 
+  7    18 /* call channel_manager$check_modes (devx, mode_change_list_ptr, code) */
+  7    19 dcl channel_manager$check_modes entry (fixed bin, ptr, fixed bin (35));
+  7    20 
+  7    21 /* call channel_manager$get_modes (devx, modes, code) */
+  7    22 dcl channel_manager$get_modes entry (fixed bin, char (*), fixed bin (35));
+  7    23 
+  7    24 /* call channel_manager$interrupt (devx, int_type, int_data) */
+  7    25 dcl channel_manager$interrupt entry (fixed bin, fixed bin, bit (72) aligned);
+  7    26 
+  7    27 /* call channel_manager$interrupt_later (devx, int_type, int_data) */
+  7    28 dcl channel_manager$interrupt_later entry (fixed bin, fixed bin, bit (72) aligned);
+  7    29 
+  7    30 /* call channel_manager$queued_interrupt (devx, int_type, int_data) */
+  7    31 dcl channel_manager$queued_interrupt entry (fixed bin, fixed bin, bit (72) aligned);
+  7    32 
+  7    33 
+  7    34 /* END INCLUDE FILE ... channel_manager_dcls.incl.pl1 */
+      110 
+      111 
+  8     1 /* BEGIN INCLUDE FILE ... polled_vip_mpx_meters.incl.pl1 */
+  8     2 
+  8     3 /* Defines the structure used for metering of a polled_vip multiplexer */
+  8     4 
+  8     5 /* Written June 1981 by Robert Coren */
+  8     6 
+  8     7 dcl 1 pvip_mpx_meter_struc based aligned,
+  8     8     2 version fixed bin,
+  8     9     2 pad fixed bin,
+  8    10     2 current_meters like pvip_mpx_meters,
+  8    11     2 saved_meters like pvip_mpx_meters;
+  8    12 
+  8    13 dcl 1 pvip_mpx_meters based aligned,
+  8    14     2 input_timeouts fixed bin,
+  8    15     2 input_frames_lost fixed bin,
+  8    16     2 output_frames_lost fixed bin,
+  8    17     2 bad_output_frames fixed bin,
+  8    18     2 output_timeouts fixed bin;
+  8    19 
+  8    20 dcl  PVIP_MPX_METERS_VERSION_1 internal static options (constant) init (1);
+  8    21 
+  8    22 /* END INCLUDE FILE ... polled_vip_mpx_meters.incl.p1l */
+      112 
+      113 
+  9     1 /* BEGIN INCLUDE FILE ... pvip_subchan_meters.incl.pl1 */
+  9     2 
+  9     3 /* Defines the structure used for meters kept by polled_vip_mpx on behalf of its subchannels */
+  9     4 
+  9     5 /* Written June 1981 by Robert Coren */
+  9     6 
+  9     7 dcl 1 pvip_subchan_meter_struc based aligned,
+  9     8     2 version fixed bin,
+  9     9     2 flags,
+  9    10       3 printer bit (1) unaligned,
+  9    11       3 pad bit (35) unaligned,
+  9    12     2 current_meters like pvip_subchan_meters,
+  9    13     2 saved_meters like pvip_subchan_meters;
+  9    14 
+  9    15 dcl 1 pvip_subchan_meters based aligned,
+  9    16     2 printer_naks fixed bin (35),
+  9    17     2 discarded_printer_frame fixed bin (35),
+  9    18     2 display_pgofs fixed bin (35),
+  9    19     2 pgof_limit_reached fixed bin (35);
+  9    20 
+  9    21 dcl PVIP_SUBCHAN_METERS_VERSION_1 internal static options (constant) init (1);
+  9    22 
+  9    23 
+  9    24 /* END INCLUDE FILE ... pvip_subchan_meters.incl.pl1 */
+      114 
+      115 
+ 10     1 /* BEGIN INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+ 10     2 
+ 10     3 /* This include file declares all the entries in tty_space_man and defines the constants
+ 10     4**  to be used for the flags argument
+ 10     5**   Modified 08/21/78 by Robert Coren to eliminate "masked" flag
+ 10     6**   Modified March 1981 by Robert Coren to add get_perm_space entry
+ 10     7**   Modified April 1981 by Robert Coren to add switch_chain entry
+ 10     8**/
+ 10     9 
+ 10    10 dcl  tty_space_man$get_space entry (fixed bin, ptr);
+ 10    11 dcl  tty_space_man$get_perm_space entry (fixed bin, ptr);
+ 10    12 dcl  tty_space_man$free_space entry (fixed bin, ptr);
+ 10    13 dcl  tty_space_man$get_buffer entry (fixed bin, fixed bin, bit (1), ptr);
+ 10    14 dcl  tty_space_man$free_buffer entry (fixed bin, bit (1), ptr);
+ 10    15 dcl  tty_space_man$get_chain entry (fixed bin, fixed bin, fixed bin, bit (1), ptr);
+ 10    16 dcl  tty_space_man$free_chain entry (fixed bin, bit (1), ptr);
+ 10    17 dcl  tty_space_man$switch_chain entry (fixed bin, fixed bin, bit (1), bit (1), ptr);
+ 10    18 dcl  tty_space_man$needs_space entry (fixed bin);
+ 10    19 
+ 10    20 dcl  INPUT bit (1) int static options (constant) init ("0"b);
+ 10    21 dcl  OUTPUT bit (1) int static options (constant) init ("1"b);
+ 10    22 
+ 10    23 /* END INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+      116 
+      117 
+ 11     1 /* BEGIN INCLUDE FILE...get_comm_meters_info.incl.pl1 */
+ 11     2 
+ 11     3 /* This include file defines the info structure(s) used with the get_meters order to MCM */
+ 11     4 /* A program that includes this include file must alos include lct.incl.pl1 */
+ 11     5 
+ 11     6 /* Written Decemeber 1980 by Robert Coren */
+ 11     7 
+ 11     8 dcl 1 get_comm_meters_info aligned based,		/* info_ptr points to this */
+ 11     9     2 version fixed bin,
+ 11    10     2 pad fixed bin,
+ 11    11     2 subchan_ptr pointer,				/* pointer to meters kept by the subchannel */
+ 11    12     2 logical_chan_ptr pointer,			/* pointer to meters kept by channel_manager */
+ 11    13     2 parent_ptr pointer,				/* pointer to meters kept by the parent multiplexer */
+ 11    14     2 subchan_type fixed bin,				/* multiplexer type of subchannel */
+ 11    15     2 parent_type fixed bin;				/* multiplexer type of parent */
+ 11    16 
+ 11    17 dcl 1 logical_chan_meters based aligned,		/* pointed to by get_comm_meters_info.logical_chan_ptr */
+ 11    18        2 current_meters like lcte.meters,		/* latest values */
+ 11    19        2 saved_meters like lcte.meters;			/* values as of last copy_meters */
+ 11    20 
+ 11    21 dcl  GET_COMM_METERS_INFO_VERSION_1 fixed bin int static options (constant) init (1);
+ 11    22 
+ 11    23 /* END INCLUDE FILE...get_comm_meters_info.incl.pl1 */
+      118 
+      119 
+      120 /* Entry to allocate and initialize the  multiplexer data base for a given major channel */
+      121 
+      122 init_multiplexer:
+      123      entry (pm_devx, pm_miip, pm_pvmdp, pm_code);
+      124 
+      125 	devx = pm_devx;
+      126 	miip = pm_miip;
+      127 	pm_pvmdp = null;
+      128 
+      129 	ttybp = addr (tty_buf$);
+      130 	lctp = tty_buf.lct_ptr;
+      131 	lcntp = lct.lcnt_ptr;
+      132 
+      133 	pvmd_nchan = mux_init_info.no_channels;		/* size (pvmd) depends on this */
+      134 	if pvmd_nchan > 32
+      135 	then do;
+      136 	     pm_code = error_table_$bigarg;
+      137 	     return;
+      138 	end;
+      139 	pvmdp = null;
+      140 	on cleanup
+      141 	     begin;
+      142 		if pvmdp ^= null
+      143 		then call tty_space_man$free_space (size (pvmd), pvmdp);
+      144 	     end;
+      145 
+      146 	call tty_space_man$get_space (size (pvmd), pvmdp);/* allocate space for multiplexer data base */
+      147 	if pvmdp = null
+      148 	then do;
+      149 noalloc:
+      150 	     pm_code = error_table_$noalloc;
+      151 	     return;
+      152 	end;
+      153 
+      154 	pvmd.nchan = pvmd_nchan;			/* init major channel data */
+      155 	pvmd.devx = devx;
+      156 	pvmd.name = lcnt.names (devx);
+      157 	major_name_len = length (rtrim (pvmd.name));
+      158 	string (pvmd.flags) = ""b;
+      159 
+      160 	pvmd.nstation = 0;				/* init subchannel data */
+      161 	string (pvmd.station_mask) = ""b;
+      162 	pvmd.station_to_subchan (*).display = 0;
+      163 	pvmd.station_to_subchan (*).printer = 0;
+      164 
+      165 	on area
+      166 	     begin;
+      167 		call tty_space_man$free_space (size (pvmd), pvmdp);
+      168 		go to noalloc;
+      169 	     end;
+      170 
+      171 	call tty_area_manager$allocate (size (pvip_mpx_meters), pvmd.saved_meters_ptr);
+      172 
+      173 	do subchan = 1 to pvmd.nchan;			/* init subchannel entries */
+      174 	     pvstep = addr (pvmd.subchan_table (subchan));
+      175 	     pvste.devx = mux_init_info.devx (subchan);
+      176 	     pvste.name = substr (mux_init_info.name (subchan), major_name_len + 2);
+      177 						/* get last component of channel name */
+      178 	     if verify (substr (pvste.name, 1, 1), "dpx") ^= 0
+      179 	     then go to bad_chan;
+      180 	     if verify (substr (pvste.name, 2, 2), "0123456789") ^= 0
+      181 	     then go to bad_chan;
+      182 	     pvste.station_addr = bin (substr (pvste.name, 2, 2), 8);
+      183 	     if pvste.station_addr < 0 | pvste.station_addr > 31
+      184 	     then go to bad_chan;
+      185 
+      186 	     if ^pvmd.station_mask (pvste.station_addr)
+      187 	     then do;
+      188 		pvmd.station_mask (pvste.station_addr) = "1"b;
+      189 		pvmd.nstation = pvmd.nstation + 1;
+      190 	     end;
+      191 
+      192 	     string (pvste.flags) = ""b;
+      193 	     if substr (pvste.name, 1, 1) = "p"
+      194 	     then do;
+      195 		if pvmd.station_to_subchan (pvste.station_addr).printer ^= 0
+      196 		then go to bad_chan;
+      197 		pvmd.station_to_subchan (pvste.station_addr).printer = subchan;
+      198 	     end;
+      199 	     else do;
+      200 		if pvmd.station_to_subchan (pvste.station_addr).display ^= 0
+      201 		then go to bad_chan;
+      202 		pvmd.station_to_subchan (pvste.station_addr).display = subchan;
+      203 	     end;
+      204 
+      205 	     call tty_area_manager$allocate (size (pvip_subchan_meters), pvste.saved_meters_ptr);
+      206 
+      207 	     lctep = addr (lct.lcte_array (pvste.devx));
+      208 	     lcte.subchannel = subchan;
+      209 	end;
+      210 
+      211 	if ^init_sw
+      212 	then do;
+      213 	     call polled_vip_mpx$system_init;
+      214 	     init_sw = "1"b;
+      215 	end;
+      216 
+      217 	pm_pvmdp = pvmdp;
+      218 	pm_code = 0;
+      219 	return;
+      220 
+      221 
+      222 bad_chan:						/* come here for invlaid channel name */
+      223 	call tty_space_man$free_space (size (pvmd), pvmdp);
+      224 	pm_code = error_table_$bad_channel;
+      225 	return;
+      226 
+      227 
+      228 
+      229 /* Entry to discard the multiplexer data base for a given major channel */
+      230 
+      231 terminate_multiplexer:
+      232      entry (pm_pvmdp, pm_code);
+      233 
+      234 	pvmdp = pm_pvmdp;
+      235 	pvmd_nchan = pvmd.nchan;			/* size (pvmd) depends on this */
+      236 	do subchan = 1 to pvmd_nchan;			/* free all the saved meters */
+      237 	     pvstep = addr (pvmd.subchan_table (subchan));
+      238 	     call tty_area_manager$free (size (pvip_subchan_meters), pvste.saved_meters_ptr);
+      239 	end;
+      240 
+      241 	call tty_area_manager$free (size (pvip_mpx_meters), pvmd.saved_meters_ptr);
+      242 	call tty_space_man$free_space (size (pvmd), pvmdp);
+      243 
+      244 	pm_pvmdp = null;
+      245 	pm_code = 0;
+      246 	return;
+      247 
+      248 
+      249 
+      250 /* Entry to allow dialups on multiplexer subchannels */
+      251 
+      252 start:
+      253      entry (pm_pvmdp, pm_code);
+      254 
+      255 	pvmdp = pm_pvmdp;
+      256 	if ^pvmd.mpx_loaded
+      257 	then do;
+      258 	     pm_code = error_table_$action_not_performed;
+      259 	     return;
+      260 	end;
+      261 
+      262 	call channel_manager$control (pvmd.devx, "set_input_message_size", addr (pvmd.max_message_len), code);
+      263 
+      264 	if pvmd.crlf_echo
+      265 	then call send_echo_mask;
+      266 
+      267 	lc_info.type = PAUSE_TIME;			/* set poll cycle pause time */
+      268 	lc_info.arg1 = pvmd.pause_time;
+      269 	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+      270 
+      271 	if pvmd.controller_poll
+      272 	then lc_info.type = CONTROLLER_POLL;
+      273 	else do;
+      274 	     lc_info.type = STATION_POLL;
+      275 	     lc_info.arg1 = pvmd.nstation;
+      276 	     lc_info.station_mask = pvmd.station_mask;
+      277 	end;
+      278 	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+      279 	if code = 0
+      280 	then pvmd.polling_started = "1"b;
+      281 
+      282 	pvmd.mpx_started = "1"b;
+      283 	do subchan = 1 to pvmd.nchan;			/* look for subchans that can dial up now */
+      284 	     pvstep = addr (pvmd.subchan_table (subchan));
+      285 	     if pvste.listen & ^pvste.dialed & pvste.slave
+      286 	     then call polled_vip_mpx$dialup (pvmdp, subchan);
+      287 						/* make dialup happen */
+      288 	end;
+      289 
+      290 	pm_code = 0;
+      291 	return;
+      292 
+      293 
+      294 
+      295 /* Entry to forbid dialups on multiplexer subchannels */
+      296 
+      297 stop:
+      298      entry (pm_pvmdp, pm_code);
+      299 
+      300 	pvmdp = pm_pvmdp;
+      301 	pvmd.mpx_started = "0"b;
+      302 	pm_code = 0;
+      303 	return;
+      304 
+      305 
+      306 
+      307 /* Entry to shut down the multiplexer (equivalent to a crash) */
+      308 
+      309 shutdown:
+      310      entry (pm_pvmdp, pm_code);
+      311 
+      312 	pvmdp = pm_pvmdp;
+      313 	if pvmd.mpx_loading | pvmd.mpx_loaded
+      314 	then call channel_manager$control (pvmd.devx, "hangup", null, code);
+      315 	call polled_vip_mpx$crash (pvmdp);		/* simulate a crash */
+      316 	pm_code = 0;
+      317 	return;
+      318 
+      319 
+      320 
+      321 /* Entry to perform privileged control orders */
+      322 
+      323 priv_control:
+      324      entry (pm_pvmdp, pm_order, pm_infop, pm_code);
+      325 
+      326 	pvmdp = pm_pvmdp;
+      327 	order = pm_order;
+      328 	infop = pm_infop;
+      329 
+      330 	if order = "copy_meters"
+      331 	then do;
+      332 	     pvmd.saved_meters_ptr -> pvip_mpx_meters = pvmd.error_counters;
+      333 	     call channel_manager$control (pvmd.devx, order, infop, pm_code);
+      334 	end;
+      335 
+      336 	else if order = "get_meters"
+      337 	then do;
+      338 	     if infop -> get_comm_meters_info.version ^= GET_COMM_METERS_INFO_VERSION_1
+      339 	     then pm_code = error_table_$unimplemented_version;
+      340 	     else do;
+      341 		meter_ptr = infop -> get_comm_meters_info.subchan_ptr;
+      342 		if meter_ptr ^= null ()
+      343 		then if meter_ptr -> pvip_mpx_meter_struc.version ^= PVIP_MPX_METERS_VERSION_1
+      344 		     then pm_code = error_table_$unimplemented_version;
+      345 		     else do;
+      346 			meter_ptr -> pvip_mpx_meter_struc.current_meters = pvmd.error_counters;
+      347 			meter_ptr -> pvip_mpx_meter_struc.saved_meters = pvmd.saved_meters_ptr -> pvip_mpx_meters;
+      348 			call channel_manager$control (pvmd.devx, order, infop, pm_code);
+      349 		     end;
+      350 	     end;
+      351 	end;
+      352 
+      353 	else pm_code = error_table_$undefined_order_request;
+      354 	return;
+      355 
+      356 
+      357 
+      358 /* Entry to perform highly privileged control orders */
+      359 
+      360 hpriv_control:
+      361      entry (pm_pvmdp, pm_order, pm_infop, pm_code);
+      362 
+      363 	pvmdp = pm_pvmdp;
+      364 	order = pm_order;
+      365 	code = 0;
+      366 
+      367 	if order = "load_mpx"			/* bootload the multiplexed device */
+      368 	then do;					/* listen to major channel and wait for dialup */
+      369 	     if pvmd.mpx_loading | pvmd.mpx_loaded	/* one at a time, please */
+      370 	     then do;
+      371 		pm_code = error_table_$action_not_performed;
+      372 		return;
+      373 	     end;
+      374 
+      375 	     pv_load_infop = pm_infop;		/* save load info */
+      376 	     if pv_load_info.nchan ^= pvmd.nchan
+      377 	     then do;
+      378 bad_load_data:
+      379 		pm_code = error_table_$bad_mpx_load_data;
+      380 		return;
+      381 	     end;
+      382 
+      383 	     pvmd.controller_poll = pv_load_info.controller_poll;
+      384 	     pvmd.crlf_echo = pv_load_info.crlf_echo;
+      385 	     pvmd.omit_nl = pv_load_info.omit_nl;
+      386 	     pvmd.omit_ff = pv_load_info.omit_ff;
+      387 	     pvmd.gcos_break = pv_load_info.gcos_break;
+      388 	     pvmd.etb_mode = pv_load_info.etb_mode;
+      389 
+      390 	     pvmd.load_proc_id = pds$process_id;
+      391 	     pvmd.load_ev_chan = pv_load_info.ev_chan;
+      392 	     pvmd.pause_time = pv_load_info.pause_time;
+      393 	     pvmd.max_text_len = min (1920, max (64, pv_load_info.max_text_len));
+      394 	     pvmd.max_message_len = min (1024, max (73, pv_load_info.max_message_len));
+      395 	     pvmd.quit = pv_load_info.quit;
+      396 	     pvmd.formfeed = pv_load_info.formfeed;
+      397 
+      398 	     pvmd.mpx_started, pvmd.polling_started, pvmd.send_output, pvmd.partial_frame = "0"b;
+      399 	     pvmd.writep = null;
+      400 	     pvmd.write_chan = 0;
+      401 	     pvmd.input_timeouts, pvmd.input_frames_lost, pvmd.output_frames_lost, pvmd.bad_output_frames,
+      402 		pvmd.output_timeouts = 0;
+      403 
+      404 	     do subchan = 1 to pvmd.nchan;		/* init some subchannel data */
+      405 		pvstep = addr (pvmd.subchan_table (subchan));
+      406 		pvste.write_chain = 0;
+      407 		pvste.naks = 0;
+      408 		pvste.pgofs, pvste.writes = 0;
+      409 		string (pvste.flags) = ""b;
+      410 		pvste.printer = (substr (pvste.name, 1, 1) = "p");
+      411 		pvste.slave = pv_load_info.slave (subchan);
+      412 		if pvste.devx ^= pv_load_info.devx (subchan)
+      413 		then go to bad_load_data;
+      414 		pvste.baud_rate = pv_load_info.baud_rate (subchan);
+      415 	     end;
+      416 
+      417 	     call channel_manager$control (pvmd.devx, "listen", null, code);
+      418 	     if code ^= 0
+      419 	     then do;
+      420 		pm_code = code;
+      421 		return;
+      422 	     end;
+      423 
+      424 	     pvmd.mpx_loading = "1"b;
+      425 	     pvmd.cur_station_mask = pvmd.station_mask;
+      426 	     pvmd.cur_nstation = pvmd.nstation;
+      427 	end;
+      428 
+      429 	else code = error_table_$undefined_order_request;
+      430 
+      431 	pm_code = code;
+      432 	return;
+      433 
+      434 /* Subroutine to send the echo mask to the FNP */
+      435 
+      436 send_echo_mask:
+      437      proc;
+      438 
+      439 dcl  p ptr;
+      440 dcl  i fixed bin;
+      441 dcl  count fixed bin;
+      442 
+      443 	string (lc_info.station_mask) = ""b;
+      444 	count = 0;
+      445 	do i = 1 to pvmd.nchan;			/* find the subchans that require echoing */
+      446 	     p = addr (pvmd.subchan_table (i));
+      447 	     if substr (p -> pvste.name, 1, 1) = "d"	/* only display stations get echos */
+      448 	     then do;
+      449 		lc_info.station_mask (p -> pvste.station_addr) = "1"b;
+      450 		count = count + 1;
+      451 	     end;
+      452 	end;
+      453 
+      454 	lc_info.type = ECHO_MASK;
+      455 	lc_info.arg1 = count;
+      456 	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+      457      end;
+      458 
+      459      end;						/* priv_polled_vip_mpx */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1113.5  priv_polled_vip_mpx.pl1           >udd>sm>ds>w>ml>priv_polled_vip_mpx.pl1
+100          1    08/10/81  1943.7  polled_vip_mpx_data.incl.pl1      >ldd>incl>polled_vip_mpx_data.incl.pl1
+102          2    10/20/82  1038.6  polled_vip_load_info.incl.pl1     >ldd>incl>polled_vip_load_info.incl.pl1
+104          3    02/23/79  1534.9  mux_init_info.incl.pl1            >ldd>incl>mux_init_info.incl.pl1
+106          4    11/08/82  1105.8  lct.incl.pl1                      >ldd>incl>lct.incl.pl1
+108          5    01/06/85  1522.1  tty_buf.incl.pl1                  >ldd>incl>tty_buf.incl.pl1
+5-152        6    01/06/85  1522.1  hc_fast_lock.incl.pl1             >ldd>incl>hc_fast_lock.incl.pl1
+110          7    05/06/80  1058.2  channel_manager_dcls.incl.pl1     >ldd>incl>channel_manager_dcls.incl.pl1
+112          8    03/27/82  0530.3  polled_vip_mpx_meters.incl.pl1    >ldd>incl>polled_vip_mpx_meters.incl.pl1
+114          9    03/27/82  0530.3  pvip_subchan_meters.incl.pl1      >ldd>incl>pvip_subchan_meters.incl.pl1
+116         10    06/18/81  1000.8  tty_space_man_dcls.incl.pl1       >ldd>incl>tty_space_man_dcls.incl.pl1
+118         11    06/18/81  1000.6  get_comm_meters_info.incl.pl1     >ldd>incl>get_comm_meters_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+CONTROLLER_POLL                        constant        fixed bin(17,0)          initial dcl 74 ref 271
+ECHO_MASK                              constant        fixed bin(17,0)          initial dcl 74 ref 454
+GET_COMM_METERS_INFO_VERSION_1         constant        fixed bin(17,0)          initial dcl 11-21 ref 338
+PAUSE_TIME                             constant        fixed bin(17,0)          initial dcl 74 ref 267
+PVIP_MPX_METERS_VERSION_1              constant        fixed bin(17,0)          initial dcl 8-20 ref 342
+STATION_POLL                           constant        fixed bin(17,0)          initial dcl 74 ref 274
+addr                                                   builtin function         dcl 89 ref 129 174 207 237 262 262 269 269 278 278
+                                                                                  284 405 446 456 456
+area                            000122 stack reference condition                dcl 84 ref 165
+arg1                      0(18) 000106 automatic       fixed bin(17,0)          level 2 packed packed unaligned dcl 44 set ref 268*
+                                                                                  275* 455*
+bad_output_frames        56            based           fixed bin(17,0)          level 3 dcl 1-8 set ref 401*
+baud_rate                 2(18)        based           fixed bin(17,0)          level 2 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 414*
+baud_rate                14(18)        based           fixed bin(17,0)          array level 3 in structure "pv_load_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 414
+bin                                                    builtin function         dcl 89 ref 182
+channel_manager$control         000046 constant        entry                    external dcl 7-13 ref 262 269 278 313 333 348 417
+                                                                                  456
+channels                  1            based           structure                array level 2 dcl 3-10
+cleanup                         000130 stack reference condition                dcl 84 ref 140
+code                            000100 automatic       fixed bin(35,0)          dcl 39 set ref 262* 269* 278* 279 313* 365* 417* 418
+                                                                                  420 429* 431 456*
+controller_poll           5            based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 383
+controller_poll          52(05)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  271 383*
+count                           000203 automatic       fixed bin(17,0)          dcl 441 set ref 444* 450* 450 455
+crlf_echo                 5(01)        based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 384
+crlf_echo                52(07)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  264 384*
+cur_nstation             15(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 426*
+cur_station_mask         37            based           bit(1)                   array level 2 packed packed unaligned dcl 1-8 set
+                                                                                  ref 425*
+current_meters            2            based           structure                level 2 dcl 8-7 set ref 346*
+devx                     11            based           fixed bin(17,0)          array level 3 in structure "mux_init_info" dcl 3-10
+                                                                                  in procedure "priv_polled_vip_mpx" ref 175
+devx                                   based           fixed bin(17,0)          level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 155* 262* 269* 278*
+                                                                                  313* 333* 348* 417* 456*
+devx                     14            based           fixed bin(17,0)          array level 3 in structure "pv_load_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 412
+devx                      1            based           fixed bin(17,0)          level 2 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 175* 207 412
+devx                            000101 automatic       fixed bin(17,0)          dcl 40 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  125* 155 156
+dialed                    2(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-52 set ref 285
+display                  16            based           fixed bin(8,0)           array level 3 packed packed unaligned dcl 1-8 set
+                                                                                  ref 162* 200 202*
+error_counters           53            based           structure                level 2 dcl 1-8 set ref 332 346
+error_table_$action_not_performed
+                                000012 external static fixed bin(35,0)          dcl 61 ref 258 371
+error_table_$bad_channel        000014 external static fixed bin(35,0)          dcl 62 ref 224
+error_table_$bad_mpx_load_data  000016 external static fixed bin(35,0)          dcl 64 ref 378
+error_table_$bigarg             000020 external static fixed bin(35,0)          dcl 65 ref 136
+error_table_$noalloc            000022 external static fixed bin(35,0)          dcl 67 ref 149
+error_table_$undefined_order_request
+                                000024 external static fixed bin(35,0)          dcl 68 ref 353 429
+error_table_$unimplemented_version
+                                000026 external static fixed bin(35,0)          dcl 69 ref 338 342
+etb_mode                  5(05)        based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 388
+etb_mode                 52(11)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  388*
+ev_chan                                based           fixed bin(71,0)          level 2 dcl 2-7 ref 391
+flags                    15            based           structure                array level 3 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx"
+flags                     2            based           structure                level 2 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 192* 409*
+flags                     5            based           structure                level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx"
+flags                    52            based           structure                level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 158*
+formfeed                 51(09)        based           char(1)                  level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  396*
+formfeed                  4(09)        based           char(1)                  level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 396
+function_codes            4            based           structure                level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx"
+function_codes           51            based           structure                level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx"
+gcos_break               52(10)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  387*
+gcos_break                5(04)        based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 387
+get_comm_meters_info                   based           structure                level 1 dcl 11-8
+hc_fast_lock                           based           structure                level 1 dcl 6-10
+i                               000202 automatic       fixed bin(17,0)          dcl 440 set ref 445* 446*
+in                       10            based           structure                level 3 in structure "lcte" dcl 4-20 in procedure
+                                                                                  "priv_polled_vip_mpx"
+in                       30            based           structure                array level 4 in structure "lct" dcl 4-11
+                                                                                  in procedure "priv_polled_vip_mpx"
+in                        2            based           structure                level 2 in structure "saved_meters" dcl 4-68
+                                                                                  in procedure "priv_polled_vip_mpx"
+in                        2            based           structure                level 3 in structure "logical_chan_meters" dcl 11-17
+                                                                                  in procedure "priv_polled_vip_mpx"
+in                       26            based           structure                level 3 in structure "logical_chan_meters" dcl 11-17
+                                                                                  in procedure "priv_polled_vip_mpx"
+infop                           000104 automatic       pointer                  dcl 42 set ref 328* 333* 338 341 348*
+init_sw                         000010 internal static bit(1)                   initial packed unaligned dcl 56 set ref 211 214*
+input_frames_lost        54            based           fixed bin(17,0)          level 3 dcl 1-8 set ref 401*
+input_timeouts           53            based           fixed bin(17,0)          level 3 dcl 1-8 set ref 401*
+lc_info                         000106 automatic       structure                level 1 dcl 44 set ref 269 269 278 278 456 456
+lcnt                                   based           structure                level 1 dcl 4-65
+lcnt_ptr                  2            based           pointer                  level 2 dcl 4-11 ref 131
+lcntp                           000154 automatic       pointer                  dcl 4-63 set ref 131* 156
+lct                                    based           structure                level 1 dcl 4-11
+lct_ptr                   6            based           pointer                  level 2 dcl 5-35 ref 130
+lcte                                   based           structure                level 1 dcl 4-20
+lcte_array               20            based           structure                array level 2 dcl 4-11 set ref 207
+lctep                           000152 automatic       pointer                  dcl 4-8 set ref 207* 208
+lctp                            000150 automatic       pointer                  dcl 4-7 set ref 130* 131 207
+length                                                 builtin function         dcl 89 ref 157
+listen                    2(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-52 set ref 285
+load_ev_chan             42            based           fixed bin(71,0)          level 2 dcl 1-8 set ref 391*
+load_proc_id             40            based           bit(36)                  level 2 dcl 1-8 set ref 390*
+major_channel_info        3            based           structure                level 2 dcl 4-20
+major_name_len                  000110 automatic       fixed bin(17,0)          dcl 49 set ref 157* 176
+max                                                    builtin function         dcl 89 ref 393 394
+max_message_len          50            based           fixed bin(17,0)          level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 262 262 394*
+max_message_len           6            based           fixed bin(17,0)          level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx" ref 394
+max_text_len              3            based           fixed bin(17,0)          level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx" ref 393
+max_text_len             47            based           fixed bin(17,0)          level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 393*
+meter_ptr                       000102 automatic       pointer                  dcl 41 set ref 341* 342 342 346 347
+meters                   26            based           structure                array level 3 in structure "lct" dcl 4-11
+                                                                                  in procedure "priv_polled_vip_mpx"
+meters                    6            based           structure                level 2 in structure "lcte" dcl 4-20 in procedure
+                                                                                  "priv_polled_vip_mpx"
+miip                            000146 automatic       pointer                  dcl 3-6 set ref 126* 133 175 176
+min                                                    builtin function         dcl 89 ref 393 394
+mpx_loaded               52(03)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 256
+                                                                                  313 369
+mpx_loading              52(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 313
+                                                                                  369 424*
+mpx_started              52(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 282*
+                                                                                  301* 398*
+mux_init_info                          based           structure                level 1 dcl 3-10
+naks                      2(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-52 set ref
+                                                                                  407*
+name                      2            based           char(32)                 level 2 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  156* 157
+name                      0(09)        based           char(3)                  level 2 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 176* 178 180 182 193 410 447
+name                      1            based           char(32)                 array level 3 in structure "mux_init_info" packed
+                                                                                  packed unaligned dcl 3-10 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 176
+names                                  based           char(32)                 array level 2 packed packed unaligned dcl 4-65 ref
+                                                                                  156
+nchan                    13            based           fixed bin(17,0)          level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx" ref 376
+nchan                     1            based           fixed bin(17,0)          level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 154* 173 235 283 376
+                                                                                  404 445
+no_channels                            based           fixed bin(17,0)          level 2 dcl 3-10 ref 133
+nstation                 15            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-8 set ref 160*
+                                                                                  189* 189 275 426
+null                                                   builtin function         dcl 89 ref 127 139 142 147 244 313 313 342 399 417
+                                                                                  417
+omit_ff                   5(03)        based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 386
+omit_ff                  52(09)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  386*
+omit_nl                   5(02)        based           bit(1)                   level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 385
+omit_nl                  52(08)        based           bit(1)                   level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  385*
+order                           000111 automatic       char(32)                 packed unaligned dcl 50 set ref 327* 330 333* 336
+                                                                                  348* 364* 367
+output_frames_lost       55            based           fixed bin(17,0)          level 3 dcl 1-8 set ref 401*
+output_timeouts          57            based           fixed bin(17,0)          level 3 dcl 1-8 set ref 401*
+p                               000200 automatic       pointer                  dcl 439 set ref 446* 447 449
+partial_frame            52(06)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 398*
+pause_time               46            based           fixed bin(17,0)          level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 268 392*
+pause_time                2            based           fixed bin(17,0)          level 2 in structure "pv_load_info" dcl 2-7
+                                                                                  in procedure "priv_polled_vip_mpx" ref 392
+pds$process_id                  000030 external static bit(36)                  dcl 70 ref 390
+pgofs                     3            based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-52 set ref
+                                                                                  408*
+pm_code                                parameter       fixed bin(35,0)          dcl 29 set ref 122 136* 149* 218* 224* 231 245* 252
+                                                                                  258* 290* 297 302* 309 316* 323 333* 338* 342*
+                                                                                  348* 353* 360 371* 378* 420* 431*
+pm_devx                                parameter       fixed bin(17,0)          dcl 30 ref 122 125
+pm_infop                               parameter       pointer                  dcl 31 ref 323 328 360 375
+pm_miip                                parameter       pointer                  dcl 32 ref 122 126
+pm_order                               parameter       char                     packed unaligned dcl 33 ref 323 327 360 364
+pm_pvmdp                               parameter       pointer                  dcl 34 set ref 122 127* 217* 231 234 244* 252 255
+                                                                                  297 300 309 312 323 326 360 363
+polled_vip_mpx$crash            000036 constant        entry                    external dcl 96 ref 315
+polled_vip_mpx$dialup           000040 constant        entry                    external dcl 97 ref 285
+polled_vip_mpx$system_init      000042 constant        entry                    external dcl 98 ref 213
+polling_started          52(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 279*
+                                                                                  398*
+printer                  16(09)        based           fixed bin(8,0)           array level 3 in structure "pvmd" packed packed
+                                                                                  unaligned dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 163* 195 197*
+printer                   2            based           bit(1)                   level 3 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 410*
+pv_load_info                           based           structure                level 1 dcl 2-7
+pv_load_infop                   000144 automatic       pointer                  dcl 2-5 set ref 375* 376 383 384 385 386 387 388 391
+                                                                                  392 393 394 395 396 411 412 414
+pvip_mpx_meter_struc                   based           structure                level 1 dcl 8-7
+pvip_mpx_meters                        based           structure                level 1 dcl 8-13 set ref 171 171 241 241 332* 347
+pvip_subchan_meters                    based           structure                level 1 dcl 9-15 ref 205 205 238 238
+pvmd                                   based           structure                level 1 dcl 1-8 set ref 142 142 146 146 167 167 222
+                                                                                  222 242 242
+pvmd_nchan                      000140 automatic       fixed bin(17,0)          dcl 1-6 set ref 133* 134 142 142 146 146 154 167 167
+                                                                                  222 222 235* 236 242 242
+pvmdp                           000136 automatic       pointer                  dcl 1-5 set ref 139* 142 142 142 142* 146 146 146*
+                                                                                  147 154 155 156 157 158 160 161 162 163 167 167
+                                                                                  167* 171 173 174 186 188 189 189 195 197 200 202
+                                                                                  217 222 222 222* 234* 235 237 241 242 242 242*
+                                                                                  255* 256 262 262 262 264 268 269 271 275 276 278
+                                                                                  279 282 283 284 285* 300* 301 312* 313 313 313
+                                                                                  315* 326* 332 332 333 346 347 348 363* 369 369 376
+                                                                                  383 384 385 386 387 388 390 391 392 393 394 395
+                                                                                  396 398 398 398 398 399 400 401 401 401 401 401
+                                                                                  404 405 417 424 425 425 426 426 445 446 456
+pvste                                  based           structure                level 1 dcl 1-52
+pvstep                          000142 automatic       pointer                  dcl 1-50 set ref 174* 175 176 178 180 182 182 183
+                                                                                  183 186 188 192 193 195 197 200 202 205 207 237*
+                                                                                  238 284* 285 285 285 405* 406 407 408 408 409 410
+                                                                                  410 411 412 414
+quit                      4            based           char(1)                  level 3 in structure "pv_load_info" packed packed
+                                                                                  unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 395
+quit                     51            based           char(1)                  level 3 in structure "pvmd" packed packed unaligned
+                                                                                  dcl 1-8 in procedure "priv_polled_vip_mpx" set ref
+                                                                                  395*
+rtrim                                                  builtin function         dcl 89 ref 157
+saved_meters              7            based           structure                level 2 dcl 8-7 set ref 347*
+saved_meters_ptr         60            based           pointer                  level 2 in structure "pvmd" dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 171* 241* 332 347
+saved_meters_ptr         10            based           pointer                  level 2 in structure "pvste" dcl 1-52 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 205* 238*
+send_output              52            based           bit(1)                   level 3 packed packed unaligned dcl 1-8 set ref 398*
+size                                                   builtin function         dcl 89 ref 142 142 146 146 167 167 171 171 205 205
+                                                                                  222 222 238 238 241 241 242 242
+slave                     2(06)        based           bit(1)                   level 3 in structure "pvste" packed packed unaligned
+                                                                                  dcl 1-52 in procedure "priv_polled_vip_mpx" set
+                                                                                  ref 285 411*
+slave                    15            based           bit(1)                   array level 4 in structure "pv_load_info" packed
+                                                                                  packed unaligned dcl 2-7 in procedure
+                                                                                  "priv_polled_vip_mpx" ref 411
+station_addr                           based           fixed bin(9,0)           level 2 packed packed unsigned unaligned dcl 1-52
+                                                                                  set ref 182* 183 183 186 188 195 197 200 202 449
+station_mask              1     000106 automatic       bit(1)                   array level 2 in structure "lc_info" packed packed
+                                                                                  unaligned dcl 44 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 276* 443* 449*
+station_mask             36            based           bit(1)                   array level 2 in structure "pvmd" packed packed
+                                                                                  unaligned dcl 1-8 in procedure
+                                                                                  "priv_polled_vip_mpx" set ref 161* 186 188* 276
+                                                                                  425
+station_to_subchan       16            based           structure                array level 2 packed packed unaligned dcl 1-8
+string                                                 builtin function         dcl 89 set ref 158* 161* 192* 409* 443*
+subchan                         000121 automatic       fixed bin(17,0)          dcl 51 set ref 173* 174 175 176 197 202 208* 236*
+                                                                                  237* 283* 284 285* 404* 405 411 412 414*
+subchan_ptr               2            based           pointer                  level 2 dcl 11-8 ref 341
+subchan_table            62            based           structure                array level 2 dcl 1-8 set ref 174 237 284 405 446
+subchannel                3(18)        based           fixed bin(17,0)          level 3 packed packed unaligned dcl 4-20 set ref
+                                                                                  208*
+subchans                 14            based           structure                array level 2 dcl 2-7
+substr                                                 builtin function         dcl 89 ref 176 178 180 182 193 410 447
+tty_area_manager$allocate       000032 constant        entry                    external dcl 94 ref 171 205
+tty_area_manager$free           000034 constant        entry                    external dcl 95 ref 238 241
+tty_buf                                based           structure                level 1 dcl 5-35
+tty_buf$                        000044 external static fixed bin(17,0)          dcl 5-19 set ref 129
+tty_space_man$free_space        000052 constant        entry                    external dcl 10-12 ref 142 167 222 242
+tty_space_man$get_space         000050 constant        entry                    external dcl 10-10 ref 146
+ttybp                           000156 automatic       pointer                  dcl 5-19 set ref 129* 130
+type                            000106 automatic       fixed bin(17,0)          level 2 packed packed unaligned dcl 44 set ref 267*
+                                                                                  271* 274* 454*
+verify                                                 builtin function         dcl 89 ref 178 180
+version                                based           fixed bin(17,0)          level 2 in structure "pvip_mpx_meter_struc" dcl 8-7
+                                                                                  in procedure "priv_polled_vip_mpx" ref 342
+version                                based           fixed bin(17,0)          level 2 in structure "get_comm_meters_info" dcl 11-8
+                                                                                  in procedure "priv_polled_vip_mpx" ref 338
+write_chain               1(18)        based           fixed bin(18,0)          level 2 packed packed unsigned unaligned dcl 1-52
+                                                                                  set ref 406*
+write_chan               14            based           fixed bin(17,0)          level 2 dcl 1-8 set ref 400*
+writep                   12            based           pointer                  level 2 dcl 1-8 set ref 399*
+writes                    3(09)        based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-52 set ref
+                                                                                  408*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+FNP_DUMP_PATCH_EVENT                   internal static fixed bin(17,0)          initial dcl 5-31
+FNP_METER_EVENT                        internal static fixed bin(17,0)          initial dcl 5-32
+INPUT                                  internal static bit(1)                   initial packed unaligned dcl 10-20
+OUTPUT                                 internal static bit(1)                   initial packed unaligned dcl 10-21
+PVIP_SUBCHAN_METERS_VERSION_1          internal static fixed bin(17,0)          initial dcl 9-21
+PV_MPX_DOWN                            internal static fixed bin(71,0)          initial dcl 2-38
+PV_MPX_MASKED                          internal static fixed bin(71,0)          initial dcl 2-39
+PV_MPX_UP                              internal static fixed bin(71,0)          initial dcl 2-37
+TTY_AREA_LOCK_EVENT                    internal static bit(36)                  initial dcl 5-33
+abs_buf_limit                          internal static fixed bin(18,0)          initial dcl 5-19
+bsizec                                 internal static fixed bin(17,0)          initial dcl 5-28
+buf_per_second                         internal static fixed bin(17,0)          initial dcl 5-29
+channel_manager$check_modes     000000 constant        entry                    external dcl 7-19
+channel_manager$get_modes       000000 constant        entry                    external dcl 7-22
+channel_manager$interrupt       000000 constant        entry                    external dcl 7-25
+channel_manager$interrupt_later 000000 constant        entry                    external dcl 7-28
+channel_manager$queued_interrupt
+                                000000 constant        entry                    external dcl 7-31
+channel_manager$read            000000 constant        entry                    external dcl 7-7
+channel_manager$set_modes       000000 constant        entry                    external dcl 7-16
+channel_manager$write           000000 constant        entry                    external dcl 7-10
+error_table_$bad_mode                  external static fixed bin(35,0)          dcl 63
+error_table_$invalid_state             external static fixed bin(35,0)          dcl 66
+input_bpart                            internal static fixed bin(18,0)          initial dcl 5-19
+lct_size                               automatic       fixed bin(17,0)          dcl 4-9
+lock_ptr                               automatic       pointer                  dcl 6-9
+logical_chan_meters                    based           structure                level 1 dcl 11-17
+mii_chan_count                         automatic       fixed bin(17,0)          dcl 3-7
+output_bpart                           internal static fixed bin(18,0)          initial dcl 5-19
+pvip_subchan_meter_struc               based           structure                level 1 dcl 9-7
+qblock_size                            internal static fixed bin(17,0)          initial dcl 5-27
+saved_meters                           based           structure                level 1 dcl 4-68
+tty_ev                                 internal static fixed bin(17,0)          initial dcl 5-19
+tty_space_man$free_buffer       000000 constant        entry                    external dcl 10-14
+tty_space_man$free_chain        000000 constant        entry                    external dcl 10-16
+tty_space_man$get_buffer        000000 constant        entry                    external dcl 10-13
+tty_space_man$get_chain         000000 constant        entry                    external dcl 10-15
+tty_space_man$get_perm_space    000000 constant        entry                    external dcl 10-11
+tty_space_man$needs_space       000000 constant        entry                    external dcl 10-18
+tty_space_man$switch_chain      000000 constant        entry                    external dcl 10-17
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+bad_chan                        000601 constant        label                    dcl 222 ref 178 180 183 195 200
+bad_load_data                   001562 constant        label                    dcl 378 ref 412
+hpriv_control                   001507 constant        entry                    external dcl 360
+init_multiplexer                000062 constant        entry                    external dcl 122
+noalloc                         000202 constant        label                    dcl 149 ref 168
+priv_control                    001321 constant        entry                    external dcl 323
+priv_polled_vip_mpx             000047 constant        entry                    external dcl 15
+send_echo_mask                  002036 constant        entry                    internal dcl 436 ref 264
+shutdown                        001232 constant        entry                    external dcl 309
+start                           000733 constant        entry                    external dcl 252
+stop                            001207 constant        entry                    external dcl 297
+terminate_multiplexer           000626 constant        entry                    external dcl 231
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2660        2734    2340        2670
+Length      3402    2340        54         432     320           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+priv_polled_vip_mpx                 330 external procedure  is an external procedure.  
+on unit on line 140                  72 on unit               
+on unit on line 165                  72 on unit               
+send_echo_mask                          internal procedure  shares stack frame of external procedure priv_polled_vip_mpx.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 init_sw                     priv_polled_vip_mpx
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+priv_polled_vip_mpx      000100 code                        priv_polled_vip_mpx
+                         000101 devx                        priv_polled_vip_mpx
+                         000102 meter_ptr                   priv_polled_vip_mpx
+                         000104 infop                       priv_polled_vip_mpx
+                         000106 lc_info                     priv_polled_vip_mpx
+                         000110 major_name_len              priv_polled_vip_mpx
+                         000111 order                       priv_polled_vip_mpx
+                         000121 subchan                     priv_polled_vip_mpx
+                         000136 pvmdp                       priv_polled_vip_mpx
+                         000140 pvmd_nchan                  priv_polled_vip_mpx
+                         000142 pvstep                      priv_polled_vip_mpx
+                         000144 pv_load_infop               priv_polled_vip_mpx
+                         000146 miip                        priv_polled_vip_mpx
+                         000150 lctp                        priv_polled_vip_mpx
+                         000152 lctep                       priv_polled_vip_mpx
+                         000154 lcntp                       priv_polled_vip_mpx
+                         000156 ttybp                       priv_polled_vip_mpx
+                         000200 p                           send_echo_mask
+                         000202 i                           send_echo_mask
+                         000203 count                       send_echo_mask
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              call_ext_out_desc   call_ext_out        return_mac          tra_ext_1           enable_op
+ext_entry           ext_entry_desc      int_entry           any_to_any_truncate_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+channel_manager$control       polled_vip_mpx$crash          polled_vip_mpx$dialup         polled_vip_mpx$system_init
+tty_area_manager$allocate     tty_area_manager$free         tty_space_man$free_space      tty_space_man$get_space
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$bad_channel
+error_table_$bad_mpx_load_data                              error_table_$bigarg           error_table_$noalloc
+error_table_$undefined_order_request                        error_table_$unimplemented_version
+pds$process_id                tty_buf$
+
+
+CONSTANTS
+002132  aa     773777777777
+
+002133  aa     377777777777
+
+002134  aa     757777777777
+
+002135  aa     577777777777
+
+002136  aa     000777777777
+
+002137  aa  777 777 777 777	ÿÿÿÿ
+002140  aa  777 777 777 777	ÿÿÿÿ
+002141  aa  777 777 777 777	ÿÿÿÿ
+002142  aa  777 777 777 777	ÿÿÿÿ
+002143  aa  777 777 777 777	ÿÿÿÿ
+002144  aa  777 777 777 777	ÿÿÿÿ
+002145  aa  777 777 777 777	ÿÿÿÿ
+002146  aa  777 777 777 777	ÿÿÿÿ
+002147  aa  777 777 777 777	ÿÿÿÿ
+002150  aa  777 777 777 777	ÿÿÿÿ
+002151  aa  777 777 777 777	ÿÿÿÿ
+002152  aa  777 777 777 777	ÿÿÿÿ
+002153  aa  000 000 000 000	    
+002154  aa  000 000 000 000	    
+002155  aa  000 000 777 777	  ÿÿ
+002156  aa  777 777 777 777	ÿÿÿÿ
+002157  aa  777 777 777 777	ÿÿÿÿ
+002160  aa  777 777 777 777	ÿÿÿÿ
+002161  aa  777 777 777 777	ÿÿÿÿ
+002162  aa  777 777 777 777	ÿÿÿÿ
+002163  aa  777 777 777 777	ÿÿÿÿ
+002164  aa  777 777 777 777	ÿÿÿÿ
+002165  aa  777 777 777 777	ÿÿÿÿ
+002166  aa  777 777 777 777	ÿÿÿÿ
+002167  aa  777 777 777 777	ÿÿÿÿ
+002170  aa  777 777 777 777	ÿÿÿÿ
+002171  aa  777 777 777 777	ÿÿÿÿ
+002172  aa  777 777 777 777	ÿÿÿÿ
+002173  aa  777 777 777 777	ÿÿÿÿ
+002174  aa  777 777 777 777	ÿÿÿÿ
+002175  aa  777 777 777 777	ÿÿÿÿ
+002176  aa  777 777 777 777	ÿÿÿÿ
+002177  aa  777 777 777 777	ÿÿÿÿ
+002200  aa  777 777 777 777	ÿÿÿÿ
+002201  aa  777 777 777 777	ÿÿÿÿ
+002202  aa  777 777 777 777	ÿÿÿÿ
+002203  aa  777 777 777 777	ÿÿÿÿ
+002204  aa  777 777 777 777	ÿÿÿÿ
+002205  aa  777 777 777 777	ÿÿÿÿ
+002206  aa  777 777 777 777	ÿÿÿÿ
+002207  aa  777 777 777 777	ÿÿÿÿ
+002210  aa  777 777 777 777	ÿÿÿÿ
+002211  aa  777 777 777 777	ÿÿÿÿ
+002212  aa  777 777 777 777	ÿÿÿÿ
+002213  aa  777 777 777 777	ÿÿÿÿ
+002214  aa  777 777 777 777	ÿÿÿÿ
+002215  aa  777 777 777 777	ÿÿÿÿ
+002216  aa  777 777 777 777	ÿÿÿÿ
+002217  aa  777 777 777 777	ÿÿÿÿ
+002220  aa  777 777 777 777	ÿÿÿÿ
+002221  aa  777 777 777 777	ÿÿÿÿ
+002222  aa  777 777 777 777	ÿÿÿÿ
+002223  aa  777 777 777 777	ÿÿÿÿ
+002224  aa  777 777 777 777	ÿÿÿÿ
+002225  aa  777 777 777 777	ÿÿÿÿ
+002226  aa  777 777 777 777	ÿÿÿÿ
+002227  aa  777 777 777 777	ÿÿÿÿ
+002230  aa  777 777 777 777	ÿÿÿÿ
+002231  aa  777 777 777 777	ÿÿÿÿ
+002232  aa  777 777 777 777	ÿÿÿÿ
+002233  aa  777 777 777 777	ÿÿÿÿ
+002234  aa  777 777 777 777	ÿÿÿÿ
+002235  aa  777 777 777 777	ÿÿÿÿ
+002236  aa  777 777 777 777	ÿÿÿÿ
+002237  aa  777 777 777 777	ÿÿÿÿ
+002240  aa  777 777 777 777	ÿÿÿÿ
+002241  aa  777 777 777 777	ÿÿÿÿ
+002242  aa  777 777 777 777	ÿÿÿÿ
+002243  aa  777 777 777 777	ÿÿÿÿ
+002244  aa  777 777 777 777	ÿÿÿÿ
+002245  aa  777 777 777 777	ÿÿÿÿ
+002246  aa  777 777 777 777	ÿÿÿÿ
+002247  aa  777 777 777 777	ÿÿÿÿ
+002250  aa  777 777 777 777	ÿÿÿÿ
+002251  aa  777 777 777 777	ÿÿÿÿ
+002252  aa  777 777 777 777	ÿÿÿÿ
+002253  aa  777 777 777 777	ÿÿÿÿ
+002254  aa  777 777 777 777	ÿÿÿÿ
+002255  aa  777 777 777 777	ÿÿÿÿ
+002256  aa  777 777 777 777	ÿÿÿÿ
+002257  aa  777 777 777 777	ÿÿÿÿ
+002260  aa  777 777 777 777	ÿÿÿÿ
+002261  aa  777 777 777 777	ÿÿÿÿ
+002262  aa  777 777 777 777	ÿÿÿÿ
+002263  aa  777 777 777 777	ÿÿÿÿ
+002264  aa  777 777 777 777	ÿÿÿÿ
+002265  aa  777 777 777 777	ÿÿÿÿ
+002266  aa  777 777 777 777	ÿÿÿÿ
+002267  aa  777 777 777 777	ÿÿÿÿ
+002270  aa  777 777 777 777	ÿÿÿÿ
+002271  aa  777 777 777 777	ÿÿÿÿ
+002272  aa  777 777 777 777	ÿÿÿÿ
+002273  aa  777 777 777 777	ÿÿÿÿ
+002274  aa  777 777 777 777	ÿÿÿÿ
+002275  aa  777 777 777 777	ÿÿÿÿ
+002276  aa  777 777 777 777	ÿÿÿÿ
+002277  aa  777 777 777 777	ÿÿÿÿ
+002300  aa  777 777 777 777	ÿÿÿÿ
+002301  aa  777 777 777 777	ÿÿÿÿ
+002302  aa  777 777 777 777	ÿÿÿÿ
+002303  aa  777 777 777 777	ÿÿÿÿ
+002304  aa  777 777 777 777	ÿÿÿÿ
+002305  aa  777 777 777 777	ÿÿÿÿ
+002306  aa  777 777 777 777	ÿÿÿÿ
+002307  aa  777 777 777 777	ÿÿÿÿ
+002310  aa  777 777 777 777	ÿÿÿÿ
+002311  aa  777 777 777 777	ÿÿÿÿ
+002312  aa  777 777 777 777	ÿÿÿÿ
+002313  aa  777 777 777 777	ÿÿÿÿ
+002314  aa  777 777 777 777	ÿÿÿÿ
+002315  aa  777 777 777 777	ÿÿÿÿ
+002316  aa  777 777 777 777	ÿÿÿÿ
+002317  aa  777 777 777 777	ÿÿÿÿ
+002320  aa  777 777 777 777	ÿÿÿÿ
+002321  aa  777 777 777 777	ÿÿÿÿ
+002322  aa  777 777 777 777	ÿÿÿÿ
+002323  aa  777 777 777 777	ÿÿÿÿ
+002324  aa  777 777 777 777	ÿÿÿÿ
+002325  aa  777 777 777 777	ÿÿÿÿ
+002326  aa  777 777 777 777	ÿÿÿÿ
+002327  aa  777 777 777 777	ÿÿÿÿ
+002330  aa  777 777 777 777	ÿÿÿÿ
+002331  aa  777 777 777 777	ÿÿÿÿ
+002332  aa  777 777 777 777	ÿÿÿÿ
+002333  aa  777 777 777 777	ÿÿÿÿ
+002334  aa  777 777 777 777	ÿÿÿÿ
+002335  aa  777 777 777 777	ÿÿÿÿ
+002336  aa  777 777 777 777	ÿÿÿÿ
+
+000000  aa     526000000040
+
+000001  aa     524000000006
+
+000002  aa     524000000014
+
+000003  aa     524000000026
+
+000004  aa  144 160 170 000	dpx
+
+002337  aa     000000000000
+
+000005  aa  141 162 145 141	area
+
+000006  aa     526077777777
+
+000007  aa     464000000000
+
+000010  aa     404000000021
+
+000011  aa     404000000043
+
+000012  aa  154 151 163 164	list
+000013  aa  145 156 000 000	en
+
+000014  aa  154 157 141 144	load
+000015  aa  137 155 160 170	_mpx
+
+000016  aa  150 141 156 147	hang
+000017  aa  165 160 000 000	up
+
+000020  aa     077777000043
+000021  aa     000001000000
+
+000022  aa  143 154 145 141	clea
+000023  aa  156 165 160 000	nup
+
+000024  aa  147 145 164 137	get_
+000025  aa  155 145 164 145	mete
+000026  aa  162 163 000 000	rs
+
+000027  aa  143 157 160 171	copy
+000030  aa  137 155 145 164	_met
+000031  aa  145 162 163 000	ers
+
+000032  aa  154 151 156 145	line
+000033  aa  137 143 157 156	_con
+000034  aa  164 162 157 154	trol
+
+000035  aa  060 061 062 063	0123
+000036  aa  064 065 066 067	4567
+000037  aa  070 071 000 000	89
+
+000040  aa  163 145 164 137	set_
+000041  aa  151 156 160 165	inpu
+000042  aa  164 137 155 145	t_me
+000043  aa  163 163 141 147	ssag
+000044  aa  145 137 163 151	e_si
+000045  aa  172 145 000 000	ze
+
+BEGIN PROCEDURE priv_polled_vip_mpx
+ENTRY TO priv_polled_vip_mpx                                STATEMENT 1 ON LINE 15
+priv_polled_vip_mpx:
+     proc;
+
+000046  da     000222200000
+000047  aa   000520 6270 00	eax7 	336
+000050  aa  7 00034 3521 20	epp2 	pr7|28,*
+000051  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000052  aa     000000000000
+000053  aa     000000000000
+						STATEMENT 1 ON LINE 122
+init_multiplexer:
+     entry (pm_devx, pm_miip, pm_pvmdp, pm_code);
+
+000054  aa   000020 7100 04	tra  	16,ic		000074
+ENTRY TO init_multiplexer                                   STATEMENT 1 ON LINE 122
+init_multiplexer:
+     entry (pm_devx, pm_miip, pm_pvmdp, pm_code);
+
+000055  at     000004000010
+000056  tt     000007000007
+000057  ta     000011000000
+000060  ta     000055000000
+000061  da     000232300000
+000062  aa   000520 6270 00	eax7 	336
+000063  aa  7 00034 3521 20	epp2 	pr7|28,*
+000064  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000065  aa     000010000000
+000066  aa     000000000000
+000067  aa  6 00032 3735 20	epp7 	pr6|26,*
+000070  aa  7 00006 3715 20	epp5 	pr7|6,*
+000071  aa  6 00162 6515 00	spri5	pr6|114
+000072  aa  7 00010 3535 20	epp3 	pr7|8,*
+000073  aa  6 00160 2535 00	spri3	pr6|112
+						STATEMENT 1 ON LINE 125
+	devx = pm_devx;
+
+000074  aa  6 00032 3735 20	epp7 	pr6|26,*
+000075  aa  7 00002 2361 20	ldq  	pr7|2,*		pm_devx
+000076  aa  6 00101 7561 00	stq  	pr6|65		devx
+						STATEMENT 1 ON LINE 126
+	miip = pm_miip;
+
+000077  aa  7 00004 3715 20	epp5 	pr7|4,*		pm_miip
+000100  aa  5 00000 3715 20	epp5 	pr5|0,*		pm_miip
+000101  aa  6 00146 6515 00	spri5	pr6|102		miip
+						STATEMENT 1 ON LINE 127
+	pm_pvmdp = null;
+
+000102  aa   777716 2370 04	ldaq 	-50,ic		000020 = 077777000043 000001000000
+000103  aa  6 00162 7571 20	staq 	pr6|114,*		pm_pvmdp
+						STATEMENT 1 ON LINE 129
+	ttybp = addr (tty_buf$);
+
+000104  la  4 00044 3535 20	epp3 	pr4|36,*		tty_buf$
+000105  aa  6 00156 2535 00	spri3	pr6|110		ttybp
+						STATEMENT 1 ON LINE 130
+	lctp = tty_buf.lct_ptr;
+
+000106  aa  3 00006 3515 20	epp1 	pr3|6,*		tty_buf.lct_ptr
+000107  aa  6 00150 2515 00	spri1	pr6|104		lctp
+						STATEMENT 1 ON LINE 131
+	lcntp = lct.lcnt_ptr;
+
+000110  aa  1 00002 3715 20	epp5 	pr1|2,*		lct.lcnt_ptr
+000111  aa  6 00154 6515 00	spri5	pr6|108		lcntp
+						STATEMENT 1 ON LINE 133
+	pvmd_nchan = mux_init_info.no_channels;
+
+000112  aa  6 00146 2361 20	ldq  	pr6|102,*		mux_init_info.no_channels
+000113  aa  6 00140 7561 00	stq  	pr6|96		pvmd_nchan
+						STATEMENT 1 ON LINE 134
+	if pvmd_nchan > 32
+	then do;
+
+000114  aa   000040 1160 07	cmpq 	32,dl
+000115  aa   000004 6044 04	tmoz 	4,ic		000121
+						STATEMENT 1 ON LINE 136
+	     pm_code = error_table_$bigarg;
+
+000116  la  4 00020 2361 20	ldq  	pr4|16,*		error_table_$bigarg
+000117  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 137
+	     return;
+
+000120  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 138
+	end;
+
+						STATEMENT 1 ON LINE 139
+	pvmdp = null;
+
+000121  aa   777677 2370 04	ldaq 	-65,ic		000020 = 077777000043 000001000000
+000122  aa  6 00136 7571 00	staq 	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 140
+	on cleanup
+	     begin;
+
+000123  aa   000007 7260 07	lxl6 	7,dl
+000124  aa   777676 3520 04	epp2 	-66,ic		000022 = 143154145141
+000125  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000126  aa   000004 7100 04	tra  	4,ic		000132
+000127  aa     000130000000
+000130  aa   000031 7100 04	tra  	25,ic		000161
+BEGIN CONDITION cleanup.1
+ENTRY TO cleanup.1                                          STATEMENT 1 ON LINE 140
+	on cleanup
+	     begin;
+
+000131  da     000240200000
+000132  aa   000120 6270 00	eax7 	80
+000133  aa  7 00034 3521 20	epp2 	pr7|28,*
+000134  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000135  aa     000000000000
+000136  aa     000000000000
+						STATEMENT 1 ON LINE 142
+		if pvmdp ^= null
+		then call tty_space_man$free_space (size (pvmd), pvmdp);
+
+000137  aa  6 00040 3735 20	epp7 	pr6|32,*
+000140  aa  7 00136 2371 00	ldaq 	pr7|94		pvmdp
+000141  aa   777657 6770 04	eraq 	-81,ic		000020 = 077777000043 000001000000
+000142  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000143  aa   000015 6000 04	tze  	13,ic		000160
+000144  aa  7 00140 2361 00	ldq  	pr7|96		pvmd_nchan
+000145  aa   000012 4020 07	mpy  	10,dl
+000146  aa   000062 0760 07	adq  	50,dl
+000147  aa  6 00100 7561 00	stq  	pr6|64
+000150  aa  6 00100 3521 00	epp2 	pr6|64
+000151  aa  6 00104 2521 00	spri2	pr6|68
+000152  aa  7 00136 3521 00	epp2 	pr7|94		pvmdp
+000153  aa  6 00106 2521 00	spri2	pr6|70
+000154  aa  6 00102 6211 00	eax1 	pr6|66
+000155  aa   010000 4310 07	fld  	4096,dl
+000156  la  4 00052 3521 20	epp2 	pr4|42,*		tty_space_man$free_space
+000157  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 144
+	     end;
+
+000160  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END CONDITION cleanup.1
+						STATEMENT 1 ON LINE 146
+	call tty_space_man$get_space (size (pvmd), pvmdp);
+
+000161  aa  6 00140 2361 00	ldq  	pr6|96		pvmd_nchan
+000162  aa   000012 4020 07	mpy  	10,dl
+000163  aa   000062 0760 07	adq  	50,dl
+000164  aa  6 00205 7561 00	stq  	pr6|133
+000165  aa  6 00205 3521 00	epp2 	pr6|133
+000166  aa  6 00210 2521 00	spri2	pr6|136
+000167  aa  6 00136 3521 00	epp2 	pr6|94		pvmdp
+000170  aa  6 00212 2521 00	spri2	pr6|138
+000171  aa  6 00206 6211 00	eax1 	pr6|134
+000172  aa   010000 4310 07	fld  	4096,dl
+000173  aa  6 00044 3701 20	epp4 	pr6|36,*
+000174  la  4 00050 3521 20	epp2 	pr4|40,*		tty_space_man$get_space
+000175  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 147
+	if pvmdp = null
+	then do;
+
+000176  aa  6 00136 2371 00	ldaq 	pr6|94		pvmdp
+000177  aa   777621 6770 04	eraq 	-111,ic		000020 = 077777000043 000001000000
+000200  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000201  aa   000005 6010 04	tnz  	5,ic		000206
+						STATEMENT 1 ON LINE 149
+noalloc:
+	     pm_code = error_table_$noalloc;
+
+000202  aa  6 00044 3701 20	epp4 	pr6|36,*
+000203  la  4 00022 2361 20	ldq  	pr4|18,*		error_table_$noalloc
+000204  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 151
+	     return;
+
+000205  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 152
+	end;
+
+						STATEMENT 1 ON LINE 154
+	pvmd.nchan = pvmd_nchan;
+
+000206  aa  6 00140 2361 00	ldq  	pr6|96		pvmd_nchan
+000207  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000210  aa  7 00001 7561 00	stq  	pr7|1		pvmd.nchan
+						STATEMENT 1 ON LINE 155
+	pvmd.devx = devx;
+
+000211  aa  6 00101 2361 00	ldq  	pr6|65		devx
+000212  aa  7 00000 7561 00	stq  	pr7|0		pvmd.devx
+						STATEMENT 1 ON LINE 156
+	pvmd.name = lcnt.names (devx);
+
+000213  aa   000003 7360 00	qls  	3
+000214  aa  6 00154 3715 20	epp5 	pr6|108,*		lcntp
+000215  aa  5 77770 3715 06	epp5 	pr5|-8,ql		lcnt.names
+000216  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+000217  aa  5 00000 00 0040	desc9a	pr5|0,32		lcnt.names
+000220  aa  7 00002 00 0040	desc9a	pr7|2,32		pvmd.name
+						STATEMENT 1 ON LINE 157
+	major_name_len = length (rtrim (pvmd.name));
+
+000221  aa  000 000 165 500	tctr 	(pr)
+000222  aa  7 00002 00 0040	desc9a	pr7|2,32		pvmd.name
+000223  aa  0 76605 0001 00	arg  	pr0|-635		= 777777777777
+000224  aa  6 00056 0001 00	arg  	pr6|46
+000225  aa  6 00056 2361 00	ldq  	pr6|46
+000226  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000227  aa  6 00205 7561 00	stq  	pr6|133
+000230  aa   000040 2360 07	ldq  	32,dl
+000231  aa  6 00205 1761 00	sbq  	pr6|133
+000232  aa  6 00110 7561 00	stq  	pr6|72		major_name_len
+						STATEMENT 1 ON LINE 158
+	string (pvmd.flags) = ""b;
+
+000233  aa  7 00052 4501 00	stz  	pr7|42
+						STATEMENT 1 ON LINE 160
+	pvmd.nstation = 0;
+
+000234  aa   000000 2350 07	lda  	0,dl
+000235  aa  7 00015 5511 60	stba 	pr7|13,60		pvmd.nstation
+						STATEMENT 1 ON LINE 161
+	string (pvmd.station_mask) = ""b;
+
+000236  aa  7 00036 4501 00	stz  	pr7|30
+						STATEMENT 1 ON LINE 162
+	pvmd.station_to_subchan (*).display = 0;
+
+000237  aa   000001 2360 07	ldq  	1,dl
+000240  aa  6 00164 7561 00	stq  	pr6|116
+000241  aa   000000 0110 03	nop  	0,du
+000242  aa  6 00164 2361 00	ldq  	pr6|116
+000243  aa   000022 4020 07	mpy  	18,dl
+000244  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000245  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000246  aa   002072 00 0011	descb	1082,9		002337 = 000000000000
+000247  aa  7 00015 40 0011	descb	pr7|13(18),9	pvmd.display
+000250  aa  6 00164 2361 00	ldq  	pr6|116
+000251  aa  6 00164 0541 00	aos  	pr6|116
+000252  aa   000040 1160 07	cmpq 	32,dl
+000253  aa   777767 6040 04	tmi  	-9,ic		000242
+						STATEMENT 1 ON LINE 163
+	pvmd.station_to_subchan (*).printer = 0;
+
+000254  aa   000001 2360 07	ldq  	1,dl
+000255  aa  6 00164 7561 00	stq  	pr6|116
+000256  aa  6 00164 2361 00	ldq  	pr6|116
+000257  aa   000022 4020 07	mpy  	18,dl
+000260  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000261  aa  003 106 060 404	csl  	(ic),(pr,ql),fill(0),bool(move)
+000262  aa   002056 00 0011	descb	1070,9		002337 = 000000000000
+000263  aa  7 00015 60 0011	descb	pr7|13(27),9	pvmd.printer
+000264  aa  6 00164 2361 00	ldq  	pr6|116
+000265  aa  6 00164 0541 00	aos  	pr6|116
+000266  aa   000040 1160 07	cmpq 	32,dl
+000267  aa   777767 6040 04	tmi  	-9,ic		000256
+						STATEMENT 1 ON LINE 165
+	on area
+	     begin;
+
+000270  aa   000004 7260 07	lxl6 	4,dl
+000271  aa   777514 3520 04	epp2 	-180,ic		000005 = 141162145141
+000272  aa  0 00717 7001 00	tsx0 	pr0|463		enable_op
+000273  aa   000004 7100 04	tra  	4,ic		000277
+000274  aa     000122000000
+000275  aa   000027 7100 04	tra  	23,ic		000324
+BEGIN CONDITION area.2
+ENTRY TO area.2                                             STATEMENT 1 ON LINE 165
+	on area
+	     begin;
+
+000276  da     000245200000
+000277  aa   000120 6270 00	eax7 	80
+000300  aa  7 00034 3521 20	epp2 	pr7|28,*
+000301  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+000302  aa     000000000000
+000303  aa     000000000000
+						STATEMENT 1 ON LINE 167
+		call tty_space_man$free_space (size (pvmd), pvmdp);
+
+000304  aa  6 00040 3735 20	epp7 	pr6|32,*
+000305  aa  7 00140 2361 00	ldq  	pr7|96		pvmd_nchan
+000306  aa   000012 4020 07	mpy  	10,dl
+000307  aa   000062 0760 07	adq  	50,dl
+000310  aa  6 00100 7561 00	stq  	pr6|64
+000311  aa  6 00100 3521 00	epp2 	pr6|64
+000312  aa  6 00104 2521 00	spri2	pr6|68
+000313  aa  7 00136 3521 00	epp2 	pr7|94		pvmdp
+000314  aa  6 00106 2521 00	spri2	pr6|70
+000315  aa  6 00102 6211 00	eax1 	pr6|66
+000316  aa   010000 4310 07	fld  	4096,dl
+000317  la  4 00052 3521 20	epp2 	pr4|42,*		tty_space_man$free_space
+000320  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 168
+		go to noalloc;
+
+000321  aa   777661 3520 04	epp2 	-79,ic		000202 = 600044370120
+000322  aa   000001 7270 07	lxl7 	1,dl
+000323  aa  0 00657 7101 00	tra  	pr0|431		tra_ext_1
+						STATEMENT 1 ON LINE 169
+	     end;
+
+  END CONDITION area.2
+						STATEMENT 1 ON LINE 171
+	call tty_area_manager$allocate (size (pvip_mpx_meters), pvmd.saved_meters_ptr);
+
+000324  aa   000005 2360 07	ldq  	5,dl
+000325  aa  6 00205 7561 00	stq  	pr6|133
+000326  aa  6 00205 3521 00	epp2 	pr6|133
+000327  aa  6 00210 2521 00	spri2	pr6|136
+000330  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000331  aa  7 00060 3521 00	epp2 	pr7|48		pvmd.saved_meters_ptr
+000332  aa  6 00212 2521 00	spri2	pr6|138
+000333  aa  6 00206 6211 00	eax1 	pr6|134
+000334  aa   010000 4310 07	fld  	4096,dl
+000335  aa  6 00044 3701 20	epp4 	pr6|36,*
+000336  la  4 00032 3521 20	epp2 	pr4|26,*		tty_area_manager$allocate
+000337  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 173
+	do subchan = 1 to pvmd.nchan;
+
+000340  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000341  aa  7 00001 2361 00	ldq  	pr7|1		pvmd.nchan
+000342  aa  6 00165 7561 00	stq  	pr6|117
+000343  aa   000001 2360 07	ldq  	1,dl
+000344  aa  6 00121 7561 00	stq  	pr6|81		subchan
+000345  aa   000000 0110 03	nop  	0,du
+000346  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000347  aa  6 00165 1161 00	cmpq 	pr6|117
+000350  aa   000213 6054 04	tpnz 	139,ic		000563
+						STATEMENT 1 ON LINE 174
+	     pvstep = addr (pvmd.subchan_table (subchan));
+
+000351  aa   000012 4020 07	mpy  	10,dl
+000352  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000353  aa  7 00050 3735 06	epp7 	pr7|40,ql		pvmd.subchan_table
+000354  aa  6 00142 6535 00	spri7	pr6|98		pvstep
+						STATEMENT 1 ON LINE 175
+	     pvste.devx = mux_init_info.devx (subchan);
+
+000355  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000356  aa   000011 4020 07	mpy  	9,dl
+000357  aa  6 00146 2361 66	ldq  	pr6|102,*ql	mux_init_info.devx
+000360  aa   000066 7370 00	lls  	54
+000361  aa  7 00001 5511 60	stba 	pr7|1,60		pvste.devx
+						STATEMENT 1 ON LINE 176
+	     pvste.name = substr (mux_init_info.name (subchan), major_name_len + 2);
+
+000362  aa  6 00110 2361 00	ldq  	pr6|72		major_name_len
+000363  aa   000001 0760 07	adq  	1,dl
+000364  aa  6 00205 7561 00	stq  	pr6|133
+000365  aa   000040 2360 07	ldq  	32,dl
+000366  aa  6 00205 1761 00	sbq  	pr6|133
+000367  aa   000000 6270 06	eax7 	0,ql
+000370  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000371  aa   000011 4020 07	mpy  	9,dl
+000372  aa   000002 7360 00	qls  	2
+000373  aa  6 00205 0761 00	adq  	pr6|133
+000374  aa  6 00146 3715 20	epp5 	pr6|102,*		miip
+000375  aa  040 100 100 546	mlr  	(pr,rl,ql),(pr),fill(040)
+000376  aa  5 77770 00 0017	desc9a	pr5|-8,x7		mux_init_info.name
+000377  aa  7 00000 20 0003	desc9a	pr7|0(1),3	pvste.name
+						STATEMENT 1 ON LINE 178
+	     if verify (substr (pvste.name, 1, 1), "dpx") ^= 0
+	     then go to bad_chan;
+
+000400  aa  7 00000 2351 00	lda  	pr7|0		pvste.name
+000401  aa   000011 7350 00	als  	9
+000402  aa  0 00022 3771 00	anaq 	pr0|18		= 777000000000 000000000000
+000403  aa  6 00214 7551 00	sta  	pr6|140		pvste.name
+000404  aa  000 100 124 404	scm  	(ic),(pr),mask(000)
+000405  aa   777400 00 0003	desc9a	-256,3		000004 = 144160170000
+000406  aa  6 00214 00 0001	desc9a	pr6|140,1		pvste.name
+000407  aa  6 00056 0001 00	arg  	pr6|46
+000410  aa   000001 2360 07	ldq  	1,dl
+000411  aa   000002 6064 04	ttn  	2,ic		000413
+000412  aa   000000 2360 07	ldq  	0,dl
+000413  aa   000166 6010 04	tnz  	118,ic		000601
+						STATEMENT 1 ON LINE 180
+	     if verify (substr (pvste.name, 2, 2), "0123456789") ^= 0
+	     then go to bad_chan;
+
+000414  aa  000 000 164 500	tct  	(pr)
+000415  aa  7 00000 40 0002	desc9a	pr7|0(2),2	pvste.name
+000416  aa   001523 0000 04	arg  	851,ic		002137 = 777777777777
+000417  aa  6 00056 0001 00	arg  	pr6|46
+000420  aa  6 00056 2361 00	ldq  	pr6|46
+000421  aa  0 00242 3761 00	anq  	pr0|162		= 000777777777
+000422  aa   000002 6070 04	ttf  	2,ic		000424
+000423  aa   000001 3360 07	lcq  	1,dl
+000424  aa   000001 0760 07	adq  	1,dl
+000425  aa   000154 6010 04	tnz  	108,ic		000601
+						STATEMENT 1 ON LINE 182
+	     pvste.station_addr = bin (substr (pvste.name, 2, 2), 8);
+
+000426  aa   000002 7260 07	lxl6 	2,dl
+000427  aa  7 00000 3535 00	epp3 	pr7|0		pvste.name
+000430  aa  3 00000 5005 16	a9bd 	pr3|0,6
+000431  aa   000002 2360 07	ldq  	2,dl
+000432  aa   000053 7270 07	lxl7 	43,dl
+000433  aa  6 00205 3515 00	epp1 	pr6|133
+000434  aa   000010 2350 07	lda  	8,dl
+000435  aa  6 00216 3715 00	epp5 	pr6|142
+000436  aa  0 01257 7001 00	tsx0 	pr0|687		any_to_any_truncate_
+000437  aa  6 00205 2361 00	ldq  	pr6|133
+000440  aa   000077 7370 00	lls  	63
+000441  aa  6 00142 3735 20	epp7 	pr6|98,*		pvste.station_addr
+000442  aa  7 00000 5511 40	stba 	pr7|0,40		pvste.station_addr
+						STATEMENT 1 ON LINE 183
+	     if pvste.station_addr < 0 | pvste.station_addr > 31
+	     then go to bad_chan;
+
+000443  aa  7 00000 2351 00	lda  	pr7|0		pvste.station_addr
+000444  aa   000077 7730 00	lrl  	63
+000445  aa   000134 6040 04	tmi  	92,ic		000601
+000446  aa   000037 1160 07	cmpq 	31,dl
+000447  aa   000132 6054 04	tpnz 	90,ic		000601
+						STATEMENT 1 ON LINE 186
+	     if ^pvmd.station_mask (pvste.station_addr)
+	     then do;
+
+000450  aa  6 00215 7561 00	stq  	pr6|141
+000451  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000452  aa  000 000 066 506	cmpb 	(pr,ql),(),fill(0)
+000453  aa  7 00036 00 0001	descb	pr7|30,1		pvmd.station_mask
+000454  aa   000000 00 0000	descb	0,0
+000455  aa   000011 6010 04	tnz  	9,ic		000466
+						STATEMENT 1 ON LINE 188
+		pvmd.station_mask (pvste.station_addr) = "1"b;
+
+000456  aa  403 106 060 400	csl  	(),(pr,ql),fill(1),bool(move)
+000457  aa   000000 00 0000	descb	0,0
+000460  aa  7 00036 00 0001	descb	pr7|30,1		pvmd.station_mask
+						STATEMENT 1 ON LINE 189
+		pvmd.nstation = pvmd.nstation + 1;
+
+000461  aa  7 00015 2351 00	lda  	pr7|13		pvmd.nstation
+000462  aa   000066 7330 00	lrs  	54
+000463  aa   000001 0760 07	adq  	1,dl
+000464  aa   000066 7370 00	lls  	54
+000465  aa  7 00015 5511 60	stba 	pr7|13,60		pvmd.nstation
+						STATEMENT 1 ON LINE 190
+	     end;
+
+						STATEMENT 1 ON LINE 192
+	     string (pvste.flags) = ""b;
+
+000466  aa   001450 2350 04	lda  	808,ic		002136 = 000777777777
+000467  aa  6 00142 3715 20	epp5 	pr6|98,*		pvstep
+000470  aa  5 00002 3551 00	ansa 	pr5|2
+						STATEMENT 1 ON LINE 193
+	     if substr (pvste.name, 1, 1) = "p"
+	     then do;
+
+000471  aa  6 00214 2351 00	lda  	pr6|140		pvste.name
+000472  aa   160000 1150 03	cmpa 	57344,du
+000473  aa   000022 6010 04	tnz  	18,ic		000515
+						STATEMENT 1 ON LINE 195
+		if pvmd.station_to_subchan (pvste.station_addr).printer ^= 0
+		then go to bad_chan;
+
+000474  aa  6 00215 2361 00	ldq  	pr6|141
+000475  aa   000022 4020 07	mpy  	18,dl
+000476  aa  003 100 060 506	csl  	(pr,ql),(pr),fill(0),bool(move)
+000477  aa  7 00016 20 0011	descb	pr7|14(9),9	pvmd.printer
+000500  aa  6 00056 00 0044	descb	pr6|46,36
+000501  aa  6 00056 2351 00	lda  	pr6|46
+000502  aa  6 00214 7561 00	stq  	pr6|140
+000503  aa   000077 7330 00	lrs  	63
+000504  aa   000075 6010 04	tnz  	61,ic		000601
+						STATEMENT 1 ON LINE 197
+		pvmd.station_to_subchan (pvste.station_addr).printer = subchan;
+
+000505  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000506  aa   000077 7370 00	lls  	63
+000507  aa  6 00056 7551 00	sta  	pr6|46
+000510  aa  6 00214 7271 00	lxl7 	pr6|140
+000511  aa  003 117 060 500	csl  	(pr),(pr,x7),fill(0),bool(move)
+000512  aa  6 00056 00 0011	descb	pr6|46,9
+000513  aa  7 00016 20 0011	descb	pr7|14(9),9	pvmd.printer
+						STATEMENT 1 ON LINE 198
+	     end;
+
+000514  aa   000021 7100 04	tra  	17,ic		000535
+						STATEMENT 1 ON LINE 199
+	     else do;
+
+						STATEMENT 1 ON LINE 200
+		if pvmd.station_to_subchan (pvste.station_addr).display ^= 0
+		then go to bad_chan;
+
+000515  aa  6 00215 2361 00	ldq  	pr6|141
+000516  aa   000022 4020 07	mpy  	18,dl
+000517  aa  003 100 060 506	csl  	(pr,ql),(pr),fill(0),bool(move)
+000520  aa  7 00016 00 0011	descb	pr7|14,9		pvmd.display
+000521  aa  6 00056 00 0044	descb	pr6|46,36
+000522  aa  6 00056 2351 00	lda  	pr6|46
+000523  aa  6 00215 7561 00	stq  	pr6|141
+000524  aa   000077 7330 00	lrs  	63
+000525  aa   000054 6010 04	tnz  	44,ic		000601
+						STATEMENT 1 ON LINE 202
+		pvmd.station_to_subchan (pvste.station_addr).display = subchan;
+
+000526  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000527  aa   000077 7370 00	lls  	63
+000530  aa  6 00056 7551 00	sta  	pr6|46
+000531  aa  6 00215 7271 00	lxl7 	pr6|141
+000532  aa  003 117 060 500	csl  	(pr),(pr,x7),fill(0),bool(move)
+000533  aa  6 00056 00 0011	descb	pr6|46,9
+000534  aa  7 00016 00 0011	descb	pr7|14,9		pvmd.display
+						STATEMENT 1 ON LINE 203
+	     end;
+
+						STATEMENT 1 ON LINE 205
+	     call tty_area_manager$allocate (size (pvip_subchan_meters), pvste.saved_meters_ptr);
+
+000535  aa   000004 2360 07	ldq  	4,dl
+000536  aa  6 00215 7561 00	stq  	pr6|141
+000537  aa  6 00215 3521 00	epp2 	pr6|141
+000540  aa  6 00210 2521 00	spri2	pr6|136
+000541  aa  5 00010 3521 00	epp2 	pr5|8		pvste.saved_meters_ptr
+000542  aa  6 00212 2521 00	spri2	pr6|138
+000543  aa  6 00206 6211 00	eax1 	pr6|134
+000544  aa   010000 4310 07	fld  	4096,dl
+000545  aa  6 00044 3701 20	epp4 	pr6|36,*
+000546  la  4 00032 3521 20	epp2 	pr4|26,*		tty_area_manager$allocate
+000547  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 207
+	     lctep = addr (lct.lcte_array (pvste.devx));
+
+000550  aa  6 00142 3735 20	epp7 	pr6|98,*		pvstep
+000551  aa  7 00001 2351 00	lda  	pr7|1		pvste.devx
+000552  aa   000066 7330 00	lrs  	54
+000553  aa   000005 7360 00	qls  	5
+000554  aa  6 00150 3715 20	epp5 	pr6|104,*		lctp
+000555  aa  5 77760 3715 06	epp5 	pr5|-16,ql	lct.lcte_array
+000556  aa  6 00152 6515 00	spri5	pr6|106		lctep
+						STATEMENT 1 ON LINE 208
+	     lcte.subchannel = subchan;
+
+000557  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000560  aa  5 00003 5521 14	stbq 	pr5|3,14		lcte.subchannel
+						STATEMENT 1 ON LINE 209
+	end;
+
+000561  aa  6 00121 0541 00	aos  	pr6|81		subchan
+000562  aa   777564 7100 04	tra  	-140,ic		000346
+						STATEMENT 1 ON LINE 211
+	if ^init_sw
+	then do;
+
+000563  aa  6 00044 3701 20	epp4 	pr6|36,*
+000564  ia  4 00010 2351 00	lda  	pr4|8		init_sw
+000565  aa   000010 6010 04	tnz  	8,ic		000575
+						STATEMENT 1 ON LINE 213
+	     call polled_vip_mpx$system_init;
+
+000566  aa  6 00056 6211 00	eax1 	pr6|46
+000567  aa   000000 4310 07	fld  	0,dl
+000570  la  4 00042 3521 20	epp2 	pr4|34,*		polled_vip_mpx$system_init
+000571  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 214
+	     init_sw = "1"b;
+
+000572  aa   400000 2350 03	lda  	131072,du
+000573  aa  6 00044 3701 20	epp4 	pr6|36,*
+000574  ia  4 00010 7551 00	sta  	pr4|8		init_sw
+						STATEMENT 1 ON LINE 215
+	end;
+
+						STATEMENT 1 ON LINE 217
+	pm_pvmdp = pvmdp;
+
+000575  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000576  aa  6 00162 6535 20	spri7	pr6|114,*		pm_pvmdp
+						STATEMENT 1 ON LINE 218
+	pm_code = 0;
+
+000577  aa  6 00160 4501 20	stz  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 219
+	return;
+
+000600  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 222
+bad_chan:						/* come here for invlaid channel name */
+	call tty_space_man$free_space (size (pvmd), pvmdp);
+
+000601  aa  6 00140 2361 00	ldq  	pr6|96		pvmd_nchan
+000602  aa   000012 4020 07	mpy  	10,dl
+000603  aa   000062 0760 07	adq  	50,dl
+000604  aa  6 00215 7561 00	stq  	pr6|141
+000605  aa  6 00215 3521 00	epp2 	pr6|141
+000606  aa  6 00210 2521 00	spri2	pr6|136
+000607  aa  6 00136 3521 00	epp2 	pr6|94		pvmdp
+000610  aa  6 00212 2521 00	spri2	pr6|138
+000611  aa  6 00206 6211 00	eax1 	pr6|134
+000612  aa   010000 4310 07	fld  	4096,dl
+000613  aa  6 00044 3701 20	epp4 	pr6|36,*
+000614  la  4 00052 3521 20	epp2 	pr4|42,*		tty_space_man$free_space
+000615  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 224
+	pm_code = error_table_$bad_channel;
+
+000616  aa  6 00044 3701 20	epp4 	pr6|36,*
+000617  la  4 00014 2361 20	ldq  	pr4|12,*		error_table_$bad_channel
+000620  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 225
+	return;
+
+000621  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO terminate_multiplexer                              STATEMENT 1 ON LINE 231
+terminate_multiplexer:
+     entry (pm_pvmdp, pm_code);
+
+000622  at     000002000007
+000623  ta     000011000000
+000624  ta     000622000000
+000625  da     000256300000
+000626  aa   000520 6270 00	eax7 	336
+000627  aa  7 00034 3521 20	epp2 	pr7|28,*
+000630  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000631  aa     000004000000
+000632  aa     000000000000
+000633  aa  6 00032 3735 20	epp7 	pr6|26,*
+000634  aa  7 00002 3715 20	epp5 	pr7|2,*
+000635  aa  6 00162 6515 00	spri5	pr6|114
+000636  aa  7 00004 3535 20	epp3 	pr7|4,*
+000637  aa  6 00160 2535 00	spri3	pr6|112
+						STATEMENT 1 ON LINE 234
+	pvmdp = pm_pvmdp;
+
+000640  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+000641  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+000642  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 235
+	pvmd_nchan = pvmd.nchan;
+
+000643  aa  7 00001 2361 00	ldq  	pr7|1		pvmd.nchan
+000644  aa  6 00140 7561 00	stq  	pr6|96		pvmd_nchan
+						STATEMENT 1 ON LINE 236
+	do subchan = 1 to pvmd_nchan;
+
+000645  aa  6 00166 7561 00	stq  	pr6|118
+000646  aa   000001 2360 07	ldq  	1,dl
+000647  aa  6 00121 7561 00	stq  	pr6|81		subchan
+000650  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+000651  aa  6 00166 1161 00	cmpq 	pr6|118
+000652  aa   000022 6054 04	tpnz 	18,ic		000674
+						STATEMENT 1 ON LINE 237
+	     pvstep = addr (pvmd.subchan_table (subchan));
+
+000653  aa   000012 4020 07	mpy  	10,dl
+000654  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000655  aa  7 00050 3735 06	epp7 	pr7|40,ql		pvmd.subchan_table
+000656  aa  6 00142 6535 00	spri7	pr6|98		pvstep
+						STATEMENT 1 ON LINE 238
+	     call tty_area_manager$free (size (pvip_subchan_meters), pvste.saved_meters_ptr);
+
+000657  aa   000004 2360 07	ldq  	4,dl
+000660  aa  6 00215 7561 00	stq  	pr6|141
+000661  aa  6 00215 3521 00	epp2 	pr6|141
+000662  aa  6 00210 2521 00	spri2	pr6|136
+000663  aa  7 00010 3521 00	epp2 	pr7|8		pvste.saved_meters_ptr
+000664  aa  6 00212 2521 00	spri2	pr6|138
+000665  aa  6 00206 6211 00	eax1 	pr6|134
+000666  aa   010000 4310 07	fld  	4096,dl
+000667  aa  6 00044 3701 20	epp4 	pr6|36,*
+000670  la  4 00034 3521 20	epp2 	pr4|28,*		tty_area_manager$free
+000671  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 239
+	end;
+
+000672  aa  6 00121 0541 00	aos  	pr6|81		subchan
+000673  aa   777755 7100 04	tra  	-19,ic		000650
+						STATEMENT 1 ON LINE 241
+	call tty_area_manager$free (size (pvip_mpx_meters), pvmd.saved_meters_ptr);
+
+000674  aa   000005 2360 07	ldq  	5,dl
+000675  aa  6 00215 7561 00	stq  	pr6|141
+000676  aa  6 00215 3521 00	epp2 	pr6|141
+000677  aa  6 00210 2521 00	spri2	pr6|136
+000700  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+000701  aa  7 00060 3521 00	epp2 	pr7|48		pvmd.saved_meters_ptr
+000702  aa  6 00212 2521 00	spri2	pr6|138
+000703  aa  6 00206 6211 00	eax1 	pr6|134
+000704  aa   010000 4310 07	fld  	4096,dl
+000705  aa  6 00044 3701 20	epp4 	pr6|36,*
+000706  la  4 00034 3521 20	epp2 	pr4|28,*		tty_area_manager$free
+000707  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 242
+	call tty_space_man$free_space (size (pvmd), pvmdp);
+
+000710  aa  6 00140 2361 00	ldq  	pr6|96		pvmd_nchan
+000711  aa   000012 4020 07	mpy  	10,dl
+000712  aa   000062 0760 07	adq  	50,dl
+000713  aa  6 00215 7561 00	stq  	pr6|141
+000714  aa  6 00215 3521 00	epp2 	pr6|141
+000715  aa  6 00210 2521 00	spri2	pr6|136
+000716  aa  6 00136 3521 00	epp2 	pr6|94		pvmdp
+000717  aa  6 00212 2521 00	spri2	pr6|138
+000720  aa  6 00206 6211 00	eax1 	pr6|134
+000721  aa   010000 4310 07	fld  	4096,dl
+000722  aa  6 00044 3701 20	epp4 	pr6|36,*
+000723  la  4 00052 3521 20	epp2 	pr4|42,*		tty_space_man$free_space
+000724  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 244
+	pm_pvmdp = null;
+
+000725  aa   777073 2370 04	ldaq 	-453,ic		000020 = 077777000043 000001000000
+000726  aa  6 00162 7571 20	staq 	pr6|114,*		pm_pvmdp
+						STATEMENT 1 ON LINE 245
+	pm_code = 0;
+
+000727  aa  6 00160 4501 20	stz  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 246
+	return;
+
+000730  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO start                                              STATEMENT 1 ON LINE 252
+start:
+     entry (pm_pvmdp, pm_code);
+
+000731  ta     000622000000
+000732  da     000263300000
+000733  aa   000520 6270 00	eax7 	336
+000734  aa  7 00034 3521 20	epp2 	pr7|28,*
+000735  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+000736  aa     000004000000
+000737  aa     000000000000
+000740  aa  6 00032 3735 20	epp7 	pr6|26,*
+000741  aa  7 00002 3715 20	epp5 	pr7|2,*
+000742  aa  6 00162 6515 00	spri5	pr6|114
+000743  aa  7 00004 3535 20	epp3 	pr7|4,*
+000744  aa  6 00160 2535 00	spri3	pr6|112
+						STATEMENT 1 ON LINE 255
+	pvmdp = pm_pvmdp;
+
+000745  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+000746  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+000747  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 256
+	if ^pvmd.mpx_loaded
+	then do;
+
+000750  aa  7 00052 2351 00	lda  	pr7|42		pvmd.mpx_loaded
+000751  aa   040000 3150 03	cana 	16384,du
+000752  aa   000005 6010 04	tnz  	5,ic		000757
+						STATEMENT 1 ON LINE 258
+	     pm_code = error_table_$action_not_performed;
+
+000753  aa  6 00044 3701 20	epp4 	pr6|36,*
+000754  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$action_not_performed
+000755  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 259
+	     return;
+
+000756  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 260
+	end;
+
+						STATEMENT 1 ON LINE 262
+	call channel_manager$control (pvmd.devx, "set_input_message_size", addr (pvmd.max_message_len), code);
+
+000757  aa   777061 2370 04	ldaq 	-463,ic		000040 = 163145164137 151156160165
+000760  aa  6 00206 7571 00	staq 	pr6|134
+000761  aa   777061 2370 04	ldaq 	-463,ic		000042 = 164137155145 163163141147
+000762  aa  6 00210 7571 00	staq 	pr6|136
+000763  aa   777061 2370 04	ldaq 	-463,ic		000044 = 145137163151 172145000000
+000764  aa  6 00212 7571 00	staq 	pr6|138
+000765  aa  7 00050 3715 00	epp5 	pr7|40		pvmd.max_message_len
+000766  aa  6 00454 6515 00	spri5	pr6|300
+000767  aa  7 00000 3521 00	epp2 	pr7|0		pvmd.devx
+000770  aa  6 00220 2521 00	spri2	pr6|144
+000771  aa  6 00206 3521 00	epp2 	pr6|134
+000772  aa  6 00222 2521 00	spri2	pr6|146
+000773  aa  6 00454 3521 00	epp2 	pr6|300
+000774  aa  6 00224 2521 00	spri2	pr6|148
+000775  aa  6 00100 3521 00	epp2 	pr6|64		code
+000776  aa  6 00226 2521 00	spri2	pr6|150
+000777  aa   777011 3520 04	epp2 	-503,ic		000010 = 404000000021
+001000  aa  6 00230 2521 00	spri2	pr6|152
+001001  aa   777002 3520 04	epp2 	-510,ic		000003 = 524000000026
+001002  aa  6 00232 2521 00	spri2	pr6|154
+001003  aa   777004 3520 04	epp2 	-508,ic		000007 = 464000000000
+001004  aa  6 00234 2521 00	spri2	pr6|156
+001005  aa   777004 3520 04	epp2 	-508,ic		000011 = 404000000043
+001006  aa  6 00236 2521 00	spri2	pr6|158
+001007  aa  6 00216 6211 00	eax1 	pr6|142
+001010  aa   020000 4310 07	fld  	8192,dl
+001011  aa  6 00044 3701 20	epp4 	pr6|36,*
+001012  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001013  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 264
+	if pvmd.crlf_echo
+	then call send_echo_mask;
+
+001014  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001015  aa  7 00052 2351 00	lda  	pr7|42		pvmd.crlf_echo
+001016  aa   002000 3150 03	cana 	1024,du
+001017  aa   000002 6000 04	tze  	2,ic		001021
+001020  aa   001016 6700 04	tsp4 	526,ic		002036
+						STATEMENT 1 ON LINE 267
+	lc_info.type = PAUSE_TIME;
+
+001021  aa   000004 2350 03	lda  	4,du
+001022  aa  6 00106 5511 60	stba 	pr6|70,60		lc_info.type
+						STATEMENT 1 ON LINE 268
+	lc_info.arg1 = pvmd.pause_time;
+
+001023  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001024  aa  7 00046 2361 00	ldq  	pr7|38		pvmd.pause_time
+001025  aa  6 00106 5521 14	stbq 	pr6|70,14		lc_info.arg1
+						STATEMENT 1 ON LINE 269
+	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+
+001026  aa   777004 2370 04	ldaq 	-508,ic		000032 = 154151156145 137143157156
+001027  aa  6 00206 7571 00	staq 	pr6|134
+001030  aa   777004 2350 04	lda  	-508,ic		000034 = 164162157154
+001031  aa  6 00210 7551 00	sta  	pr6|136
+001032  aa  6 00106 3715 00	epp5 	pr6|70		lc_info
+001033  aa  6 00454 6515 00	spri5	pr6|300
+001034  aa  7 00000 3521 00	epp2 	pr7|0		pvmd.devx
+001035  aa  6 00220 2521 00	spri2	pr6|144
+001036  aa  6 00206 3521 00	epp2 	pr6|134
+001037  aa  6 00222 2521 00	spri2	pr6|146
+001040  aa  6 00454 3521 00	epp2 	pr6|300
+001041  aa  6 00224 2521 00	spri2	pr6|148
+001042  aa  6 00100 3521 00	epp2 	pr6|64		code
+001043  aa  6 00226 2521 00	spri2	pr6|150
+001044  aa   776744 3520 04	epp2 	-540,ic		000010 = 404000000021
+001045  aa  6 00230 2521 00	spri2	pr6|152
+001046  aa   776734 3520 04	epp2 	-548,ic		000002 = 524000000014
+001047  aa  6 00232 2521 00	spri2	pr6|154
+001050  aa   776737 3520 04	epp2 	-545,ic		000007 = 464000000000
+001051  aa  6 00234 2521 00	spri2	pr6|156
+001052  aa   776737 3520 04	epp2 	-545,ic		000011 = 404000000043
+001053  aa  6 00236 2521 00	spri2	pr6|158
+001054  aa  6 00216 6211 00	eax1 	pr6|142
+001055  aa   020000 4310 07	fld  	8192,dl
+001056  aa  6 00044 3701 20	epp4 	pr6|36,*
+001057  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001060  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 271
+	if pvmd.controller_poll
+	then lc_info.type = CONTROLLER_POLL;
+
+001061  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001062  aa  7 00052 2351 00	lda  	pr7|42		pvmd.controller_poll
+001063  aa   010000 3150 03	cana 	4096,du
+001064  aa   000004 6000 04	tze  	4,ic		001070
+001065  aa   000002 2350 03	lda  	2,du
+001066  aa  6 00106 5511 60	stba 	pr6|70,60		lc_info.type
+001067  aa   000012 7100 04	tra  	10,ic		001101
+						STATEMENT 1 ON LINE 273
+	else do;
+
+						STATEMENT 1 ON LINE 274
+	     lc_info.type = STATION_POLL;
+
+001070  aa   000001 2350 03	lda  	1,du
+001071  aa  6 00106 5511 60	stba 	pr6|70,60		lc_info.type
+						STATEMENT 1 ON LINE 275
+	     lc_info.arg1 = pvmd.nstation;
+
+001072  aa  7 00015 2351 00	lda  	pr7|13		pvmd.nstation
+001073  aa   000022 7710 00	arl  	18
+001074  aa  6 00106 5511 14	stba 	pr6|70,14		lc_info.arg1
+						STATEMENT 1 ON LINE 276
+	     lc_info.station_mask = pvmd.station_mask;
+
+001075  aa  7 00036 2351 00	lda  	pr7|30		pvmd.station_mask
+001076  aa  6 00215 7551 00	sta  	pr6|141
+001077  aa  6 00215 2351 00	lda  	pr6|141
+001100  aa  6 00107 7551 00	sta  	pr6|71		lc_info.station_mask
+						STATEMENT 1 ON LINE 277
+	end;
+
+						STATEMENT 1 ON LINE 278
+	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+
+001101  aa   776731 2370 04	ldaq 	-551,ic		000032 = 154151156145 137143157156
+001102  aa  6 00206 7571 00	staq 	pr6|134
+001103  aa   776731 2350 04	lda  	-551,ic		000034 = 164162157154
+001104  aa  6 00210 7551 00	sta  	pr6|136
+001105  aa  6 00106 3715 00	epp5 	pr6|70		lc_info
+001106  aa  6 00454 6515 00	spri5	pr6|300
+001107  aa  7 00000 3521 00	epp2 	pr7|0		pvmd.devx
+001110  aa  6 00220 2521 00	spri2	pr6|144
+001111  aa  6 00206 3521 00	epp2 	pr6|134
+001112  aa  6 00222 2521 00	spri2	pr6|146
+001113  aa  6 00454 3521 00	epp2 	pr6|300
+001114  aa  6 00224 2521 00	spri2	pr6|148
+001115  aa  6 00100 3521 00	epp2 	pr6|64		code
+001116  aa  6 00226 2521 00	spri2	pr6|150
+001117  aa   776671 3520 04	epp2 	-583,ic		000010 = 404000000021
+001120  aa  6 00230 2521 00	spri2	pr6|152
+001121  aa   776661 3520 04	epp2 	-591,ic		000002 = 524000000014
+001122  aa  6 00232 2521 00	spri2	pr6|154
+001123  aa   776664 3520 04	epp2 	-588,ic		000007 = 464000000000
+001124  aa  6 00234 2521 00	spri2	pr6|156
+001125  aa   776664 3520 04	epp2 	-588,ic		000011 = 404000000043
+001126  aa  6 00236 2521 00	spri2	pr6|158
+001127  aa  6 00216 6211 00	eax1 	pr6|142
+001130  aa   020000 4310 07	fld  	8192,dl
+001131  aa  6 00044 3701 20	epp4 	pr6|36,*
+001132  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001133  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 279
+	if code = 0
+	then pvmd.polling_started = "1"b;
+
+001134  aa  6 00100 2361 00	ldq  	pr6|64		code
+001135  aa   000004 6010 04	tnz  	4,ic		001141
+001136  aa   020000 2350 03	lda  	8192,du
+001137  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001140  aa  7 00052 2551 00	orsa 	pr7|42		pvmd.polling_started
+						STATEMENT 1 ON LINE 282
+	pvmd.mpx_started = "1"b;
+
+001141  aa   200000 2350 03	lda  	65536,du
+001142  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001143  aa  7 00052 2551 00	orsa 	pr7|42		pvmd.mpx_started
+						STATEMENT 1 ON LINE 283
+	do subchan = 1 to pvmd.nchan;
+
+001144  aa  7 00001 2361 00	ldq  	pr7|1		pvmd.nchan
+001145  aa  6 00167 7561 00	stq  	pr6|119
+001146  aa   000001 2360 07	ldq  	1,dl
+001147  aa  6 00121 7561 00	stq  	pr6|81		subchan
+001150  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+001151  aa  6 00167 1161 00	cmpq 	pr6|119
+001152  aa   000031 6054 04	tpnz 	25,ic		001203
+						STATEMENT 1 ON LINE 284
+	     pvstep = addr (pvmd.subchan_table (subchan));
+
+001153  aa   000012 4020 07	mpy  	10,dl
+001154  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001155  aa  7 00050 3735 06	epp7 	pr7|40,ql		pvmd.subchan_table
+001156  aa  6 00142 6535 00	spri7	pr6|98		pvstep
+						STATEMENT 1 ON LINE 285
+	     if pvste.listen & ^pvste.dialed & pvste.slave
+	     then call polled_vip_mpx$dialup (pvmdp, subchan);
+
+001157  aa  7 00002 2351 00	lda  	pr7|2		pvste.listen
+001160  aa   020000 3150 03	cana 	8192,du
+001161  aa   000020 6000 04	tze  	16,ic		001201
+001162  aa  7 00002 2351 00	lda  	pr7|2		pvste.dialed
+001163  aa   010000 3150 03	cana 	4096,du
+001164  aa   000015 6010 04	tnz  	13,ic		001201
+001165  aa  7 00002 2351 00	lda  	pr7|2		pvste.slave
+001166  aa   004000 3150 03	cana 	2048,du
+001167  aa   000012 6000 04	tze  	10,ic		001201
+001170  aa  6 00136 3521 00	epp2 	pr6|94		pvmdp
+001171  aa  6 00210 2521 00	spri2	pr6|136
+001172  aa  6 00121 3521 00	epp2 	pr6|81		subchan
+001173  aa  6 00212 2521 00	spri2	pr6|138
+001174  aa  6 00206 6211 00	eax1 	pr6|134
+001175  aa   010000 4310 07	fld  	4096,dl
+001176  aa  6 00044 3701 20	epp4 	pr6|36,*
+001177  la  4 00040 3521 20	epp2 	pr4|32,*		polled_vip_mpx$dialup
+001200  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 288
+	end;
+
+001201  aa  6 00121 0541 00	aos  	pr6|81		subchan
+001202  aa   777746 7100 04	tra  	-26,ic		001150
+						STATEMENT 1 ON LINE 290
+	pm_code = 0;
+
+001203  aa  6 00160 4501 20	stz  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 291
+	return;
+
+001204  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO stop                                               STATEMENT 1 ON LINE 297
+stop:
+     entry (pm_pvmdp, pm_code);
+
+001205  ta     000622000000
+001206  da     000270300000
+001207  aa   000520 6270 00	eax7 	336
+001210  aa  7 00034 3521 20	epp2 	pr7|28,*
+001211  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001212  aa     000004000000
+001213  aa     000000000000
+001214  aa  6 00032 3735 20	epp7 	pr6|26,*
+001215  aa  7 00002 3715 20	epp5 	pr7|2,*
+001216  aa  6 00162 6515 00	spri5	pr6|114
+001217  aa  7 00004 3535 20	epp3 	pr7|4,*
+001220  aa  6 00160 2535 00	spri3	pr6|112
+						STATEMENT 1 ON LINE 300
+	pvmdp = pm_pvmdp;
+
+001221  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+001222  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+001223  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 301
+	pvmd.mpx_started = "0"b;
+
+001224  aa   000711 2350 04	lda  	457,ic		002135 = 577777777777
+001225  aa  7 00052 3551 00	ansa 	pr7|42		pvmd.mpx_started
+						STATEMENT 1 ON LINE 302
+	pm_code = 0;
+
+001226  aa  6 00160 4501 20	stz  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 303
+	return;
+
+001227  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO shutdown                                           STATEMENT 1 ON LINE 309
+shutdown:
+     entry (pm_pvmdp, pm_code);
+
+001230  ta     000622000000
+001231  da     000276300000
+001232  aa   000520 6270 00	eax7 	336
+001233  aa  7 00034 3521 20	epp2 	pr7|28,*
+001234  aa  2 01045 2721 00	tsp2 	pr2|549		ext_entry
+001235  aa     000004000000
+001236  aa     000000000000
+001237  aa  6 00032 3735 20	epp7 	pr6|26,*
+001240  aa  7 00002 3715 20	epp5 	pr7|2,*
+001241  aa  6 00162 6515 00	spri5	pr6|114
+001242  aa  7 00004 3535 20	epp3 	pr7|4,*
+001243  aa  6 00160 2535 00	spri3	pr6|112
+						STATEMENT 1 ON LINE 312
+	pvmdp = pm_pvmdp;
+
+001244  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+001245  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+001246  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 313
+	if pvmd.mpx_loading | pvmd.mpx_loaded
+	then call channel_manager$control (pvmd.devx, "hangup", null, code);
+
+001247  aa  7 00052 2351 00	lda  	pr7|42		pvmd.mpx_loaded
+001250  aa   140000 3150 03	cana 	49152,du
+001251  aa   000032 6000 04	tze  	26,ic		001303
+001252  aa   776544 2370 04	ldaq 	-668,ic		000016 = 150141156147 165160000000
+001253  aa  6 00454 7571 00	staq 	pr6|300
+001254  aa   776544 3714 24	epp5 	-668,ic*
+001255  aa  6 00456 6515 00	spri5	pr6|302
+001256  aa  7 00000 3521 00	epp2 	pr7|0		pvmd.devx
+001257  aa  6 00220 2521 00	spri2	pr6|144
+001260  aa  6 00454 3521 00	epp2 	pr6|300
+001261  aa  6 00222 2521 00	spri2	pr6|146
+001262  aa  6 00456 3521 00	epp2 	pr6|302
+001263  aa  6 00224 2521 00	spri2	pr6|148
+001264  aa  6 00100 3521 00	epp2 	pr6|64		code
+001265  aa  6 00226 2521 00	spri2	pr6|150
+001266  aa   776522 3520 04	epp2 	-686,ic		000010 = 404000000021
+001267  aa  6 00230 2521 00	spri2	pr6|152
+001270  aa   776511 3520 04	epp2 	-695,ic		000001 = 524000000006
+001271  aa  6 00232 2521 00	spri2	pr6|154
+001272  aa   776515 3520 04	epp2 	-691,ic		000007 = 464000000000
+001273  aa  6 00234 2521 00	spri2	pr6|156
+001274  aa   776515 3520 04	epp2 	-691,ic		000011 = 404000000043
+001275  aa  6 00236 2521 00	spri2	pr6|158
+001276  aa  6 00216 6211 00	eax1 	pr6|142
+001277  aa   020000 4310 07	fld  	8192,dl
+001300  aa  6 00044 3701 20	epp4 	pr6|36,*
+001301  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001302  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 315
+	call polled_vip_mpx$crash (pvmdp);
+
+001303  aa  6 00136 3521 00	epp2 	pr6|94		pvmdp
+001304  aa  6 00210 2521 00	spri2	pr6|136
+001305  aa  6 00206 6211 00	eax1 	pr6|134
+001306  aa   004000 4310 07	fld  	2048,dl
+001307  aa  6 00044 3701 20	epp4 	pr6|36,*
+001310  la  4 00036 3521 20	epp2 	pr4|30,*		polled_vip_mpx$crash
+001311  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 316
+	pm_code = 0;
+
+001312  aa  6 00160 4501 20	stz  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 317
+	return;
+
+001313  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO priv_control                                       STATEMENT 1 ON LINE 323
+priv_control:
+     entry (pm_pvmdp, pm_order, pm_infop, pm_code);
+
+001314  at     000004000007
+001315  tt     000006000007
+001316  ta     000011000000
+001317  ta     001314000000
+001320  da     000305300000
+001321  aa   000520 6270 00	eax7 	336
+001322  aa  7 00034 3521 20	epp2 	pr7|28,*
+001323  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+001324  aa     000010000000
+001325  aa     000000000000
+001326  aa  6 00042 3735 20	epp7 	pr6|34,*
+001327  aa  7 00002 2361 20	ldq  	pr7|2,*
+001330  aa   000002 6040 04	tmi  	2,ic		001332
+001331  aa   777777 3760 07	anq  	262143,dl
+001332  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+001333  aa  6 00460 7561 00	stq  	pr6|304
+001334  aa  6 00032 3715 20	epp5 	pr6|26,*
+001335  aa  5 00002 3535 20	epp3 	pr5|2,*
+001336  aa  6 00162 2535 00	spri3	pr6|114
+001337  aa  5 00010 3515 20	epp1 	pr5|8,*
+001340  aa  6 00160 2515 00	spri1	pr6|112
+						STATEMENT 1 ON LINE 326
+	pvmdp = pm_pvmdp;
+
+001341  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+001342  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+001343  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 327
+	order = pm_order;
+
+001344  aa  6 00032 3715 20	epp5 	pr6|26,*
+001345  aa  5 00004 3535 20	epp3 	pr5|4,*
+001346  aa  6 00460 2351 00	lda  	pr6|304
+001347  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001350  aa  3 00000 00 0005	desc9a	pr3|0,al		pm_order
+001351  aa  6 00111 00 0040	desc9a	pr6|73,32		order
+						STATEMENT 1 ON LINE 328
+	infop = pm_infop;
+
+001352  aa  5 00006 3515 20	epp1 	pr5|6,*		pm_infop
+001353  aa  1 00000 3515 20	epp1 	pr1|0,*		pm_infop
+001354  aa  6 00104 2515 00	spri1	pr6|68		infop
+						STATEMENT 1 ON LINE 330
+	if order = "copy_meters"
+	then do;
+
+001355  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001356  aa  6 00111 00 0040	desc9a	pr6|73,32		order
+001357  aa   776452 00 0013	desc9a	-726,11		000027 = 143157160171
+001360  aa   000033 6010 04	tnz  	27,ic		001413
+						STATEMENT 1 ON LINE 332
+	     pvmd.saved_meters_ptr -> pvip_mpx_meters = pvmd.error_counters;
+
+001361  aa  7 00060 3535 20	epp3 	pr7|48,*		pvmd.saved_meters_ptr
+001362  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001363  aa  7 00053 00 0024	desc9a	pr7|43,20		pvmd.error_counters
+001364  aa  3 00000 00 0024	desc9a	pr3|0,20		pvip_mpx_meters
+						STATEMENT 1 ON LINE 333
+	     call channel_manager$control (pvmd.devx, order, infop, pm_code);
+
+001365  aa  7 00000 3521 00	epp2 	pr7|0		pvmd.devx
+001366  aa  6 00220 2521 00	spri2	pr6|144
+001367  aa  6 00111 3521 00	epp2 	pr6|73		order
+001370  aa  6 00222 2521 00	spri2	pr6|146
+001371  aa  6 00104 3521 00	epp2 	pr6|68		infop
+001372  aa  6 00224 2521 00	spri2	pr6|148
+001373  aa  6 00160 3521 20	epp2 	pr6|112,*		pm_code
+001374  aa  6 00226 2521 00	spri2	pr6|150
+001375  aa   776413 3520 04	epp2 	-757,ic		000010 = 404000000021
+001376  aa  6 00230 2521 00	spri2	pr6|152
+001377  aa   776401 3520 04	epp2 	-767,ic		000000 = 526000000040
+001400  aa  6 00232 2521 00	spri2	pr6|154
+001401  aa   776406 3520 04	epp2 	-762,ic		000007 = 464000000000
+001402  aa  6 00234 2521 00	spri2	pr6|156
+001403  aa   776406 3520 04	epp2 	-762,ic		000011 = 404000000043
+001404  aa  6 00236 2521 00	spri2	pr6|158
+001405  aa  6 00216 6211 00	eax1 	pr6|142
+001406  aa   020000 4310 07	fld  	8192,dl
+001407  aa  6 00044 3701 20	epp4 	pr6|36,*
+001410  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001411  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 334
+	end;
+
+001412  aa   000072 7100 04	tra  	58,ic		001504
+						STATEMENT 1 ON LINE 336
+	else if order = "get_meters"
+	then do;
+
+001413  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001414  aa  6 00111 00 0040	desc9a	pr6|73,32		order
+001415  aa   776411 00 0012	desc9a	-759,10		000024 = 147145164137
+001416  aa   000063 6010 04	tnz  	51,ic		001501
+						STATEMENT 1 ON LINE 338
+	     if infop -> get_comm_meters_info.version ^= GET_COMM_METERS_INFO_VERSION_1
+	     then pm_code = error_table_$unimplemented_version;
+
+001417  aa  1 00000 2361 00	ldq  	pr1|0		get_comm_meters_info.version
+001420  aa   000001 1160 07	cmpq 	1,dl
+001421  aa   000005 6000 04	tze  	5,ic		001426
+001422  aa  6 00044 3701 20	epp4 	pr6|36,*
+001423  la  4 00026 2361 20	ldq  	pr4|22,*		error_table_$unimplemented_version
+001424  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+001425  aa   000057 7100 04	tra  	47,ic		001504
+						STATEMENT 1 ON LINE 340
+	     else do;
+
+						STATEMENT 1 ON LINE 341
+		meter_ptr = infop -> get_comm_meters_info.subchan_ptr;
+
+001426  aa  1 00002 3735 20	epp7 	pr1|2,*		get_comm_meters_info.subchan_ptr
+001427  aa  6 00102 6535 00	spri7	pr6|66		meter_ptr
+						STATEMENT 1 ON LINE 342
+		if meter_ptr ^= null ()
+		then if meter_ptr -> pvip_mpx_meter_struc.version ^= PVIP_MPX_METERS_VERSION_1
+		     then pm_code = error_table_$unimplemented_version;
+
+001430  aa  6 00102 2371 00	ldaq 	pr6|66		meter_ptr
+001431  aa   776367 6770 04	eraq 	-777,ic		000020 = 077777000043 000001000000
+001432  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+001433  aa   000051 6000 04	tze  	41,ic		001504
+001434  aa  7 00000 2361 00	ldq  	pr7|0		pvip_mpx_meter_struc.version
+001435  aa   000001 1160 07	cmpq 	1,dl
+001436  aa   000005 6000 04	tze  	5,ic		001443
+001437  aa  6 00044 3701 20	epp4 	pr6|36,*
+001440  la  4 00026 2361 20	ldq  	pr4|22,*		error_table_$unimplemented_version
+001441  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+001442  aa   000042 7100 04	tra  	34,ic		001504
+						STATEMENT 1 ON LINE 345
+		     else do;
+
+						STATEMENT 1 ON LINE 346
+			meter_ptr -> pvip_mpx_meter_struc.current_meters = pvmd.error_counters;
+
+001443  aa  6 00136 3535 20	epp3 	pr6|94,*		pvmdp
+001444  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001445  aa  3 00053 00 0024	desc9a	pr3|43,20		pvmd.error_counters
+001446  aa  7 00002 00 0024	desc9a	pr7|2,20		pvip_mpx_meter_struc.current_meters
+						STATEMENT 1 ON LINE 347
+			meter_ptr -> pvip_mpx_meter_struc.saved_meters = pvmd.saved_meters_ptr -> pvip_mpx_meters;
+
+001447  aa  3 00060 3515 20	epp1 	pr3|48,*		pvmd.saved_meters_ptr
+001450  aa  000 100 100 500	mlr  	(pr),(pr),fill(000)
+001451  aa  1 00000 00 0024	desc9a	pr1|0,20		pvip_mpx_meters
+001452  aa  7 00007 00 0024	desc9a	pr7|7,20		pvip_mpx_meter_struc.saved_meters
+						STATEMENT 1 ON LINE 348
+			call channel_manager$control (pvmd.devx, order, infop, pm_code);
+
+001453  aa  3 00000 3521 00	epp2 	pr3|0		pvmd.devx
+001454  aa  6 00220 2521 00	spri2	pr6|144
+001455  aa  6 00111 3521 00	epp2 	pr6|73		order
+001456  aa  6 00222 2521 00	spri2	pr6|146
+001457  aa  6 00104 3521 00	epp2 	pr6|68		infop
+001460  aa  6 00224 2521 00	spri2	pr6|148
+001461  aa  6 00160 3521 20	epp2 	pr6|112,*		pm_code
+001462  aa  6 00226 2521 00	spri2	pr6|150
+001463  aa   776325 3520 04	epp2 	-811,ic		000010 = 404000000021
+001464  aa  6 00230 2521 00	spri2	pr6|152
+001465  aa   776313 3520 04	epp2 	-821,ic		000000 = 526000000040
+001466  aa  6 00232 2521 00	spri2	pr6|154
+001467  aa   776320 3520 04	epp2 	-816,ic		000007 = 464000000000
+001470  aa  6 00234 2521 00	spri2	pr6|156
+001471  aa   776320 3520 04	epp2 	-816,ic		000011 = 404000000043
+001472  aa  6 00236 2521 00	spri2	pr6|158
+001473  aa  6 00216 6211 00	eax1 	pr6|142
+001474  aa   020000 4310 07	fld  	8192,dl
+001475  aa  6 00044 3701 20	epp4 	pr6|36,*
+001476  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+001477  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 349
+		     end;
+
+						STATEMENT 1 ON LINE 350
+	     end;
+
+						STATEMENT 1 ON LINE 351
+	end;
+
+001500  aa   000004 7100 04	tra  	4,ic		001504
+						STATEMENT 1 ON LINE 353
+	else pm_code = error_table_$undefined_order_request;
+
+001501  aa  6 00044 3701 20	epp4 	pr6|36,*
+001502  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$undefined_order_request
+001503  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 354
+	return;
+
+001504  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+ENTRY TO hpriv_control                                      STATEMENT 1 ON LINE 360
+hpriv_control:
+     entry (pm_pvmdp, pm_order, pm_infop, pm_code);
+
+001505  ta     001314000000
+001506  da     000314300000
+001507  aa   000520 6270 00	eax7 	336
+001510  aa  7 00034 3521 20	epp2 	pr7|28,*
+001511  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+001512  aa     000010000000
+001513  aa     000000000000
+001514  aa  6 00042 3735 20	epp7 	pr6|34,*
+001515  aa  7 00002 2361 20	ldq  	pr7|2,*
+001516  aa   000002 6040 04	tmi  	2,ic		001520
+001517  aa   777777 3760 07	anq  	262143,dl
+001520  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+001521  aa  6 00460 7561 00	stq  	pr6|304
+001522  aa  6 00032 3715 20	epp5 	pr6|26,*
+001523  aa  5 00002 3535 20	epp3 	pr5|2,*
+001524  aa  6 00162 2535 00	spri3	pr6|114
+001525  aa  5 00010 3515 20	epp1 	pr5|8,*
+001526  aa  6 00160 2515 00	spri1	pr6|112
+						STATEMENT 1 ON LINE 363
+	pvmdp = pm_pvmdp;
+
+001527  aa  6 00162 3735 20	epp7 	pr6|114,*		pm_pvmdp
+001530  aa  7 00000 3735 20	epp7 	pr7|0,*		pm_pvmdp
+001531  aa  6 00136 6535 00	spri7	pr6|94		pvmdp
+						STATEMENT 1 ON LINE 364
+	order = pm_order;
+
+001532  aa  6 00032 3715 20	epp5 	pr6|26,*
+001533  aa  5 00004 3535 20	epp3 	pr5|4,*
+001534  aa  6 00460 2351 00	lda  	pr6|304
+001535  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+001536  aa  3 00000 00 0005	desc9a	pr3|0,al		pm_order
+001537  aa  6 00111 00 0040	desc9a	pr6|73,32		order
+						STATEMENT 1 ON LINE 365
+	code = 0;
+
+001540  aa  6 00100 4501 00	stz  	pr6|64		code
+						STATEMENT 1 ON LINE 367
+	if order = "load_mpx"			/* bootload the multiplexed device */
+	then do;
+
+001541  aa  040 004 106 500	cmpc 	(pr),(ic),fill(040)
+001542  aa  6 00111 00 0040	desc9a	pr6|73,32		order
+001543  aa   776253 00 0010	desc9a	-853,8		000014 = 154157141144
+001544  aa   000265 6010 04	tnz  	181,ic		002031
+						STATEMENT 1 ON LINE 369
+	     if pvmd.mpx_loading | pvmd.mpx_loaded	/* one at a time, please */
+	     then do;
+
+001545  aa  7 00052 2351 00	lda  	pr7|42		pvmd.mpx_loaded
+001546  aa   140000 3150 03	cana 	49152,du
+001547  aa   000005 6000 04	tze  	5,ic		001554
+						STATEMENT 1 ON LINE 371
+		pm_code = error_table_$action_not_performed;
+
+001550  aa  6 00044 3701 20	epp4 	pr6|36,*
+001551  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$action_not_performed
+001552  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 372
+		return;
+
+001553  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 373
+	     end;
+
+						STATEMENT 1 ON LINE 375
+	     pv_load_infop = pm_infop;
+
+001554  aa  5 00006 3515 20	epp1 	pr5|6,*		pm_infop
+001555  aa  1 00000 3515 20	epp1 	pr1|0,*		pm_infop
+001556  aa  6 00144 2515 00	spri1	pr6|100		pv_load_infop
+						STATEMENT 1 ON LINE 376
+	     if pv_load_info.nchan ^= pvmd.nchan
+	     then do;
+
+001557  aa  1 00013 2361 00	ldq  	pr1|11		pv_load_info.nchan
+001560  aa  7 00001 1161 00	cmpq 	pr7|1		pvmd.nchan
+001561  aa   000005 6000 04	tze  	5,ic		001566
+						STATEMENT 1 ON LINE 378
+bad_load_data:
+		pm_code = error_table_$bad_mpx_load_data;
+
+001562  aa  6 00044 3701 20	epp4 	pr6|36,*
+001563  la  4 00016 2361 20	ldq  	pr4|14,*		error_table_$bad_mpx_load_data
+001564  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 380
+		return;
+
+001565  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 381
+	     end;
+
+						STATEMENT 1 ON LINE 383
+	     pvmd.controller_poll = pv_load_info.controller_poll;
+
+001566  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.controller_poll
+001567  aa   000005 7710 00	arl  	5
+001570  aa  7 00052 6751 00	era  	pr7|42		pvmd.controller_poll
+001571  aa   010000 3750 03	ana  	4096,du
+001572  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.controller_poll
+						STATEMENT 1 ON LINE 384
+	     pvmd.crlf_echo = pv_load_info.crlf_echo;
+
+001573  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.crlf_echo
+001574  aa   000006 7710 00	arl  	6
+001575  aa  7 00052 6751 00	era  	pr7|42		pvmd.crlf_echo
+001576  aa   002000 3750 03	ana  	1024,du
+001577  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.crlf_echo
+						STATEMENT 1 ON LINE 385
+	     pvmd.omit_nl = pv_load_info.omit_nl;
+
+001600  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.omit_nl
+001601  aa   000006 7710 00	arl  	6
+001602  aa  7 00052 6751 00	era  	pr7|42		pvmd.omit_nl
+001603  aa   001000 3750 03	ana  	512,du
+001604  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.omit_nl
+						STATEMENT 1 ON LINE 386
+	     pvmd.omit_ff = pv_load_info.omit_ff;
+
+001605  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.omit_ff
+001606  aa   000006 7710 00	arl  	6
+001607  aa  7 00052 6751 00	era  	pr7|42		pvmd.omit_ff
+001610  aa   000400 3750 03	ana  	256,du
+001611  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.omit_ff
+						STATEMENT 1 ON LINE 387
+	     pvmd.gcos_break = pv_load_info.gcos_break;
+
+001612  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.gcos_break
+001613  aa   000006 7710 00	arl  	6
+001614  aa  7 00052 6751 00	era  	pr7|42		pvmd.gcos_break
+001615  aa   000200 3750 03	ana  	128,du
+001616  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.gcos_break
+						STATEMENT 1 ON LINE 388
+	     pvmd.etb_mode = pv_load_info.etb_mode;
+
+001617  aa  1 00005 2351 00	lda  	pr1|5		pv_load_info.etb_mode
+001620  aa   000006 7710 00	arl  	6
+001621  aa  7 00052 6751 00	era  	pr7|42		pvmd.etb_mode
+001622  aa   000100 3750 03	ana  	64,du
+001623  aa  7 00052 6551 00	ersa 	pr7|42		pvmd.etb_mode
+						STATEMENT 1 ON LINE 390
+	     pvmd.load_proc_id = pds$process_id;
+
+001624  aa  6 00044 3701 20	epp4 	pr6|36,*
+001625  la  4 00030 2351 20	lda  	pr4|24,*		pds$process_id
+001626  aa  7 00040 7551 00	sta  	pr7|32		pvmd.load_proc_id
+						STATEMENT 1 ON LINE 391
+	     pvmd.load_ev_chan = pv_load_info.ev_chan;
+
+001627  aa  1 00000 2371 00	ldaq 	pr1|0		pv_load_info.ev_chan
+001630  aa  7 00042 7571 00	staq 	pr7|34		pvmd.load_ev_chan
+						STATEMENT 1 ON LINE 392
+	     pvmd.pause_time = pv_load_info.pause_time;
+
+001631  aa  1 00002 2361 00	ldq  	pr1|2		pv_load_info.pause_time
+001632  aa  7 00046 7561 00	stq  	pr7|38		pvmd.pause_time
+						STATEMENT 1 ON LINE 393
+	     pvmd.max_text_len = min (1920, max (64, pv_load_info.max_text_len));
+
+001633  aa   000100 2360 07	ldq  	64,dl
+001634  aa  1 00003 1161 00	cmpq 	pr1|3		pv_load_info.max_text_len
+001635  aa   000002 6050 04	tpl  	2,ic		001637
+001636  aa  1 00003 2361 00	ldq  	pr1|3		pv_load_info.max_text_len
+001637  aa   003600 1160 07	cmpq 	1920,dl
+001640  aa   000002 6040 04	tmi  	2,ic		001642
+001641  aa   003600 2360 07	ldq  	1920,dl
+001642  aa  7 00047 7561 00	stq  	pr7|39		pvmd.max_text_len
+						STATEMENT 1 ON LINE 394
+	     pvmd.max_message_len = min (1024, max (73, pv_load_info.max_message_len));
+
+001643  aa   000111 2360 07	ldq  	73,dl
+001644  aa  1 00006 1161 00	cmpq 	pr1|6		pv_load_info.max_message_len
+001645  aa   000002 6050 04	tpl  	2,ic		001647
+001646  aa  1 00006 2361 00	ldq  	pr1|6		pv_load_info.max_message_len
+001647  aa   002000 1160 07	cmpq 	1024,dl
+001650  aa   000002 6040 04	tmi  	2,ic		001652
+001651  aa   002000 2360 07	ldq  	1024,dl
+001652  aa  7 00050 7561 00	stq  	pr7|40		pvmd.max_message_len
+						STATEMENT 1 ON LINE 395
+	     pvmd.quit = pv_load_info.quit;
+
+001653  aa  1 00004 2351 00	lda  	pr1|4		pv_load_info.quit
+001654  aa  7 00051 5511 40	stba 	pr7|41,40		pvmd.quit
+						STATEMENT 1 ON LINE 396
+	     pvmd.formfeed = pv_load_info.formfeed;
+
+001655  aa  1 00004 2351 00	lda  	pr1|4		pv_load_info.formfeed
+001656  aa  7 00051 5511 20	stba 	pr7|41,20		pvmd.formfeed
+						STATEMENT 1 ON LINE 398
+	     pvmd.mpx_started, pvmd.polling_started, pvmd.send_output, pvmd.partial_frame = "0"b;
+
+001657  aa   000256 2350 04	lda  	174,ic		002135 = 577777777777
+001660  aa  7 00052 3551 00	ansa 	pr7|42		pvmd.mpx_started
+001661  aa   000253 2350 04	lda  	171,ic		002134 = 757777777777
+001662  aa  7 00052 3551 00	ansa 	pr7|42		pvmd.polling_started
+001663  aa   000250 2350 04	lda  	168,ic		002133 = 377777777777
+001664  aa  7 00052 3551 00	ansa 	pr7|42		pvmd.send_output
+001665  aa   000245 2350 04	lda  	165,ic		002132 = 773777777777
+001666  aa  7 00052 3551 00	ansa 	pr7|42		pvmd.partial_frame
+						STATEMENT 1 ON LINE 399
+	     pvmd.writep = null;
+
+001667  aa   776131 2370 04	ldaq 	-935,ic		000020 = 077777000043 000001000000
+001670  aa  7 00012 7571 00	staq 	pr7|10		pvmd.writep
+						STATEMENT 1 ON LINE 400
+	     pvmd.write_chan = 0;
+
+001671  aa  7 00014 4501 00	stz  	pr7|12		pvmd.write_chan
+						STATEMENT 1 ON LINE 401
+	     pvmd.input_timeouts, pvmd.input_frames_lost, pvmd.output_frames_lost, pvmd.bad_output_frames,
+		pvmd.output_timeouts = 0;
+
+001672  aa  7 00053 4501 00	stz  	pr7|43		pvmd.input_timeouts
+001673  aa  7 00054 4501 00	stz  	pr7|44		pvmd.input_frames_lost
+001674  aa  7 00055 4501 00	stz  	pr7|45		pvmd.output_frames_lost
+001675  aa  7 00056 4501 00	stz  	pr7|46		pvmd.bad_output_frames
+001676  aa  7 00057 4501 00	stz  	pr7|47		pvmd.output_timeouts
+						STATEMENT 1 ON LINE 404
+	     do subchan = 1 to pvmd.nchan;
+
+001677  aa  7 00001 2361 00	ldq  	pr7|1		pvmd.nchan
+001700  aa  6 00170 7561 00	stq  	pr6|120
+001701  aa   000001 2360 07	ldq  	1,dl
+001702  aa  6 00121 7561 00	stq  	pr6|81		subchan
+001703  aa   000000 0110 03	nop  	0,du
+001704  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+001705  aa  6 00170 1161 00	cmpq 	pr6|120
+001706  aa   000053 6054 04	tpnz 	43,ic		001761
+						STATEMENT 1 ON LINE 405
+		pvstep = addr (pvmd.subchan_table (subchan));
+
+001707  aa   000012 4020 07	mpy  	10,dl
+001710  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+001711  aa  7 00050 3735 06	epp7 	pr7|40,ql		pvmd.subchan_table
+001712  aa  6 00142 6535 00	spri7	pr6|98		pvstep
+						STATEMENT 1 ON LINE 406
+		pvste.write_chain = 0;
+
+001713  aa   000000 2350 03	lda  	0,du
+001714  aa  7 00001 5511 14	stba 	pr7|1,14		pvste.write_chain
+						STATEMENT 1 ON LINE 407
+		pvste.naks = 0;
+
+001715  aa   000000 2350 03	lda  	0,du
+001716  aa  7 00002 5511 20	stba 	pr7|2,20		pvste.naks
+						STATEMENT 1 ON LINE 408
+		pvste.pgofs, pvste.writes = 0;
+
+001717  aa   000011 7350 00	als  	9
+001720  aa  7 00003 5511 40	stba 	pr7|3,40		pvste.pgofs
+001721  aa   000011 7710 00	arl  	9
+001722  aa  7 00003 5511 20	stba 	pr7|3,20		pvste.writes
+						STATEMENT 1 ON LINE 409
+		string (pvste.flags) = ""b;
+
+001723  aa   000213 2350 04	lda  	139,ic		002136 = 000777777777
+001724  aa  7 00002 3551 00	ansa 	pr7|2
+						STATEMENT 1 ON LINE 410
+		pvste.printer = (substr (pvste.name, 1, 1) = "p");
+
+001725  aa  7 00000 2351 00	lda  	pr7|0		pvste.name
+001726  aa   000011 7350 00	als  	9
+001727  aa  0 00022 3771 00	anaq 	pr0|18		= 777000000000 000000000000
+001730  aa   160000 1150 03	cmpa 	57344,du
+001731  aa  0 00512 7001 00	tsx0 	pr0|330		r_e_as
+001732  aa  7 00002 6751 00	era  	pr7|2		pvste.printer
+001733  aa  0 00002 3751 00	ana  	pr0|2		= 400000000000
+001734  aa  7 00002 6551 00	ersa 	pr7|2		pvste.printer
+						STATEMENT 1 ON LINE 411
+		pvste.slave = pv_load_info.slave (subchan);
+
+001735  aa  6 00121 2361 00	ldq  	pr6|81		subchan
+001736  aa   000002 7360 00	qls  	2
+001737  aa  6 00144 3715 20	epp5 	pr6|100,*		pv_load_infop
+001740  aa  5 00011 2351 06	lda  	pr5|9,ql		pv_load_info.slave
+001741  aa   000006 7710 00	arl  	6
+001742  aa  7 00002 6751 00	era  	pr7|2		pvste.slave
+001743  aa   004000 3750 03	ana  	2048,du
+001744  aa  7 00002 6551 00	ersa 	pr7|2		pvste.slave
+						STATEMENT 1 ON LINE 412
+		if pvste.devx ^= pv_load_info.devx (subchan)
+		then go to bad_load_data;
+
+001745  aa  5 00010 2351 06	lda  	pr5|8,ql		pv_load_info.devx
+001746  aa   000000 6270 06	eax7 	0,ql
+001747  aa   000066 7330 00	lrs  	54
+001750  aa  6 00214 7561 00	stq  	pr6|140		pv_load_info.devx
+001751  aa  7 00001 2351 00	lda  	pr7|1		pvste.devx
+001752  aa   000066 7330 00	lrs  	54
+001753  aa  6 00214 1161 00	cmpq 	pr6|140		pv_load_info.devx
+001754  aa   777606 6010 04	tnz  	-122,ic		001562
+						STATEMENT 1 ON LINE 414
+		pvste.baud_rate = pv_load_info.baud_rate (subchan);
+
+001755  aa  5 00010 2351 17	lda  	pr5|8,7		pv_load_info.baud_rate
+001756  aa  7 00002 5511 14	stba 	pr7|2,14		pvste.baud_rate
+						STATEMENT 1 ON LINE 415
+	     end;
+
+001757  aa  6 00121 0541 00	aos  	pr6|81		subchan
+001760  aa   777724 7100 04	tra  	-44,ic		001704
+						STATEMENT 1 ON LINE 417
+	     call channel_manager$control (pvmd.devx, "listen", null, code);
+
+001761  aa   776031 2370 04	ldaq 	-999,ic		000012 = 154151163164 145156000000
+001762  aa  6 00456 7571 00	staq 	pr6|302
+001763  aa   776035 3734 24	epp7 	-995,ic*
+001764  aa  6 00454 6535 00	spri7	pr6|300
+001765  aa  6 00136 3521 20	epp2 	pr6|94,*		pvmd.devx
+001766  aa  6 00220 2521 00	spri2	pr6|144
+001767  aa  6 00456 3521 00	epp2 	pr6|302
+001770  aa  6 00222 2521 00	spri2	pr6|146
+001771  aa  6 00454 3521 00	epp2 	pr6|300
+001772  aa  6 00224 2521 00	spri2	pr6|148
+001773  aa  6 00100 3521 00	epp2 	pr6|64		code
+001774  aa  6 00226 2521 00	spri2	pr6|150
+001775  aa   776013 3520 04	epp2 	-1013,ic		000010 = 404000000021
+001776  aa  6 00230 2521 00	spri2	pr6|152
+001777  aa   776002 3520 04	epp2 	-1022,ic		000001 = 524000000006
+002000  aa  6 00232 2521 00	spri2	pr6|154
+002001  aa   776006 3520 04	epp2 	-1018,ic		000007 = 464000000000
+002002  aa  6 00234 2521 00	spri2	pr6|156
+002003  aa   776006 3520 04	epp2 	-1018,ic		000011 = 404000000043
+002004  aa  6 00236 2521 00	spri2	pr6|158
+002005  aa  6 00216 6211 00	eax1 	pr6|142
+002006  aa   020000 4310 07	fld  	8192,dl
+002007  aa  6 00044 3701 20	epp4 	pr6|36,*
+002010  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+002011  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 418
+	     if code ^= 0
+	     then do;
+
+002012  aa  6 00100 2361 00	ldq  	pr6|64		code
+002013  aa   000003 6000 04	tze  	3,ic		002016
+						STATEMENT 1 ON LINE 420
+		pm_code = code;
+
+002014  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 421
+		return;
+
+002015  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 422
+	     end;
+
+						STATEMENT 1 ON LINE 424
+	     pvmd.mpx_loading = "1"b;
+
+002016  aa   100000 2350 03	lda  	32768,du
+002017  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+002020  aa  7 00052 2551 00	orsa 	pr7|42		pvmd.mpx_loading
+						STATEMENT 1 ON LINE 425
+	     pvmd.cur_station_mask = pvmd.station_mask;
+
+002021  aa  7 00036 2351 00	lda  	pr7|30		pvmd.station_mask
+002022  aa  6 00215 7551 00	sta  	pr6|141
+002023  aa  6 00215 2351 00	lda  	pr6|141
+002024  aa  7 00037 7551 00	sta  	pr7|31		pvmd.cur_station_mask
+						STATEMENT 1 ON LINE 426
+	     pvmd.cur_nstation = pvmd.nstation;
+
+002025  aa  7 00015 2351 00	lda  	pr7|13		pvmd.nstation
+002026  aa   000022 7710 00	arl  	18
+002027  aa  7 00015 5511 14	stba 	pr7|13,14		pvmd.cur_nstation
+						STATEMENT 1 ON LINE 427
+	end;
+
+002030  aa   000004 7100 04	tra  	4,ic		002034
+						STATEMENT 1 ON LINE 429
+	else code = error_table_$undefined_order_request;
+
+002031  aa  6 00044 3701 20	epp4 	pr6|36,*
+002032  la  4 00024 2361 20	ldq  	pr4|20,*		error_table_$undefined_order_request
+002033  aa  6 00100 7561 00	stq  	pr6|64		code
+						STATEMENT 1 ON LINE 431
+	pm_code = code;
+
+002034  aa  6 00160 7561 20	stq  	pr6|112,*		pm_code
+						STATEMENT 1 ON LINE 432
+	return;
+
+002035  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 459
+     end;
+
+BEGIN PROCEDURE send_echo_mask
+ENTRY TO send_echo_mask                                     STATEMENT 1 ON LINE 436
+send_echo_mask:
+     proc;
+
+002036  aa  6 00172 6501 00	spri4	pr6|122
+						STATEMENT 1 ON LINE 443
+	string (lc_info.station_mask) = ""b;
+
+002037  aa  6 00107 4501 00	stz  	pr6|71
+						STATEMENT 1 ON LINE 444
+	count = 0;
+
+002040  aa  6 00203 4501 00	stz  	pr6|131		count
+						STATEMENT 1 ON LINE 445
+	do i = 1 to pvmd.nchan;
+
+002041  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+002042  aa  7 00001 2361 00	ldq  	pr7|1		pvmd.nchan
+002043  aa  6 00204 7561 00	stq  	pr6|132
+002044  aa   000001 2360 07	ldq  	1,dl
+002045  aa  6 00202 7561 00	stq  	pr6|130		i
+002046  aa  6 00202 2361 00	ldq  	pr6|130		i
+002047  aa  6 00204 1161 00	cmpq 	pr6|132
+002050  aa   000022 6054 04	tpnz 	18,ic		002072
+						STATEMENT 1 ON LINE 446
+	     p = addr (pvmd.subchan_table (i));
+
+002051  aa   000012 4020 07	mpy  	10,dl
+002052  aa  6 00136 3735 20	epp7 	pr6|94,*		pvmdp
+002053  aa  7 00050 3735 06	epp7 	pr7|40,ql		pvmd.subchan_table
+002054  aa  6 00200 6535 00	spri7	pr6|128		p
+						STATEMENT 1 ON LINE 447
+	     if substr (p -> pvste.name, 1, 1) = "d"	/* only display stations get echos */
+	     then do;
+
+002055  aa  7 00000 2351 00	lda  	pr7|0		pvste.name
+002056  aa   000011 7350 00	als  	9
+002057  aa  0 00022 3771 00	anaq 	pr0|18		= 777000000000 000000000000
+002060  aa   144000 1150 03	cmpa 	51200,du
+002061  aa   000007 6010 04	tnz  	7,ic		002070
+						STATEMENT 1 ON LINE 449
+		lc_info.station_mask (p -> pvste.station_addr) = "1"b;
+
+002062  aa  7 00000 2351 00	lda  	pr7|0		pvste.station_addr
+002063  aa   000077 7730 00	lrl  	63
+002064  aa  403 106 060 400	csl  	(),(pr,ql),fill(1),bool(move)
+002065  aa   000000 00 0000	descb	0,0
+002066  aa  6 00107 00 0001	descb	pr6|71,1		lc_info.station_mask
+						STATEMENT 1 ON LINE 450
+		count = count + 1;
+
+002067  aa  6 00203 0541 00	aos  	pr6|131		count
+						STATEMENT 1 ON LINE 451
+	     end;
+
+						STATEMENT 1 ON LINE 452
+	end;
+
+002070  aa  6 00202 0541 00	aos  	pr6|130		i
+002071  aa   777755 7100 04	tra  	-19,ic		002046
+						STATEMENT 1 ON LINE 454
+	lc_info.type = ECHO_MASK;
+
+002072  aa   000005 2350 03	lda  	5,du
+002073  aa  6 00106 5511 60	stba 	pr6|70,60		lc_info.type
+						STATEMENT 1 ON LINE 455
+	lc_info.arg1 = count;
+
+002074  aa  6 00203 2361 00	ldq  	pr6|131		count
+002075  aa  6 00106 5521 14	stbq 	pr6|70,14		lc_info.arg1
+						STATEMENT 1 ON LINE 456
+	call channel_manager$control (pvmd.devx, "line_control", addr (lc_info), code);
+
+002076  aa   775734 2370 04	ldaq 	-1060,ic		000032 = 154151156145 137143157156
+002077  aa  6 00462 7571 00	staq 	pr6|306
+002100  aa   775734 2350 04	lda  	-1060,ic		000034 = 164162157154
+002101  aa  6 00464 7551 00	sta  	pr6|308
+002102  aa  6 00106 3735 00	epp7 	pr6|70		lc_info
+002103  aa  6 00466 6535 00	spri7	pr6|310
+002104  aa  6 00136 3521 20	epp2 	pr6|94,*		pvmd.devx
+002105  aa  6 00472 2521 00	spri2	pr6|314
+002106  aa  6 00462 3521 00	epp2 	pr6|306
+002107  aa  6 00474 2521 00	spri2	pr6|316
+002110  aa  6 00466 3521 00	epp2 	pr6|310
+002111  aa  6 00476 2521 00	spri2	pr6|318
+002112  aa  6 00100 3521 00	epp2 	pr6|64		code
+002113  aa  6 00500 2521 00	spri2	pr6|320
+002114  aa   775674 3520 04	epp2 	-1092,ic		000010 = 404000000021
+002115  aa  6 00502 2521 00	spri2	pr6|322
+002116  aa   775664 3520 04	epp2 	-1100,ic		000002 = 524000000014
+002117  aa  6 00504 2521 00	spri2	pr6|324
+002120  aa   775667 3520 04	epp2 	-1097,ic		000007 = 464000000000
+002121  aa  6 00506 2521 00	spri2	pr6|326
+002122  aa   775667 3520 04	epp2 	-1097,ic		000011 = 404000000043
+002123  aa  6 00510 2521 00	spri2	pr6|328
+002124  aa  6 00470 6211 00	eax1 	pr6|312
+002125  aa   020000 4310 07	fld  	8192,dl
+002126  aa  6 00044 3701 20	epp4 	pr6|36,*
+002127  la  4 00046 3521 20	epp2 	pr4|38,*		channel_manager$control
+002130  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+						STATEMENT 1 ON LINE 457
+     end;
+
+002131  aa  6 00172 6101 00	rtcd 	pr6|122
+  END PROCEDURE send_echo_mask
+  END PROCEDURE priv_polled_vip_mpx
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

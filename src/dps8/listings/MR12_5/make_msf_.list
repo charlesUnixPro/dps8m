@@ -1,0 +1,1100 @@
+	COMPILATION LISTING OF SEGMENT make_msf_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1032.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2,ind3 */
+       14 make_msf_:
+       15    proc (dirname_arg, ename_arg, rbs, code);
+       16 
+       17 /* Modified July 1973 by E. Stone to work for both 64k and 256k MSFs */
+       18 /* Modified Jan 1976 by Vinograd to work if linkage error on delete_ (for ring 1 reload) */
+       19 /* Modified 7/26/77 by M. Asherman to respect safety_sw on msf components
+       20*   by not allowing reversion to ssf in this case */
+       21 /* Modified 05/05/78 by C. D. Tavares to use hcs_$create_branch_, propagating
+       22*   safety_sw, copy_sw, and priv_upgrade_sw, on SSF -> MSF and MSF -> SSF */
+       23 /* Modified 01/09/78 by CDT to set extended ring brackets on dir portion
+       24*   of MSF to match ring brackets of components */
+       25 /* Modified 11/26/80 W. Olin Sibert to use automatic area for status_long names because of extensible area problem */
+       26 /* Modified:
+       27*
+       28*01/25/82 by Lindsey Spratt: to create an MSF when no SSF exists.  Also,
+       29*	  changed to always add status permission to *.*.* on the directory
+       30*	  portion of the MSF.
+       31*03/24/82 by Lindsey Spratt: Changed error code analysis following call
+       32*	  of get_link_target.
+       33*06/24/82 by Lindsey Spratt: Changed to use access_mode_values include file.
+       34*12/27/84 by Keith Loepere: Version 2 create_branch_info.
+       35*02/05/85 by Steve Herbst: Changed to set "s *.*.*" only if there is not already
+       36*	  a *.*.* entry on the ACL.
+       37**/
+       38 
+       39       dcl	    (
+       40 	    dirname_arg	       char (*),
+       41 	    ename_arg	       char (*),
+       42 	    rbs		       (3) fixed bin (6),	/* really an output arg??? */
+       43 	    code		       fixed bin (35)
+       44 	    )		       parameter;
+       45 
+       46 /* automatic */
+       47 
+       48       dcl	    acl_count	       fixed bin,
+       49 	    aclp		       ptr init (null),
+       50 	    acl_area_ptr	       pointer,
+       51 	    copysw	       bit (1),
+       52 	    cur_ring	       fixed bin,
+       53 	    dac		       fixed bin,
+       54 	    dap		       ptr init (null),
+       55 	    dir_rings	       (2) fixed bin (6),
+       56 	    dirname	       char (168),
+       57 	    ename		       char (32),
+       58 	    (i, ii)	       fixed bin,
+       59 	    known		       bit (1) aligned,
+       60 	    max_length	       fixed bin (19),
+       61 	    path		       char (168),
+       62 	    remember_ptr	       ptr,
+       63 	    safety_sw	       bit (1) aligned,
+       64 	    star_star_sw	       bit (1) aligned,
+       65 	    temp_acc	       bit (72) aligned,
+       66 	    component_0_existed    bit (1) aligned,
+       67 	    SSF_existed	       bit (1) aligned,
+       68 	    unique	       char (32),
+       69 	    unique_dir	       char (168);
+       70 
+       71 /* This area is used to hold the nams returned by hcs_$status_long. Because it is automatic, things need
+       72*   not ever be freed from it. It must be used because hcs_$status_ and extensible areas do not interact
+       73*   at all well, due to the 18 bit rel ptrs in the status return structure. 
+       74*   It has room for 500 names, which I trust will be sufficient.
+       75*   */
+       76 
+       77       dcl	    names_area	       area (2000) automatic;
+       78 
+       79 /* static */
+       80 
+       81       dcl	    sys_areap	       pointer internal static initial (null);
+       82 
+       83 /* based */
+       84 
+       85       dcl	    free_area	       area based (sys_areap);
+       86 
+       87 /* external static */
+       88 
+       89       dcl	    (
+       90 	    error_table_$safety_sw_on,
+       91 	    error_table_$noentry,
+       92 	    error_table_$segknown
+       93 	    )		       ext fixed bin (35) static;
+       94 
+       95 /* entries */
+       96 
+       97       dcl	    cu_$level_get	       entry returns (fixed bin),
+       98 	    delete_$path	       entry (char (*), char (*), bit (6), char (*), fixed bin (35)),
+       99 	    get_group_id_$tag_star entry returns (char (32)),
+      100 	    get_system_free_area_  entry returns (ptr),
+      101 	    get_authorization_     entry () returns (bit (72) aligned),
+      102 	    hcs_$add_acl_entries   entry (char (*), char (*), ptr, fixed bin, fixed bin (35)),
+      103 	    hcs_$add_dir_acl_entries
+      104 			       entry (char (*), char (*), ptr, fixed bin, fixed bin (35)),
+      105 	    hcs_$add_inacl_entries entry (char (*), char (*), ptr, fixed bin, fixed bin, fixed bin (35)),
+      106 	    hcs_$append_branch     entry (char (*), char (*), fixed bin (5), fixed bin (35)),
+      107 	    hcs_$append_branchx    entry (char (*), char (*), fixed bin (5), (3) fixed bin (6), char (*), fixed bin (1),
+      108 			       fixed bin (1), fixed bin (24), fixed bin (35)),
+      109 	    hcs_$chname_file       entry (char (*), char (*), char (*), char (*), fixed bin (35)),
+      110 	    hcs_$create_branch_    ext entry (char (*), char (*), pointer, fixed bin (35)),
+      111 	    hcs_$delentry_file     entry (char (*), char (*), fixed bin (35)),
+      112 	    hcs_$fs_move_file      entry (char (*), char (*), fixed bin (2), char (*), char (*), fixed bin (35)),
+      113 	    hcs_$get_access_class  ext entry (char (*), char (*), bit (72) aligned, fixed bin (35)),
+      114 	    hcs_$get_link_target   entry (char (*), char (*), char (*), char (*), fixed bin (35)),
+      115 	    hcs_$get_max_length_seg
+      116 			       entry (ptr, fixed bin (19), fixed bin (35)),
+      117 	    hcs_$get_safety_sw     entry (char (*), char (*), bit (1) aligned, fixed bin (35)),
+      118 	    hcs_$get_safety_sw_seg entry (ptr, bit (1) aligned, fixed bin (35)),
+      119 	    hcs_$initiate	       entry (char (*), char (*), char (*), fixed bin (1), fixed bin (2), ptr,
+      120 			       fixed bin (35)),
+      121 	    hcs_$initiate_count    entry (char (*), char (*), char (*), fixed bin (24), fixed bin (2), ptr,
+      122 			       fixed bin (35)),
+      123 	    hcs_$list_acl	       entry (char (*), char (*), ptr, ptr, ptr, fixed bin, fixed bin (35)),
+      124 	    hcs_$list_inacl	       entry (char (*), char (*), ptr, ptr, ptr, fixed bin, fixed bin, fixed bin (35)),
+      125 	    hcs_$set_bc	       entry (char (*), char (*), fixed bin (24), fixed bin (35)),
+      126 	    hcs_$set_dir_ring_brackets
+      127 			       entry (char (*), char (*), (2) fixed bin (6), fixed bin (35)),
+      128 	    hcs_$set_max_length    entry (char (*), char (*), fixed bin (19), fixed bin (35)),
+      129 	    hcs_$set_safety_sw     ext entry (char (*), char (*), bit (1) aligned, fixed bin (35)),
+      130 	    hcs_$status_long       entry (char (*), char (*), fixed bin (1), ptr, ptr, fixed bin (35)),
+      131 	    hcs_$terminate_file    entry (char (*), char (*), fixed bin (1), fixed bin (35)),
+      132 	    unique_chars_	       entry (bit (*)) returns (char (15));
+      133 
+      134 /* builtins and conditions */
+      135 
+      136       dcl	    (addr, binary, empty, max, null, pointer, prod, rtrim, substr, unspec)
+      137 			       builtin;
+      138 
+      139       dcl	    (cleanup, linkage_error)
+      140 			       condition;
+      141 
+      142 /* structures */
+      143 
+      144       dcl	    1 s_acl	       (acl_count) based (aclp) aligned,
+      145 	      2 userid	       char (32),
+      146 	      2 mode	       bit (4) unaligned,
+      147 	      2 mbz1	       bit (32) unaligned,
+      148 	      2 mbz2	       bit (36),
+      149 	      2 err_code	       fixed bin (35);
+      150 
+      151       dcl	    1 d_acl	       (dac) based (dap) aligned,
+      152 	      2 userid	       char (32),
+      153 	      2 mode	       bit (3) unaligned,
+      154 	      2 mbz1	       bit (33) unaligned,
+      155 	      2 err_code	       fixed bin (35);
+      156 
+  1     1 /*  BEGIN INCLUDE FILE - - - create_branch_info.incl.pl1 - - - created January 1975 */
+  1     2 
+  1     3 
+  1     4 /****^  HISTORY COMMENTS:
+  1     5*  1) change(89-01-16,TLNguyen), approve(89-01-16,MCR8049),
+  1     6*     audit(89-02-03,Parisek), install(89-03-15,MR12.3-1025):
+  1     7*       1. Declare version constant properly.
+  1     8*       2. Remove version 1 since it was never referenced and to force
+  1     9*          callers to upgrade their programs.
+  1    10*                                                   END HISTORY COMMENTS */
+  1    11 
+  1    12 
+  1    13 /* Modified December 1984 for dir_quota, Keith Loepere. */
+  1    14 
+  1    15 /* this include files gives the argument structure for create_branch_ */
+  1    16 
+  1    17 dcl 1 create_branch_info aligned based,
+  1    18     2 version fixed bin,				/* set this to the largest value given below */
+  1    19     2 switches unaligned,
+  1    20       3 dir_sw bit (1) unaligned,			/* if on, a directory branch is wanted */
+  1    21       3 copy_sw bit (1) unaligned,			/* if on, initiating segment will be done by copying */
+  1    22       3 chase_sw bit (1) unaligned,			/* if on, if pathname is a link, it will be chased */
+  1    23       3 priv_upgrade_sw bit (1) unaligned,		/* privileged creation (ring 1) of upgraded object */
+  1    24       3 parent_ac_sw bit (1) unaligned,			/* if on, use parent's access class for seg or dir created */
+  1    25       3 mbz1 bit (31) unaligned,			/* pad to full word */
+  1    26     2 mode bit (3) unaligned,				/* segment or directory for acl for userid */
+  1    27     2 mbz2 bit (33) unaligned,			/* pad to full word */
+  1    28     2 rings (3) fixed bin (3),			/* branch's ring brackets */
+  1    29     2 userid char (32),				/* user's access control name */
+  1    30     2 bitcnt fixed bin (24),				/* bit count of the segment */
+  1    31     2 quota fixed bin (18),				/* for directories, this am't of quota will be moved to it */
+  1    32     2 access_class bit (72),				/* is the access class of the body of the branch */
+  1    33     2 dir_quota fixed bin (18);			/* for directories, this am't of dir quota will be moved to it */
+  1    34 
+  1    35 dcl  create_branch_version_2 fixed bin int static options (constant) init (2);
+  1    36 
+  1    37 /* END INCLUDE FILE - - - create_branch_info.incl.pl1 - - - */
+  1    38 
+      157 
+      158 
+      159       dcl	    1 cbi		       like create_branch_info aligned automatic;
+      160 
+  2     1 /* --------------- BEGIN include file status_structures.incl.pl1 --------------- */
+  2     2 
+  2     3 /* Revised from existing include files 09/26/78 by C. D. Tavares */
+  2     4 
+  2     5 /* This include file contains branch and link structures returned by
+  2     6*   hcs_$status_ and hcs_$status_long. */
+  2     7 
+  2     8 dcl 1 status_branch aligned based (status_ptr),
+  2     9     2 short aligned,
+  2    10       3 type fixed bin (2) unaligned unsigned,		/* seg, dir, or link */
+  2    11       3 nnames fixed bin (16) unaligned unsigned,		/* number of names */
+  2    12       3 names_relp bit (18) unaligned,			/* see entry_names dcl */
+  2    13       3 dtcm bit (36) unaligned,			/* date/time contents last modified */
+  2    14       3 dtu bit (36) unaligned,			/* date/time last used */
+  2    15       3 mode bit (5) unaligned,			/* caller's effective access */
+  2    16       3 raw_mode bit (5) unaligned,			/* caller's raw "rew" modes */
+  2    17       3 pad1 bit (8) unaligned,
+  2    18       3 records_used fixed bin (18) unaligned unsigned,	/* number of NONZERO pages used */
+  2    19 
+  2    20 /* Limit of information returned by hcs_$status_ */
+  2    21 
+  2    22     2 long aligned,
+  2    23       3 dtd bit (36) unaligned,			/* date/time last dumped */
+  2    24       3 dtem bit (36) unaligned,			/* date/time branch last modified */
+  2    25       3 lvid bit (36) unaligned,			/* logical volume ID */
+  2    26       3 current_length fixed bin (12) unaligned unsigned,	/* number of last page used */
+  2    27       3 bit_count fixed bin (24) unaligned unsigned,	/* reported length in bits */
+  2    28       3 pad2 bit (8) unaligned,
+  2    29       3 copy_switch bit (1) unaligned,			/* copy switch */
+  2    30       3 tpd_switch bit (1) unaligned,			/* transparent to paging device switch */
+  2    31       3 mdir_switch bit (1) unaligned,			/* is a master dir */
+  2    32       3 damaged_switch bit (1) unaligned,		/* salvager warned of possible damage */
+  2    33       3 synchronized_switch bit (1) unaligned,		/* DM synchronized file */
+  2    34       3 pad3 bit (5) unaligned,
+  2    35       3 ring_brackets (0:2) fixed bin (6) unaligned unsigned, 
+  2    36       3 uid bit (36) unaligned;			/* unique ID */
+  2    37 
+  2    38 dcl 1 status_link aligned based (status_ptr),
+  2    39     2 type fixed bin (2) unaligned unsigned,		/* as above */
+  2    40     2 nnames fixed bin (16) unaligned unsigned,
+  2    41     2 names_relp bit (18) unaligned,
+  2    42     2 dtem bit (36) unaligned,
+  2    43     2 dtd bit (36) unaligned,
+  2    44     2 pathname_length fixed bin (17) unaligned,		/* see pathname */
+  2    45     2 pathname_relp bit (18) unaligned;			/* see pathname */
+  2    46 
+  2    47 dcl  status_entry_names (status_branch.nnames) character (32) aligned
+  2    48 	based (pointer (status_area_ptr, status_branch.names_relp)),
+  2    49 						/* array of names returned */
+  2    50      status_pathname character (status_link.pathname_length) aligned
+  2    51 	based (pointer (status_area_ptr, status_link.pathname_relp)),
+  2    52 						/* link target path */
+  2    53      status_area_ptr pointer,
+  2    54      status_ptr pointer;
+  2    55 
+  2    56 dcl (Link initial (0),
+  2    57      Segment initial (1),
+  2    58      Directory initial (2)) fixed bin internal static options (constant);
+  2    59 						/* values for type fields declared above */
+  2    60 
+  2    61 /* ---------------- END include file status_structures.incl.pl1 ---------------- */
+      161 
+  3     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  3     2*
+  3     3*   Values for the "access mode" argument so often used in hardcore
+  3     4*   James R. Davis 26 Jan 81  MCR 4844
+  3     5*   Added constants for SM access 4/28/82 Jay Pattin
+  3     6*   Added text strings 03/19/85 Chris Jones
+  3     7**/
+  3     8 
+  3     9 
+  3    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  3    11 dcl	(
+  3    12 	N_ACCESS		   init ("000"b),
+  3    13 	R_ACCESS		   init ("100"b),
+  3    14 	E_ACCESS		   init ("010"b),
+  3    15 	W_ACCESS		   init ("001"b),
+  3    16 	RE_ACCESS		   init ("110"b),
+  3    17 	REW_ACCESS	   init ("111"b),
+  3    18 	RW_ACCESS		   init ("101"b),
+  3    19 	S_ACCESS		   init ("100"b),
+  3    20 	M_ACCESS		   init ("010"b),
+  3    21 	A_ACCESS		   init ("001"b),
+  3    22 	SA_ACCESS		   init ("101"b),
+  3    23 	SM_ACCESS		   init ("110"b),
+  3    24 	SMA_ACCESS	   init ("111"b)
+  3    25 	)		   bit (3) internal static options (constant);
+  3    26 
+  3    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  3    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  3    29 
+  3    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  3    31 			   static options (constant);
+  3    32 
+  3    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  3    34 			   static options (constant);
+  3    35 
+  3    36 dcl	(
+  3    37 	N_ACCESS_BIN	   init (00000b),
+  3    38 	R_ACCESS_BIN	   init (01000b),
+  3    39 	E_ACCESS_BIN	   init (00100b),
+  3    40 	W_ACCESS_BIN	   init (00010b),
+  3    41 	RW_ACCESS_BIN	   init (01010b),
+  3    42 	RE_ACCESS_BIN	   init (01100b),
+  3    43 	REW_ACCESS_BIN	   init (01110b),
+  3    44 	S_ACCESS_BIN	   init (01000b),
+  3    45 	M_ACCESS_BIN	   init (00010b),
+  3    46 	A_ACCESS_BIN	   init (00001b),
+  3    47 	SA_ACCESS_BIN	   init (01001b),
+  3    48 	SM_ACCESS_BIN	   init (01010b),
+  3    49 	SMA_ACCESS_BIN	   init (01011b)
+  3    50 	)		   fixed bin (5) internal static options (constant);
+  3    51 
+  3    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      162 
+      163 
+      164       dcl	    1 branch	       like status_branch aligned automatic;
+      165 
+      166       unspec (cbi) = ""b;
+      167       cbi.version = create_branch_version_2;
+      168       cbi.chase_sw = "1"b;
+      169 
+      170       if sys_areap = null
+      171       then sys_areap = get_system_free_area_ ();
+      172       status_area_ptr = addr (names_area);
+      173       acl_area_ptr = sys_areap;
+      174       status_ptr = addr (branch);
+      175       unspec (branch) = ""b;
+      176 
+      177       on cleanup call free_allocated_storage;
+      178 
+      179       call hcs_$get_link_target (dirname_arg, ename_arg, dirname, ename, code);
+      180 						/* get real path name */
+      181       if code = 0
+      182       then
+      183          do;
+      184 	  SSF_existed = "1"b;
+      185 	  call hcs_$initiate_count (dirname, ename, "", cbi.bitcnt, 0, remember_ptr, code);
+      186 						/* find out about seg */
+      187 
+      188 	  if code = 0
+      189 	  then known = "0"b;
+      190 	  else if code = error_table_$segknown
+      191 	  then known = "1"b;
+      192 	  else goto error_return;
+      193          end;
+      194       else if code = error_table_$noentry
+      195       then
+      196          do;
+      197 	  dirname = dirname_arg;
+      198 	  ename = ename_arg;
+      199 	  SSF_existed = "0"b;
+      200 	  known = "0"b;
+      201          end;
+      202       else goto error_return;
+      203 
+      204       cur_ring = cu_$level_get ();
+      205 
+      206       if SSF_existed
+      207       then
+      208          do;
+      209 	  call hcs_$status_long (dirname, ename, 1, status_ptr, status_area_ptr, code);
+      210 						/* do status get names	*/
+      211 	  if code ^= 0
+      212 	  then go to error_return;
+      213 
+      214 
+      215 	  rbs (*) = branch.ring_brackets (*);
+      216 	  cbi.rings (*) = branch.ring_brackets (*);
+      217 	  cbi.mode = substr (branch.raw_mode, 2, 3);
+      218 	  cbi.userid = get_group_id_$tag_star ();
+      219 	  cbi.copy_sw = branch.copy_switch;		/* who are we to judge?? */
+      220          end;
+      221       else
+      222          do;
+      223 	  rbs (*) = cur_ring;
+      224 	  cbi.rings (*) = rbs (*);
+      225 	  cbi.mode = SMA_ACCESS;
+      226 	  cbi.userid = get_group_id_$tag_star ();
+      227 	  cbi.copy_sw = "0"b;
+      228          end;
+      229 
+      230       if SSF_existed
+      231       then
+      232          do;
+      233 	  call hcs_$get_safety_sw (dirname, ename, safety_sw, code);
+      234 	  if code ^= 0
+      235 	  then goto error_return;
+      236          end;
+      237       else safety_sw = "0"b;
+      238 
+      239       if SSF_existed
+      240       then
+      241          do;
+      242 	  call hcs_$get_access_class (dirname, ename, cbi.access_class, code);
+      243 	  if code ^= 0
+      244 	  then goto error_return;
+      245          end;
+      246       else cbi.access_class = get_authorization_ ();
+      247       if prod (cbi.rings) = 1 & SSF_existed
+      248       then
+      249          do;					/* ring brackets are 1, 1, 1 */
+      250 	  call hcs_$get_access_class (dirname, "", temp_acc, code);
+      251 	  if code = 0
+      252 	  then if temp_acc ^= cbi.access_class
+      253 	       then cbi.priv_upgrade_sw = "1"b;
+      254          end;
+      255 
+      256       cbi.parent_ac_sw = ^cbi.priv_upgrade_sw;
+      257 
+      258 /* DRV - get volume backup switch from SSF here */
+      259 
+      260       if SSF_existed
+      261       then
+      262          do;
+      263 	  call hcs_$list_acl (dirname, ename, acl_area_ptr, aclp, null, acl_count, code);
+      264 						/* get acl on segment */
+      265 	  if code ^= 0
+      266 	  then
+      267 	     do;
+      268 	        acl_count = 0;
+      269 	        if aclp ^= null
+      270 	        then free s_acl in (free_area);
+      271 	     end;
+      272          end;
+      273       else
+      274          do;
+      275 	  call hcs_$list_inacl (dirname, "", acl_area_ptr, aclp, null, acl_count, cur_ring, code);
+      276 	  if code ^= 0
+      277 	  then
+      278 	     do;
+      279 	        acl_count = 0;
+      280 	        if aclp ^= null
+      281 	        then free s_acl in (free_area);
+      282 	     end;
+      283          end;
+      284       if SSF_existed
+      285       then unique = unique_chars_ (""b);		/* make up a unique name */
+      286       else unique = ename;
+      287       unique_dir = rtrim (dirname, " ") || ">" || unique;
+      288 
+      289 
+      290       call hcs_$append_branchx (dirname, unique, 01111b, (7), (cbi.userid), 1, 0, 1, code);
+      291 						/* make a directory */
+      292       if code ^= 0
+      293       then go to error_return;
+      294 
+      295 
+      296       call hcs_$add_inacl_entries (dirname, unique, aclp, acl_count, cur_ring, code);
+      297 						/* put seg acl on initial acl */
+      298 
+      299       dac = acl_count + 1;				/* set to make dir acl */
+      300       allocate d_acl in (free_area) set (dap);		/* allocate room for it */
+      301 
+      302       star_star_sw = "0"b;
+      303       do ii = 1 to dac - 1;				/* convert acl to dir acl */
+      304          d_acl (ii).userid = s_acl (ii).userid;		/* copy user name */
+      305          if d_acl (ii).userid = "*.*.*" then do;
+      306 	  star_star_sw = "1"b;
+      307 	  d_acl (ii).mode = d_acl (ii).mode | "100"b;	/* need at least s access to *.*.*    */
+      308          end;
+      309          substr (d_acl (ii).mode, 1, 1) = substr (s_acl (ii).mode, 1, 1);
+      310 						/* copy mode bits */
+      311          substr (d_acl (ii).mode, 2, 1) = substr (s_acl (ii).mode, 3, 1);
+      312          substr (d_acl (ii).mode, 3, 1) = substr (s_acl (ii).mode, 3, 1);
+      313          d_acl (ii).mbz1 = "0"b;
+      314       end;
+      315 
+      316       if ^star_star_sw then do;			/* add "s *.*.*" if not already a *.*.* entry */
+      317          d_acl (dac).userid = "*.*.*";
+      318          d_acl (dac).mode = "100"b;
+      319          d_acl (dac).mbz1 = "0"b;
+      320       end;
+      321       else dac = dac - 1;
+      322 
+      323       call hcs_$add_dir_acl_entries (dirname, unique, dap, dac, code);
+      324 
+      325       free d_acl in (free_area);
+      326       free s_acl in (free_area);
+      327 
+      328 
+      329       call hcs_$set_safety_sw (dirname, unique, safety_sw, code);
+      330       if code ^= 0
+      331       then goto error_return;
+      332 
+      333       dir_rings (1) = cbi.rings (1);
+      334       dir_rings (2) = cbi.rings (3);
+      335       call hcs_$set_dir_ring_brackets (dirname, unique, dir_rings, code);
+      336       if code ^= 0
+      337       then goto error_return;
+      338 
+      339       call hcs_$create_branch_ (unique_dir, "0", addr (cbi), code);
+      340 						/* create component "0" */
+      341       if code ^= 0
+      342       then
+      343          do;					/* if can't do it 	*/
+      344 del_dir:
+      345 	  call hcs_$delentry_file (dirname, unique, 0);	/* delete the unique directory */
+      346 	  go to error_return;			/* give up */
+      347          end;
+      348 
+      349       if SSF_existed
+      350       then
+      351          do;
+      352 	  call hcs_$get_max_length_seg (remember_ptr, max_length, code);
+      353 						/* Get the max length of the SSF. */
+      354 	  if code ^= 0
+      355 	  then go to del_zero;			/* Cleanup - delete component zero and the directory. */
+      356 
+      357 	  call hcs_$set_max_length (unique_dir, "0", max_length, code);
+      358 						/* Set the max length of component zero. */
+      359 	  if code ^= 0
+      360 	  then go to del_zero;			/* Cleanup */
+      361 
+      362 /* DRV - set component volume backup switch here */
+      363 
+      364 	  call hcs_$fs_move_file (dirname, ename, 0, unique_dir, "0", code);
+      365 						/* move the SSF into component zero */
+      366 	  if code ^= 0
+      367 	  then
+      368 	     do;					/* if can't do it 	*/
+      369 del_zero:
+      370 	        call hcs_$delentry_file (unique_dir, "0", 0);
+      371 						/* delete the component zero, don't save code */
+      372 	        go to del_dir;			/* and delete the directory, and give up */
+      373 	     end;
+      374 
+      375 	  call hcs_$terminate_file (dirname, ename, binary (known, 1), code);
+      376 						/* terminate the SSF, saving the segno if
+      377*						   it was known */
+      378 	  if code ^= 0
+      379 	  then go to error_return;
+      380 
+      381 /* If reloading in ring 1, delete_ may not be found. If so try deleting with hcs */
+      382 	  on condition (linkage_error)
+      383 	     begin;
+      384 	        call hcs_$delentry_file (dirname, ename, code);
+      385 	        goto revert_it;
+      386 	     end;
+      387 	  call delete_$path (dirname, ename, "100111"b, "", code);
+      388 						/* delete the SSF */
+      389 revert_it:
+      390 	  revert linkage_error;
+      391 	  if code ^= 0
+      392 	  then go to error_return;
+      393 
+      394 	  if known
+      395 	  then
+      396 	     do;					/* if it was known */
+      397 	        call hcs_$initiate (unique_dir, "0", "", 1, 0, remember_ptr, code);
+      398 						/* initiate new on with old segno */
+      399 	        if code ^= 0
+      400 	        then go to error_return;
+      401 	     end;
+      402 
+      403 	  do i = 1 to branch.nnames;			/* add all the names */
+      404 	     call hcs_$chname_file (dirname, unique, "", (status_entry_names (i)), code);
+      405 	     if code ^= 0
+      406 	     then go to error_return;
+      407 	  end;
+      408 
+      409 	  call hcs_$chname_file (dirname, unique, unique, "", code);
+      410 						/* delete the unique name */
+      411 
+      412          end;
+      413       call hcs_$set_bc (dirname, ename, 1, code);		/* remember that we have one already in MSF */
+      414 
+      415       go to return_statement;
+      416 
+      417 /*  Entry unmake_msf takes MSF path, and makes component zero
+      418*   if it exists into an SSF with the same name.  Otherwise,
+      419*   it leaves a new, zero length segment, after deleting the MSF.  */
+      420 
+      421 unmake_msf_:
+      422    entry (dirname_arg, ename_arg, copysw, rbs, code);
+      423 
+      424       cur_ring = cu_$level_get ();
+      425 
+      426       unspec (cbi) = ""b;
+      427       cbi.version = create_branch_version_2;
+      428       cbi.chase_sw = "1"b;
+      429       cbi.parent_ac_sw = "1"b;			/* for now */
+      430       cbi.rings = cur_ring;
+      431       cbi.userid = get_group_id_$tag_star ();
+      432       cbi.mode = "101"b;
+      433 
+      434       if sys_areap = null
+      435       then sys_areap = get_system_free_area_ ();
+      436       status_area_ptr = addr (names_area);
+      437       acl_area_ptr = sys_areap;
+      438       unspec (branch) = ""b;
+      439       status_ptr = addr (branch);
+      440 
+      441       on cleanup call free_allocated_storage;
+      442 
+      443       call hcs_$get_link_target (dirname_arg, ename_arg, dirname, ename, code);
+      444 						/* get real path name */
+      445       if code ^= 0
+      446       then go to error_return;
+      447 
+      448       path = rtrim (dirname, " ") || ">" || ename;
+      449 
+      450       call hcs_$initiate_count (path, "0", "", cbi.bitcnt, 0, remember_ptr, code);
+      451 						/* see about component zero */
+      452 
+      453       if code ^= 0
+      454       then if code ^= error_table_$segknown
+      455 	 then
+      456 	    do;
+      457 	       component_0_existed = "0"b;		/* not there */
+      458 	       known = "0"b;
+      459 	       cbi.bitcnt = 0;			/* zero bitcount */
+      460 	    end;
+      461 	 else
+      462 	    do;
+      463 	       component_0_existed = "1"b;		/* did exist */
+      464 	       known = "1"b;			/* and was known in the process */
+      465 	    end;
+      466       else
+      467          do;
+      468 	  component_0_existed = "1"b;			/* existed */
+      469 	  known = "0"b;				/* but wasn't known */
+      470          end;
+      471 
+      472       if component_0_existed				/* component zero exists */
+      473       then
+      474          do;					/* make sure safety_sw is off */
+      475 	  call hcs_$get_safety_sw_seg (remember_ptr, safety_sw, code);
+      476 	  if code = 0
+      477 	  then if safety_sw				/* mustn't delete msf components */
+      478 	       then code = error_table_$safety_sw_on;
+      479 	  if code ^= 0				/* error has occurred */
+      480 	  then go to error_return;			/* abort */
+      481 
+      482 	  call hcs_$get_access_class (path, "0", cbi.access_class, code);
+      483 	  if code ^= 0
+      484 	  then goto error_return;
+      485 
+      486 	  call hcs_$get_access_class (path, "", temp_acc, code);
+      487 	  if code ^= 0
+      488 	  then goto error_return;
+      489 
+      490 	  if cbi.access_class ^= temp_acc
+      491 	  then cbi.priv_upgrade_sw = "1"b;
+      492 	  cbi.parent_ac_sw = ^cbi.priv_upgrade_sw;
+      493 
+      494 /* DRV - get volume backup switch from component 0 here */
+      495 
+      496          end;
+      497 
+      498       call hcs_$list_inacl (dirname, ename, acl_area_ptr, aclp, null, acl_count, cur_ring, code);
+      499 						/* get initial acl */
+      500 
+      501       call hcs_$status_long (dirname, ename, 1, addr (branch), status_area_ptr, code);
+      502 						/* find out names */
+      503       if code ^= 0
+      504       then go to error_return;
+      505 
+      506       unique = unique_chars_ (""b);			/* make up a unique name */
+      507 
+      508       call hcs_$create_branch_ (dirname, unique, addr (cbi), code);
+      509       if code ^= 0
+      510       then go to error_return;
+      511 
+      512       call hcs_$add_acl_entries (dirname, unique, aclp, acl_count, code);
+      513 						/* put initial acl back on again */
+      514 
+      515       if component_0_existed
+      516       then
+      517          do;					/* if comp. 0 used to exist */
+      518 	  call hcs_$get_max_length_seg (remember_ptr, max_length, code);
+      519 	  if code ^= 0
+      520 	  then go to del_comp;			/* Get max length of comp. 0. */
+      521 
+      522 	  call hcs_$set_max_length (dirname, unique, max_length, code);
+      523 	  if code ^= 0
+      524 	  then go to del_comp;			/* Transfer max length of comp. 0 to SSF. */
+      525 
+      526 
+      527 	  if copysw
+      528 	  then
+      529 	     do;					/* We want to save contents of comp. 0. */
+      530 	        call hcs_$fs_move_file (path, "0", 0, dirname, unique, code);
+      531 						/* move the old one into the new */
+      532 	        if code ^= 0
+      533 	        then
+      534 		 do;				/* error and recovery */
+      535 del_comp:
+      536 		    call hcs_$delentry_file (dirname, unique, 0);
+      537 		    go to error_return;
+      538 		 end;
+      539 
+      540 	     end;
+      541 
+      542 /* DRV - set SSF volume backup switch here */
+      543 
+      544          end;
+      545 
+      546       call delete_$path (dirname, ename, "100111"b, "", code);
+      547 						/* delete the old MSF */
+      548       if code ^= 0
+      549       then go to error_return;
+      550 
+      551       do i = 1 to branch.nnames;			/* move in old names */
+      552          call hcs_$chname_file (dirname, unique, "", (status_entry_names (i)), code);
+      553          if code ^= 0
+      554          then go to error_return;
+      555       end;
+      556 
+      557       call hcs_$chname_file (dirname, unique, unique, "", code);
+      558 						/* delete unique name */
+      559 
+      560       if known
+      561       then
+      562          do;					/* if it was known */
+      563 	  call hcs_$initiate (dirname, ename, "", 1, 0, remember_ptr, code);
+      564 						/* initiate with old segno */
+      565 	  if code ^= 0
+      566 	  then go to error_return;
+      567          end;
+      568 
+      569 
+      570 
+      571 return_statement:
+      572 error_return:
+      573       call free_allocated_storage;
+      574 
+      575       return;
+      576 
+      577 /*  Internal proc free_allocated_storage looks at all the pointers used by this
+      578*						   subroutine to point to free storage, and frees everything that
+      579*						   hasn't been freed yet.  */
+      580 
+      581 free_allocated_storage:
+      582    proc;
+      583 
+      584       if aclp ^= null
+      585       then free s_acl in (free_area);
+      586 
+      587       if dap ^= null
+      588       then free d_acl in (free_area);
+      589 
+      590       return;
+      591 
+      592    end free_allocated_storage;
+      593 
+      594    end make_msf_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  make_msf_.pl1                     >spec>install>1110>make_msf_.pl1
+157          1    03/16/89  2012.8  create_branch_info.incl.pl1       >ldd>include>create_branch_info.incl.pl1
+161          2    11/22/82  0955.7  status_structures.incl.pl1        >ldd>include>status_structures.incl.pl1
+162          3    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+SMA_ACCESS                             constant        bit(3)                   initial packed unaligned dcl 3-11 ref 225
+SSF_existed                     000263 automatic       bit(1)                   dcl 48 set ref 184* 199* 206 230 239 247 260 284 349
+access_class             20     004302 automatic       bit(72)                  level 2 dcl 159 set ref 242* 246* 251 482* 490
+acl_area_ptr                    000104 automatic       pointer                  dcl 48 set ref 173* 263* 275* 437* 498*
+acl_count                       000100 automatic       fixed bin(17,0)          dcl 48 set ref 263* 268* 269 275* 279* 280 296* 299
+                                                                                  326 498* 512* 584
+aclp                            000102 automatic       pointer                  initial dcl 48 set ref 48* 263* 269 269 275* 280 280
+                                                                                  296* 304 309 311 312 326 498* 512* 584 584
+addr                                                   builtin function         dcl 136 ref 172 174 339 339 436 439 501 501 508 508
+binary                                                 builtin function         dcl 136 ref 375 375
+bitcnt                   16     004302 automatic       fixed bin(24,0)          level 2 dcl 159 set ref 185* 450* 459*
+branch                          004332 automatic       structure                level 1 dcl 164 set ref 174 175* 438* 439 501 501
+cbi                             004302 automatic       structure                level 1 dcl 159 set ref 166* 339 339 426* 508 508
+chase_sw                  1(02) 004302 automatic       bit(1)                   level 3 packed packed unaligned dcl 159 set ref 168*
+                                                                                  428*
+cleanup                         004266 stack reference condition                dcl 139 ref 177 441
+code                                   parameter       fixed bin(35,0)          dcl 39 set ref 14 179* 181 185* 188 190 194 209* 211
+                                                                                  233* 234 242* 243 250* 251 263* 265 275* 276 290*
+                                                                                  292 296* 323* 329* 330 335* 336 339* 341 352* 354
+                                                                                  357* 359 364* 366 375* 378 384* 387* 391 397* 399
+                                                                                  404* 405 409* 413* 421 443* 445 450* 453 453 475*
+                                                                                  476 476* 479 482* 483 486* 487 498* 501* 503 508*
+                                                                                  509 512* 518* 519 522* 523 530* 532 546* 548 552*
+                                                                                  553 557* 563* 565
+component_0_existed             000262 automatic       bit(1)                   dcl 48 set ref 457* 463* 468* 472 515
+copy_sw                   1(01) 004302 automatic       bit(1)                   level 3 packed packed unaligned dcl 159 set ref 219*
+                                                                                  227*
+copy_switch              10(08) 004332 automatic       bit(1)                   level 3 packed packed unaligned dcl 164 set ref 219
+copysw                                 parameter       bit(1)                   packed unaligned dcl 48 ref 421 527
+create_branch_info                     based           structure                level 1 dcl 1-17
+create_branch_version_2                constant        fixed bin(17,0)          initial dcl 1-35 ref 167 427
+cu_$level_get                   000020 constant        entry                    external dcl 97 ref 204 424
+cur_ring                        000106 automatic       fixed bin(17,0)          dcl 48 set ref 204* 223 275* 296* 424* 430 498*
+d_acl                                  based           structure                array level 1 dcl 151 set ref 300 325 587
+dac                             000107 automatic       fixed bin(17,0)          dcl 48 set ref 299* 300 303 317 318 319 321* 321
+                                                                                  323* 325 587
+dap                             000110 automatic       pointer                  initial dcl 48 set ref 48* 300* 304 305 307 307 309
+                                                                                  311 312 313 317 318 319 323* 325 587 587
+delete_$path                    000022 constant        entry                    external dcl 97 ref 387 546
+dir_rings                       000112 automatic       fixed bin(6,0)           array dcl 48 set ref 333* 334* 335*
+dirname                         000114 automatic       char(168)                packed unaligned dcl 48 set ref 179* 185* 197* 209*
+                                                                                  233* 242* 250* 263* 275* 287 290* 296* 323* 329*
+                                                                                  335* 344* 364* 375* 384* 387* 404* 409* 413* 443*
+                                                                                  448 498* 501* 508* 512* 522* 530* 535* 546* 552*
+                                                                                  557* 563*
+dirname_arg                            parameter       char                     packed unaligned dcl 39 set ref 14 179* 197 421 443*
+empty                                                  builtin function         dcl 136 ref 77
+ename                           000166 automatic       char(32)                 packed unaligned dcl 48 set ref 179* 185* 198* 209*
+                                                                                  233* 242* 263* 286 364* 375* 384* 387* 413* 443*
+                                                                                  448 498* 501* 546* 563*
+ename_arg                              parameter       char                     packed unaligned dcl 39 set ref 14 179* 198 421 443*
+error_table_$noentry            000014 external static fixed bin(35,0)          dcl 89 ref 194
+error_table_$safety_sw_on       000012 external static fixed bin(35,0)          dcl 89 ref 476
+error_table_$segknown           000016 external static fixed bin(35,0)          dcl 89 ref 190 453
+free_area                              based           area(1024)               dcl 85 ref 269 280 300 325 326 584 587
+get_authorization_              000030 constant        entry                    external dcl 97 ref 246
+get_group_id_$tag_star          000024 constant        entry                    external dcl 97 ref 218 226 431
+get_system_free_area_           000026 constant        entry                    external dcl 97 ref 170 434
+hcs_$add_acl_entries            000032 constant        entry                    external dcl 97 ref 512
+hcs_$add_dir_acl_entries        000034 constant        entry                    external dcl 97 ref 323
+hcs_$add_inacl_entries          000036 constant        entry                    external dcl 97 ref 296
+hcs_$append_branchx             000040 constant        entry                    external dcl 97 ref 290
+hcs_$chname_file                000042 constant        entry                    external dcl 97 ref 404 409 552 557
+hcs_$create_branch_             000044 constant        entry                    external dcl 97 ref 339 508
+hcs_$delentry_file              000046 constant        entry                    external dcl 97 ref 344 369 384 535
+hcs_$fs_move_file               000050 constant        entry                    external dcl 97 ref 364 530
+hcs_$get_access_class           000052 constant        entry                    external dcl 97 ref 242 250 482 486
+hcs_$get_link_target            000054 constant        entry                    external dcl 97 ref 179 443
+hcs_$get_max_length_seg         000056 constant        entry                    external dcl 97 ref 352 518
+hcs_$get_safety_sw              000060 constant        entry                    external dcl 97 ref 233
+hcs_$get_safety_sw_seg          000062 constant        entry                    external dcl 97 ref 475
+hcs_$initiate                   000064 constant        entry                    external dcl 97 ref 397 563
+hcs_$initiate_count             000066 constant        entry                    external dcl 97 ref 185 450
+hcs_$list_acl                   000070 constant        entry                    external dcl 97 ref 263
+hcs_$list_inacl                 000072 constant        entry                    external dcl 97 ref 275 498
+hcs_$set_bc                     000074 constant        entry                    external dcl 97 ref 413
+hcs_$set_dir_ring_brackets      000076 constant        entry                    external dcl 97 ref 335
+hcs_$set_max_length             000100 constant        entry                    external dcl 97 ref 357 522
+hcs_$set_safety_sw              000102 constant        entry                    external dcl 97 ref 329
+hcs_$status_long                000104 constant        entry                    external dcl 97 ref 209 501
+hcs_$terminate_file             000106 constant        entry                    external dcl 97 ref 375
+i                               000176 automatic       fixed bin(17,0)          dcl 48 set ref 403* 404* 551* 552*
+ii                              000177 automatic       fixed bin(17,0)          dcl 48 set ref 303* 304 304 305 307 307 309 309 311
+                                                                                  311 312 312 313*
+known                           000200 automatic       bit(1)                   dcl 48 set ref 188* 190* 200* 375 375 394 458* 464*
+                                                                                  469* 560
+linkage_error                   004274 stack reference condition                dcl 139 ref 382 389
+long                      4     004332 automatic       structure                level 2 dcl 164
+max_length                      000201 automatic       fixed bin(19,0)          dcl 48 set ref 352* 357* 518* 522*
+mbz1                     10(03)        based           bit(33)                  array level 2 packed packed unaligned dcl 151 set
+                                                                                  ref 313* 319*
+mode                      2     004302 automatic       bit(3)                   level 2 in structure "cbi" packed packed unaligned
+                                                                                  dcl 159 in procedure "make_msf_" set ref 217* 225*
+                                                                                  432*
+mode                     10            based           bit(4)                   array level 2 in structure "s_acl" packed packed
+                                                                                  unaligned dcl 144 in procedure "make_msf_" ref 309
+                                                                                  311 312
+mode                     10            based           bit(3)                   array level 2 in structure "d_acl" packed packed
+                                                                                  unaligned dcl 151 in procedure "make_msf_" set ref
+                                                                                  307* 307 309* 311* 312* 318*
+names_area                      000346 automatic       area(2000)               dcl 77 set ref 77* 172 436
+names_relp                0(18)        based           bit(18)                  level 3 packed packed unaligned dcl 2-8 ref 404 552
+nnames                    0(02) 004332 automatic       fixed bin(16,0)          level 3 packed packed unsigned unaligned dcl 164 set
+                                                                                  ref 403 551
+null                                                   builtin function         dcl 136 ref 48 48 170 263 263 269 275 275 280 434
+                                                                                  498 498 584 587
+parent_ac_sw              1(04) 004302 automatic       bit(1)                   level 3 packed packed unaligned dcl 159 set ref 256*
+                                                                                  429* 492*
+path                            000202 automatic       char(168)                packed unaligned dcl 48 set ref 448* 450* 482* 486*
+                                                                                  530*
+pointer                                                builtin function         dcl 136 ref 404 552
+priv_upgrade_sw           1(03) 004302 automatic       bit(1)                   level 3 packed packed unaligned dcl 159 set ref 251*
+                                                                                  256 490* 492
+prod                                                   builtin function         dcl 136 ref 247
+raw_mode                  3(05) 004332 automatic       bit(5)                   level 3 packed packed unaligned dcl 164 set ref 217
+rbs                                    parameter       fixed bin(6,0)           array dcl 39 set ref 14 215* 223* 224 421
+remember_ptr                    000254 automatic       pointer                  dcl 48 set ref 185* 352* 397* 450* 475* 518* 563*
+ring_brackets            10(18) 004332 automatic       fixed bin(6,0)           array level 3 packed packed unsigned unaligned
+                                                                                  dcl 164 set ref 215 216
+rings                     3     004302 automatic       fixed bin(3,0)           array level 2 dcl 159 set ref 216* 224* 247 333 334
+                                                                                  430*
+rtrim                                                  builtin function         dcl 136 ref 287 448
+s_acl                                  based           structure                array level 1 dcl 144 ref 269 280 326 584
+safety_sw                       000256 automatic       bit(1)                   dcl 48 set ref 233* 237* 329* 475* 476
+short                           004332 automatic       structure                level 2 in structure "branch" dcl 164 in procedure
+                                                                                  "make_msf_"
+short                                  based           structure                level 2 in structure "status_branch" dcl 2-8
+                                                                                  in procedure "make_msf_"
+star_star_sw                    000257 automatic       bit(1)                   dcl 48 set ref 302* 306* 316
+status_area_ptr                 004326 automatic       pointer                  dcl 2-47 set ref 172* 209* 404 436* 501* 552
+status_branch                          based           structure                level 1 dcl 2-8
+status_entry_names                     based           char(32)                 array dcl 2-47 ref 404 552
+status_ptr                      004330 automatic       pointer                  dcl 2-47 set ref 174* 209* 404 439* 552
+substr                                                 builtin function         dcl 136 set ref 217 309* 309 311* 311 312* 312
+switches                  1     004302 automatic       structure                level 2 packed packed unaligned dcl 159
+sys_areap                       000010 internal static pointer                  initial dcl 81 set ref 170 170* 173 269 280 300 325
+                                                                                  326 434 434* 437 584 587
+temp_acc                        000260 automatic       bit(72)                  dcl 48 set ref 250* 251 486* 490
+unique                          000264 automatic       char(32)                 packed unaligned dcl 48 set ref 284* 286* 287 290*
+                                                                                  296* 323* 329* 335* 344* 404* 409* 409* 506* 508*
+                                                                                  512* 522* 530* 535* 552* 557* 557*
+unique_chars_                   000110 constant        entry                    external dcl 97 ref 284 506
+unique_dir                      000274 automatic       char(168)                packed unaligned dcl 48 set ref 287* 339* 357* 364*
+                                                                                  369* 397*
+unspec                                                 builtin function         dcl 136 set ref 166* 175* 426* 438*
+userid                                 based           char(32)                 array level 2 in structure "d_acl" dcl 151
+                                                                                  in procedure "make_msf_" set ref 304* 305 317*
+userid                    6     004302 automatic       char(32)                 level 2 in structure "cbi" dcl 159 in procedure
+                                                                                  "make_msf_" set ref 218* 226* 290 431*
+userid                                 based           char(32)                 array level 2 in structure "s_acl" dcl 144
+                                                                                  in procedure "make_msf_" ref 304
+version                         004302 automatic       fixed bin(17,0)          level 2 dcl 159 set ref 167* 427*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-33
+Directory                              internal static fixed bin(17,0)          initial dcl 2-56
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+Link                                   internal static fixed bin(17,0)          initial dcl 2-56
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 3-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 3-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+R_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 3-30
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 3-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 3-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 3-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+Segment                                internal static fixed bin(17,0)          initial dcl 2-56
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 3-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 3-36
+hcs_$append_branch              000000 constant        entry                    external dcl 97
+max                                                    builtin function         dcl 136
+status_link                            based           structure                level 1 dcl 2-38
+status_pathname                        based           char                     dcl 2-47
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+del_comp                        003320 constant        label                    dcl 535 ref 519 523
+del_dir                         001572 constant        label                    dcl 344 ref 372
+del_zero                        001726 constant        label                    dcl 369 ref 354 359
+error_return                    003556 constant        label                    dcl 571 ref 190 194 211 234 243 292 330 336 346 378
+                                                                                  391 399 405 445 479 483 487 503 509 537 548 553
+                                                                                  565
+free_allocated_storage          003564 constant        entry                    internal dcl 581 ref 177 441 571
+make_msf_                       000066 constant        entry                    external dcl 14
+return_statement                003556 constant        label                    dcl 571 ref 415
+revert_it                       002100 constant        label                    dcl 389 ref 385
+unmake_msf_                     002321 constant        entry                    external dcl 421
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4256        4370    3616        4266
+Length      4716    3616       112         312     437           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+make_msf_                          2454 external procedure  is an external procedure.  
+on unit on line 177                  64 on unit               
+on unit on line 382                  78 on unit               
+on unit on line 441                  64 on unit               
+free_allocated_storage               64 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 sys_areap                   make_msf_
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+make_msf_                000100 acl_count                   make_msf_
+                         000102 aclp                        make_msf_
+                         000104 acl_area_ptr                make_msf_
+                         000106 cur_ring                    make_msf_
+                         000107 dac                         make_msf_
+                         000110 dap                         make_msf_
+                         000112 dir_rings                   make_msf_
+                         000114 dirname                     make_msf_
+                         000166 ename                       make_msf_
+                         000176 i                           make_msf_
+                         000177 ii                          make_msf_
+                         000200 known                       make_msf_
+                         000201 max_length                  make_msf_
+                         000202 path                        make_msf_
+                         000254 remember_ptr                make_msf_
+                         000256 safety_sw                   make_msf_
+                         000257 star_star_sw                make_msf_
+                         000260 temp_acc                    make_msf_
+                         000262 component_0_existed         make_msf_
+                         000263 SSF_existed                 make_msf_
+                         000264 unique                      make_msf_
+                         000274 unique_dir                  make_msf_
+                         000346 names_area                  make_msf_
+                         004302 cbi                         make_msf_
+                         004326 status_area_ptr             make_msf_
+                         004330 status_ptr                  make_msf_
+                         004332 branch                      make_msf_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          tra_ext_1           mpfx2               enable_op           shorten_stack       ext_entry_desc
+int_entry           op_alloc_           op_freen_           op_empty_
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+cu_$level_get                 delete_$path                  get_authorization_            get_group_id_$tag_star
+get_system_free_area_         hcs_$add_acl_entries          hcs_$add_dir_acl_entries      hcs_$add_inacl_entries
+hcs_$append_branchx           hcs_$chname_file              hcs_$create_branch_           hcs_$delentry_file
+hcs_$fs_move_file             hcs_$get_access_class         hcs_$get_link_target          hcs_$get_max_length_seg
+hcs_$get_safety_sw            hcs_$get_safety_sw_seg        hcs_$initiate                 hcs_$initiate_count
+hcs_$list_acl                 hcs_$list_inacl               hcs_$set_bc                   hcs_$set_dir_ring_brackets
+hcs_$set_max_length           hcs_$set_safety_sw            hcs_$status_long              hcs_$terminate_file
+unique_chars_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$noentry          error_table_$safety_sw_on     error_table_$segknown
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     48 000051        77 000054        14 000061       166 000114       167 000117       168 000121       170 000123
+    172 000136       173 000140       174 000143       175 000145       177 000150       179 000172       181 000225
+    184 000227       185 000231       188 000273       190 000277       193 000304       194 000305       197 000310
+    198 000316       199 000323       200 000324       204 000325       206 000334       209 000336       211 000374
+    215 000376       216 000416       217 000435       218 000442       219 000454       220 000461       223 000462
+    224 000476       225 000510       226 000512       227 000524       230 000526       233 000530       234 000555
+    236 000557       237 000560       239 000561       242 000563       243 000610       245 000612       246 000613
+    247 000622       250 000645       251 000672       256 000701       260 000711       263 000713       265 000754
+    268 000756       269 000757       272 000767       275 000770       276 001034       279 001036       280 001037
+    284 001047       286 001072       287 001075       290 001134       292 001231       296 001233       299 001267
+    300 001272       302 001301       303 001302       304 001313       305 001326       306 001334       307 001336
+    309 001345       311 001354       312 001361       313 001365       314 001367       316 001371       317 001373
+    318 001402       319 001407       320 001411       321 001412       323 001414       325 001445       326 001451
+    329 001455       330 001502       333 001504       334 001506       335 001510       336 001535       339 001537
+    341 001570       344 001572       346 001614       349 001615       352 001617       354 001632       357 001634
+    359 001663       364 001665       366 001724       369 001726       372 001752       375 001753       378 002003
+    382 002005       384 002021       385 002042       387 002045       389 002100       391 002101       394 002103
+    397 002105       399 002153       403 002155       404 002167       405 002231       407 002233       409 002235
+    413 002264       415 002313       421 002314       424 002347       426 002356       427 002361       428 002363
+    429 002365       430 002367       431 002401       432 002413       434 002417       436 002432       437 002434
+    438 002437       439 002442       441 002444       443 002466       445 002521       448 002523       450 002562
+    453 002627       457 002634       458 002635       459 002636       460 002637       463 002640       464 002642
+    465 002643       468 002644       469 002646       472 002647       475 002651       476 002664       479 002674
+    482 002676       483 002725       486 002727       487 002754       490 002756       492 002763       498 002773
+    501 003037       503 003077       506 003101       508 003121       509 003150       512 003152       515 003203
+    518 003205       519 003220       522 003222       523 003247       527 003251       530 003257       532 003316
+    535 003320       537 003342       546 003343       548 003376       551 003400       552 003411       553 003453
+    555 003455       557 003457       560 003506       563 003510       565 003554       571 003556       575 003562
+    581 003563       584 003571       587 003602       590 003613
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

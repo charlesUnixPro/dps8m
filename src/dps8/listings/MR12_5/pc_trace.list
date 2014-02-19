@@ -1,0 +1,1553 @@
+ASSEMBLY LISTING OF SEGMENT >udd>sm>ds>w>ml>pc_trace.alm                                                                                                                                            
+ASSEMBLED ON:	04/18/00  1112.2 mdt Tue
+OPTIONS USED:	list symbols 
+ASSEMBLED BY:	ALM Version 8.14 March 1989     
+ASSEMBLER CREATED:	06/09/89  1102.3 mdt Fri
+
+                                     1  " ***********************************************************
+                                     2  " *                                                         *
+                                     3  " * Copyright, (C) Honeywell Bull Inc., 1987                *
+                                     4  " *                                                         *
+                                     5  " * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+                                     6  " *                                                         *
+                                     7  " * Copyright (c) 1972 by Massachusetts Institute of        *
+                                     8  " * Technology and Honeywell Information Systems, Inc.      *
+                                     9  " *                                                         *
+                                    10  " ***********************************************************
+                                    11  
+                                    12  " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    13  "
+                                    14  "	pc_trace		tracing routine called by the alm
+                                    15  "			part of page control to print out tracing
+                                    16  "			information by calling pc_trace_pl1 with
+                                    17  "			pre-canned arument lists.
+                                    18  "
+                                    19  " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    20  
+                                    21  " Written sometime by somebody, whose august identity is now sadly
+                                    22  "  lost in the dim mists of antiquity.
+                                    23  " Modified 03/01/81, W. Olin Sibert, for new sst include file and ADP conversion
+                                    24  "
+    000000                          25  	name	pc_trace
+                                    26  
+                                    27  	include	pxss_page_stack
+                                   1-1  "
+                                   1-2  "	BEGIN INCLUDE FILE  pxss_page_stack.incl.alm     July 1982
+                                   1-3  "
+                                   1-4  
+                        000006     1-5  	equ	pxss_stack_size,6	" size of x7 save stack used by pxss
+                        000015     1-6  	equ	stack_size,13	" size of x7 save stack used by page control
+                                   1-7  
+                                   1-8  	temp8	notify_regs
+                                   1-9  	temp	save_stack(stack_size),stackp
+                                  1-10  	tempd	pre_time,pre_temp(3)
+                                  1-11  	tempd	arg(11),temp
+                                  1-12  	tempd	stock_temp,volmap_temp,volmap_save_ptr
+                                  1-13  	tempd	tmp_ev_channel,tmp_ev_message,apt_ptr,getwork_temp,delta_t
+                                  1-14  	tempd	lock_volmap_temp_1,free_store_temp_1,volmap_save_sdw
+                                  1-15  	temp	cmep,total_steps,temp1,temp2,volmap_temp_1,volmap_temp_2
+                                  1-16  	temp	pvtx,core_add,count,entry_sw,ptp_astep,inter,devadd,errcode
+                                  1-17  	temp	tmp_ring,dev_signal,before,depth,x5
+                                  1-18  	temp	tmp_event,pxss_save_stack(pxss_stack_size),pxss_stackp
+                                  1-19  	temp	stock_temp_1,stock_temp_2,free_store_temp,savx2_3
+                                  1-20  	temp	lock_volmap_temp
+                                  1-21  	temp	volmap_page_temp
+                                  1-22  	tempd	free_store_start_time,post_io_start_time
+                                  1-23  
+                                  1-24  	temp	done_astep,volmap_page_temp_1
+                                  1-25  	temp	vtocx,pageno
+                                  1-26  
+                                  1-27  	tempd	page_synch_temp,page_synch_time
+                                  1-28  	temp	page_synch_index
+                                  1-29  
+                                  1-30  	temp	pc_err_type,pc_err_ptwp,pc_err_astep
+                                  1-31  	tempd	pf_sdw
+                                  1-32  
+                                  1-33  	temp	pad(22)		" to grow compatibly
+                                  1-34  "
+                                  1-35  "	END INCLUDE FILE  pxss_page_stack.incl.alm
+                                  1-36  "
+                                    28  	include	sst
+                                   2-1  
+                                   2-2  
+                                   2-3       "BEGIN INCLUDE FILE sst.incl.alm
+                                   2-4  
+                                   2-5  
+                                   2-6  	"Created 01/14/85  1523.7 est Mon by convert_include_file,
+                                   2-7  	"   Version of 01/09/85  0954.4 est Wed.
+                                   2-8  
+                                   2-9  	"Made from >Pool>m>loe>incl>sst.incl.pl1,
+                                  2-10  	"   modified 01/09/85  1148.3 est Wed
+                                  2-11  
+                                  2-12  "
+                                  2-13  "	Structure sst
+                                  2-14  "
+                        001000    2-15  	equ	sst_size,512
+                                  2-16  
+                                  2-17  
+                        000000    2-18  	equ	sst.space,0
+                        000010    2-19  	equ	sst.pre_page_time,8		" DOUBLE
+                        000012    2-20  	equ	sst.post_purge_time,10	" DOUBLE
+                        000014    2-21  	equ	sst.post_in_core,12
+                        000015    2-22  	equ	sst.thrashing,13
+                        000016    2-23  	equ	sst.npfs_misses,14
+                        000017    2-24  	equ	sst.salv,15
+                        000020    2-25  	equ	sst.ptl,16
+                        000021    2-26  	equ	sst.astl,17
+                        000022    2-27  	equ	sst.astl_event,18
+                                  2-28  
+                        000023    2-29  	equ	sst.astl_notify_requested_word,19
+                        400000    2-30  	bool	sst.astl_notify_requested,400000 " DU
+                                  2-31  
+                        000024    2-32  	equ	sst.nused,20
+                        000025    2-33  	equ	sst.ptwbase,21
+                        000026    2-34  	equ	sst.tfreep,22
+                        000030    2-35  	equ	sst.astap,24
+                        000032    2-36  	equ	sst.ptl_wait_ct,26
+                        000033    2-37  	equ	sst.astsize,27
+                        000034    2-38  	equ	sst.cmesize,28
+                        000036    2-39  	equ	sst.root_astep,30
+                        000040    2-40  	equ	sst.pts,32
+                        000044    2-41  	equ	sst.level,36		" LEVEL 2
+                                  2-42  
+                        000044    2-43  	equ	sst.ausedp,36		" UPPER
+                        000044    2-44  	equ	sst.no_aste,36		" LOWER
+                                  2-45  
+                        000050    2-46  	equ	sst.atempp,40		" UPPER
+                        000050    2-47  	equ	sst.atempp1,40		" LOWER
+                                  2-48  
+                        000051    2-49  	equ	sst.dm_enabled_word,41
+                        400000    2-50  	bool	sst.dm_enabled,400000	" DU
+                                  2-51  
+                        000052    2-52  	equ	sst.ainitp,42		" UPPER
+                        000052    2-53  	equ	sst.ainitp1,42		" LOWER
+                                  2-54  
+                        000053    2-55  	equ	sst.strsize,43
+                        000054    2-56  	equ	sst.cmp,44
+                                  2-57  
+                        000056    2-58  	equ	sst.usedp,46		" UPPER
+                                  2-59  
+                        000057    2-60  	equ	sst.wtct,47
+                                  2-61  
+                        000060    2-62  	equ	sst.startp,48		" UPPER
+                                  2-63  
+                        000061    2-64  	equ	sst.removep,49		" UPPER
+                                  2-65  
+                        000062    2-66  	equ	sst.double_write,50
+                        000063    2-67  	equ	sst.temp_w_event,51
+                        000064    2-68  	equ	sst.root_pvtx,52
+                                  2-69  
+                        000065    2-70  	equ	sst.nolock_word,53
+                        400000    2-71  	bool	sst.nolock,400000		" DU
+                                  2-72  
+                        000066    2-73  	equ	sst.fc_skips_pinned,54
+                        000067    2-74  	equ	sst.cl_skips_pinned,55
+                        000070    2-75  	equ	sst.ast_ht_ptr,56
+                        000072    2-76  	equ	sst.ast_ht_n_buckets,58
+                        000073    2-77  	equ	sst.ast_ht_uid_mask,59
+                        000074    2-78  	equ	sst.meter_ast_locking,60
+                        000075    2-79  	equ	sst.checksum_filemap,61
+                        000076    2-80  	equ	sst.page_read_errors,62
+                        000077    2-81  	equ	sst.page_write_errors,63
+                        000100    2-82  	equ	sst.cycle_pv_allocation,64
+                        000101    2-83  	equ	sst.n_trailers,65
+                        000102    2-84  	equ	sst.synch_activations,66
+                        000103    2-85  	equ	sst.synch_skips,67
+                        000104    2-86  	equ	sst.lock_waits,68
+                        000105    2-87  	equ	sst.total_locks_set,69
+                        000106    2-88  	equ	sst.pdir_page_faults,70
+                        000107    2-89  	equ	sst.level_1_page_faults,71
+                        000110    2-90  	equ	sst.dir_page_faults,72
+                        000111    2-91  	equ	sst.ring_0_page_faults,73
+                        000112    2-92  	equ	sst.rqover,74
+                        000113    2-93  	equ	sst.pc_io_waits,75
+                        000114    2-94  	equ	sst.steps,76
+                        000115    2-95  	equ	sst.needc,77
+                        000116    2-96  	equ	sst.ceiling,78
+                        000117    2-97  	equ	sst.ctwait,79
+                        000120    2-98  	equ	sst.wired,80
+                        000121    2-99  	equ	sst.laps,81
+                        000122   2-100  	equ	sst.skipw,82
+                        000123   2-101  	equ	sst.skipu,83
+                        000124   2-102  	equ	sst.skipm,84
+                        000125   2-103  	equ	sst.skipos,85
+                        000126   2-104  	equ	sst.aused,86
+                        000127   2-105  	equ	sst.damaged_ct,87
+                        000130   2-106  	equ	sst.deact_count,88
+                        000131   2-107  	equ	sst.demand_deact_attempts,89
+                        000132   2-108  	equ	sst.demand_deactivations,90
+                        000133   2-109  	equ	sst.reads,91
+                        000143   2-110  	equ	sst.writes,99
+                        000153   2-111  	equ	sst.short_pf_count,107
+                        000154   2-112  	equ	sst.loop_locks,108
+                        000156   2-113  	equ	sst.loop_lock_time,110	" DOUBLE
+                        000160   2-114  	equ	sst.cpu_sf_time,112		" DOUBLE
+                        000162   2-115  	equ	sst.total_sf_pf,114
+                        000163   2-116  	equ	sst.total_sf,115
+                        000164   2-117  	equ	sst.pre_page_size,116
+                        000165   2-118  	equ	sst.post_list_size,117
+                        000166   2-119  	equ	sst.post_purgings,118
+                        000167   2-120  	equ	sst.post_purge_calls,119
+                        000170   2-121  	equ	sst.pre_page_calls,120
+                        000171   2-122  	equ	sst.pre_page_list_size,121
+                        000172   2-123  	equ	sst.pre_page_misses,122
+                        000173   2-124  	equ	sst.pre_pagings,123
+                        000174   2-125  	equ	sst.wire_proc_data,124	" DOUBLE
+                        000214   2-126  	equ	sst.abs_wired_count,140
+                        000215   2-127  	equ	sst.system_type,141
+                        000216   2-128  	equ	sst.wired_copies,142
+                        000217   2-129  	equ	sst.recopies,143
+                        000220   2-130  	equ	sst.first_core_block,144
+                        000221   2-131  	equ	sst.last_core_block,145
+                        000222   2-132  	equ	sst.fw_retries,146
+                        000223   2-133  	equ	sst.pvhtp,147
+                        000224   2-134  	equ	sst.askipsize,148
+                        000230   2-135  	equ	sst.aneedsize,152
+                        000234   2-136  	equ	sst.stepsa,156
+                        000235   2-137  	equ	sst.askipsehs,157
+                        000236   2-138  	equ	sst.asearches,158
+                        000237   2-139  	equ	sst.askipslevel,159
+                        000240   2-140  	equ	sst.askipsinit,160
+                        000241   2-141  	equ	sst.acost,161
+                        000242   2-142  	equ	sst.askipslock,162
+                        000243   2-143  	equ	sst.askipdius,163
+                        000244   2-144  	equ	sst.alaps,164
+                        000245   2-145  	equ	sst.updates,165
+                        000246   2-146  	equ	sst.setfaults_all,166
+                        000247   2-147  	equ	sst.setfaults_acc,167
+                        000250   2-148  	equ	sst.total_bf,168
+                        000251   2-149  	equ	sst.total_bf_pf,169
+                        000252   2-150  	equ	sst.cpu_bf_time,170		" DOUBLE
+                        000254   2-151  	equ	sst.asteps,172
+                        000260   2-152  	equ	sst.ast_locked_at_time,176	" DOUBLE
+                        000262   2-153  	equ	sst.ast_locked_total_time,178	" DOUBLE
+                        000264   2-154  	equ	sst.ast_lock_wait_time,180	" DOUBLE
+                        000266   2-155  	equ	sst.ast_locking_count,182
+                        000267   2-156  	equ	sst.cleanup_count,183
+                        000270   2-157  	equ	sst.cleanup_real_time,184	" DOUBLE
+                        000272   2-158  	equ	sst.tree_count,186
+                        000372   2-159  	equ	sst.pp_meters,250
+                                 2-160  
+                        000472   2-161  	equ	sst.wusedp,314		" UPPER
+                                 2-162  
+                        000473   2-163  	equ	sst.write_hunts,315
+                        000474   2-164  	equ	sst.claim_skip_cme,316
+                        000475   2-165  	equ	sst.claim_skip_free,317
+                        000476   2-166  	equ	sst.claim_notmod,318
+                        000477   2-167  	equ	sst.claim_passed_used,319
+                        000500   2-168  	equ	sst.claim_skip_ptw,320
+                        000501   2-169  	equ	sst.claim_writes,321
+                        000502   2-170  	equ	sst.claim_steps,322
+                        000503   2-171  	equ	sst.pre_seeks_failed,323
+                        000504   2-172  	equ	sst.resurrections,324
+                        000505   2-173  	equ	sst.volmap_seg_page_faults,325
+                        000506   2-174  	equ	sst.oopv,326
+                        000507   2-175  	equ	sst.dblw_resurrections,327
+                        000510   2-176  	equ	sst.sgm_time,328		" DOUBLE
+                        000512   2-177  	equ	sst.sgm_pf,330
+                        000513   2-178  	equ	sst.bad_sgms,331
+                        000514   2-179  	equ	sst.sgm_sgft,332
+                        000515   2-180  	equ	sst.good_sgms,333
+                        000516   2-181  	equ	sst.claim_runs,334
+                        000517   2-182  	equ	sst.activations,335
+                        000520   2-183  	equ	sst.dir_activations,336
+                        000521   2-184  	equ	sst.hedge_updatevs,337
+                        000522   2-185  	equ	sst.hedge_writes,338
+                        000523   2-186  	equ	sst.evict_recover_data,339	" LEVEL 2
+                                 2-187  
+                        000523   2-188  	equ	sst.evict_ptp,339		" UPPER
+                        000523   2-189  	equ	sst.evict_phmbit,339	" LOWER
+                                 2-190  
+                        000524   2-191  	equ	sst.force_swrites,340
+                        000525   2-192  	equ	sst.force_pwrites,341
+                        000526   2-193  	equ	sst.fw_none,342
+                        000527   2-194  	equ	sst.force_updatevs,343
+                        000530   2-195  	equ	sst.pf_unlock_ptl_time,344	" DOUBLE
+                        000532   2-196  	equ	sst.pf_unlock_ptl_meterings,346
+                        000533   2-197  	equ	sst.makeknown_activations,347
+                        000534   2-198  	equ	sst.backup_activations,348
+                        000535   2-199  	equ	sst.metering_flags,349	" LEVEL 2
+                                 2-200  
+                        400000   2-201  	bool	sst.activate_activated,400000	" DU
+                                 2-202  
+                        000536   2-203  	equ	sst.seg_fault_calls,350
+                        000537   2-204  	equ	sst.stk_truncate_should_didnt,351
+                        000540   2-205  	equ	sst.stk_truncate_should_did,352
+                        000541   2-206  	equ	sst.stk_truncate_shouldnt_didnt,353
+                        000542   2-207  	equ	sst.stk_truncate_shouldnt_did,354
+                        000543   2-208  	equ	sst.stk_pages_truncated,355
+                        000544   2-209  	equ	sst.stk_pages_truncated_in_core,356
+                        000545   2-210  	equ	sst.segmove_lock,357	" LEVEL 2
+                                 2-211  
+                        000545   2-212  	equ	sst.pid,357
+                        000546   2-213  	equ	sst.event,358
+                                 2-214  
+                        000547   2-215  	equ	sst.notify_word,359
+                        400000   2-216  	bool	sst.notify,400000		" DU
+                                 2-217  
+                        000550   2-218  	equ	sst.segmove_io_limit,360
+                        000551   2-219  	equ	sst.segmove_found_synch,361
+                        000552   2-220  	equ	sst.segmove_synch_disappeared,362
+                        000553   2-221  	equ	sst.segmove_n_reads,363
+                        000554   2-222  	equ	sst.segmove_max_tries,364
+                        000555   2-223  	equ	sst.segmove_astep,365
+                        000556   2-224  	equ	sst.segmove_pvtx,366
+                        000557   2-225  	equ	sst.segmove_vtocx,367
+                        000560   2-226  	equ	sst.segmove_old_addr_astep,368
+                        000561   2-227  	equ	sst.segmove_new_addr_astep,369
+                        000562   2-228  	equ	sst.mod_during_write,370
+                        000563   2-229  	equ	sst.zero_pages,371
+                        000564   2-230  	equ	sst.trace_sw,372		" LEVEL 2
+                                 2-231  
+                        000010   2-232  	bool	sst.pc_trace_pf,000010	" DL
+                        000004   2-233  	bool	sst.tty_trace,000004	" DL
+                        000002   2-234  	bool	sst.pc_trace,000002		" DL
+                        000001   2-235  	bool	sst.sc_trace,000001		" DL
+                                 2-236  
+                        000565   2-237  	equ	sst.new_pages,373
+                                 2-238  
+                        000566   2-239  	equ	sst.ast_track_word,374
+                        400000   2-240  	bool	sst.ast_track,400000	" DU
+                                 2-241  
+                        000567   2-242  	equ	sst.dirlock_writebehind,375
+                        000570   2-243  	equ	sst.write_limit,376
+                                 2-244  
+                        000571   2-245  	equ	sst.crash_test_segmove_word,377
+                        400000   2-246  	bool	sst.crash_test_segmove,400000	" DU
+                                 2-247  
+                        000572   2-248  	equ	sst.delayed_seg_state_chg,378
+                        000573   2-249  	equ	sst.audit_seg_state_chg,379
+                        000574   2-250  	equ	sst.seg_state_chg_delay,380	" DOUBLE
+                        000576   2-251  	equ	sst.seg_state_change_limit,382
+                        000577   2-252  	equ	sst.max_seg_state_change_bw,383
+                        000600   2-253  	equ	sst.audit_seg_state_change_bw,384
+                        000601   2-254  	equ	sst.seg_state_chg_operation,385
+                                 2-255  
+                                 2-256       "END INCLUDE FILE sst.incl.alm
+                                    29  	include	page_info
+                                   3-1  "	BEGIN INCLUDE FILE page_info.incl.alm  --  6/72
+                                   3-2  "
+                                   3-3  " Modified 02/22/81, W. Olin Sibert, for ADP conversion
+                                   3-4  " Modified 06/23/82, E. N. Kittlitz, to move core map.
+                                   3-5  "
+                        000012     3-6  	equ	page_power,10		" 2**10 = size of page
+                        000001     3-7  	bool	df1,000001		" directed fault 1 on page fault
+                                   3-8  
+                 777777 740000     3-9  	bool	address_mask,777777740000	" Mask for PTW add, add_type compares
+                                  3-10  					" Use as =v36/address_mask
+                                  3-11  
+                        400000    3-12  	bool	ptw.nulled,400000		" flag for testing addresses
+                                  3-13  
+                        100000    3-14  	bool	int,100000		" Disk dim flags
+                        000020    3-15  	bool	pri,000020
+                        000004    3-16  	bool	no_post,000004
+                                  3-17  
+                        000003    3-18  	equ	sst,3			" Standard pointer and index
+                        000003    3-19  	equ	pdm,sst			" register usage
+                        000003    3-20  	equ	ast,sst
+                        000002    3-21  	equ	ptw,2
+                                  3-22  
+                                  3-23  "	Various AST masks which are not
+                                  3-24  "	expressible in standard notation
+                                  3-25  "
+                        777000    3-26  	bool	aste.csl_mask_inner,777000
+                        777000    3-27  	bool	aste.records_mask_inner,777000
+                                  3-28  
+                        000000    3-29  	equ	fault_entry,0		" Flags indicating how we
+                        000001    3-30  	equ	read_entry,1		" were entered
+                        000002    3-31  	equ	write_entry,2
+                        000003    3-32  	equ	pre_page_entry,3
+                        000004    3-33  	equ	post_purge_entry,4
+                        000005    3-34  	equ	pd_flush_entry,5
+                        000006    3-35  	equ	evict_entry,6
+                        000007    3-36  	equ	abs_wire_entry,7
+                        000010    3-37  	equ	cleanup_entry,8
+                                  3-38  
+                                  3-39  " Constants for manipulating core addresses and PTWs. The core address
+                                  3-40  " is a fixed bin (35) aligned, and must be moved to/from the appropriate
+                                  3-41  " field in the SDW or PTW.
+                                  3-42  "
+                                  3-43  	iftarget	l68
+                        777760          	   bool	ptw_add_mask,777760 " Page number
+                        777760          	   bool	sdw_add_mask,777760 " Page number
+                 000077 777777          	   bool	coreadd_mask,000077777777 " Mask for coreadd in AL
+                                        
+                        000014          	   equ	coreadd_to_ptw.ls,12
+                        000014          	   equ	coreadd_to_sdw.ls,12
+                        000014          	   equ	ptw_to_coreadd.rl,12
+                        000014          	   equ	sdw_to_coreadd.rl,12
+                        000002          	   equ	cmep_to_ptw.ls,2
+                        000002          	   equ	cmep_to_sdw.ls,2
+                        000002          	   equ	ptw_to_cmep.rl,2
+                        000024          	   equ	ptw_to_cmep_lower.rl,20
+                        000002          	   equ	sdw_to_cmep.rl,2
+                                        "	ifend
+                                  3-58  
+                                  3-59  	iftarget	adp
+                                        "	   bool	ptw_add_mask,177777 " Page number
+                                        "	   bool	sdw_add_mask,777774 " Page number
+                                        "	   bool	coreadd_mask,000377777777 " Mask for coreadd in AL
+                                        "
+                                        "	   equ	coreadd_to_ptw.ls,8
+                                        "	   equ	coreadd_to_sdw.ls,10
+                                        "	   equ	ptw_to_coreadd.rl,8
+                                        "	   equ	sdw_to_coreadd.rl,10
+                                        "	   equ	cmep_to_ptw.rl,2	" Must shift backwards
+                                        "	   equ	cmep_to_sdw.ls,0
+                                        "	   equ	ptw_to_cmep.ls,2	" Must shift backwards
+                                        "	   equ	ptw_to_cmep_lower.rl,16
+                                        "	   equ	sdw_to_cmep.rl,0
+                                        "	ifend
+                                  3-74  
+                        000012    3-75  	equ	cmep_to_coreadd.rl,10	.cmep to coreadd
+                        000012    3-76  	equ	coreadd_to_cmep.ls,10	coreadd to .cmep
+                                  3-77  
+                                  3-78  " 
+                                  3-79  "
+                                  3-80  " Assorted general purpose macros used in PC. These will be changed
+                                  3-81  " when address types are changed for 20 bit addresses. Additionally,
+                                  3-82  " for more accurate metering on the ADP, the metering macros should
+                                  3-83  " modified to update the metering cells uninterruptably.
+                                  3-84  "
+                                  3-85  
+                                  3-86  	macro	missing
+                              1   3-87  	ife	&2,()
+                              2   3-88  	  warn	(&1: Argument missing.)
+                              3   3-89  	ifend
+                              4   3-90  	&end
+                                  3-91  "
+                                  3-92  " staddra and staddrq store the address portion (upper 22 bits) of the A or Q
+                                  3-93  " into the specified location.
+                                  3-94  "
+                                  3-95  	macro	staddra
+                              1   3-96  	missing	staddra,&1
+                              2   3-97  	era	&F1
+                              3   3-98  	ana	=v36/address_mask
+                              4   3-99  	ersa	&F1
+                              5  3-100  	&end
+                                 3-101  
+                                 3-102  	macro	staddrq
+                              1  3-103  	missing	staddrq,&1
+                              2  3-104  	erq	&F1
+                              3  3-105  	anq	=v36/address_mask
+                              4  3-106  	ersq	&F1
+                              5  3-107  	&end
+                                 3-108  
+                                 3-109  "	Macros for metering 6/23/80
+                                 3-110  
+                                 3-111  	macro	read_clock
+                              1  3-112  	iftarget	l68
+                              2  3-113  	  rccl	sys_info$clock_,*
+                              3  3-114  	ifend
+                              4  3-115  	iftarget adp
+                              5  3-116  	  rccl	0
+                              6  3-117  	ifend
+                              7  3-118  	&end
+                                 3-119  
+                                 3-120  	macro	increment
+                              1  3-121  	missing	increment,&1
+                              2  3-122  	aos	&1
+                              3  3-123  	&end
+                                 3-124  
+                                 3-125  	macro	store_clock
+                              1  3-126  	missing	store_clock,&1
+                              2  3-127  	read_clock
+                              3  3-128  	staq	&1
+                              4  3-129  	&end
+                                 3-130  
+                                 3-131  	macro	meter_time
+                              1  3-132  	missing	meter_time,&3
+                              2  3-133  	increment &3
+                              3  3-134  	read_clock
+                              4  3-135  	sbaq	&1
+                              5  3-136  	adaq	&2
+                              6  3-137  	staq	&2
+                              7  3-138  	&end
+                                 3-139  
+                                 3-140  "	END INCLUDE FILE  page_info.incl.alm
+                                    30  
+                        000207      31  	segdef	move_page,zero_page,no_paging_device,rws_truncated
+                        000032      32  	segdef	done,page_fault,page_fault_end,write_page
+                        000355      33  	segdef	abort_complete,running,rws_complete
+                        000326      34  	segdef	tr_pd_delete_,tr_rws,rehash,depositing,withdrawing
+                                    35  
+                                    36  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    37  
+    000000                          38  page_fault:
+    000000  aa  3 00564 2361 00     39  	ldq	sst|sst.trace_sw
+    000001  aa   000010 3160 07     40  	canq	sst.pc_trace_pf,dl
+    000002  aa   000000 6000 17     41  	tze	0,7
+    000003  aa  6 00130 2521 00     42  	spribp	arg+18
+    000004  0a   000243 7050 00     43  	tsx5	setup_argl_4
+    000005  aa  6 00000 2541 00     44  	call	pc_trace_pl1$page_fault(arg)
+    000006  aa  6 00106 3501 00
+    000007  4a  4 00010 3521 20
+    000010  aa  6 00040 7531 00
+    000011  aa  7 00036 6701 20
+    000012  aa  6 00000 1731 00
+    000013  aa  6 00040 0731 00
+    000014  aa   000000 7100 17     45  	tra	0,7
+                                    46  
+                                    47  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    48  
+    000015                          49  page_fault_end:
+    000015  aa  3 00564 2361 00     50  	ldq	sst|sst.trace_sw
+    000016  aa   000010 3160 07     51  	canq	sst.pc_trace_pf,dl
+    000017  aa   000000 6000 17     52  	tze	0,7
+    000020  aa  6 00130 2521 00     53  	spribp	arg+18
+    000021  0a   000243 7050 00     54  	tsx5	setup_argl_4
+    000022  aa  6 00000 2541 00     55  	call	pc_trace_pl1$page_fault_end(arg)
+    000023  aa  6 00106 3501 00
+    000024  4a  4 00012 3521 20
+    000025  aa  6 00040 7531 00
+    000026  aa  7 00036 6701 20
+    000027  aa  6 00000 1731 00
+    000030  aa  6 00040 0731 00
+    000031  aa   000000 7100 17     56  	tra	0,7
+                                    57  
+                                    58  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    59  
+    000032                          60  write_page:
+    000032  aa  3 00564 2361 00     61  	ldq	sst|sst.trace_sw
+    000033  aa   000010 3160 07     62  	canq	sst.pc_trace_pf,dl
+    000034  aa   000000 6000 17     63  	tze	0,7
+    000035  aa  3 00000 3501 14     64  	eppap	sst|0,4
+    000036  aa  6 00130 2501 00     65  	spriap	arg+18
+    000037  0a   000243 7050 00     66  	tsx5	setup_argl_4
+    000040  aa  6 00000 2541 00     67  	call	pc_trace_pl1$write_page(arg)
+    000041  aa  6 00106 3501 00
+    000042  4a  4 00014 3521 20
+    000043  aa  6 00040 7531 00
+    000044  aa  7 00036 6701 20
+    000045  aa  6 00000 1731 00
+    000046  aa  6 00040 0731 00
+    000047  aa   000000 7100 17     68  	tra	0,7
+                                    69  
+                                    70  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    71  
+    000050                          72  done:
+    000050  aa  3 00564 2361 00     73  	ldq	sst|sst.trace_sw
+    000051  aa   000010 3160 07     74  	canq	sst.pc_trace_pf,dl
+    000052  aa   000000 6000 17     75  	tze	0,7
+    000053  aa  3 00000 3501 14     76  	eppap	sst|0,4
+    000054  aa  6 00130 2501 00     77  	spriap	arg+18
+    000055  0a   000243 7050 00     78  	tsx5	setup_argl_4
+    000056  aa  6 00000 2541 00     79  	call	pc_trace_pl1$done(arg)
+    000057  aa  6 00106 3501 00
+    000060  4a  4 00016 3521 20
+    000061  aa  6 00040 7531 00
+    000062  aa  7 00036 6701 20
+    000063  aa  6 00000 1731 00
+    000064  aa  6 00040 0731 00
+    000065  aa   000000 7100 17     80  	tra	0,7
+                                    81  
+                                    82  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                    83  
+    000066                          84  abort_complete:
+    000066  aa  3 00564 2361 00     85  	ldq	sst|sst.trace_sw
+    000067  aa   000002 3160 07     86  	canq	sst.pc_trace,dl
+    000070  aa   000000 6000 17     87  	tze	0,7
+    000071  aa  3 00000 3501 11     88  	eppap	sst|0,1		get a pointer to the pdmep
+    000072  aa  6 00130 2501 00     89  	spriap	arg+18
+    000073  aa  6 00132 2521 00     90  	spribp	arg+20		save ptp
+    000074  0a   000105 7050 00     91  	tsx5	setup_argl_1
+    000075  aa  6 00000 2541 00     92  	call	pc_trace_pl1$abort_complete(arg)
+    000076  aa  6 00106 3501 00
+    000077  4a  4 00020 3521 20
+    000100  aa  6 00040 7531 00
+    000101  aa  7 00036 6701 20
+    000102  aa  6 00000 1731 00
+    000103  aa  6 00040 0731 00
+    000104  aa   000000 7100 17     93  	tra	0,7
+                                    94  
+    000105                          95  setup_argl_1:
+    000105  aa  6 00130 3715 00     96  	epplb	arg+18
+    000106  aa  6 00110 6515 00     97  	sprilb	arg+2
+    000107  aa  6 00132 3715 00     98  	epplb	arg+20
+    000110  aa  6 00112 6515 00     99  	sprilb	arg+4
+    000111  0a   000114 2370 00    100  	ldaq	argl1
+    000112  aa  6 00106 7571 00    101  	staq	arg
+    000113  aa   000000 7100 15    102  	tra	0,5
+                                   103  	even
+    000114                         104  argl1:
+    000114  aa   000004 000004     105  	zero	4,4
+    000115  aa   000000 000000     106  	zero	0,0
+                                   107  
+                                   108  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   109  
+    000116                         110  move_page:
+    000116  aa  3 00564 2361 00    111  	ldq	sst|sst.trace_sw
+    000117  aa   000002 3160 07    112  	canq	sst.pc_trace,dl
+    000120  aa   000000 6000 17    113  	tze	0,7
+    000121  0a   000132 7050 00    114  	tsx5	setup_argl_2
+    000122  aa  6 00000 2541 00    115  	call	pc_trace_pl1$move_page(arg)
+    000123  aa  6 00106 3501 00
+    000124  4a  4 00022 3521 20
+    000125  aa  6 00040 7531 00
+    000126  aa  7 00036 6701 20
+    000127  aa  6 00000 1731 00
+    000130  aa  6 00040 0731 00
+    000131  aa   000000 7100 17    116  	tra	0,7
+                                   117  
+    000132                         118  setup_argl_2:
+    000132  aa  6 00200 3715 00    119  	epplb	devadd
+    000133  aa  6 00110 6515 00    120  	sprilb	arg+2
+    000134  0a   000140 2370 00    121  	ldaq	argl2
+    000135  aa  6 00106 7571 00    122  	staq	arg
+    000136  aa   000000 7100 15    123  	tra	0,5
+    000137  aa   000000 0110 03    124  	even
+    000140                         125  argl2:
+    000140  aa   000002 000004     126  	zero	2,4
+    000141  aa   000000 000000     127  	zero	0,0
+                                   128  
+                                   129  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   130  
+    000142                         131  zero_page:
+    000142  aa  3 00564 2361 00    132  	ldq	sst|sst.trace_sw
+    000143  aa   000002 3160 07    133  	canq	sst.pc_trace,dl
+    000144  aa   000000 6000 17    134  	tze	0,7
+    000145  aa  6 00130 2521 00    135  	spribp	arg+18		save ptp
+    000146  0a   000160 7050 00    136  	tsx5	setup_argl_3
+    000147  aa  6 00000 2541 00    137  	call	pc_trace_pl1$zero_page(arg)
+    000150  aa  6 00106 3501 00
+    000151  4a  4 00024 3521 20
+    000152  aa  6 00040 7531 00
+    000153  aa  7 00036 6701 20
+    000154  aa  6 00000 1731 00
+    000155  aa  6 00040 0731 00
+    000156  aa   000000 7100 17    138  	tra	0,7
+                                   139  
+    000157  aa   000000 0110 03    140  	even
+    000160                         141  setup_argl_3:
+    000160  aa  6 00130 3715 00    142  	epplb	arg+18
+    000161  aa  6 00112 6515 00    143  	sprilb	arg+4
+    000162  aa  6 00200 3715 00    144  	epplb	devadd
+    000163  aa  6 00110 6515 00    145  		sprilb	arg+2
+    000164  0a   000170 2370 00    146  	ldaq	argl3
+    000165  aa  6 00106 7571 00    147  	staq	arg
+    000166  aa   000000 7100 15    148  	tra	0,5
+    000167  aa   000000 0110 03    149  	even
+    000170                         150  argl3:
+    000170  aa   000004 000004     151  	zero	4,4
+    000171  aa   000000 000000     152  	zero	0,0
+                                   153  
+                                   154  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   155  
+    000172                         156  no_paging_device:
+    000172  aa  3 00564 2361 00    157  	ldq	sst|sst.trace_sw
+    000173  aa   000002 3160 07    158  	canq	sst.pc_trace,dl
+    000174  aa   000000 6000 17    159  	tze	0,7
+    000175  aa  6 00130 2521 00    160  	spribp	arg+18		save ptp
+    000176  0a   000160 7050 00    161  	tsx5	setup_argl_3
+    000177  aa  6 00000 2541 00    162  	call	pc_trace_pl1$no_pd_(arg)
+    000200  aa  6 00106 3501 00
+    000201  4a  4 00026 3521 20
+    000202  aa  6 00040 7531 00
+    000203  aa  7 00036 6701 20
+    000204  aa  6 00000 1731 00
+    000205  aa  6 00040 0731 00
+    000206  aa   000000 7100 17    163  	tra	0,7
+                                   164  
+                                   165  " " " " " " " " "" " " " " " " " " " " " " " " " " " " " "
+                                   166  
+    000207                         167  rws_truncated:
+    000207  aa  3 00564 2361 00    168  	ldq	sst|sst.trace_sw
+    000210  aa   000002 3160 07    169  	canq	sst.pc_trace,dl
+    000211  aa   000000 6000 17    170  	tze	0,7
+    000212  aa  3 00000 3501 11    171  	eppap	sst|0,1
+    000213  aa  6 00130 2501 00    172  	spriap	arg+18		save pointer to pdme
+    000214  0a   000160 7050 00    173  	tsx5	setup_argl_3
+    000215  aa  6 00000 2541 00    174  	call	pc_trace_pl1$rws_truncated(arg)
+    000216  aa  6 00106 3501 00
+    000217  4a  4 00030 3521 20
+    000220  aa  6 00040 7531 00
+    000221  aa  7 00036 6701 20
+    000222  aa  6 00000 1731 00
+    000223  aa  6 00040 0731 00
+    000224  aa   000000 7100 17    175  	tra	0,7
+                                   176  
+                                   177  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   178  
+    000225                         179  tr_pd_delete_:
+    000225  aa  3 00564 2361 00    180  	ldq	sst|sst.trace_sw
+    000226  aa   000002 3160 07    181  	canq	sst.pc_trace,dl
+    000227  aa   000000 6000 17    182  	tze	0,7
+    000230  aa  3 00000 3501 10    183  	eppap	sst|0,0
+    000231  aa  6 00130 2501 00    184  	spriap	arg+18
+    000232  0a   000243 7050 00    185  	tsx5	setup_argl_4
+    000233  aa  6 00000 2541 00    186  	call	pc_trace_pl1$tr_pd_delete_(arg)
+    000234  aa  6 00106 3501 00
+    000235  4a  4 00032 3521 20
+    000236  aa  6 00040 7531 00
+    000237  aa  7 00036 6701 20
+    000240  aa  6 00000 1731 00
+    000241  aa  6 00040 0731 00
+    000242  aa   000000 7100 17    187  	tra	0,7
+                                   188  
+    000243                         189  setup_argl_4:
+    000243  aa  6 00130 3715 00    190  	epplb	arg+18
+    000244  aa  6 00110 6515 00    191  	sprilb	arg+2
+    000245  0a   000140 2370 00    192  	ldaq	argl2
+    000246  aa  6 00106 7571 00    193  	staq	arg
+    000247  aa   000000 7100 15    194  	tra	0,5
+                                   195  	even
+    000250                         196  argl4:
+    000250  aa   000002 000004     197  	zero	2,4
+    000251  aa   000000 000000     198  	zero	0,0
+    000252                         199  argl0:
+    000252  aa   000000 000000     200  	zero	0,0
+    000253  aa   000000 000000     201  	zero	0,0
+                                   202  
+                                   203  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   204  
+    000254                         205  tr_rws:
+    000254  aa  3 00564 2361 00    206  	ldq	sst|sst.trace_sw
+    000255  aa   000002 3160 07    207  	canq	sst.pc_trace,dl
+    000256  aa   000000 6000 17    208  	tze	0,7
+    000257  aa  3 00000 3501 11    209  	eppap	sst|0,1
+    000260  aa  6 00130 2501 00    210  	spriap	arg+18
+    000261  0a   000243 7050 00    211  	tsx5	setup_argl_4
+    000262  aa  6 00000 2541 00    212  	call	pc_trace_pl1$tr_rws(arg)
+    000263  aa  6 00106 3501 00
+    000264  4a  4 00034 3521 20
+    000265  aa  6 00040 7531 00
+    000266  aa  7 00036 6701 20
+    000267  aa  6 00000 1731 00
+    000270  aa  6 00040 0731 00
+    000271  aa   000000 7100 17    213  	tra	0,7
+                                   214  
+                                   215  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   216  
+    000272                         217  rehash:
+    000272  aa  3 00564 2361 00    218  	ldq	sst|sst.trace_sw
+    000273  aa   000002 3160 07    219  	canq	sst.pc_trace,dl
+    000274  aa   000000 6000 17    220  	tze	0,7
+    000275  aa  0 00002 2351 20    221  	lda	ap|2,*		old devadd
+    000276  aa  6 00130 7551 00    222  	sta	arg+18
+    000277  aa  0 00004 2351 20    223  	lda	ap|4,*
+    000300  aa  6 00200 7551 00    224  	sta	devadd
+    000301  0a   000160 7050 00    225  	tsx5	setup_argl_3
+    000302  aa  6 00000 2541 00    226  	call	pc_trace_pl1$rehash(arg)
+    000303  aa  6 00106 3501 00
+    000304  4a  4 00036 3521 20
+    000305  aa  6 00040 7531 00
+    000306  aa  7 00036 6701 20
+    000307  aa  6 00000 1731 00
+    000310  aa  6 00040 0731 00
+    000311  aa   000000 7100 17    227  	tra	0,7
+                                   228  
+                                   229  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   230  
+    000312                         231  depositing:
+    000312  aa  3 00564 2361 00    232  	ldq	sst|sst.trace_sw
+    000313  aa   000002 3160 07    233  	canq	sst.pc_trace,dl
+    000314  aa   000000 6000 10    234  	tze	0,0
+    000315  0a   000132 7050 00    235  	tsx5	setup_argl_2
+    000316  aa  6 00000 2541 00    236  	call	pc_trace_pl1$depositing(arg)
+    000317  aa  6 00106 3501 00
+    000320  4a  4 00040 3521 20
+    000321  aa  6 00040 7531 00
+    000322  aa  7 00036 6701 20
+    000323  aa  6 00000 1731 00
+    000324  aa  6 00040 0731 00
+    000325  aa   000000 7100 10    237  	tra	0,0
+                                   238  
+                                   239  " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   240  
+    000326                         241  withdrawing:
+    000326  aa  3 00564 2361 00    242  	ldq	sst|sst.trace_sw
+    000327  aa   000002 3160 07    243  	canq	sst.pc_trace,dl
+    000330  aa   000000 6000 10    244  	tze	0,0
+    000331  0a   000132 7050 00    245  	tsx5	setup_argl_2
+    000332  aa  6 00000 2541 00    246  	call	pc_trace_pl1$withdrawing(arg)
+    000333  aa  6 00106 3501 00
+    000334  4a  4 00042 3521 20
+    000335  aa  6 00040 7531 00
+    000336  aa  7 00036 6701 20
+    000337  aa  6 00000 1731 00
+    000340  aa  6 00040 0731 00
+    000341  aa   000000 7100 10    247  	tra	0,0
+                                   248  
+                                   249  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   250  
+    000342                         251  running:
+    000342  aa  3 00564 2361 00    252  	ldq	sst|sst.trace_sw
+    000343  aa   000002 3160 07    253  	canq	sst.pc_trace,dl
+    000344  aa   000000 6000 16    254  	tze	0,6
+    000345  aa  6 00000 2541 00    255  	call	pc_trace_pl1$running(argl0)
+    000346  0a   000252 3500 00
+    000347  4a  4 00044 3521 20
+    000350  aa  6 00040 7531 00
+    000351  aa  7 00036 6701 20
+    000352  aa  6 00000 1731 00
+    000353  aa  6 00040 0731 00
+    000354  aa   000000 7100 16    256  	tra	0,6
+                                   257  
+                                   258  " " " " " " " " " " " " " " " " " " " " " " " " " " " " "
+                                   259  
+    000355                         260  rws_complete:
+    000355  aa  3 00564 2361 00    261  	ldq	sst|sst.trace_sw
+    000356  aa   000002 3160 07    262  	canq	sst.pc_trace,dl
+    000357  aa   000000 6000 17    263  	tze	0,7
+    000360  aa  3 00000 3501 11    264  	eppap	sst|0,1
+    000361  aa  6 00130 2501 00    265  	spriap	arg+18
+    000362  0a   000243 7050 00    266  	tsx5	setup_argl_4
+    000363  aa  6 00000 2541 00    267  	call	pc_trace_pl1$rws_complete(arg)
+    000364  aa  6 00106 3501 00
+    000365  4a  4 00046 3521 20
+    000366  aa  6 00040 7531 00
+    000367  aa  7 00036 6701 20
+    000370  aa  6 00000 1731 00
+    000371  aa  6 00040 0731 00
+    000372  aa   000000 7100 17    268  	tra	0,7
+                                   269  " 
+                                   270  	end
+
+NO LITERALS
+     
+NAME DEFINITIONS FOR ENTRY POINTS AND SEGDEFS
+
+    000374  5a   000003 000000 
+    000375  5a   000163 600000 
+    000376  aa   000000 000000 
+    000377  55   000011 000002 
+    000400  5a   000002 400003 
+    000401  55   000006 000011 
+    000402  aa  010 160 143 137
+    000403  aa  164 162 141 143
+    000404  aa  145 000 000 000
+    000405  55   000017 000003 
+    000406  0a   000326 400000 
+    000407  55   000014 000003 
+    000410  aa  013 167 151 164         withdrawing
+    000411  aa  150 144 162 141
+    000412  aa  167 151 156 147
+    000413  55   000025 000011 
+    000414  0a   000312 400000 
+    000415  55   000022 000003 
+    000416  aa  012 144 145 160         depositing
+    000417  aa  157 163 151 164
+    000420  aa  151 156 147 000
+    000421  55   000032 000017 
+    000422  0a   000272 400000 
+    000423  55   000030 000003 
+    000424  aa  006 162 145 150         rehash
+    000425  aa  141 163 150 000
+    000426  55   000037 000025 
+    000427  0a   000254 400000 
+    000430  55   000035 000003 
+    000431  aa  006 164 162 137         tr_rws
+    000432  aa  162 167 163 000
+    000433  55   000046 000032 
+    000434  0a   000225 400000 
+    000435  55   000042 000003 
+    000436  aa  015 164 162 137         tr_pd_delete_
+    000437  aa  160 144 137 144
+    000440  aa  145 154 145 164
+    000441  aa  145 137 000 000
+    000442  55   000055 000037 
+    000443  0a   000355 400000 
+    000444  55   000051 000003 
+    000445  aa  014 162 167 163         rws_complete
+    000446  aa  137 143 157 155
+    000447  aa  160 154 145 164
+    000450  aa  145 000 000 000
+    000451  55   000062 000046 
+    000452  0a   000342 400000 
+    000453  55   000060 000003 
+    000454  aa  007 162 165 156         running
+    000455  aa  156 151 156 147
+    000456  55   000071 000055 
+    000457  0a   000066 400000 
+    000460  55   000065 000003 
+    000461  aa  016 141 142 157         abort_complete
+    000462  aa  162 164 137 143
+    000463  aa  157 155 160 154
+    000464  aa  145 164 145 000
+    000465  55   000077 000062 
+    000466  0a   000032 400000 
+    000467  55   000074 000003 
+    000470  aa  012 167 162 151         write_page
+    000471  aa  164 145 137 160
+    000472  aa  141 147 145 000
+    000473  55   000106 000071 
+    000474  0a   000015 400000 
+    000475  55   000102 000003 
+    000476  aa  016 160 141 147         page_fault_end
+    000477  aa  145 137 146 141
+    000500  aa  165 154 164 137
+    000501  aa  145 156 144 000
+    000502  55   000114 000077 
+    000503  0a   000000 400000 
+    000504  55   000111 000003 
+    000505  aa  012 160 141 147         page_fault
+    000506  aa  145 137 146 141
+    000507  aa  165 154 164 000
+    000510  55   000121 000106 
+    000511  0a   000050 400000 
+    000512  55   000117 000003 
+    000513  aa  004 144 157 156         done
+    000514  aa  145 000 000 000
+    000515  55   000130 000114 
+    000516  0a   000207 400000 
+    000517  55   000124 000003 
+    000520  aa  015 162 167 163         rws_truncated
+    000521  aa  137 164 162 165
+    000522  aa  156 143 141 164
+    000523  aa  145 144 000 000
+    000524  55   000140 000121 
+    000525  0a   000172 400000 
+    000526  55   000133 000003 
+    000527  aa  020 156 157 137         no_paging_device
+    000530  aa  160 141 147 151
+    000531  aa  156 147 137 144
+    000532  aa  145 166 151 143
+    000533  aa  145 000 000 000
+    000534  55   000146 000130 
+    000535  0a   000142 400000 
+    000536  55   000143 000003 
+    000537  aa  011 172 145 162         zero_page
+    000540  aa  157 137 160 141
+    000541  aa  147 145 000 000
+    000542  55   000154 000140 
+    000543  0a   000116 400000 
+    000544  55   000151 000003 
+    000545  aa  011 155 157 166         move_page
+    000546  aa  145 137 160 141
+    000547  aa  147 145 000 000
+    000550  55   000002 000146 
+    000551  6a   000000 400002 
+    000552  55   000157 000003 
+    000553  aa  014 163 171 155         symbol_table
+    000554  aa  142 157 154 137
+    000555  aa  164 141 142 154
+    000556  aa  145 000 000 000
+
+DEFINITIONS HASH TABLE
+
+    000557  aa   000000 000033 
+    000560  5a   000106 000000 
+    000561  aa   000000 000000 
+    000562  aa   000000 000000 
+    000563  5a   000025 000000 
+    000564  5a   000037 000000 
+    000565  aa   000000 000000 
+    000566  aa   000000 000000 
+    000567  aa   000000 000000 
+    000570  aa   000000 000000 
+    000571  aa   000000 000000 
+    000572  5a   000032 000000 
+    000573  5a   000011 000000 
+    000574  5a   000154 000000 
+    000575  aa   000000 000000 
+    000576  5a   000114 000000 
+    000577  5a   000062 000000 
+    000600  5a   000121 000000 
+    000601  5a   000046 000000 
+    000602  5a   000140 000000 
+    000603  5a   000055 000000 
+    000604  5a   000017 000000 
+    000605  5a   000071 000000 
+    000606  aa   000000 000000 
+    000607  5a   000077 000000 
+    000610  5a   000130 000000 
+    000611  aa   000000 000000 
+    000612  5a   000146 000000 
+
+EXTERNAL NAMES
+
+    000613  aa  006 156 157 137         no_pd_
+    000614  aa  160 144 137 000
+    000615  aa  014 160 143 137         pc_trace_pl1
+    000616  aa  164 162 141 143
+    000617  aa  145 137 160 154
+    000620  aa  061 000 000 000
+
+NO TRAP POINTER WORDS
+
+TYPE PAIR BLOCKS
+
+    000621  aa   000004 000000 
+    000622  55   000221 000051 
+    000623  aa   000004 000000 
+    000624  55   000221 000060 
+    000625  aa   000004 000000 
+    000626  55   000221 000014 
+    000627  aa   000004 000000 
+    000630  55   000221 000022 
+    000631  aa   000004 000000 
+    000632  55   000221 000030 
+    000633  aa   000004 000000 
+    000634  55   000221 000035 
+    000635  aa   000004 000000 
+    000636  55   000221 000042 
+    000637  aa   000004 000000 
+    000640  55   000221 000124 
+    000641  aa   000004 000000 
+    000642  55   000221 000217 
+    000643  aa   000004 000000 
+    000644  55   000221 000143 
+    000645  aa   000004 000000 
+    000646  55   000221 000151 
+    000647  aa   000004 000000 
+    000650  55   000221 000065 
+    000651  aa   000004 000000 
+    000652  55   000221 000117 
+    000653  aa   000004 000000 
+    000654  55   000221 000074 
+    000655  aa   000004 000000 
+    000656  55   000221 000102 
+    000657  aa   000004 000000 
+    000660  55   000221 000111 
+    000661  aa   000001 000000 
+    000662  aa   000000 000000 
+
+INTERNAL EXPRESSION WORDS
+
+    000663  5a   000225 000000 
+    000664  5a   000227 000000 
+    000665  5a   000231 000000 
+    000666  5a   000233 000000 
+    000667  5a   000235 000000 
+    000670  5a   000237 000000 
+    000671  5a   000241 000000 
+    000672  5a   000243 000000 
+    000673  5a   000245 000000 
+    000674  5a   000247 000000 
+    000675  5a   000251 000000 
+    000676  5a   000253 000000 
+    000677  5a   000255 000000 
+    000700  5a   000257 000000 
+    000701  5a   000261 000000 
+    000702  5a   000263 000000 
+    000703  aa   000000 000000 
+LINKAGE INFORMATION
+      
+    000000  aa   000000 000000 
+    000001  0a   000374 000000 
+    000002  aa   000000 000000 
+    000003  aa   000000 000000 
+    000004  aa   000000 000000 
+    000005  aa   000000 000000 
+    000006  22   000010 000050 
+    000007  a2   000000 000000 
+    000010  9a   777770 0000 46         pc_trace_pl1|page_fault
+    000011  5a   000306 0000 00
+    000012  9a   777766 0000 46         pc_trace_pl1|page_fault_end
+    000013  5a   000305 0000 00
+    000014  9a   777764 0000 46         pc_trace_pl1|write_page
+    000015  5a   000304 0000 00
+    000016  9a   777762 0000 46         pc_trace_pl1|done
+    000017  5a   000303 0000 00
+    000020  9a   777760 0000 46         pc_trace_pl1|abort_complete
+    000021  5a   000302 0000 00
+    000022  9a   777756 0000 46         pc_trace_pl1|move_page
+    000023  5a   000301 0000 00
+    000024  9a   777754 0000 46         pc_trace_pl1|zero_page
+    000025  5a   000300 0000 00
+    000026  9a   777752 0000 46         pc_trace_pl1|no_pd_
+    000027  5a   000277 0000 00
+    000030  9a   777750 0000 46         pc_trace_pl1|rws_truncated
+    000031  5a   000276 0000 00
+    000032  9a   777746 0000 46         pc_trace_pl1|tr_pd_delete_
+    000033  5a   000275 0000 00
+    000034  9a   777744 0000 46         pc_trace_pl1|tr_rws
+    000035  5a   000274 0000 00
+    000036  9a   777742 0000 46         pc_trace_pl1|rehash
+    000037  5a   000273 0000 00
+    000040  9a   777740 0000 46         pc_trace_pl1|depositing
+    000041  5a   000272 0000 00
+    000042  9a   777736 0000 46         pc_trace_pl1|withdrawing
+    000043  5a   000271 0000 00
+    000044  9a   777734 0000 46         pc_trace_pl1|running
+    000045  5a   000270 0000 00
+    000046  9a   777732 0000 46         pc_trace_pl1|rws_complete
+    000047  5a   000267 0000 00
+SYMBOL INFORMATION
+     
+SYMBOL TABLE HEADER
+     
+    000000  aa   000000 000001 
+    000001  aa   163171 155142 
+    000002  aa   164162 145145 
+    000003  aa   000000 000010 
+    000004  aa   000000 117244 
+    000005  aa   361023 525721 
+    000006  aa   000000 131036 
+    000007  aa   677216 450776 
+    000010  aa   141154 155040 
+    000011  aa   040040 040040 
+    000012  aa   000024 000040 
+    000013  aa   000034 000040 
+    000014  aa   000044 000100 
+    000015  aa   000002 000002 
+    000016  aa   000064 000000 
+    000017  aa   000000 000247 
+    000020  aa   000000 000143 
+    000021  aa   000200 000167 
+    000022  aa   000237 000143 
+    000023  aa   000064 000000 
+    000024  aa   101114 115040 
+    000025  aa   126145 162163 
+    000026  aa   151157 156040 
+    000027  aa   070056 061064 
+    000030  aa   040115 141162 
+    000031  aa   143150 040061 
+    000032  aa   071070 071040 
+    000033  aa   040040 040040 
+    000034  aa   123143 150162 
+    000035  aa   157164 150056 
+    000036  aa   123171 163115 
+    000037  aa   141151 156164 
+    000040  aa   056155 040040 
+    000041  aa   040040 040040 
+    000042  aa   040040 040040 
+    000043  aa   040040 040040 
+    000044  aa   154151 163164 
+    000045  aa   040163 171155 
+    000046  aa   142157 154163 
+    000047  aa   040040 040040 
+    000050  aa   040040 040040 
+    000051  aa   040040 040040 
+    000052  aa   040040 040040 
+    000053  aa   040040 040040 
+    000054  aa   040040 040040 
+    000055  aa   040040 040040 
+    000056  aa   040040 040040 
+    000057  aa   040040 040040 
+    000060  aa   040040 040040 
+    000061  aa   040040 040040 
+    000062  aa   040040 040040 
+    000063  aa   040040 040040 
+    000064  aa   000000 000001 
+    000065  aa   000000 000004 
+    000066  aa   000106 000034 
+    000067  aa   310157 125036 
+    000070  aa   000000 131036 
+    000071  aa   677216 600000 
+    000072  aa   000115 000042 
+    000073  aa   305736 051147 
+    000074  aa   000000 113324 
+    000075  aa   322064 400000 
+    000076  aa   000126 000026 
+    000077  aa   305736 051501 
+    000100  aa   000000 113324 
+    000101  aa   322064 400000 
+    000102  aa   000134 000034 
+    000103  aa   305736 050652 
+    000104  aa   000000 111250 
+    000105  aa   530556 400000 
+    000106  aa   076165 144144          >udd>sm>ds>w>ml>pc_trace.alm
+    000107  aa   076163 155076 
+    000110  aa   144163 076167 
+    000111  aa   076155 154076 
+    000112  aa   160143 137164 
+    000113  aa   162141 143145 
+    000114  aa   056141 154155 
+    000115  aa   076154 144144          >ldd>incl>pxss_page_stack.incl.alm
+    000116  aa   076151 156143 
+    000117  aa   154076 160170 
+    000120  aa   163163 137160 
+    000121  aa   141147 145137 
+    000122  aa   163164 141143 
+    000123  aa   153056 151156 
+    000124  aa   143154 056141 
+    000125  aa   154155 040040 
+    000126  aa   076154 144144          >ldd>incl>sst.incl.alm
+    000127  aa   076151 156143 
+    000130  aa   154076 163163 
+    000131  aa   164056 151156 
+    000132  aa   143154 056141 
+    000133  aa   154155 040040 
+    000134  aa   076154 144144          >ldd>incl>page_info.incl.alm
+    000135  aa   076151 156143 
+    000136  aa   154076 160141 
+    000137  aa   147145 137151 
+    000140  aa   156146 157056 
+    000141  aa   151156 143154 
+    000142  aa   056141 154155 
+               MULTICS ASSEMBLY CROSS REFERENCE LISTING
+
+   Value        Symbol                   Source file   Line number
+
+          66    abort_complete           pc_trace:      33,   84,   92.
+           7    abs_wire_entry           page_info:     36.
+      740000    address_mask             page_info:      9.
+         150    apt_ptr                  pxss_page_stack:     13.
+         106    arg                      pc_trace:      42,   44,   53,   55,   65,   67,   77,   79,   89,   90,   92,   96,
+                                                        97,   98,   99,  101,  115,  120,  122,  135,  137,  142,  143,  145,
+                                                       147,  160,  162,  172,  174,  184,  186,  190,  191,  193,  210,  212,
+                                                       222,  226,  236,  246,  265,  267,
+                                         pxss_page_stack:     11.
+         252    argl0                    pc_trace:     199,  255.
+         114    argl1                    pc_trace:     100,  104.
+         140    argl2                    pc_trace:     121,  125,  192.
+         170    argl3                    pc_trace:     146,  150.
+         250    argl4                    pc_trace:     196.
+           3    ast                      page_info:     20.
+      777000    aste.csl_mask_inner      page_info:     26.
+      777000    aste.records_mask_inner  page_info:     27.
+         204    before                   pxss_page_stack:     17.
+          10    cleanup_entry            page_info:     37.
+         164    cmep                     pxss_page_stack:     15.
+          12    cmep_to_coreadd.rl       page_info:     75.
+           2    cmep_to_ptw.ls           page_info:     57.
+           2    cmep_to_sdw.ls           page_info:     57.
+      777777    coreadd_mask             page_info:     57.
+          12    coreadd_to_cmep.ls       page_info:     76.
+          14    coreadd_to_ptw.ls        page_info:     57.
+          14    coreadd_to_sdw.ls        page_info:     57.
+         173    core_add                 pxss_page_stack:     16.
+         174    count                    pxss_page_stack:     16.
+         154    delta_t                  pxss_page_stack:     13.
+         312    depositing               pc_trace:      34,  231,  236.
+         205    depth                    pxss_page_stack:     17.
+         200    devadd                   pc_trace:     119,  144,  224,
+                                         pxss_page_stack:     16.
+         203    dev_signal               pxss_page_stack:     17.
+           1    df1                      page_info:      7.
+          50    done                     pc_trace:      32,   72,   79.
+         232    done_astep               pxss_page_stack:     24.
+         175    entry_sw                 pxss_page_stack:     16.
+         201    errcode                  pxss_page_stack:     16.
+           6    evict_entry              page_info:     35.
+           0    fault_entry              page_info:     29.
+         226    free_store_start_time    pxss_page_stack:     22.
+         221    free_store_temp          pxss_page_stack:     19.
+         160    free_store_temp_1        pxss_page_stack:     14.
+         152    getwork_temp             pxss_page_stack:     13.
+      100000    int                      page_info:     14.
+         177    inter                    pxss_page_stack:     16.
+         223    lock_volmap_temp         pxss_page_stack:     20.
+         156    lock_volmap_temp_1       pxss_page_stack:     14.
+         116    move_page                pc_trace:      31,  110,  115.
+          50    notify_regs              pxss_page_stack:      8.
+         172    no_paging_device         pc_trace:      31,  156.
+                no_pd_                   pc_trace:     162.
+           4    no_post                  page_info:     16.
+         250    pad                      pxss_page_stack:     33.
+         235    pageno                   pxss_page_stack:     25.
+           0    page_fault               pc_trace:      32,   38,   44.
+          15    page_fault_end           pc_trace:      32,   49,   55.
+          12    page_power               page_info:      6.
+         242    page_synch_index         pxss_page_stack:     28.
+         236    page_synch_temp          pxss_page_stack:     27.
+         240    page_synch_time          pxss_page_stack:     27.
+         245    pc_err_astep             pxss_page_stack:     30.
+         244    pc_err_ptwp              pxss_page_stack:     30.
+         243    pc_err_type              pxss_page_stack:     30.
+                pc_trace_pl1             pc_trace:      44,   55,   67,   79,   92,  115,  137,  162,  174,  186,  212,  226,
+                                                       236,  246,  255,  267.
+           3    pdm                      page_info:     19.
+           5    pd_flush_entry           page_info:     34.
+         246    pf_sdw                   pxss_page_stack:     31.
+         230    post_io_start_time       pxss_page_stack:     22.
+           4    post_purge_entry         page_info:     33.
+           3    pre_page_entry           page_info:     32.
+         100    pre_temp                 pxss_page_stack:     10.
+          76    pre_time                 pxss_page_stack:     10.
+          20    pri                      page_info:     15.
+         176    ptp_astep                pxss_page_stack:     16.
+           2    ptw                      page_info:     21.
+      400000    ptw.nulled               page_info:     12.
+      777760    ptw_add_mask             page_info:     57.
+           2    ptw_to_cmep.rl           page_info:     57.
+          24    ptw_to_cmep_lower.rl     page_info:     57.
+          14    ptw_to_coreadd.rl        page_info:     57.
+         172    pvtx                     pxss_page_stack:     16.
+         210    pxss_save_stack          pxss_page_stack:     18.
+         216    pxss_stackp              pxss_page_stack:     18.
+           6    pxss_stack_size          pxss_page_stack:      5,   18.
+           1    read_entry               page_info:     30.
+         272    rehash                   pc_trace:      34,  217,  226.
+         342    running                  pc_trace:      33,  251,  255.
+         355    rws_complete             pc_trace:      33,  260,  267.
+         207    rws_truncated            pc_trace:      31,  167,  174.
+          60    save_stack               pxss_page_stack:      9.
+         222    savx2_3                  pxss_page_stack:     19.
+      777760    sdw_add_mask             page_info:     57.
+           2    sdw_to_cmep.rl           page_info:     57.
+          14    sdw_to_coreadd.rl        page_info:     57.
+         105    setup_argl_1             pc_trace:      91,   95.
+         132    setup_argl_2             pc_trace:     114,  118,  235,  245.
+         160    setup_argl_3             pc_trace:     136,  141,  161,  173,  225.
+         243    setup_argl_4             pc_trace:      43,   54,   66,   78,  185,  189,  211,  266.
+           3    sst                      pc_trace:      39,   50,   61,   64,   73,   76,   85,   88,  111,  132,  157,  168,
+                                                       171,  180,  183,  206,  209,  218,  232,  242,  252,  261,  264,
+                                         page_info:     18,   19,   20.
+         214    sst.abs_wired_count      sst:          126.
+         241    sst.acost                sst:          141.
+      400000    sst.activate_activated   sst:          201.
+         517    sst.activations          sst:          182.
+          52    sst.ainitp               sst:           52.
+          52    sst.ainitp1              sst:           53.
+         244    sst.alaps                sst:          144.
+         230    sst.aneedsize            sst:          135.
+         236    sst.asearches            sst:          138.
+         243    sst.askipdius            sst:          143.
+         235    sst.askipsehs            sst:          137.
+         240    sst.askipsinit           sst:          140.
+         224    sst.askipsize            sst:          134.
+         237    sst.askipslevel          sst:          139.
+         242    sst.askipslock           sst:          142.
+          30    sst.astap                sst:           35.
+         254    sst.asteps               sst:          151.
+          21    sst.astl                 sst:           26.
+          22    sst.astl_event           sst:           27.
+      400000    sst.astl_notify_requested      sst:           30.
+          23    sst.astl_notify_requested_word       sst:           29.
+          33    sst.astsize              sst:           37.
+          72    sst.ast_ht_n_buckets     sst:           76.
+          70    sst.ast_ht_ptr           sst:           75.
+          73    sst.ast_ht_uid_mask      sst:           77.
+         260    sst.ast_locked_at_time   sst:          152.
+         262    sst.ast_locked_total_time      sst:          153.
+         266    sst.ast_locking_count    sst:          155.
+         264    sst.ast_lock_wait_time   sst:          154.
+      400000    sst.ast_track            sst:          240.
+         566    sst.ast_track_word       sst:          239.
+          50    sst.atempp               sst:           46.
+          50    sst.atempp1              sst:           47.
+         600    sst.audit_seg_state_change_bw  sst:          253.
+         573    sst.audit_seg_state_chg  sst:          249.
+         126    sst.aused                sst:          104.
+          44    sst.ausedp               sst:           43.
+         534    sst.backup_activations   sst:          198.
+         513    sst.bad_sgms             sst:          178.
+         116    sst.ceiling              sst:           96.
+          75    sst.checksum_filemap     sst:           79.
+         476    sst.claim_notmod         sst:          166.
+         477    sst.claim_passed_used    sst:          167.
+         516    sst.claim_runs           sst:          181.
+         474    sst.claim_skip_cme       sst:          164.
+         475    sst.claim_skip_free      sst:          165.
+         500    sst.claim_skip_ptw       sst:          168.
+         502    sst.claim_steps          sst:          170.
+         501    sst.claim_writes         sst:          169.
+         267    sst.cleanup_count        sst:          156.
+         270    sst.cleanup_real_time    sst:          157.
+          67    sst.cl_skips_pinned      sst:           74.
+          34    sst.cmesize              sst:           38.
+          54    sst.cmp                  sst:           56.
+         252    sst.cpu_bf_time          sst:          150.
+         160    sst.cpu_sf_time          sst:          114.
+      400000    sst.crash_test_segmove   sst:          246.
+         571    sst.crash_test_segmove_word    sst:          245.
+         117    sst.ctwait               sst:           97.
+         100    sst.cycle_pv_allocation  sst:           82.
+         127    sst.damaged_ct           sst:          105.
+         507    sst.dblw_resurrections   sst:          175.
+         130    sst.deact_count          sst:          106.
+         572    sst.delayed_seg_state_chg      sst:          248.
+         132    sst.demand_deactivations       sst:          108.
+         131    sst.demand_deact_attempts      sst:          107.
+         567    sst.dirlock_writebehind  sst:          242.
+         520    sst.dir_activations      sst:          183.
+         110    sst.dir_page_faults      sst:           90.
+      400000    sst.dm_enabled           sst:           50.
+          51    sst.dm_enabled_word      sst:           49.
+          62    sst.double_write         sst:           66.
+         546    sst.event                sst:          213.
+         523    sst.evict_phmbit         sst:          189.
+         523    sst.evict_ptp            sst:          188.
+         523    sst.evict_recover_data   sst:          186.
+          66    sst.fc_skips_pinned      sst:           73.
+         220    sst.first_core_block     sst:          130.
+         525    sst.force_pwrites        sst:          192.
+         524    sst.force_swrites        sst:          191.
+         527    sst.force_updatevs       sst:          194.
+         526    sst.fw_none              sst:          193.
+         222    sst.fw_retries           sst:          132.
+         515    sst.good_sgms            sst:          180.
+         521    sst.hedge_updatevs       sst:          184.
+         522    sst.hedge_writes         sst:          185.
+         121    sst.laps                 sst:           99.
+         221    sst.last_core_block      sst:          131.
+          44    sst.level                sst:           41.
+         107    sst.level_1_page_faults  sst:           89.
+         104    sst.lock_waits           sst:           86.
+         154    sst.loop_locks           sst:          112.
+         156    sst.loop_lock_time       sst:          113.
+         533    sst.makeknown_activations      sst:          197.
+         577    sst.max_seg_state_change_bw    sst:          252.
+         535    sst.metering_flags       sst:          199.
+          74    sst.meter_ast_locking    sst:           78.
+         562    sst.mod_during_write     sst:          228.
+         115    sst.needc                sst:           95.
+         565    sst.new_pages            sst:          237.
+      400000    sst.nolock               sst:           71.
+          65    sst.nolock_word          sst:           70.
+      400000    sst.notify               sst:          216.
+         547    sst.notify_word          sst:          215.
+          44    sst.no_aste              sst:           44.
+          16    sst.npfs_misses          sst:           23.
+          24    sst.nused                sst:           32.
+         101    sst.n_trailers           sst:           83.
+         506    sst.oopv                 sst:          174.
+          76    sst.page_read_errors     sst:           80.
+          77    sst.page_write_errors    sst:           81.
+         113    sst.pc_io_waits          sst:           93.
+           2    sst.pc_trace             pc_trace:      86,  112,  133,  158,  169,  181,  207,  219,  233,  243,  253,  262,
+                                         sst:          234.
+          10    sst.pc_trace_pf          pc_trace:      40,   51,   62,   74,
+                                         sst:          232.
+         106    sst.pdir_page_faults     sst:           88.
+         532    sst.pf_unlock_ptl_meterings    sst:          196.
+         530    sst.pf_unlock_ptl_time   sst:          195.
+         545    sst.pid                  sst:          212.
+          14    sst.post_in_core         sst:           21.
+         165    sst.post_list_size       sst:          118.
+         167    sst.post_purge_calls     sst:          120.
+          12    sst.post_purge_time      sst:           20.
+         166    sst.post_purgings        sst:          119.
+         372    sst.pp_meters            sst:          159.
+         170    sst.pre_page_calls       sst:          121.
+         171    sst.pre_page_list_size   sst:          122.
+         172    sst.pre_page_misses      sst:          123.
+         164    sst.pre_page_size        sst:          117.
+          10    sst.pre_page_time        sst:           19.
+         173    sst.pre_pagings          sst:          124.
+         503    sst.pre_seeks_failed     sst:          171.
+          20    sst.ptl                  sst:           25.
+          32    sst.ptl_wait_ct          sst:           36.
+          40    sst.pts                  sst:           40.
+          25    sst.ptwbase              sst:           33.
+         223    sst.pvhtp                sst:          133.
+         133    sst.reads                sst:          109.
+         217    sst.recopies             sst:          129.
+          61    sst.removep              sst:           64.
+         504    sst.resurrections        sst:          172.
+         111    sst.ring_0_page_faults   sst:           91.
+          36    sst.root_astep           sst:           39.
+          64    sst.root_pvtx            sst:           68.
+         112    sst.rqover               sst:           92.
+          17    sst.salv                 sst:           24.
+           1    sst.sc_trace             sst:          235.
+         555    sst.segmove_astep        sst:          223.
+         551    sst.segmove_found_synch  sst:          219.
+         550    sst.segmove_io_limit     sst:          218.
+         545    sst.segmove_lock         sst:          210.
+         554    sst.segmove_max_tries    sst:          222.
+         561    sst.segmove_new_addr_astep     sst:          227.
+         553    sst.segmove_n_reads      sst:          221.
+         560    sst.segmove_old_addr_astep     sst:          226.
+         556    sst.segmove_pvtx         sst:          224.
+         552    sst.segmove_synch_disappeared  sst:          220.
+         557    sst.segmove_vtocx        sst:          225.
+         536    sst.seg_fault_calls      sst:          203.
+         576    sst.seg_state_change_limit     sst:          251.
+         574    sst.seg_state_chg_delay  sst:          250.
+         601    sst.seg_state_chg_operation    sst:          254.
+         247    sst.setfaults_acc        sst:          147.
+         246    sst.setfaults_all        sst:          146.
+         512    sst.sgm_pf               sst:          177.
+         514    sst.sgm_sgft             sst:          179.
+         510    sst.sgm_time             sst:          176.
+         153    sst.short_pf_count       sst:          111.
+         124    sst.skipm                sst:          102.
+         125    sst.skipos               sst:          103.
+         123    sst.skipu                sst:          101.
+         122    sst.skipw                sst:          100.
+           0    sst.space                sst:           18.
+          60    sst.startp               sst:           62.
+         114    sst.steps                sst:           94.
+         234    sst.stepsa               sst:          136.
+         543    sst.stk_pages_truncated  sst:          208.
+         544    sst.stk_pages_truncated_in_core      sst:          209.
+         542    sst.stk_truncate_shouldnt_did  sst:          207.
+         541    sst.stk_truncate_shouldnt_didnt      sst:          206.
+         540    sst.stk_truncate_should_did    sst:          205.
+         537    sst.stk_truncate_should_didnt  sst:          204.
+          53    sst.strsize              sst:           55.
+         102    sst.synch_activations    sst:           84.
+         103    sst.synch_skips          sst:           85.
+         215    sst.system_type          sst:          127.
+          63    sst.temp_w_event         sst:           67.
+          26    sst.tfreep               sst:           34.
+          15    sst.thrashing            sst:           22.
+         250    sst.total_bf             sst:          148.
+         251    sst.total_bf_pf          sst:          149.
+         105    sst.total_locks_set      sst:           87.
+         163    sst.total_sf             sst:          116.
+         162    sst.total_sf_pf          sst:          115.
+         564    sst.trace_sw             pc_trace:      39,   50,   61,   73,   85,  111,  132,  157,  168,  180,  206,  218,
+                                                       232,  242,  252,  261,
+                                         sst:          230.
+         272    sst.tree_count           sst:          158.
+           4    sst.tty_trace            sst:          233.
+         245    sst.updates              sst:          145.
+          56    sst.usedp                sst:           58.
+         505    sst.volmap_seg_page_faults     sst:          173.
+         120    sst.wired                sst:           98.
+         216    sst.wired_copies         sst:          128.
+         174    sst.wire_proc_data       sst:          125.
+         143    sst.writes               sst:          110.
+         473    sst.write_hunts          sst:          163.
+         570    sst.write_limit          sst:          243.
+          57    sst.wtct                 sst:           60.
+         472    sst.wusedp               sst:          161.
+         563    sst.zero_pages           sst:          229.
+        1000    sst_size                 sst:           15.
+          75    stackp                   pxss_page_stack:      9.
+          15    stack_size               pxss_page_stack:      6,    9.
+         136    stock_temp               pxss_page_stack:     12.
+         217    stock_temp_1             pxss_page_stack:     19.
+         220    stock_temp_2             pxss_page_stack:     19.
+         134    temp                     pxss_page_stack:     11.
+         166    temp1                    pxss_page_stack:     15.
+         167    temp2                    pxss_page_stack:     15.
+         207    tmp_event                pxss_page_stack:     18.
+         144    tmp_ev_channel           pxss_page_stack:     13.
+         146    tmp_ev_message           pxss_page_stack:     13.
+         202    tmp_ring                 pxss_page_stack:     17.
+         165    total_steps              pxss_page_stack:     15.
+         225    tr_pd_delete_            pc_trace:      34,  179,  186.
+         254    tr_rws                   pc_trace:      34,  205,  212.
+         224    volmap_page_temp         pxss_page_stack:     21.
+         233    volmap_page_temp_1       pxss_page_stack:     24.
+         142    volmap_save_ptr          pxss_page_stack:     12.
+         162    volmap_save_sdw          pxss_page_stack:     14.
+         140    volmap_temp              pxss_page_stack:     12.
+         170    volmap_temp_1            pxss_page_stack:     15.
+         171    volmap_temp_2            pxss_page_stack:     15.
+         234    vtocx                    pxss_page_stack:     25.
+         326    withdrawing              pc_trace:      34,  241,  246.
+           2    write_entry              page_info:     31.
+          32    write_page               pc_trace:      32,   60,   67.
+         206    x5                       pxss_page_stack:     17.
+         142    zero_page                pc_trace:      31,  131,  137.
+
+
+NO FATAL ERRORS
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

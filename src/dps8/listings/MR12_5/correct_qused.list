@@ -1,0 +1,2332 @@
+	COMPILATION LISTING OF SEGMENT correct_qused
+	Compiled by: Multics PL/I Compiler, Release 33e, of October 6, 1992
+	Compiled at: CGI                             
+	Compiled on: 2000-04-18_1059.83_Tue_mdt
+	    Options: optimize list
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1984 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4 */
+       14 correct_qused: proc (a_dir, a_osu, a_odu, a_nsu, a_ndu, a_did_anything, a_code);
+       15 
+       16 /* Quota used reconstructor. An original algorithm by Bernard Greenberg
+       17*   Feb. 1977
+       18*
+       19*   Modified 1/82 BIM for write lock on dir to get exclusive lock.
+       20*   Modified 8/83 E. N. Kittltiz for search_ast$check.
+       21*   Modified 7/84 Keith Loepere to use the new dc_find.
+       22*   Modified 10/84 Keith Loepere to provide audit info.
+       23*   Modified 12/84 Keith Loepere for new dir quota definition.
+       24**/
+       25 
+       26 /* Parameters */
+       27 
+       28 dcl  a_code fixed bin (35) parameter;
+       29 dcl  a_did_anything bit (1) aligned parameter;
+       30 dcl  a_dir char (*) parameter;
+       31 dcl  a_ndu fixed bin (34) parameter;
+       32 dcl  a_nsu fixed bin (34) parameter;
+       33 dcl  a_odu fixed bin (34) parameter;
+       34 dcl  a_osu fixed bin (34) parameter;
+       35 
+       36 /* Variables */
+       37 
+       38 dcl  branches_passed fixed bin;
+       39 dcl  code fixed bin (35);
+       40 dcl  correct_dir bit (1) aligned;
+       41 dcl  correct_seg bit (1) aligned;
+       42 dcl  did_anything bit (1) aligned;
+       43 dcl  dname char (168);
+       44 dcl  dpvid bit (36) aligned;
+       45 dcl  dudelta fixed bin (34);
+       46 dcl  duid bit (36) aligned;
+       47 dcl  dvtocx fixed bin;
+       48 dcl  htblsize fixed bin;
+       49 dcl  1 local_vtoce aligned like vtoce;
+       50 dcl  ndu fixed bin (34);				/* old-new X seg-dir used */
+       51 dcl  nentries fixed bin;
+       52 dcl  nsu fixed bin (34);
+       53 dcl  odu fixed bin (34);
+       54 dcl  osu fixed bin (34);
+       55 dcl  scode fixed bin (35);
+       56 dcl  scode1 fixed bin (35);
+       57 dcl  sudelta fixed bin (34);
+       58 
+       59 /* External */
+       60 
+       61 dcl  error_table_$rqover fixed bin (35) ext;
+       62 dcl  error_table_$vtoce_connection_fail fixed bin (35) ext;
+       63 
+       64 /* Misc */
+       65 
+       66 dcl  (addr, fixed, mod, null, ptr, rel, unspec) builtin;
+       67 
+       68 dcl  bad_dir_ condition;
+       69 
+       70 /* Entries */
+       71 
+       72 dcl  get_pvtx entry (bit (36) aligned, fixed bin (35)) returns (fixed bin);
+       73 dcl  lock$lock_ast entry;
+       74 dcl  lock$unlock_ast entry;
+       75 dcl  logical_volume_manager$lvtep entry (bit (36) aligned, ptr, fixed bin (35));
+       76 dcl  quotaw$rvq entry (ptr, fixed bin (34), fixed bin (34), fixed bin (34), fixed bin (34));
+       77 dcl  search_ast$check entry (bit (36) aligned, bit (36) aligned, fixed bin, fixed bin (35)) returns (ptr);
+       78 dcl  syserr entry options (variable);
+       79 dcl  vtoc_attributes$correct_qused entry (bit (36) aligned, bit (36) aligned,
+       80 	fixed bin, fixed bin (34), fixed bin (34), fixed bin (35));
+       81 dcl  vtoc_man$get_vtoce entry (bit (36) aligned, fixed bin, fixed bin, bit (3), ptr, fixed bin (35));
+       82 
+       83 
+       84 /* The basic operational theorem of this program is that the quota used total for any directory quota cell  is
+       85*   either  right  or  wrong  by  a finite and constant amount.  If that amount of error can be computed at any
+       86*   given time (T0) by figuring out what it should be, it can be corrected at any time  later  by  adding  this
+       87*   fixed correction, regardless of how many pages were created or destroyed in the interim. */
+       88 
+       89 	correct_dir, correct_seg = "1"b;
+       90 	go to join;
+       91 
+       92 correct_seg_qused: entry (a_dir, a_osu, a_nsu, a_did_anything, a_code);
+       93 
+       94 	correct_dir = "0"b;
+       95 	correct_seg = "1"b;
+       96 	go to join;
+       97 
+       98 correct_dir_qused: entry (a_dir, a_odu, a_ndu, a_did_anything, a_code);
+       99 
+      100 	correct_dir = "1"b;
+      101 	correct_seg = "0"b;
+      102 
+      103 join:	dname = a_dir;
+      104 	did_anything = "0"b;
+      105 	scode, code = 0;
+      106 	vtocep = addr (local_vtoce);
+      107 
+      108 	call dc_find$dir_write_priv (dname, FS_OBJ_CORRECT_QUSED, dp, code);
+      109 	if code ^= 0 then go to err;
+      110 
+      111 	if correct_seg then do;
+      112 	     call logical_volume_manager$lvtep (dir.sons_lvid, (null ()), code);
+      113 						/* We check before and after cycle, the
+      114*						   first time to rule out problem. We check at the
+      115*						   end if demount occured during run. Still small window. */
+      116 	     if code ^= 0 then go to unlock_err;
+      117 	end;
+      118 
+      119 /* Directory is locked at this point (actually back at dc_find). Until we 
+      120*   unlock it, nobody can  truncate  VTOCEs  or  create  or  delete segments
+      121*   or dirs in it. Finite and constant set of inferior UID's from here to the
+      122*   end.   Furthermore,  all  "used"  change  can only be on active segments,
+      123*   all of which must be active now, and no new ones can become active because
+      124*   we have the directory locked. */
+      125 
+      126 	nentries = dir.seg_count + dir.dir_count;
+      127 	htblsize = (nentries * 7) / 5;
+      128 
+      129 	duid = dir.uid;				/* Get uid into automatic */
+      130 	dpvid = dir.pvid;				/* pvid of directory, copied from branch */
+      131 	dvtocx = dir.vtocx;				/* vtocx of directory, copied from branch */
+      132 
+      133 	call lock$lock_ast;
+      134 
+      135 /* Lock the AST.  If this dir is not active, none of its sons can become active until
+      136*   we unlock this dir. If it is, we must call quotaw to get info. */
+      137 
+      138 	astep = search_ast$check (duid, dpvid, dvtocx, code); /* is it there? */
+      139 	if code ^= 0 then do;			/* double-uid */
+      140 	     call lock$unlock_ast;
+      141 	     go to unlock_err;
+      142 	end;
+      143 
+      144 	if astep = null then do;
+      145 	     nsu = 0;				/* At time T0, which never existed, no active inferior
+      146*						   quota was found */
+      147 	     call lock$unlock_ast;			/* And will remain so. */
+      148 
+      149 	     call internal_vtoc_man (dir.uid, dir.pvid, dir.vtocx);
+      150 						/* Get current quota numbers for this dir */
+      151 	     if code ^= 0 then go to unlock_err;
+      152 
+      153 	     ndu = fixed (vtoce.records, 9);		/* Count dirs pages toward itself */
+      154 	     osu = vtoce.used (0);
+      155 	     odu = vtoce.used (1);			/* Read old totals at time T0 */
+      156 	end;
+      157 
+      158 	else					/* There is active inferior quota */
+      159 	     call quotaw$rvq (astep, osu, odu, nsu, ndu); /* Get false (o) numbers and active
+      160*						   inferior totals (n) */
+      161 
+      162 /* The time that quotaw$rvq reads these numbers is called "T0". The "false" numbers read out of the  ASTE  for
+      163*   this dir at T0 is (was) wrong by  a  finite  number,  "d(0:1)".   The   difference   between   the   active
+      164*   inferior totals  and   the   "right" number at time T0 is the sum of the non-active used for all VTOCEs not
+      165*   active  at  time  T0.  As long as the AST remains locked, the membership of this set cannot change. We have
+      166*   not  unlocked it  since  T0.  From this number, we can find "d". */
+      167 
+      168 	begin;					/* * * * * START OF BEGIN BLOCK * * * * * * */
+      169 
+      170 dcl  hshx fixed bin;
+      171 dcl  htbl (0:htblsize - 1) bit (36) aligned;
+      172 						/* Enter begin block to make hashtable */
+      173 
+      174 
+      175 	     unspec (htbl) = "0"b;			/* No stuff in table */
+      176 	     if astep ^= null then do;		/* AST still locked here */
+      177 		do astep = ptr (astep, aste.infp) repeat ptr (astep, aste.infl) while (rel (astep));
+      178 						/* Loop the AST to record activity at T0 */
+      179 
+      180 		     if hash_search ((aste.uid)) then call syserr (1, "correct_qused: hash error");
+      181 		     else htbl (hshx) = aste.uid;
+      182 		end;
+      183 		call lock$unlock_ast;		/* I don't care what gets deactivated now */
+      184 	     end;
+      185 
+      186 	     branches_passed = 0;			/* Don't loop */
+      187 	     nentries = nentries + dir.lcount;		/* Gotta count them too */
+      188 
+      189 	     do ep = ptr (dp, dir.entryfrp) repeat ptr (dp, entry.efrp) while (rel (ep));
+      190 		branches_passed = branches_passed + 1;
+      191 		if branches_passed > nentries then signal bad_dir_;
+      192 		if entry.bs then do;		/* Skip them links */
+      193 		     if entry.owner ^= dir.uid
+      194 			| (entry.type ^= SEG_TYPE & entry.type ^= DIR_TYPE) then signal bad_dir_;
+      195 		     if ^hash_search (entry.uid) then do; /* If not active at T0, get VTOC stuff */
+      196 			if ^correct_seg then
+      197 			     if ^entry.dirsw then go to next_entry; /* avoid asking for non-mounted vtoce */
+      198 			call internal_vtoc_man (entry.uid, (entry.pvid), entry.vtocx);
+      199 			if code ^= 0 then scode = code;
+      200 			else do;
+      201 			     if vtoce.dirsw then do;
+      202 				if vtoce.received (0) = 0 & ^vtoce.master_dir then nsu = nsu + vtoce.used (0);
+      203 				if vtoce.received (1) = 0 then ndu = ndu + vtoce.used (1); /* dirs pages already counted in used */
+      204 			     end;
+      205 			     else nsu = nsu + fixed (vtoce.records, 9);
+      206 			end;
+      207 		     end;
+      208 		end;
+      209 next_entry:    end;
+      210 	     if branches_passed < nentries then signal bad_dir_;
+      211 
+      212 hash_search: proc (c_uid) returns (bit (1) aligned);	/* Internal to begin block */
+      213 
+      214 dcl  c_uid bit (36) aligned parameter;
+      215 
+      216 dcl  cuid bit (36) aligned;
+      217 dcl  hshi fixed bin;
+      218 
+      219 	cuid = c_uid;
+      220 	if cuid = "0"b then signal bad_dir_;
+      221 	hshi = mod (fixed (cuid, 36), htblsize);
+      222 	do hshx = hshi to htblsize - 1, 0 to hshi - 1;
+      223 	     if htbl (hshx) = cuid then return ("1"b);
+      224 	     else if htbl (hshx) = "0"b then return ("0"b);
+      225 	end;
+      226 	signal bad_dir_;				/* dir header must have lied */
+      227      end hash_search;
+      228 	end;					/* * * * * END OF BEGIN BLOCK * * * * * * * */
+      229 
+      230 
+      231 /* Now nsu and ndu are the correct used totals at time T0, while osu and odu are the erroneous totals at  time
+      232*   T0. Thus, we can find d(0:1), the difference.  This difference will not change, it is the fixed error. */
+      233 
+      234 
+      235 	sudelta = nsu - osu;
+      236 	dudelta = ndu - odu;
+      237 
+      238 /* We are now free to change whatever we have at any time by these differences. */
+      239 
+      240 	if scode ^= 0 then do;			/* if was problem check for lv demount window */
+      241 	     if correct_seg then do;
+      242 		call logical_volume_manager$lvtep (dir.sons_lvid, (null ()), scode1);
+      243 		if scode1 ^= 0 then do;
+      244 		     code = scode1;
+      245 		     sudelta, dudelta = 0;
+      246 		end;
+      247 	     end;
+      248 	end;
+      249 
+      250 	if ^correct_seg then sudelta = 0;
+      251 	if ^correct_dir then dudelta = 0;
+      252 
+      253 	if sudelta ^= 0 | dudelta ^= 0
+      254 	then call vtoc_attributes$correct_qused (duid, dir.pvid, (dir.vtocx), sudelta, dudelta, code);
+      255 	else code = 0;
+      256 
+      257 	if code = 0 then did_anything = "1"b;
+      258 	else if code = error_table_$rqover then did_anything = "1"b; /* Avoid page fault */
+      259 
+      260 
+      261 unlock_err:
+      262 	call dc_find$finished (dp, "1"b);
+      263 err:	if code = 0 then code = scode;
+      264 
+      265 	a_did_anything = did_anything;
+      266 	a_code = code;
+      267 	if correct_seg then do;
+      268 	     a_nsu = nsu;
+      269 	     a_osu = osu;
+      270 	end;
+      271 	if correct_dir then do;
+      272 	     a_ndu = ndu;
+      273 	     a_odu = odu;
+      274 	end;
+      275 	return;
+      276 
+      277 
+      278 internal_vtoc_man: proc (b_uid, b_pvid, b_vtocx);
+      279 
+      280 /* Internal proc to get a whole bunch of vtoc info for a segment guaranteed not to be active */
+      281 
+      282 dcl  b_pvid bit (36) aligned parameter;
+      283 dcl  b_uid bit (36) aligned parameter;
+      284 dcl  b_vtocx fixed bin (17) unal parameter;
+      285 
+      286 dcl  pvtx fixed bin;
+      287 
+      288 	pvtx = get_pvtx (b_pvid, code);
+      289 	if code ^= 0 then return;
+      290 
+      291 	call vtoc_man$get_vtoce (b_pvid, pvtx, (b_vtocx), "100"b, vtocep, code);
+      292 	if code = 0 then if vtoce.uid ^= b_uid then code = error_table_$vtoce_connection_fail;
+      293      end;
+      294 
+      295 /* format: off */
+      296 
+      297  /*	BEGIN INCLUDE FILE ...aste.incl.pl1 ... */
+  1     2 
+  1     3 /* Template for an AST entry. Length = 12 words. */
+  1     4 
+  1     5 /* Words 0 to 7, and 11 are read by PC; they are read and modified by SC.
+  1     6*   Words 8, 9 and 10 are modified by PC; they should never be modified without locking the PC lock */
+  1     7 /* Modified January 1985 by Keith Loepere for multi_class. */
+  1     8 
+  1     9 dcl  astep ptr;
+  1    10 
+  1    11 dcl 1 aste based (astep) aligned,
+  1    12 
+  1    13     (2 fp bit (18),					/* forward  used list rel pointer */
+  1    14     2 bp bit (18),					/* backward used list rel pointer */
+  1    15 
+  1    16     2 infl bit (18),				/* ptr to NEXT  in list of ASTE's of my brothers */
+  1    17     2 infp bit (18),				/* ptr to FIRST in list of ASTE's of my children */
+  1    18 
+  1    19     2 strp bit (18),				/* rel pointer to process trailer */
+  1    20     2 par_astep bit (18),				/* rel pointer to parent aste */
+  1    21 
+  1    22     2 uid bit (36),					/* segment unique id */
+  1    23 
+  1    24     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  1    25     2 pvtx fixed bin (8),				/* physical volume table index */
+  1    26     2 vtocx fixed bin (17),				/* vtoc entry index */
+  1    27 
+  1    28     2 usedf bit (1),				/* ast entry is being used if non-zero */
+  1    29     2 init bit (1),					/* used bit - insure 1 lap */
+  1    30     2 gtus bit (1),					/* global transparent usage switch */
+  1    31     2 gtms bit (1),					/* global transparent modified switch */
+  1    32     2 hc bit (1),					/* hard core segment */
+  1    33     2 hc_sdw bit (1),				/* aste with sdw for hardcore seg if non-zero */
+  1    34     2 any_access_on bit (1),				/* any sdw allows access, unless write_access_on */
+  1    35     2 write_access_on bit (1),			/* any sdw allows write access */
+  1    36     2 inhibit_cache bit (1),				/* flag not to reset above bits */
+  1    37     2 explicit_deact_ok bit (1),			/* set if user can deactivate seg */
+  1    38     2 deact_error bit (1),				/* set if error occurred while deactivating */
+  1    39     2 hc_part bit (1),				/* set if pages are in a hardcore partition */
+  1    40     2 fm_damaged bit (1),				/* set if filemap checksum was ever bad */
+  1    41     2 multi_class bit (1),				/* set if page_control should watch state changes to this segment */
+  1    42     2 pad1 bit (2),					/* OO */
+  1    43     2 dius bit (1),					/* dumper in use switch */
+  1    44     2 nid bit (1),					/* if on prevents addtion to incremental dump map */
+  1    45     2 dmpr_pad bit (1),
+  1    46     2 ehs bit (1),					/* entry hold switch */
+  1    47     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  1    48     2 dirsw bit (1),				/* directory switch */
+  1    49     2 master_dir bit (1),				/* master dir - a root for the log volume */
+  1    50     2 volmap_seg bit (1),				/* volmap_seg for some volume */
+  1    51     2 tqsw (0:1) bit (1),				/* terminal quota switch - (0) for non dir pages */
+  1    52     2 pad_ic bit (10),				/* Used to be aste.ic */
+  1    53 
+  1    54     2 dtu bit (36),					/* date and time segment last used */
+  1    55 
+  1    56     2 dtm bit (36),					/* date and time segment last modified */
+  1    57 
+  1    58 
+  1    59     2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  1    60 
+  1    61     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  1    62 
+  1    63     2 csl bit (9),					/* current segment length in 1024 words units */
+  1    64     2 fmchanged bit (1),				/* turned on by page if file map changed */
+  1    65     2 fms bit (1),					/* file modified switch */
+  1    66     2 npfs bit (1),					/* no page fault switch */
+  1    67     2 gtpd bit (1),					/* global transparent paging device switch */
+  1    68     2 dnzp bit (1),					/* don't null out if zero page switch */
+  1    69     2 per_process bit (1),				/* use master quota for this entry */
+  1    70     2 ddnp bit (1),					/* don't deposit nulled pages */
+  1    71     2 pad2 bit (2),
+  1    72     2 records bit (9),				/* number of records used by the seg in sec storage */
+  1    73     2 np bit (9),					/* number of pages in core */
+  1    74 
+  1    75 
+  1    76     2 ht_fp bit (18),				/* hash table forward rel pointer */
+  1    77     2 fmchanged1 bit (1),				/* value of "fmchanged" saved by pc$get_file_map */
+  1    78     2 damaged bit (1),				/* PC declared segment unusable */
+  1    79     2 pack_ovfl bit (1),				/* page fault on seg would cause pack overflow */
+  1    80     2 synchronized bit (1),				/* Data Management synchronized segment */
+  1    81     2 pad3 bit (6),					/* OOOOOOOOO */
+  1    82     2 ptsi bit (2),					/* page table size index */
+  1    83     2 marker bit (6)) unaligned;			/* marker to indicate last word of ASTE */
+  1    84 
+  1    85 
+  1    86 dcl  asta (0 : 8000) bit (36*12 /* sst-> sst.astsize */) based aligned;
+  1    87 
+  1    88 
+  1    89 dcl 1 aste_part aligned based (astep),
+  1    90 
+  1    91     2 one bit (36) unaligned,				/* fp and bp */
+  1    92     2 two bit (36*11 - 8) unaligned,			/* part that has to be zeroed when ASTE is freed */
+  1    93     2 three bit (8) unaligned;			/* ptsi and marker */
+  1    94 
+  1    95 
+  1    96 dcl 1 seg_aste based (astep) aligned,			/* Overlay because quota is only for dirs */
+  1    97     2 pad1 bit (8*36),
+  1    98     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  1    99     2 pad2 bit (3*36);
+  1   100 
+  1   101 /*	END INCLUDE FILE ... aste.incl.pl1 */
+      297 
+      298  /* BEGIN include file dc_find_dcls.incl.pl1 */
+  2     2 
+  2     3 /* Calling sequences for dc_find.  Keith Loepere, June 1984. */
+  2     4 /* Added a few more, October 1984. */
+  2     5 /* 85-05-08, EJ Sharpe: added obj_delete_uid, obj_status_read_uid, and obj_status_read_raw_uid */
+  2     6 /* 85-05-15, EJ Sharpe: changed dir_write_raw_uid to mdir_set_quota_uid */
+  2     7 
+  2     8 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  2     9 
+  2    10 dcl  DC_FIND_CHASE			fixed bin (1) static options (constant) init (1);
+  2    11 dcl  DC_FIND_NO_CHASE		fixed bin (1) static options (constant) init (0);
+  2    12 dcl  DC_FIND_NO_UNLOCK_DIR		bit (1) aligned static options (constant) init ("0"b);
+  2    13 dcl  DC_FIND_UNLOCK_DIR		bit (1) aligned static options (constant) init ("1"b);
+  2    14 
+  2    15 dcl  dc_find$dir_for_append		entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  2    16 dcl  dc_find$dir_for_append_raw	entry (char (168), char (32), fixed bin (1), ptr, ptr, fixed bin (35));
+  2    17 dcl  dc_find$dir_for_retrieve_append	entry (char (168), char (32), fixed bin (1), ptr, ptr, ptr, fixed bin (35));
+  2    18 
+  2    19 dcl  dc_find$dir_initiate		entry (char (168), ptr, fixed bin (35));
+  2    20 
+  2    21 dcl  dc_find$dir_move_quota		entry (char (168), ptr, ptr, fixed bin (35));
+  2    22 
+  2    23 dcl  dc_find$dir_read		entry (char (168), ptr, fixed bin (35));
+  2    24 dcl  dc_find$dir_read_priv		entry (char (168), ptr, fixed bin (35));
+  2    25 
+  2    26 dcl  dc_find$dir_reclassify		entry (char (168), ptr, ptr, ptr, fixed bin (35));
+  2    27 
+  2    28 dcl  dc_find$dir_salvage		entry (char (168), bit (36) aligned, ptr, fixed bin (35));
+  2    29 
+  2    30 dcl  dc_find$dir_write		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  2    31 dcl  dc_find$dir_write_priv		entry (char (168), fixed bin (18) uns, ptr, fixed bin (35));
+  2    32 
+  2    33 dcl  dc_find$finished		entry (ptr, bit (1) aligned);
+  2    34 
+  2    35 dcl  dc_find$link_target		entry (char (168), char (32), fixed bin (35));
+  2    36 
+  2    37 dcl  dc_find$mdir_set_quota_uid	entry ((0:15) bit (36) aligned, char (168), fixed bin (18) uns, ptr, ptr, fixed bin (35));
+  2    38 
+  2    39 dcl  dc_find$obj_access_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    40 dcl  dc_find$obj_access_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    41 
+  2    42 dcl  dc_find$obj_attributes_read	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    43 dcl  dc_find$obj_attributes_read_ptr	entry (ptr, ptr, fixed bin (35));
+  2    44 
+  2    45 dcl  dc_find$obj_attributes_write	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    46 dcl  dc_find$obj_attributes_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    47 
+  2    48 dcl  dc_find$obj_bc_delta_write	entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  2    49 dcl  dc_find$obj_bc_delta_write_ptr	entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  2    50 dcl  dc_find$obj_bc_write		entry (char (168), char (32), fixed bin (24), ptr, fixed bin (35));
+  2    51 dcl  dc_find$obj_bc_write_ptr		entry (ptr, fixed bin (24), ptr, fixed bin (35));
+  2    52 
+  2    53 dcl  dc_find$obj_delete		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    54 dcl  dc_find$obj_delete_priv		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    55 dcl  dc_find$obj_delete_uid		entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    56 dcl  dc_find$obj_delete_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    57 dcl  dc_find$obj_delete_ptr		entry (ptr, ptr, fixed bin (35));
+  2    58 
+  2    59 dcl  dc_find$obj_existence_ptr	entry (ptr, ptr, fixed bin (35));
+  2    60 
+  2    61 dcl  dc_find$obj_for_audit		entry (char (168), char (32), ptr, fixed bin (35));
+  2    62 
+  2    63 dcl  dc_find$obj_initiate		entry (char (168), char (32), ptr, fixed bin (35));
+  2    64 dcl  dc_find$obj_initiate_for_linker_dp entry (ptr, char (32), ptr, fixed bin (35));
+  2    65 dcl  dc_find$obj_initiate_raw		entry (char (168), char (32), ptr, fixed bin (35));
+  2    66 
+  2    67 dcl  dc_find$obj_linkage_ring_ptr	entry (ptr, fixed bin (35));
+  2    68 
+  2    69 dcl  dc_find$obj_modes_ptr		entry (ptr, bit (36) aligned, bit (36) aligned, (3) fixed bin (3), fixed bin (35));
+  2    70 
+  2    71 dcl  dc_find$obj_reclassify		entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  2    72 
+  2    73 dcl  dc_find$obj_status_attributes_read entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    74 
+  2    75 dcl  dc_find$obj_status_read		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    76 dcl  dc_find$obj_status_read_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    77 dcl  dc_find$obj_status_read_priv	entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    78 dcl  dc_find$obj_status_read_priv_ptr	entry (ptr, ptr, fixed bin (35));
+  2    79 dcl  dc_find$obj_status_read_priv_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    80 dcl  dc_find$obj_status_read_raw_uid	entry ((0:15) bit (36) aligned, char (168), char (32), ptr, fixed bin (35));
+  2    81 dcl  dc_find$obj_status_read_ptr	entry (ptr, ptr, fixed bin (35));
+  2    82 
+  2    83 dcl  dc_find$obj_status_write		entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    84 dcl  dc_find$obj_status_write_priv	entry (char (168), char (32), fixed bin (1), fixed bin (18) uns, ptr, fixed bin (35));
+  2    85 dcl  dc_find$obj_status_write_priv_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    86 dcl  dc_find$obj_status_write_ptr	entry (ptr, fixed bin (18) uns, ptr, fixed bin (35));
+  2    87 
+  2    88 dcl  dc_find$obj_terminate		entry (char (168), char (32), fixed bin (1), ptr, fixed bin (35));
+  2    89 dcl  dc_find$obj_terminate_ptr	entry (ptr, ptr, fixed bin (35));
+  2    90 
+  2    91 dcl  dc_find$obj_truncate		entry (char (168), char (32), ptr, fixed bin (35));
+  2    92 dcl  dc_find$obj_truncate_ptr		entry (ptr, ptr, fixed bin (35));
+  2    93 dcl  dc_find$obj_truncate_raw_ptr	entry (ptr, ptr, fixed bin (35));
+  2    94 
+  2    95 dcl  dc_find$obj_volume_retrieve	entry (char (168), char (32), ptr, ptr, fixed bin (35));
+  2    96 
+  2    97 dcl  dc_find$seg_fault		entry (ptr, ptr, fixed bin (35));
+  2    98 
+  2    99 /* END include file dc_find_dcls.incl.pl1 */
+      298 
+      299  /*	BEGIN INCLUDE FILE ... dir_entry.incl.pl1 ...last modified August 1974 for nss */
+  3     2 
+  3     3 
+  3     4 /* Template for an entry. Length = 38 words */
+  3     5 
+  3     6 dcl  ep ptr;
+  3     7 
+  3     8 dcl 1 entry based (ep) aligned,
+  3     9 
+  3    10     (2 efrp bit (18),				/* forward rel ptr to next entry */
+  3    11     2 ebrp bit (18)) unaligned,			/* backward rel ptr to previous entry */
+  3    12 
+  3    13     2 type bit (18) unaligned,			/* type of object = dir entry  */
+  3    14     2 size fixed bin (17) unaligned,			/* size of dir entry */
+  3    15 
+  3    16     2 uid bit (36),					/* unique id of entry */
+  3    17 
+  3    18     2 dtem bit (36),				/* date-time entry modified */
+  3    19 
+  3    20     (2 bs bit (1),					/* branch switch = 1 if branch */
+  3    21     2 pad0 bit (17),
+  3    22     2 nnames fixed bin (17),				/* number of names for this entry */
+  3    23 
+  3    24     2 name_frp bit (18),				/* rel pointer to start of name list */
+  3    25     2 name_brp bit (18),				/* rel pointer to end of name list */
+  3    26 
+  3    27     2 author,					/* user who created branch */
+  3    28       3 pers_rp bit (18),				/* name of user who created branch */
+  3    29       3 proj_rp bit (18),				/* project of user who created branch */
+  3    30 
+  3    31       3 tag char (1),				/* tag of user who created branch */
+  3    32       3 pad1 char (3),
+  3    33 
+  3    34     2 primary_name bit (504),				/* first name on name list */
+  3    35 
+  3    36     2 dtd bit (36),					/* date time dumped */
+  3    37 
+  3    38     2 pad2 bit (36),
+  3    39 
+  3    40 
+  3    41 /* the declarations below are for branch only */
+  3    42 
+  3    43 
+  3    44     2 pvid bit (36),				/* physical volume id */
+  3    45 
+  3    46     2 vtocx fixed bin (17),				/* vtoc entry index */
+  3    47     2 pad3 bit (18),
+  3    48 
+  3    49     2 dirsw bit (1),				/* = 1 if this is a directory branch */
+  3    50     2 oosw bit (1),					/* out of service switch  on = 1 */
+  3    51     2 per_process_sw bit (1),				/* indicates segment is per process */
+  3    52     2 copysw bit (1),				/* = 1 make copy of segment whenever initiated */
+  3    53     2 safety_sw bit (1),				/* if 1 then entry cannot be deleted */
+  3    54     2 multiple_class bit (1),				/* segment has multiple security classes */
+  3    55     2 audit_flag bit (1),				/* segment must be audited for security */
+  3    56     2 security_oosw bit (1),				/* security out of service switch */
+  3    57     2 entrypt_sw bit (1),				/* 1 if call limiter is to be enabled */
+  3    58     2 master_dir bit (1),				/* TRUE for master directory */
+  3    59     2 tpd bit (1),					/* TRUE if this segment is never to go on the PD */
+  3    60     2 pad4 bit (11),
+  3    61     2 entrypt_bound bit (14)) unaligned,		/* call limiter */
+  3    62 
+  3    63     2 access_class bit (72) aligned,			/* security attributes : level and category */
+  3    64 
+  3    65     (2 ring_brackets (3) bit (3),			/* ring brackets on segment */
+  3    66     2 ex_ring_brackets (3) bit (3),			/* extended ring brackets */
+  3    67     2 acle_count fixed bin (17),			/* number of entries on ACL */
+  3    68 
+  3    69     2 acl_frp bit (18),				/* rel ptr to start of ACL */
+  3    70     2 acl_brp bit (18),				/* rel ptr to end of ACL */
+  3    71 
+  3    72     2 bc_author,					/* user who last set the bit count */
+  3    73       3 pers_rp bit (18),				/* name of user who set the bit count */
+  3    74       3 proj_rp bit (18),				/* project of user who set the bit count */
+  3    75 
+  3    76       3 tag char (1),				/* tag of user who set the bit count */
+  3    77       3 pad5 bit (2),
+  3    78     2 bc fixed bin (24)) unaligned,			/* bit count for segs, msf indicator for dirs */
+  3    79 
+  3    80     2 sons_lvid bit (36),				/* logical volume id for immediat inf non dir seg */
+  3    81 
+  3    82     2 pad6 bit (36),
+  3    83 
+  3    84     2 checksum bit (36),				/* checksum from dtd */
+  3    85 
+  3    86     2 owner bit (36);				/* uid of containing directory */
+  3    87 
+  3    88 /*	END INCLUDE FILE ... dir_entry.incl.pl1 ... */
+      299 
+      300  /*	BEGIN INCLUDE FILE ... dir_header.incl.pl1 */
+  4     2 /* Modified 8/74 for NSS */
+  4     3 /* Modified 8/76 to add version number and hash table rel pointer for variable hash table sizes */
+  4     4 /* Modified 3/82 BIM for change pclock */
+  4     5 /* format: style3 */
+  4     6 
+  4     7 /* Template for the directory header. Length = 64 words. */
+  4     8 
+  4     9 dcl  dp ptr;
+  4    10 
+  4    11 dcl 1 dir based (dp) aligned,
+  4    12 
+  4    13    2 modify bit (36),				/* Process ID of last modifier */
+  4    14    2 type bit (18) unaligned,			/* type of object = dir header */
+  4    15    2 size fixed bin (17) unaligned,			/* size of header in words */
+  4    16     2 dtc (3),					/* date-time checked by salvager array */
+  4    17       3 date bit (36),				/* the date */
+  4    18       3 error bit (36),				/* what errors were discovered */
+  4    19 
+  4    20     2 uid bit (36),					/* uid of the directory           - copied from branch */
+  4    21 
+  4    22     2 pvid bit (36),				/* phys vol id of the dir         - copied from branch */
+  4    23 
+  4    24     2 sons_lvid bit (36),				/* log vol id for inf non dir seg - copied from branch */
+  4    25 
+  4    26     2 access_class bit (72),				/* security attributes of dir     - copied from branch */
+  4    27 
+  4    28     (2 vtocx fixed bin (17),				/* vtoc entry index of the dir    - copied from branch */
+  4    29     2 version_number fixed bin (17),			/* version number of header */
+  4    30 
+  4    31     2 entryfrp bit (18),				/* rel ptr to beginning of entry list */
+  4    32     2 pad2 bit (18),
+  4    33 
+  4    34     2 entrybrp bit (18),				/* rel ptr to end of entry list */
+  4    35     2 pad3 bit (18),
+  4    36 
+  4    37     2 pers_frp bit (18),				/* rel ptr to start of person name list */
+  4    38     2 proj_frp bit (18),				/* rel ptr to start of project name list */
+  4    39 
+  4    40     2 pers_brp bit (18),				/* rel ptr to end of person name list */
+  4    41     2 proj_brp bit (18),				/* rel ptr to end of project name list */
+  4    42 
+  4    43     2 seg_count fixed bin (17),			/* number of non-directory branches */
+  4    44     2 dir_count fixed bin (17),			/* number of directory branches */
+  4    45 
+  4    46     2 lcount fixed bin (17),				/* number of links */
+  4    47     2 acle_total fixed bin (17),			/* total number of ACL entries in directory */
+  4    48 
+  4    49     2 arearp bit (18),				/* relative pointer to beginning of allocation area */
+  4    50     2 per_process_sw bit (1),				/* indicates dir contains per process segments */
+  4    51     2 master_dir bit (1),				/* TRUE if this is a master dir */
+  4    52     2 force_rpv bit (1),				/* TRUE if segs must be on RPV */
+  4    53     2 rehashing bit (1),				/* TRUE if hash table is being constructed */
+  4    54     2 pad4 bit (14),
+  4    55 
+  4    56     2 iacl_count (0:7),
+  4    57       3 seg fixed bin (17),				/* number of initial acl entries for segs */
+  4    58       3 dir fixed bin (17),				/* number of initial acl entries for dir */
+  4    59 
+  4    60     2 iacl (0:7),					/* pointer to initial ACLs for each ring */
+  4    61       3 seg_frp bit (18),				/* rel ptr to start of initial ACL for segs */
+  4    62       3 seg_brp bit (18),				/* rel ptr to end of initial ACL for segs */
+  4    63 
+  4    64       3 dir_frp bit (18),				/* rel ptr to start of initial for dirs */
+  4    65       3 dir_brp bit (18),				/* rel ptr to end of initial ACL for dirs */
+  4    66 
+  4    67     2 htsize fixed bin (17),				/* size of hash table */
+  4    68     2 hash_table_rp bit (18),				/* rel ptr to start of hash table */
+  4    69 
+  4    70     2 htused fixed bin (17),				/* no. of used places in hash table */
+  4    71     2 pad6 fixed bin (17),
+  4    72 
+  4    73     2 tree_depth fixed bin (17),			/* number of levels from root of this dir */
+  4    74     2 pad7 bit (18)) unaligned,
+  4    75 
+  4    76     2 dts bit (36),					/* date-time directory last salvaged */
+  4    77 
+  4    78     2 master_dir_uid bit (36),			/* uid of superior master dir */
+  4    79     2 change_pclock fixed bin (35),			/* up one each call to sum$dirmod */
+  4    80     2 pad8 (11) bit (36),				/* pad to make it a 64 word header */
+  4    81     2 checksum bit (36),				/* checksummed from uid on */
+  4    82     2 owner bit (36);				/* uid of parent dir */
+  4    83 
+  4    84 dcl version_number_2 fixed bin int static options (constant) init (2);
+  4    85 
+  4    86 /*	END INCLUDE FILE ... dir_header.incl.pl1 */
+      300 
+      301  /* BEGIN include file fs_obj_access_codes.incl.pl1 */
+  5     2 
+  5     3 
+  5     4 /****^  HISTORY COMMENTS:
+  5     5*  1) change(88-05-12,Lippard), approve(88-05-02,MCR7881),
+  5     6*     audit(88-06-16,Fawcett), install(88-08-02,MR12.2-1074):
+  5     7*     Changed to add the FS_OBJ_AUDIT_FLAG_MOD constant.
+  5     8*                                                   END HISTORY COMMENTS */
+  5     9 
+  5    10 
+  5    11 /* The possible events within the file system; access codes and
+  5    12*   detailed operation codes.  October 1984, Keith Loepere. */
+  5    13 
+  5    14 /* format: style4,indattr,ifthenstmt,ifthen,idind35,^indcomtxt */
+  5    15 
+  5    16 /* Major file system operations. */
+  5    17 
+  5    18 dcl  access_operations_$fs_obj_create bit (36) aligned ext;
+  5    19 dcl  access_operations_$fs_obj_delete bit (36) aligned ext;
+  5    20 dcl  access_operations_$fs_obj_initiate bit (36) aligned ext;
+  5    21 dcl  access_operations_$fs_obj_terminate bit (36) aligned ext;
+  5    22 dcl  access_operations_$fs_obj_contents_read bit (36) aligned ext;
+  5    23 dcl  access_operations_$fs_obj_contents_mod bit (36) aligned ext;
+  5    24 dcl  access_operations_$fs_obj_prop_read bit (36) aligned ext;
+  5    25 dcl  access_operations_$fs_obj_attr_mod bit (36) aligned ext;
+  5    26 dcl  access_operations_$fs_obj_status_mod bit (36) aligned ext;
+  5    27 dcl  access_operations_$fs_obj_access_mod bit (36) aligned ext;
+  5    28 
+  5    29 /* Detailed operations. */
+  5    30 
+  5    31 dcl  FS_OBJ_CONNECT fixed bin (18) uns init (1) static options (constant);
+  5    32 dcl  FS_OBJ_BC_MOD fixed bin (18) uns init (2) static options (constant);
+  5    33 dcl  FS_OBJ_TRUNCATE fixed bin (18) uns init (3) static options (constant);
+  5    34 dcl  FS_OBJ_ACL_MOD fixed bin (18) uns init (4) static options (constant);
+  5    35 dcl  FS_OBJ_RING_MOD fixed bin (18) uns init (5) static options (constant);
+  5    36 dcl  FS_OBJ_ACL_RING_MOD fixed bin (18) uns init (6) static options (constant);
+  5    37 dcl  FS_OBJ_RENAME fixed bin (18) uns init (7) static options (constant);
+  5    38 dcl  FS_OBJ_COPY_SW_MOD fixed bin (18) uns init (8) static options (constant);
+  5    39 dcl  FS_OBJ_DAMAGED_SW_MOD fixed bin (18) uns init (9) static options (constant);
+  5    40 dcl  FS_OBJ_DNZP_MOD fixed bin (18) uns init (10) static options (constant);
+  5    41 dcl  FS_OBJ_ENTRY_BOUND_MOD fixed bin (18) uns init (11) static options (constant);
+  5    42 dcl  FS_OBJ_MAX_LEN_MOD fixed bin (18) uns init (12) static options (constant);
+  5    43 dcl  FS_OBJ_SAFETY_SW_MOD fixed bin (18) uns init (13) static options (constant);
+  5    44 dcl  FS_OBJ_SYNC_SW_MOD fixed bin (18) uns init (14) static options (constant);
+  5    45 dcl  FS_OBJ_VOL_DUMP_SW_MOD fixed bin (18) uns init (15) static options (constant);
+  5    46 dcl  FS_OBJ_AUTHOR_MOD fixed bin (18) uns init (16) static options (constant);
+  5    47 dcl  FS_OBJ_BC_AUTHOR_MOD fixed bin (18) uns init (17) static options (constant);
+  5    48 dcl  FS_OBJ_BACKUP_TIMES_MOD fixed bin (18) uns init (18) static options (constant);
+  5    49 dcl  FS_OBJ_DATES_MOD fixed bin (18) uns init (19) static options (constant);
+  5    50 dcl  FS_OBJ_DT_DUMPED_MOD fixed bin (18) uns init (20) static options (constant);
+  5    51 dcl  FS_OBJ_FOR_RELOADER_MOD fixed bin (18) uns init (21) static options (constant);
+  5    52 dcl  FS_OBJ_SONS_LVID_MOD fixed bin (18) uns init (22) static options (constant);
+  5    53 dcl  FS_OBJ_SOOS_MOD fixed bin (18) uns init (23) static options (constant);
+  5    54 dcl  FS_OBJ_MOVE_QUOTA fixed bin (18) uns init (24) static options (constant);
+  5    55 dcl  FS_OBJ_CORRECT_QUSED fixed bin (18) uns init (25) static options (constant);
+  5    56 dcl  FS_OBJ_DIR_SALVAGE fixed bin (18) uns init (26) static options (constant);
+  5    57 dcl  FS_OBJ_MDIR_QUOTA_MOD fixed bin (18) uns init (27) static options (constant);
+  5    58 dcl  FS_OBJ_QUOTA_MOD fixed bin (18) uns init (28) static options (constant);
+  5    59 dcl  FS_OBJ_QUOTA_RELOAD fixed bin (18) uns init (29) static options (constant);
+  5    60 dcl  FS_OBJ_RECLASSIFY fixed bin (18) uns init (30) static options (constant);
+  5    61 dcl  FS_OBJ_RECLASSIFY_NODE fixed bin (18) uns init (31) static options (constant);
+  5    62 dcl  FS_OBJ_SEG_MOVE fixed bin (18) uns init (32) static options (constant);
+  5    63 dcl  FS_OBJ_TRP_MOD fixed bin (18) uns init (33) static options (constant);
+  5    64 dcl  FS_OBJ_VOLUME_RETRIEVE fixed bin (18) uns init (34) static options (constant);
+  5    65 dcl  FS_OBJ_IACL_MOD fixed bin (18) uns init (35) static options (constant);
+  5    66 dcl  FS_OBJ_CREATE_BRANCH fixed bin (18) uns init (36) static options (constant);
+  5    67 dcl  FS_OBJ_AUDIT_FLAG_MOD fixed bin (18) uns init (37) static options (constant);
+  5    68 
+  5    69 /* END include file fs_obj_access_codes.incl.pl1 */
+      301 
+      302  /* BEGIN INCLUDE FILE ... fs_types.incl.pl1 */
+  6     2 
+  6     3 dcl  ACCESS_NAME_TYPE bit (18) static options (constant) init ("000001"b3);
+  6     4 dcl  ACLE_TYPE bit (18) static options (constant) init ("000002"b3);
+  6     5 dcl  DIR_HEADER_TYPE bit (18) static options (constant) init ("000003"b3);
+  6     6 dcl  DIR_TYPE bit (18) static options (constant) init ("000004"b3);
+  6     7 dcl  LINK_TYPE bit (18) static options (constant) init ("000005"b3);
+  6     8 dcl  NAME_TYPE bit (18) static options (constant) init ("000006"b3);
+  6     9 dcl  SEG_TYPE bit (18) static options (constant) init ("000007"b3);
+  6    10 dcl  HASH_TABLE_TYPE bit (18) static options (constant) init ("000013"b3);
+  6    11 
+  6    12 dcl  access_name_type fixed bin static options (constant) init (1);
+  6    13 dcl  acle_type fixed bin static options (constant) init (2);
+  6    14 dcl  dir_header_type fixed bin static options (constant) init (3);
+  6    15 dcl  dir_type fixed bin static options (constant) init (4);
+  6    16 dcl  link_type fixed bin static options (constant) init (5);
+  6    17 dcl  name_type fixed bin static options (constant) init (6);
+  6    18 dcl  seg_type fixed bin static options (constant) init (7);
+  6    19 dcl  hash_table_type fixed bin static options (constant) init (11);
+  6    20 
+  6    21 /* END INCLUDE FILE ... fs_types.incl.pl1 */
+      302 
+      303  /*	BEGIN INCLUDE FILE ...vtoce.incl.pl1 ... last modified September 1982 */
+  7     2 /* Template for a VTOC entry. Length = 192 words. (3 * 64). */
+  7     3 /* NOTE: vtoc_man clears pad fields before writing a vtoce. */
+  7     4 
+  7     5 dcl  vtocep ptr;
+  7     6 
+  7     7 dcl 1 vtoce based (vtocep) aligned,
+  7     8 
+  7     9 
+  7    10     (2 pad_free_vtoce_chain bit (36),			/* Used to be pointer to next free VTOCE */
+  7    11 
+  7    12     2 uid bit (36),					/* segment's uid - zero if vtoce is free */
+  7    13 
+  7    14     2 msl bit (9),					/* maximum segment length in 1024 word units */
+  7    15     2 csl bit (9),					/* current segment length - in 1024 word units */
+  7    16     2 records bit (9),				/* number of records used by the seg in second storage */
+  7    17     2 pad2 bit (9),
+  7    18 
+  7    19     2 dtu bit (36),					/* date and time segment was last used */
+  7    20 
+  7    21     2 dtm bit (36),					/* date and time segment was last modified */
+  7    22 
+  7    23     2 nqsw bit (1),					/* no quota switch - no checking for pages of this seg */
+  7    24     2 deciduous bit (1),				/* true if hc_sdw */
+  7    25     2 nid bit (1),					/* no incremental dump switch */
+  7    26     2 dnzp bit (1),					/* Dont null zero pages */
+  7    27     2 gtpd bit (1),					/* Global transparent paging device */
+  7    28     2 per_process bit (1),				/* Per process segment (deleted every bootload) */
+  7    29     2 damaged bit (1),				/* TRUE if contents damaged */
+  7    30     2 fm_damaged bit (1),				/* TRUE if filemap checksum bad */
+  7    31     2 fm_checksum_valid bit (1),			/* TRUE if the checksum has been computed */
+  7    32     2 synchronized bit (1),				/* TRUE if this is a data management synchronized segment */
+  7    33     2 pad3 bit (8),
+  7    34     2 dirsw bit (1),				/* directory switch */
+  7    35     2 master_dir bit (1),				/* master directory - a root for the logical volume */
+  7    36     2 pad4 bit (16)) unaligned,			/* not used */
+  7    37 
+  7    38     2 fm_checksum bit (36) aligned,			/* Checksum of used portion of file map */
+  7    39 
+  7    40     (2 quota (0:1) fixed bin (18) unsigned,		/* sec storage quota - (0) for non dir pages */
+  7    41 
+  7    42     2 used (0:1) fixed bin (18) unsigned,		/* sec storage used  - (0) for non dir pages */
+  7    43 
+  7    44     2 received (0:1) fixed bin (18) unsigned,		/* total amount of storage this dir has received */
+  7    45 
+  7    46     2 trp (0:1) fixed bin (71),			/* time record product - (0) for non dir pages */
+  7    47 
+  7    48     2 trp_time (0:1) bit (36),			/* time time_record_product was last calculated */
+  7    49 
+  7    50 
+  7    51 
+  7    52 
+  7    53 
+  7    54     2 fm (0:255) bit (18),				/* file map - 256 entries - 18 bits per entry */
+  7    55 
+  7    56     2 pad6 (10) bit (36),				/* not used */
+  7    57 
+  7    58     2 ncd bit (1),					/* no complete dump switch */
+  7    59     2 pad7 bit (17),
+  7    60     2 pad8 bit (18),
+  7    61 
+  7    62     2 dtd bit (36),					/* date-time-dumped */
+  7    63 
+  7    64     2 volid (3) bit (36),				/* volume ids of last incremental, consolidated, and complete dumps */
+  7    65 
+  7    66     2 master_dir_uid bit (36),			/* superior master directory uid */
+  7    67 
+  7    68 
+  7    69 
+  7    70 
+  7    71     2 uid_path (0:15) bit (36),			/* uid pathname of all parents starting after the root */
+  7    72 
+  7    73     2 primary_name char (32),				/* primary name of the segment */
+  7    74 
+  7    75     2 time_created bit (36),				/* time the segment was created */
+  7    76 
+  7    77     2 par_pvid bit (36),				/* physical volume id of the parent */
+  7    78 
+  7    79     2 par_vtocx fixed bin (17),			/* vtoc entry index of the parent */
+  7    80     2 branch_rp bit (18)) unaligned,			/* rel pointer of the branch of this segment */
+  7    81 
+  7    82     2 cn_salv_time bit (36),				/* time branch - vtoce connection checked */
+  7    83 
+  7    84     2 access_class bit (72),				/* access class in branch */
+  7    85     2 perm_flags aligned,
+  7    86       3 per_bootload bit (1) unal,			/* ON => deleted each bootload */
+  7    87       3 pad9 bit (35) unal,
+  7    88     2 owner bit (36);				/* pvid of this volume */
+  7    89 
+  7    90 dcl  vtoce_parts (3) bit (36 * 64) aligned based (vtocep);
+  7    91 
+  7    92 dcl 1 seg_vtoce based (vtocep) aligned,			/* Overlay for vtoce of segments, which don't have quota */
+  7    93     2 pad1 bit (7*36),
+  7    94     2 usage fixed bin (35),				/* page fault count: overlays quota */
+  7    95     2 pad2 bit (184*36);
+  7    96 
+  7    97 /*	END INCLUDE FILE vtoce.incl.pl1 */
+      303 
+      304 
+      305 
+      306 /* BEGIN MESSAGE DOCUMENTATION
+      307*
+      308*   Message:
+      309*   correct_qused: hash error
+      310*
+      311*   S: $crash
+      312*
+      313*   T: $run
+      314*
+      315*   M: Multiple entries within a directory undergoing quota correction have 
+      316*   the same UID.
+      317*
+      318*   END MESSAGE DOCUMENTATION */
+      319 
+      320      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    04/18/00  1059.8  correct_qused.pl1                 >udd>sm>ds>w>ml>correct_qused.pl1
+297          1    01/30/85  1623.9  aste.incl.pl1                     >ldd>incl>aste.incl.pl1
+298          2    05/20/85  0948.1  dc_find_dcls.incl.pl1             >ldd>incl>dc_find_dcls.incl.pl1
+299          3    04/29/76  1200.6  dir_entry.incl.pl1                >ldd>incl>dir_entry.incl.pl1
+300          4    05/24/82  1105.0  dir_header.incl.pl1               >ldd>incl>dir_header.incl.pl1
+301          5    08/04/88  2154.1  fs_obj_access_codes.incl.pl1      >ldd>incl>fs_obj_access_codes.incl.pl1
+302          6    05/26/77  1022.2  fs_types.incl.pl1                 >ldd>incl>fs_types.incl.pl1
+303          7    10/04/83  1205.1  vtoce.incl.pl1                    >ldd>incl>vtoce.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DIR_TYPE                               constant        bit(18)                  initial packed unaligned dcl 6-6 ref 193
+FS_OBJ_CORRECT_QUSED            000000 constant        fixed bin(18,0)          initial unsigned dcl 5-55 set ref 108*
+SEG_TYPE                               constant        bit(18)                  initial packed unaligned dcl 6-9 ref 193
+a_code                                 parameter       fixed bin(35,0)          dcl 28 set ref 14 92 98 266*
+a_did_anything                         parameter       bit(1)                   dcl 29 set ref 14 92 98 265*
+a_dir                                  parameter       char                     packed unaligned dcl 30 ref 14 92 98 103
+a_ndu                                  parameter       fixed bin(34,0)          dcl 31 set ref 14 98 272*
+a_nsu                                  parameter       fixed bin(34,0)          dcl 32 set ref 14 92 268*
+a_odu                                  parameter       fixed bin(34,0)          dcl 33 set ref 14 98 273*
+a_osu                                  parameter       fixed bin(34,0)          dcl 34 set ref 14 92 269*
+addr                                                   builtin function         dcl 66 ref 106
+aste                                   based           structure                level 1 dcl 1-11
+astep                           000474 automatic       pointer                  dcl 1-9 set ref 138* 144 158* 176 177* 177 177 177*
+                                                                                  180 181* 182 182
+b_pvid                                 parameter       bit(36)                  dcl 282 set ref 278 288* 291*
+b_uid                                  parameter       bit(36)                  dcl 283 ref 278 292
+b_vtocx                                parameter       fixed bin(17,0)          packed unaligned dcl 284 ref 278 291
+bad_dir_                        000000 stack reference condition                dcl 68 ref 191 193 210 220 226
+branches_passed                 000100 automatic       fixed bin(17,0)          dcl 38 set ref 186* 190* 190 191 210
+bs                        4            based           bit(1)                   level 2 packed packed unaligned dcl 3-8 ref 192
+c_uid                                  parameter       bit(36)                  dcl 214 ref 212 219
+code                            000101 automatic       fixed bin(35,0)          dcl 39 set ref 105* 108* 109 112* 116 138* 139 151
+                                                                                  199 199 244* 253* 255* 257 258 263 263* 266 288*
+                                                                                  289 291* 292 292*
+correct_dir                     000102 automatic       bit(1)                   dcl 40 set ref 89* 94* 100* 251 271
+correct_seg                     000103 automatic       bit(1)                   dcl 41 set ref 89* 95* 101* 111 196 241 250 267
+cuid                            000122 automatic       bit(36)                  dcl 216 set ref 219* 220 221 223
+dc_find$dir_write_priv          000036 constant        entry                    external dcl 2-31 ref 108
+dc_find$finished                000040 constant        entry                    external dcl 2-33 ref 261
+did_anything                    000104 automatic       bit(1)                   dcl 42 set ref 104* 257* 258* 265
+dir                                    based           structure                level 1 dcl 4-11
+dir_count                22(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-11 ref 126
+dirsw                     5(18)        based           bit(1)                   level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 7-7 in procedure "correct_qused" ref 201
+dirsw                    32            based           bit(1)                   level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 3-8 in procedure "correct_qused" ref 196
+dname                           000105 automatic       char(168)                packed unaligned dcl 43 set ref 103* 108*
+dp                              000500 automatic       pointer                  dcl 4-9 set ref 108* 112 126 126 129 130 131 149 149
+                                                                                  149 187 189 189 193 209 242 253 253 261*
+dpvid                           000157 automatic       bit(36)                  dcl 44 set ref 130* 138*
+dudelta                         000160 automatic       fixed bin(34,0)          dcl 45 set ref 236* 245* 251* 253 253*
+duid                            000161 automatic       bit(36)                  dcl 46 set ref 129* 138* 253*
+dvtocx                          000162 automatic       fixed bin(17,0)          dcl 47 set ref 131* 138*
+efrp                                   based           bit(18)                  level 2 packed packed unaligned dcl 3-8 ref 209
+entry                                  based           structure                level 1 dcl 3-8
+entryfrp                 16            based           bit(18)                  level 2 packed packed unaligned dcl 4-11 ref 189
+ep                              000476 automatic       pointer                  dcl 3-6 set ref 189* 189* 192 193 193 193 195 196
+                                                                                  198 198 198* 209
+error_table_$rqover             000010 external static fixed bin(35,0)          dcl 61 ref 258
+error_table_$vtoce_connection_fail
+                                000012 external static fixed bin(35,0)          dcl 62 ref 292
+fixed                                                  builtin function         dcl 66 ref 153 205 221
+get_pvtx                        000014 constant        entry                    external dcl 72 ref 288
+hshi                            000123 automatic       fixed bin(17,0)          dcl 217 set ref 221* 222 222
+hshx                            000100 automatic       fixed bin(17,0)          dcl 170 set ref 181 222* 223 224*
+htbl                            000101 automatic       bit(36)                  array dcl 171 set ref 175* 181* 223 224
+htblsize                        000163 automatic       fixed bin(17,0)          dcl 48 set ref 127* 171 221 222
+infl                      1            based           bit(18)                  level 2 packed packed unaligned dcl 1-11 ref 182
+infp                      1(18)        based           bit(18)                  level 2 packed packed unaligned dcl 1-11 ref 177
+lcount                   23            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-11 ref 187
+local_vtoce                     000164 automatic       structure                level 1 dcl 49 set ref 106
+lock$lock_ast                   000016 constant        entry                    external dcl 73 ref 133
+lock$unlock_ast                 000020 constant        entry                    external dcl 74 ref 140 147 183
+logical_volume_manager$lvtep    000022 constant        entry                    external dcl 75 ref 112 242
+master_dir                5(19)        based           bit(1)                   level 2 packed packed unaligned dcl 7-7 ref 202
+mod                                                    builtin function         dcl 66 ref 221
+ndu                             000464 automatic       fixed bin(34,0)          dcl 50 set ref 153* 158* 203* 203 236 272
+nentries                        000465 automatic       fixed bin(17,0)          dcl 51 set ref 126* 127 187* 187 191 210
+nsu                             000466 automatic       fixed bin(34,0)          dcl 52 set ref 145* 158* 202* 202 205* 205 235 268
+null                                                   builtin function         dcl 66 ref 112 144 176 242
+odu                             000467 automatic       fixed bin(34,0)          dcl 53 set ref 155* 158* 236 273
+osu                             000470 automatic       fixed bin(34,0)          dcl 54 set ref 154* 158* 235 269
+owner                    44            based           bit(36)                  level 2 dcl 3-8 ref 193
+ptr                                                    builtin function         dcl 66 ref 177 182 189 209
+pvid                     11            based           bit(36)                  level 2 in structure "dir" dcl 4-11 in procedure
+                                                                                  "correct_qused" set ref 130 149* 253*
+pvid                     30            based           bit(36)                  level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 3-8 in procedure "correct_qused" ref 198
+pvtx                            000100 automatic       fixed bin(17,0)          dcl 286 set ref 288* 291*
+quotaw$rvq                      000024 constant        entry                    external dcl 76 ref 158
+received                 11            based           fixed bin(18,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 7-7 ref 202 203
+records                   2(18)        based           bit(9)                   level 2 packed packed unaligned dcl 7-7 ref 153 205
+rel                                                    builtin function         dcl 66 ref 177 189
+scode                           000471 automatic       fixed bin(35,0)          dcl 55 set ref 105* 199* 240 263
+scode1                          000472 automatic       fixed bin(35,0)          dcl 56 set ref 242* 243 244
+search_ast$check                000026 constant        entry                    external dcl 77 ref 138
+seg_count                22            based           fixed bin(17,0)          level 2 packed packed unaligned dcl 4-11 ref 126
+sons_lvid                12            based           bit(36)                  level 2 dcl 4-11 set ref 112* 242*
+sudelta                         000473 automatic       fixed bin(34,0)          dcl 57 set ref 235* 245* 250* 253 253*
+syserr                          000030 constant        entry                    external dcl 78 ref 180
+type                      1            based           bit(18)                  level 2 packed packed unaligned dcl 3-8 ref 193 193
+uid                       2            based           bit(36)                  level 2 in structure "entry" dcl 3-8 in procedure
+                                                                                  "correct_qused" set ref 195* 198*
+uid                      10            based           bit(36)                  level 2 in structure "dir" dcl 4-11 in procedure
+                                                                                  "correct_qused" set ref 129 149* 193
+uid                       3            based           bit(36)                  level 2 in structure "aste" packed packed unaligned
+                                                                                  dcl 1-11 in procedure "correct_qused" ref 180 181
+uid                       1            based           bit(36)                  level 2 in structure "vtoce" packed packed unaligned
+                                                                                  dcl 7-7 in procedure "correct_qused" ref 292
+unspec                                                 builtin function         dcl 66 set ref 175*
+used                     10            based           fixed bin(18,0)          array level 2 packed packed unsigned unaligned
+                                                                                  dcl 7-7 ref 154 155 202 203
+vtoc_attributes$correct_qused   000032 constant        entry                    external dcl 79 ref 253
+vtoc_man$get_vtoce              000034 constant        entry                    external dcl 81 ref 291
+vtoce                                  based           structure                level 1 dcl 7-7
+vtocep                          000502 automatic       pointer                  dcl 7-5 set ref 106* 153 154 155 201 202 202 202 203
+                                                                                  203 205 291* 292
+vtocx                    31            based           fixed bin(17,0)          level 2 in structure "entry" packed packed unaligned
+                                                                                  dcl 3-8 in procedure "correct_qused" set ref 198*
+vtocx                    15            based           fixed bin(17,0)          level 2 in structure "dir" packed packed unaligned
+                                                                                  dcl 4-11 in procedure "correct_qused" set ref 131
+                                                                                  149* 253
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+ACCESS_NAME_TYPE                       internal static bit(18)                  initial packed unaligned dcl 6-3
+ACLE_TYPE                              internal static bit(18)                  initial packed unaligned dcl 6-4
+DC_FIND_CHASE                          internal static fixed bin(1,0)           initial dcl 2-10
+DC_FIND_NO_CHASE                       internal static fixed bin(1,0)           initial dcl 2-11
+DC_FIND_NO_UNLOCK_DIR                  internal static bit(1)                   initial dcl 2-12
+DC_FIND_UNLOCK_DIR                     internal static bit(1)                   initial dcl 2-13
+DIR_HEADER_TYPE                        internal static bit(18)                  initial packed unaligned dcl 6-5
+FS_OBJ_ACL_MOD                         internal static fixed bin(18,0)          initial unsigned dcl 5-34
+FS_OBJ_ACL_RING_MOD                    internal static fixed bin(18,0)          initial unsigned dcl 5-36
+FS_OBJ_AUDIT_FLAG_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 5-67
+FS_OBJ_AUTHOR_MOD                      internal static fixed bin(18,0)          initial unsigned dcl 5-46
+FS_OBJ_BACKUP_TIMES_MOD                internal static fixed bin(18,0)          initial unsigned dcl 5-48
+FS_OBJ_BC_AUTHOR_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 5-47
+FS_OBJ_BC_MOD                          internal static fixed bin(18,0)          initial unsigned dcl 5-32
+FS_OBJ_CONNECT                         internal static fixed bin(18,0)          initial unsigned dcl 5-31
+FS_OBJ_COPY_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 5-38
+FS_OBJ_CREATE_BRANCH                   internal static fixed bin(18,0)          initial unsigned dcl 5-66
+FS_OBJ_DAMAGED_SW_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 5-39
+FS_OBJ_DATES_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 5-49
+FS_OBJ_DIR_SALVAGE                     internal static fixed bin(18,0)          initial unsigned dcl 5-56
+FS_OBJ_DNZP_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 5-40
+FS_OBJ_DT_DUMPED_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 5-50
+FS_OBJ_ENTRY_BOUND_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 5-41
+FS_OBJ_FOR_RELOADER_MOD                internal static fixed bin(18,0)          initial unsigned dcl 5-51
+FS_OBJ_IACL_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 5-65
+FS_OBJ_MAX_LEN_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 5-42
+FS_OBJ_MDIR_QUOTA_MOD                  internal static fixed bin(18,0)          initial unsigned dcl 5-57
+FS_OBJ_MOVE_QUOTA                      internal static fixed bin(18,0)          initial unsigned dcl 5-54
+FS_OBJ_QUOTA_MOD                       internal static fixed bin(18,0)          initial unsigned dcl 5-58
+FS_OBJ_QUOTA_RELOAD                    internal static fixed bin(18,0)          initial unsigned dcl 5-59
+FS_OBJ_RECLASSIFY                      internal static fixed bin(18,0)          initial unsigned dcl 5-60
+FS_OBJ_RECLASSIFY_NODE                 internal static fixed bin(18,0)          initial unsigned dcl 5-61
+FS_OBJ_RENAME                          internal static fixed bin(18,0)          initial unsigned dcl 5-37
+FS_OBJ_RING_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 5-35
+FS_OBJ_SAFETY_SW_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 5-43
+FS_OBJ_SEG_MOVE                        internal static fixed bin(18,0)          initial unsigned dcl 5-62
+FS_OBJ_SONS_LVID_MOD                   internal static fixed bin(18,0)          initial unsigned dcl 5-52
+FS_OBJ_SOOS_MOD                        internal static fixed bin(18,0)          initial unsigned dcl 5-53
+FS_OBJ_SYNC_SW_MOD                     internal static fixed bin(18,0)          initial unsigned dcl 5-44
+FS_OBJ_TRP_MOD                         internal static fixed bin(18,0)          initial unsigned dcl 5-63
+FS_OBJ_TRUNCATE                        internal static fixed bin(18,0)          initial unsigned dcl 5-33
+FS_OBJ_VOLUME_RETRIEVE                 internal static fixed bin(18,0)          initial unsigned dcl 5-64
+FS_OBJ_VOL_DUMP_SW_MOD                 internal static fixed bin(18,0)          initial unsigned dcl 5-45
+HASH_TABLE_TYPE                        internal static bit(18)                  initial packed unaligned dcl 6-10
+LINK_TYPE                              internal static bit(18)                  initial packed unaligned dcl 6-7
+NAME_TYPE                              internal static bit(18)                  initial packed unaligned dcl 6-8
+access_name_type                       internal static fixed bin(17,0)          initial dcl 6-12
+access_operations_$fs_obj_access_mod   external static bit(36)                  dcl 5-27
+access_operations_$fs_obj_attr_mod     external static bit(36)                  dcl 5-25
+access_operations_$fs_obj_contents_mod external static bit(36)                  dcl 5-23
+access_operations_$fs_obj_contents_read
+                                       external static bit(36)                  dcl 5-22
+access_operations_$fs_obj_create       external static bit(36)                  dcl 5-18
+access_operations_$fs_obj_delete       external static bit(36)                  dcl 5-19
+access_operations_$fs_obj_initiate     external static bit(36)                  dcl 5-20
+access_operations_$fs_obj_prop_read    external static bit(36)                  dcl 5-24
+access_operations_$fs_obj_status_mod   external static bit(36)                  dcl 5-26
+access_operations_$fs_obj_terminate    external static bit(36)                  dcl 5-21
+acle_type                              internal static fixed bin(17,0)          initial dcl 6-13
+asta                                   based           bit(432)                 array dcl 1-86
+aste_part                              based           structure                level 1 dcl 1-89
+dc_find$dir_for_append          000000 constant        entry                    external dcl 2-15
+dc_find$dir_for_append_raw      000000 constant        entry                    external dcl 2-16
+dc_find$dir_for_retrieve_append 000000 constant        entry                    external dcl 2-17
+dc_find$dir_initiate            000000 constant        entry                    external dcl 2-19
+dc_find$dir_move_quota          000000 constant        entry                    external dcl 2-21
+dc_find$dir_read                000000 constant        entry                    external dcl 2-23
+dc_find$dir_read_priv           000000 constant        entry                    external dcl 2-24
+dc_find$dir_reclassify          000000 constant        entry                    external dcl 2-26
+dc_find$dir_salvage             000000 constant        entry                    external dcl 2-28
+dc_find$dir_write               000000 constant        entry                    external dcl 2-30
+dc_find$link_target             000000 constant        entry                    external dcl 2-35
+dc_find$mdir_set_quota_uid      000000 constant        entry                    external dcl 2-37
+dc_find$obj_access_write        000000 constant        entry                    external dcl 2-39
+dc_find$obj_access_write_priv   000000 constant        entry                    external dcl 2-40
+dc_find$obj_attributes_read     000000 constant        entry                    external dcl 2-42
+dc_find$obj_attributes_read_ptr 000000 constant        entry                    external dcl 2-43
+dc_find$obj_attributes_write    000000 constant        entry                    external dcl 2-45
+dc_find$obj_attributes_write_ptr
+                                000000 constant        entry                    external dcl 2-46
+dc_find$obj_bc_delta_write      000000 constant        entry                    external dcl 2-48
+dc_find$obj_bc_delta_write_ptr  000000 constant        entry                    external dcl 2-49
+dc_find$obj_bc_write            000000 constant        entry                    external dcl 2-50
+dc_find$obj_bc_write_ptr        000000 constant        entry                    external dcl 2-51
+dc_find$obj_delete              000000 constant        entry                    external dcl 2-53
+dc_find$obj_delete_priv         000000 constant        entry                    external dcl 2-54
+dc_find$obj_delete_priv_uid     000000 constant        entry                    external dcl 2-56
+dc_find$obj_delete_ptr          000000 constant        entry                    external dcl 2-57
+dc_find$obj_delete_uid          000000 constant        entry                    external dcl 2-55
+dc_find$obj_existence_ptr       000000 constant        entry                    external dcl 2-59
+dc_find$obj_for_audit           000000 constant        entry                    external dcl 2-61
+dc_find$obj_initiate            000000 constant        entry                    external dcl 2-63
+dc_find$obj_initiate_for_linker_dp
+                                000000 constant        entry                    external dcl 2-64
+dc_find$obj_initiate_raw        000000 constant        entry                    external dcl 2-65
+dc_find$obj_linkage_ring_ptr    000000 constant        entry                    external dcl 2-67
+dc_find$obj_modes_ptr           000000 constant        entry                    external dcl 2-69
+dc_find$obj_reclassify          000000 constant        entry                    external dcl 2-71
+dc_find$obj_status_attributes_read
+                                000000 constant        entry                    external dcl 2-73
+dc_find$obj_status_read         000000 constant        entry                    external dcl 2-75
+dc_find$obj_status_read_priv    000000 constant        entry                    external dcl 2-77
+dc_find$obj_status_read_priv_ptr
+                                000000 constant        entry                    external dcl 2-78
+dc_find$obj_status_read_priv_uid
+                                000000 constant        entry                    external dcl 2-79
+dc_find$obj_status_read_ptr     000000 constant        entry                    external dcl 2-81
+dc_find$obj_status_read_raw_uid 000000 constant        entry                    external dcl 2-80
+dc_find$obj_status_read_uid     000000 constant        entry                    external dcl 2-76
+dc_find$obj_status_write        000000 constant        entry                    external dcl 2-83
+dc_find$obj_status_write_priv   000000 constant        entry                    external dcl 2-84
+dc_find$obj_status_write_priv_ptr
+                                000000 constant        entry                    external dcl 2-85
+dc_find$obj_status_write_ptr    000000 constant        entry                    external dcl 2-86
+dc_find$obj_terminate           000000 constant        entry                    external dcl 2-88
+dc_find$obj_terminate_ptr       000000 constant        entry                    external dcl 2-89
+dc_find$obj_truncate            000000 constant        entry                    external dcl 2-91
+dc_find$obj_truncate_ptr        000000 constant        entry                    external dcl 2-92
+dc_find$obj_truncate_raw_ptr    000000 constant        entry                    external dcl 2-93
+dc_find$obj_volume_retrieve     000000 constant        entry                    external dcl 2-95
+dc_find$seg_fault               000000 constant        entry                    external dcl 2-97
+dir_header_type                        internal static fixed bin(17,0)          initial dcl 6-14
+dir_type                               internal static fixed bin(17,0)          initial dcl 6-15
+hash_table_type                        internal static fixed bin(17,0)          initial dcl 6-19
+link_type                              internal static fixed bin(17,0)          initial dcl 6-16
+name_type                              internal static fixed bin(17,0)          initial dcl 6-17
+seg_aste                               based           structure                level 1 dcl 1-96
+seg_type                               internal static fixed bin(17,0)          initial dcl 6-18
+seg_vtoce                              based           structure                level 1 dcl 7-92
+version_number_2                       internal static fixed bin(17,0)          initial dcl 4-84
+vtoce_parts                            based           bit(2304)                array dcl 7-90
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+correct_dir_qused               000132 constant        entry                    external dcl 98
+correct_qused                   000043 constant        entry                    external dcl 14
+correct_seg_qused               000102 constant        entry                    external dcl 92
+err                             001124 constant        label                    dcl 263 ref 109
+hash_search                     000704 constant        entry                    internal dcl 212 ref 180 195
+internal_vtoc_man               001152 constant        entry                    internal dcl 278 ref 149 198
+join                            000161 constant        label                    dcl 103 ref 90 96
+next_entry                      000665 constant        label                    dcl 209 ref 196
+unlock_err                      001111 constant        label                    dcl 261 ref 116 141 151
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1476        1540    1255        1506
+Length      2060    1255        42         303     220           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+correct_qused                       374 external procedure  is an external procedure.  
+begin block on line 168             114 begin block         uses auto adjustable storage.  
+hash_search                             internal procedure  shares stack frame of begin block on line 168.  
+internal_vtoc_man                    90 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+begin block on line 168  000100 hshx                        begin block on line 168
+                         000101 htbl                        begin block on line 168
+                         000122 cuid                        hash_search
+                         000123 hshi                        hash_search
+correct_qused            000100 branches_passed             correct_qused
+                         000101 code                        correct_qused
+                         000102 correct_dir                 correct_qused
+                         000103 correct_seg                 correct_qused
+                         000104 did_anything                correct_qused
+                         000105 dname                       correct_qused
+                         000157 dpvid                       correct_qused
+                         000160 dudelta                     correct_qused
+                         000161 duid                        correct_qused
+                         000162 dvtocx                      correct_qused
+                         000163 htblsize                    correct_qused
+                         000164 local_vtoce                 correct_qused
+                         000464 ndu                         correct_qused
+                         000465 nentries                    correct_qused
+                         000466 nsu                         correct_qused
+                         000467 odu                         correct_qused
+                         000470 osu                         correct_qused
+                         000471 scode                       correct_qused
+                         000472 scode1                      correct_qused
+                         000473 sudelta                     correct_qused
+                         000474 astep                       correct_qused
+                         000476 ep                          correct_qused
+                         000500 dp                          correct_qused
+                         000502 vtocep                      correct_qused
+internal_vtoc_man        000100 pvtx                        internal_vtoc_man
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+enter_begin_block   leave_begin_block   call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          alloc_auto_adj      mdfx3               signal_op           ext_entry_desc      int_entry
+trunc_fx2           divide_fx1
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+dc_find$dir_write_priv        dc_find$finished              get_pvtx                      lock$lock_ast
+lock$unlock_ast               logical_volume_manager$lvtep  quotaw$rvq                    search_ast$check
+syserr                        vtoc_attributes$correct_qused vtoc_man$get_vtoce
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$rqover           error_table_$vtoce_connection_fail
+
+
+CONSTANTS
+001245  aa     777777777777
+
+001246  aa     000004000000
+001247  aa     000000000000
+001250  aa     600000000041
+001251  aa     000136000000
+001252  aa     600000000041
+001253  aa     000137000000
+
+000000  aa     000000000031
+
+000001  aa     406000000021
+
+000002  aa     514000000044
+
+000003  aa     524000000031
+
+000004  aa     404000000005
+
+001254  aa     000000000005
+
+000005  aa     464000000000
+
+000006  aa     404000000021
+
+000007  aa     404000000042
+
+000010  aa     526077777777
+
+000011  aa     514000000001
+
+000012  aa     404000000043
+
+000014  aa     077777000043
+000015  aa     000001000000
+
+000016  aa  142 141 144 137	bad_
+000017  aa  144 151 162 137	dir_
+
+000020  aa  162 145 164 165	retu
+000021  aa  162 156 137 143	rn_c
+000022  aa  157 156 166 145	onve
+000023  aa  162 163 151 157	rsio
+000024  aa  156 137 145 162	n_er
+000025  aa  162 157 162 000	ror
+
+000026  aa  143 157 162 162	corr
+000027  aa  145 143 164 137	ect_
+000030  aa  161 165 163 145	quse
+000031  aa  144 072 040 150	d: h
+000032  aa  141 163 150 040	ash 
+000033  aa  145 162 162 157	erro
+000034  aa  162 000 000 000	r
+
+BEGIN PROCEDURE correct_qused
+ENTRY TO correct_qused                                      STATEMENT 1 ON LINE 14
+correct_qused: proc (a_dir, a_osu, a_odu, a_nsu, a_ndu, a_did_anything, a_code);
+
+000035  at     000007000010
+000036  tt     000007000007
+000037  tt     000007000007
+000040  tt     000011000012
+000041  ta     000035000000
+000042  da     000164300000
+000043  aa   000600 6270 00	eax7 	384
+000044  aa  7 00034 3521 20	epp2 	pr7|28,*
+000045  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000046  aa     000016000000
+000047  aa     000000000000
+000050  aa  6 00042 3735 20	epp7 	pr6|34,*
+000051  aa  7 00000 2361 20	ldq  	pr7|0,*
+000052  aa   000002 6040 04	tmi  	2,ic		000054
+000053  aa   777777 3760 07	anq  	262143,dl
+000054  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000055  aa  6 00516 7561 00	stq  	pr6|334
+000056  aa  6 00032 3715 20	epp5 	pr6|26,*
+000057  aa  5 00006 3535 20	epp3 	pr5|6,*
+000060  aa  6 00514 2535 00	spri3	pr6|332
+000061  aa  5 00010 3515 20	epp1 	pr5|8,*
+000062  aa  6 00512 2515 00	spri1	pr6|330
+000063  aa  5 00012 3735 20	epp7 	pr5|10,*
+000064  aa  6 00510 6535 00	spri7	pr6|328
+000065  aa  5 00014 3535 20	epp3 	pr5|12,*
+000066  aa  6 00506 2535 00	spri3	pr6|326
+000067  aa  5 00016 3515 20	epp1 	pr5|14,*
+000070  aa  6 00504 2515 00	spri1	pr6|324
+						STATEMENT 1 ON LINE 89
+	correct_dir, correct_seg = "1"b;
+
+000071  aa   400000 2350 03	lda  	131072,du
+000072  aa  6 00102 7551 00	sta  	pr6|66		correct_dir
+000073  aa  6 00103 7551 00	sta  	pr6|67		correct_seg
+						STATEMENT 1 ON LINE 90
+	go to join;
+
+000074  aa   000065 7100 04	tra  	53,ic		000161
+ENTRY TO correct_seg_qused                                  STATEMENT 1 ON LINE 92
+correct_seg_qused: entry (a_dir, a_osu, a_nsu, a_did_anything, a_code);
+
+000075  at     000005000010
+000076  tt     000007000007
+000077  tt     000011000012
+000100  ta     000075000000
+000101  da     000174300000
+000102  aa   000600 6270 00	eax7 	384
+000103  aa  7 00034 3521 20	epp2 	pr7|28,*
+000104  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000105  aa     000012000000
+000106  aa     000000000000
+000107  aa  6 00042 3735 20	epp7 	pr6|34,*
+000110  aa  7 00000 2361 20	ldq  	pr7|0,*
+000111  aa   000002 6040 04	tmi  	2,ic		000113
+000112  aa   777777 3760 07	anq  	262143,dl
+000113  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000114  aa  6 00516 7561 00	stq  	pr6|334
+000115  aa  6 00032 3715 20	epp5 	pr6|26,*
+000116  aa  5 00006 3535 20	epp3 	pr5|6,*
+000117  aa  6 00512 2535 00	spri3	pr6|330
+000120  aa  5 00010 3515 20	epp1 	pr5|8,*
+000121  aa  6 00506 2515 00	spri1	pr6|326
+000122  aa  5 00012 3735 20	epp7 	pr5|10,*
+000123  aa  6 00504 6535 00	spri7	pr6|324
+						STATEMENT 1 ON LINE 94
+	correct_dir = "0"b;
+
+000124  aa  6 00102 4501 00	stz  	pr6|66		correct_dir
+						STATEMENT 1 ON LINE 95
+	correct_seg = "1"b;
+
+000125  aa   400000 2350 03	lda  	131072,du
+000126  aa  6 00103 7551 00	sta  	pr6|67		correct_seg
+						STATEMENT 1 ON LINE 96
+	go to join;
+
+000127  aa   000032 7100 04	tra  	26,ic		000161
+ENTRY TO correct_dir_qused                                  STATEMENT 1 ON LINE 98
+correct_dir_qused: entry (a_dir, a_odu, a_ndu, a_did_anything, a_code);
+
+000130  ta     000075000000
+000131  da     000204300000
+000132  aa   000600 6270 00	eax7 	384
+000133  aa  7 00034 3521 20	epp2 	pr7|28,*
+000134  aa  2 01046 2721 00	tsp2 	pr2|550		ext_entry_desc
+000135  aa     000012000000
+000136  aa     000000000000
+000137  aa  6 00042 3735 20	epp7 	pr6|34,*
+000140  aa  7 00000 2361 20	ldq  	pr7|0,*
+000141  aa   000002 6040 04	tmi  	2,ic		000143
+000142  aa   777777 3760 07	anq  	262143,dl
+000143  aa  0 00250 3761 00	anq  	pr0|168		= 000077777777
+000144  aa  6 00516 7561 00	stq  	pr6|334
+000145  aa  6 00032 3715 20	epp5 	pr6|26,*
+000146  aa  5 00004 3535 20	epp3 	pr5|4,*
+000147  aa  6 00514 2535 00	spri3	pr6|332
+000150  aa  5 00006 3515 20	epp1 	pr5|6,*
+000151  aa  6 00510 2515 00	spri1	pr6|328
+000152  aa  5 00010 3735 20	epp7 	pr5|8,*
+000153  aa  6 00506 6535 00	spri7	pr6|326
+000154  aa  5 00012 3535 20	epp3 	pr5|10,*
+000155  aa  6 00504 2535 00	spri3	pr6|324
+						STATEMENT 1 ON LINE 100
+	correct_dir = "1"b;
+
+000156  aa   400000 2350 03	lda  	131072,du
+000157  aa  6 00102 7551 00	sta  	pr6|66		correct_dir
+						STATEMENT 1 ON LINE 101
+	correct_seg = "0"b;
+
+000160  aa  6 00103 4501 00	stz  	pr6|67		correct_seg
+						STATEMENT 1 ON LINE 103
+join:	dname = a_dir;
+
+000161  aa  6 00032 3735 20	epp7 	pr6|26,*
+000162  aa  7 00002 3715 20	epp5 	pr7|2,*
+000163  aa  6 00516 2361 00	ldq  	pr6|334
+000164  aa  040 100 100 540	mlr  	(pr,rl),(pr),fill(040)
+000165  aa  5 00000 00 0006	desc9a	pr5|0,ql		a_dir
+000166  aa  6 00105 00 0250	desc9a	pr6|69,168	dname
+						STATEMENT 1 ON LINE 104
+	did_anything = "0"b;
+
+000167  aa  6 00104 4501 00	stz  	pr6|68		did_anything
+						STATEMENT 1 ON LINE 105
+	scode, code = 0;
+
+000170  aa  6 00471 4501 00	stz  	pr6|313		scode
+000171  aa  6 00101 4501 00	stz  	pr6|65		code
+						STATEMENT 1 ON LINE 106
+	vtocep = addr (local_vtoce);
+
+000172  aa  6 00164 3535 00	epp3 	pr6|116		local_vtoce
+000173  aa  6 00502 2535 00	spri3	pr6|322		vtocep
+						STATEMENT 1 ON LINE 108
+	call dc_find$dir_write_priv (dname, FS_OBJ_CORRECT_QUSED, dp, code);
+
+000174  aa  6 00105 3521 00	epp2 	pr6|69		dname
+000175  aa  6 00522 2521 00	spri2	pr6|338
+000176  aa   777602 3520 04	epp2 	-126,ic		000000 = 000000000031
+000177  aa  6 00524 2521 00	spri2	pr6|340
+000200  aa  6 00500 3521 00	epp2 	pr6|320		dp
+000201  aa  6 00526 2521 00	spri2	pr6|342
+000202  aa  6 00101 3521 00	epp2 	pr6|65		code
+000203  aa  6 00530 2521 00	spri2	pr6|344
+000204  aa  6 00520 6211 00	eax1 	pr6|336
+000205  aa   020000 4310 07	fld  	8192,dl
+000206  aa  6 00044 3701 20	epp4 	pr6|36,*
+000207  la  4 00036 3521 20	epp2 	pr4|30,*		dc_find$dir_write_priv
+000210  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 109
+	if code ^= 0 then go to err;
+
+000211  aa  6 00101 2361 00	ldq  	pr6|65		code
+000212  aa   000712 6010 04	tnz  	458,ic		001124
+						STATEMENT 1 ON LINE 111
+	if correct_seg then do;
+
+000213  aa  6 00103 2351 00	lda  	pr6|67		correct_seg
+000214  aa   000021 6000 04	tze  	17,ic		000235
+						STATEMENT 1 ON LINE 112
+	     call logical_volume_manager$lvtep (dir.sons_lvid, (null ()), code);
+
+000215  aa   777577 3734 24	epp7 	-129,ic*
+000216  aa  6 00532 6535 00	spri7	pr6|346
+000217  aa  6 00500 3715 20	epp5 	pr6|320,*		dp
+000220  aa  5 00012 3521 00	epp2 	pr5|10		dir.sons_lvid
+000221  aa  6 00522 2521 00	spri2	pr6|338
+000222  aa  6 00532 3521 00	epp2 	pr6|346
+000223  aa  6 00524 2521 00	spri2	pr6|340
+000224  aa  6 00101 3521 00	epp2 	pr6|65		code
+000225  aa  6 00526 2521 00	spri2	pr6|342
+000226  aa  6 00520 6211 00	eax1 	pr6|336
+000227  aa   014000 4310 07	fld  	6144,dl
+000230  aa  6 00044 3701 20	epp4 	pr6|36,*
+000231  la  4 00022 3521 20	epp2 	pr4|18,*		logical_volume_manager$lvtep
+000232  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 116
+	     if code ^= 0 then go to unlock_err;
+
+000233  aa  6 00101 2361 00	ldq  	pr6|65		code
+000234  aa   000655 6010 04	tnz  	429,ic		001111
+						STATEMENT 1 ON LINE 117
+	end;
+
+						STATEMENT 1 ON LINE 126
+	nentries = dir.seg_count + dir.dir_count;
+
+000235  aa  6 00500 3735 20	epp7 	pr6|320,*		dp
+000236  aa  7 00022 2351 00	lda  	pr7|18		dir.dir_count
+000237  aa   000022 7350 00	als  	18
+000240  aa   000066 7330 00	lrs  	54
+000241  aa  6 00517 7561 00	stq  	pr6|335		dir.dir_count
+000242  aa  7 00022 2351 00	lda  	pr7|18		dir.seg_count
+000243  aa   000066 7330 00	lrs  	54
+000244  aa  6 00517 0761 00	adq  	pr6|335		dir.dir_count
+000245  aa  6 00465 7561 00	stq  	pr6|309		nentries
+						STATEMENT 1 ON LINE 127
+	htblsize = (nentries * 7) / 5;
+
+000246  aa   000007 4020 07	mpy  	7,dl
+000247  aa   001005 3520 04	epp2 	517,ic		001254 = 000000000005
+000250  aa  0 01262 7001 00	tsx0 	pr0|690		divide_fx1
+000251  aa     000000000060
+000252  aa   000060 7220 07	lxl2 	48,dl
+000253  aa  0 01115 7001 00	tsx0 	pr0|589		trunc_fx2
+000254  aa  6 00163 7561 00	stq  	pr6|115		htblsize
+						STATEMENT 1 ON LINE 129
+	duid = dir.uid;
+
+000255  aa  7 00010 2351 00	lda  	pr7|8		dir.uid
+000256  aa  6 00161 7551 00	sta  	pr6|113		duid
+						STATEMENT 1 ON LINE 130
+	dpvid = dir.pvid;
+
+000257  aa  7 00011 2351 00	lda  	pr7|9		dir.pvid
+000260  aa  6 00157 7551 00	sta  	pr6|111		dpvid
+						STATEMENT 1 ON LINE 131
+	dvtocx = dir.vtocx;
+
+000261  aa  7 00015 2351 00	lda  	pr7|13		dir.vtocx
+000262  aa   000066 7330 00	lrs  	54
+000263  aa  6 00162 7561 00	stq  	pr6|114		dvtocx
+						STATEMENT 1 ON LINE 133
+	call lock$lock_ast;
+
+000264  aa  6 00056 6211 00	eax1 	pr6|46
+000265  aa   000000 4310 07	fld  	0,dl
+000266  aa  6 00044 3701 20	epp4 	pr6|36,*
+000267  la  4 00016 3521 20	epp2 	pr4|14,*		lock$lock_ast
+000270  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 138
+	astep = search_ast$check (duid, dpvid, dvtocx, code);
+
+000271  aa  6 00161 3521 00	epp2 	pr6|113		duid
+000272  aa  6 00536 2521 00	spri2	pr6|350
+000273  aa  6 00157 3521 00	epp2 	pr6|111		dpvid
+000274  aa  6 00540 2521 00	spri2	pr6|352
+000275  aa  6 00162 3521 00	epp2 	pr6|114		dvtocx
+000276  aa  6 00542 2521 00	spri2	pr6|354
+000277  aa  6 00101 3521 00	epp2 	pr6|65		code
+000300  aa  6 00544 2521 00	spri2	pr6|356
+000301  aa  6 00474 3521 00	epp2 	pr6|316		astep
+000302  aa  6 00546 2521 00	spri2	pr6|358
+000303  aa  6 00534 6211 00	eax1 	pr6|348
+000304  aa   024000 4310 07	fld  	10240,dl
+000305  aa  6 00044 3701 20	epp4 	pr6|36,*
+000306  la  4 00026 3521 20	epp2 	pr4|22,*		search_ast$check
+000307  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 139
+	if code ^= 0 then do;
+
+000310  aa  6 00101 2361 00	ldq  	pr6|65		code
+000311  aa   000007 6000 04	tze  	7,ic		000320
+						STATEMENT 1 ON LINE 140
+	     call lock$unlock_ast;
+
+000312  aa  6 00056 6211 00	eax1 	pr6|46
+000313  aa   000000 4310 07	fld  	0,dl
+000314  aa  6 00044 3701 20	epp4 	pr6|36,*
+000315  la  4 00020 3521 20	epp2 	pr4|16,*		lock$unlock_ast
+000316  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 141
+	     go to unlock_err;
+
+000317  aa   000572 7100 04	tra  	378,ic		001111
+						STATEMENT 1 ON LINE 142
+	end;
+
+						STATEMENT 1 ON LINE 144
+	if astep = null then do;
+
+000320  aa  6 00474 2371 00	ldaq 	pr6|316		astep
+000321  aa   777473 6770 04	eraq 	-197,ic		000014 = 077777000043 000001000000
+000322  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000323  aa   000040 6010 04	tnz  	32,ic		000363
+						STATEMENT 1 ON LINE 145
+	     nsu = 0;
+
+000324  aa  6 00466 4501 00	stz  	pr6|310		nsu
+						STATEMENT 1 ON LINE 147
+	     call lock$unlock_ast;
+
+000325  aa  6 00056 6211 00	eax1 	pr6|46
+000326  aa   000000 4310 07	fld  	0,dl
+000327  aa  6 00044 3701 20	epp4 	pr6|36,*
+000330  la  4 00020 3521 20	epp2 	pr4|16,*		lock$unlock_ast
+000331  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 149
+	     call internal_vtoc_man (dir.uid, dir.pvid, dir.vtocx);
+
+000332  aa  6 00500 3735 20	epp7 	pr6|320,*		dp
+000333  aa  7 00010 3521 00	epp2 	pr7|8		dir.uid
+000334  aa  6 00522 2521 00	spri2	pr6|338
+000335  aa  7 00011 3521 00	epp2 	pr7|9		dir.pvid
+000336  aa  6 00524 2521 00	spri2	pr6|340
+000337  aa  7 00015 3521 00	epp2 	pr7|13		dir.vtocx
+000340  aa  6 00526 2521 00	spri2	pr6|342
+000341  aa  6 00520 6211 00	eax1 	pr6|336
+000342  aa   014000 4310 07	fld  	6144,dl
+000343  aa   000607 3520 04	epp2 	391,ic		001152 = 000140627000
+000344  aa  0 00625 7001 00	tsx0 	pr0|405		call_int_this
+						STATEMENT 1 ON LINE 151
+	     if code ^= 0 then go to unlock_err;
+
+000345  aa  6 00101 2361 00	ldq  	pr6|65		code
+000346  aa   000543 6010 04	tnz  	355,ic		001111
+						STATEMENT 1 ON LINE 153
+	     ndu = fixed (vtoce.records, 9);
+
+000347  aa  6 00502 3735 20	epp7 	pr6|322,*		vtocep
+000350  aa  7 00002 2351 00	lda  	pr7|2		vtoce.records
+000351  aa   000022 7350 00	als  	18
+000352  aa   000077 7730 00	lrl  	63
+000353  aa  6 00464 7561 00	stq  	pr6|308		ndu
+						STATEMENT 1 ON LINE 154
+	     osu = vtoce.used (0);
+
+000354  aa  7 00010 2351 00	lda  	pr7|8		vtoce.used
+000355  aa   000066 7730 00	lrl  	54
+000356  aa  6 00470 7561 00	stq  	pr6|312		osu
+						STATEMENT 1 ON LINE 155
+	     odu = vtoce.used (1);
+
+000357  aa  7 00010 2361 00	ldq  	pr7|8		vtoce.used
+000360  aa  0 00374 3771 00	anaq 	pr0|252		= 000000000000 000000777777
+000361  aa  6 00467 7561 00	stq  	pr6|311		odu
+						STATEMENT 1 ON LINE 156
+	end;
+
+000362  aa   000020 7100 04	tra  	16,ic		000402
+						STATEMENT 1 ON LINE 158
+	else					/* There is active inferior quota */
+	     call quotaw$rvq (astep, osu, odu, nsu, ndu);
+
+000363  aa  6 00474 3521 00	epp2 	pr6|316		astep
+000364  aa  6 00536 2521 00	spri2	pr6|350
+000365  aa  6 00470 3521 00	epp2 	pr6|312		osu
+000366  aa  6 00540 2521 00	spri2	pr6|352
+000367  aa  6 00467 3521 00	epp2 	pr6|311		odu
+000370  aa  6 00542 2521 00	spri2	pr6|354
+000371  aa  6 00466 3521 00	epp2 	pr6|310		nsu
+000372  aa  6 00544 2521 00	spri2	pr6|356
+000373  aa  6 00464 3521 00	epp2 	pr6|308		ndu
+000374  aa  6 00546 2521 00	spri2	pr6|358
+000375  aa  6 00534 6211 00	eax1 	pr6|348
+000376  aa   024000 4310 07	fld  	10240,dl
+000377  aa  6 00044 3701 20	epp4 	pr6|36,*
+000400  la  4 00024 3521 20	epp2 	pr4|20,*		quotaw$rvq
+000401  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 168
+	begin;
+
+000402  aa   000200 6270 00	eax7 	128
+000403  aa  0 00614 2721 00	tsp2 	pr0|396		enter_begin_block
+000404  aa     000000000000
+BEGIN BLOCK  1
+PROLOGUE SEQUENCE                                           STATEMENT 1 ON LINE 171
+000405  aa  6 00040 3735 20	epp7 	pr6|32,*
+000406  aa  7 00163 2361 00	ldq  	pr7|115		htblsize
+000407  aa   000001 1760 07	sbq  	1,dl
+000410  aa  6 00110 7561 00	stq  	pr6|72
+000411  aa   000001 0760 07	adq  	1,dl
+000412  aa  6 00111 7561 00	stq  	pr6|73
+000413  aa  0 00661 7001 00	tsx0 	pr0|433		alloc_auto_adj
+000414  aa  6 00112 2521 00	spri2	pr6|74
+MAIN SEQUENCE                                               STATEMENT 1 ON LINE 175
+	     unspec (htbl) = "0"b;
+
+000415  aa  6 00110 2361 00	ldq  	pr6|72
+000416  aa   000001 0760 07	adq  	1,dl
+000417  aa   000044 4020 07	mpy  	36,dl
+000420  aa   000010 0760 07	adq  	8,dl
+000421  aa   000011 5060 07	div  	9,dl
+000422  aa  000 140 100 400	mlr  	(),(pr,rl),fill(000)
+000423  aa   000000 00 0000	desc9a	0,0
+000424  aa  2 00000 00 0006	desc9a	pr2|0,ql
+						STATEMENT 1 ON LINE 176
+	     if astep ^= null then do;
+
+000425  aa  7 00474 2371 00	ldaq 	pr7|316		astep
+000426  aa   777366 6770 04	eraq 	-266,ic		000014 = 077777000043 000001000000
+000427  aa  0 00460 3771 00	anaq 	pr0|304		= 077777000077 777777077077
+000430  aa   000065 6000 04	tze  	53,ic		000515
+						STATEMENT 1 ON LINE 177
+		do astep = ptr (astep, aste.infp) repeat ptr (astep, aste.infl) while (rel (astep));
+
+000431  aa  7 00474 3715 20	epp5 	pr7|316,*		astep
+000432  aa  5 00001 2351 00	lda  	pr5|1		aste.infp
+000433  aa   000022 7350 00	als  	18
+000434  aa   000000 3314 01	eawp5	0,au
+000435  aa  7 00474 6515 00	spri5	pr7|316		astep
+000436  aa  6 00040 3735 20	epp7 	pr6|32,*
+000437  aa  7 00474 6351 20	eaa  	pr7|316,*		astep
+000440  aa   000050 6000 04	tze  	40,ic		000510
+						STATEMENT 1 ON LINE 180
+		     if hash_search ((aste.uid)) then call syserr (1, "correct_qused: hash error");
+
+000441  aa  7 00474 3715 20	epp5 	pr7|316,*		astep
+000442  aa  5 00003 2351 00	lda  	pr5|3		aste.uid
+000443  aa  6 00136 7551 00	sta  	pr6|94
+000444  aa   000602 3520 04	epp2 	386,ic		001246 = 000004000000
+000445  aa   000237 6700 04	tsp4 	159,ic		000704
+000446  aa  6 00137 2351 00	lda  	pr6|95
+000447  aa   400000 3150 03	cana 	131072,du
+000450  aa   000024 6000 04	tze  	20,ic		000474
+000451  aa   000001 2360 07	ldq  	1,dl
+000452  aa  6 00137 7561 00	stq  	pr6|95
+000453  aa  000 100 100 404	mlr  	(ic),(pr),fill(000)
+000454  aa   777353 00 0034	desc9a	-277,28		000026 = 143157162162
+000455  aa  6 00140 00 0034	desc9a	pr6|96,28
+000456  aa  6 00137 3521 00	epp2 	pr6|95
+000457  aa  6 00152 2521 00	spri2	pr6|106
+000460  aa  6 00140 3521 00	epp2 	pr6|96
+000461  aa  6 00154 2521 00	spri2	pr6|108
+000462  aa   777322 3520 04	epp2 	-302,ic		000004 = 404000000005
+000463  aa  6 00156 2521 00	spri2	pr6|110
+000464  aa   777317 3520 04	epp2 	-305,ic		000003 = 524000000031
+000465  aa  6 00160 2521 00	spri2	pr6|112
+000466  aa  6 00150 6211 00	eax1 	pr6|104
+000467  aa   010000 4310 07	fld  	4096,dl
+000470  aa  6 00044 3701 20	epp4 	pr6|36,*
+000471  la  4 00030 3521 20	epp2 	pr4|24,*		syserr
+000472  aa  0 00622 7001 00	tsx0 	pr0|402		call_ext_out_desc
+000473  aa   000006 7100 04	tra  	6,ic		000501
+						STATEMENT 1 ON LINE 181
+		     else htbl (hshx) = aste.uid;
+
+000474  aa  6 00040 3735 20	epp7 	pr6|32,*
+000475  aa  7 00474 3715 20	epp5 	pr7|316,*		astep
+000476  aa  5 00003 2351 00	lda  	pr5|3		aste.uid
+000477  aa  6 00100 7271 00	lxl7 	pr6|64		hshx
+000500  aa  6 00112 7551 77	sta  	pr6|74,*7		htbl
+						STATEMENT 1 ON LINE 182
+		end;
+
+000501  aa  6 00040 3735 20	epp7 	pr6|32,*
+000502  aa  7 00474 3715 20	epp5 	pr7|316,*		astep
+000503  aa  5 00001 2351 00	lda  	pr5|1		aste.infl
+000504  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000505  aa   000000 3314 01	eawp5	0,au
+000506  aa  7 00474 6515 00	spri5	pr7|316		astep
+000507  aa   777727 7100 04	tra  	-41,ic		000436
+						STATEMENT 1 ON LINE 183
+		call lock$unlock_ast;
+
+000510  aa  6 00056 6211 00	eax1 	pr6|46
+000511  aa   000000 4310 07	fld  	0,dl
+000512  aa  6 00044 3701 20	epp4 	pr6|36,*
+000513  la  4 00020 3521 20	epp2 	pr4|16,*		lock$unlock_ast
+000514  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 184
+	     end;
+
+						STATEMENT 1 ON LINE 186
+	     branches_passed = 0;
+
+000515  aa  6 00040 3735 20	epp7 	pr6|32,*
+000516  aa  7 00100 4501 00	stz  	pr7|64		branches_passed
+						STATEMENT 1 ON LINE 187
+	     nentries = nentries + dir.lcount;
+
+000517  aa  7 00500 3715 20	epp5 	pr7|320,*		dp
+000520  aa  5 00023 2351 00	lda  	pr5|19		dir.lcount
+000521  aa   000066 7330 00	lrs  	54
+000522  aa  7 00465 0561 00	asq  	pr7|309		nentries
+						STATEMENT 1 ON LINE 189
+	     do ep = ptr (dp, dir.entryfrp) repeat ptr (dp, entry.efrp) while (rel (ep));
+
+000523  aa  5 00016 2351 00	lda  	pr5|14		dir.entryfrp
+000524  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000525  aa  5 00000 3521 00	epp2 	pr5|0
+000526  aa   000000 3120 01	eawp2	0,au
+000527  aa  7 00476 2521 00	spri2	pr7|318		ep
+000530  aa  6 00040 3735 20	epp7 	pr6|32,*
+000531  aa  7 00476 6351 20	eaa  	pr7|318,*		ep
+000532  aa   000142 6000 04	tze  	98,ic		000674
+						STATEMENT 1 ON LINE 190
+		branches_passed = branches_passed + 1;
+
+000533  aa  7 00100 0541 00	aos  	pr7|64		branches_passed
+						STATEMENT 1 ON LINE 191
+		if branches_passed > nentries then signal bad_dir_;
+
+000534  aa  7 00100 2361 00	ldq  	pr7|64		branches_passed
+000535  aa  7 00465 1161 00	cmpq 	pr7|309		nentries
+000536  aa   000004 6044 04	tmoz 	4,ic		000542
+000537  aa   000010 7260 07	lxl6 	8,dl
+000540  aa   777256 3520 04	epp2 	-338,ic		000016 = 142141144137
+000541  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 192
+		if entry.bs then do;
+
+000542  aa  6 00040 3735 20	epp7 	pr6|32,*
+000543  aa  7 00476 3715 20	epp5 	pr7|318,*		ep
+000544  aa  5 00004 2351 00	lda  	pr5|4		entry.bs
+000545  aa   400000 3150 03	cana 	131072,du
+000546  aa   000117 6000 04	tze  	79,ic		000665
+						STATEMENT 1 ON LINE 193
+		     if entry.owner ^= dir.uid
+			| (entry.type ^= SEG_TYPE & entry.type ^= DIR_TYPE) then signal bad_dir_;
+
+000547  aa  5 00001 2351 00	lda  	pr5|1		entry.type
+000550  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000551  aa  6 00137 7551 00	sta  	pr6|95		entry.type
+000552  aa  5 00044 2351 00	lda  	pr5|36		entry.owner
+000553  aa  7 00500 3535 20	epp3 	pr7|320,*		dp
+000554  aa  3 00010 1151 00	cmpa 	pr3|8		dir.uid
+000555  aa   000006 6010 04	tnz  	6,ic		000563
+000556  aa  6 00137 2351 00	lda  	pr6|95		entry.type
+000557  aa   000007 1150 03	cmpa 	7,du
+000560  aa   000006 6000 04	tze  	6,ic		000566
+000561  aa   000004 1150 03	cmpa 	4,du
+000562  aa   000004 6000 04	tze  	4,ic		000566
+000563  aa   000010 7260 07	lxl6 	8,dl
+000564  aa   777232 3520 04	epp2 	-358,ic		000016 = 142141144137
+000565  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 195
+		     if ^hash_search (entry.uid) then do;
+
+000566  aa  6 00040 3735 20	epp7 	pr6|32,*
+000567  aa  7 00476 3715 20	epp5 	pr7|318,*		ep
+000570  aa  5 00002 3521 00	epp2 	pr5|2		entry.uid
+000571  aa  6 00152 2521 00	spri2	pr6|106
+000572  aa  6 00137 3521 00	epp2 	pr6|95
+000573  aa  6 00154 2521 00	spri2	pr6|108
+000574  aa  6 00150 3521 00	epp2 	pr6|104
+000575  aa   010000 4310 07	fld  	4096,dl
+000576  aa  2 00000 7571 00	staq 	pr2|0
+000577  aa   000105 6700 04	tsp4 	69,ic		000704
+000600  aa  6 00137 2351 00	lda  	pr6|95
+000601  aa   400000 3150 03	cana 	131072,du
+000602  aa   000063 6010 04	tnz  	51,ic		000665
+						STATEMENT 1 ON LINE 196
+			if ^correct_seg then
+			     if ^entry.dirsw then go to next_entry;
+
+000603  aa  6 00040 3735 20	epp7 	pr6|32,*
+000604  aa  7 00103 2351 00	lda  	pr7|67		correct_seg
+000605  aa   000005 6010 04	tnz  	5,ic		000612
+000606  aa  7 00476 3715 20	epp5 	pr7|318,*		ep
+000607  aa  5 00032 2351 00	lda  	pr5|26		entry.dirsw
+000610  aa   400000 3150 03	cana 	131072,du
+000611  aa   000054 6000 04	tze  	44,ic		000665
+						STATEMENT 1 ON LINE 198
+			call internal_vtoc_man (entry.uid, (entry.pvid), entry.vtocx);
+
+000612  aa  7 00476 3715 20	epp5 	pr7|318,*		ep
+000613  aa  5 00030 2351 00	lda  	pr5|24		entry.pvid
+000614  aa  6 00137 7551 00	sta  	pr6|95
+000615  aa  5 00002 3521 00	epp2 	pr5|2		entry.uid
+000616  aa  6 00152 2521 00	spri2	pr6|106
+000617  aa  6 00137 3521 00	epp2 	pr6|95
+000620  aa  6 00154 2521 00	spri2	pr6|108
+000621  aa  5 00031 3521 00	epp2 	pr5|25		entry.vtocx
+000622  aa  6 00156 2521 00	spri2	pr6|110
+000623  aa   000001 7270 07	lxl7 	1,dl
+000624  aa  6 00150 6211 00	eax1 	pr6|104
+000625  aa   014000 4310 07	fld  	6144,dl
+000626  aa   000324 3520 04	epp2 	212,ic		001152 = 000140627000
+000627  aa  0 00627 7001 00	tsx0 	pr0|407		call_int_other
+						STATEMENT 1 ON LINE 199
+			if code ^= 0 then scode = code;
+
+000630  aa  6 00040 3735 20	epp7 	pr6|32,*
+000631  aa  7 00101 2361 00	ldq  	pr7|65		code
+000632  aa   000003 6000 04	tze  	3,ic		000635
+000633  aa  7 00471 7561 00	stq  	pr7|313		scode
+000634  aa   000031 7100 04	tra  	25,ic		000665
+						STATEMENT 1 ON LINE 200
+			else do;
+
+						STATEMENT 1 ON LINE 201
+			     if vtoce.dirsw then do;
+
+000635  aa  7 00502 3715 20	epp5 	pr7|322,*		vtocep
+000636  aa  5 00005 2351 00	lda  	pr5|5		vtoce.dirsw
+000637  aa   400000 3150 07	cana 	131072,dl
+000640  aa   000021 6000 04	tze  	17,ic		000661
+						STATEMENT 1 ON LINE 202
+				if vtoce.received (0) = 0 & ^vtoce.master_dir then nsu = nsu + vtoce.used (0);
+
+000641  aa  5 00011 2351 00	lda  	pr5|9		vtoce.received
+000642  aa   000066 7730 00	lrl  	54
+000643  aa   000007 6010 04	tnz  	7,ic		000652
+000644  aa  5 00005 2351 00	lda  	pr5|5		vtoce.master_dir
+000645  aa   200000 3150 07	cana 	65536,dl
+000646  aa   000004 6010 04	tnz  	4,ic		000652
+000647  aa  5 00010 2351 00	lda  	pr5|8		vtoce.used
+000650  aa   000066 7730 00	lrl  	54
+000651  aa  7 00466 0561 00	asq  	pr7|310		nsu
+						STATEMENT 1 ON LINE 203
+				if vtoce.received (1) = 0 then ndu = ndu + vtoce.used (1);
+
+000652  aa  5 00011 2361 00	ldq  	pr5|9		vtoce.received
+000653  aa  0 00374 3771 00	anaq 	pr0|252		= 000000000000 000000777777
+000654  aa   000011 6010 04	tnz  	9,ic		000665
+000655  aa  5 00010 2361 00	ldq  	pr5|8		vtoce.used
+000656  aa  0 00374 3771 00	anaq 	pr0|252		= 000000000000 000000777777
+000657  aa  7 00464 0561 00	asq  	pr7|308		ndu
+						STATEMENT 1 ON LINE 204
+			     end;
+
+000660  aa   000005 7100 04	tra  	5,ic		000665
+						STATEMENT 1 ON LINE 205
+			     else nsu = nsu + fixed (vtoce.records, 9);
+
+000661  aa  5 00002 2351 00	lda  	pr5|2		vtoce.records
+000662  aa   000022 7350 00	als  	18
+000663  aa   000077 7730 00	lrl  	63
+000664  aa  7 00466 0561 00	asq  	pr7|310		nsu
+						STATEMENT 1 ON LINE 206
+			end;
+
+						STATEMENT 1 ON LINE 207
+		     end;
+
+						STATEMENT 1 ON LINE 208
+		end;
+
+						STATEMENT 1 ON LINE 209
+next_entry:    end;
+
+000665  aa  6 00040 3735 20	epp7 	pr6|32,*
+000666  aa  7 00476 2351 20	lda  	pr7|318,*		entry.efrp
+000667  aa  0 00044 3771 00	anaq 	pr0|36		= 777777000000 000000000000
+000670  aa  7 00500 3521 20	epp2 	pr7|320,*		dp
+000671  aa   000000 3120 01	eawp2	0,au
+000672  aa  7 00476 2521 00	spri2	pr7|318		ep
+000673  aa   777635 7100 04	tra  	-99,ic		000530
+						STATEMENT 1 ON LINE 210
+	     if branches_passed < nentries then signal bad_dir_;
+
+000674  aa  7 00100 2361 00	ldq  	pr7|64		branches_passed
+000675  aa  7 00465 1161 00	cmpq 	pr7|309		nentries
+000676  aa   000004 6050 04	tpl  	4,ic		000702
+000677  aa   000010 7260 07	lxl6 	8,dl
+000700  aa   777116 3520 04	epp2 	-434,ic		000016 = 142141144137
+000701  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 228
+	end;
+
+000702  aa  0 00615 7001 00	tsx0 	pr0|397		leave_begin_block
+000703  aa   000076 7100 04	tra  	62,ic		001001
+BEGIN PROCEDURE hash_search
+ENTRY TO hash_search                                        STATEMENT 1 ON LINE 212
+hash_search: proc (c_uid) returns (bit (1) aligned);
+
+000704  aa  6 00114 6501 00	spri4	pr6|76
+000705  aa  6 00116 2521 00	spri2	pr6|78
+						STATEMENT 1 ON LINE 219
+	cuid = c_uid;
+
+000706  aa  2 00002 2351 20	lda  	pr2|2,*		c_uid
+000707  aa  6 00122 7551 00	sta  	pr6|82		cuid
+						STATEMENT 1 ON LINE 220
+	if cuid = "0"b then signal bad_dir_;
+
+000710  aa   000004 6010 04	tnz  	4,ic		000714
+000711  aa   000010 7260 07	lxl6 	8,dl
+000712  aa   777104 3520 04	epp2 	-444,ic		000016 = 142141144137
+000713  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 221
+	hshi = mod (fixed (cuid, 36), htblsize);
+
+000714  aa  6 00122 2351 00	lda  	pr6|82		cuid
+000715  aa   000044 7730 00	lrl  	36
+000716  aa  6 00040 3735 20	epp7 	pr6|32,*
+000717  aa  7 00163 3521 00	epp2 	pr7|115		htblsize
+000720  aa  0 00706 7001 00	tsx0 	pr0|454		mdfx3
+000721  aa  6 00123 7561 00	stq  	pr6|83		hshi
+						STATEMENT 1 ON LINE 222
+	do hshx = hshi to htblsize - 1, 0 to hshi - 1;
+
+000722  aa   000031 3520 04	epp2 	25,ic		000753 = 600100054100
+000723  aa  6 00132 2521 00	spri2	pr6|90
+000724  aa  7 00163 2361 00	ldq  	pr7|115		htblsize
+000725  aa   000001 1760 07	sbq  	1,dl
+000726  aa  6 00134 7561 00	stq  	pr6|92
+000727  aa  6 00123 2361 00	ldq  	pr6|83		hshi
+000730  aa  6 00100 7561 00	stq  	pr6|64		hshx
+000731  aa   000000 0110 03	nop  	0,du
+000732  aa  6 00100 2361 00	ldq  	pr6|64		hshx
+000733  aa  6 00134 1161 00	cmpq 	pr6|92
+000734  aa   000021 6054 04	tpnz 	17,ic		000755
+						STATEMENT 1 ON LINE 223
+	     if htbl (hshx) = cuid then return ("1"b);
+
+000735  aa  6 00100 7271 00	lxl7 	pr6|64		hshx
+000736  aa  6 00112 2351 77	lda  	pr6|74,*7		htbl
+000737  aa  6 00122 1151 00	cmpa 	pr6|82		cuid
+000740  aa   000005 6010 04	tnz  	5,ic		000745
+000741  aa   400000 2350 03	lda  	131072,du
+000742  aa  6 00116 3735 20	epp7 	pr6|78,*
+000743  aa  7 00004 7551 20	sta  	pr7|4,*
+000744  aa  6 00114 6101 00	rtcd 	pr6|76
+						STATEMENT 1 ON LINE 224
+	     else if htbl (hshx) = "0"b then return ("0"b);
+
+000745  aa   000300 3150 04	cana 	192,ic		001245 = 777777777777
+000746  aa   000004 6010 04	tnz  	4,ic		000752
+000747  aa  6 00116 3735 20	epp7 	pr6|78,*
+000750  aa  7 00004 4501 20	stz  	pr7|4,*
+000751  aa  6 00114 6101 00	rtcd 	pr6|76
+						STATEMENT 1 ON LINE 225
+	end;
+
+000752  aa  6 00132 7101 20	tra  	pr6|90,*
+000753  aa  6 00100 0541 00	aos  	pr6|64		hshx
+000754  aa   777756 7100 04	tra  	-18,ic		000732
+000755  aa   000013 3520 04	epp2 	11,ic		000770 = 600100054100
+000756  aa  6 00132 2521 00	spri2	pr6|90
+000757  aa  6 00123 2361 00	ldq  	pr6|83		hshi
+000760  aa   000001 1760 07	sbq  	1,dl
+000761  aa  6 00135 7561 00	stq  	pr6|93
+000762  aa  6 00100 4501 00	stz  	pr6|64		hshx
+000763  aa   000000 0110 03	nop  	0,du
+000764  aa  6 00100 2361 00	ldq  	pr6|64		hshx
+000765  aa  6 00135 1161 00	cmpq 	pr6|93
+000766  aa   000004 6054 04	tpnz 	4,ic		000772
+000767  aa   777746 7100 04	tra  	-26,ic		000735
+000770  aa  6 00100 0541 00	aos  	pr6|64		hshx
+000771  aa   777773 7100 04	tra  	-5,ic		000764
+						STATEMENT 1 ON LINE 226
+	signal bad_dir_;
+
+000772  aa   000010 7260 07	lxl6 	8,dl
+000773  aa   777023 3520 04	epp2 	-493,ic		000016 = 142141144137
+000774  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+						STATEMENT 1 ON LINE 227
+     end hash_search;
+
+000775  aa   000027 7260 07	lxl6 	23,dl
+000776  aa   777022 3520 04	epp2 	-494,ic		000020 = 162145164165
+000777  aa  0 00716 7001 00	tsx0 	pr0|462		signal_op
+001000  aa  6 00114 6101 00	rtcd 	pr6|76
+  END PROCEDURE hash_search
+  END BLOCK  1
+						STATEMENT 1 ON LINE 235
+	sudelta = nsu - osu;
+
+001001  aa  6 00466 2361 00	ldq  	pr6|310		nsu
+001002  aa  6 00470 1761 00	sbq  	pr6|312		osu
+001003  aa  6 00473 7561 00	stq  	pr6|315		sudelta
+						STATEMENT 1 ON LINE 236
+	dudelta = ndu - odu;
+
+001004  aa  6 00464 2361 00	ldq  	pr6|308		ndu
+001005  aa  6 00467 1761 00	sbq  	pr6|311		odu
+001006  aa  6 00160 7561 00	stq  	pr6|112		dudelta
+						STATEMENT 1 ON LINE 240
+	if scode ^= 0 then do;
+
+001007  aa  6 00471 2361 00	ldq  	pr6|313		scode
+001010  aa   000026 6000 04	tze  	22,ic		001036
+						STATEMENT 1 ON LINE 241
+	     if correct_seg then do;
+
+001011  aa  6 00103 2351 00	lda  	pr6|67		correct_seg
+001012  aa   000024 6000 04	tze  	20,ic		001036
+						STATEMENT 1 ON LINE 242
+		call logical_volume_manager$lvtep (dir.sons_lvid, (null ()), scode1);
+
+001013  aa   777001 3734 24	epp7 	-511,ic*
+001014  aa  6 00532 6535 00	spri7	pr6|346
+001015  aa  6 00500 3715 20	epp5 	pr6|320,*		dp
+001016  aa  5 00012 3521 00	epp2 	pr5|10		dir.sons_lvid
+001017  aa  6 00522 2521 00	spri2	pr6|338
+001020  aa  6 00532 3521 00	epp2 	pr6|346
+001021  aa  6 00524 2521 00	spri2	pr6|340
+001022  aa  6 00472 3521 00	epp2 	pr6|314		scode1
+001023  aa  6 00526 2521 00	spri2	pr6|342
+001024  aa  6 00520 6211 00	eax1 	pr6|336
+001025  aa   014000 4310 07	fld  	6144,dl
+001026  aa  6 00044 3701 20	epp4 	pr6|36,*
+001027  la  4 00022 3521 20	epp2 	pr4|18,*		logical_volume_manager$lvtep
+001030  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 243
+		if scode1 ^= 0 then do;
+
+001031  aa  6 00472 2361 00	ldq  	pr6|314		scode1
+001032  aa   000004 6000 04	tze  	4,ic		001036
+						STATEMENT 1 ON LINE 244
+		     code = scode1;
+
+001033  aa  6 00101 7561 00	stq  	pr6|65		code
+						STATEMENT 1 ON LINE 245
+		     sudelta, dudelta = 0;
+
+001034  aa  6 00473 4501 00	stz  	pr6|315		sudelta
+001035  aa  6 00160 4501 00	stz  	pr6|112		dudelta
+						STATEMENT 1 ON LINE 246
+		end;
+
+						STATEMENT 1 ON LINE 247
+	     end;
+
+						STATEMENT 1 ON LINE 248
+	end;
+
+						STATEMENT 1 ON LINE 250
+	if ^correct_seg then sudelta = 0;
+
+001036  aa  6 00103 2351 00	lda  	pr6|67		correct_seg
+001037  aa   000002 6010 04	tnz  	2,ic		001041
+001040  aa  6 00473 4501 00	stz  	pr6|315		sudelta
+						STATEMENT 1 ON LINE 251
+	if ^correct_dir then dudelta = 0;
+
+001041  aa  6 00102 2351 00	lda  	pr6|66		correct_dir
+001042  aa   000002 6010 04	tnz  	2,ic		001044
+001043  aa  6 00160 4501 00	stz  	pr6|112		dudelta
+						STATEMENT 1 ON LINE 253
+	if sudelta ^= 0 | dudelta ^= 0
+	then call vtoc_attributes$correct_qused (duid, dir.pvid, (dir.vtocx), sudelta, dudelta, code);
+
+001044  aa  6 00473 2361 00	ldq  	pr6|315		sudelta
+001045  aa   000003 6010 04	tnz  	3,ic		001050
+001046  aa  6 00160 2361 00	ldq  	pr6|112		dudelta
+001047  aa   000027 6000 04	tze  	23,ic		001076
+001050  aa  6 00500 3735 20	epp7 	pr6|320,*		dp
+001051  aa  7 00015 2351 00	lda  	pr7|13		dir.vtocx
+001052  aa   000066 7330 00	lrs  	54
+001053  aa  6 00517 7561 00	stq  	pr6|335
+001054  aa  6 00161 3521 00	epp2 	pr6|113		duid
+001055  aa  6 00552 2521 00	spri2	pr6|362
+001056  aa  7 00011 3521 00	epp2 	pr7|9		dir.pvid
+001057  aa  6 00554 2521 00	spri2	pr6|364
+001060  aa  6 00517 3521 00	epp2 	pr6|335
+001061  aa  6 00556 2521 00	spri2	pr6|366
+001062  aa  6 00473 3521 00	epp2 	pr6|315		sudelta
+001063  aa  6 00560 2521 00	spri2	pr6|368
+001064  aa  6 00160 3521 00	epp2 	pr6|112		dudelta
+001065  aa  6 00562 2521 00	spri2	pr6|370
+001066  aa  6 00101 3521 00	epp2 	pr6|65		code
+001067  aa  6 00564 2521 00	spri2	pr6|372
+001070  aa  6 00550 6211 00	eax1 	pr6|360
+001071  aa   030000 4310 07	fld  	12288,dl
+001072  aa  6 00044 3701 20	epp4 	pr6|36,*
+001073  la  4 00032 3521 20	epp2 	pr4|26,*		vtoc_attributes$correct_qused
+001074  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+001075  aa   000002 7100 04	tra  	2,ic		001077
+						STATEMENT 1 ON LINE 255
+	else code = 0;
+
+001076  aa  6 00101 4501 00	stz  	pr6|65		code
+						STATEMENT 1 ON LINE 257
+	if code = 0 then did_anything = "1"b;
+
+001077  aa  6 00101 2361 00	ldq  	pr6|65		code
+001100  aa   000004 6010 04	tnz  	4,ic		001104
+001101  aa   400000 2350 03	lda  	131072,du
+001102  aa  6 00104 7551 00	sta  	pr6|68		did_anything
+001103  aa   000006 7100 04	tra  	6,ic		001111
+						STATEMENT 1 ON LINE 258
+	else if code = error_table_$rqover then did_anything = "1"b;
+
+001104  aa  6 00044 3701 20	epp4 	pr6|36,*
+001105  la  4 00010 1161 20	cmpq 	pr4|8,*		error_table_$rqover
+001106  aa   000003 6010 04	tnz  	3,ic		001111
+001107  aa   400000 2350 03	lda  	131072,du
+001110  aa  6 00104 7551 00	sta  	pr6|68		did_anything
+						STATEMENT 1 ON LINE 261
+unlock_err:
+	call dc_find$finished (dp, "1"b);
+
+001111  aa   400000 2350 03	lda  	131072,du
+001112  aa  6 00517 7551 00	sta  	pr6|335
+001113  aa  6 00500 3521 00	epp2 	pr6|320		dp
+001114  aa  6 00522 2521 00	spri2	pr6|338
+001115  aa  6 00517 3521 00	epp2 	pr6|335
+001116  aa  6 00524 2521 00	spri2	pr6|340
+001117  aa  6 00520 6211 00	eax1 	pr6|336
+001120  aa   010000 4310 07	fld  	4096,dl
+001121  aa  6 00044 3701 20	epp4 	pr6|36,*
+001122  la  4 00040 3521 20	epp2 	pr4|32,*		dc_find$finished
+001123  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 263
+err:	if code = 0 then code = scode;
+
+001124  aa  6 00101 2361 00	ldq  	pr6|65		code
+001125  aa   000003 6010 04	tnz  	3,ic		001130
+001126  aa  6 00471 2361 00	ldq  	pr6|313		scode
+001127  aa  6 00101 7561 00	stq  	pr6|65		code
+						STATEMENT 1 ON LINE 265
+	a_did_anything = did_anything;
+
+001130  aa  6 00104 2351 00	lda  	pr6|68		did_anything
+001131  aa  6 00506 7551 20	sta  	pr6|326,*		a_did_anything
+						STATEMENT 1 ON LINE 266
+	a_code = code;
+
+001132  aa  6 00504 7561 20	stq  	pr6|324,*		a_code
+						STATEMENT 1 ON LINE 267
+	if correct_seg then do;
+
+001133  aa  6 00103 2351 00	lda  	pr6|67		correct_seg
+001134  aa   000006 6000 04	tze  	6,ic		001142
+						STATEMENT 1 ON LINE 268
+	     a_nsu = nsu;
+
+001135  aa  6 00466 2361 00	ldq  	pr6|310		nsu
+001136  aa  6 00512 7561 20	stq  	pr6|330,*		a_nsu
+						STATEMENT 1 ON LINE 269
+	     a_osu = osu;
+
+001137  aa  6 00470 2361 00	ldq  	pr6|312		osu
+001140  aa  6 00032 3735 20	epp7 	pr6|26,*
+001141  aa  7 00004 7561 20	stq  	pr7|4,*		a_osu
+						STATEMENT 1 ON LINE 270
+	end;
+
+						STATEMENT 1 ON LINE 271
+	if correct_dir then do;
+
+001142  aa  6 00102 2351 00	lda  	pr6|66		correct_dir
+001143  aa   000005 6000 04	tze  	5,ic		001150
+						STATEMENT 1 ON LINE 272
+	     a_ndu = ndu;
+
+001144  aa  6 00464 2361 00	ldq  	pr6|308		ndu
+001145  aa  6 00510 7561 20	stq  	pr6|328,*		a_ndu
+						STATEMENT 1 ON LINE 273
+	     a_odu = odu;
+
+001146  aa  6 00467 2361 00	ldq  	pr6|311		odu
+001147  aa  6 00514 7561 20	stq  	pr6|332,*		a_odu
+						STATEMENT 1 ON LINE 274
+	end;
+
+						STATEMENT 1 ON LINE 275
+	return;
+
+001150  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 320
+     end;
+
+BEGIN PROCEDURE internal_vtoc_man
+ENTRY TO internal_vtoc_man                                  STATEMENT 1 ON LINE 278
+internal_vtoc_man: proc (b_uid, b_pvid, b_vtocx);
+
+001151  da     000214200000
+001152  aa   000140 6270 00	eax7 	96
+001153  aa  7 00034 3521 20	epp2 	pr7|28,*
+001154  aa  2 01047 2721 00	tsp2 	pr2|551		int_entry
+001155  aa     000006000000
+001156  aa     000000000000
+						STATEMENT 1 ON LINE 288
+	pvtx = get_pvtx (b_pvid, code);
+
+001157  aa  6 00032 3735 20	epp7 	pr6|26,*
+001160  aa  7 00004 3521 20	epp2 	pr7|4,*		b_pvid
+001161  aa  6 00104 2521 00	spri2	pr6|68
+001162  aa  6 00040 3715 20	epp5 	pr6|32,*
+001163  aa  5 00101 3521 00	epp2 	pr5|65		code
+001164  aa  6 00106 2521 00	spri2	pr6|70
+001165  aa  6 00100 3521 00	epp2 	pr6|64		pvtx
+001166  aa  6 00110 2521 00	spri2	pr6|72
+001167  aa  6 00102 6211 00	eax1 	pr6|66
+001170  aa   014000 4310 07	fld  	6144,dl
+001171  la  4 00014 3521 20	epp2 	pr4|12,*		get_pvtx
+001172  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 289
+	if code ^= 0 then return;
+
+001173  aa  6 00040 3735 20	epp7 	pr6|32,*
+001174  aa  7 00101 2361 00	ldq  	pr7|65		code
+001175  aa  0 00631 6011 00	tnz  	pr0|409		return_mac
+						STATEMENT 1 ON LINE 291
+	call vtoc_man$get_vtoce (b_pvid, pvtx, (b_vtocx), "100"b, vtocep, code);
+
+001176  aa  6 00032 3715 20	epp5 	pr6|26,*
+001177  aa  5 00006 3535 20	epp3 	pr5|6,*
+001200  aa  003 100 060 500	csl  	(pr),(pr),fill(0),bool(move)
+001201  aa  3 00000 00 0022	descb	pr3|0,18		b_vtocx
+001202  aa  6 00056 00 0044	descb	pr6|46,36
+001203  aa  6 00056 2351 00	lda  	pr6|46
+001204  aa   000066 7330 00	lrs  	54
+001205  aa  6 00101 7561 00	stq  	pr6|65
+001206  aa   400000 2350 03	lda  	131072,du
+001207  aa  6 00112 7551 00	sta  	pr6|74
+001210  aa  5 00004 3521 20	epp2 	pr5|4,*		b_pvid
+001211  aa  6 00116 2521 00	spri2	pr6|78
+001212  aa  6 00100 3521 00	epp2 	pr6|64		pvtx
+001213  aa  6 00120 2521 00	spri2	pr6|80
+001214  aa  6 00101 3521 00	epp2 	pr6|65
+001215  aa  6 00122 2521 00	spri2	pr6|82
+001216  aa  6 00112 3521 00	epp2 	pr6|74
+001217  aa  6 00124 2521 00	spri2	pr6|84
+001220  aa  7 00502 3521 00	epp2 	pr7|322		vtocep
+001221  aa  6 00126 2521 00	spri2	pr6|86
+001222  aa  7 00101 3521 00	epp2 	pr7|65		code
+001223  aa  6 00130 2521 00	spri2	pr6|88
+001224  aa  6 00114 6211 00	eax1 	pr6|76
+001225  aa   030000 4310 07	fld  	12288,dl
+001226  aa  6 00044 3701 20	epp4 	pr6|36,*
+001227  la  4 00034 3521 20	epp2 	pr4|28,*		vtoc_man$get_vtoce
+001230  aa  0 00623 7001 00	tsx0 	pr0|403		call_ext_out
+						STATEMENT 1 ON LINE 292
+	if code = 0 then if vtoce.uid ^= b_uid then code = error_table_$vtoce_connection_fail;
+
+001231  aa  6 00040 3735 20	epp7 	pr6|32,*
+001232  aa  7 00101 2361 00	ldq  	pr7|65		code
+001233  aa   000011 6010 04	tnz  	9,ic		001244
+001234  aa  7 00502 3715 20	epp5 	pr7|322,*		vtocep
+001235  aa  5 00001 2351 00	lda  	pr5|1		vtoce.uid
+001236  aa  6 00032 3535 20	epp3 	pr6|26,*
+001237  aa  3 00002 1151 20	cmpa 	pr3|2,*		b_uid
+001240  aa   000004 6000 04	tze  	4,ic		001244
+001241  aa  6 00044 3701 20	epp4 	pr6|36,*
+001242  la  4 00012 2361 20	ldq  	pr4|10,*		error_table_$vtoce_connection_fail
+001243  aa  7 00101 7561 00	stq  	pr7|65		code
+						STATEMENT 1 ON LINE 293
+     end;
+
+001244  aa  0 00631 7101 00	tra  	pr0|409		return_mac
+  END PROCEDURE internal_vtoc_man
+  END PROCEDURE correct_qused
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

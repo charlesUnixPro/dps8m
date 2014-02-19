@@ -1,0 +1,1703 @@
+	COMPILATION LISTING OF SEGMENT priv_channel_manager
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1022.2 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style4,delnl,insnl,^ifthendo */
+       14 priv_channel_manager:
+       15      procedure;
+       16 
+       17 /*  This procedure accepts calls to perform privileged channel management
+       18*   functions.  Each such call is directed through a transfer vector
+       19*   to the appropriate module according to channel type and functional
+       20*   type.  The specified channel is locked before forwarding the call
+       21*   and unlocked upon return.
+       22**/
+       23 
+       24 /* Coded 7/31/78 by J. Stern */
+       25 /* MCM tracing added by C. Hornig, January 1980 */
+       26 /* Metering added by C. Hornig, April 1980 */
+       27 /* allocation of unwired saved logical channel meters added by Robert Coren, December 1980 */
+       28 /* Modified November 1984 by Robert Coren to use tty_area_manager entries */
+       29 
+       30 /* Parameters */
+       31 
+       32 dcl  pm_lct_size fixed bin;
+       33 dcl  pm_devx fixed bin;
+       34 dcl  pm_chan_type fixed bin;
+       35 dcl  pm_info_ptr ptr;
+       36 dcl  pm_mii_ptr ptr;
+       37 dcl  pm_chan_name char (*);
+       38 dcl  pm_control_type char (*);
+       39 dcl  pm_code fixed bin (35);
+       40 
+       41 
+       42 /* Automatic */
+       43 
+       44 dcl  i fixed bin;
+       45 dcl  found bit (1);
+       46 dcl  devx fixed bin;
+       47 dcl  chan_type fixed bin;
+       48 dcl  db_ptr ptr;
+       49 dcl  locked bit (1) aligned;
+       50 dcl  code fixed bin (35);
+       51 dcl  chan_name char (32);
+       52 dcl  time_in fixed bin (71);
+       53 
+       54 
+       55 /* Conditions */
+       56 
+       57 dcl  cleanup condition;
+       58 dcl  area condition;
+       59 
+       60 
+       61 /* External static */
+       62 
+       63 dcl  pds$virtual_delta fixed bin (71) ext;
+       64 
+       65 dcl  error_table_$invalid_state fixed bin (35) ext;
+       66 dcl  error_table_$no_operation fixed bin (35) ext;
+       67 dcl  error_table_$invalid_mpx_type fixed bin (35) ext;
+       68 dcl  error_table_$bad_index fixed bin (35) ext;
+       69 dcl  error_table_$id_not_found fixed bin (35) ext;
+       70 dcl  error_table_$notalloc fixed bin (35) ext;
+       71 dcl  error_table_$smallarg fixed bin (35) ext;
+       72 
+       73 /* Builtins */
+       74 
+       75 dcl  (addr, clock, codeptr, index, null, unspec, hbound, size) builtin;
+       76 
+       77 
+       78 /* Entries */
+       79 
+       80 dcl  create_hproc entry (char (*), bit (1) aligned, ptr, ptr, fixed bin (35));
+       81 dcl  mcs_timer_daemon entry;
+       82 dcl  tty_area_manager$allocate entry (fixed bin, ptr);
+       83 dcl  tty_area_manager$free entry (fixed bin, ptr);
+       84 dcl  tty_lock$lock_channel entry (fixed bin, fixed bin (35));
+       85 dcl  tty_lock$unlock_channel entry (fixed bin);
+       86 dcl  tty_lock$flush_queue entry (fixed bin);
+       87 dcl  mcs_trace entry options (variable);
+       88 
+       89 /* * * * * * * * * * LCT_INIT * * * * * * * * * */
+       90 
+       91 lct_init:
+       92      entry (pm_lct_size, pm_code);
+       93 
+       94 	lct_size = pm_lct_size;
+       95 	ttybp = addr (tty_buf$);
+       96 
+       97 	if tty_buf.timer_process = ""b
+       98 	then do;
+       99 	     call create_hproc ("MCS_Timer_Daemon.SysDaemon.z", "0"b, aptep, codeptr (mcs_timer_daemon), pm_code);
+      100 	     if pm_code ^= 0
+      101 	     then return;
+      102 
+      103 	     unspec (tty_buf.timer_ev_chn) = "007777000001000000000001"b3;
+      104 	     tty_buf.timer_process = apte.processid;
+      105 	end;
+      106 
+      107 	if lct_size < 0
+      108 	then do;
+      109 	     pm_code = error_table_$smallarg;
+      110 	     return;
+      111 	end;
+      112 
+      113 	lctp = null;
+      114 	call tty_space_man$get_perm_space (size (lct), lctp);
+      115 	if lctp = null
+      116 	then do;
+      117 lct_notalloc:
+      118 	     pm_code = error_table_$notalloc;
+      119 	     return;
+      120 	end;
+      121 
+      122 	lct.max_no_lctes = lct_size;
+      123 	on area go to lct_notalloc;
+      124 	call tty_area_manager$allocate (size (lcnt), lcntp);
+      125 	revert area;
+      126 	lcnt.names (*) = "";
+      127 	lct.lcnt_ptr = lcntp;
+      128 	tty_buf.lct_ptr = lctp;
+      129 	pm_code = 0;
+      130 
+      131 	return;
+      132 
+      133 /* * * * * * * * * * INIT_CHANNEL * * * * * * * * * */
+      134 
+      135 init_channel:
+      136      entry (pm_devx, pm_info_ptr, pm_code);
+      137 
+      138 	call setup ();
+      139 
+      140 	if tty_buf.trace.enable
+      141 	then if tty_buf.trace.init
+      142 	     then call mcs_trace (devx, "init_channel: ^p", pm_info_ptr);
+      143 
+      144 	if lcte.initialized | ^lcte.entry_in_use
+      145 	then go to invalid_state;
+      146 
+      147 	init_channel_ev = make_entry (INIT_CHANNEL, 0);
+      148 	call init_channel_ev (devx, pm_info_ptr, db_ptr, code);
+      149 	if code = 0
+      150 	then do;
+      151 	     lcte.channel_type = 0;
+      152 	     lcte.data_base_ptr = db_ptr;
+      153 	     lcte.initialized = "1"b;
+      154 	end;
+      155 
+      156 	pm_code = code;
+      157 	call meter;
+      158 	return;
+      159 
+      160 /* * * * * * * * * TERMINATE_CHANNEL * * * * * * * * * */
+      161 
+      162 terminate_channel:
+      163      entry (pm_devx, pm_code);
+      164 
+      165 	call setup ();
+      166 
+      167 	if tty_buf.trace.enable
+      168 	then if tty_buf.trace.init
+      169 	     then call mcs_trace (devx, "terminate_channel");
+      170 
+      171 	if lcte.channel_type ^= 0
+      172 	then go to invalid_state;
+      173 
+      174 	on cleanup call unlock_channel ();
+      175 	call lock_channel ();
+      176 	terminate_channel_ev = make_entry (TERMINATE_CHANNEL, 0);
+      177 	call terminate_channel_ev ((lcte.data_base_ptr), code);
+      178 	if code = 0
+      179 	then do;
+      180 	     lcte.data_base_ptr = null;
+      181 	     lcte.initialized = "0"b;
+      182 	     lcte.space_needed = "0"b;
+      183 	     if ^lcte.special_lock
+      184 	     then call tty_lock$flush_queue (devx);	/* unlocks the channel lock */
+      185 	end;
+      186 	else call unlock_channel ();
+      187 
+      188 	pm_code = code;
+      189 	call meter;
+      190 	return;
+      191 
+      192 /* * * * * * * * * INIT_MULTIPLEXER * * * * * * * * * */
+      193 
+      194 init_multiplexer:
+      195      entry (pm_devx, pm_chan_type, pm_mii_ptr, pm_code);
+      196 
+      197 	call setup ();
+      198 	chan_type = pm_chan_type;
+      199 
+      200 	if tty_buf.trace.enable
+      201 	then if tty_buf.trace.init
+      202 	     then call mcs_trace (devx, "init_multiplexer: ^a (^p).", mpx_types (pm_chan_type), pm_mii_ptr);
+      203 
+      204 	if chan_type < 1 | chan_type > hbound (cmtv.chan_type_index, 1)
+      205 	then do;
+      206 bad_chan_type:
+      207 	     pm_code = error_table_$invalid_mpx_type;
+      208 	     return;
+      209 	end;
+      210 	if cmtv.chan_type_index (chan_type) < 1 | cmtv.chan_type_index (chan_type) > cmtv.no_channel_types
+      211 	then go to bad_chan_type;
+      212 
+      213 	miip = pm_mii_ptr;
+      214 	call find_subchan_lctes ();
+      215 
+      216 	init_multiplexer_ev = make_entry (INIT_MULTIPLEXER, chan_type);
+      217 	call init_multiplexer_ev (devx, miip, db_ptr, code);
+      218 	if code = 0
+      219 	then do;
+      220 	     call allocate_subchan_lctes ();
+      221 	     if code = 0
+      222 	     then do;
+      223 		lcte.channel_type = chan_type;
+      224 		lcte.data_base_ptr = db_ptr;
+      225 		lcte.special_lock = mpx_special_lock (chan_type);
+      226 		lcte.initialized = "1"b;
+      227 	     end;
+      228 	end;
+      229 
+      230 	pm_code = code;
+      231 	call meter;
+      232 	return;
+      233 
+      234 /* * * * * * * * * * * TERMINATE_MULTIPLEXER * * * * * * * * * */
+      235 
+      236 terminate_multiplexer:
+      237      entry (pm_devx, pm_code);
+      238 
+      239 	call setup ();
+      240 
+      241 	if tty_buf.trace.enable
+      242 	then if tty_buf.trace.init
+      243 	     then call mcs_trace (devx, "terminate_multiplexer");
+      244 
+      245 
+      246 	if lcte.channel_type = 0
+      247 	then go to invalid_state;
+      248 
+      249 	call check_subchan_lctes ();
+      250 
+      251 	on cleanup call unlock_channel ();
+      252 	call lock_channel ();
+      253 	terminate_multiplexer_ev = make_entry (TERMINATE_MULTIPLEXER, (lcte.channel_type));
+      254 	call terminate_multiplexer_ev ((lcte.data_base_ptr), code);
+      255 	if code = 0
+      256 	then do;
+      257 	     lcte.data_base_ptr = null;
+      258 	     call free_subchan_lctes ();
+      259 	     lcte.initialized = "0"b;
+      260 	     lcte.space_needed = "0"b;
+      261 	     if ^lcte.special_lock
+      262 	     then call tty_lock$flush_queue (devx);	/* unlocks channel lock */
+      263 	end;
+      264 	else call unlock_channel ();
+      265 
+      266 	pm_code = code;
+      267 	call meter;
+      268 	return;
+      269 
+      270 /* * * * * * * * * * * START * * * * * * * * * * */
+      271 
+      272 start:
+      273      entry (pm_devx, pm_code);
+      274 
+      275 	call setup ();
+      276 
+      277 	if tty_buf.trace.enable
+      278 	then if tty_buf.trace.start
+      279 	     then call mcs_trace (devx, "start");
+      280 
+      281 	on cleanup call unlock_channel ();
+      282 	call lock_channel ();
+      283 	start_ev = make_entry (START, (lcte.channel_type));
+      284 	call start_ev ((lcte.data_base_ptr), pm_code);
+      285 	call unlock_channel ();
+      286 	call meter;
+      287 	return;
+      288 
+      289 /* * * * * * * * * * STOP * * * * * * * * * * */
+      290 
+      291 stop:
+      292      entry (pm_devx, pm_code);
+      293 
+      294 	call setup ();
+      295 
+      296 	if tty_buf.trace.enable
+      297 	then if tty_buf.trace.start
+      298 	     then call mcs_trace (devx, "stop");
+      299 
+      300 	on cleanup call unlock_channel ();
+      301 	call lock_channel ();
+      302 	stop_ev = make_entry (STOP, (lcte.channel_type));
+      303 	call stop_ev ((lcte.data_base_ptr), pm_code);
+      304 	call unlock_channel ();
+      305 	call meter;
+      306 	return;
+      307 
+      308 /* * * * * * * * * * * SHUTDOWN * * * * * * * * * */
+      309 
+      310 shutdown:
+      311      entry (pm_devx, pm_code);
+      312 
+      313 	call setup ();
+      314 
+      315 	if tty_buf.trace.enable
+      316 	then if tty_buf.trace.shutdown
+      317 	     then call mcs_trace (devx, "shutdown");
+      318 
+      319 	on cleanup call unlock_channel ();
+      320 	call lock_channel ();
+      321 	shutdown_ev = make_entry (SHUTDOWN, (lcte.channel_type));
+      322 	call shutdown_ev ((lcte.data_base_ptr), pm_code);
+      323 	call unlock_channel ();
+      324 	call meter;
+      325 	return;
+      326 
+      327 /* * * * * * * * * * GET_DEVX * * * * * * * * * * */
+      328 
+      329 get_devx:
+      330      entry (pm_chan_name, pm_devx, pm_code);
+      331 
+      332 	call setup_name ();
+      333 
+      334 	if code = 0
+      335 	then do;
+      336 	     pm_devx = devx;
+      337 	     pm_code = 0;
+      338 	     return;
+      339 	end;
+      340 	else if index (chan_name, ".") ^= 0		/* not a level-1 multiplexer */
+      341 	then do;
+      342 	     pm_code = code;
+      343 	     return;
+      344 	end;
+      345 
+      346 /* come here to create lct entry for level-1 multiplexer */
+      347 
+      348 	found = "0"b;
+      349 	do i = 1 to lct.max_no_lctes while (^found);
+      350 	     devx = i;
+      351 	     lctep = addr (lct.lcte_array (devx));
+      352 	     if ^lcte.entry_in_use
+      353 	     then found = "1"b;
+      354 	end;
+      355 
+      356 	if found					/* found a free lct entry */
+      357 	then do;
+      358 	     lcte.entry_in_use = "1"b;
+      359 	     lcte.data_base_ptr = null;
+      360 	     lcnt.names (devx) = chan_name;
+      361 	     on area go to get_devx_notalloc;
+      362 	     call tty_area_manager$allocate (size (saved_meters), lcte.saved_meters_ptr);
+      363 	     pm_code = 0;
+      364 	     pm_devx = devx;
+      365 	end;
+      366 	else do;
+      367 get_devx_notalloc:
+      368 	     pm_code = error_table_$notalloc;
+      369 	end;
+      370 
+      371 	return;
+      372 
+      373 /* * * * * * * * * * * * PRIV_CONTROL * * * * * * * * * * */
+      374 
+      375 priv_control:
+      376      entry (pm_chan_name, pm_control_type, pm_info_ptr, pm_code);
+      377 
+      378 	call setup_name ();
+      379 	if code ^= 0
+      380 	then do;
+      381 	     pm_code = code;
+      382 	     return;
+      383 	end;
+      384 
+      385 	if tty_buf.trace.enable
+      386 	then if tty_buf.trace.control
+      387 	     then call mcs_trace (devx, "priv_control: ^a (^p)", pm_control_type, pm_info_ptr);
+      388 
+      389 	call lock_channel ();
+      390 	if lcnt.names (devx) ^= chan_name		/* name changed before channel was locked */
+      391 	then pm_code = error_table_$id_not_found;
+      392 	else do;
+      393 	     priv_control_ev = make_entry (PRIV_CONTROL, (lcte.channel_type));
+      394 	     call priv_control_ev ((lcte.data_base_ptr), pm_control_type, pm_info_ptr, pm_code);
+      395 	end;
+      396 	call unlock_channel ();
+      397 	call meter;
+      398 	return;
+      399 
+      400 /* * * * * * * * * * * * HPRIV_CONTROL * * * * * * * * * * */
+      401 
+      402 hpriv_control:
+      403      entry (pm_chan_name, pm_control_type, pm_info_ptr, pm_code);
+      404 
+      405 	call setup_name ();
+      406 	if code ^= 0
+      407 	then do;
+      408 	     pm_code = code;
+      409 	     return;
+      410 	end;
+      411 
+      412 	if tty_buf.trace.enable
+      413 	then if tty_buf.trace.control
+      414 	     then call mcs_trace (devx, "hpriv_control: ^a (^p)", pm_control_type, pm_info_ptr);
+      415 
+      416 	call lock_channel ();
+      417 	if lcnt.names (devx) ^= chan_name		/* name changed before channel was locked */
+      418 	then pm_code = error_table_$id_not_found;
+      419 	else do;
+      420 	     hpriv_control_ev = make_entry (HPRIV_CONTROL, (lcte.channel_type));
+      421 	     call hpriv_control_ev ((lcte.data_base_ptr), pm_control_type, pm_info_ptr, pm_code);
+      422 	end;
+      423 	call unlock_channel ();
+      424 	call meter;
+      425 	return;
+      426 
+      427 
+      428 invalid_state:
+      429 	code = error_table_$invalid_state;
+      430 
+      431 
+      432 error_exit:
+      433 	call unlock_channel ();
+      434 	pm_code = code;
+      435 	return;
+      436 
+      437 /* * * * * * * * * * SETUP * * * * * * * * * * */
+      438 
+      439 setup:
+      440      procedure;
+      441 	time_in = clock () - pds$virtual_delta;
+      442 	locked = "0"b;
+      443 	ttybp = addr (tty_buf$);
+      444 	lctp = tty_buf.lct_ptr;
+      445 	if lctp = null
+      446 	then go to no_devx;
+      447 
+      448 	devx = pm_devx;
+      449 	if devx < 1 | devx > lct.max_no_lctes
+      450 	then do;
+      451 no_devx:
+      452 	     code = error_table_$bad_index;
+      453 	     go to error_exit;
+      454 	end;
+      455 
+      456 	lctep = addr (lct.lcte_array (devx));
+      457 
+      458 	cmtvp = addr (cmtv$cmtv);
+      459      end setup;					/* setup */
+      460 
+      461 /* * * * * * * * * * * SETUP_NAME * * * * * * * * * * * * */
+      462 
+      463 setup_name:
+      464      procedure;
+      465 	time_in = clock () - pds$virtual_delta;
+      466 	code = 0;
+      467 	locked = "0"b;
+      468 	ttybp = addr (tty_buf$);
+      469 	lctp = tty_buf.lct_ptr;
+      470 	if lctp = null
+      471 	then do;
+      472 no_name:
+      473 	     code = error_table_$id_not_found;
+      474 	     go to error_exit;
+      475 	end;
+      476 	lcntp = lct.lcnt_ptr;
+      477 
+      478 	chan_name = pm_chan_name;
+      479 	if chan_name = ""
+      480 	then go to no_name;
+      481 
+      482 	do devx = 1 to lct.max_no_lctes while (lcnt.names (devx) ^= chan_name);
+      483 	end;
+      484 
+      485 	if devx > lct.max_no_lctes
+      486 	then do;
+      487 	     code = error_table_$id_not_found;
+      488 	     return;
+      489 	end;
+      490 	lctep = addr (lct.lcte_array (devx));
+      491 
+      492 	cmtvp = addr (cmtv$cmtv);
+      493 
+      494      end setup_name;				/* setup_name */
+      495 
+      496 /* * * * * * * * * * METER * * * * * * * * * */
+      497 
+      498 meter:
+      499      procedure;
+      500 	lcte.meters.control.calls = lcte.meters.control.calls + 1;
+      501 	lcte.meters.control.call_time = lcte.meters.control.call_time + clock () - pds$virtual_delta - time_in;
+      502      end meter;
+      503 
+      504 /* * * * * * * * * * * MAKE_ENTRY * * * * * * * * * * */
+      505 
+      506 make_entry:
+      507      proc (entry_type, chan_type) returns (entry variable); /* kludges together an entry variable */
+      508 
+      509 dcl  entry_type fixed bin;
+      510 dcl  chan_type fixed bin;
+      511 
+      512 dcl  code_ptr ptr;
+      513 dcl  code_word fixed bin based (code_ptr);
+      514 
+      515 dcl  new_entry entry variable;
+      516 dcl  1 entry_var aligned,
+      517        2 code_ptr ptr,
+      518        2 env_ptr ptr;
+      519 
+      520 
+      521 	code_ptr = addr (cmtv.entries (entry_type, cmtv.chan_type_index (chan_type)));
+      522 	if code_word = 0				/* undefined entry point */
+      523 	then do;
+      524 	     code = error_table_$no_operation;
+      525 	     go to error_exit;
+      526 	end;
+      527 
+      528 	entry_var.code_ptr = code_ptr;
+      529 	entry_var.env_ptr = null;
+      530 	unspec (new_entry) = unspec (entry_var);
+      531 
+      532 	return (new_entry);
+      533 
+      534      end;						/* get_entry */
+      535 
+      536 /* * * * * * * * * * * LOCK_CHANNEL * * * * * * * * * * */
+      537 
+      538 lock_channel:
+      539      procedure;
+      540 
+      541 	if ^lcte.entry_in_use
+      542 	then go to invalid_state;
+      543 
+      544 	if lcte.special_lock			/* not for us to lock */
+      545 	then return;
+      546 
+      547 	call tty_lock$lock_channel (devx, code);
+      548 	if code ^= 0
+      549 	then go to error_exit;
+      550 	locked = "1"b;
+      551 
+      552      end lock_channel;				/* lock_channel */
+      553 
+      554 /* * * * * * * * * * * * UNLOCK_CHANNEL * * * * * * * * * * * */
+      555 
+      556 unlock_channel:
+      557      procedure;
+      558 
+      559 	if locked
+      560 	then call tty_lock$unlock_channel (devx);
+      561 	locked = "0"b;
+      562 
+      563      end unlock_channel;				/* unlock_channel */
+      564 
+      565 /* * * * * * * * * * CHECK_SUBCHAN_LCTES * * * * * * * * * */
+      566 
+      567 check_subchan_lctes:
+      568      procedure;
+      569 
+      570 dcl  lctx fixed bin;
+      571 dcl  p ptr;
+      572 
+      573 
+      574 	do lctx = 1 to lct.max_no_lctes;
+      575 	     p = addr (lct.lcte_array (lctx));
+      576 	     if p -> lcte.major_channel_devx = devx
+      577 	     then if p -> lcte.initialized
+      578 		then go to invalid_state;
+      579 	end;
+      580 
+      581      end;						/* check_subchan_lctes */
+      582 
+      583 /* * * * * * * * * * * * * FREE_SUBCHAN_LCTES * * * * * * * * * * */
+      584 
+      585 free_subchan_lctes:
+      586      procedure;
+      587 
+      588 dcl  lctx fixed bin;
+      589 dcl  p ptr;
+      590 
+      591 
+      592 	lcntp = lct.lcnt_ptr;
+      593 
+      594 	do lctx = 1 to lct.max_no_lctes;
+      595 	     p = addr (lct.lcte_array (lctx));
+      596 	     if p -> lcte.major_channel_devx = devx
+      597 	     then do;
+      598 		lcnt.names (lctx) = "";
+      599 		call tty_area_manager$free (size (saved_meters), p -> lcte.saved_meters_ptr);
+      600 		unspec (p -> lcte.meters) = "0"b;	/* to avoid confusion later */
+      601 		p -> lcte.major_channel_devx = 0;
+      602 		p -> lcte.entry_in_use = "0"b;
+      603 	     end;
+      604 	end;
+      605 
+      606      end;						/* free_subchan_lctes */
+      607 
+      608 /* * * * * * * * * * FIND_SUBCHAN_LCTES * * * * * * * * * * * */
+      609 
+      610 find_subchan_lctes:
+      611      procedure;					/* finds unused lct entries */
+      612 
+      613 dcl  (lctx, sbchx) fixed bin;
+      614 dcl  p ptr;
+      615 
+      616 
+      617 	sbchx = 0;
+      618 	do lctx = 1 to lct.max_no_lctes while (sbchx < mux_init_info.no_channels);
+      619 	     p = addr (lct.lcte_array (lctx));
+      620 	     if ^p -> lcte.entry_in_use
+      621 	     then do;
+      622 		sbchx = sbchx + 1;
+      623 		mux_init_info.channels (sbchx).devx = lctx;
+      624 	     end;
+      625 	end;
+      626 
+      627 	if sbchx < mux_init_info.no_channels
+      628 	then do;
+      629 	     code = error_table_$notalloc;
+      630 	     go to error_exit;
+      631 	end;
+      632 
+      633      end;						/* find_subchan_lctes */
+      634 
+      635 /* * * * * * * * * * * * ALLOCATE_SUBCHAN_LCTES * * * * * * * * * * */
+      636 
+      637 allocate_subchan_lctes:
+      638      proc;					/* marks previously found lct entries "in use" */
+      639 
+      640 dcl  (lctx, sbchx) fixed bin;
+      641 dcl  p ptr;
+      642 
+      643 
+      644 	lcntp = lct.lcnt_ptr;
+      645 
+      646 	do sbchx = 1 to mux_init_info.no_channels;
+      647 	     lctx = mux_init_info.channels (sbchx).devx;
+      648 	     lcnt.names (lctx) = mux_init_info.channels (sbchx).name;
+      649 	     p = addr (lct.lcte_array (lctx));
+      650 	     p -> lcte.major_channel_devx = devx;
+      651 	     if lcte.physical_channel_devx = 0		/* major channel is an FNP */
+      652 	     then p -> lcte.physical_channel_devx = lctx; /* FNP subchan is its own physical channel */
+      653 	     else p -> lcte.physical_channel_devx = lcte.physical_channel_devx;
+      654 						/* same as major channel */
+      655 	     p -> lcte.entry_in_use = "1"b;
+      656 	     on area go to subchan_not_alloc;
+      657 	     call tty_area_manager$allocate (size (saved_meters), p -> lcte.saved_meters_ptr);
+      658 	end;
+      659 
+      660 	return;
+      661 subchan_not_alloc:
+      662 	code = error_table_$notalloc;
+      663 	return;
+      664 
+      665      end;						/* allocate_subchan_lctes */
+      666 
+  1     1 /* BEGIN INCLUDE FILE ... lct.incl.pl1 */
+  1     2 
+  1     3 /* Created by J. Stern 7/26/78 */
+  1     4 /* Metering information added by C. Hornig, March 1980. */
+  1     5 /* Unwired saved meters added by Robert Coren, December 1980 */
+  1     6 
+  1     7 dcl  lctp ptr;					/* ptr to logical channel table */
+  1     8 dcl  lctep ptr;					/* ptr to logical channel table entry */
+  1     9 dcl  lct_size fixed bin;				/* size of lcte_array when allocated */
+  1    10 
+  1    11 dcl 1 lct aligned based (lctp),			/* logical channel table */
+  1    12     2 max_no_lctes fixed bin,				/* maximum number of lct entries */
+  1    13     2 cur_no_lctes fixed bin,				/* current number of lct entries used */
+  1    14     2 lcnt_ptr ptr,					/* ptr to logical channel name table */
+  1    15     2 queue_lock bit (36),				/* lock used to serialize queueing operations */
+  1    16     2 pad (11) fixed bin,
+  1    17     2 lcte_array (lct_size refer (lct.max_no_lctes)) like lcte; /* lct entries */
+  1    18 
+  1    19 
+  1    20 dcl 1 lcte aligned based (lctep),			/* logical channel table entry */
+  1    21     2 lock bit (36),				/* channel lock */
+  1    22     2 data_base_ptr ptr unal,				/* ptr to channel data base */
+  1    23     2 channel_type fixed bin (8) unal,			/* identifies channel manager program */
+  1    24     2 flags unal,
+  1    25       3 entry_in_use bit (1) unal,			/* ON if this entry in use */
+  1    26       3 initialized bit (1) unal,			/* ON if this channel initialized */
+  1    27       3 notify_reqd bit (1) unal,			/* ON if must notify when unlocking this channel */
+  1    28       3 locked_for_interrupt bit (1) unal,		/* ON if lock set by interrupt handler */
+  1    29       3 space_needed bit (1) unal,			/* ON if this channel needs buffer space */
+  1    30       3 special_lock bit (1) unal,			/* ON if lock is managed by multiplexer */
+  1    31       3 trace_force bit (1) unal,			/* ON to trace based on next bit only */
+  1    32 						/* OFF to XOR next bit with tty_buf.default_tracing */
+  1    33       3 trace bit (1) unal,				/* ON to trace this channel */
+  1    34       3 unused bit (1) unal,
+  1    35     2 physical_channel_devx fixed bin (17) unal,		/* devx of physical chan from which logical chan is derived */
+  1    36     2 major_channel_info,
+  1    37       3 major_channel_devx fixed bin unal,		/* major channel device index */
+  1    38       3 subchannel fixed bin (17) unal,			/* subchannel id (or data ptr) wrt major channel */
+  1    39     2 queue_entries,
+  1    40       3 queue_head bit (18) unal,			/* ptr to first queue entry for this channel */
+  1    41       3 queue_tail bit (18) unal,			/* ptr to last queue entry for this channel */
+  1    42     2 word_counts,
+  1    43       3 input_words fixed bin (17) unal,		/* number of input words charged to this channel */
+  1    44       3 output_words fixed bin (17) unal,		/* number of output words charged to this channel */
+  1    45 
+  1    46     2 meters,
+  1    47       3 in_bytes fixed bin (35),
+  1    48       3 out_bytes fixed bin (35),
+  1    49       3 in,
+  1    50         4 calls fixed bin (35),
+  1    51         4 interrupts fixed bin (35),
+  1    52         4 call_time fixed bin (71),
+  1    53         4 interrupt_time fixed bin (71),
+  1    54       3 out like lcte.meters.in,
+  1    55       3 control like lcte.meters.in,
+  1    56     2 saved_meters_ptr ptr,				/* pointer to unwired copy of meters saved at last dialup */
+  1    57 
+  1    58     2 timer_offset bit (18) aligned,			/* Head of list of timers for this channel */
+  1    59 
+  1    60     2 pad (3) fixed bin (35);
+  1    61 
+  1    62 
+  1    63 dcl  lcntp ptr;					/* ptr to logical channel name table */
+  1    64 
+  1    65 dcl 1 lcnt aligned based (lcntp),			/* logical channel name table */
+  1    66     2 names (lct.max_no_lctes) char (32) unal;		/* channel names */
+  1    67 
+  1    68 dcl 1 saved_meters aligned based like lcte.meters;	/* meters saved at dialup, allocated in tty_area */
+  1    69 
+  1    70 
+  1    71 /* END INCLUDE FILE ... lct.incl.pl1 */
+      667 
+  2     1 /* BEGIN INCLUDE FILE ... cmtv.incl.pl1 */
+  2     2 
+  2     3 
+  2     4 
+  2     5 /****^  HISTORY COMMENTS:
+  2     6*  1) change(89-03-20,Parisek), approve(89-06-01,MCR8110),
+  2     7*     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+  2     8*     Add support of protocol mpx.
+  2     9*                                                   END HISTORY COMMENTS */
+  2    10 
+  2    11 
+  2    12 /* Created by J. Stern 7/26/78 */
+  2    13 
+  2    14 /* This include file defines the layout of an alm object segment
+  2    15*   used as a transfer vector by the channel_manager program.
+  2    16*   There is one cmtv entry for each channel type.  Within
+  2    17*   each cmtv entry there is one word for each channel_manager
+  2    18*   entry point.  This word contains a transfer instruction to
+  2    19*   the procedure which implements the function of the given
+  2    20*   channel_manager entry point for the given channel type.
+  2    21**/
+  2    22 
+  2    23 
+  2    24 dcl  cmtv$cmtv fixed bin external;			/* external name of cmtv data base */
+  2    25 
+  2    26 dcl  cmtvp ptr;					/* ptr to channel manager transfer vector */
+  2    27 
+  2    28 
+  2    29 dcl 1 cmtv aligned based (cmtvp),			/* channel manager transfer vector */
+  2    30       2 no_channel_types fixed bin,			/* number of channel types */
+  2    31       2 pad fixed bin,
+  2    32       2 chan_type_index (0:16) fixed bin,		/* maps channel type into array index */
+  2    33       2 entries (no_entry_types, 0 refer (cmtv.no_channel_types)) bit (72); /* transfer vector entries */
+  2    34 
+  2    35 
+  2    36 dcl (INIT_CHANNEL init (1),				/* entry types */
+  2    37      TERMINATE_CHANNEL init (2),
+  2    38      INIT_MULTIPLEXER init (3),
+  2    39      TERMINATE_MULTIPLEXER init (4),
+  2    40      START init (5),
+  2    41      STOP init (6),
+  2    42      SHUTDOWN init (7),
+  2    43      PRIV_CONTROL init (8),
+  2    44      HPRIV_CONTROL init (9),
+  2    45      READ init (10),
+  2    46      WRITE init (11),
+  2    47      CONTROL init (12),
+  2    48      SET_MODES init (13),
+  2    49      CHECK_MODES init (14),
+  2    50      GET_MODES init (15),
+  2    51      INTERRUPT init (16),
+  2    52      no_entry_types init (16)) fixed bin int static options (constant);
+  2    53 
+  2    54 
+  2    55 /* call init_channel_ev (devx, info_ptr, data_base_ptr, code) */
+  2    56 dcl  init_channel_ev entry (fixed bin, ptr, ptr, fixed bin (35)) variable;
+  2    57 
+  2    58 /* call terminate_channel_ev (data_base_ptr, code) */
+  2    59 dcl  terminate_channel_ev entry (ptr, fixed bin (35)) variable;
+  2    60 
+  2    61 /* call init_multiplexer_ev (devx, mux_init_info_ptr, data_base_ptr, code) */
+  2    62 dcl  init_multiplexer_ev entry (fixed bin, ptr, ptr, fixed bin (35)) variable;
+  2    63 
+  2    64 /* call terminate_multiplexer_ev (data_base_ptr, code) */
+  2    65 dcl  terminate_multiplexer_ev entry (ptr, fixed bin (35)) variable;
+  2    66 
+  2    67 /* call start_ev (data_base_ptr, code) */
+  2    68 dcl  start_ev entry (ptr, fixed bin (35)) variable;
+  2    69 
+  2    70 /* call stop_ev (data_base_ptr, code) */
+  2    71 dcl  stop_ev entry (ptr, fixed bin (35)) variable;
+  2    72 
+  2    73 /* call shutdown_ev (data_base_ptr, code) */
+  2    74 dcl  shutdown_ev entry (ptr, fixed bin (35)) variable;
+  2    75 
+  2    76 /* call priv_control_ev (data_base_ptr, control_type, info_ptr, code) */
+  2    77 dcl  priv_control_ev entry (ptr, char (*), ptr, fixed bin (35)) variable;
+  2    78 
+  2    79 /* call hpriv_control_ev (data_base_ptr, control_type, info_ptr, code) */
+  2    80 dcl  hpriv_control_ev entry (ptr, char (*), ptr, fixed bin (35)) variable;
+  2    81 
+  2    82 /* call read_ev (data_base_ptr, subchan, chain_ptr, more_input_flag, code) */
+  2    83 dcl  read_ev entry (ptr, fixed bin, ptr, bit (1) aligned, fixed bin (35)) variable;
+  2    84 
+  2    85 /* call write_ev (data_base_ptr, subchan, chain_ptr, code) */
+  2    86 dcl  write_ev entry (ptr, fixed bin, ptr, fixed bin (35)) variable;
+  2    87 
+  2    88 /* call control_ev (data_base_ptr, subchan, control_type, info_ptr, code) */
+  2    89 dcl  control_ev entry (ptr, fixed bin, char (*), ptr, fixed bin (35)) variable;
+  2    90 
+  2    91 /* call set_modes_ev (data_base_ptr, subchan, modes_change_list_ptr, code) */
+  2    92 dcl  set_modes_ev entry (ptr, fixed bin, ptr, fixed bin (35)) variable;
+  2    93 
+  2    94 /* call check_modes_ev (data_base_ptr, subchan, modes_change_list_ptr, code) */
+  2    95 dcl  check_modes_ev entry (ptr, fixed bin, ptr, fixed bin (35)) variable;
+  2    96 
+  2    97 /* call get_modes_ev (data_base_ptr, subchan, modes, code) */
+  2    98 dcl  get_modes_ev entry (ptr, fixed bin, char (*), fixed bin (35)) variable;
+  2    99 
+  2   100 /* call interrupt_ev (data_base_ptr, int_type, int_data) */
+  2   101 dcl  interrupt_ev entry (ptr, fixed bin, bit (72) aligned) variable;
+  2   102 
+  2   103 
+  2   104 /* END INCLUDE FILE ... cmtv.incl.pl1 */
+      668 
+  3     1 /* BEGIN INCLUDE FILE ... mux_init_info.incl.pl1 */
+  3     2 
+  3     3 /* Created 8/2/78 by J. Stern */
+  3     4 
+  3     5 
+  3     6 dcl  miip ptr;					/* ptr to mux_init_info structure */
+  3     7 dcl  mii_chan_count fixed bin;			/* channel count when allocating mux_init_info */
+  3     8 
+  3     9 
+  3    10 dcl 1 mux_init_info aligned based (miip),		/* multiplexer initialization info */
+  3    11       2 no_channels fixed bin,			/* number of multiplexed channels */
+  3    12       2 channels (mii_chan_count refer (mux_init_info.no_channels)), /* one entry per channel */
+  3    13         3 name char (32) unal,			/* channel name */
+  3    14         3 devx fixed bin;				/* device index for channel */
+  3    15 
+  3    16 
+  3    17 /* END INCLUDE FILE ... mux_init_info.incl.pl1 */
+      669 
+  4     1 /* Begin include file ..... multiplexer_types.incl.pl1 */
+  4     2 
+  4     3 
+  4     4 
+  4     5 /****^  HISTORY COMMENTS:
+  4     6*  1) change(89-03-20,Parisek), approve(89-06-01,MCR8110),
+  4     7*     audit(89-10-09,Farley), install(89-10-25,MR12.3-1100):
+  4     8*     Add support of protocol mpx.
+  4     9*                                                   END HISTORY COMMENTS */
+  4    10 
+  4    11 
+  4    12 /* This include file defines known multiplexer types */
+  4    13 /* Prepared August 1978 by Larry Johnson */
+  4    14 /* Changed April 1979 to rename the fnp multiplexer mcs */
+  4    15 
+  4    16 dcl (TTY_MPX init (0),				/* nonmultiplexed channel */
+  4    17      MCS_MPX init (1),				/* FNP running MCS */
+  4    18      USER1_MPX init (2),				/* a range of values for user defined multiplexers */
+  4    19      USER2_MPX init (3),
+  4    20      USER3_MPX init (4),
+  4    21      USER4_MPX init (5),
+  4    22      USER5_MPX init (6),
+  4    23      IBM3270_MPX init (7),				/* IBM 3270 display terminal controller */
+  4    24      VIP7760_MPX init (8),				/* Honeywell VIP 7760 terminal controller */
+  4    25      STY_MPX init (9),				/* Software Terminal Facility */
+  4    26      LAP_MPX init (10),				/* Link Access Protocol (X.25 level 2) */
+  4    27      X25_MPX init (11),				/* CCITT X.25 level 3 */
+  4    28      HASP_MPX init (12),				/* HASP RJE protocol */
+  4    29      UNCP_MPX init (13),				/* DSA protocol */
+  4    30      SYSTEM2_MPX init (14),
+  4    31      SYSTEM1_MPX init (15),
+  4    32      PROTOCOL_MPX init (16))				/* TCP/IP network X.25 protocol */
+  4    33      int static options (constant);
+  4    34 
+  4    35 dcl  mpx_types (0:16) char (32) int static options (constant) init (
+  4    36      "tty", "mcs", "user1", "user2", "user3", "user4", "user5", "ibm3270",
+  4    37      "vip7760", "sty", "lap", "x25", "hasp", "uncp", "system2", "system1",
+  4    38      "protocol");
+  4    39 
+  4    40 dcl  mpx_special_lock (0:16) bit (1) int static options (constant) init (
+  4    41      "0"b, "1"b, "0"b, "0"b, "0"b, "0"b, "0"b, "0"b,
+  4    42      "0"b, "0"b, "0"b, "0"b, "0"b, "1"b, "0"b, "0"b, "0"b);
+  4    43 
+  4    44 /* End include file ..... multiplexer_types.incl.pl1 */
+      670 
+  5     1 /* BEGIN INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+  5     2 
+  5     3 /* This include file declares all the entries in tty_space_man and defines the constants
+  5     4**  to be used for the flags argument
+  5     5**   Modified 08/21/78 by Robert Coren to eliminate "masked" flag
+  5     6**   Modified March 1981 by Robert Coren to add get_perm_space entry
+  5     7**   Modified April 1981 by Robert Coren to add switch_chain entry
+  5     8**/
+  5     9 
+  5    10 dcl  tty_space_man$get_space entry (fixed bin, ptr);
+  5    11 dcl  tty_space_man$get_perm_space entry (fixed bin, ptr);
+  5    12 dcl  tty_space_man$free_space entry (fixed bin, ptr);
+  5    13 dcl  tty_space_man$get_buffer entry (fixed bin, fixed bin, bit (1), ptr);
+  5    14 dcl  tty_space_man$free_buffer entry (fixed bin, bit (1), ptr);
+  5    15 dcl  tty_space_man$get_chain entry (fixed bin, fixed bin, fixed bin, bit (1), ptr);
+  5    16 dcl  tty_space_man$free_chain entry (fixed bin, bit (1), ptr);
+  5    17 dcl  tty_space_man$switch_chain entry (fixed bin, fixed bin, bit (1), bit (1), ptr);
+  5    18 dcl  tty_space_man$needs_space entry (fixed bin);
+  5    19 
+  5    20 dcl  INPUT bit (1) int static options (constant) init ("0"b);
+  5    21 dcl  OUTPUT bit (1) int static options (constant) init ("1"b);
+  5    22 
+  5    23 /* END INCLUDE FILE ... tty_space_man_dcls.incl.pl1 */
+      671 
+  6     1 /* BEGIN INCLUDE FILE ... tty_buf.incl.pl1 */
+  6     2 
+  6     3 /* Date Last Modified and Reason
+  6     4*   Created 04/19/77 by J. Stern (from part of tty.incl.pl1)
+  6     5*   Modified January 1978 by Robert Coren and Larry Johnson for variable-size buffers
+  6     6*   Modified 2/6/78 by Robert Coren to make circular_queue size settable
+  6     7*   Modified Aug 78 by J. Nicholls to move the buffer block format to a file of its own
+  6     8*   and wtcb to its own plus other modification for ring 0 multiplexing, tty_buffer_block.incl.pl1
+  6     9*   Modified 7/17/79 by B. Greenberg for echo negotiation meters.
+  6    10*   Modified November 1979 by C. Hornig for MCS tracing.
+  6    11*   Modified December 1979 by Robert Coren to add FNP channel lock meter
+  6    12*   Modified February 1980 by Robert Coren to remove all references to circular buffer
+  6    13*   Modified March 1980 by Robert Coren to reorganize metering information
+  6    14*   Modified December 1980 by Robert Coren to add FNP-specific events
+  6    15*   Modified 24 March 1982, W. Olin Sibert, to add mcs_timer support, recoverable_error_severity
+  6    16*   Modified November 1984 by Robert Coren to add tty_area_lock
+  6    17**/
+  6    18 
+  6    19 dcl  ttybp ptr,
+  6    20      tty_buf$ ext static,				/* tty buffer segment */
+  6    21      tty_ev fixed bin int static options (constant) init (57), /* event used for wait and notify */
+  6    22      abs_buf_limit fixed bin (18) static options (constant) init (64), /* minimum number of words we will leave free */
+  6    23      input_bpart fixed bin (18) static options (constant) init (2), /* fraction of bleft we will allow for input */
+  6    24      output_bpart fixed bin (18) static options (constant) init (4); /* fraction of bleft we will allow for output */
+  6    25 
+  6    26 
+  6    27 dcl  qblock_size fixed bin int static options (constant) init (16); /* size in words of a delay queue block */
+  6    28 dcl  bsizec fixed bin int static options (constant) init (60); /* number of characters in smallest buffer */
+  6    29 dcl  buf_per_second fixed bin int static options (constant) init (10); /* for figuring out max. buffer size based on speed */
+  6    30 
+  6    31 dcl  FNP_DUMP_PATCH_EVENT fixed bin int static options (constant) init (58);
+  6    32 dcl  FNP_METER_EVENT fixed bin int static options (constant) init (59);
+  6    33 dcl  TTY_AREA_LOCK_EVENT bit (36) aligned int static options (constant) init ("74"b3);
+  6    34 
+  6    35 dcl 1 tty_buf aligned based (ttybp),			/* declaration of tty buffer seg */
+  6    36     2 slock bit (36),				/* per system lock */
+  6    37     2 absorig fixed bin (24),				/* abs address of this seg */
+  6    38     2 borig bit (18),				/* index of start of buffer area */
+  6    39     2 bleft fixed bin (18),				/* words left in pool */
+  6    40     2 free bit (18),				/* pointer to start of free pool */
+  6    41     2 fnp_config_flags (8) bit (1) unal,		/* flag(i) ON if fnp(i) configured */
+  6    42     2 padb1 bit (28) unaligned,
+  6    43     2 lct_ptr ptr,					/* pointer to logical channel table */
+  6    44 
+  6    45     2 nrawread fixed bin (35),			/* number of raw chars input, total */
+  6    46     2 nrawwrite fixed bin (35),			/* number of raw characters output */
+  6    47     2 ninchars fixed bin (35),			/* total input chars after conversion */
+  6    48     2 noutchars fixed bin (35),			/* total output chars before conversion */
+  6    49     2 readblocked fixed bin (35),			/* number of times go input blocked */
+  6    50     2 nblocked fixed bin (35),			/* number of times process output blocked */
+  6    51     2 minbuf fixed bin (18),				/* min output buffer size */
+  6    52     2 totbuf fixed bin (35),				/* divide by nblocked to get ave buffer size */
+  6    53 
+  6    54     2 preconverted fixed bin (35),			/* number of converted chars held in tty_buf */
+  6    55     2 input_restart fixed bin,			/* number of times tty_read had to start over */
+  6    56     2 output_restart fixed bin,			/* number of times tty_write has had to start over */
+  6    57     2 output_buffer_overflow fixed bin,			/* number of times tty_write has run out of buffers */
+  6    58     2 read_time fixed bin (71),			/* total time spent in tty_read */
+  6    59     2 write_time fixed bin (71),			/* total time spent in tty_write */
+  6    60 
+  6    61     2 read_calls fixed bin (35),			/* number of calls to tty_read */
+  6    62     2 write_calls fixed bin (35),			/* number of calls to tty_write */
+  6    63     2 bfx fixed bin,				/* used in calls to iobm */
+  6    64     2 nquits fixed bin (35),				/* number of quits */
+  6    65     2 space_needed_data,
+  6    66       3 space_needed bit (1) unal,			/* space_needed bit on in at least 1 lcte */
+  6    67       3 space_needed_calls fixed bin (34) unal,		/* meter of uses of this facility */
+  6    68     2 space_lock_count fixed bin (35),			/* count of times tty_buf.slock locked */
+  6    69     2 space_lock_wait_count fixed bin (35),		/* count of times necessary to loop to lock it */
+  6    70     2 space_lock_wait_time fixed bin (35),		/* total time looped trying to lock it */
+  6    71 
+  6    72     2 alloc_calls fixed bin (35),			/* total number of allocations performed in tty_buf */
+  6    73     2 free_calls fixed bin (35),			/* total number of freeings in tty_buf */
+  6    74     2 alloc_time fixed bin (35),			/* time spent masked in tty_space_man$get entries */
+  6    75     2 free_time fixed bin (35),			/* time spent masked in tty_space_man$free entries */
+  6    76     2 total_alloc_steps fixed bin (35),			/* number of steps thru free chain while doing above */
+  6    77     2 alloc_failures fixed bin (35),			/* number of unsuccessful attempts to allocate space */
+  6    78     2 cumulative_input_space fixed bin (71),		/* cumulative amount of space allocated for input */
+  6    79 
+  6    80     2 cumulative_output_space fixed bin (71),		/* cumulative amount of space allocated for output */
+  6    81     2 cumulative_control_space fixed bin (71),		/* cumulative amount of space allocated by tty_space_man$get_space */
+  6    82     2 input_space_updates fixed bin (35),		/* number of increments to cumulative_input_space */
+  6    83     2 output_space_updates fixed bin (35),		/* number of increments to cumulative_output_space */
+  6    84     2 control_space_updates fixed bin (35),		/* number of increments to cumulative_control_space */
+  6    85     2 minimum_free_space fixed bin (18),		/* smallest amount of free space ever available */
+  6    86 
+  6    87     2 current_input_space fixed bin (18),		/* amount of space currently allocated for input */
+  6    88     2 current_output_space fixed bin (18),		/* amount of space currently allocated for output */
+  6    89     2 current_control_space fixed bin (18),		/* amount of space currently allocated by get_space */
+  6    90     2 tty_lock_calls fixed bin (35),			/* number of calls to tty_lock$lock entries */
+  6    91     2 found_channel_locked fixed bin (35),		/* number of times tty_lock found channel already locked */
+  6    92     2 max_wait_time fixed bin (35),			/* longest time waited for any channel lock */
+  6    93     2 total_wait_time fixed bin (71),			/* total amount of time spent waiting for channel locks */
+  6    94 
+  6    95     2 echo_neg_time fixed bin (71),			/* cumulative time spent doing echo negotiation */
+  6    96     2 echo_neg_interrupts fixed bin (35),		/* Echo-negotiated shipments */
+  6    97     2 echo_neg_r0_chars fixed bin (35),			/* Chars echoed by ring 0 */
+  6    98     2 echo_neg_mux_chars fixed bin (35),		/* Chars echoed by mux */
+  6    99     2 echo_neg_sndopt_restarts fixed bin (35),		/* Echo reinits */
+  6   100     2 echo_neg_mux_nonecho fixed bin (35),
+  6   101     2 echo_neg_entries fixed bin (35),			/* Entries into negotiate */
+  6   102 
+  6   103     2 echo_neg_mux_inhibit bit (1) aligned,		/* For testing */
+  6   104     2 n_queued_interrupts fixed bin (35),		/* number of interrupts queued by tty_lock */
+  6   105     2 trace unaligned,				/* tracing information */
+  6   106       3 flags,
+  6   107       4 enable bit,					/* global tracing control */
+  6   108       4 default_mode bit,				/* whether to trace channels by default */
+  6   109       4 read bit,					/* read */
+  6   110       4 write bit,					/* write */
+  6   111       4 data bit,					/* buffers on reads and writes */
+  6   112       4 control bit,				/* control, priv_control, and hpriv_control */
+  6   113       4 modes bit,					/* (get set check)_modes */
+  6   114       4 interrupt bit,				/* interrupt, interrupt_later */
+  6   115       4 init bit,					/* init_multiplexer, terminate_multiplexer */
+  6   116       4 start bit,					/* start, stop */
+  6   117       4 shutdown bit,				/* shutdown */
+  6   118       4 space_man bit,				/* tty_space_man$* */
+  6   119       4 pad_flags bit (6),
+  6   120       3 data_offset bit (18),				/* offset of tracing data */
+  6   121 
+  6   122     2 recoverable_error_severity fixed bin,		/* Syserr severity for recoverable MCS errors */
+  6   123 
+  6   124     2 timer_lock bit (36) aligned,			/* Lock owned by mcs_timer */
+  6   125     2 next_timer_offset bit (18) aligned,		/* Offset of next timer to come due */
+  6   126     2 timer_count fixed bin,				/* Number of timers outstanding */
+  6   127     2 timer_process bit (36) aligned,			/* Who is doing timers? */
+  6   128 
+  6   129     2 timer_ev_chn fixed bin (71),			/* How get get him */
+  6   130     2 timer_lock_wait_time fixed bin (71),		/* CPU time spent spinning on timer lock */
+  6   131 
+  6   132     2 timer_lock_count fixed bin (35),			/* Number of times timer lock locked */
+  6   133     2 timer_lock_wait_count fixed bin (35),		/* Number of times imer lock waited on */
+  6   134     2 timer_call_time fixed bin (71),			/* CPU time spent in call side timer operations */
+  6   135 
+  6   136     2 timer_polling_time fixed bin (71),		/* CPU time spent polling (including channel_manager) */
+  6   137     2 timer_set_calls fixed bin (35),			/* Number of calls to mcs_timer$set, set_wired */
+  6   138     2 timer_reset_calls fixed bin (35), 		/* Number of calls to mcs_timer$reset, reset_wired */
+  6   139 
+  6   140     2 timer_change_calls fixed bin (35),		/* Number of calls to mcs_timer$change, change_wired */
+  6   141     2 timer_poll_calls fixed bin (35),			/* Number of calls to mcs_timer$poll */
+  6   142     2 timer_error_calls fixed bin (35), 		/* Number of mcs_timer calls ending with recoverable errors */
+  6   143     2 timer_duplicate_pollings fixed bin (35),		/* Number of timer polling found in progress on other CPU */
+  6   144 
+  6   145     2 tty_area_lock like hc_fast_lock,			/* to prevent contention in allocating/freeing in tty_area */
+  6   146 
+  6   147     2 pad2 (13) fixed bin (35),
+  6   148 
+  6   149     2 free_space fixed bin;				/* start of free space region */
+  6   150 
+  6   151 
+  7     1 /* BEGIN INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  7     2 
+  7     3 /* Created November 1984 by Robert Coren to replace hc_lock.incl.pl1 */
+  7     4 
+  7     5 /* Lock format suitable for use with lock$lock_fast, unlock_fast */
+  7     6 
+  7     7 /* format: style3 */
+  7     8 
+  7     9 declare	lock_ptr		pointer;
+  7    10 declare	1 hc_fast_lock	aligned based (lock_ptr),
+  7    11 	  2 pid		bit (36) aligned,		/* holder of lock */
+  7    12 	  2 event		bit (36) aligned,		/* event associated with lock */
+  7    13 	  2 flags		aligned,
+  7    14 	    3 notify_sw	bit (1) unaligned,
+  7    15 	    3 pad		bit (35) unaligned;		/* certain locks use this pad, like dirs */
+  7    16 
+  7    17 /* END INCLUDE FILE...hc_fast_lock.incl.pl1 */
+  6   152 
+  6   153 
+  6   154 /* END INCLUDE FILE ... tty_buf.incl.pl1 */
+      672 
+  8     1 /*  BEGIN INCLUDE FILE ... apte.incl.pl1 */
+  8     2 
+  8     3 /* Modified 1984-11-11 by E. Swenson for IPC event channel validation. */
+  8     4 
+  8     5 dcl  aptep pointer;
+  8     6 
+  8     7 dcl 1 apte based (aptep) aligned,			/* APT entry declaration for an active (known) process */
+  8     8     2 thread unaligned,				/* List thread */
+  8     9       3 fp bit (18),				/* Forward pointer */
+  8    10       3 bp bit (18),				/* Backward pointer */
+  8    11     2 flags unaligned,				/* Flags and miscellaneous */
+  8    12       3 mbz bit (1),				/* This bit must be zero (sentinel bit) */
+  8    13       3 wakeup_waiting bit (1),			/* ON if process has received wakeup */
+  8    14       3 stop_pending bit (1),				/* ON if process has received stop connect */
+  8    15       3 pre_empted bit (1),				/* ON if process is being pre-empted by get_processor */
+  8    16       3 hproc bit (1),				/* ON if process is hardcore process */
+  8    17       3 loaded bit (1),				/* ON if required per-process pages are in memory and wired */
+  8    18       3 eligible bit (1),				/* ON if process is eligible */
+  8    19       3 idle bit (1),				/* ON if  this is an idle process */
+  8    20       3 interaction bit (1),				/* ON if process has interacted recently */
+  8    21       3 pre_empt_pending bit (1),			/* ON if process has received pre-empt connect */
+  8    22       3 default_procs_required bit (1),			/* ON if apte.procs_required is system default */
+  8    23       3 realtime_burst bit (1),			/* ON if next eligibility is realtime */
+  8    24       3 always_loaded bit (1),			/* ON if process is not to be unloaded */
+  8    25       3 dbr_loaded bit (1),				/* ON if DBR is loaded on some CPU */
+  8    26       3 being_loaded bit (1),				/* ON if somebody loading this process */
+  8    27       3 shared_stack_0 bit (1),			/* ON if a shared stack_0 is assigned */
+  8    28       3 page_wait_flag bit (1),			/* flag ON if waiting for page */
+  8    29       3 firstsw bit (1),				/* OFF until process is intialized */
+  8    30       3 state bit (18),				/* execution state */
+  8    31     2 page_faults fixed bin (35),			/* total page faults for the process */
+  8    32     2 processid bit (36),				/* bit 0-17: offset of ATPE */
+  8    33 						/* bit 18-35: sequential number */
+  8    34     2 te fixed bin (35),				/* virtual time since eligibility award */
+  8    35     2 ts fixed bin (35),				/* virtual time since scheduling */
+  8    36     2 ti fixed bin (35),				/* virtual time since interaction */
+  8    37     2 timax fixed bin (35),				/* maximum value allowed for apte.ti */
+  8    38 
+  8    39 /* * * * * * * * */
+  8    40 
+  8    41     2 ipc_pointers unaligned,
+  8    42       3 event_thread bit (18),			/* relative pointer to ITT list */
+  8    43       3 pad3 bit (18),
+  8    44     2 ips_message bit (36),				/* IPS signals pending */
+  8    45     2 asteps unaligned,				/* relative ASTE pointers */
+  8    46       3 pds bit (18),				/* PDS (per-process) */
+  8    47       3 dseg bit (18),				/* DSEG (per-process) */
+  8    48       3 prds bit (18),				/* PRDS (per-processor) */
+  8    49     2 savex7 bit (18) unaligned,			/* x7 at call to getwork (return point in pxss) */
+  8    50     2 term_processid bit (36),			/* process to send wakeup at temination */
+  8    51     2 lock_id bit (36),				/* File System unqieu ID associated with process */
+  8    52     2 time_used_clock fixed bin (71),			/* Total CPU time when process last lost CPU */
+  8    53 
+  8    54 /* * * * * * * * */
+  8    55 
+  8    56     2 wait_event bit (36) aligned,			/* Event ID process awaiting */
+  8    57     2 wct_index bit (18) unaligned,			/* rel offset of WCTE */
+  8    58     2 flags2 unaligned,
+  8    59       3 priority_scheduling bit (1),			/* ON if guaranteed eligibility */
+  8    60       3 special_wakeups bit (6),			/* Special wakeup channels */
+  8    61       3 pad7 bit (7),
+  8    62       3 batch bit (1),				/* ON if absentee */
+  8    63       3 pr_tag bit (3),				/* CPU tag running or last run */
+  8    64     2 state_change_time fixed bin (71),			/* Time apte.state last changed */
+  8    65     2 alarm_event fixed bin (71),			/* wakeup event for alarm clock manager */
+  8    66     2 alarm_time_thread bit (18) unaligned,		/* thread of processes with pending alarms */
+  8    67     2 alarm_time bit (54) unaligned,			/* wakeup time for alarm */
+  8    68 
+  8    69 /* * * * * * */
+  8    70 
+  8    71     2 term_channel fixed bin (71),			/* wakeup event for account overflow */
+  8    72     2 ws_size fixed bin,				/* working set estimate for the process */
+  8    73     2 temax fixed bin (35),				/* maximum eligibility slice (vcpu) */
+  8    74     2 deadline fixed bin (71),			/* time of next run */
+  8    75     2 lock bit (18) unaligned,			/* 0 => APTE locked, unlocked => return point of last unlock */
+  8    76     2 unusable bit (18) unaligned,			/* locking routines destroy */
+  8    77     2 cpu_monitor fixed bin (35),			/* if not 0, send wakeup to term_processid when virtual cpu
+  8    78*						/* reaches this (units = 1/1024 sec) */
+  8    79     2 paging_measure fixed bin (71),			/* cumulative memory units */
+  8    80     2 access_authorization bit (72),			/* authorization of this process */
+  8    81     2 dbr fixed bin (71),				/* DBR value (constant since DSEG entry-held) */
+  8    82 
+  8    83     2 virtual_cpu_time fixed bin (71),			/* cumulative virtual CPU time for the process */
+  8    84     2 ittes_sent fixed bin (18),			/* Unprocessed ITTs sent by this process */
+  8    85     2 ittes_got fixed bin (18),			/* Unprocessed ITTs received by this process */
+  8    86 
+  8    87 /*  Cells used to drive and instrument finite-state model for response time
+  8    88*    measurement. Maintained by meter_response_time */
+  8    89 
+  8    90     2 current_response_state fixed bin (17) unaligned,	/* Process state in modle */
+  8    91     2 pad18 bit (18) unaligned,
+  8    92     2 number_processing fixed bin (35),			/* Number interactions */
+  8    93     2 last_response_state_time fixed bin (71),		/* Clock time at last response state change */
+  8    94     2 total_processing_time fixed bin (71),		/* Total interaction processing time */
+  8    95 
+  8    96 /* * * * * * */
+  8    97 
+  8    98     2 begin_interaction_vcpu fixed bin (71),		/* Virtual cpu at beginning of last interaction */
+  8    99 
+  8   100 /*  End of cells for finite-state model */
+  8   101 
+  8   102     2 saved_temax fixed bin (35),			/* temax at eligibility award */
+  8   103     2 procs_required bit (8) unaligned,			/* bit mask of CPUs this process can run */
+  8   104     2 pad4 bit (28) unaligned,
+  8   105     2 ipc_r_offset fixed bin (18) unsigned,
+  8   106     2 ipc_r_factor fixed bin (35) unsigned,
+  8   107     2 apad (10) fixed bin (35);
+  8   108 
+  8   109 /*  END INCLUDE FILE ... apte.incl.pl1 */
+      673 
+      674 
+      675      end priv_channel_manager;			/* priv_channel_manager */
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0800.0  priv_channel_manager.pl1          >spec>install>1111>priv_channel_manager.pl1
+667          1    11/08/82  1005.8  lct.incl.pl1                      >ldd>include>lct.incl.pl1
+668          2    10/26/89  2011.9  cmtv.incl.pl1                     >ldd>include>cmtv.incl.pl1
+669          3    02/23/79  1434.9  mux_init_info.incl.pl1            >ldd>include>mux_init_info.incl.pl1
+670          4    10/26/89  2011.9  multiplexer_types.incl.pl1        >ldd>include>multiplexer_types.incl.pl1
+671          5    06/18/81  0900.8  tty_space_man_dcls.incl.pl1       >ldd>include>tty_space_man_dcls.incl.pl1
+672          6    01/06/85  1422.1  tty_buf.incl.pl1                  >ldd>include>tty_buf.incl.pl1
+6-152        7    01/06/85  1422.1  hc_fast_lock.incl.pl1             >ldd>include>hc_fast_lock.incl.pl1
+673          8    01/06/85  1422.2  apte.incl.pl1                     >ldd>include>apte.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+HPRIV_CONTROL                          constant        fixed bin(17,0)          initial dcl 2-36 set ref 420*
+INIT_CHANNEL                           constant        fixed bin(17,0)          initial dcl 2-36 set ref 147*
+INIT_MULTIPLEXER                       constant        fixed bin(17,0)          initial dcl 2-36 set ref 216*
+PRIV_CONTROL                           constant        fixed bin(17,0)          initial dcl 2-36 set ref 393*
+SHUTDOWN                        000211 constant        fixed bin(17,0)          initial dcl 2-36 set ref 321*
+START                           000213 constant        fixed bin(17,0)          initial dcl 2-36 set ref 283*
+STOP                            000212 constant        fixed bin(17,0)          initial dcl 2-36 set ref 302*
+TERMINATE_CHANNEL                      constant        fixed bin(17,0)          initial dcl 2-36 set ref 176*
+TERMINATE_MULTIPLEXER                  constant        fixed bin(17,0)          initial dcl 2-36 set ref 253*
+addr                                                   builtin function         dcl 75 ref 95 351 443 456 458 468 490 492 521 575
+                                                                                  595 619 649
+apte                                   based           structure                level 1 dcl 8-7
+aptep                           000220 automatic       pointer                  dcl 8-5 set ref 99* 104
+area                            000130 stack reference condition                dcl 58 ref 123 125 361 656
+call_time                26            based           fixed bin(71,0)          level 4 dcl 1-20 set ref 501* 501
+calls                    24            based           fixed bin(35,0)          level 4 dcl 1-20 set ref 500* 500
+chan_name                       000110 automatic       char(32)                 packed unaligned dcl 51 set ref 340 360 390 417 478*
+                                                                                  479 482
+chan_type                              parameter       fixed bin(17,0)          dcl 510 in procedure "make_entry" ref 506 521
+chan_type                       000103 automatic       fixed bin(17,0)          dcl 47 in procedure "priv_channel_manager" set ref
+                                                                                  198* 204 204 210 210 216* 223 225
+chan_type_index           2            based           fixed bin(17,0)          array level 2 dcl 2-29 ref 204 210 210 521
+channel_type              2            based           fixed bin(8,0)           level 2 packed packed unaligned dcl 1-20 set ref
+                                                                                  151* 171 223* 246 253 283 302 321 393 420
+channels                  1            based           structure                array level 2 dcl 3-10
+cleanup                         000122 stack reference condition                dcl 57 ref 174 251 281 300 319
+clock                                                  builtin function         dcl 75 ref 441 465 501
+cmtv                                   based           structure                level 1 dcl 2-29
+cmtv$cmtv                       000050 external static fixed bin(17,0)          dcl 2-24 set ref 458 492
+cmtvp                           000146 automatic       pointer                  dcl 2-26 set ref 204 210 210 210 458* 492* 521 521
+code                            000107 automatic       fixed bin(35,0)          dcl 50 set ref 148* 149 156 177* 178 188 217* 218
+                                                                                  221 230 254* 255 266 334 342 379 381 406 408 428*
+                                                                                  434 451* 466* 472* 487* 524* 547* 548 629* 661*
+code_ptr                        000272 automatic       pointer                  level 2 in structure "entry_var" dcl 516
+                                                                                  in procedure "make_entry" set ref 528*
+code_ptr                        000264 automatic       pointer                  dcl 512 in procedure "make_entry" set ref 521* 522
+                                                                                  528
+code_word                              based           fixed bin(17,0)          dcl 513 ref 522
+codeptr                                                builtin function         dcl 75 ref 99 99
+control                  24            based           structure                level 3 in structure "lcte" dcl 1-20 in procedure
+                                                                                  "priv_channel_manager"
+control                 102(05)        based           bit(1)                   level 4 in structure "tty_buf" packed packed
+                                                                                  unaligned dcl 6-35 in procedure
+                                                                                  "priv_channel_manager" ref 385 412
+create_hproc                    000030 constant        entry                    external dcl 80 ref 99
+data_base_ptr             1            based           pointer                  level 2 packed packed unaligned dcl 1-20 set ref
+                                                                                  152* 177 180* 224* 254 257* 284 303 322 359* 394
+                                                                                  421
+db_ptr                          000104 automatic       pointer                  dcl 48 set ref 148* 152 217* 224
+devx                            000102 automatic       fixed bin(17,0)          dcl 46 in procedure "priv_channel_manager" set ref
+                                                                                  140* 148* 167* 183* 200* 217* 241* 261* 277* 296*
+                                                                                  315* 336 350* 351 360 364 385* 390 412* 417 448*
+                                                                                  449 449 456 482* 482* 485 490 547* 559* 576 596
+                                                                                  650
+devx                     11            based           fixed bin(17,0)          array level 3 in structure "mux_init_info" dcl 3-10
+                                                                                  in procedure "priv_channel_manager" set ref 623*
+                                                                                  647
+enable                  102            based           bit(1)                   level 4 packed packed unaligned dcl 6-35 ref 140 167
+                                                                                  200 241 277 296 315 385 412
+entries                  23            based           bit(72)                  array level 2 dcl 2-29 set ref 521
+entry_in_use              2(09)        based           bit(1)                   level 3 packed packed unaligned dcl 1-20 set ref 144
+                                                                                  352 358* 541 602* 620 655*
+entry_type                             parameter       fixed bin(17,0)          dcl 509 ref 506 521
+entry_var                       000272 automatic       structure                level 1 dcl 516 set ref 530
+env_ptr                   2     000272 automatic       pointer                  level 2 dcl 516 set ref 529*
+error_table_$bad_index          000020 external static fixed bin(35,0)          dcl 68 ref 451
+error_table_$id_not_found       000022 external static fixed bin(35,0)          dcl 69 ref 390 417 472 487
+error_table_$invalid_mpx_type   000016 external static fixed bin(35,0)          dcl 67 ref 206
+error_table_$invalid_state      000012 external static fixed bin(35,0)          dcl 65 ref 428
+error_table_$no_operation       000014 external static fixed bin(35,0)          dcl 66 ref 524
+error_table_$notalloc           000024 external static fixed bin(35,0)          dcl 70 ref 117 367 629 661
+error_table_$smallarg           000026 external static fixed bin(35,0)          dcl 71 ref 109
+flags                     2(09)        based           structure                level 2 in structure "lcte" packed packed unaligned
+                                                                                  dcl 1-20 in procedure "priv_channel_manager"
+flags                   102            based           structure                level 3 in structure "tty_buf" packed packed
+                                                                                  unaligned dcl 6-35 in procedure
+                                                                                  "priv_channel_manager"
+found                           000101 automatic       bit(1)                   packed unaligned dcl 45 set ref 348* 349 352* 356
+hbound                                                 builtin function         dcl 75 ref 204
+hc_fast_lock                           based           structure                level 1 dcl 7-10
+hpriv_control_ev                000210 automatic       entry variable           dcl 2-80 set ref 420* 421
+i                               000100 automatic       fixed bin(17,0)          dcl 44 set ref 349* 350*
+in                       10            based           structure                level 3 in structure "lcte" dcl 1-20 in procedure
+                                                                                  "priv_channel_manager"
+in                        2            based           structure                level 2 in structure "saved_meters" dcl 1-68
+                                                                                  in procedure "priv_channel_manager"
+in                       30            based           structure                array level 4 in structure "lct" dcl 1-11
+                                                                                  in procedure "priv_channel_manager"
+index                                                  builtin function         dcl 75 ref 340
+init                    102(08)        based           bit(1)                   level 4 packed packed unaligned dcl 6-35 ref 140 167
+                                                                                  200 241
+init_channel_ev                 000150 automatic       entry variable           dcl 2-56 set ref 147* 148
+init_multiplexer_ev             000160 automatic       entry variable           dcl 2-62 set ref 216* 217
+initialized               2(10)        based           bit(1)                   level 3 packed packed unaligned dcl 1-20 set ref 144
+                                                                                  153* 181* 226* 259* 576
+lcnt                                   based           structure                level 1 dcl 1-65 set ref 124 124
+lcnt_ptr                  2            based           pointer                  level 2 dcl 1-11 set ref 127* 476 592 644
+lcntp                           000144 automatic       pointer                  dcl 1-63 set ref 124 124 124* 126 127 360 390 417
+                                                                                  476* 482 592* 598 644* 648
+lct                                    based           structure                level 1 dcl 1-11 set ref 114 114
+lct_ptr                   6            based           pointer                  level 2 dcl 6-35 set ref 128* 444 469
+lct_size                        000142 automatic       fixed bin(17,0)          dcl 1-9 set ref 94* 107 114 114 122
+lcte                                   based           structure                level 1 dcl 1-20
+lcte_array               20            based           structure                array level 2 dcl 1-11 set ref 351 456 490 575 595
+                                                                                  619 649
+lctep                           000140 automatic       pointer                  dcl 1-8 set ref 144 144 151 152 153 171 177 180 181
+                                                                                  182 183 223 224 225 226 246 253 254 257 259 260
+                                                                                  261 283 284 302 303 321 322 351* 352 358 359 362
+                                                                                  393 394 420 421 456* 490* 500 500 501 501 541 544
+                                                                                  651 653
+lctp                            000136 automatic       pointer                  dcl 1-7 set ref 113* 114 114 114* 115 122 124 124
+                                                                                  126 127 128 349 351 444* 445 449 456 469* 470 476
+                                                                                  482 485 490 574 575 592 594 595 618 619 644 649
+lctx                            000100 automatic       fixed bin(17,0)          dcl 640 in procedure "allocate_subchan_lctes" set
+                                                                                  ref 647* 648 649 651
+lctx                            000326 automatic       fixed bin(17,0)          dcl 588 in procedure "free_subchan_lctes" set ref
+                                                                                  594* 595 598*
+lctx                            000312 automatic       fixed bin(17,0)          dcl 570 in procedure "check_subchan_lctes" set ref
+                                                                                  574* 575*
+lctx                            000342 automatic       fixed bin(17,0)          dcl 613 in procedure "find_subchan_lctes" set ref
+                                                                                  618* 619 623*
+locked                          000106 automatic       bit(1)                   dcl 49 set ref 442* 467* 550* 559 561*
+major_channel_devx        3            based           fixed bin(17,0)          level 3 packed packed unaligned dcl 1-20 set ref 576
+                                                                                  596 601* 650*
+major_channel_info        3            based           structure                level 2 dcl 1-20
+max_no_lctes                           based           fixed bin(17,0)          level 2 dcl 1-11 set ref 122* 124 124 126 349 449
+                                                                                  482 485 574 594 618
+mcs_timer_daemon                000032 constant        entry                    external dcl 81 ref 99 99
+mcs_trace                       000046 constant        entry                    external dcl 87 ref 140 167 200 241 277 296 315 385
+                                                                                  412
+meters                    6            based           structure                level 2 in structure "lcte" dcl 1-20 in procedure
+                                                                                  "priv_channel_manager" set ref 600*
+meters                   26            based           structure                array level 3 in structure "lct" dcl 1-11
+                                                                                  in procedure "priv_channel_manager"
+miip                            000214 automatic       pointer                  dcl 3-6 set ref 213* 217* 618 623 627 646 647 648
+mpx_special_lock                000000 constant        bit(1)                   initial array packed unaligned dcl 4-40 ref 225
+mpx_types                       000001 constant        char(32)                 initial array packed unaligned dcl 4-35 set ref 200*
+mux_init_info                          based           structure                level 1 dcl 3-10
+name                      1            based           char(32)                 array level 3 packed packed unaligned dcl 3-10 ref
+                                                                                  648
+names                                  based           char(32)                 array level 2 packed packed unaligned dcl 1-65 set
+                                                                                  ref 126* 360* 390 417 482 598* 648*
+new_entry                       000266 automatic       entry variable           dcl 515 set ref 530* 532
+no_channel_types                       based           fixed bin(17,0)          level 2 dcl 2-29 ref 210 521 521
+no_channels                            based           fixed bin(17,0)          level 2 dcl 3-10 ref 618 627 646
+null                                                   builtin function         dcl 75 ref 113 115 180 257 359 445 470 529
+p                               000102 automatic       pointer                  dcl 641 in procedure "allocate_subchan_lctes" set
+                                                                                  ref 649* 650 651 653 655 657
+p                               000344 automatic       pointer                  dcl 614 in procedure "find_subchan_lctes" set ref
+                                                                                  619* 620
+p                               000330 automatic       pointer                  dcl 589 in procedure "free_subchan_lctes" set ref
+                                                                                  595* 596 599 600 601 602
+p                               000314 automatic       pointer                  dcl 571 in procedure "check_subchan_lctes" set ref
+                                                                                  575* 576 576
+pds$virtual_delta               000010 external static fixed bin(71,0)          dcl 63 ref 441 465 501
+physical_channel_devx
+                          2(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 1-20 set ref 651
+                                                                                  651* 653* 653
+pm_chan_name                           parameter       char                     packed unaligned dcl 37 ref 329 375 402 478
+pm_chan_type                           parameter       fixed bin(17,0)          dcl 34 ref 194 198 200
+pm_code                                parameter       fixed bin(35,0)          dcl 39 set ref 91 99* 100 109* 117* 129* 135 156*
+                                                                                  162 188* 194 206* 230* 236 266* 272 284* 291 303*
+                                                                                  310 322* 329 337* 342* 363* 367* 375 381* 390*
+                                                                                  394* 402 408* 417* 421* 434*
+pm_control_type                        parameter       char                     packed unaligned dcl 38 set ref 375 385* 394* 402
+                                                                                  412* 421*
+pm_devx                                parameter       fixed bin(17,0)          dcl 33 set ref 135 162 194 236 272 291 310 329 336*
+                                                                                  364* 448
+pm_info_ptr                            parameter       pointer                  dcl 35 set ref 135 140* 148* 375 385* 394* 402 412*
+                                                                                  421*
+pm_lct_size                            parameter       fixed bin(17,0)          dcl 32 ref 91 94
+pm_mii_ptr                             parameter       pointer                  dcl 36 set ref 194 200* 213
+priv_control_ev                 000204 automatic       entry variable           dcl 2-77 set ref 393* 394
+processid                 3            based           bit(36)                  level 2 dcl 8-7 ref 104
+saved_meters                           based           structure                level 1 dcl 1-68 ref 362 362 599 599 657 657
+saved_meters_ptr         32            based           pointer                  level 2 dcl 1-20 set ref 362* 599* 657*
+sbchx                           000343 automatic       fixed bin(17,0)          dcl 613 in procedure "find_subchan_lctes" set ref
+                                                                                  617* 618 622* 622 623 627
+sbchx                           000101 automatic       fixed bin(17,0)          dcl 640 in procedure "allocate_subchan_lctes" set
+                                                                                  ref 646* 647 648*
+shutdown                102(10)        based           bit(1)                   level 4 packed packed unaligned dcl 6-35 ref 315
+shutdown_ev                     000200 automatic       entry variable           dcl 2-74 set ref 321* 322
+size                                                   builtin function         dcl 75 ref 114 114 124 124 362 362 599 599 657 657
+space_needed              2(13)        based           bit(1)                   level 3 packed packed unaligned dcl 1-20 set ref
+                                                                                  182* 260*
+special_lock              2(14)        based           bit(1)                   level 3 packed packed unaligned dcl 1-20 set ref 183
+                                                                                  225* 261 544
+start                   102(09)        based           bit(1)                   level 4 packed packed unaligned dcl 6-35 ref 277 296
+start_ev                        000170 automatic       entry variable           dcl 2-68 set ref 283* 284
+stop_ev                         000174 automatic       entry variable           dcl 2-71 set ref 302* 303
+terminate_channel_ev            000154 automatic       entry variable           dcl 2-59 set ref 176* 177
+terminate_multiplexer_ev        000164 automatic       entry variable           dcl 2-65 set ref 253* 254
+time_in                         000120 automatic       fixed bin(71,0)          dcl 52 set ref 441* 465* 501
+timer_ev_chn            110            based           fixed bin(71,0)          level 2 dcl 6-35 set ref 103*
+timer_process           107            based           bit(36)                  level 2 dcl 6-35 set ref 97 104*
+trace                   102            based           structure                level 2 packed packed unaligned dcl 6-35
+tty_area_manager$allocate       000034 constant        entry                    external dcl 82 ref 124 362 657
+tty_area_manager$free           000036 constant        entry                    external dcl 83 ref 599
+tty_buf                                based           structure                level 1 dcl 6-35
+tty_buf$                        000054 external static fixed bin(17,0)          dcl 6-19 set ref 95 443 468
+tty_lock$flush_queue            000044 constant        entry                    external dcl 86 ref 183 261
+tty_lock$lock_channel           000040 constant        entry                    external dcl 84 ref 547
+tty_lock$unlock_channel         000042 constant        entry                    external dcl 85 ref 559
+tty_space_man$get_perm_space    000052 constant        entry                    external dcl 5-11 ref 114
+ttybp                           000216 automatic       pointer                  dcl 6-19 set ref 95* 97 103 104 128 140 140 167 167
+                                                                                  200 200 241 241 277 277 296 296 315 315 385 385
+                                                                                  412 412 443* 444 468* 469
+unspec                                                 builtin function         dcl 75 set ref 103* 530* 530 600*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+CHECK_MODES                            internal static fixed bin(17,0)          initial dcl 2-36
+CONTROL                                internal static fixed bin(17,0)          initial dcl 2-36
+FNP_DUMP_PATCH_EVENT                   internal static fixed bin(17,0)          initial dcl 6-31
+FNP_METER_EVENT                        internal static fixed bin(17,0)          initial dcl 6-32
+GET_MODES                              internal static fixed bin(17,0)          initial dcl 2-36
+HASP_MPX                               internal static fixed bin(17,0)          initial dcl 4-16
+IBM3270_MPX                            internal static fixed bin(17,0)          initial dcl 4-16
+INPUT                                  internal static bit(1)                   initial packed unaligned dcl 5-20
+INTERRUPT                              internal static fixed bin(17,0)          initial dcl 2-36
+LAP_MPX                                internal static fixed bin(17,0)          initial dcl 4-16
+MCS_MPX                                internal static fixed bin(17,0)          initial dcl 4-16
+OUTPUT                                 internal static bit(1)                   initial packed unaligned dcl 5-21
+PROTOCOL_MPX                           internal static fixed bin(17,0)          initial dcl 4-16
+READ                                   internal static fixed bin(17,0)          initial dcl 2-36
+SET_MODES                              internal static fixed bin(17,0)          initial dcl 2-36
+STY_MPX                                internal static fixed bin(17,0)          initial dcl 4-16
+SYSTEM1_MPX                            internal static fixed bin(17,0)          initial dcl 4-16
+SYSTEM2_MPX                            internal static fixed bin(17,0)          initial dcl 4-16
+TTY_AREA_LOCK_EVENT                    internal static bit(36)                  initial dcl 6-33
+TTY_MPX                                internal static fixed bin(17,0)          initial dcl 4-16
+UNCP_MPX                               internal static fixed bin(17,0)          initial dcl 4-16
+USER1_MPX                              internal static fixed bin(17,0)          initial dcl 4-16
+USER2_MPX                              internal static fixed bin(17,0)          initial dcl 4-16
+USER3_MPX                              internal static fixed bin(17,0)          initial dcl 4-16
+USER4_MPX                              internal static fixed bin(17,0)          initial dcl 4-16
+USER5_MPX                              internal static fixed bin(17,0)          initial dcl 4-16
+VIP7760_MPX                            internal static fixed bin(17,0)          initial dcl 4-16
+WRITE                                  internal static fixed bin(17,0)          initial dcl 2-36
+X25_MPX                                internal static fixed bin(17,0)          initial dcl 4-16
+abs_buf_limit                          internal static fixed bin(18,0)          initial dcl 6-19
+bsizec                                 internal static fixed bin(17,0)          initial dcl 6-28
+buf_per_second                         internal static fixed bin(17,0)          initial dcl 6-29
+check_modes_ev                         automatic       entry variable           dcl 2-95
+control_ev                             automatic       entry variable           dcl 2-89
+get_modes_ev                           automatic       entry variable           dcl 2-98
+input_bpart                            internal static fixed bin(18,0)          initial dcl 6-19
+interrupt_ev                           automatic       entry variable           dcl 2-101
+lock_ptr                               automatic       pointer                  dcl 7-9
+mii_chan_count                         automatic       fixed bin(17,0)          dcl 3-7
+no_entry_types                         internal static fixed bin(17,0)          initial dcl 2-36
+output_bpart                           internal static fixed bin(18,0)          initial dcl 6-19
+qblock_size                            internal static fixed bin(17,0)          initial dcl 6-27
+read_ev                                automatic       entry variable           dcl 2-83
+set_modes_ev                           automatic       entry variable           dcl 2-92
+tty_ev                                 internal static fixed bin(17,0)          initial dcl 6-19
+tty_space_man$free_buffer       000000 constant        entry                    external dcl 5-14
+tty_space_man$free_chain        000000 constant        entry                    external dcl 5-16
+tty_space_man$free_space        000000 constant        entry                    external dcl 5-12
+tty_space_man$get_buffer        000000 constant        entry                    external dcl 5-13
+tty_space_man$get_chain         000000 constant        entry                    external dcl 5-15
+tty_space_man$get_space         000000 constant        entry                    external dcl 5-10
+tty_space_man$needs_space       000000 constant        entry                    external dcl 5-18
+tty_space_man$switch_chain      000000 constant        entry                    external dcl 5-17
+write_ev                               automatic       entry variable           dcl 2-86
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+allocate_subchan_lctes          003131 constant        entry                    internal dcl 637 ref 220
+bad_chan_type                   001127 constant        label                    dcl 206 ref 210
+check_subchan_lctes             002755 constant        entry                    internal dcl 567 ref 249
+error_exit                      002460 constant        label                    dcl 432 ref 453 474 525 548 630
+find_subchan_lctes              003064 constant        entry                    internal dcl 610 ref 214
+free_subchan_lctes              003003 constant        entry                    internal dcl 585 ref 258
+get_devx                        001742 constant        entry                    external dcl 329
+get_devx_notalloc               002110 constant        label                    dcl 367 ref 361
+hpriv_control                   002300 constant        entry                    external dcl 402
+init_channel                    000554 constant        entry                    external dcl 135
+init_multiplexer                001044 constant        entry                    external dcl 194
+invalid_state                   002455 constant        label                    dcl 428 ref 144 171 246 541 576
+lct_init                        000342 constant        entry                    external dcl 91
+lct_notalloc                    000461 constant        label                    dcl 117 ref 123
+lock_channel                    002704 constant        entry                    internal dcl 538 ref 175 252 282 301 320 389 416
+make_entry                      002641 constant        entry                    internal dcl 506 ref 147 176 216 253 283 302 321 393
+                                                                                  420
+meter                           002623 constant        entry                    internal dcl 498 ref 157 189 231 267 286 305 324 397
+                                                                                  424
+no_devx                         002513 constant        label                    dcl 451 ref 445
+no_name                         002543 constant        label                    dcl 472 ref 479
+priv_channel_manager            000330 constant        entry                    external dcl 14
+priv_control                    002121 constant        entry                    external dcl 375
+setup                           002467 constant        entry                    internal dcl 439 ref 138 165 197 239 275 294 313
+setup_name                      002524 constant        entry                    internal dcl 463 ref 332 378 405
+shutdown                        001623 constant        entry                    external dcl 310
+start                           001371 constant        entry                    external dcl 272
+stop                            001506 constant        entry                    external dcl 291
+subchan_not_alloc               003252 constant        label                    dcl 661 ref 656
+terminate_channel               000671 constant        entry                    external dcl 162
+terminate_multiplexer           001216 constant        entry                    external dcl 236
+unlock_channel                  002734 constant        entry                    internal dcl 556 ref 174 186 251 264 281 285 300 304
+                                                                                  319 323 396 423 432
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      4040        4116    3372        4050
+Length      4546    3372        56         413     446           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+priv_channel_manager                283 external procedure  is an external procedure.  
+on unit on line 123                  64 on unit               
+on unit on line 174                  64 on unit               
+on unit on line 251                  64 on unit               
+on unit on line 281                  64 on unit               
+on unit on line 300                  64 on unit               
+on unit on line 319                  64 on unit               
+on unit on line 361                  64 on unit               
+setup                                   internal procedure  shares stack frame of external procedure priv_channel_manager.  
+setup_name                              internal procedure  shares stack frame of external procedure priv_channel_manager.  
+meter                                   internal procedure  shares stack frame of external procedure priv_channel_manager.  
+make_entry                              internal procedure  shares stack frame of external procedure priv_channel_manager.  
+lock_channel                            internal procedure  shares stack frame of external procedure priv_channel_manager.  
+unlock_channel                       68 internal procedure  is called by several nonquick procedures.  
+check_subchan_lctes                     internal procedure  shares stack frame of external procedure priv_channel_manager.  
+free_subchan_lctes                      internal procedure  shares stack frame of external procedure priv_channel_manager.  
+find_subchan_lctes                      internal procedure  shares stack frame of external procedure priv_channel_manager.  
+allocate_subchan_lctes               82 internal procedure  enables or reverts conditions.  
+on unit on line 656                  64 on unit               
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+allocate_subchan_lctes   000100 lctx                        allocate_subchan_lctes
+                         000101 sbchx                       allocate_subchan_lctes
+                         000102 p                           allocate_subchan_lctes
+priv_channel_manager     000100 i                           priv_channel_manager
+                         000101 found                       priv_channel_manager
+                         000102 devx                        priv_channel_manager
+                         000103 chan_type                   priv_channel_manager
+                         000104 db_ptr                      priv_channel_manager
+                         000106 locked                      priv_channel_manager
+                         000107 code                        priv_channel_manager
+                         000110 chan_name                   priv_channel_manager
+                         000120 time_in                     priv_channel_manager
+                         000136 lctp                        priv_channel_manager
+                         000140 lctep                       priv_channel_manager
+                         000142 lct_size                    priv_channel_manager
+                         000144 lcntp                       priv_channel_manager
+                         000146 cmtvp                       priv_channel_manager
+                         000150 init_channel_ev             priv_channel_manager
+                         000154 terminate_channel_ev        priv_channel_manager
+                         000160 init_multiplexer_ev         priv_channel_manager
+                         000164 terminate_multiplexer_ev    priv_channel_manager
+                         000170 start_ev                    priv_channel_manager
+                         000174 stop_ev                     priv_channel_manager
+                         000200 shutdown_ev                 priv_channel_manager
+                         000204 priv_control_ev             priv_channel_manager
+                         000210 hpriv_control_ev            priv_channel_manager
+                         000214 miip                        priv_channel_manager
+                         000216 ttybp                       priv_channel_manager
+                         000220 aptep                       priv_channel_manager
+                         000264 code_ptr                    make_entry
+                         000266 new_entry                   make_entry
+                         000272 entry_var                   make_entry
+                         000312 lctx                        check_subchan_lctes
+                         000314 p                           check_subchan_lctes
+                         000326 lctx                        free_subchan_lctes
+                         000330 p                           free_subchan_lctes
+                         000342 lctx                        find_subchan_lctes
+                         000343 sbchx                       find_subchan_lctes
+                         000344 p                           find_subchan_lctes
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ent_var_desc   call_ent_var        call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          tra_ext_1           enable_op           ext_entry           ext_entry_desc      int_entry
+clock_mac
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+create_hproc                  mcs_timer_daemon              mcs_trace                     tty_area_manager$allocate
+tty_area_manager$free         tty_lock$flush_queue          tty_lock$lock_channel         tty_lock$unlock_channel
+tty_space_man$get_perm_space
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+cmtv$cmtv                     error_table_$bad_index        error_table_$id_not_found     error_table_$invalid_mpx_type
+error_table_$invalid_state    error_table_$no_operation     error_table_$notalloc         error_table_$smallarg
+pds$virtual_delta             tty_buf$
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000327        91 000335        94 000352        95 000355        97 000357        99 000361       100 000417
+    103 000421       104 000425       107 000430       109 000432       110 000435       113 000436       114 000440
+    115 000455       117 000461       119 000464       122 000465       123 000467       124 000506       125 000522
+    126 000523       127 000541       128 000544       129 000546       131 000547       135 000550       138 000570
+    140 000571       144 000625       147 000634       148 000637       149 000653       151 000655       152 000660
+    153 000662       156 000664       157 000665       158 000666       162 000667       165 000703       167 000704
+    171 000736       174 000742       175 000764       176 000765       177 000770       178 001003       180 001005
+    181 001010       182 001012       183 001014       185 001026       186 001027       188 001033       189 001035
+    190 001036       194 001037       197 001056       198 001057       200 001062       204 001122       206 001127
+    208 001132       210 001133       213 001141       214 001145       216 001146       217 001150       218 001164
+    220 001166       221 001172       223 001174       224 001200       225 001202       226 001206       230 001210
+    231 001212       232 001213       236 001214       239 001230       241 001231       246 001260       249 001264
+    251 001265       252 001307       253 001310       254 001316       255 001331       257 001333       258 001336
+    259 001337       260 001342       261 001344       263 001356       264 001357       266 001363       267 001365
+    268 001366       272 001367       275 001403       277 001404       281 001432       282 001454       283 001455
+    284 001463       285 001476       286 001502       287 001503       291 001504       294 001520       296 001521
+    300 001547       301 001571       302 001572       303 001600       304 001613       305 001617       306 001620
+    310 001621       313 001635       315 001636       319 001664       320 001706       321 001707       322 001715
+    323 001730       324 001734       325 001735       329 001736       332 001762       334 001763       336 001765
+    337 001767       338 001770       340 001771       342 002002       343 002004       348 002005       349 002006
+    350 002017       351 002020       352 002024       354 002031       356 002033       358 002035       359 002040
+    360 002042       361 002051       362 002070       363 002104       364 002105       365 002107       367 002110
+    371 002113       375 002114       378 002146       379 002147       381 002151       382 002152       385 002153
+    389 002214       390 002215       393 002232       394 002240       396 002270       397 002274       398 002275
+    402 002276       405 002325       406 002326       408 002330       409 002331       412 002332       416 002373
+    417 002374       420 002411       421 002417       423 002447       424 002453       425 002454       428 002455
+    432 002460       434 002464       435 002466       439 002467       441 002470       442 002474       443 002475
+    444 002477       445 002501       448 002505       449 002507       451 002513       453 002515       456 002516
+    458 002521       459 002523       463 002524       465 002525       466 002531       467 002532       468 002533
+    469 002535       470 002537       472 002543       474 002546       476 002547       478 002551       479 002557
+    482 002563       483 002602       485 002604       487 002607       488 002612       490 002613       492 002617
+    494 002622       498 002623       500 002624       501 002631       502 002640       506 002641       521 002643
+    522 002660       524 002662       525 002665       528 002666       529 002667       530 002671       532 002675
+    538 002704       541 002705       544 002711       547 002715       548 002726       550 002730       552 002732
+    556 002733       559 002741       561 002752       563 002754       567 002755       574 002756       575 002765
+    576 002771       579 003000       581 003002       585 003003       592 003004       594 003007       595 003017
+    596 003023       598 003027       599 003036       600 003051       601 003055       602 003057       604 003061
+    606 003063       610 003064       617 003065       618 003066       619 003100       620 003105       622 003110
+    623 003111       625 003116       627 003120       629 003123       630 003126       633 003127       637 003130
+    644 003136       646 003143       647 003153       648 003160       649 003170       650 003175       651 003200
+    653 003211       655 003212       656 003214       657 003233       658 003247       660 003251       661 003252
+    663 003256
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

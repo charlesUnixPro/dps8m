@@ -1,0 +1,320 @@
+	COMPILATION LISTING OF SEGMENT cv_dec_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1007.6 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* Input Conversion Procedures:
+       14*
+       15*   cv_dec_   cv_dec_check_     Converts decimal string to fixed bin (35).
+       16*   cv_oct_   cv_oct_check_     Converts octal string to fixed bin (35) or fixed bin (36) unsigned.
+       17*   cv_hex_   cv_hex_check_     Converts hexadecimal string to fixed bin (35) or fixed bin (36) unsigned.
+       18*   cv_binary_ cv_binary_check_ Converts binary string to fixed bin (35) or fixed bin (36) unsigned.
+       19*
+       20*   Recoded 25 August 1976 by Noel I. Morris
+       21*   Modified 21 January 1981 by J. Spencer Love to detect overflow and sign without digits. 
+       22*   Modified 16 November 1983 by Keith Loepere for cv_binary_ and cv_binary_check_. */
+       23 
+       24 /* format:  style3,ll122,idind30,ifthenstmt */
+       25 
+       26 cv_dec_:
+       27      procedure (P_string) returns (fixed bin (35));
+       28 
+       29 declare	P_string			char (*),		/* input string */
+       30 	P_status			fixed bin (35);	/* error code:  index of losing character */
+       31 
+       32 declare	(index, length, substr, subtract, unspec, verify)
+       33 				builtin;
+       34 
+       35 declare	base			fixed bin (5),	/* number base for conversion */
+       36 	digit			fixed bin (5),	/* current integer value */
+       37 	dp_number			fixed bin (39),	/* result of multiply may be too big for number */
+       38 	maximum			fixed bin (36),	/* Largest magnitude before overflow */
+       39 	minus			bit (1) aligned,	/* "1"b if final result is negative */
+       40 	number			fixed bin (35),	/* resultant number */
+       41 	report_error		bit (1) aligned,	/* "1"b if error code returned */
+       42 	string_pos		fixed bin (21),	/* zero based index of current character to examine */
+       43 	valid_digits		fixed bin (5);	/* for character string scan */
+       44 
+       45 declare	DIGITS			char (22) static options (constant) initial ("0123456789abcdefABCDEF");
+       46 
+       47 /* cv_dec_:
+       48*        procedure (P_string) returns (fixed bin (35)); */
+       49 
+       50 	base = 10;
+       51 	report_error = "0"b;			/* P_status parameter not given. */
+       52 	go to COMMON;
+       53 
+       54 cv_dec_check_:
+       55      entry (P_string, P_status) returns (fixed bin (35));
+       56 
+       57 	base = 10;
+       58 	report_error = "1"b;			/* P_status parameter given. */
+       59 	go to COMMON;
+       60 
+       61 cv_oct_:
+       62      entry (P_string) returns (fixed bin (35));
+       63 
+       64 	base = 8;
+       65 	report_error = "0"b;			/* P_status parameter not given. */
+       66 	go to COMMON;
+       67 
+       68 cv_oct_check_:
+       69      entry (P_string, P_status) returns (fixed bin (35));
+       70 
+       71 	base = 8;
+       72 	report_error = "1"b;			/* P_status parameter given. */
+       73 	go to COMMON;
+       74 
+       75 cv_hex_:
+       76      entry (P_string) returns (fixed bin (35));
+       77 
+       78 	base = 16;
+       79 	report_error = "0"b;			/* P_status parameter not given. */
+       80 	go to COMMON;
+       81 
+       82 cv_hex_check_:
+       83      entry (P_string, P_status) returns (fixed bin (35));
+       84 
+       85 	base = 16;
+       86 	report_error = "1"b;			/* P_status parameter given. */
+       87 	go to COMMON;
+       88 
+       89 cv_binary_:
+       90      entry (P_string) returns (fixed bin (35));
+       91 
+       92 	base = 2;
+       93 	report_error = "0"b;			/* P_status parameter not given. */
+       94 	go to COMMON;
+       95 
+       96 cv_binary_check_:
+       97      entry (P_string, P_status) returns (fixed bin (35));
+       98 
+       99 	base = 2;
+      100 	report_error = "1"b;			/* P_status parameter given. */
+      101 	go to COMMON;
+      102 
+      103 COMMON:
+      104 	minus = "0"b;				/* Default is positive. */
+      105 	if length (P_string) = 0
+      106 	then do;					/* Trivial case: return zero */
+      107 		number = 0;
+      108 		go to VALID_NUMBER;
+      109 	     end;
+      110 
+      111 	string_pos = 0;				/* Zero base index saves instructions. */
+      112 	valid_digits = base;			/* Set number of characters to compare. */
+      113 	if valid_digits = 16 then valid_digits = 22;	/* Allow both lower and upper case for HEX. */
+      114 
+      115 	if base = 10
+      116 	then maximum = 34359738367;			/* 2**35-1 (max for fixed bin (35)) */
+      117 	else maximum = 68719476735;			/* 2**36-1 (max for fixed bin (36) unsigned) */
+      118 
+      119 GET_FIRST_DIGIT:
+      120 	number = index (substr (DIGITS, 1, valid_digits), substr (P_string, string_pos + 1, 1)) - 1;
+      121 	if number < 0
+      122 	then do;					/* Is this character a valid digit? */
+      123 		number = 0;			/* No digits yet. */
+      124 		if index (" -+", substr (P_string, string_pos + 1, 1)) - 1 = 0
+      125 		then do;				/* Space:  skip over all leading whitespace */
+      126 			string_pos = verify (P_string, " ") - 1;
+      127 			if string_pos >= 0
+      128 			then go to GET_FIRST_DIGIT;	/* Try again; will never come back here. */
+      129 			else go to VALID_NUMBER;	/* No nonblank characters; return zero. */
+      130 		     end;				/* Next:  punt for invalid char or solitary sign */
+      131 		else if index (" -+", substr (P_string, string_pos + 1, 1)) - 1 < 0
+      132 			| substr (P_string, string_pos + 2) = ""
+      133 		then go to BAD_DIGIT;
+      134 		else if index (" -+", substr (P_string, string_pos + 1, 1)) - 1 = 1
+      135 		then do;				/* Minus sign. */
+      136 			minus = "1"b;
+      137 			maximum = 34359738368;	/* -2**35 (max for negative number) */
+      138 		     end;
+      139 		else maximum = 34359738367;		/* 2**35-1 (max for positive number) */
+      140 	     end;
+      141 	else if number > 15 then number = subtract (number, 6, 35, 0);
+      142 						/* Using the subtract builtin prevents the compiler from
+      143*						   emitting 3 gratuitious scaling instructions (SIGH). */
+      144 
+      145 /* Now build up the number.  We already have the first digit, or at least the sign, so gobble up digits until
+      146*   we 1) run out, 2) encounter an invalid digit, or 3) the number gets too large.  Note that trailing spaces
+      147*   are handled as a special case of invalid digit since we assume that most numbers we get will be rtrimmed.
+      148*   In the case of an invalid digit, we return its position by way of indicating an error.  When the number gets
+      149*   too large, we treat the first digit that could not be accomodated as if it were an illegal character.  */
+      150 
+      151 	do string_pos = string_pos + 1 to length (P_string) - 1;
+      152 
+      153 	     digit = index (substr (DIGITS, 1, valid_digits), substr (P_string, string_pos + 1, 1)) - 1;
+      154 	     if digit < 0
+      155 	     then if substr (P_string, string_pos + 1) = ""
+      156 		then go to VALID_NUMBER;		/* Check if only trailing whitespace. */
+      157 		else go to BAD_DIGIT;		/* Otherwise have illegal character. */
+      158 	     else if digit > 15 then digit = digit - 6;	/* Adjust for uppercase HEX. */
+      159 
+      160 /* The following statements shift in a digit.  The multiply and add step generates a 72 bit number.  This number
+      161*   may be too large to assign to a fixed bin (35) number.  However, we permit several cases that would require
+      162*   such an invalid assignment.  1) -34359738368 (decimal) can be input.  We read negative numbers in a digit at
+      163*   a time and negate them afterwards.  This won't work for this value.  2) In octal and hexadecimal, we permit
+      164*   unsigned input.  Positive values between 34359738368 and 68719476735 are too large to fit in fixed bin (35).
+      165*   So we use unspec to make sure these numbers don't cause size conditions and the like.  Next time around, if
+      166*   number is negative, we know that we already have one of these oversized numbers and thus this digit is one
+      167*   too many.  At VALID_NUMBER, we also check the number to see if it is already "negative" and don't negate
+      168*   -34359738368 since it would cause an overflow.  Unsigned numbers (case 2) could never have minus = "1"b.  */
+      169 
+      170 	     if number < 0 then goto BAD_DIGIT;		/* Too many digits; punt */
+      171 	     dp_number = number * base + digit;		/* So what would new number be... */
+      172 	     if dp_number > maximum then go to BAD_DIGIT; /* if it fits? */
+      173 	     unspec (number) = substr (unspec (dp_number), 37);
+      174 	end;
+      175 
+      176 VALID_NUMBER:
+      177 	if report_error then P_status = 0;		/* Indicate no error */
+      178 	if minus & number > 0
+      179 	then return (-number);			/* Can't negate 2**35, but that's OK, it already is. */
+      180 	else return (number);
+      181 
+      182 BAD_DIGIT:
+      183 	if report_error then P_status = string_pos + 1;	/* Tell caller where we lost */
+      184 	if minus & number > 0
+      185 	then return (-number);			/* Can't negate 2**35, but that's OK, it already is. */
+      186 	else return (number);
+      187 
+      188      end cv_dec_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.8  cv_dec_.pl1                       >spec>install>1110>cv_dec_.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DIGITS                          000000 constant        char(22)                 initial packed unaligned dcl 45 ref 119 153
+P_status                               parameter       fixed bin(35,0)          dcl 29 set ref 54 68 82 96 176* 182*
+P_string                               parameter       char                     packed unaligned dcl 29 ref 26 54 61 68 75 82 89 96
+                                                                                  105 119 124 126 131 131 134 151 153 154
+base                            000100 automatic       fixed bin(5,0)           dcl 35 set ref 50* 57* 64* 71* 78* 85* 92* 99* 112
+                                                                                  115 171
+digit                           000101 automatic       fixed bin(5,0)           dcl 35 set ref 153* 154 158 158* 158 171
+dp_number                       000102 automatic       fixed bin(39,0)          dcl 35 set ref 171* 172 173
+index                                                  builtin function         dcl 32 ref 119 124 131 134 153
+length                                                 builtin function         dcl 32 ref 105 151
+maximum                         000104 automatic       fixed bin(36,0)          dcl 35 set ref 115* 117* 137* 139* 172
+minus                           000106 automatic       bit(1)                   dcl 35 set ref 103* 136* 178 184
+number                          000107 automatic       fixed bin(35,0)          dcl 35 set ref 107* 119* 121 123* 141 141* 141 170
+                                                                                  171 173* 178 178 180 184 184 186
+report_error                    000110 automatic       bit(1)                   dcl 35 set ref 51* 58* 65* 72* 79* 86* 93* 100* 176
+                                                                                  182
+string_pos                      000111 automatic       fixed bin(21,0)          dcl 35 set ref 111* 119 124 126* 127 131 131 134
+                                                                                  151* 151* 153 154* 182
+substr                                                 builtin function         dcl 32 ref 119 119 124 131 131 134 153 153 154 173
+subtract                                               builtin function         dcl 32 ref 141
+unspec                                                 builtin function         dcl 32 set ref 173* 173
+valid_digits                    000112 automatic       fixed bin(5,0)           dcl 35 set ref 112* 113 113* 119 153
+verify                                                 builtin function         dcl 32 ref 126
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+BAD_DIGIT                       000500 constant        label                    dcl 182 ref 131 157 170 172
+COMMON                          000270 constant        label                    dcl 103 ref 52 59 66 73 80 87 94 101
+GET_FIRST_DIGIT                 000314 constant        label                    dcl 119 ref 127
+VALID_NUMBER                    000462 constant        label                    dcl 176 ref 108 129 154
+cv_binary_                      000221 constant        entry                    external dcl 89
+cv_binary_check_                000245 constant        entry                    external dcl 96
+cv_dec_                         000024 constant        entry                    external dcl 26
+cv_dec_check_                   000052 constant        entry                    external dcl 54
+cv_hex_                         000150 constant        entry                    external dcl 75
+cv_hex_check_                   000174 constant        entry                    external dcl 82
+cv_oct_                         000077 constant        entry                    external dcl 61
+cv_oct_check_                   000123 constant        entry                    external dcl 68
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       620         630     517         630
+Length      1002     517        10         135     100           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+cv_dec_                              82 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+cv_dec_                  000100 base                        cv_dec_
+                         000101 digit                       cv_dec_
+                         000102 dp_number                   cv_dec_
+                         000104 maximum                     cv_dec_
+                         000106 minus                       cv_dec_
+                         000107 number                      cv_dec_
+                         000110 report_error                cv_dec_
+                         000111 string_pos                  cv_dec_
+                         000112 valid_digits                cv_dec_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+return_mac          ext_entry_desc
+
+NO EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     26 000020        50 000042        51 000044        52 000045        54 000046        57 000070        58 000072
+     59 000074        61 000075        64 000115        65 000117        66 000120        68 000121        71 000141
+     72 000143        73 000145        75 000146        78 000166        79 000170        80 000171        82 000172
+     85 000212        86 000214        87 000216        89 000217        92 000237        93 000241        94 000242
+     96 000243        99 000263       100 000265       101 000267       103 000270       105 000271       107 000273
+    108 000274       111 000275       112 000276       113 000300       115 000304       117 000312       119 000314
+    121 000330       123 000331       124 000332       126 000343       127 000355       129 000356       131 000357
+    134 000371       136 000374       137 000376       138 000400       139 000401       140 000403       141 000404
+    151 000410       153 000417       154 000432       157 000442       158 000443       170 000447       171 000451
+    172 000454       173 000456       174 000460       176 000462       178 000466       180 000475       182 000500
+    184 000505       186 000514
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

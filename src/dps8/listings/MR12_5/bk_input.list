@@ -1,0 +1,954 @@
+	COMPILATION LISTING OF SEGMENT bk_input
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0933.3 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 						/* Tape input procedure for backup system. */
+        9 /* ******************************************************
+       10*   *                                                    *
+       11*   *                                                    *
+       12*   * Copyright (c) 1972 by Massachusetts Institute of   *
+       13*   * Technology and Honeywell Information Systems, Inc. *
+       14*   *                                                    *
+       15*   *                                                    *
+       16*   ****************************************************** */
+       17 
+       18 bk_input:						/* Created February 1969, R C Daley. */
+       19      procedure;					/* Modified 7 February 1970, R H Campbell. */
+       20 						/* Modified 10/25/65 by S. Herbst */
+       21 						/* changed to use tape_mult_
+       22*						   9/77 by Noel I. Morris */
+       23 						/* Modified 11/9/77 by Steve Herbst */
+       24 /* Changed to call command_query_ except for "20 unexplained errors" query 02/28/80 S. Herbst */
+       25 /* Modified: 17 October 1980 by G. Palter to obey bk_ss_$preattached */
+       26 /* Attach description changed from char(32) to char(168) to hold user comments 05/14/81 S. Herbst */
+       27 
+       28 dcl (tape_label, first_tape_label) char (64) init ("");
+       29 dcl answer char (64) aligned varying;
+       30 
+       31 dcl (temp, skipped, error_count) fixed binary,
+       32      nelemt fixed bin (22),
+       33      code fixed bin (35),
+       34      attach_descrip char (168),
+       35      line character (132),
+       36      yes_sw bit (1),
+       37     (buffer, tp) pointer;
+       38 
+       39 dcl  iocbp1 ptr static init (null ()),
+       40     (held, mounted, remount_first_tape) bit (1) static initial ("0"b),
+       41      blanks char (4) static init ("");			/* To reset tape label */
+       42 
+       43 dcl  buf_size fixed bin;
+       44 dcl  tape_dim_data_$tdcm_buf_size fixed bin external;
+       45 
+       46 dcl  searching_for_header static character (21) initial ("Searching for header.");
+       47 
+       48 dcl  end_of_reel_encountered static character (24) initial ("End of reel encountered.");
+       49 
+       50 dcl  end_of_readable_data static character (21) initial ("End of readable data.");
+       51 
+       52 dcl 1 header aligned static options (constant),		/* Backup logical record header */
+       53     2 zz1 char (32) init (" z z z z z z z z z z z z z z z z"),
+       54     2 english char (56) init ("This is the beginning of a backup logical record."),
+       55     2 zz2 char (32) init (" z z z z z z z z z z z z z z z z");
+       56 
+       57 dcl 1 theader aligned,
+       58     2 compare,
+       59       3 zz1 char (32),
+       60       3 english char (56),
+       61       3 zz2 char (32),
+       62     2 hdrcnt fixed bin,
+       63     2 segcnt fixed bin,
+       64     2 space (32: 255);
+       65 
+       66 dcl (addr, length, mod, null, rtrim, substr, unspec) builtin;
+       67 
+       68 dcl iox_$error_output ptr ext;
+       69 dcl iox_$user_input ptr ext;
+       70 
+       71 dcl  backup_map_$fs_error_line entry (fixed bin (35), char (*), char (168), char (32)),
+       72     (backup_map_$tapes, backup_map_$on_line) entry (pointer, fixed binary),
+       73      command_query_$yes_no entry options (variable),
+       74     (ioa_$rsnnl, ioa_$nnl, ioa_) entry options (variable),
+       75      command_query_ entry options (variable),
+       76      iox_$attach_ioname entry (char (*), ptr, char (*), fixed bin (35)),
+       77      iox_$open entry (ptr, fixed bin, bit (1), fixed bin (35)),
+       78      iox_$close entry (ptr, fixed bin (35)),
+       79      iox_$detach_iocb entry (ptr, fixed bin (35)),
+       80      iox_$get_chars entry (ptr, ptr, fixed bin (22), fixed bin (22), fixed bin (35)),
+       81      iox_$get_line entry (ptr, ptr, fixed bin (22), fixed bin, fixed bin (35)),
+       82      parse_tape_reel_name_ entry (char (*), char (*));
+       83 
+       84 dcl (error_table_$end_of_info, error_table_$improper_data_format,
+       85      error_table_$data_improperly_terminated, error_table_$dev_nt_assnd) ext fixed bin; /* File system code. */
+       86 
+       87 /*  */
+       88 
+  1     1 /*	BEGIN INCLUDE FILE query_info.incl.pl1		TAC June 1, 1973 */
+  1     2 /*        Renamed to query_info.incl.pl1 and cp_escape_control added, 08/10/78 WOS */
+  1     3 /*	version number changed to 4, 08/10/78 WOS */
+  1     4 /* Version 5 adds explanation_(ptr len) 05/08/81 S. Herbst */
+  1     5 /* Version 6 adds literal_sw, prompt_after_explanation switch 12/15/82 S. Herbst */
+  1     6 
+  1     7 dcl 1 query_info aligned,				/* argument structure for command_query_ call */
+  1     8     2 version fixed bin,				/* version of this structure - must be set, see below */
+  1     9     2 switches aligned,                                     /* various bit switch values */
+  1    10       3 yes_or_no_sw bit (1) unaligned init ("0"b),		/* not a yes-or-no question, by default */
+  1    11       3 suppress_name_sw bit (1) unaligned init ("0"b),	/* do not suppress command name */
+  1    12       3 cp_escape_control bit (2) unaligned init ("00"b),   /* obey static default value */
+  1    13                                                             /* "01" -> invalid, "10" -> don't allow, "11" -> allow */
+  1    14       3 suppress_spacing bit (1) unaligned init ("0"b),     /* whether to print extra spacing */
+  1    15       3 literal_sw bit (1) unaligned init ("0"b),		/* ON => do not strip leading/trailing white space */
+  1    16       3 prompt_after_explanation bit (1) unaligned init ("0"b),  /* ON => repeat question after explanation */
+  1    17       3 padding bit (29) unaligned init (""b),		/* pads it out to t word */
+  1    18     2 status_code fixed bin (35) init (0),		/* query not prompted by any error, by default */
+  1    19     2 query_code fixed bin (35) init (0),		/* currently has no meaning */
+  1    20 
+  1    21 /*  Limit of data defined for version 2 */
+  1    22 
+  1    23     2 question_iocbp ptr init (null ()),		/* IO switch to write question */
+  1    24     2 answer_iocbp ptr init (null ()),			/* IO switch to read answer */
+  1    25     2 repeat_time fixed bin (71) init (0),		/* repeat question every N seconds if no answer */
+  1    26 						/* minimum of 30 seconds required for repeat */
+  1    27 						/* otherwise, no repeat will occur */
+  1    28 /* Limit of data defined for version 4 */
+  1    29 
+  1    30     2 explanation_ptr ptr init (null ()),		/* explanation of question to be printed if */
+  1    31     2 explanation_len fixed bin (21) init (0);		/* user answers "?" (disabled if ptr=null or len=0) */
+  1    32 
+  1    33 dcl  query_info_version_3 fixed bin int static options (constant) init (3);
+  1    34 dcl  query_info_version_4 fixed bin int static options (constant) init (4);
+  1    35 dcl  query_info_version_5 fixed bin int static options (constant) init (5);
+  1    36 dcl  query_info_version_6 fixed bin int static options (constant) init (6); /* the current version number */
+  1    37 
+  1    38 /*	END INCLUDE FILE query_info.incl.pl1 */
+       89 
+       90 
+  2     1 /* Begin include file ..... iox_modes.incl.pl1 */
+  2     2 
+  2     3 /* Written by C. D. Tavares, 03/17/75 */
+  2     4 /* Updated 10/31/77 by CDT to include short iox mode strings */
+  2     5 
+  2     6 dcl  iox_modes (13) char (24) int static options (constant) aligned initial
+  2     7     ("stream_input", "stream_output", "stream_input_output",
+  2     8      "sequential_input", "sequential_output", "sequential_input_output", "sequential_update",
+  2     9      "keyed_sequential_input", "keyed_sequential_output", "keyed_sequential_update",
+  2    10      "direct_input", "direct_output", "direct_update");
+  2    11 
+  2    12 dcl  short_iox_modes (13) char (4) int static options (constant) aligned initial
+  2    13     ("si", "so", "sio", "sqi", "sqo", "sqio", "squ", "ksqi", "ksqo", "ksqu", "di", "do", "du");
+  2    14 
+  2    15 dcl (Stream_input initial (1),
+  2    16      Stream_output initial (2),
+  2    17      Stream_input_output initial (3),
+  2    18      Sequential_input initial (4),
+  2    19      Sequential_output initial (5),
+  2    20      Sequential_input_output initial (6),
+  2    21      Sequential_update initial (7),
+  2    22      Keyed_sequential_input initial (8),
+  2    23      Keyed_sequential_output initial (9),
+  2    24      Keyed_sequential_update initial (10),
+  2    25      Direct_input initial (11),
+  2    26      Direct_output initial (12),
+  2    27      Direct_update initial (13)) fixed bin int static options (constant);
+  2    28 
+  2    29 /* End include file ..... iox_modes.incl.pl1 */
+       91 
+       92 
+  3     1 /* BEGIN INCLUDE FILE ... bk_ss_.incl.pl1 */
+  3     2 
+  3     3 
+  3     4 /****^  HISTORY COMMENTS:
+  3     5*  1) change(87-03-03,GWMay), approve(87-03-03,MCR7627), audit(87-03-13,Farley),
+  3     6*     install(87-03-30,MR12.1-1018):
+  3     7*     added a writing_map switch to indicate when the dump map is being written.
+  3     8*                                                   END HISTORY COMMENTS */
+  3     9 
+  3    10 
+  3    11 /* Modified: July 1982 by G. Palter to add data for true AIM support in IMFT */
+  3    12 /* Modified: August 1983 by Robert Coren to add minimum access class */
+  3    13 /* Modified: November 1983 by Robert Coren to add "upgrade_to_user_auth" flag */
+  3    14 
+  3    15 /* Hierarchy dumper/reloader static data */
+  3    16 
+  3    17 dcl (bk_ss_$allow_dir_overwrite bit (1) aligned,		/* ON => allow reloaded seg to overwrite dir */
+  3    18      bk_ss_$areap pointer,				/* pointer to list dir area */
+  3    19      bk_ss_$brief_mapsw bit (1) aligned,		/* no form-feed for each control file entry */
+  3    20      bk_ss_$caller_handles_conditions bit (1) aligned,	/* ON => caller has an any_other handler (for IMFT Daemon) */
+  3    21      bk_ss_$control_name char(168),			/* control file path for dumping */
+  3    22      bk_ss_$control_ptr pointer,			/* Ptr to control structure for sub entries */
+  3    23      bk_ss_$cross_retrievesw bit (1) aligned,		/* ON => cross-retrieving this entry */
+  3    24      bk_ss_$data_iocb pointer,			/* IOCB for dumping/reloading if bk_ss_$preattached */
+  3    25      bk_ss_$date fixed binary (52),			/* dump all modified since this date */
+  3    26      bk_ss_$datesw bit (1) aligned,			/* Flags presence of a date input */
+  3    27      bk_ss_$debugsw bit (1) aligned,			/* Flag to prevent calls to hphcs_ */
+  3    28      bk_ss_$dir_trim bit (1) aligned,			/* Flag to allow deletion of directories */
+  3    29      bk_ss_$dprint_destination char (24),		/* for start_dump and reload, -ds for dprinting maps */
+  3    30      bk_ss_$dprint_destination_setsw bit (1) aligned,
+  3    31      bk_ss_$dprint_heading char (64),			/* for start_dump and reload, -he for dprinting maps */
+  3    32      bk_ss_$dprint_heading_setsw bit (1) aligned,
+  3    33      bk_ss_$dprint_queue fixed bin,			/* Queue number for dprinting maps and error files */
+  3    34      bk_ss_$dprint_request_type char (24),		/* for start_dump and reload, -rqt for dprinting maps */
+  3    35      bk_ss_$dprint_request_type_setsw bit (1) aligned,
+  3    36      bk_ss_$dprintsw bit (1) aligned,			/* Whether to dprint maps for start_dump and reload */
+  3    37      bk_ss_$dtdsw bit (1) aligned,			/* Flag to check if modified since last dumped */
+  3    38      bk_ss_$ename char(32) aligned,			/* Branch entry to dump */
+  3    39      bk_ss_$err_label label,				/* Place to go to attempt error recovery */
+  3    40      bk_ss_$err_onlinesw bit(1) aligned,		/* Flag error output to be online, default to a file */
+  3    41      bk_ss_$error fixed binary,			/* Code for location from which signal expected */
+  3    42      bk_ss_$holdsw bit(1) aligned,			/* controls dismounting of tape for dumper */
+  3    43      bk_ss_$hp pointer,				/* Pointer to preamble header */
+  3    44      bk_ss_$ignore_dates bit (1) aligned,		/* Flag to skip check if have older info on tape */
+  3    45      bk_ss_$mapsw bit (1) aligned,			/* Flag map output */
+  3    46      bk_ss_$myname char(16),				/* Name by which backup was called */
+  3    47      bk_ss_$namesw bit (1) aligned,			/* Flag to dump named branch only */
+  3    48      bk_ss_$no_contin bit (1) aligned,			/* Flag to end dump after catchup dump. */
+  3    49      bk_ss_$no_output bit (1) aligned,			/* Flag test run or dbugging dumper.  No tape output.*/
+  3    50      bk_ss_$no_primary bit (1) aligned,			/* Flag saying do not use primary pathnames */
+  3    51      bk_ss_$no_reload bit (1) aligned,			/* Flag debuging reloader.  Do not write in hierarchy. */
+  3    52      bk_ss_$no_setlvid bit (1) aligned,			/* Flag to surpress setting of sons lvid on reload */
+  3    53      bk_ss_$ntapes fixed bin,				/* number of tape copies for dumper */
+  3    54      bk_ss_$onlysw bit (1) aligned,			/* ON => disable hiearchy sweep (dumping) or stop when all
+  3    55*						   requests satisfied (loading) */
+  3    56      bk_ss_$operator char(32),			/* operator name */
+  3    57      bk_ss_$path_index fixed bin,			/* index of entry in backup_control structure */
+  3    58      bk_ss_$pathsw bit(1) aligned,			/* starting directory path given to dumper */
+  3    59      bk_ss_$preattached bit(1) aligned,			/* ON => caller has setup I/O switch for dumping/reloading */
+  3    60      bk_ss_$pvsw  bit(1) aligned,			/* Flag to enable physical volume recovery */
+  3    61      bk_ss_$pvname char(32) aligned,			/* Physical volume name */
+  3    62      bk_ss_$qchecksw bit(1) aligned,			/* Flag to prevent suspension of quota checking */
+  3    63      bk_ss_$quotasw bit(1) aligned,			/* Flag to allow quota setting */
+  3    64      bk_ss_$restart_dumpsw bit(1) aligned,		/* restarting complete or catchup from given point */
+  3    65      bk_ss_$restart_path char(168) aligned,		/* where to restart complete or catchup dump */
+  3    66      bk_ss_$restart_plen fixed bin,			/* length of restart pathname */
+  3    67      bk_ss_$retrieval_index fixed bin,			/* Index of entry in bk_retrieve's structure */
+  3    68      bk_ss_$retrievesw bit (1) aligned,			/* Flags retrieval */
+  3    69      bk_ss_$rlen fixed bin,				/* Length if current restart dir for recursion */
+  3    70      bk_ss_$rname char(168),				/* retrieval file name */
+  3    71      bk_ss_$rsize fixed bin,				/* length of retrieval file name */
+  3    72      bk_ss_$save_path char(168),			/* starting directory for dump */
+  3    73      bk_ss_$save_plen fixed bin,			/* length of starting directory name */
+  3    74      bk_ss_$save_time fixed bin(52),			/* date, time of start of dump */
+  3    75      bk_ss_$segptr pointer,
+  3    76      bk_ss_$set_dtd bit (1) aligned,			/* ON to always set dtd when dumping, OFF never */
+  3    77      bk_ss_$set_dtd_explicit bit (1) aligned,		/* ON to follow bk_ss_$set_dtd, OFF usual algorithm */
+  3    78      bk_ss_$sp pointer,
+  3    79      bk_ss_$sub_entry bit(1) aligned,			/* ON for backup_dump_ and backup_load_ */
+  3    80      bk_ss_$sub_entry_errfile bit(1) aligned,		/* ON => backup_dump_ and backup_load_ should create error files */
+  3    81      bk_ss_$tapesw bit(1) aligned,			/* Flag to indicate tape output */
+  3    82      bk_ss_$trimsw bit(1) aligned,			/* Flag to trim directories on reload */
+  3    83      bk_ss_$volume_set_name char (32),			/* For future arg -volume_set_name */
+  3    84      bk_ss_$wakeup_interval fixed bin(52),		/* interval between wakeups of dumper in micro secs. */
+  3    85      bk_ss_$wasnt_known bit(1) aligned,			/* Flag for segment termination */
+  3    86      bk_ss_$enforce_max_access_class bit (1) aligned,	/* ON => don't dump anything above give access class */
+  3    87      bk_ss_$maximum_access_class bit (72) aligned,	/* the access class to enforce on all branches */
+  3    88      bk_ss_$enforce_min_access_class bit (1) aligned,	/* ON => don't dump anything below give access class */
+  3    89      bk_ss_$minimum_access_class bit (72) aligned,	/* the minimum access class to enforce on all branches */
+  3    90      bk_ss_$dont_dump_upgraded_dirs bit (1) aligned,	/* ON => don't dump any directory above given access class */
+  3    91      bk_ss_$maximum_dir_access_class bit (72) aligned,	/* the access class to enforce on directories */
+  3    92      bk_ss_$check_effective_access bit (1) aligned,	/* ON => don't dump branches given user can't access */
+  3    93      bk_ss_$upgrade_to_user_auth bit (1) aligned,		/* ON => set access class of branch being dumped to user's authorization */
+  3    94      bk_ss_$user_id character (32) unaligned,		/* the user's Person.Project.tag */
+  3    95      bk_ss_$user_authorization bit (72) aligned,		/* the user's process authorization */
+  3    96      bk_ss_$user_ring fixed binary,			/* the user's ring of execution */
+  3    97      bk_ss_$restore_access_class bit (1) aligned,		/* ON => restore access class even when debugging */
+  3    98      bk_ss_$enforce_minimum_ring bit (1) aligned,		/* ON => don't give anything lower ring bracket */
+  3    99      bk_ss_$minimum_ring fixed binary,			/* the minimum ring bracket to be used */
+  3   100      bk_ss_$translate_access_class bit (1) aligned,	/* ON => translate access classes read from tape */
+  3   101      bk_ss_$source_attributes_ptr pointer,		/* -> source system's AIM attributes */
+  3   102      bk_ss_$target_attributes_ptr pointer,		/* -> target system's AIM attributes */
+  3   103      bk_ss_$writing_map bit (1) aligned)                    /* ON => in backup_map$try_write */
+  3   104 	external static;
+  3   105 
+  3   106 /* END INCLUDE FILE ... bk_ss_.incl.pl1 */
+       93 
+       94 
+  4     1 /* BEGIN INCLUDE FILE ... backup_control.incl.pl1 */
+  4     2 /* Modified: July 1982 by G. Palter to add features for proper support of AIM in IMFT (version 4) */
+  4     3 /* Modified: August 1983 by Robert Coren to add minimum access class enforcement */
+  4     4 /* Modified: November 1983 by Robert Coren to add "upgrade_to_user_auth" flag */
+  4     5 
+  4     6 /* Hierarchy dumper/reloader subroutine control structure */
+  4     7 
+  4     8 dcl 1 backup_control aligned based (backup_control_ptr),
+  4     9     2 header,					/* allows people to use like (!) */
+  4    10       3 version character (8) unaligned,
+  4    11       3 tape_entry entry (character (*)) variable,	/* returns next tape label */
+  4    12       3 data_iocb pointer,				/* -> I/O switch to use for dumping/loading if preattached */
+  4    13       3 maximum_access_class bit (72) aligned,		/* maximum access class for anything to be dumped */
+  4    14       3 minimum_access_class bit (72) aligned,		/* minimum access class for anything to be dumped */
+  4    15       3 maximum_dir_access_class bit (72) aligned,	/* no directory above this access class is dumped */
+  4    16       3 user_for_access_check,			/* data required to validate user's access */
+  4    17         4 id character (32) unaligned,			/* Person.Project.tag */
+  4    18         4 authorization bit (72),			/* the user's process authorization */
+  4    19         4 ring fixed binary,				/* the user's ring o execution */
+  4    20       3 minimum_ring fixed binary,			/* no ring bracket is set below this value */
+  4    21       3 aim_translations,				/* data required to translate AIM attributes on the tape */
+  4    22         4 source_attributes_ptr pointer,
+  4    23         4 target_attributes_ptr pointer,
+  4    24       3 options aligned,
+  4    25         4 map_sw  bit(1) unaligned,			/* ON to write map segment */
+  4    26         4 debug_sw bit (1) unaligned,			/* ON to check quotas and not trim subtrees */
+  4    27         4 no_reload_sw bit (1) unaligned,		/* ON to not load for backup_load_ */
+  4    28         4 hold_sw bit (1) unaligned,			/* ON to not demount tape afterwards */
+  4    29         4 preattached bit (1) unaligned,		/* ON => perform loading/dumping to supplied I/O switch */
+  4    30         4 error_file bit (1) unaligned,			/* ON => generate an error file anyway */
+  4    31         4 first bit (1) unaligned,			/* ON => for reload, stop after all requests satisfied */
+  4    32         4 caller_handles_conditions bit (1) unaligned,	/* ON => caller of backup_dump_ handles faults */
+  4    33         4 allow_dir_overwrite bit (1) unaligned,		/* ON => allow reloaded seg to overwrite a dir */
+  4    34         4 enforce_max_access_class bit (1) unaligned,	/* ON => do not dump anything above given access class */
+  4    35         4 dont_dump_upgraded_dirs bit (1) unaligned,	/* ON => do not dump directories above given access class */
+  4    36         4 check_effective_access bit (1) unaligned,	/* ON => do not dump branches specified user can't touch */
+  4    37         4 restore_access_class bit (1) unaligned,		/* ON => restore AIM attributes even in debug mode */
+  4    38         4 enforce_minimum_ring bit (1) unaligned,		/* ON => do not give anything ring bracket below minimum */
+  4    39         4 translate_access_class bit (1) unaligned,	/* ON => translate access classes read from tape */
+  4    40         4 enforce_min_access_class bit (1) unaligned,	/* ON => do not dump anything below given access class */
+  4    41         4 upgrade_to_user_auth bit (1) unaligned,		/* ON => set access class of branch being dumped to user's authorization */
+  4    42         4 pad bit (19) unaligned,
+  4    43       3 request_count fixed binary,			/* # of entries to load or dump */
+  4    44     2 requests (backup_control_request_count refer (backup_control.request_count)),
+  4    45       3 path character (168) unaligned,			/* pathname of object to be dumped/loaded */
+  4    46       3 new_path character (168) unaligned,		/* pathname for object when reloading if not same as above */
+  4    47       3 switches aligned,
+  4    48         4 no_primary_sw bit (1) unaligned,		/* do not use primary pathname */
+  4    49         4 trim_sw bit (1) unaligned,			/* trim target directories */
+  4    50         4 pad bit (34) unaligned,
+  4    51       3 found bit(1) aligned,				/* ON => found on tape by backup_load_ (output) */
+  4    52       3 loaded bit (1) aligned,			/* ON => loaded by backup_load_ (output) */
+  4    53       3 status_code fixed binary (35),			/* ON => per-entry status code (output) */
+  4    54       3 error_name character (65) unaligned;		/* ON => some information about what happened (output) */
+  4    55 
+  4    56 dcl  backup_control_ptr pointer;
+  4    57 
+  4    58 dcl backup_control_request_count fixed binary;		/* for allocations */
+  4    59 
+  4    60 dcl BACKUP_CONTROL_VERSION_5 character (8) static options (constant) initial ("hbc_0005");
+  4    61 
+  4    62 /* END INCLUDE FILE ... backup_control.incl.pl1 */
+       95 
+       96 
+       97 /*  */
+       98 
+       99 input_init: entry (istat);				/* entry to initialize backup input procedure */
+      100 
+      101 dcl  istat fixed bin (35);				/* Error code (returned). */
+      102 
+      103 	buffer = addr (line);			/* Set up pointer to buffer for comments. */
+      104 
+      105 	if bk_ss_$preattached
+      106 	then do;					/* caller has already setup I/O switch */
+      107 	     mounted = "1"b;			/* say it's moutned */
+      108 	     iocbp1 = bk_ss_$data_iocb;
+      109 	     istat = 0;
+      110 	end;
+      111 	else if held then istat = 0;			/* -hold last time */
+      112 	else do;
+      113 	     if mounted then call unmount;		/* unmount any previous tapes */
+      114 	     call mount (istat);			/* mount first reload tape(s) */
+      115 	end;
+      116 	return;
+      117 
+      118 
+      119 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      120 
+      121 
+      122 rd_tape:	entry (lblptr, lblcnt, segptr, segcnt, rstat);	/* to get next backup record from tape */
+      123 
+      124 
+      125 dcl  lblptr pointer,				/* pointer to preamble area */
+      126      lblcnt fixed binary,				/* size of preamble (returned) */
+      127      segptr pointer,				/* pointer to segment area */
+      128      segcnt fixed binary,				/* length of segment if any (returned) */
+      129      rstat fixed bin (35);				/* status code (returned) */
+      130 
+      131 dcl  req fixed bin;
+      132 dcl  header_only fixed bin int static init (1);
+      133 dcl  segment_only fixed bin int static init (2);
+      134 dcl  both fixed bin int static init (3);
+      135 
+      136 
+      137 	if lblptr = null then req = segment_only;
+      138 	else if segptr = null then req = header_only;
+      139 	else req = both;
+      140 
+      141 	if ^mounted then do;			/* Abort if no tape mounted. */
+      142 	     rstat = error_table_$dev_nt_assnd;
+      143 	     return;
+      144 
+      145 	end;
+      146 	buffer = addr (line);			/* Set up pointer to buffer for comments. */
+      147 	skipped, error_count, rstat = 0;
+      148 	if req = segment_only then go to READ_SEG;
+      149 
+      150 getnext:
+      151 	if req = segment_only then do;		/*  must have not found rest of segment */
+      152 	     rstat = 2;
+      153 	     return;
+      154 	end;
+      155 
+      156 	call iox_$get_chars (iocbp1, addr (theader), 128, nelemt, code);
+      157 
+      158 	if code ^= 0 then do;			/* Check for tape reading error */
+      159 	     if code = error_table_$end_of_info then go to eor; /* check end of reel */
+      160 	     go to tsterr;				/* check for further tsterrors */
+      161 	end;
+      162 
+      163 	if unspec (theader.compare) ^= unspec (header) then do;
+      164 	     if skipped = 0 then			/* Is this the first time? */
+      165 		call backup_map_$on_line (addr (searching_for_header), length (searching_for_header));
+      166 	     skipped = skipped + 1;			/* Count this physical record skipped. */
+      167 	     call iox_$get_chars (iocbp1, addr (theader), 896, nelemt, code);
+      168 	     if code = error_table_$end_of_info then go to eor; /* check end of reel */
+      169 	     if code ^= 0 then go to tsterr;		/* check for read error spacing */
+      170 	     go to getnext;				/* try again to read header */
+      171 	end;
+      172 
+      173 	if skipped ^= 0 then do;			/* Did we have to skip any records? */
+      174 	     call ioa_$rsnnl ("^d 256-word blocks skipped.", line, temp, skipped); /* Make up comment. */
+      175 	     call backup_map_$on_line (buffer, temp);	/* Type the comment. */
+      176 	     skipped = 0;				/* Clear the count. */
+      177 
+      178 	end;
+      179 	lblcnt = theader.hdrcnt;			/* pick up preamble length in words */
+      180 	segcnt = theader.segcnt;			/* pick up segment length in words */
+      181 	temp = theader.hdrcnt + 32 + 255;		/* adjust to read preamble to end of physical record */
+      182 	temp = temp - mod (temp, 256) - 32;		/* 32 words have already been read. */
+      183 	call iox_$get_chars (iocbp1, lblptr, temp * 4, nelemt, code);
+      184 
+      185 	if code = error_table_$end_of_info then go to eor; /* check end of reel */
+      186 	if code ^= 0 then go to tsterr;
+      187 	if req = header_only then return;
+      188 						/*  header has been read */
+      189 
+      190 
+      191 READ_SEG:
+      192 	if segcnt > 0 then do;
+      193 	     temp = segcnt + 255;			/* adjust to read segment to end of physical record */
+      194 	     temp = temp - mod (temp, 256);		/* .. */
+      195 	     call iox_$get_chars (iocbp1, segptr, temp * 4, nelemt, code);
+      196 	     if code = error_table_$end_of_info then go to eor; /* check end of reel */
+      197 	     if code ^= 0 then go to tsterr;
+      198 	end;
+      199 	return;					/* exit to caller */
+      200 
+      201 eor:	call backup_map_$on_line (addr (end_of_reel_encountered), length (end_of_reel_encountered));
+      202 	go to remount;				/* go to mount next tape if any */
+      203 
+      204 tsterr:	if code = error_table_$data_improperly_terminated then do;
+      205 	     call backup_map_$on_line (addr (end_of_readable_data), length (end_of_readable_data));
+      206 	     go to remount;				/* go to mount next reel if any */
+      207 	end;
+      208 
+      209 err:	call backup_map_$fs_error_line (code, "bk_input", "primary_reload_tape", "");
+      210 						/* We used to go to remount for code = */
+      211 						/* et_$improper_data_format also, but now */
+      212 						/* we fall thru and eventually query user. */
+      213 						/* It was found that usually the rest */
+      214 						/* of the tape was readable after all. */
+      215 
+      216 	error_count = error_count + 1;		/* bump error count */
+      217 	if error_count > 20 then do;			/* more than 20 successive  unexplained errors */
+      218 	     call backup_map_$fs_error_line (code, bk_ss_$myname, "More than 20 unexplained errors", "");
+      219 	     call command_query_$yes_no (yes_sw, 0, bk_ss_$myname,
+      220 		"20 unrecoverable I/O errors have occurred; the tape is probably unreadable.
+      221 Do you want to try further?",
+      222 		"More than 20 unexplained errors.
+      223 Do you want to try for 20 more?");
+      224 
+      225 	     if ^yes_sw then go to remount;		/* try next tape */
+      226 	     error_count = 0;			/* try 20 more times */
+      227 	end;
+      228 	go to getnext;				/* and try to find next record on this reel */
+      229 
+      230 
+      231 remount:	if bk_ss_$sub_entry then do;			/* get next tape label from tape_entry */
+      232 	     call bk_ss_$control_ptr -> backup_control.tape_entry (tape_label);
+      233 	     if tape_label = "" then go to no_more;
+      234 	     else go to next;
+      235 	end;
+      236 
+      237 	unspec (query_info) = "0"b;
+      238 	query_info.version = query_info_version_5;
+      239 	query_info.yes_or_no_sw = "1"b;
+      240 	query_info.question_iocbp, query_info.answer_iocbp = null;
+      241 
+      242 	call command_query_ (addr (query_info), answer, bk_ss_$myname,
+      243 	     "Are there any more tapes to be reloaded?");
+      244 	if answer = "no" then do;
+      245 no_more:	     rstat = 1;				/* indicate normal termination */
+      246 	     return;
+      247 	end;
+      248 next:	call unmount;				/* unmount current reel(s) */
+      249 	error_count = 0;
+      250 	call mount (rstat);				/* mount next reel(s) if any */
+      251 	if rstat ^= 0 then return;			/* return if no more reels to load */
+      252 	skipped = 0;				/* Reset count of records skipped. */
+      253 	go to getnext;				/* otherwise, continue on new reel(s) */
+      254 
+      255 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      256 
+      257 input_finish: entry;				/* to terminate reload (by program) */
+      258 	buffer = addr (line);			/* Set up pointer to buffer for comments. */
+      259 	if bk_ss_$preattached then;
+      260 	else if mounted then
+      261 	     if ^bk_ss_$holdsw then call unmount;	/* unmount any reel(s) still mounted */
+      262 	     else if first_tape_label ^= tape_label then do; /* -hold with a multi-volume set */
+      263 		call unmount;			/* dismount last tape */
+      264 		remount_first_tape = "1"b;		/* and mount the first */
+      265 		call mount (rstat);
+      266 		held = "1"b;
+      267 	     end;
+      268 	     else do;
+      269 		held = "1"b;			/* -hold: don't unmount */
+      270 		call iox_$close (iocbp1, code);
+      271 		call iox_$open (iocbp1, Stream_input, "0"b, code);
+      272 	     end;					/* just rewind tape */
+      273 	return;
+      274 						/*  */
+      275 mount:	procedure (mount_status);			/* internal procedure to mount first or next reel(s) */
+      276 
+      277 dcl  mount_status fixed bin (35);			/* Error code (returned). */
+      278 
+      279 	     if remount_first_tape then do;
+      280 		remount_first_tape = "0"b;
+      281 		tape_label = first_tape_label;
+      282 	     end;
+      283 	     else do;
+      284 		if bk_ss_$sub_entry then do;		/* get tape label from tape_entry */
+      285 		     if tape_label = "" then
+      286 			call bk_ss_$control_ptr -> backup_control.tape_entry (tape_label);
+      287 		end;
+      288 		else do;
+      289 		     unspec (query_info) = "0"b;
+      290 		     query_info.version = query_info_version_5;
+      291 		     query_info.suppress_name_sw = "1"b;
+      292 		     query_info.question_iocbp, query_info.answer_iocbp = null;
+      293 		     call command_query_ (addr (query_info), answer, bk_ss_$myname,
+      294 			"Input tape label:");
+      295 		     tape_label = answer;
+      296 		end;
+      297 		if first_tape_label = "" then first_tape_label = tape_label;
+      298 	     end;
+      299 
+      300 	     buf_size = 2080;			/* default is small buffer */
+      301 	     if ^bk_ss_$debugsw then if (bk_ss_$myname = "reload") | (bk_ss_$myname = "iload") then do;
+      302 		     buf_size = 4160;		/* system reload so big buffer */
+      303 		     tape_label = rtrim (tape_label) || ",sys";  /* we want to be a system process */
+      304 		end;
+      305 
+      306 	     tape_dim_data_$tdcm_buf_size = buf_size;
+      307 	     call parse_tape_reel_name_ (tape_label, attach_descrip);
+      308 	     call iox_$attach_ioname ("bk_input_1", iocbp1, "tape_mult_ " || attach_descrip, code);
+      309 	     if code ^= 0 then do;
+      310 		call backup_map_$fs_error_line (code, "bk_input", "attach bk_input_1", "");
+      311 		go to MOUNT_ERROR;
+      312 	     end;
+      313 	     call iox_$open (iocbp1, Stream_input, "0"b, code);
+      314 	     tape_dim_data_$tdcm_buf_size = 2080;	/* reset */
+      315 	     if code ^= 0 then
+      316 		call backup_map_$fs_error_line (code, "bk_input", "open bk_input_1", "");
+      317 	     else do;
+      318 		call ioa_$rsnnl ("Tape label: ^a.", line, temp, tape_label);
+      319 		call backup_map_$tapes (buffer, temp);
+      320 	     end;
+      321 MOUNT_ERROR:   mount_status = code;
+      322 	     mounted = (code = 0);			/* set mounted switch */
+      323 	end mount;
+      324 
+      325 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+      326 
+      327 unmount:	procedure;				/* internal procedure to unmount current reel(s) */
+      328 	     held = "0"b;
+      329 	     call iox_$close (iocbp1, code);
+      330 	     if code ^= 0 then
+      331 		call backup_map_$fs_error_line (code, "bk_input", "close bk_input_1", "");
+      332 	     call iox_$detach_iocb (iocbp1, code);
+      333 	     if code ^= 0 then
+      334 		call backup_map_$fs_error_line (code, "bk_input", "detach bk_input_1", "");
+      335 	     mounted = "0"b;
+      336 	     call backup_map_$tapes (addr (blanks), 4);	/* Reset label info in map header */
+      337 	end unmount;
+      338      end bk_input;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0806.7  bk_input.pl1                      >spec>install>1111>bk_input.pl1
+89           1    03/11/83  1204.3  query_info.incl.pl1               >ldd>include>query_info.incl.pl1
+91           2    02/02/78  1229.7  iox_modes.incl.pl1                >ldd>include>iox_modes.incl.pl1
+93           3    04/02/87  2006.7  bk_ss_.incl.pl1                   >ldd>include>bk_ss_.incl.pl1
+95           4    11/21/83  1219.2  backup_control.incl.pl1           >ldd>include>backup_control.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+Stream_input                    000064 constant        fixed bin(17,0)          initial dcl 2-15 set ref 271* 313*
+addr                                                   builtin function         dcl 66 ref 103 146 156 156 164 164 167 167 201 201
+                                                                                  205 205 242 242 258 293 293 336 336
+answer                          000140 automatic       varying char(64)         dcl 29 set ref 242* 244 293* 295
+answer_iocbp              6     000706 automatic       pointer                  initial level 2 dcl 1-7 set ref 240* 1-7* 292*
+attach_descrip                  000166 automatic       char(168)                packed unaligned dcl 31 set ref 307* 308
+backup_control                         based           structure                level 1 dcl 4-8
+backup_map_$fs_error_line       000042 constant        entry                    external dcl 71 ref 209 218 310 315 330 333
+backup_map_$on_line             000046 constant        entry                    external dcl 71 ref 164 175 201 205
+backup_map_$tapes               000044 constant        entry                    external dcl 71 ref 319 336
+bk_ss_$control_ptr              000100 external static pointer                  dcl 3-17 ref 232 285
+bk_ss_$data_iocb                000102 external static pointer                  dcl 3-17 ref 108
+bk_ss_$debugsw                  000104 external static bit(1)                   dcl 3-17 ref 301
+bk_ss_$holdsw                   000106 external static bit(1)                   dcl 3-17 ref 260
+bk_ss_$myname                   000110 external static char(16)                 packed unaligned dcl 3-17 set ref 218* 219* 242*
+                                                                                  293* 301 301
+bk_ss_$preattached              000112 external static bit(1)                   dcl 3-17 ref 105 259
+bk_ss_$sub_entry                000114 external static bit(1)                   dcl 3-17 ref 231 284
+blanks                          000015 internal static char(4)                  initial packed unaligned dcl 39 set ref 336 336
+both                                   constant        fixed bin(17,0)          initial dcl 134 ref 139
+buf_size                        000304 automatic       fixed bin(17,0)          dcl 43 set ref 300* 302* 306
+buffer                          000302 automatic       pointer                  dcl 31 set ref 103* 146* 175* 258* 319*
+code                            000165 automatic       fixed bin(35,0)          dcl 31 set ref 156* 158 159 167* 168 169 183* 185
+                                                                                  186 195* 196 197 204 209* 218* 270* 271* 308* 309
+                                                                                  310* 313* 315 315* 321 322 329* 330 330* 332* 333
+                                                                                  333*
+command_query_                  000054 constant        entry                    external dcl 71 ref 242 293
+command_query_$yes_no           000050 constant        entry                    external dcl 71 ref 219
+compare                         000305 automatic       structure                level 2 dcl 57 set ref 163
+cp_escape_control         1(02) 000706 automatic       bit(2)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7*
+end_of_readable_data            000032 internal static char(21)                 initial packed unaligned dcl 50 set ref 205 205 205
+                                                                                  205
+end_of_reel_encountered         000024 internal static char(24)                 initial packed unaligned dcl 48 set ref 201 201 201
+                                                                                  201
+error_count                     000163 automatic       fixed bin(17,0)          dcl 31 set ref 147* 216* 216 217 226* 249*
+error_table_$data_improperly_terminated
+                                000074 external static fixed bin(17,0)          dcl 84 ref 204
+error_table_$dev_nt_assnd       000076 external static fixed bin(17,0)          dcl 84 ref 142
+error_table_$end_of_info        000072 external static fixed bin(17,0)          dcl 84 ref 159 168 185 196
+explanation_len          14     000706 automatic       fixed bin(21,0)          initial level 2 dcl 1-7 set ref 1-7*
+explanation_ptr          12     000706 automatic       pointer                  initial level 2 dcl 1-7 set ref 1-7*
+first_tape_label                000120 automatic       char(64)                 initial packed unaligned dcl 28 set ref 28* 262 281
+                                                                                  297 297*
+hdrcnt                   36     000305 automatic       fixed bin(17,0)          level 2 dcl 57 set ref 179 181
+header                                 based           structure                level 2 in structure "backup_control" dcl 4-8
+                                                                                  in procedure "bk_input"
+header                          000000 constant        structure                level 1 dcl 52 in procedure "bk_input" ref 163
+header_only                            constant        fixed bin(17,0)          initial dcl 132 ref 138 187
+held                            000012 internal static bit(1)                   initial packed unaligned dcl 39 set ref 111 266*
+                                                                                  269* 328*
+ioa_$rsnnl                      000052 constant        entry                    external dcl 71 ref 174 318
+iocbp1                          000010 internal static pointer                  initial dcl 39 set ref 108* 156* 167* 183* 195* 270*
+                                                                                  271* 308* 313* 329* 332*
+iox_$attach_ioname              000056 constant        entry                    external dcl 71 ref 308
+iox_$close                      000062 constant        entry                    external dcl 71 ref 270 329
+iox_$detach_iocb                000064 constant        entry                    external dcl 71 ref 332
+iox_$get_chars                  000066 constant        entry                    external dcl 71 ref 156 167 183 195
+iox_$open                       000060 constant        entry                    external dcl 71 ref 271 313
+istat                                  parameter       fixed bin(35,0)          dcl 101 set ref 99 109* 111* 114*
+lblcnt                                 parameter       fixed bin(17,0)          dcl 125 set ref 122 179*
+lblptr                                 parameter       pointer                  dcl 125 set ref 122 137 183*
+length                                                 builtin function         dcl 66 ref 164 164 201 201 205 205
+line                            000240 automatic       char(132)                packed unaligned dcl 31 set ref 103 146 174* 258
+                                                                                  318*
+literal_sw                1(05) 000706 automatic       bit(1)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7*
+mod                                                    builtin function         dcl 66 ref 182 194
+mount_status                           parameter       fixed bin(35,0)          dcl 277 set ref 275 321*
+mounted                         000013 internal static bit(1)                   initial packed unaligned dcl 39 set ref 107* 113 141
+                                                                                  260 322* 335*
+nelemt                          000164 automatic       fixed bin(22,0)          dcl 31 set ref 156* 167* 183* 195*
+null                                                   builtin function         dcl 66 ref 137 138 240 1-7 1-7 1-7 292
+padding                   1(07) 000706 automatic       bit(29)                  initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7*
+parse_tape_reel_name_           000070 constant        entry                    external dcl 71 ref 307
+prompt_after_explanation
+                          1(06) 000706 automatic       bit(1)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7*
+query_code                3     000706 automatic       fixed bin(35,0)          initial level 2 dcl 1-7 set ref 1-7*
+query_info                      000706 automatic       structure                level 1 dcl 1-7 set ref 237* 242 242 289* 293 293
+query_info_version_5                   constant        fixed bin(17,0)          initial dcl 1-35 ref 238 290
+question_iocbp            4     000706 automatic       pointer                  initial level 2 dcl 1-7 set ref 240* 1-7* 292*
+remount_first_tape              000014 internal static bit(1)                   initial packed unaligned dcl 39 set ref 264* 279
+                                                                                  280*
+repeat_time              10     000706 automatic       fixed bin(71,0)          initial level 2 dcl 1-7 set ref 1-7*
+req                             000723 automatic       fixed bin(17,0)          dcl 131 set ref 137* 138* 139* 148 150 187
+rstat                                  parameter       fixed bin(35,0)          dcl 125 set ref 122 142* 147* 152* 245* 250* 251
+                                                                                  265*
+rtrim                                                  builtin function         dcl 66 ref 303
+searching_for_header            000016 internal static char(21)                 initial packed unaligned dcl 46 set ref 164 164 164
+                                                                                  164
+segcnt                   37     000305 automatic       fixed bin(17,0)          level 2 in structure "theader" dcl 57 in procedure
+                                                                                  "bk_input" set ref 180
+segcnt                                 parameter       fixed bin(17,0)          dcl 125 in procedure "bk_input" set ref 122 180* 191
+                                                                                  193
+segment_only                           constant        fixed bin(17,0)          initial dcl 133 ref 137 148 150
+segptr                                 parameter       pointer                  dcl 125 set ref 122 138 195*
+skipped                         000162 automatic       fixed bin(17,0)          dcl 31 set ref 147* 164 166* 166 173 174* 176* 252*
+status_code               2     000706 automatic       fixed bin(35,0)          initial level 2 dcl 1-7 set ref 1-7*
+suppress_name_sw          1(01) 000706 automatic       bit(1)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7* 291*
+suppress_spacing          1(04) 000706 automatic       bit(1)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 1-7*
+switches                  1     000706 automatic       structure                level 2 dcl 1-7
+tape_dim_data_$tdcm_buf_size    000040 external static fixed bin(17,0)          dcl 44 set ref 306* 314*
+tape_entry                2            based           entry variable           level 3 dcl 4-8 ref 232 285
+tape_label                      000100 automatic       char(64)                 initial packed unaligned dcl 28 set ref 28* 232* 233
+                                                                                  262 281* 285 285* 295* 297 303* 303 307* 318*
+temp                            000161 automatic       fixed bin(17,0)          dcl 31 set ref 174* 175* 181* 182* 182 182 183 193*
+                                                                                  194* 194 194 195 318* 319*
+theader                         000305 automatic       structure                level 1 dcl 57 set ref 156 156 167 167
+unspec                                                 builtin function         dcl 66 set ref 163 163 237* 289*
+version                         000706 automatic       fixed bin(17,0)          level 2 dcl 1-7 set ref 238* 290*
+yes_or_no_sw              1     000706 automatic       bit(1)                   initial level 3 packed packed unaligned dcl 1-7 set
+                                                                                  ref 239* 1-7*
+yes_sw                          000301 automatic       bit(1)                   packed unaligned dcl 31 set ref 219* 225
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+BACKUP_CONTROL_VERSION_5               internal static char(8)                  initial packed unaligned dcl 4-60
+Direct_input                           internal static fixed bin(17,0)          initial dcl 2-15
+Direct_output                          internal static fixed bin(17,0)          initial dcl 2-15
+Direct_update                          internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_input                 internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_output                internal static fixed bin(17,0)          initial dcl 2-15
+Keyed_sequential_update                internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_input                       internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_input_output                internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_output                      internal static fixed bin(17,0)          initial dcl 2-15
+Sequential_update                      internal static fixed bin(17,0)          initial dcl 2-15
+Stream_input_output                    internal static fixed bin(17,0)          initial dcl 2-15
+Stream_output                          internal static fixed bin(17,0)          initial dcl 2-15
+backup_control_ptr                     automatic       pointer                  dcl 4-56
+backup_control_request_count           automatic       fixed bin(17,0)          dcl 4-58
+bk_ss_$allow_dir_overwrite             external static bit(1)                   dcl 3-17
+bk_ss_$areap                           external static pointer                  dcl 3-17
+bk_ss_$brief_mapsw                     external static bit(1)                   dcl 3-17
+bk_ss_$caller_handles_conditions       external static bit(1)                   dcl 3-17
+bk_ss_$check_effective_access          external static bit(1)                   dcl 3-17
+bk_ss_$control_name                    external static char(168)                packed unaligned dcl 3-17
+bk_ss_$cross_retrievesw                external static bit(1)                   dcl 3-17
+bk_ss_$date                            external static fixed bin(52,0)          dcl 3-17
+bk_ss_$datesw                          external static bit(1)                   dcl 3-17
+bk_ss_$dir_trim                        external static bit(1)                   dcl 3-17
+bk_ss_$dont_dump_upgraded_dirs         external static bit(1)                   dcl 3-17
+bk_ss_$dprint_destination              external static char(24)                 packed unaligned dcl 3-17
+bk_ss_$dprint_destination_setsw        external static bit(1)                   dcl 3-17
+bk_ss_$dprint_heading                  external static char(64)                 packed unaligned dcl 3-17
+bk_ss_$dprint_heading_setsw            external static bit(1)                   dcl 3-17
+bk_ss_$dprint_queue                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$dprint_request_type             external static char(24)                 packed unaligned dcl 3-17
+bk_ss_$dprint_request_type_setsw       external static bit(1)                   dcl 3-17
+bk_ss_$dprintsw                        external static bit(1)                   dcl 3-17
+bk_ss_$dtdsw                           external static bit(1)                   dcl 3-17
+bk_ss_$ename                           external static char(32)                 dcl 3-17
+bk_ss_$enforce_max_access_class        external static bit(1)                   dcl 3-17
+bk_ss_$enforce_min_access_class        external static bit(1)                   dcl 3-17
+bk_ss_$enforce_minimum_ring            external static bit(1)                   dcl 3-17
+bk_ss_$err_label                       external static label variable           dcl 3-17
+bk_ss_$err_onlinesw                    external static bit(1)                   dcl 3-17
+bk_ss_$error                           external static fixed bin(17,0)          dcl 3-17
+bk_ss_$hp                              external static pointer                  dcl 3-17
+bk_ss_$ignore_dates                    external static bit(1)                   dcl 3-17
+bk_ss_$mapsw                           external static bit(1)                   dcl 3-17
+bk_ss_$maximum_access_class            external static bit(72)                  dcl 3-17
+bk_ss_$maximum_dir_access_class        external static bit(72)                  dcl 3-17
+bk_ss_$minimum_access_class            external static bit(72)                  dcl 3-17
+bk_ss_$minimum_ring                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$namesw                          external static bit(1)                   dcl 3-17
+bk_ss_$no_contin                       external static bit(1)                   dcl 3-17
+bk_ss_$no_output                       external static bit(1)                   dcl 3-17
+bk_ss_$no_primary                      external static bit(1)                   dcl 3-17
+bk_ss_$no_reload                       external static bit(1)                   dcl 3-17
+bk_ss_$no_setlvid                      external static bit(1)                   dcl 3-17
+bk_ss_$ntapes                          external static fixed bin(17,0)          dcl 3-17
+bk_ss_$onlysw                          external static bit(1)                   dcl 3-17
+bk_ss_$operator                        external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$path_index                      external static fixed bin(17,0)          dcl 3-17
+bk_ss_$pathsw                          external static bit(1)                   dcl 3-17
+bk_ss_$pvname                          external static char(32)                 dcl 3-17
+bk_ss_$pvsw                            external static bit(1)                   dcl 3-17
+bk_ss_$qchecksw                        external static bit(1)                   dcl 3-17
+bk_ss_$quotasw                         external static bit(1)                   dcl 3-17
+bk_ss_$restart_dumpsw                  external static bit(1)                   dcl 3-17
+bk_ss_$restart_path                    external static char(168)                dcl 3-17
+bk_ss_$restart_plen                    external static fixed bin(17,0)          dcl 3-17
+bk_ss_$restore_access_class            external static bit(1)                   dcl 3-17
+bk_ss_$retrieval_index                 external static fixed bin(17,0)          dcl 3-17
+bk_ss_$retrievesw                      external static bit(1)                   dcl 3-17
+bk_ss_$rlen                            external static fixed bin(17,0)          dcl 3-17
+bk_ss_$rname                           external static char(168)                packed unaligned dcl 3-17
+bk_ss_$rsize                           external static fixed bin(17,0)          dcl 3-17
+bk_ss_$save_path                       external static char(168)                packed unaligned dcl 3-17
+bk_ss_$save_plen                       external static fixed bin(17,0)          dcl 3-17
+bk_ss_$save_time                       external static fixed bin(52,0)          dcl 3-17
+bk_ss_$segptr                          external static pointer                  dcl 3-17
+bk_ss_$set_dtd                         external static bit(1)                   dcl 3-17
+bk_ss_$set_dtd_explicit                external static bit(1)                   dcl 3-17
+bk_ss_$source_attributes_ptr           external static pointer                  dcl 3-17
+bk_ss_$sp                              external static pointer                  dcl 3-17
+bk_ss_$sub_entry_errfile               external static bit(1)                   dcl 3-17
+bk_ss_$tapesw                          external static bit(1)                   dcl 3-17
+bk_ss_$target_attributes_ptr           external static pointer                  dcl 3-17
+bk_ss_$translate_access_class          external static bit(1)                   dcl 3-17
+bk_ss_$trimsw                          external static bit(1)                   dcl 3-17
+bk_ss_$upgrade_to_user_auth            external static bit(1)                   dcl 3-17
+bk_ss_$user_authorization              external static bit(72)                  dcl 3-17
+bk_ss_$user_id                         external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$user_ring                       external static fixed bin(17,0)          dcl 3-17
+bk_ss_$volume_set_name                 external static char(32)                 packed unaligned dcl 3-17
+bk_ss_$wakeup_interval                 external static fixed bin(52,0)          dcl 3-17
+bk_ss_$wasnt_known                     external static bit(1)                   dcl 3-17
+bk_ss_$writing_map                     external static bit(1)                   dcl 3-17
+error_table_$improper_data_format      external static fixed bin(17,0)          dcl 84
+ioa_                            000000 constant        entry                    external dcl 71
+ioa_$nnl                        000000 constant        entry                    external dcl 71
+iox_$error_output                      external static pointer                  dcl 68
+iox_$get_line                   000000 constant        entry                    external dcl 71
+iox_$user_input                        external static pointer                  dcl 69
+iox_modes                              internal static char(24)                 initial array dcl 2-6
+query_info_version_3                   internal static fixed bin(17,0)          initial dcl 1-33
+query_info_version_4                   internal static fixed bin(17,0)          initial dcl 1-34
+query_info_version_6                   internal static fixed bin(17,0)          initial dcl 1-36
+short_iox_modes                        internal static char(4)                  initial array dcl 2-12
+substr                                                 builtin function         dcl 66
+tp                                     automatic       pointer                  dcl 31
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+MOUNT_ERROR                     001770 constant        label                    dcl 321 ref 311
+READ_SEG                        000673 constant        label                    dcl 191 ref 148
+bk_input                        000313 constant        entry                    external dcl 18
+eor                             000735 constant        label                    dcl 201 ref 159 168 185 196
+err                             000771 constant        label                    dcl 209
+getnext                         000441 constant        label                    dcl 150 ref 170 228 253
+input_finish                    001246 constant        entry                    external dcl 257
+input_init                      000325 constant        entry                    external dcl 99
+mount                           001345 constant        entry                    internal dcl 275 ref 114 250 265
+next                            001227 constant        label                    dcl 248 ref 234
+no_more                         001223 constant        label                    dcl 245 ref 233
+rd_tape                         000375 constant        entry                    external dcl 122
+remount                         001131 constant        label                    dcl 231 ref 202 206 225
+tsterr                          000752 constant        label                    dcl 204 ref 160 169 186 197
+unmount                         002000 constant        entry                    internal dcl 327 ref 113 248 260 263
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2456        2574    2151        2466
+Length      3112    2151       116         302     304          30
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+bk_input                            736 external procedure  is an external procedure.  
+mount                                   internal procedure  shares stack frame of external procedure bk_input.  
+unmount                                 internal procedure  shares stack frame of external procedure bk_input.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 iocbp1                      bk_input
+000012 held                        bk_input
+000013 mounted                     bk_input
+000014 remount_first_tape          bk_input
+000015 blanks                      bk_input
+000016 searching_for_header        bk_input
+000024 end_of_reel_encountered     bk_input
+000032 end_of_readable_data        bk_input
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+bk_input                 000100 tape_label                  bk_input
+                         000120 first_tape_label            bk_input
+                         000140 answer                      bk_input
+                         000161 temp                        bk_input
+                         000162 skipped                     bk_input
+                         000163 error_count                 bk_input
+                         000164 nelemt                      bk_input
+                         000165 code                        bk_input
+                         000166 attach_descrip              bk_input
+                         000240 line                        bk_input
+                         000301 yes_sw                      bk_input
+                         000302 buffer                      bk_input
+                         000304 buf_size                    bk_input
+                         000305 theader                     bk_input
+                         000706 query_info                  bk_input
+                         000723 req                         bk_input
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_e_as              alloc_char_temp     call_ent_var_desc   call_ext_out_desc   call_ext_out        return_mac
+mdfx1               shorten_stack       ext_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+backup_map_$fs_error_line     backup_map_$on_line           backup_map_$tapes             command_query_
+command_query_$yes_no         ioa_$rsnnl                    iox_$attach_ioname            iox_$close
+iox_$detach_iocb              iox_$get_chars                iox_$open                     parse_tape_reel_name_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+bk_ss_$control_ptr            bk_ss_$data_iocb              bk_ss_$debugsw                bk_ss_$holdsw
+bk_ss_$myname                 bk_ss_$preattached            bk_ss_$sub_entry
+error_table_$data_improperly_terminated                     error_table_$dev_nt_assnd     error_table_$end_of_info
+tape_dim_data_$tdcm_buf_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     28 000252    1    7 000260        18 000312        99 000321       103 000333       105 000335       107 000340
+    108 000342       109 000345       110 000347       111 000350       113 000355       114 000360       116 000367
+    122 000370       137 000403       138 000413       139 000422       141 000424       142 000427       143 000431
+    146 000432       147 000434       148 000437       150 000441       152 000444       153 000447       156 000450
+    158 000473       159 000475       160 000500       163 000501       164 000505       166 000524       167 000525
+    168 000550       169 000554       170 000556       173 000557       174 000561       175 000610       176 000621
+    179 000622       180 000625       181 000627       182 000632       183 000641       185 000662       186 000666
+    187 000670       191 000673       193 000676       194 000700       195 000705       196 000726       197 000732
+    199 000734       201 000735       202 000751       204 000752       205 000754       206 000770       209 000771
+    216 001025       217 001026       218 001031       219 001064       225 001124       226 001127       228 001130
+    231 001131       232 001134       233 001146       234 001152       237 001153       238 001156       239 001160
+    240 001162       242 001165       244 001216       245 001223       246 001226       248 001227       249 001230
+    250 001231       251 001240       252 001243       253 001244       257 001245       258 001254       259 001256
+    260 001262       262 001270       263 001274       264 001275       265 001300       266 001307       267 001312
+    269 001313       270 001315       271 001325       273 001344       275 001345       279 001347       280 001352
+    281 001353       282 001356       284 001357       285 001361       287 001377       289 001400       290 001403
+    291 001405       292 001407       293 001412       295 001446       297 001452       300 001461       301 001463
+    302 001477       303 001501       304 001527       306 001530       307 001532       308 001546       309 001606
+    310 001610       311 001645       313 001646       314 001665       315 001670       318 001727       319 001757
+    321 001770       322 001773       323 001777       327 002000       328 002001       329 002003       330 002013
+    332 002052       333 002063       335 002122       336 002124       337 002140
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

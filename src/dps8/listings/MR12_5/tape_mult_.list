@@ -1,0 +1,1405 @@
+	COMPILATION LISTING OF SEGMENT tape_mult_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1005.5 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 
+       15 /****^  HISTORY COMMENTS:
+       16*  1) change(86-10-13,GWMay), approve(86-10-13,MCR7552),
+       17*     audit(86-10-13,Martinson), install(86-10-20,MR12.0-1189):
+       18*     Changed argument error processing to use the tape reel name in the error
+       19*     message if the reel name was given correctly.
+       20*  2) change(86-10-23,GWMay), approve(86-10-23,PBF7552),
+       21*     audit(86-11-17,Martinson), install(86-11-21,MR12.0-1223):
+       22*     Appended this comment to be included with the previous comments. Added
+       23*     support for the use of rcp_ in determining the density and format type of
+       24*     a tape.  Changed mounted tape message to include the format type and
+       25*     recording density of the mounted tape as determined by rcp_.
+       26*  3) change(86-12-03,GWMay), approve(86-12-03,PBF7552),
+       27*     audit(86-12-09,Martinson), install(86-12-17,MR12.0-1250):
+       28*     Changed mount message for ring 1.  Reimplemented history comment 2 above.
+       29*  4) change(87-01-08,GDixon), approve(87-03-30,MCR7643),
+       30*     audit(87-03-31,Farley), install(87-04-28,MR12.1-1028):
+       31*     Add support for attaching to a particular tape drive, via -device.
+       32*                                                   END HISTORY COMMENTS */
+       33 
+       34 
+       35 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+       36 tape_mult_:
+       37      procedure;
+       38 
+       39 /*	This program is part of the Multics standard tape I/O module, tape_mult_.
+       40*   *
+       41*   *	Created on 10/24/74 by Bill Silver.
+       42*   *	Modified 7/79 by R.J.C. Kissel to add 6250 bpi support.
+       43*   *	Modified 7/81 by J. A. Bush for bootable tape labels
+       44*   *	Modified 01/82 by J. A. Bush to change the name from tape_mult_attach_ to tape_mult_
+       45*   *      Modified 8/82 by S. Krupp to change from tdcm_ to tape_ioi_ interface.
+       46*   *	Modified 12/15/82 by Chris Jones to not require the record length on reads (performance improvement).
+       47*   *      Modified 1985-03-18, BIM: add modes entrypoint for async processing.
+       48*   *
+       49*   *	This program implements the iox_$attach entry point.
+       50**/
+       51 
+       52 
+       53 /*		ARGUMENT  DATA		*/
+       54 
+       55 dcl	arg_com_err_flag	   bit (1),		/* (I) ON => call com_err_ on errors. */
+       56 	arg_error_code	   fixed bin (35),		/* (O) error_table_ code. */
+       57 	arg_iocb_ptr	   ptr,			/* (I) Pointer to I/O control block. */
+       58 	arg_options	   (*) char (*) varying;	/* (I) List of option and value strings. */
+       59 
+       60 
+       61 /*		AUTOMATIC  DATA		*/
+       62 
+       63 dcl	Sable_to_read_the_tape bit (1),
+       64 	1 auto_error_tally	   aligned like tec,
+       65 	com_err_flag	   bit (1),		/* ON => call com_err_. */
+       66 	activation_flag	   bit (1) aligned init ("0"b),
+       67 						/* ON => tape_ioi_ has been activated. */
+       68 	attach_flag	   bit (1) aligned init ("0"b),
+       69 						/* ON => tape drive attached by rcp_. */
+       70 	density		   fixed bin,
+       71 	dev_name		   char (32) var,		/* Requested device name */
+       72 	error_code	   fixed bin (35),		/* Standard system error code. */
+       73 	iocb_ptr		   ptr,			/* Pointer to our iocb. */
+       74 	reel_name		   char (32),		/* Tape reel name. */
+       75 	rcp_id		   bit (36) aligned,	/* id associated with a tape drive attachment */
+       76 	tioi_id		   bit (36) aligned,	/* id associated with a tape_ioi_ activation */
+       77 	event_channel	   fixed bin (71),		/* used by rcp for attachment and ioi */
+       78 	comment		   char (256),		/* user comment to operator */
+       79 	ioi_id		   fixed bin,		/* tape_ioi_ activation info */
+       80 	workspace_max	   fixed bin (19),
+       81 	timeout_max	   fixed bin (71),
+       82 	statex		   fixed bin,		/* state of pending tape drive attachment */
+       83 	req_work_area_len	   fixed bin (19),		/* requested size of work area allocation */
+       84 	act_work_area_len	   fixed bin (19);		/* actual size of allocated work area */
+       85 
+       86 dcl	1 wait_list	   aligned,		/* Used to call ipc_. */
+       87 	  2 num		   fixed bin,		/* Number of event channels.  Always = 1. */
+       88 	  2 ev_chan	   fixed bin (71);		/* Event channel ID. */
+       89 
+       90 dcl	1 event_info	   aligned,		/* Used to call ipc_. */
+       91 	  2 chan_name	   fixed bin (71),
+       92 	  2 message	   fixed bin (71),
+       93 	  2 sender	   bit (36),
+       94 	  2 origin,
+       95 	  ( 3 dev_signal	   bit (18),
+       96 	    3 ring	   bit (18)
+       97 	    )		   unaligned,
+       98 	  2 chanelx	   fixed bin;
+       99 
+      100 dcl	1 auto_tmdb	   aligned like tmdb;
+      101 
+      102 dcl	1 auto_tape_info	   aligned like tape_info;
+      103 
+      104 dcl	1 auto_tioi_info	   aligned like tioi_info;
+      105 
+      106 /*                  BUILTIN                       */
+      107 
+      108 dcl	(addr, after, before, char, currentsize, index, ltrim, null, rtrim, unspec)
+      109 			   builtin;
+      110 
+      111 /*                  CONDITIONS                    */
+      112 
+      113 dcl	cleanup		   condition;
+      114 
+      115 /*                  EXTERNAL STATIC DATA          */
+      116 
+      117 dcl	(
+      118 	error_table_$area_too_small,
+      119 	error_table_$bad_density,
+      120 	error_table_$ionmat,
+      121 	error_table_$not_detached
+      122 	)		   fixed bin (35) ext static;
+      123 
+      124 /*		INTERNAL STATIC DATA	*/
+      125 
+      126 dcl	req_len		   bit (1) aligned init ("0"b) int static options (constant);
+      127 
+      128 /*		EXTERNAL  ENTRIES		*/
+      129 
+      130 dcl	tape_mult_detach_$detach
+      131 			   entry options (variable),
+      132 	tape_mult_util_$control
+      133 			   entry options (variable),
+      134 	tape_mult_open_$open   entry options (variable);
+      135 dcl	tape_mult_modes_	   entry options (variable);
+      136 
+      137 dcl	com_err_		   entry options (variable),
+      138 	convert_ipc_code_	   entry (fixed bin (35)),
+      139 	cv_dec_check_	   entry (char (*), fixed bin (35)) returns (fixed bin (35)),
+      140 	hcs_$assign_channel	   entry (fixed bin (71), fixed bin (35)),
+      141 	ioa_		   entry options (variable),
+      142 	iox_$propagate	   entry (ptr),
+      143 	ipc_$block	   entry (ptr, ptr, fixed bin (35)),
+      144 	ipc_$create_ev_chn	   entry (fixed bin (71), fixed bin (35)),
+      145 	tape_mult_parse_	   entry (ptr, char (32) var, (*) char (*) var, bit (1), fixed bin (35));
+      146 
+      147 dcl	rcp_$attach	   entry (char (*), ptr, fixed bin (71), char (*), bit (36) aligned, fixed bin (35)),
+      148 	rcp_$check_attach	   entry (bit (36) aligned, ptr, char (*), fixed bin, fixed bin (19), fixed bin (71),
+      149 			   fixed bin, fixed bin (35)),
+      150 	rcp_$detach	   entry (bit (36) aligned, bit (*), fixed bin, char (*), fixed bin (35));
+      151 
+  1     1 /*	Begin  include file ... tmdb.incl.pl1
+  1     2*   *
+  1     3*   *	Created by  Bill Silver  on 10/20/74
+  1     4*   *	Modified by J. A. Bush 12/30/80 for bootable tape labels
+  1     5*   *	Modified by J. A. Bush 12/15/81 for re-write of read error recovery
+  1     6*   *      Modified 8/82 by S.Krupp for change from tdcm_ to tape_ioi_
+  1     7*   *	This include file describes the work variables used by the Multics standard
+  1     8*   *	tape I/O module, tape_mult_.  This include file must be used with the include
+  1     9*   *	file:  mstr.incl.pl1
+  1    10**/
+  1    11 
+  1    12 
+  1    13 /****^  HISTORY COMMENTS:
+  1    14*  1) change(86-10-13,GWMay), approve(86-10-13,MCR7552),
+  1    15*     audit(86-10-13,Martinson), install(86-10-20,MR12.0-1189):
+  1    16*     added fields to the tmdb structure that will add support for the use of
+  1    17*     rcp in determining the density and format of a tape.
+  1    18*                                                   END HISTORY COMMENTS */
+  1    19 
+  1    20 
+  1    21 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  1    22 dcl	tmdb_ptr		   ptr;			/* Pointer to tape_mult_ data block. */
+  1    23 
+  1    24 dcl	1 tmdb		   based (tmdb_ptr) aligned,	/* tape_mult_ data block. */
+  1    25 	  2 attach,				/* Attach description. */
+  1    26 	    3 length	   fixed bin,		/* Actual length of attach description. */
+  1    27 	    3 description	   char (64),		/* Attach description string. */
+  1    28 	  2 open,					/* Open description. */
+  1    29 	    3 length	   fixed bin,		/* Actual length of open description. */
+  1    30 	    3 description	   char (32),		/* Open description string. */
+  1    31 	  2 opt,					/* Attach options. */
+  1    32 	    3 flags,				/* Flags set from user input and options. */
+  1    33 	    ( 4 com_err	   bit (1),		/* ON => call com_err_ if there is an error. */
+  1    34 	      4 ring	   bit (1),		/* ON => use writ ring,  OFF => no write ring. */
+  1    35 	      4 system	   bit (1),		/* ON => user wants to be a system process. */
+  1    36 	      4 err_tal	   bit (1),		/* ON => user wants error report */
+  1    37 	      4 begin	   bit (1),		/* ON => begin processing tape */
+  1    38 	      4 write_sw	   bit (1),		/* ON => write allowed */
+  1    39 	      4 async_sw	   bit (1)		/* ON => user is prepared for errors to imply that previous put_chars failed. */
+  1    40 	      )		   unaligned,		/* ON => user wants error tally displayed on closing */
+  1    41 	    3 reel_name	   char (32) unal,		/* Tape reel slot ID. */
+  1    42 	    3 volume_set_id	   char (32) unal,		/* volume set name */
+  1    43 	    3 mount_mode	   char (7),		/* Mount mode: "writing" or "reading". */
+  1    44 	    3 tracks	   fixed bin,		/* Either 9 or 7. */
+  1    45 	    3 density	   fixed bin,		/* Either 1600 or 800. */
+  1    46 	    3 tbpp	   ptr,			/* If not null, ptr to temp seg containing boot program */
+  1    47 	    3 blp		   ptr,			/* Ptr to buffer containing boot label record (READ ONLY) */
+  1    48 	    3 speed	   bit (36),		/* bits are 75, 125, 200 ips */
+  1    49 	    3 comment	   char (64),		/* User comment to operator. */
+  1    50 	  2 head		   like mstr_header,	/* Dummy tape record header. */
+  1    51 	  2 trail		   like mstr_trailer,	/* Dummy tape record trailer. */
+  1    52 	  2 work,					/* Work variables used. */
+  1    53 	    3 flags,				/* Flags we need that aren't in head.flags. */
+  1    54 	    ( 4 eod	   bit (1),		/* ON => end of good data. */
+  1    55 	      4 eof	   bit (1),		/* ON => End of File. */
+  1    56 	      4 bot	   bit (1),		/* ON => beginning of tape */
+  1    57 	      4 retry_read	   bit (1),		/* ON => try reread recovery */
+  1    58 	      4 read_fwd	   bit (1),		/* ON => want to read forward (recovery) */
+  1    59                 4 fatal_read_error bit (1),                 /* ON => read error recovery failed. */
+  1    60 	      4 data_loss  bit (1)			/* ON => read something, but with evidence that we lost something */
+  1    61 	      )		   unaligned,
+  1    62 	    3 rcp_id	   bit (36),		/* Id of current tape drive attachment */
+  1    63 	    3 tioi_id	   bit (36),		/* Id of current tape_ioi_ activation */
+  1    64 	    3 label_uid	   bit (72),		/* Unique ID of label record. */
+  1    65 	    3 label_version	   fixed bin,		/* version of label, returned on read */
+  1    66 	    3 output_mode	   fixed bin,		/* output mode tape was written with */
+  1    67 	    3 buf_pos	   fixed bin,		/* Current position within current bufffer. */
+  1    68 	    3 curr_buf	   ptr,			/* Current buffer being processed. */
+  1    69 	    3 next_buf	   ptr,			/* Next buffer to be processed. */
+  1    70 	    3 rec_length	   fixed bin (21),		/* Length of data record in characters. */
+  1    71 	    3 n_full	   fixed bin,		/* Number of buffers ready to write. */
+  1    72 	    3 n_recs_to_eof	   fixed bin,		/* Num recs to write pre eof mark. */
+  1    73 	    3 n_bufs	   fixed bin,		/* Total number of buffers. */
+  1    74 	    3 bufs_per_subset  fixed bin,		/* Number of buffers per subset. */
+  1    75 	    3 buf_len	   fixed bin (21),		/* Length of a buffer. */
+  1    76 	    3 buffer	   (8) ptr,		/* Pointers to a subset of I/O buffers. */
+  1    77 	  2 meters,
+  1    78 	    3 fwd_rd_recovery  fixed bin,
+  1    79 	    3 reposition_recovery
+  1    80 			   fixed bin,
+  1    81             2 channels,
+  1    82 	    3 rcp              fixed bin(71),		/* Regular, used by rcp. */
+  1    83 	    3 ioi		   fixed bin(71),		/* Fast, used by ioi. */
+  1    84 	  2 buffer	   (1040) fixed bin (35),	/* Work buffer (currently used for label I/O). */
+  1    85 	  2 volume_density     fixed bin,                 /* either the input from -den or the value     */
+  1    86 	    
+  1    87 						/* returned by rcp_$check_attach in tape_info  */
+  1    88             2 volume_format      char (16);		/* determined by rcp_		       */
+  1    89 /*	End of include file ... tmdb.incl.pl1	*/
+      152 
+      153 
+  2     1 
+  2     2 /* Begin include file ...... mstr.incl.pl1 */
+  2     3 /* Modified 2/11/74 by N. I. Morris */
+  2     4 /* Modified 12/30/80 by J. A. Bush for bootable tape labels */
+  2     5 /* Modified 12/14/82 by J. A. Bush to add version number to the record header */
+  2     6 
+  2     7 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  2     8 dcl	mstrp		   ptr;			/* pointer to MST record */
+  2     9 
+  2    10 dcl	1 mstr		   based (mstrp) aligned,	/* Multics standard tape mstr */
+  2    11 	  2 head		   like mstr_header,	/* tape record header */
+  2    12 	  2 data		   bit (36864 refer (mstr.head.data_bit_len)),
+  2    13 						/* record body */
+  2    14 	  2 trail		   like mstr_trailer;	/* record trailer */
+  2    15 
+  2    16 dcl	1 mst_label	   based (mstrp) aligned,	/* bootable label structure */
+  2    17 	  2 xfer_vector	   (4),			/* bootload interrupt transfer vector */
+  2    18 	    3 lda_instr	   bit (36),		/* this will be a "LDA 4" instruction */
+  2    19 	    3 tra_instr	   bit (36),		/* a "TRA" instruction to start of boot pgm */
+  2    20 	  2 head		   like mstr_header,	/* standard record header */
+  2    21 	  2 vid		   like volume_identifier,	/* tape volume info */
+  2    22 	  2 fv_overlay	   (0:31),		/* overlay for fault vectors  when tape booted */
+  2    23 	    3 scu_instr	   bit (36),		/* an "SCU" instruction to address of fault_data */
+  2    24 	    3 dis_instr	   bit (36),		/* a "DIS" instruction, with Y field = to its own addr */
+  2    25 	  2 fault_data	   (8) bit (36),		/* SCU data for unexpected faults goes here */
+  2    26 	  2 boot_pgm_path	   char (168) unaligned,	/* path name of boot program */
+  2    27 	  2 userid	   char (32) unaligned,	/* Storage for Person.Project.Instance of creator of tape */
+  2    28 	  2 label_version	   fixed bin,		/* defined by LABEL_VERSION constant below */
+  2    29 	  2 output_mode	   fixed bin,		/* mode in which tape was written with */
+  2    30 	  2 boot_pgm_len	   fixed bin,		/* length in words of boot program */
+  2    31 	  2 copyright	   char (56),		/* Protection notice goes here if boot pgm is written */
+  2    32 	  2 pad		   (13) bit (36),		/* pad out to 192 (300 octal) */
+  2    33 	  2 boot_pgm	   (0 refer (mst_label.boot_pgm_len)) bit (36),
+  2    34 						/* boot program */
+  2    35 	  2 trail		   like mstr_trailer;	/* standard record trailer */
+  2    36 
+  2    37 dcl	1 mstr_header	   based aligned,		/* Multics standard tape record header */
+  2    38 	( 2 c1		   bit (36),		/* constant = 670314355245(8) */
+  2    39 	  2 uid		   bit (72),		/* unique ID */
+  2    40 	  2 rec_within_file	   fixed bin (17),		/* phys. rec. # within phys. file */
+  2    41 	  2 phy_file	   fixed bin (17),		/* phys. file # on phys. tape */
+  2    42 	  2 data_bits_used	   fixed bin (17),		/* # of bits of data in record */
+  2    43 	  2 data_bit_len	   fixed bin (17),		/* bit length of data space */
+  2    44 	  2 flags,				/* record flags */
+  2    45 	    3 admin	   bit (1),		/* admin record flag */
+  2    46 	    3 label	   bit (1),		/* label record flag */
+  2    47 	    3 eor		   bit (1),		/* end-of-reel record flag */
+  2    48 	    3 pad1	   bit (11),
+  2    49 	    3 set		   bit (1),		/* ON if any of following items set */
+  2    50 	    3 repeat	   bit (1),		/* repeated record flag */
+  2    51 	    3 padded	   bit (1),		/* record contains padding flag */
+  2    52 	    3 eot		   bit (1),		/* EOT reflector encountered flag */
+  2    53 	    3 drain	   bit (1),		/* synchronous write flag */
+  2    54 	    3 continue	   bit (1),		/* continue on next reel flag */
+  2    55 	    3 pad2	   bit (4),
+  2    56 	  2 header_version	   fixed bin (3) unsigned,	/* current header version number */
+  2    57 	  2 repeat_count	   fixed bin (8),		/* repetition count */
+  2    58 	  2 checksum	   bit (36),		/* checksum of header and trailer */
+  2    59 	  2 c2		   bit (36)
+  2    60 	  )		   unal;			/* constant = 512556146073(8) */
+  2    61 
+  2    62 dcl	1 mstr_trailer	   based aligned,		/* Multics standard tape record trailer */
+  2    63 	( 2 c1		   bit (36),		/* constant = 107463422532(8) */
+  2    64 	  2 uid		   bit (72),		/* unique ID (matches header) */
+  2    65 	  2 tot_data_bits	   fixed bin (35),		/* total data bits written on logical tape */
+  2    66 	  2 pad_pattern	   bit (36),		/* padding pattern */
+  2    67 	  2 reel_num	   fixed bin (11),		/* reel sequence # */
+  2    68 	  2 tot_file	   fixed bin (23),		/* phys. file number */
+  2    69 	  2 tot_rec	   fixed bin (35),		/* phys. record # for logical tape */
+  2    70 	  2 c2		   bit (36)
+  2    71 	  )		   unal;			/* constant = 265221631704(8) */
+  2    72 
+  2    73 dcl	1 volume_identifier	   based aligned,		/* tape volume info */
+  2    74 	( 2 installation_id	   char (32),		/* installation that created tape */
+  2    75 	  2 tape_reel_id	   char (32),		/* tape reel name */
+  2    76 	  2 volume_set_id	   char (32)
+  2    77 	  )		   unaligned;		/* name of the volume set */
+  2    78 
+  2    79 dcl	(
+  2    80 	header_c1		   init ("670314355245"b3),
+  2    81 	header_c2		   init ("512556146073"b3),
+  2    82 	trailer_c1	   init ("107463422532"b3),
+  2    83 	trailer_c2	   init ("265221631704"b3),
+  2    84 	label_c1		   init ("000004235000"b3)
+  2    85 	)		   bit (36) static;
+  2    86 
+  2    87 dcl	LABEL_VERSION	   fixed bin static options (constant) init (3);
+  2    88 						/* current label version */
+  2    89 dcl	HEADER_VERSION	   fixed bin static options (constant) init (1);
+  2    90 						/* current header version */
+  2    91 
+  2    92 /* End of include file ...... mstr.incl.pl1 */
+  2    93 
+      154 
+      155 
+  3     1 /*  START OF:	tape_ioi_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  3     2 
+  3     3 /* Written 22 April 1982 by Chris Jones */
+  3     4 /* Modified September 1983 by Chris Jones for reserve_buffer and release_buffer */
+  3     5 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  3     6 
+  3     7 /* call   tape_ioi_$activate     (rsc_ptr, tioi_info_ptr, tioi_id, code); */
+  3     8 dcl	tape_ioi_$activate	   entry (ptr, ptr, bit (36) aligned, fixed bin (35));
+  3     9 
+  3    10 /* call   tape_ioi_$allocate_buffers (tioi_id, req_length, req_number, act_length, act_number, buffer_ptrs, code); */
+  3    11 dcl	tape_ioi_$allocate_buffers
+  3    12 			   entry (bit (36) aligned, fixed bin (21), fixed bin, fixed bin (21), fixed bin,
+  3    13 			   dim (*) ptr, fixed bin (35));
+  3    14 
+  3    15 /* call   tape_ioi_$allocate_work_area (tioi_id, req_size, act_size, work_area_ptr, code); */
+  3    16 dcl	tape_ioi_$allocate_work_area
+  3    17 			   entry (bit (36) aligned, fixed bin (19), fixed bin (19), ptr, fixed bin (35));
+  3    18 
+  3    19 /* call   tape_ioi_$buffer_status (tioi_id, buffer_ptr, tbs_ptr, code); */
+  3    20 dcl	tape_ioi_$buffer_status
+  3    21 			   entry (bit (36) aligned, ptr, ptr, fixed bin (35));
+  3    22 
+  3    23 /* call   tape_ioi_$check_order  (tioi_id, ocount, rx, code); */
+  3    24 dcl	tape_ioi_$check_order  entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+  3    25 
+  3    26 /* call   tape_ioi_$check_read   (tioi_id, buffer_ptr, data_len, rx, code); */
+  3    27 dcl	tape_ioi_$check_read   entry (bit (36) aligned, ptr, fixed bin (21), fixed bin, fixed bin (35));
+  3    28 
+  3    29 /* call   tape_ioi_$check_write  (tioi_id, buffer_ptr, rx, code); */
+  3    30 dcl	tape_ioi_$check_write  entry (bit (36) aligned, ptr, fixed bin, fixed bin (35));
+  3    31 
+  3    32 /* call   tape_ioi_$deactivate   (tioi_id, error_ptr, code); */
+  3    33 dcl	tape_ioi_$deactivate   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    34 
+  3    35 /* call   tape_ioi_$deallocate   (tioi_id, code); */
+  3    36 dcl	tape_ioi_$deallocate   entry (bit (36) aligned, fixed bin (35));
+  3    37 
+  3    38 /* call   tape_ioi_$deallocate_buffers   (tioi_id, code); */
+  3    39 dcl	tape_ioi_$deallocate_buffers
+  3    40 			   entry (bit (36) aligned, fixed bin (35));
+  3    41 
+  3    42 /* call   tape_ioi_$get_mode     (tioi_id, mode, data_ptr, code); */
+  3    43 dcl	tape_ioi_$get_mode	   entry (bit (36) aligned, char (*), ptr, fixed bin (35));
+  3    44 
+  3    45 /* call	tape_ioi_$get_statistics (tioi_id, tec_ptr, code); */
+  3    46 dcl	tape_ioi_$get_statistics
+  3    47 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    48 
+  3    49 /* call   tape_ioi_$hardware_status (tioi_id, ths_ptr, code); */
+  3    50 dcl	tape_ioi_$hardware_status
+  3    51 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    52 
+  3    53 /* call   tape_ioi_$list_buffers (tioi_id, state, buffer_ptrs, num_buffers, code); */
+  3    54 dcl	tape_ioi_$list_buffers entry (bit (36) aligned, fixed bin, dim (*) ptr, fixed bin, fixed bin (35));
+  3    55 
+  3    56 /* call   tape_ioi_$order        (tioi_id, order, count, data_ptr, ocount, rx, code); */
+  3    57 dcl	tape_ioi_$order	   entry (bit (36) aligned, char (4), fixed bin, ptr, fixed bin, fixed bin, fixed bin (35));
+  3    58 
+  3    59 /* call   tape_ioi_$queue_order  (tioi_id, order, count, data_ptr, code); */
+  3    60 dcl	tape_ioi_$queue_order  entry (bit (36) aligned, char (4), fixed bin, ptr, fixed bin (35));
+  3    61 
+  3    62 /* call   tape_ioi_$queue_read   (tioi_id, buffer_ptr, code); */
+  3    63 dcl	tape_ioi_$queue_read   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    64 
+  3    65 /* call   tape_ioi_$queue_write  (tioi_id, buffer_ptr, data_len, code); */
+  3    66 dcl	tape_ioi_$queue_write  entry (bit (36) aligned, ptr, fixed bin (21), fixed bin (35));
+  3    67 
+  3    68 /* call   tape_ioi_$read         (tioi_id, buffer_ptr, data_len, rx, code); */
+  3    69 dcl	tape_ioi_$read	   entry (bit (36) aligned, ptr, fixed bin (21), fixed bin, fixed bin (35));
+  3    70 
+  3    71 /* call	tape_ioi_$release_buffer (tioi_id, buffer_ptr, code); */
+  3    72 dcl	tape_ioi_$release_buffer
+  3    73 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    74 
+  3    75 /* call	tape_ioi_$reserve_buffer (tioi_id, buffer_ptr, code); */
+  3    76 dcl	tape_ioi_$reserve_buffer
+  3    77 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    78 
+  3    79 /* call	tape_ioi_$reset_statistics (tioi_id, code); */
+  3    80 dcl	tape_ioi_$reset_statistics
+  3    81 			   entry (bit (36) aligned, fixed bin (35));
+  3    82 
+  3    83 /* call   tape_ioi_$set_buffer_ready (tioi_id, buffer_ptr, code); */
+  3    84 dcl	tape_ioi_$set_buffer_ready
+  3    85 			   entry (bit (36) aligned, ptr, fixed bin (35));
+  3    86 
+  3    87 /* call   tape_ioi_$set_mode     (tioi_id, mode, data_ptr, code); */
+  3    88 dcl	tape_ioi_$set_mode	   entry (bit (36) aligned, char (*), ptr, fixed bin (35));
+  3    89 
+  3    90 /* call   tape_ioi_$stop_tape    (tioi_id, count, rx, code); */
+  3    91 dcl	tape_ioi_$stop_tape	   entry (bit (36) aligned, fixed bin, fixed bin, fixed bin (35));
+  3    92 
+  3    93 /* call   tape_ioi_$write        (tioi_id, write_buffer_ptrs, data_len, buffer_ptr, rx, code); */
+  3    94 dcl	tape_ioi_$write	   entry (bit (36) aligned, (*) ptr, fixed bin (21), ptr, fixed bin, fixed bin (35));
+  3    95 
+  3    96 /*  END OF:	tape_ioi_dcls.incl.pl1		  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      156 
+      157 
+  4     1 /*  START OF:	tape_ioi_error_counts.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+  4     2 /* Written 22 April 1982 by Chris Jones */
+  4     3 
+  4     4 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  4     5 dcl	tape_ioi_error_counts_ptr
+  4     6 			   ptr;
+  4     7 
+  4     8 dcl	1 tec		   based (tape_ioi_error_counts_ptr) aligned,
+  4     9 	  2 version	   char (8),
+  4    10 	  2 reads		   like tec_entry,
+  4    11 	  2 successful_retry_strategy
+  4    12 			   (7) fixed bin (35),
+  4    13 	  2 writes	   like tec_entry,
+  4    14 	  2 orders	   like tec_entry;
+  4    15 
+  4    16 dcl	1 tec_entry	   based aligned,
+  4    17 	  2 total		   fixed bin (35),
+  4    18 	  2 errors	   fixed bin (35);
+  4    19 
+  4    20 dcl	TEC_VERSION_1	   char (8) aligned internal static options (constant) init ("TECV001");
+  4    21 
+  4    22 dcl	TEC_VERSION	   char (8) aligned internal static options (constant) init ("TECV001");
+  4    23 
+  4    24 /*  END OF:	tape_ioi_error_counts.incl.pl1	  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  *  */
+      158 
+      159 
+  5     1 /* Begin include file ..... tape_ioi_info.incl.pl1 */
+  5     2 
+  5     3 /* This structure defines data necessary as parameters to call tape_ioi_$activate */
+  5     4 /* Prepared July 1976 by Larry Johnson */
+  5     5 /* Modified the tenth anniversary of the Watergate breakin by Chris Jones */
+  5     6 
+  5     7 /* format: style4,delnl,insnl,indattr,ifthen,declareind10,dclind10 */
+  5     8 dcl	tioi_info_ptr	   ptr;
+  5     9 
+  5    10 dcl	(tioi_info_version, tioi_info_version_1)
+  5    11 			   fixed bin static options (constant) init (1);
+  5    12 
+  5    13 dcl	1 tioi_info	   aligned based (tioi_info_ptr),
+  5    14 	  2 version	   fixed bin,
+  5    15 	  2 ioi_index	   fixed bin,
+  5    16 	  2 timeout_max	   fixed bin (71),
+  5    17 	  2 event_id	   fixed bin (71),
+  5    18 	  2 workspace_max	   fixed bin (19);
+  5    19 
+  5    20 /* End include file ..... tape_ioi_info.incl.pl1 */
+      160 
+      161 
+  6     1 /*	Begin  include file rcp_tape_info.incl.pl1
+  6     2*   *
+  6     3*   *	Created on 12/16/74 by Bill Silver.
+  6     4*   *	Modified on 11/17/78 by Michael R. Jordan to add speed qualifier.
+  6     5*   *	Modified on 09/30/82 by J. A. Bush for version 3 structure info
+  6     6*   *	This include file defines the RCP device info structure for tapes.
+  6     7**/
+  6     8 /* format: style4 */
+  6     9 
+  6    10 dcl  tape_info_ptr ptr;				/* Pointer to tape device info structure. */
+  6    11 
+  6    12 dcl  tape_info_version_2 fixed bin internal static options (constant) init (2);
+  6    13 dcl  tape_info_version_3 fixed bin internal static options (constant) init (3);
+  6    14 
+  6    15 dcl  1 tape_info based (tape_info_ptr) aligned,		/* RCP device info structure for tapes. */
+  6    16        2 version_num fixed bin,			/* Version number of this structure. */
+  6    17        2 usage_time fixed bin,			/* Number of minutes drive will/may be used. */
+  6    18        2 wait_time fixed bin,				/* Number of minutes user will/must wait. */
+  6    19        2 system_flag bit (1),				/* ON => user wants to be a system process. */
+  6    20        2 device_name char (8),			/* Tape drive name. */
+  6    21        2 model fixed bin,				/* Tape drive model number. */
+  6    22        2 tracks fixed bin,				/* Track type, 7 or 9. */
+  6    23        2 density bit (36),				/* Density capability: 200, 556, 800, 1600, 6250. */
+  6    24        2 speed bit (36),				/* Speed: 75, 125, 200. */
+  6    25        2 unused_qualifier bit (36),			/* Unused qualifier (must be "0"b). */
+  6    26        2 volume_name char (32),			/* Tape reel name. */
+  6    27        2 write_flag bit (1),				/* ON => writing on tape reel. */
+  6    28        2 position_index fixed bin (35),			/* Counter used to determine tape reel position. */
+  6    29 
+  6    30 /* Limit of version 2 structure, info below returned if version 3 or greater */
+  6    31 
+  6    32        2 volume_type fixed bin,			/* Use rcp_volume_formats.incl.pl1 for decodes */
+  6    33        2 volume_density fixed bin,			/* 1 - 5 = 200, 556, 800, 1600, or 6250 BPI */
+  6    34        2 opr_auth bit (1);				/* "1"b => Operator Authentication was required */
+  6    35 
+  6    36 /*	End of include file ... rcp_tape_info.incl.pl1	*/
+      162 
+      163 
+  7     1 /* --------------- BEGIN include file rcp_volume_formats.incl.pl1 --------------- */
+  7     2 
+  7     3 
+  7     4 
+  7     5 /****^  HISTORY COMMENTS:
+  7     6*  1) change(86-12-08,GWMay), approve(86-12-08,PBF7552),
+  7     7*     audit(86-12-08,Martinson), install(86-12-17,MR12.0-1250):
+  7     8*     added array entry 0 to the volume format types to indicate that the tape
+  7     9*     volume was not authenticated by rcp.
+  7    10*                                                   END HISTORY COMMENTS */
+  7    11 
+  7    12 
+  7    13 /* General volume types */
+  7    14 
+  7    15 dcl (Volume_unauthenticated initial (0),
+  7    16      Volume_blank initial (1),
+  7    17      Volume_unknown_format initial (6),
+  7    18      Volume_unreadable initial (7),
+  7    19 
+  7    20 /* Tape volume types */
+  7    21 
+  7    22      Volume_multics_tape initial (2),
+  7    23      Volume_gcos_tape initial (3),
+  7    24      Volume_ibm_tape initial (4),
+  7    25      Volume_ansi_tape initial (5)) fixed bin static options (constant);
+  7    26 
+  7    27 /* Printable descriptions of volume types */
+  7    28 
+  7    29 dcl  Tape_volume_types (0:7) char (16) static options (constant) initial
+  7    30     ("unauthenticated",
+  7    31      "blank",
+  7    32      "Multics",
+  7    33      "GCOS",
+  7    34      "IBM",
+  7    35      "ANSI",
+  7    36      "unrecognizable",
+  7    37      "unreadable");
+  7    38 
+  7    39 /* ---------------- END include file rcp_volume_formats.incl.pl1 ---------------- */
+      164 
+      165 
+  8     1 /* BEGIN INCLUDE FILE mtape_constants.incl.pl1. Created by J. A. Bush 10/07/82 */
+  8     2 /* format: style4 */
+  8     3 
+  8     4 /* This include file defines various named constants used throughout mtape_
+  8     5*   and its associated Per-Format modules */
+  8     6 
+  8     7 /* Storage allocation constants, used to denote what type of storage to allocate */
+  8     8 
+  8     9 dcl  (MTAPE_ALLOC_VS init (1),			/* to allocate a volume_set structure */
+  8    10      MTAPE_ALLOC_LR init (2),				/* to allocate a label record structure */
+  8    11      MTAPE_ALLOC_FI init (3),				/* to allocate a file_info structure */
+  8    12      MTAPE_ALLOC_STR init (4)				/* to allocate a character string, or undefined block */
+  8    13      ) fixed bin int static options (constant);
+  8    14 
+  8    15 /* Volume density constants */
+  8    16 
+  8    17 dcl  MTAPE_VALID_DENSITIES (5) init (200, 556, 800, 1600, 6250)
+  8    18 	fixed bin int static options (constant);
+  8    19 
+  8    20 /* Device speed constants */
+  8    21 
+  8    22 dcl  MTAPE_SPEED_VALUES (4) init (0, 75, 125, 200)	/* 0 is any speed device */
+  8    23 	fixed bin int static options (constant);
+  8    24 
+  8    25 /* Hardware Mode constants */
+  8    26 
+  8    27 dcl  (MTAPE_HWM_BIN init (1),				/* For binary hardware mode */
+  8    28      MTAPE_HWM_NINE init (2),				/* For nine hardware mode */
+  8    29      MTAPE_HWM_BCD init (3)				/* For BCD hardware mode */
+  8    30      ) fixed bin int static options (constant);
+  8    31 
+  8    32 /* Data conversion constants */
+  8    33 
+  8    34 dcl  (MTAPE_UNSPECIFIED init (0),			/* attribute not specified */
+  8    35      MTAPE_NO_CONVERSION init (1),			/* No conversion on input or output */
+  8    36      MTAPE_CV_EBCDIC init (2),			/* Convert to/from EBCDIC (from/to ASCII) */
+  8    37      MTAPE_CV_BCD init (3),				/* Convert to/from BCD (from/to ASCII) */
+  8    38      MTAPE_CV_UC_ASCII init (4),			/* Convert to Upper case ASCII (from any case ASCII) */
+  8    39      MTAPE_CV_UC_EBCDIC init (5)			/* Convert to Upper case EBCDIC (from any case ASCII) */
+  8    40      ) fixed bin int static options (constant);
+  8    41 
+  8    42 /* File positioning constants */
+  8    43 
+  8    44 dcl  (NOT_POSITIONED_IN_FILE init (0),			/* Not currently positioned within this file */
+  8    45      AT_BOFH init (1),				/* Positioned at beginning of file hdr */
+  8    46      AT_EOFH init (2),				/* Positioned at end of file hdr */
+  8    47      AT_BOFD init (3),				/* Positioned at beginning of file data */
+  8    48      AT_IFD init (4),				/* Positioned in file data, not beginning */
+  8    49      AT_EOFD init (5),				/* Positioned prior to end of data file */
+  8    50      AT_BOFT init (6),				/* Positioned at beginning of trailer label file */
+  8    51      AT_EOFT init (7),				/* Positioned at end of trailer label file */
+  8    52      AT_EOF init (8),				/* Positioned after trailer labels at EOF */
+  8    53      FILES_PER_FILE_GRP init (3)			/* # of physical files per file (section) group */
+  8    54      ) fixed bin int static options (constant);
+  8    55 
+  8    56 dcl  (BOF_LABEL init (1),				/* indicates beginning of file label */
+  8    57      EOV_LABEL init (2),				/* indicates end of volume label */
+  8    58      EOF_LABEL init (3)				/* indicates end of file label */
+  8    59      ) fixed bin int static options (constant);
+  8    60 
+  8    61 /* user query constant codes */
+  8    62 
+  8    63 dcl  (Q_NO_NEXT_VOLUME init (1),
+  8    64      Q_LABELED_VOLUME init (2),
+  8    65      Q_UNEXPIRED_VOLUME init (3),
+  8    66      Q_INCORRECT_VOLUME init (4),
+  8    67      Q_UNEXPIRED_FILE init (5),
+  8    68      Q_ABORT_FILE init (6)
+  8    69      ) fixed bin int static options (constant);
+  8    70 
+  8    71 /* END INCLUDE FILE mtape_constants.incl.pl1 */
+      166 
+  9     1 /*	Begin include file ... rcp_resource_types.incl.pl1
+  9     2*   *
+  9     3*   *	Created 3/79 by Michael R. Jordan for MR7.0R
+  9     4*   *
+  9     5*   *	This include file defines the official RCP resource types.
+  9     6*   *	The array of names is indexed by the corresponding device type.
+  9     7*   *      MOD by RAF for MCA
+  9     8**/
+  9     9 
+  9    10 
+  9    11 
+  9    12 /****^  HISTORY COMMENTS:
+  9    13*  1) change(85-09-09,Fawcett), approve(85-09-09,MCR6979),
+  9    14*     audit(85-12-09,CLJones), install(86-03-21,MR12.0-1033):
+  9    15*     Support of MCA.
+  9    16*                                                   END HISTORY COMMENTS */
+  9    17 
+  9    18 dcl  DEVICE_TYPE (8) char (32)
+  9    19 	internal static options (constant)
+  9    20 	init ("tape_drive", "disk_drive", "console", "printer", "punch", "reader", "special", "mca");
+  9    21 
+  9    22 dcl  NUM_QUALIFIERS (8) fixed bin			/* Number of qualifiers for each device type. */
+  9    23 	internal static init (3, 0, 0, 2, 0, 0, 0, 0);
+  9    24 
+  9    25 dcl  VOLUME_TYPE (8) char (32)
+  9    26 	internal static options (constant)
+  9    27 	init ("tape_vol", "disk_vol", "", "", "", "", "", "");
+  9    28 
+  9    29 dcl  TAPE_DRIVE_DTYPEX fixed bin static internal options (constant) init (1);
+  9    30 dcl  DISK_DRIVE_DTYPEX fixed bin static internal options (constant) init (2);
+  9    31 dcl  CONSOLE_DTYPEX fixed bin static internal options (constant) init (3);
+  9    32 dcl  PRINTER_DTYPEX fixed bin static internal options (constant) init (4);
+  9    33 dcl  PUNCH_DTYPEX fixed bin static internal options (constant) init (5);
+  9    34 dcl  READER_DTYPEX fixed bin static internal options (constant) init (6);
+  9    35 dcl  SPECIAL_DTYPEX fixed bin static internal options (constant) init (7);
+  9    36 dcl  MCA_DTYPEX fixed bin static internal options (constant) init (8);
+  9    37 dcl  TAPE_VOL_VTYPEX fixed bin static internal options (constant) init (1);
+  9    38 dcl  DISK_VOL_VTYPEX fixed bin static internal options (constant) init (2);
+  9    39 
+  9    40 
+  9    41 /*	End include file ... rcp_resource_types.incl.pl1 */
+      167 
+      168 
+ 10     1 /* BEGIN INCLUDE FILE ..... iocb.incl.pl1 ..... 13 Feb 1975, M. Asherman */
+ 10     2 /* Modified 11/29/82 by S. Krupp to add new entries and to change
+ 10     3*      version number to IOX2. */
+ 10     4 /* format: style2 */
+ 10     5 
+ 10     6      dcl	   1 iocb		      aligned based,	/* I/O control block. */
+ 10     7 	     2 version	      character (4) aligned,	/* IOX2 */
+ 10     8 	     2 name	      char (32),		/* I/O name of this block. */
+ 10     9 	     2 actual_iocb_ptr    ptr,		/* IOCB ultimately SYNed to. */
+ 10    10 	     2 attach_descrip_ptr ptr,		/* Ptr to printable attach description. */
+ 10    11 	     2 attach_data_ptr    ptr,		/* Ptr to attach data structure. */
+ 10    12 	     2 open_descrip_ptr   ptr,		/* Ptr to printable open description. */
+ 10    13 	     2 open_data_ptr      ptr,		/* Ptr to open data structure (old SDB). */
+ 10    14 	     2 reserved	      bit (72),		/* Reserved for future use. */
+ 10    15 	     2 detach_iocb	      entry (ptr, fixed (35)),/* detach_iocb(p,s) */
+ 10    16 	     2 open	      entry (ptr, fixed, bit (1) aligned, fixed (35)),
+ 10    17 						/* open(p,mode,not_used,s) */
+ 10    18 	     2 close	      entry (ptr, fixed (35)),/* close(p,s) */
+ 10    19 	     2 get_line	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+ 10    20 						/* get_line(p,bufptr,buflen,actlen,s) */
+ 10    21 	     2 get_chars	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+ 10    22 						/* get_chars(p,bufptr,buflen,actlen,s) */
+ 10    23 	     2 put_chars	      entry (ptr, ptr, fixed (21), fixed (35)),
+ 10    24 						/* put_chars(p,bufptr,buflen,s) */
+ 10    25 	     2 modes	      entry (ptr, char (*), char (*), fixed (35)),
+ 10    26 						/* modes(p,newmode,oldmode,s) */
+ 10    27 	     2 position	      entry (ptr, fixed, fixed (21), fixed (35)),
+ 10    28 						/* position(p,u1,u2,s) */
+ 10    29 	     2 control	      entry (ptr, char (*), ptr, fixed (35)),
+ 10    30 						/* control(p,order,infptr,s) */
+ 10    31 	     2 read_record	      entry (ptr, ptr, fixed (21), fixed (21), fixed (35)),
+ 10    32 						/* read_record(p,bufptr,buflen,actlen,s) */
+ 10    33 	     2 write_record	      entry (ptr, ptr, fixed (21), fixed (35)),
+ 10    34 						/* write_record(p,bufptr,buflen,s) */
+ 10    35 	     2 rewrite_record     entry (ptr, ptr, fixed (21), fixed (35)),
+ 10    36 						/* rewrite_record(p,bufptr,buflen,s) */
+ 10    37 	     2 delete_record      entry (ptr, fixed (35)),/* delete_record(p,s) */
+ 10    38 	     2 seek_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+ 10    39 						/* seek_key(p,key,len,s) */
+ 10    40 	     2 read_key	      entry (ptr, char (256) varying, fixed (21), fixed (35)),
+ 10    41 						/* read_key(p,key,len,s) */
+ 10    42 	     2 read_length	      entry (ptr, fixed (21), fixed (35)),
+ 10    43 						/* read_length(p,len,s) */
+ 10    44 	     2 open_file	      entry (ptr, fixed bin, char (*), bit (1) aligned, fixed bin (35)),
+ 10    45 						/* open_file(p,mode,desc,not_used,s) */
+ 10    46 	     2 close_file	      entry (ptr, char (*), fixed bin (35)),
+ 10    47 						/* close_file(p,desc,s) */
+ 10    48 	     2 detach	      entry (ptr, char (*), fixed bin (35));
+ 10    49 						/* detach(p,desc,s) */
+ 10    50 
+ 10    51      declare iox_$iocb_version_sentinel
+ 10    52 			      character (4) aligned external static;
+ 10    53 
+ 10    54 /* END INCLUDE FILE ..... iocb.incl.pl1 ..... */
+      169 
+      170 
+      171 tape_mult_attach:
+      172      entry (arg_iocb_ptr, arg_options, arg_com_err_flag, arg_error_code);
+      173 
+      174 /*	This entry is called to attach a tape drive to a process.  This involves the
+      175*   *	following major tasks:
+      176*   *	1.  Interface with rcp_ to make the tape drive attachment.
+      177*   *	2.  Initialize tmdb variables.
+      178*   *	3.  Set up the tape_ioi_ activation.
+      179*   *	4.  Fill in the standard fields in the I/O control block.
+      180**/
+      181 	iocb_ptr = arg_iocb_ptr;			/* Copy arguments. */
+      182 	com_err_flag = arg_com_err_flag;
+      183 
+      184 	reel_name = "noreel";			/* no reel specified yet. */
+      185 	tmdb_ptr = addr (auto_tmdb);			/* temp tmdb storage */
+      186 
+      187 	unspec (tmdb) = "0"b;			/* init tmdb structure */
+      188 	tmdb.opt.reel_name = "";
+      189 	tmdb.opt.density = 1600;
+      190 	tmdb.volume_density = 1600;
+      191 	tmdb.volume_format = "";
+      192 
+      193 	if iocb_ptr -> iocb.attach_data_ptr ^= null then do;
+      194 						/* iocb is already attached. */
+      195 	     error_code = error_table_$not_detached;
+      196 	     goto ATTACH_ERROR;
+      197 	end;
+      198 
+      199 /*	We must parse the attach options.  tape_mult_parse_ will do this.
+      200*   *	It puts the converted values in the tape_mult_ data block.
+      201**/
+      202 
+      203 	call tape_mult_parse_ (tmdb_ptr, dev_name, arg_options, com_err_flag, error_code);
+      204 
+      205 /*        before checking for an error from the parse of the args, check to */
+      206 /*        see if the arg reader was able to get the tape reel name. If so,  */
+      207 /*        assign it, then cheack the error.  This way the tape reel can be  */
+      208 /*	displayed in the error message.			      */
+      209 
+      210 	if tmdb.opt.reel_name ^= "" then do;
+      211 	     if index (tmdb.opt.reel_name, ",sys") > 0 then
+      212 		tmdb.opt.system = "1"b;
+      213 
+      214 	     if index (tmdb.opt.reel_name, ",den=") > 0 then do;
+      215 		density = cv_dec_check_ (before (after (tmdb.opt.reel_name, ",den="), ","), error_code);
+      216 		if error_code ^= 0 then
+      217 		     goto ATTACH_ERROR;
+      218 
+      219 		if density ^= 800 & density ^= 1600 & density ^= 6250 then do;
+      220 		     error_code = error_table_$bad_density;
+      221 		     go to ATTACH_ERROR;
+      222 		end;
+      223 		tmdb.opt.density = density;
+      224 	     end;
+      225 
+      226 	     tmdb.opt.reel_name = before (tmdb.opt.reel_name, ",");
+      227 	     reel_name = tmdb.opt.reel_name;
+      228 	end;
+      229 
+      230 	if error_code ^= 0 then
+      231 	     goto ATTACH_ERROR;
+      232 
+      233 	on cleanup call cleanup_attach ();
+      234 
+      235 	call ATTACH;				/* Get tape drive. */
+      236 	if error_code ^= 0				/* Was there an error while attaching? */
+      237 	     then
+      238 	     goto ATTACH_ERROR;
+      239 
+      240 /*	Attachment has been completed successfully.  We must fill in the iocb.
+      241*   *	Then we must propagate this iocb.
+      242**/
+      243 	iocb_ptr -> iocb.attach_descrip_ptr = addr (tmdb.attach);
+      244 	iocb_ptr -> iocb.attach_data_ptr = tmdb_ptr;
+      245 	iocb_ptr -> iocb.detach_iocb = tape_mult_detach_$detach;
+      246 	iocb_ptr -> iocb.open = tape_mult_open_$open;
+      247 	iocb_ptr -> iocb.control = tape_mult_util_$control;
+      248 	iocb_ptr -> iocb.modes = tape_mult_modes_;
+      249 
+      250 	call iox_$propagate (iocb_ptr);		/* Propagate this iocb. */
+      251 
+      252 	arg_error_code = 0;				/* Tape has been successfully attached. */
+      253 	return;
+      254 
+      255 ATTACH_ERROR:
+      256 	arg_error_code = error_code;			/* Return error code. */
+      257 	if com_err_flag				/* Should we write com_err_ message? */
+      258 	     then
+      259 	     call com_err_ (error_code, "tape_mult_", "Error attaching tape reel ^a", reel_name);
+      260 	call cleanup_attach ();
+      261 
+      262 	return;					/*						*/
+      263 ATTACH:
+      264      procedure;
+      265 
+      266 /*	This internal procedure is called to attach a tape
+      267*   *      and set up the tape_ioi_ activation which includes getting
+      268*   *      any needed workspace and setting the appropriate modes.
+      269*   *      Tape attachment is accomplished via rcp_.
+      270**/
+      271 
+      272 	tape_info_ptr = addr (auto_tape_info);
+      273 	tape_info.version_num = tape_info_version_3;
+      274 	tape_info.usage_time = 0;			/* Initialize, not used yet */
+      275 	tape_info.wait_time = 0;			/* Same */
+      276 	tape_info.system_flag = tmdb.opt.system;	/* System process */
+      277 	tape_info.device_name = dev_name;		/* Any drive? */
+      278 	tape_info.model = 0;			/* Any model */
+      279 	tape_info.tracks = tmdb.opt.tracks;		/* User option */
+      280 
+      281 	if tmdb.opt.density = 800			/* User option */
+      282 	     then
+      283 	     tape_info.density = "00100"b;
+      284 	else if tmdb.opt.density = 1600 then
+      285 	     tape_info.density = "00010"b;
+      286 	else tape_info.density = "00001"b;		/* 6250 bpi */
+      287 
+      288 	tape_info.speed = tmdb.opt.speed;		/* User option */
+      289 	tape_info.unused_qualifier = "0"b;
+      290 	tape_info.volume_name = reel_name;		/* User option */
+      291 	tape_info.write_flag = tmdb.opt.ring;		/* User option */
+      292 	tape_info.position_index = 0;			/* Initialize, not used yet */
+      293 
+      294 /*        Get event channel for rcp_. */
+      295 
+      296 	call ipc_$create_ev_chn (event_channel, error_code);
+      297 	if error_code ^= 0 then do;
+      298 	     call convert_ipc_code_ (error_code);
+      299 	     return;
+      300 	end;
+      301 
+      302 	tmdb.channels.rcp = event_channel;
+      303 
+      304 	if tmdb.opt.system | tmdb.opt.density ^= 1600 | tmdb.opt.comment ^= "" then do;
+      305 	     comment = rtrim (reel_name);
+      306 	     if tmdb.opt.density ^= 1600 then
+      307 		comment = rtrim (comment) || ",den=" || ltrim (rtrim (char (tmdb.opt.density)));
+      308 	     if tmdb.opt.system then
+      309 		comment = rtrim (comment) || ",sys";
+      310 	     if tmdb.opt.comment ^= "" then
+      311 		comment = rtrim (comment) || ",*" || tmdb.opt.comment;
+      312 	end;
+      313 	else comment = "";
+      314 
+      315 /*        Attach drive. */
+      316 
+      317 	call ioa_ ("Mounting tape ^a for ^a", reel_name, tmdb.opt.mount_mode);
+      318 
+      319 	call rcp_$attach (DEVICE_TYPE (TAPE_DRIVE_DTYPEX), tape_info_ptr, event_channel, comment, rcp_id, error_code);
+      320 	if error_code ^= 0 then
+      321 	     return;
+      322 
+      323 	attach_flag = "1"b;				/* Must be detached if error */
+      324 
+      325 	wait_list.num = 1;
+      326 	wait_list.ev_chan = event_channel;
+      327 
+      328 ATTACH_LOOP:
+      329 	comment = "";
+      330 
+      331 	call rcp_$check_attach (rcp_id, tape_info_ptr, comment, ioi_id, workspace_max, timeout_max, statex, error_code);
+      332 	if comment ^= "" & com_err_flag then
+      333 	     call com_err_ (0, "tape_mult_", "RCP comment: ^a", comment);
+      334 
+      335 	go to ATTACH_STATE (statex);
+      336 
+      337 ATTACH_STATE (1):					/* short wait */
+      338 	call ipc_$block (addr (wait_list), addr (event_info), error_code);
+      339 	if error_code ^= 0 then do;
+      340 	     call convert_ipc_code_ (error_code);
+      341 	     return;
+      342 	end;
+      343 
+      344 	go to ATTACH_LOOP;
+      345 
+      346 ATTACH_STATE (2):					/* long wait, forget it */
+      347 	error_code = error_table_$ionmat;
+      348 
+      349 ATTACH_STATE (3):					/* fatal error */
+      350 	return;
+      351 
+      352 ATTACH_STATE (0):					/* success */
+      353 	Sable_to_read_the_tape = "1"b;
+      354 
+      355 	if tape_info.volume_type = Volume_blank | tape_info.volume_type = Volume_unreadable then do;
+      356 	     Sable_to_read_the_tape = "0"b;
+      357 	     tmdb.volume_density = tmdb.opt.density;
+      358 	end;
+      359 	else tmdb.volume_density = MTAPE_VALID_DENSITIES (tape_info.volume_density);
+      360 
+      361 	tmdb.volume_format = Tape_volume_types (tape_info.volume_type);
+      362 
+      363 	tioi_info_ptr = addr (auto_tioi_info);
+      364 	tioi_info.version = tioi_info_version_1;
+      365 	tioi_info.ioi_index = ioi_id;
+      366 	tioi_info.timeout_max = timeout_max;
+      367 	tioi_info.workspace_max = workspace_max;
+      368 
+      369 	call hcs_$assign_channel (event_channel, error_code);
+      370 	if error_code ^= 0 then do;
+      371 	     call ipc_$create_ev_chn (event_channel, error_code);
+      372 	     if error_code ^= 0 then do;
+      373 		call convert_ipc_code_ (error_code);
+      374 		return;
+      375 	     end;
+      376 	end;
+      377 
+      378 	tmdb.channels.ioi = event_channel;
+      379 
+      380 	tioi_info.event_id = event_channel;
+      381 
+      382 	call tape_ioi_$activate (tape_info_ptr, tioi_info_ptr, tioi_id, error_code);
+      383 	if error_code ^= 0 then
+      384 	     return;
+      385 
+      386 	activation_flag = "1"b;
+      387 
+      388 /*        Finish tmdb initialization. */
+      389 
+      390 	tmdb.opt.reel_name = before (tape_info.volume_name, ",");
+      391 						/* might have changed */
+      392 	tmdb.work.rcp_id = rcp_id;
+      393 	tmdb.work.tioi_id = tioi_id;
+      394 
+      395 /*        Get workspace for permanent tmdb storage. */
+      396 
+      397 	req_work_area_len = currentsize (tmdb);
+      398 
+      399 	call tape_ioi_$allocate_work_area (tioi_id, req_work_area_len, act_work_area_len, tmdb_ptr, error_code);
+      400 	if error_code ^= 0 then
+      401 	     return;
+      402 	if act_work_area_len ^= req_work_area_len then do;
+      403 	     error_code = error_table_$area_too_small;	/* A different code should be used. */
+      404 	     return;
+      405 	end;
+      406 
+      407 	tmdb = auto_tmdb;
+      408 
+      409 
+      410 	call ioa_ ("Mounted ^a volume ""^a"" ^[(recorded at ^d BPI), ^;^1s^]on device ^a", tmdb.volume_format,
+      411 	     tape_info.volume_name, Sable_to_read_the_tape, tmdb.volume_density, tape_info.device_name);
+      412 
+      413 /*        Set appropriate modes: not req_len by tape_ioi_, all other default. */
+      414 
+      415 	call tape_ioi_$set_mode (tioi_id, "req_len", addr (req_len), error_code);
+      416 
+      417      end ATTACH;
+      418 
+      419 cleanup_attach:
+      420      proc ();
+      421 
+      422 	if attach_flag then
+      423 	     call rcp_$detach (rcp_id, "0"b, (0), "", (0));
+      424 
+      425 	if activation_flag then do;
+      426 	     auto_error_tally.version = TEC_VERSION_1;
+      427 	     call tape_ioi_$deactivate (tioi_id, addr (auto_error_tally), (0));
+      428 	end;
+      429 
+      430      end cleanup_attach;
+      431 
+      432      end tape_mult_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0812.1  tape_mult_.pl1                    >spec>install>1112>tape_mult_.pl1
+152          1    10/21/86  1251.7  tmdb.incl.pl1                     >ldd>include>tmdb.incl.pl1
+154          2    12/20/82  1113.8  mstr.incl.pl1                     >ldd>include>mstr.incl.pl1
+156          3    09/16/83  1110.4  tape_ioi_dcls.incl.pl1            >ldd>include>tape_ioi_dcls.incl.pl1
+158          4    12/01/82  1039.8  tape_ioi_error_counts.incl.pl1    >ldd>include>tape_ioi_error_counts.incl.pl1
+160          5    12/01/82  1039.8  tape_ioi_info.incl.pl1            >ldd>include>tape_ioi_info.incl.pl1
+162          6    04/05/83  0853.0  rcp_tape_info.incl.pl1            >ldd>include>rcp_tape_info.incl.pl1
+164          7    12/17/86  1550.5  rcp_volume_formats.incl.pl1       >ldd>include>rcp_volume_formats.incl.pl1
+166          8    02/16/84  1452.3  mtape_constants.incl.pl1          >ldd>include>mtape_constants.incl.pl1
+167          9    03/27/86  1120.0  rcp_resource_types.incl.pl1       >ldd>include>rcp_resource_types.incl.pl1
+169         10    05/20/83  1846.4  iocb.incl.pl1                     >ldd>include>iocb.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+DEVICE_TYPE                     000004 constant        char(32)                 initial array packed unaligned dcl 9-18 set ref 319*
+MTAPE_VALID_DENSITIES           000104 constant        fixed bin(17,0)          initial array dcl 8-17 ref 359
+Sable_to_read_the_tape          000100 automatic       bit(1)                   packed unaligned dcl 63 set ref 352* 356* 410*
+TAPE_DRIVE_DTYPEX                      constant        fixed bin(17,0)          initial dcl 9-29 ref 319
+TEC_VERSION_1                   000152 constant        char(8)                  initial dcl 4-20 ref 426
+Tape_volume_types               000111 constant        char(16)                 initial array packed unaligned dcl 7-29 ref 361
+Volume_blank                           constant        fixed bin(17,0)          initial dcl 7-15 ref 355
+Volume_unreadable                      constant        fixed bin(17,0)          initial dcl 7-15 ref 355
+act_work_area_len               000262 automatic       fixed bin(19,0)          dcl 63 set ref 399* 402
+activation_flag                 000121 automatic       bit(1)                   initial dcl 63 set ref 63* 386* 425
+addr                                                   builtin function         dcl 108 ref 185 243 272 337 337 337 337 363 415 415
+                                                                                  427 427
+after                                                  builtin function         dcl 108 ref 215 215
+arg_com_err_flag                       parameter       bit(1)                   packed unaligned dcl 55 ref 171 182
+arg_error_code                         parameter       fixed bin(35,0)          dcl 55 set ref 171 252* 255*
+arg_iocb_ptr                           parameter       pointer                  dcl 55 ref 171 181
+arg_options                            parameter       varying char             array dcl 55 set ref 171 203*
+attach                                 based           structure                level 2 dcl 1-24 set ref 243
+attach_data_ptr          16            based           pointer                  level 2 dcl 10-6 set ref 193 244*
+attach_descrip_ptr       14            based           pointer                  level 2 dcl 10-6 set ref 243*
+attach_flag                     000122 automatic       bit(1)                   initial dcl 63 set ref 63* 323* 422
+auto_error_tally                000101 automatic       structure                level 1 dcl 63 set ref 427 427
+auto_tape_info                  002523 automatic       structure                level 1 dcl 102 set ref 272
+auto_tioi_info                  002554 automatic       structure                level 1 dcl 104 set ref 363
+auto_tmdb                       000300 automatic       structure                level 1 dcl 100 set ref 185 407
+before                                                 builtin function         dcl 108 ref 215 215 226 390
+channels                172            based           structure                level 2 dcl 1-24
+char                                                   builtin function         dcl 108 ref 306
+cleanup                         002564 stack reference condition                dcl 113 ref 233
+com_err_                        000030 constant        entry                    external dcl 137 ref 257 332
+com_err_flag                    000120 automatic       bit(1)                   packed unaligned dcl 63 set ref 182* 203* 257 332
+comment                  65            based           char(64)                 level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 304 310 310
+comment                         000154 automatic       char(256)                packed unaligned dcl 63 in procedure "tape_mult_"
+                                                                                  set ref 305* 306* 306 308* 308 310* 310 313* 319*
+                                                                                  328* 331* 332 332*
+control                  66            based           entry variable           level 2 dcl 10-6 set ref 247*
+convert_ipc_code_               000032 constant        entry                    external dcl 137 ref 298 340 373
+currentsize                                            builtin function         dcl 108 ref 397
+cv_dec_check_                   000034 constant        entry                    external dcl 137 ref 215
+density                         000123 automatic       fixed bin(17,0)          dcl 63 in procedure "tape_mult_" set ref 215* 219
+                                                                                  219 219 223
+density                  10            based           bit(36)                  level 2 in structure "tape_info" dcl 6-15
+                                                                                  in procedure "tape_mult_" set ref 281* 284* 286*
+density                  56            based           fixed bin(17,0)          level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 189* 223* 281 284 304 306 306
+                                                                                  357
+detach_iocb              26            based           entry variable           level 2 dcl 10-6 set ref 245*
+dev_name                        000124 automatic       varying char(32)         dcl 63 set ref 203* 277
+device_name               4            based           char(8)                  level 2 dcl 6-15 set ref 277* 410*
+error_code                      000135 automatic       fixed bin(35,0)          dcl 63 set ref 195* 203* 215* 216 220* 230 236 255
+                                                                                  257* 296* 297 298* 319* 320 331* 337* 339 340*
+                                                                                  346* 369* 370 371* 372 373* 382* 383 399* 400 403*
+                                                                                  415*
+error_table_$area_too_small     000010 external static fixed bin(35,0)          dcl 117 ref 403
+error_table_$bad_density        000012 external static fixed bin(35,0)          dcl 117 ref 220
+error_table_$ionmat             000014 external static fixed bin(35,0)          dcl 117 ref 346
+error_table_$not_detached       000016 external static fixed bin(35,0)          dcl 117 ref 195
+ev_chan                   2     000264 automatic       fixed bin(71,0)          level 2 dcl 86 set ref 326*
+event_channel                   000152 automatic       fixed bin(71,0)          dcl 63 set ref 296* 302 319* 326 369* 371* 378 380
+event_id                  4            based           fixed bin(71,0)          level 2 dcl 5-13 set ref 380*
+event_info                      000270 automatic       structure                level 1 dcl 90 set ref 337 337
+flags                    32            based           structure                level 3 dcl 1-24
+hcs_$assign_channel             000036 constant        entry                    external dcl 137 ref 369
+index                                                  builtin function         dcl 108 ref 211 214
+ioa_                            000040 constant        entry                    external dcl 137 ref 317 410
+iocb                                   based           structure                level 1 dcl 10-6
+iocb_ptr                        000136 automatic       pointer                  dcl 63 set ref 181* 193 243 244 245 246 247 248 250*
+ioi                     174            based           fixed bin(71,0)          level 3 dcl 1-24 set ref 378*
+ioi_id                          000254 automatic       fixed bin(17,0)          dcl 63 set ref 331* 365
+ioi_index                 1            based           fixed bin(17,0)          level 2 dcl 5-13 set ref 365*
+iox_$propagate                  000042 constant        entry                    external dcl 137 ref 250
+ipc_$block                      000044 constant        entry                    external dcl 137 ref 337
+ipc_$create_ev_chn              000046 constant        entry                    external dcl 137 ref 296 371
+ltrim                                                  builtin function         dcl 108 ref 306
+model                     6            based           fixed bin(17,0)          level 2 dcl 6-15 set ref 278*
+modes                    56            based           entry variable           level 2 dcl 10-6 set ref 248*
+mount_mode               53            based           char(7)                  level 3 dcl 1-24 set ref 317*
+mstr_header                            based           structure                level 1 dcl 2-37
+mstr_trailer                           based           structure                level 1 dcl 2-62
+null                                                   builtin function         dcl 108 ref 193
+num                             000264 automatic       fixed bin(17,0)          level 2 dcl 86 set ref 325*
+open                     32            based           entry variable           level 2 dcl 10-6 set ref 246*
+opt                      32            based           structure                level 2 dcl 1-24
+position_index           24            based           fixed bin(35,0)          level 2 dcl 6-15 set ref 292*
+rcp                     172            based           fixed bin(71,0)          level 3 dcl 1-24 set ref 302*
+rcp_$attach                     000052 constant        entry                    external dcl 147 ref 319
+rcp_$check_attach               000054 constant        entry                    external dcl 147 ref 331
+rcp_$detach                     000056 constant        entry                    external dcl 147 ref 422
+rcp_id                          000150 automatic       bit(36)                  dcl 63 in procedure "tape_mult_" set ref 319* 331*
+                                                                                  392 422*
+rcp_id                  127            based           bit(36)                  level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 392*
+reel_name                       000140 automatic       char(32)                 packed unaligned dcl 63 in procedure "tape_mult_"
+                                                                                  set ref 184* 227* 257* 290 305 317*
+reel_name                33            based           char(32)                 level 3 in structure "tmdb" packed packed unaligned
+                                                                                  dcl 1-24 in procedure "tape_mult_" set ref 188*
+                                                                                  210 211 214 215 215 226* 226 227 390*
+req_len                         000200 constant        bit(1)                   initial dcl 126 set ref 415 415
+req_work_area_len               000261 automatic       fixed bin(19,0)          dcl 63 set ref 397* 399* 402
+ring                     32(01)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref 291
+rtrim                                                  builtin function         dcl 108 ref 305 306 306 308 310
+speed                    11            based           bit(36)                  level 2 in structure "tape_info" dcl 6-15
+                                                                                  in procedure "tape_mult_" set ref 288*
+speed                    64            based           bit(36)                  level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 288
+statex                          000260 automatic       fixed bin(17,0)          dcl 63 set ref 331* 335
+system                   32(02)        based           bit(1)                   level 4 packed packed unaligned dcl 1-24 set ref
+                                                                                  211* 276 304 308
+system_flag               3            based           bit(1)                   level 2 dcl 6-15 set ref 276*
+tape_info                              based           structure                level 1 dcl 6-15
+tape_info_ptr                   002576 automatic       pointer                  dcl 6-10 set ref 272* 273 274 275 276 277 278 279
+                                                                                  281 284 286 288 289 290 291 292 319* 331* 355 355
+                                                                                  359 361 382* 390 410 410
+tape_info_version_3                    constant        fixed bin(17,0)          initial dcl 6-13 ref 273
+tape_ioi_$activate              000060 constant        entry                    external dcl 3-8 ref 382
+tape_ioi_$allocate_work_area    000062 constant        entry                    external dcl 3-16 ref 399
+tape_ioi_$deactivate            000064 constant        entry                    external dcl 3-33 ref 427
+tape_ioi_$set_mode              000066 constant        entry                    external dcl 3-88 ref 415
+tape_mult_detach_$detach        000020 constant        entry                    external dcl 130 ref 245
+tape_mult_modes_                000026 constant        entry                    external dcl 135 ref 248
+tape_mult_open_$open            000024 constant        entry                    external dcl 130 ref 246
+tape_mult_parse_                000050 constant        entry                    external dcl 137 ref 203
+tape_mult_util_$control         000022 constant        entry                    external dcl 130 ref 247
+tec                                    based           structure                level 1 dcl 4-8
+tec_entry                              based           structure                level 1 dcl 4-16
+timeout_max               2            based           fixed bin(71,0)          level 2 in structure "tioi_info" dcl 5-13
+                                                                                  in procedure "tape_mult_" set ref 366*
+timeout_max                     000256 automatic       fixed bin(71,0)          dcl 63 in procedure "tape_mult_" set ref 331* 366
+tioi_id                         000151 automatic       bit(36)                  dcl 63 in procedure "tape_mult_" set ref 382* 393
+                                                                                  399* 415* 427*
+tioi_id                 130            based           bit(36)                  level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 393*
+tioi_info                              based           structure                level 1 dcl 5-13
+tioi_info_ptr                   002574 automatic       pointer                  dcl 5-8 set ref 363* 364 365 366 367 380 382*
+tioi_info_version_1                    constant        fixed bin(17,0)          initial dcl 5-10 ref 364
+tmdb                                   based           structure                level 1 dcl 1-24 set ref 187* 397 407*
+tmdb_ptr                        002572 automatic       pointer                  dcl 1-22 set ref 185* 187 188 189 190 191 203* 210
+                                                                                  211 211 214 215 215 223 226 226 227 243 244 276
+                                                                                  279 281 284 288 291 302 304 304 304 306 306 308
+                                                                                  310 310 317 357 357 359 361 378 390 392 393 397
+                                                                                  399* 407 410 410
+tracks                   55            based           fixed bin(17,0)          level 3 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 279
+tracks                    7            based           fixed bin(17,0)          level 2 in structure "tape_info" dcl 6-15
+                                                                                  in procedure "tape_mult_" set ref 279*
+unspec                                                 builtin function         dcl 108 set ref 187*
+unused_qualifier         12            based           bit(36)                  level 2 dcl 6-15 set ref 289*
+usage_time                1            based           fixed bin(17,0)          level 2 dcl 6-15 set ref 274*
+version                         000101 automatic       char(8)                  level 2 in structure "auto_error_tally" dcl 63
+                                                                                  in procedure "tape_mult_" set ref 426*
+version                                based           fixed bin(17,0)          level 2 in structure "tioi_info" dcl 5-13
+                                                                                  in procedure "tape_mult_" set ref 364*
+version_num                            based           fixed bin(17,0)          level 2 dcl 6-15 set ref 273*
+volume_density         2216            based           fixed bin(17,0)          level 2 in structure "tmdb" dcl 1-24 in procedure
+                                                                                  "tape_mult_" set ref 190* 357* 359* 410*
+volume_density           26            based           fixed bin(17,0)          level 2 in structure "tape_info" dcl 6-15
+                                                                                  in procedure "tape_mult_" ref 359
+volume_format          2217            based           char(16)                 level 2 dcl 1-24 set ref 191* 361* 410*
+volume_identifier                      based           structure                level 1 dcl 2-73
+volume_name              13            based           char(32)                 level 2 dcl 6-15 set ref 290* 390 410*
+volume_type              25            based           fixed bin(17,0)          level 2 dcl 6-15 ref 355 355 361
+wait_list                       000264 automatic       structure                level 1 dcl 86 set ref 337 337
+wait_time                 2            based           fixed bin(17,0)          level 2 dcl 6-15 set ref 275*
+work                    126            based           structure                level 2 dcl 1-24
+workspace_max                   000255 automatic       fixed bin(19,0)          dcl 63 in procedure "tape_mult_" set ref 331* 367
+workspace_max             6            based           fixed bin(19,0)          level 2 in structure "tioi_info" dcl 5-13
+                                                                                  in procedure "tape_mult_" set ref 367*
+write_flag               23            based           bit(1)                   level 2 dcl 6-15 set ref 291*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+AT_BOFD                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_BOFH                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_BOFT                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_EOF                                 internal static fixed bin(17,0)          initial dcl 8-44
+AT_EOFD                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_EOFH                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_EOFT                                internal static fixed bin(17,0)          initial dcl 8-44
+AT_IFD                                 internal static fixed bin(17,0)          initial dcl 8-44
+BOF_LABEL                              internal static fixed bin(17,0)          initial dcl 8-56
+CONSOLE_DTYPEX                         internal static fixed bin(17,0)          initial dcl 9-31
+DISK_DRIVE_DTYPEX                      internal static fixed bin(17,0)          initial dcl 9-30
+DISK_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 9-38
+EOF_LABEL                              internal static fixed bin(17,0)          initial dcl 8-56
+EOV_LABEL                              internal static fixed bin(17,0)          initial dcl 8-56
+FILES_PER_FILE_GRP                     internal static fixed bin(17,0)          initial dcl 8-44
+HEADER_VERSION                         internal static fixed bin(17,0)          initial dcl 2-89
+LABEL_VERSION                          internal static fixed bin(17,0)          initial dcl 2-87
+MCA_DTYPEX                             internal static fixed bin(17,0)          initial dcl 9-36
+MTAPE_ALLOC_FI                         internal static fixed bin(17,0)          initial dcl 8-9
+MTAPE_ALLOC_LR                         internal static fixed bin(17,0)          initial dcl 8-9
+MTAPE_ALLOC_STR                        internal static fixed bin(17,0)          initial dcl 8-9
+MTAPE_ALLOC_VS                         internal static fixed bin(17,0)          initial dcl 8-9
+MTAPE_CV_BCD                           internal static fixed bin(17,0)          initial dcl 8-34
+MTAPE_CV_EBCDIC                        internal static fixed bin(17,0)          initial dcl 8-34
+MTAPE_CV_UC_ASCII                      internal static fixed bin(17,0)          initial dcl 8-34
+MTAPE_CV_UC_EBCDIC                     internal static fixed bin(17,0)          initial dcl 8-34
+MTAPE_HWM_BCD                          internal static fixed bin(17,0)          initial dcl 8-27
+MTAPE_HWM_BIN                          internal static fixed bin(17,0)          initial dcl 8-27
+MTAPE_HWM_NINE                         internal static fixed bin(17,0)          initial dcl 8-27
+MTAPE_NO_CONVERSION                    internal static fixed bin(17,0)          initial dcl 8-34
+MTAPE_SPEED_VALUES                     internal static fixed bin(17,0)          initial array dcl 8-22
+MTAPE_UNSPECIFIED                      internal static fixed bin(17,0)          initial dcl 8-34
+NOT_POSITIONED_IN_FILE                 internal static fixed bin(17,0)          initial dcl 8-44
+NUM_QUALIFIERS                         internal static fixed bin(17,0)          initial array dcl 9-22
+PRINTER_DTYPEX                         internal static fixed bin(17,0)          initial dcl 9-32
+PUNCH_DTYPEX                           internal static fixed bin(17,0)          initial dcl 9-33
+Q_ABORT_FILE                           internal static fixed bin(17,0)          initial dcl 8-63
+Q_INCORRECT_VOLUME                     internal static fixed bin(17,0)          initial dcl 8-63
+Q_LABELED_VOLUME                       internal static fixed bin(17,0)          initial dcl 8-63
+Q_NO_NEXT_VOLUME                       internal static fixed bin(17,0)          initial dcl 8-63
+Q_UNEXPIRED_FILE                       internal static fixed bin(17,0)          initial dcl 8-63
+Q_UNEXPIRED_VOLUME                     internal static fixed bin(17,0)          initial dcl 8-63
+READER_DTYPEX                          internal static fixed bin(17,0)          initial dcl 9-34
+SPECIAL_DTYPEX                         internal static fixed bin(17,0)          initial dcl 9-35
+TAPE_VOL_VTYPEX                        internal static fixed bin(17,0)          initial dcl 9-37
+TEC_VERSION                            internal static char(8)                  initial dcl 4-22
+VOLUME_TYPE                            internal static char(32)                 initial array packed unaligned dcl 9-25
+Volume_ansi_tape                       internal static fixed bin(17,0)          initial dcl 7-15
+Volume_gcos_tape                       internal static fixed bin(17,0)          initial dcl 7-15
+Volume_ibm_tape                        internal static fixed bin(17,0)          initial dcl 7-15
+Volume_multics_tape                    internal static fixed bin(17,0)          initial dcl 7-15
+Volume_unauthenticated                 internal static fixed bin(17,0)          initial dcl 7-15
+Volume_unknown_format                  internal static fixed bin(17,0)          initial dcl 7-15
+header_c1                              internal static bit(36)                  initial packed unaligned dcl 2-79
+header_c2                              internal static bit(36)                  initial packed unaligned dcl 2-79
+iox_$iocb_version_sentinel             external static char(4)                  dcl 10-51
+label_c1                               internal static bit(36)                  initial packed unaligned dcl 2-79
+mst_label                              based           structure                level 1 dcl 2-16
+mstr                                   based           structure                level 1 dcl 2-10
+mstrp                                  automatic       pointer                  dcl 2-8
+tape_info_version_2                    internal static fixed bin(17,0)          initial dcl 6-12
+tape_ioi_$allocate_buffers      000000 constant        entry                    external dcl 3-11
+tape_ioi_$buffer_status         000000 constant        entry                    external dcl 3-20
+tape_ioi_$check_order           000000 constant        entry                    external dcl 3-24
+tape_ioi_$check_read            000000 constant        entry                    external dcl 3-27
+tape_ioi_$check_write           000000 constant        entry                    external dcl 3-30
+tape_ioi_$deallocate            000000 constant        entry                    external dcl 3-36
+tape_ioi_$deallocate_buffers    000000 constant        entry                    external dcl 3-39
+tape_ioi_$get_mode              000000 constant        entry                    external dcl 3-43
+tape_ioi_$get_statistics        000000 constant        entry                    external dcl 3-46
+tape_ioi_$hardware_status       000000 constant        entry                    external dcl 3-50
+tape_ioi_$list_buffers          000000 constant        entry                    external dcl 3-54
+tape_ioi_$order                 000000 constant        entry                    external dcl 3-57
+tape_ioi_$queue_order           000000 constant        entry                    external dcl 3-60
+tape_ioi_$queue_read            000000 constant        entry                    external dcl 3-63
+tape_ioi_$queue_write           000000 constant        entry                    external dcl 3-66
+tape_ioi_$read                  000000 constant        entry                    external dcl 3-69
+tape_ioi_$release_buffer        000000 constant        entry                    external dcl 3-72
+tape_ioi_$reserve_buffer        000000 constant        entry                    external dcl 3-76
+tape_ioi_$reset_statistics      000000 constant        entry                    external dcl 3-80
+tape_ioi_$set_buffer_ready      000000 constant        entry                    external dcl 3-84
+tape_ioi_$stop_tape             000000 constant        entry                    external dcl 3-91
+tape_ioi_$write                 000000 constant        entry                    external dcl 3-94
+tape_ioi_error_counts_ptr              automatic       pointer                  dcl 4-5
+tioi_info_version                      internal static fixed bin(17,0)          initial dcl 5-10
+trailer_c1                             internal static bit(36)                  initial packed unaligned dcl 2-79
+trailer_c2                             internal static bit(36)                  initial packed unaligned dcl 2-79
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+ATTACH                          000704 constant        entry                    internal dcl 263 ref 235
+ATTACH_ERROR                    000636 constant        label                    dcl 255 set ref 196 216 221 230 236
+ATTACH_LOOP                     001333 constant        label                    dcl 328 ref 344
+ATTACH_STATE                    000000 constant        label                    array(0:3) dcl 337 ref 335
+cleanup_attach                  002015 constant        entry                    internal dcl 419 ref 233 260
+tape_mult_                      000275 constant        entry                    external dcl 36
+tape_mult_attach                000311 constant        entry                    external dcl 171
+
+THERE WERE NO NAMES DECLARED BY CONTEXT OR IMPLICATION.
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      2446        2536    2115        2456
+Length      3156    2115        70         403     331           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+tape_mult_                         1560 external procedure  is an external procedure.  
+on unit on line 233                  64 on unit               
+ATTACH                                  internal procedure  shares stack frame of external procedure tape_mult_.  
+cleanup_attach                       92 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+tape_mult_               000100 Sable_to_read_the_tape      tape_mult_
+                         000101 auto_error_tally            tape_mult_
+                         000120 com_err_flag                tape_mult_
+                         000121 activation_flag             tape_mult_
+                         000122 attach_flag                 tape_mult_
+                         000123 density                     tape_mult_
+                         000124 dev_name                    tape_mult_
+                         000135 error_code                  tape_mult_
+                         000136 iocb_ptr                    tape_mult_
+                         000140 reel_name                   tape_mult_
+                         000150 rcp_id                      tape_mult_
+                         000151 tioi_id                     tape_mult_
+                         000152 event_channel               tape_mult_
+                         000154 comment                     tape_mult_
+                         000254 ioi_id                      tape_mult_
+                         000255 workspace_max               tape_mult_
+                         000256 timeout_max                 tape_mult_
+                         000260 statex                      tape_mult_
+                         000261 req_work_area_len           tape_mult_
+                         000262 act_work_area_len           tape_mult_
+                         000264 wait_list                   tape_mult_
+                         000270 event_info                  tape_mult_
+                         000300 auto_tmdb                   tape_mult_
+                         002523 auto_tape_info              tape_mult_
+                         002554 auto_tioi_info              tape_mult_
+                         002572 tmdb_ptr                    tape_mult_
+                         002574 tioi_info_ptr               tape_mult_
+                         002576 tape_info_ptr               tape_mult_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+alloc_char_temp     cat_realloc_chars   call_ext_out_desc   call_ext_out        call_int_this       call_int_other
+return_mac          enable_op           shorten_stack       ext_entry           ext_entry_desc      int_entry
+set_chars_eis       index_chars_eis     index_after_cs
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      convert_ipc_code_             cv_dec_check_                 hcs_$assign_channel
+ioa_                          iox_$propagate                ipc_$block                    ipc_$create_ev_chn
+rcp_$attach                   rcp_$check_attach             rcp_$detach                   tape_ioi_$activate
+tape_ioi_$allocate_work_area  tape_ioi_$deactivate          tape_ioi_$set_mode            tape_mult_detach_$detach
+tape_mult_modes_              tape_mult_open_$open          tape_mult_parse_              tape_mult_util_$control
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$area_too_small   error_table_$bad_density      error_table_$ionmat           error_table_$not_detached
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     63 000270        36 000274       171 000303       181 000325       182 000331       184 000336       185 000341
+    187 000343       188 000347       189 000352       190 000354       191 000355       193 000360       195 000364
+    196 000367       203 000370       210 000422       211 000427       214 000440       215 000447       216 000520
+    219 000523       220 000532       221 000535       223 000536       226 000540       227 000550       230 000553
+    233 000555       235 000577       236 000600       243 000602       244 000605       245 000607       246 000614
+    247 000617       248 000622       250 000625       252 000633       253 000635       255 000636       257 000640
+    260 000677       262 000703       263 000704       272 000705       273 000707       274 000711       275 000712
+    276 000713       277 000720       278 000724       279 000725       281 000727       284 000735       286 000742
+    288 000744       289 000746       290 000747       291 000752       292 000756       296 000757       297 000770
+    298 000772       299 001001       302 001002       304 001005       305 001021       306 001035       308 001136
+    310 001167       312 001233       313 001235       317 001240       319 001264       320 001322       323 001325
+    325 001327       326 001331       328 001333       331 001336       332 001402       335 001451       337 001453
+    339 001472       340 001474       341 001503       344 001504       346 001505       349 001510       352 001511
+    355 001513       356 001521       357 001523       358 001526       359 001527       361 001533       363 001542
+    364 001544       365 001546       366 001550       367 001552       369 001554       370 001565       371 001567
+    372 001600       373 001602       374 001611       378 001612       380 001615       382 001620       383 001635
+    386 001640       390 001642       392 001654       393 001656       397 001660       399 001662       400 001701
+    402 001704       403 001707       404 001712       407 001713       410 001720       415 001762       417 002013
+    419 002014       422 002022       425 002061       426 002064       427 002067       430 002105
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

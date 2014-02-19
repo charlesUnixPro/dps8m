@@ -1,0 +1,457 @@
+	COMPILATION LISTING OF SEGMENT lv_request_communicator_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  1017.9 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 
+       14 lv_request_communicator_$alloc_lvate: proc (a_ec) returns (ptr);
+       15 
+       16 /* Bernard Greenberg 9/8/76 */
+       17 /* Called by user-process RCP in ring 1, this procedure intermediates conversation with the
+       18*   lv_attach_table, talking to wdx in the Initializer process */
+       19 
+       20 
+       21 dcl 1 message based (addr (fixedmessage)),
+       22     2 text char (4) unal,
+       23     2 lvax fixed bin (17) unal,
+       24     2 other fixed bin (17) unal;
+       25 
+       26 dcl  SYSDIR char (168) static init (">lv");
+       27 dcl  LVAT_NAME char (32) static init ("lv_attach_table") options (constant);
+       28 
+       29 dcl (error_table_$action_not_performed, error_table_$noalloc) fixed bin (35) ext;
+       30 dcl  error_table_$resource_unassigned fixed bin (35) ext;
+       31 
+       32 dcl  fixedmessage fixed bin (71) aligned;
+       33 dcl  vhighest_used fixed bin (35);
+       34 
+       35 dcl  hcs_$wakeup ext entry (bit (36) aligned, fixed bin (71), fixed bin (71), fixed bin (35));
+       36 dcl  hcs_$initiate entry (char (*), char (*), char (*), fixed bin (1), fixed bin (1), ptr, fixed bin (35));
+       37 dcl  get_process_id_ entry (bit (36) aligned);
+       38 dcl  admin_gate_$syserr entry options (variable);
+       39 dcl  stac builtin;
+       40 dcl  stacq entry (ptr, bit (36) aligned, bit (36) aligned) returns (bit (1) aligned);
+       41 dcl  lvname char (32);
+       42 dcl  code fixed bin (35);
+       43 dcl  s_lvatp ptr static init (null);
+       44 dcl  processid bit (36) aligned static;
+       45 dcl  ec fixed bin (35);
+       46 dcl  lvax fixed bin;
+       47 
+       48 dcl  a_lvatep ptr;
+       49 dcl  a_evch fixed bin (71) aligned;
+       50 dcl  a_lvname char (*);
+       51 dcl  a_ec fixed bin (35);
+       52 dcl  a_state fixed bin;
+       53 
+       54 dcl (null, rel, addr) builtin;
+       55 
+       56 
+       57 
+       58 /*  */
+       59 	if s_lvatp = null then do;
+       60 	     call get_process_id_ (processid);
+       61 	     call hcs_$initiate (SYSDIR, LVAT_NAME, "", 0, 0, lvatp, ec);
+       62 	     if lvatp = null then do;
+       63 		a_ec = ec;
+       64 		return (null);
+       65 	     end;
+       66 	     s_lvatp = lvatp;
+       67 	end;
+       68 
+       69 	lvatp = s_lvatp;
+       70 	do lvax = 1 to lvat.max_n_entries;
+       71 	     lvatep = addr (lvat.array (lvax));
+       72 	     if stac (addr (lvate.pid), processid) then do;
+       73 
+       74 lll:		vhighest_used = lvat.highest_used;
+       75 		if lvax > vhighest_used then if ^stacq (addr (lvat.highest_used), unspec (vhighest_used), unspec (lvax))
+       76 		     then go to lll;
+       77 		string (lvate.flags) = "0"b;
+       78 		a_ec = 0;
+       79 		return (lvatep);
+       80 	     end;
+       81 	end;
+       82 	a_ec = error_table_$noalloc;
+       83 	return (null);
+       84 
+       85 intent_to_mount: entry (a_lvatep, a_lvname, a_evch, a_ec);
+       86 
+       87 	lvatep = a_lvatep;
+       88 	lvatp = s_lvatp;
+       89 	lvname = a_lvname;
+       90 
+       91 	if lvate.pid ^= processid then go to unas;
+       92 
+       93 	string (lvate.flags) = "0"b;
+       94 
+       95 	lvate.lvname = lvname;			/* copy stuff first, */
+       96 	lvate.evchn = a_evch;
+       97 	lvate.state = 0;
+       98 	lvate.code = 0;
+       99 	lvate.pending_mount = "1"b;			/* flag is last */
+      100 	call transmit ("moun");			/* give guy a zetz */
+      101 
+      102 	a_ec = 0;
+      103 	return;
+      104 
+      105 
+      106 check:	entry (a_lvatep, a_state, a_ec);
+      107 
+      108 	lvatep = a_lvatep;
+      109 	lvatp = s_lvatp;
+      110 
+      111 	if lvate.pid ^= processid then do;		/* got snarfed */
+      112 unasa:	     a_state = 3;
+      113 unas:	     a_ec = error_table_$resource_unassigned;
+      114 	     return;
+      115 	end;
+      116 
+      117 	if lvate.invalidated then go to unasa;
+      118 	if lvate.mount_req_answered then do;
+      119 	     if lvate.waiting then a_state = 1;
+      120 	     else if lvate.code ^= 0 then a_state = 3;
+      121 	     else a_state = 0;
+      122 	     a_ec = lvate.code;
+      123 	end;
+      124 	else do;					/* No answer thru yet */
+      125 	     if lvate.pending_mount then a_state = 1;
+      126 	     else a_state = 3;
+      127 	     a_ec = 0;
+      128 	end;
+      129 
+      130 	return;
+      131 
+      132 
+      133 intent_to_detach: entry (a_lvatep, a_ec);
+      134 
+      135 	lvatep = a_lvatep;
+      136 	lvatp = s_lvatp;
+      137 
+      138 	if lvate.pid ^= processid | lvate.invalidated then go to unas;
+      139 	lvate.detach_requested = "1"b;
+      140 	call transmit ("demo");
+      141 	a_ec = 0;
+      142 	return;
+      143 
+      144 abandon:	entry (a_lvatep);
+      145 
+      146 	lvatep = a_lvatep;
+      147 	lvatp = s_lvatp;
+      148 
+      149 	string (lvate.flags) = "0"b;
+      150 	lvate.lvname = "";
+      151 	if ^stacq (addr (lvate.pid), processid, "0"b) then
+      152 	     call admin_gate_$syserr (0, "lv_request_communicator_: lock ^= processid lvate ^p", lvatep);
+      153 
+      154 	return;
+      155 
+      156 transmit:	procedure (m);
+      157 
+      158 dcl  m char (*);
+      159 
+      160 	     message.text = m;
+      161 	     message.lvax = 1 + divide (fixed (rel (lvatep), 18) - fixed (rel (addr (lvat.array)), 18),
+      162 		size (lvate), 17, 0);
+      163 	     message.other = 0;
+      164 
+      165 	     call hcs_$wakeup (lvat.master_pid, lvat.master_evchn, fixedmessage, ec);
+      166 	     if ec ^= 0 then do;
+      167 		call admin_gate_$syserr (0, "lv_request_communicator_: code ^o from wakeup", code);
+      168 		a_ec = error_table_$action_not_performed;
+      169 		go to nlx;
+      170 	     end;
+      171 	end transmit;
+      172 nlx:	return;
+      173 
+      174 test:	entry (testdir);
+      175 
+      176 dcl  testdir char (*);
+      177 	SYSDIR = testdir;
+      178 	return;
+      179 						/*  */
+  1     1 /* BEGIN INCLUDE FILE lv_atttbl.incl.pl1 B. Greenberg 09/08/76 */
+  1     2 
+  1     3 /* This structure is used for communicating logical volume mount requests
+  1     4*   from RCP to mdxhdx */
+  1     5 
+  1     6 dcl  lvatp ptr;
+  1     7 
+  1     8 dcl 1 lvat based (lvatp) aligned,			/* Logical volume attach table */
+  1     9     2 master_pid bit (36) aligned,			/* Processid of mdxhdx process */
+  1    10     2 initialized bit (1) aligned,			/* Table has been initted */
+  1    11     2 master_evchn fixed bin (71) aligned,		/* Event channel for request wakeups */
+  1    12     2 max_n_entries fixed bin,			/* Number of entries  maximum */
+  1    13     2 highest_used fixed bin,				/* Highest number used */
+  1    14     2 pad(10) fixed bin,
+  1    15     2 array like lvate dim (0 refer (lvat.max_n_entries));
+  1    16 
+  1    17 dcl  lvatep ptr;
+  1    18 
+  1    19 dcl 1 lvate based (lvatep) aligned,			/* LVAT Entry */
+  1    20     2 pid bit (36) aligned,				/* LOCK/PROCESSID */
+  1    21     2 state fixed bin,				/* state of attachment */
+  1    22     2 code fixed bin (35),				/* error table code if appropriate */
+  1    23     2 lvname char (32),				/* Name involved */
+  1    24     2 evchn fixed bin (71),				/* Reply channel */
+  1    25     2 flags,					/* various flags */
+  1    26      3 pending_mount bit (1) unal,			/* Mount pending */
+  1    27      3 mount_req_answered bit (1) unal,			/* Inz has answered */
+  1    28      3 detach_requested bit (1) unal,			/* detach has been requested */
+  1    29      3 mounted bit (1) unal,				/* has been attached */
+  1    30      3 waiting bit (1) unal,				/* waiting for mount */
+  1    31      3 invalidated bit (1) unal,			/* entry invalidated by Inz */
+  1    32      3 pad bit  (30) unal,
+  1    33     2 lvx fixed bin,				/* Used when valid */
+  1    34     2 lvid bit (36) aligned,				/* Used to validate above */
+  1    35     2 mount_request_timeout fixed bin (71);		/* Time to repeat mount message */
+  1    36 	
+  1    37 
+  1    38 /* END INCLUDE FILE lv_atttbl.incl.pl1 */
+      180 
+      181 
+      182 
+      183 /* BEGIN MESSAGE DOCUMENTATION
+      184*
+      185*   Message:
+      186*   lv_request_communicator_: lock ^= processid lvate PPP
+      187*
+      188*   S: $info
+      189*
+      190*   T: In response to a user's detach_lv command
+      191*
+      192*   M: A logical volume attachment table entry became disassociated
+      193*   from a user to whom it had been assigned.
+      194*   $err
+      195*
+      196*   A: $notify
+      197*   Be prepared to demount logical volumes manually which might otherwise
+      198*   have been demounted automatically.
+      199*
+      200*   Message:
+      201*   lv_request_communicator_: code CCC from wakeup
+      202*
+      203*   S: $info
+      204*
+      205*   T: $run
+      206*
+      207*   M: A wakeup could not be sent to the initializer process in order to
+      208*   perform communication about attachment/detachment of logical volumes.
+      209*
+      210*   A: $notify
+      211*
+      212*   END MESSAGE DOCUMENTATION */
+      213 
+      214      end;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0803.1  lv_request_communicator_.pl1      >spec>install>1111>lv_request_communicator_.pl1
+180          1    02/09/82  1152.3  lv_atttbl.incl.pl1                >ldd>include>lv_atttbl.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+LVAT_NAME                       000000 constant        char(32)                 initial packed unaligned dcl 27 set ref 61*
+SYSDIR                          000010 internal static char(168)                initial packed unaligned dcl 26 set ref 61* 177*
+a_ec                                   parameter       fixed bin(35,0)          dcl 51 set ref 14 63* 78* 82* 85 102* 106 113* 122*
+                                                                                  127* 133 141* 168*
+a_evch                                 parameter       fixed bin(71,0)          dcl 49 ref 85 96
+a_lvatep                               parameter       pointer                  dcl 48 ref 85 87 106 108 133 135 144 146
+a_lvname                               parameter       char                     packed unaligned dcl 50 ref 85 89
+a_state                                parameter       fixed bin(17,0)          dcl 52 set ref 106 112* 119* 120* 121* 125* 126*
+addr                                                   builtin function         dcl 54 ref 71 72 75 75 151 151 160 161 161 163
+admin_gate_$syserr              000102 constant        entry                    external dcl 38 ref 151 167
+array                    20            based           structure                array level 2 dcl 1-8 set ref 71 161
+code                            000113 automatic       fixed bin(35,0)          dcl 42 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref
+                                                                                  167*
+code                      2            based           fixed bin(35,0)          level 2 in structure "lvate" dcl 1-19 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref 98*
+                                                                                  120 122
+detach_requested         16(02)        based           bit(1)                   level 3 packed packed unaligned dcl 1-19 set ref
+                                                                                  139*
+ec                              000114 automatic       fixed bin(35,0)          dcl 45 set ref 61* 63 165* 166
+error_table_$action_not_performed
+                                000066 external static fixed bin(35,0)          dcl 29 ref 168
+error_table_$noalloc            000070 external static fixed bin(35,0)          dcl 29 ref 82
+error_table_$resource_unassigned
+                                000072 external static fixed bin(35,0)          dcl 30 ref 113
+evchn                    14            based           fixed bin(71,0)          level 2 dcl 1-19 set ref 96*
+fixedmessage                    000100 automatic       fixed bin(71,0)          dcl 32 set ref 160 161 163 165*
+flags                    16            based           structure                level 2 dcl 1-19 set ref 77* 93* 149*
+get_process_id_                 000100 constant        entry                    external dcl 37 ref 60
+hcs_$initiate                   000076 constant        entry                    external dcl 36 ref 61
+hcs_$wakeup                     000074 constant        entry                    external dcl 35 ref 165
+highest_used              5            based           fixed bin(17,0)          level 2 dcl 1-8 set ref 74 75 75
+invalidated              16(05)        based           bit(1)                   level 3 packed packed unaligned dcl 1-19 set ref 117
+                                                                                  138
+lvat                                   based           structure                level 1 dcl 1-8
+lvate                                  based           structure                level 1 dcl 1-19 set ref 161
+lvatep                          000120 automatic       pointer                  dcl 1-17 set ref 71* 72 77 79 87* 91 93 95 96 97 98
+                                                                                  99 108* 111 117 118 119 120 122 125 135* 138 138
+                                                                                  139 146* 149 150 151 151 151* 161 161
+lvatp                           000116 automatic       pointer                  dcl 1-6 set ref 61* 62 66 69* 70 71 74 75 75 88*
+                                                                                  109* 136* 147* 161 165 165
+lvax                            000115 automatic       fixed bin(17,0)          dcl 46 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref 70*
+                                                                                  71 75 75 75*
+lvax                      1            based           fixed bin(17,0)          level 2 in structure "message" packed packed
+                                                                                  unaligned dcl 21 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref
+                                                                                  161*
+lvname                          000103 automatic       char(32)                 packed unaligned dcl 41 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref 89*
+                                                                                  95
+lvname                    3            based           char(32)                 level 2 in structure "lvate" dcl 1-19 in procedure
+                                                                                  "lv_request_communicator_$alloc_lvate" set ref 95*
+                                                                                  150*
+m                                      parameter       char                     packed unaligned dcl 158 ref 156 160
+master_evchn              2            based           fixed bin(71,0)          level 2 dcl 1-8 set ref 165*
+master_pid                             based           bit(36)                  level 2 dcl 1-8 set ref 165*
+max_n_entries             4            based           fixed bin(17,0)          level 2 dcl 1-8 ref 70
+message                                based           structure                level 1 packed packed unaligned dcl 21
+mount_req_answered       16(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-19 set ref 118
+null                                                   builtin function         dcl 54 ref 59 62 64 83
+other                     1(18)        based           fixed bin(17,0)          level 2 packed packed unaligned dcl 21 set ref 163*
+pending_mount            16            based           bit(1)                   level 3 packed packed unaligned dcl 1-19 set ref 99*
+                                                                                  125
+pid                                    based           bit(36)                  level 2 dcl 1-19 set ref 72 91 111 138 151 151
+processid                       000064 internal static bit(36)                  dcl 44 set ref 60* 72 91 111 138 151*
+rel                                                    builtin function         dcl 54 ref 161 161
+s_lvatp                         000062 internal static pointer                  initial dcl 43 set ref 59 66* 69 88 109 136 147
+stac                                                   builtin function         dcl 39 ref 72
+stacq                           000104 constant        entry                    external dcl 40 ref 75 151
+state                     1            based           fixed bin(17,0)          level 2 dcl 1-19 set ref 97*
+testdir                                parameter       char                     packed unaligned dcl 176 ref 174 177
+text                                   based           char(4)                  level 2 packed packed unaligned dcl 21 set ref 160*
+vhighest_used                   000102 automatic       fixed bin(35,0)          dcl 33 set ref 74* 75 75 75
+waiting                  16(04)        based           bit(1)                   level 3 packed packed unaligned dcl 1-19 set ref 119
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+abandon                         000575 constant        entry                    external dcl 144
+check                           000417 constant        entry                    external dcl 106
+intent_to_detach                000526 constant        entry                    external dcl 133
+intent_to_mount                 000327 constant        entry                    external dcl 85
+lll                             000234 constant        label                    dcl 74 ref 75
+lv_request_communicator_$alloc_lvate
+                                000075 constant        entry                    external dcl 14
+nlx                             000674 constant        label                    dcl 172 ref 169
+test                            000705 constant        entry                    external dcl 174
+transmit                        000736 constant        entry                    internal dcl 156 ref 100 140
+unas                            000445 constant        label                    dcl 113 ref 91 138
+unasa                           000442 constant        label                    dcl 112 ref 117
+
+NAMES DECLARED BY CONTEXT OR IMPLICATION.
+divide                                                 builtin function         ref 161
+fixed                                                  builtin function         ref 161 161
+size                                                   builtin function         ref 161
+string                                                 builtin function         set ref 77 93* 149*
+unspec                                                 builtin function         ref 75 75 75 75
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      1256        1364    1054        1266
+Length      1606    1054       106         205     201          56
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+lv_request_communicator_$alloc_lvate
+                                    194 external procedure  is an external procedure.  
+transmit                                internal procedure  shares stack frame of external procedure lv_request_communicator_$allo         
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 SYSDIR                      lv_request_communicator_$alloc_lvate
+000062 s_lvatp                     lv_request_communicator_$alloc_lvate
+000064 processid                   lv_request_communicator_$alloc_lvate
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+lv_request_communicator_$alloc_lvate
+                         000100 fixedmessage                lv_request_communicator_$alloc_lvate
+                         000102 vhighest_used               lv_request_communicator_$alloc_lvate
+                         000103 lvname                      lv_request_communicator_$alloc_lvate
+                         000113 code                        lv_request_communicator_$alloc_lvate
+                         000114 ec                          lv_request_communicator_$alloc_lvate
+                         000115 lvax                        lv_request_communicator_$alloc_lvate
+                         000116 lvatp                       lv_request_communicator_$alloc_lvate
+                         000120 lvatep                      lv_request_communicator_$alloc_lvate
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   call_ext_out        return_mac          stac_mac            signal_op           ext_entry
+ext_entry_desc
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+admin_gate_$syserr            get_process_id_               hcs_$initiate                 hcs_$wakeup
+stacq
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$action_not_performed                           error_table_$noalloc
+error_table_$resource_unassigned
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000071        59 000107        60 000113        61 000121        62 000163        63 000167        64 000171
+     66 000203        69 000206        70 000210        71 000221        72 000225        74 000234        75 000237
+     77 000267        78 000271        79 000272        81 000303        82 000305        83 000310        85 000322
+     87 000346        88 000352        89 000355        91 000362        93 000365        95 000366        96 000371
+     97 000373        98 000374        99 000375       100 000377       102 000404       103 000405       106 000413
+    108 000430       109 000434       111 000437       112 000442       113 000445       114 000450       117 000456
+    118 000461       119 000464       120 000472       121 000477       122 000500       123 000502       125 000503
+    126 000511       127 000513       130 000514       133 000522       135 000537       136 000543       138 000546
+    139 000554       140 000556       141 000563       142 000564       144 000572       146 000603       147 000607
+    149 000612       150 000613       151 000616       154 000666       172 000674       174 000702       177 000721
+    178 000730       156 000736       160 000747       161 000754       163 000770       165 000772       166 001011
+    167 001013       168 001040       169 001043       171 001044
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

@@ -1,0 +1,297 @@
+	COMPILATION LISTING OF SEGMENT crawlout_default_handler_
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0958.1 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1982 *
+        6*        *                                                         *
+        7*        * Copyright (c) 1972 by Massachusetts Institute of        *
+        8*        * Technology and Honeywell Information Systems, Inc.      *
+        9*        *                                                         *
+       10*        *********************************************************** */
+       11 
+       12 
+       13 /* format: style2 */
+       14 crawlout_default_handler_:
+       15      proc (mcptr, cond_name, wcptr, infoptr, retsw);
+       16 
+       17 /* This procedure is called by signal_ before crawlouts in case the condition can
+       18*   be handled in the lower ring.  This is necessary for pl1 conditions */
+       19 /* coded 8 November 1973 by M. Weaver */
+       20 /* Quiet restart support added by BIM August 1981 */
+       21 /* Error condition signalling improved BIM same time */
+       22 
+       23 	declare (mcptr, wcptr, infoptr)
+       24 				 ptr;
+       25 
+       26 	declare i			 fixed bin;
+       27 
+       28 	declare retsw		 bit (1) aligned;
+       29 
+       30 	declare conname		 character (32);
+       31 	declare cond_name		 character (*);
+       32 
+       33 	declare return_conditions	 (4) character (32)
+       34 				 init ("command_error", "stringsize", "underflow", "command_question")
+       35 				 internal static options (constant);
+       36 
+       37 	declare error_conditions	 (14) character (32)
+       38 				 init ("area", "storage", "endfile", "undefinedfile", "overflow", "fixedoverflow",
+       39 				 "zerodivide", "size", "conversion", "key", "record", "transmit", "stringrange",
+       40 				 "subscriptrange") internal static options (constant);
+       41 
+       42 	declare based_file		 file variable based;
+       43 
+       44 	declare signal_		 entry options (variable);
+       45 
+  1     1 /* BEGIN INCLUDE FILE condition_info_header.incl.pl1 BIM 1981 */
+  1     2 /* format: style2 */
+  1     3 
+  1     4      declare condition_info_header_ptr
+  1     5 			      pointer;
+  1     6      declare 1 condition_info_header
+  1     7 			      aligned based (condition_info_header_ptr),
+  1     8 	     2 length	      fixed bin,		/* length in words of this structure */
+  1     9 	     2 version	      fixed bin,		/* version number of this structure */
+  1    10 	     2 action_flags	      aligned,		/* tell handler how to proceed */
+  1    11 	       3 cant_restart     bit (1) unaligned,	/* caller doesn't ever want to be returned to */
+  1    12 	       3 default_restart  bit (1) unaligned,	/* caller can be returned to with no further action */
+  1    13 	       3 quiet_restart    bit (1) unaligned,	/* return, and print no message */
+  1    14 	       3 support_signal   bit (1) unaligned,	/* treat this signal as if the signalling procedure had the support bit set */
+  1    15 						/* if the signalling procedure had the support bit set, do the same for its caller */
+  1    16 	       3 pad	      bit (32) unaligned,
+  1    17 	     2 info_string	      char (256) varying,	/* may contain printable message */
+  1    18 	     2 status_code	      fixed bin (35);	/* if^=0, code interpretable by com_err_ */
+  1    19 
+  1    20 /* END INCLUDE FILE condition_info_header.incl.pl1 */
+       46 
+       47 	declare 1 pl1_info_struc	 aligned like pl1_info based (infoptr);
+  2     1 /* BEGIN INCLUDE FILE ... pl1_info.incl.pl1 */
+  2     2 /* This is intended to be used by all procedures raising pl1 conditions and by the default handler */
+  2     3 /* Created June 1981 by Benson I. Margulies from pl1_info_struc.incl.pl1 */
+  2     4 /* This include file must be used with condition_info_header.incl.pl1. Both must be %included */
+  2     5 
+  2     6 declare pl1_info_ptr pointer;
+  2     7 declare 1 pl1_info aligned based (pl1_info_ptr),
+  2     8             2 header aligned like condition_info_header,
+  2     9 	  2 id char(8) aligned,		/* init "pliocond"; indicates pl1 structure */
+  2    10 	  2 content_flags aligned,
+  2    11 	   (3 v1_sw,			/* on if raised by version 1 */
+  2    12 	    3 oncode_sw,			/* "1"b->valid oncode */
+  2    13 	    3 onfile_sw,			/* "1"b->file name is in structure */
+  2    14 	    3 file_ptr_sw,			/* "1"b->file is associated with this condition */
+  2    15 	    3 onsource_sw,			/* "1"b->valid onsource string for this condition */
+  2    16 	    3 onchar_sw,			/* "1"b->valid onchar index in this structure */
+  2    17 	    3 onkey_sw,			/* "1"b->valid onkey string in this structure */
+  2    18 	    3 onfield_sw) bit(1) unaligned,	/* "1"b->valid onfield string in this structure */
+  2    19 	  2 oncode fixed bin(35),		/* oncode for condition */
+  2    20 	  2 onfile char(32) aligned,		/* onfile string */
+  2    21 	  2 file_ptr ptr,			/* pointer to file value */
+  2    22 	  2 onsource char(256) var,		/* onsource string */
+  2    23 	  2 oncharindex fixed bin,		/* char offset in onsource of offending char */
+  2    24 	  2 onkey_onfield char(256) var;	/* either onkey string or onfield string */
+  2    25 
+  2    26 /* END INCLUDE FILE ... pl1_info.incl.pl1 */
+       48 
+       49 
+       50 	declare 1 error_info	 aligned like condition_info_header;
+       51 						/* thie minimal info structure */
+       52 
+       53 	declare (currentsize, hbound, lbound, null, string)
+       54 				 builtin;
+       55 
+       56 
+       57 
+       58 	retsw = "0"b;				/* only return if we set this bit */
+       59 
+       60 	if infoptr ^= null ()
+       61 	then if infoptr -> condition_info_header.quiet_restart /* this is obvious */
+       62 		| infoptr -> condition_info_header.default_restart
+       63 						/* The semantics say "print a message and continue." */
+       64 						/* If they didnt think continuing was important, they would not set, */
+       65 						/* and so we restart */
+       66 	     then do;
+       67 		     retsw = "1"b;
+       68 		     return;
+       69 		end;
+       70 
+       71 	conname = cond_name;			/* copy for ease of comparing */
+       72 						/* preserve special cases in case there is no info */
+       73 
+       74 	do i = lbound (return_conditions, 1) to hbound (return_conditions, 1);
+       75 	     if conname = return_conditions (i)
+       76 	     then do;
+       77 		     retsw = "1"b;			/* don't crawl out */
+       78 		     return;
+       79 		end;
+       80 	end;
+       81 
+       82 	do i = lbound (error_conditions, 1) to hbound (error_conditions, 1);
+       83 	     if conname = error_conditions (i)
+       84 	     then do;
+       85 
+       86 /* By setting the quiet restart bit, we force another invocation of
+       87*    ourself to return, eventually to us. Then we can go ahead and let
+       88*    the original condition signal out, instead of the useless and
+       89*    uninformative "error". This PL/I programs that have handlers for
+       90*    the error condition catch the signal if they are there, and we
+       91*    signal out the original condition otherwise. */
+       92 
+       93 		     error_info.version = 1;
+       94 		     error_info.length = currentsize (error_info);
+       95 		     string (error_info.action_flags) = ""b;
+       96 		     error_info.quiet_restart = "1"b;
+       97 		     error_info.info_string = "";	/* This is never allowed to get to default error handler */
+       98 		     error_info.status_code = 0;
+       99 
+      100 		     call signal_ ("error", null /* No MC */, addr (error_info));
+      101 		     return;			/* crawl out with original equipment */
+      102 		end;
+      103 	end;
+      104 
+      105 /* below code for endpage stolen from Belmont's pl1_signal_,
+      106*   but we don't support V1 PL/I running in an Inner Ring. Tough. */
+      107 
+      108 	if conname = "endpage"
+      109 	then if infoptr ^= null
+      110 	     then if pl1_info_struc.content_flags.file_ptr_sw
+      111 		then do;
+      112 			put page file (pl1_info_struc.file_ptr -> based_file);
+      113 			retsw = "1"b;		/* finished handling condition */
+      114 			return;
+      115 		     end;
+      116 
+      117 	return;					/* can't handle any other condition in this ring */
+      118      end crawlout_default_handler_;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0804.8  crawlout_default_handler_.pl1     >spec>install>1110>crawlout_default_handler_.pl1
+46           1    03/24/82  1347.2  condition_info_header.incl.pl1    >ldd>include>condition_info_header.incl.pl1
+48           2    07/18/81  1100.0  pl1_info.incl.pl1                 >ldd>include>pl1_info.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+action_flags              2            based           structure                level 2 in structure "condition_info_header" dcl 1-6
+                                                                                  in procedure "crawlout_default_handler_"
+action_flags              2     000111 automatic       structure                level 2 in structure "error_info" dcl 50
+                                                                                  in procedure "crawlout_default_handler_" set ref
+                                                                                  95*
+based_file                             based           file variable            dcl 42 ref 112
+cond_name                              parameter       char                     packed unaligned dcl 31 ref 14 71
+condition_info_header                  based           structure                level 1 dcl 1-6
+conname                         000101 automatic       char(32)                 packed unaligned dcl 30 set ref 71* 75 83 108
+content_flags           107            based           structure                level 2 dcl 47
+currentsize                                            builtin function         dcl 53 ref 94
+default_restart           2(01)        based           bit(1)                   level 3 packed packed unaligned dcl 1-6 ref 60
+error_conditions                000000 constant        char(32)                 initial array packed unaligned dcl 37 ref 82 82 83
+error_info                      000111 automatic       structure                level 1 dcl 50 set ref 94 100 100
+file_ptr                122            based           pointer                  level 2 dcl 47 ref 112
+file_ptr_sw             107(03)        based           bit(1)                   level 3 packed packed unaligned dcl 47 ref 108
+hbound                                                 builtin function         dcl 53 ref 74 82
+i                               000100 automatic       fixed bin(17,0)          dcl 26 set ref 74* 75* 82* 83*
+info_string               3     000111 automatic       varying char(256)        level 2 dcl 50 set ref 97*
+infoptr                                parameter       pointer                  dcl 23 ref 14 60 60 60 108 108 112
+lbound                                                 builtin function         dcl 53 ref 74 82
+length                          000111 automatic       fixed bin(17,0)          level 2 dcl 50 set ref 94*
+mcptr                                  parameter       pointer                  dcl 23 ref 14
+null                                                   builtin function         dcl 53 ref 60 100 100 108
+pl1_info                               based           structure                level 1 dcl 2-7
+pl1_info_struc                         based           structure                level 1 dcl 47
+quiet_restart             2(02) 000111 automatic       bit(1)                   level 3 in structure "error_info" packed packed
+                                                                                  unaligned dcl 50 in procedure
+                                                                                  "crawlout_default_handler_" set ref 96*
+quiet_restart             2(02)        based           bit(1)                   level 3 in structure "condition_info_header" packed
+                                                                                  packed unaligned dcl 1-6 in procedure
+                                                                                  "crawlout_default_handler_" ref 60
+retsw                                  parameter       bit(1)                   dcl 28 set ref 14 58* 67* 77* 113*
+return_conditions               000160 constant        char(32)                 initial array packed unaligned dcl 33 ref 74 74 75
+signal_                         000010 constant        entry                    external dcl 44 ref 100
+status_code             104     000111 automatic       fixed bin(35,0)          level 2 dcl 50 set ref 98*
+string                                                 builtin function         dcl 53 set ref 95*
+version                   1     000111 automatic       fixed bin(17,0)          level 2 dcl 50 set ref 93*
+wcptr                                  parameter       pointer                  dcl 23 ref 14
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+condition_info_header_ptr              automatic       pointer                  dcl 1-4
+pl1_info_ptr                           automatic       pointer                  dcl 2-6
+
+NAME DECLARED BY EXPLICIT CONTEXT.
+crawlout_default_handler_       000241 constant        entry                    external dcl 14
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 100 100
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0       472         504     434         502
+Length       710     434        12         170      35           0
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+crawlout_default_handler_           212 external procedure  is an external procedure.  
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+crawlout_default_handler_
+                         000100 i                           crawlout_default_handler_
+                         000101 conname                     crawlout_default_handler_
+                         000111 error_info                  crawlout_default_handler_
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+call_ext_out_desc   return_mac          ext_entry_desc      put_terminate       strem_prep
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+signal_
+
+NO EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     14 000234        58 000257        60 000261        67 000272        68 000274        71 000275        74 000302
+     75 000307        77 000316        78 000321        80 000322        82 000324        83 000331        93 000340
+     94 000342        95 000344        96 000345        97 000347        98 000350       100 000351       101 000377
+    103 000400       108 000402       112 000420       113 000427       114 000432       117 000433
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved

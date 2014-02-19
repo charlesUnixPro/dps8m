@@ -1,0 +1,747 @@
+	COMPILATION LISTING OF SEGMENT qedx
+	Compiled by: Multics PL/I Compiler, Release 32f, of October 9, 1989
+	Compiled at: Bull HN, Phoenix AZ, System-M   
+	Compiled on: 11/11/89  0956.0 mst Sat
+	    Options: optimize map
+
+        1 /****^  ***********************************************************
+        2*        *                                                         *
+        3*        * Copyright, (C) Honeywell Bull Inc., 1987                *
+        4*        *                                                         *
+        5*        * Copyright, (C) Honeywell Information Systems Inc., 1983 *
+        6*        *                                                         *
+        7*        *********************************************************** */
+        8 
+        9 /* format: off */
+       10 
+       11 /* Multics qedx Editor command interface */
+       12 
+       13 /* Created:  January 1983 by G. Palter as part of implementation of qedx_ subroutine interface */
+       14 
+       15 /* format: on,style4,delnl,insnl,ifthenstmt,ifthen */
+       16 
+       17 
+       18 qedx:
+       19 qx:
+       20      procedure () options (variable);
+       21 
+       22 
+       23 dcl  argument character (argument_lth) unaligned based (argument_ptr);
+       24 dcl  argument_ptr pointer;
+       25 dcl  argument_lth fixed binary (21);
+       26 dcl  (n_arguments, argument_idx) fixed binary;
+       27 
+       28 dcl  input_dirname character (168);
+       29 dcl  input_ename character (32);
+       30 dcl  input_component character (32);
+       31 dcl  input_file_ptr pointer;
+       32 
+       33 dcl  exec_dirname character (168);
+       34 dcl  exec_ename character (32);
+       35 dcl  exec_component character (32);
+       36 dcl  exec_buffer_bc fixed binary (24);
+       37 dcl  exec_buffer_ptr pointer;
+       38 
+       39 dcl  args_buffer character (4 * sys_info$max_seg_size) based (args_buffer_ptr);
+       40 dcl  args_buffer_used fixed binary (21);
+       41 dcl  args_buffer_ptr pointer;
+       42 
+       43 dcl  1 local_qi aligned,				/* describes how we want the invocation setup */
+       44        2 header like qedx_info.header,
+       45        2 buffers (3) like qedx_info.buffers;		/* 0, exec, args */
+       46 
+       47 dcl  ok_to_continue bit (1);				/* command_query_$yes_no should have used aligned */
+       48 
+       49 dcl  (no_rw_path, have_pathname, have_macro_pathname, have_macro_arguments) bit (1) aligned;
+       50 
+       51 dcl  idx fixed binary;
+       52 dcl  code fixed binary (35);
+       53 
+       54 dcl  invocation_level fixed binary static initial (0);	/* # of active invocations of qedx */
+       55 
+       56 dcl  NL character (1) static options (constant) initial ("
+       57 ");
+       58 
+       59 dcl  QEDX character (32) static options (constant) initial ("qedx");
+       60 
+       61 dcl  1 RECURSION_EXPLANATION_SECTIONS aligned static options (constant),
+       62        2 part1 character (200) unaligned
+       63 	  initial ("There ^[are^;is^] ^d suspended invocation^[s^] of the qedx command which you have
+       64 interrupted (eg: by a quit signal) that are still active.  If you
+       65 answer ""yes"" to this query, you will have an additio"),
+       66        2 part2 character (200) unaligned initial ("nal invocation of
+       67 qedx.  Any changes that you have made to files in prior invocations
+       68 which you have not yet written will not be available to this new qedx.
+       69 In addition, any changes you make to files "),
+       70        2 part3 character (200) unaligned initial ("in this qedx which you are
+       71 also editing in prior invocations will not be reflected in those prior
+       72 invocations and could be lost if you later write out the same file in
+       73 one of those other invocations.
+       74 "),
+       75        2 part4 character (200) unaligned initial ("
+       76 We suggest that you answer ""no"" to this query and use either the
+       77 ""start"" or ""program_interrupt"" command to resume one of your previous
+       78 invocations of qedx or that you use the ""release"" command to abo"),
+       79        2 part5 character (200) unaligned initial ("rt
+       80 those older invocations if you are certain there aren't any modified
+       81 buffers in them.
+       82 
+       83 qedx: Do you wish to continue?");
+       84 
+       85 dcl  RECURSION_EXPLANATION character (920) defined (RECURSION_EXPLANATION_SECTIONS.part1) position (1);
+       86 						/* last part is only 120 characters */
+       87 
+       88 dcl  sys_info$max_seg_size fixed binary (19) external;
+       89 
+       90 /* format: off */
+       91 dcl (error_table_$badopt, error_table_$bigarg, error_table_$inconsistent, error_table_$noarg, error_table_$too_many_args)
+       92 	fixed binary (35) external;
+       93 /* format: on */
+       94 
+       95 dcl  com_err_ entry () options (variable);
+       96 dcl  command_query_$yes_no entry () options (variable);
+       97 dcl  cu_$arg_count entry (fixed binary, fixed binary (35));
+       98 dcl  cu_$arg_ptr entry (fixed binary, pointer, fixed binary (21), fixed binary (35));
+       99 dcl  expand_pathname_$component entry (character (*), character (*), character (*), character (*), fixed binary (35));
+      100 dcl  expand_pathname_$component_add_suffix
+      101 	entry (character (*), character (*), character (*), character (*), character (*), fixed binary (35));
+      102 dcl  get_temp_segment_ entry (character (*), pointer, fixed binary (35));
+      103 dcl  initiate_file_$component
+      104 	entry (character (*), character (*), character (*), bit (*), pointer, fixed binary (24), fixed binary (35));
+      105 dcl  pathname_$component entry (character (*), character (*), character (*)) returns (character (194));
+      106 dcl  qedx_ entry (pointer, fixed binary (35));
+      107 dcl  release_temp_segment_ entry (character (*), pointer, fixed binary (35));
+      108 dcl  terminate_file_ entry (pointer, fixed binary (24), bit (*), fixed binary (35));
+      109 dcl  cleanup condition;
+      110 
+      111 dcl  (divide, length, index, null, substr, string) builtin;
+      112 
+      113 /* qedx: qx: procedure () options (variable); */
+      114 
+      115 	call cu_$arg_count (n_arguments, code);
+      116 	if code ^= 0 then do;
+      117 	     call com_err_ (code, QEDX);
+      118 	     return;
+      119 	end;
+      120 
+      121 	if invocation_level > 0 then do;		/* it would be nice to eliminate this... */
+      122 	     call command_query_$yes_no (ok_to_continue, 0, QEDX, RECURSION_EXPLANATION,
+      123 		"There ^[are^;is^] ^d suspended invocation^[s^;^] of qedx in your process.^/Do you wish to continue?",
+      124 		(invocation_level > 1), invocation_level, (invocation_level > 1));
+      125 	     if ^ok_to_continue then return;
+      126 	end;
+      127 
+      128 	invocation_level = invocation_level + 1;	/* another qedx */
+      129 
+      130 	input_file_ptr,				/* for cleanup handler */
+      131 	     exec_buffer_ptr, args_buffer_ptr = null ();
+      132 
+      133 	on condition (cleanup) call cleanup_qedx_invocation ();
+      134 
+      135 
+      136 /* format: off */
+      137 
+      138 /* Process arguments: syntax of the qedx command is --
+      139*
+      140*      qedx {-control_args} {macro_path {macro_arguments}} */
+      141 
+      142 /* format: on */
+      143 
+      144 	no_rw_path,				/* allow r/w with pathnames and R/W */
+      145 	     have_pathname,				/* haven't seen -pathname yet */
+      146 	     have_macro_pathname,			/* haven't seen first non-control argument yet */
+      147 	     have_macro_arguments = "0"b;		/* haven't seen any macro arguments */
+      148 
+      149 	do argument_idx = 1 to n_arguments;
+      150 
+      151 	     call cu_$arg_ptr (argument_idx, argument_ptr, argument_lth, code);
+      152 	     if code ^= 0 then do;			/* sigh */
+      153 		call com_err_ (code, QEDX, "Fetching argument #^d.", argument_idx);
+      154 		go to RETURN_FROM_QEDX;
+      155 	     end;
+      156 
+      157 	     if ^have_macro_pathname then		/* no non-control argument yet: can still accept -ca's */
+      158 		if index (argument, "-") = 1 then	/* ... a control argument */
+      159 		     if argument = "-no_rw_path" then no_rw_path = "1"b;
+      160 		     else if argument = "-rw_path" then no_rw_path = "0"b;
+      161 
+      162 		     else if (argument = "-pathname") | (argument = "-pn") then
+      163 			if have_pathname then do;
+      164 			     call com_err_ (error_table_$too_many_args, QEDX,
+      165 				"""-pathname"" may only be specified once for this command.");
+      166 			     go to RETURN_FROM_QEDX;
+      167 			end;
+      168 			else do;			/* initial contents for buffer 0 ... */
+      169 			     have_pathname = "1"b;
+      170 			     if argument_idx = n_arguments then do;
+      171 				call com_err_ (error_table_$noarg, QEDX, "Pathname after ""^a"".", argument);
+      172 				go to RETURN_FROM_QEDX;
+      173 			     end;
+      174 			     argument_idx = argument_idx + 1;
+      175 			     call cu_$arg_ptr (argument_idx, argument_ptr, argument_lth, code);
+      176 			     if code ^= 0 then do;
+      177 				call com_err_ (code, QEDX, "Fetching argument #^d.", argument_idx);
+      178 				go to RETURN_FROM_QEDX;
+      179 			     end;
+      180 			     call expand_pathname_$component (argument, input_dirname, input_ename, input_component,
+      181 				code);
+      182 			     if code ^= 0 then do;
+      183 				call com_err_ (code, QEDX, "-pathname ^a", argument);
+      184 				go to RETURN_FROM_QEDX;
+      185 			     end;
+      186 			     call initiate_file_$component (input_dirname, input_ename, input_component, R_ACCESS,
+      187 				input_file_ptr, (0), code);
+      188 			     if code ^= 0 then do;	/* the file doesn't exist (sigh) */
+      189 				call com_err_ (code, QEDX, "-pathname ^a",
+      190 				     pathname_$component (input_dirname, input_ename, input_component));
+      191 				go to RETURN_FROM_QEDX;
+      192 			     end;
+      193 			     call terminate_file_ (input_file_ptr, 0, TERM_FILE_TERM, (0));
+      194 			     input_file_ptr = null ();
+      195 			end;
+      196 
+      197 		     else do;
+      198 			call com_err_ (error_table_$badopt, QEDX, """^a""", argument);
+      199 			go to RETURN_FROM_QEDX;
+      200 		     end;
+      201 
+      202 		else do;				/* first non-control argument: macro pathname */
+      203 		     have_macro_pathname = "1"b;
+      204 		     call expand_pathname_$component_add_suffix (argument, QEDX, exec_dirname, exec_ename,
+      205 			exec_component, code);
+      206 		     if code ^= 0 then do;
+      207 			call com_err_ (code, QEDX, "Macro file: ^a", argument);
+      208 			go to RETURN_FROM_QEDX;
+      209 		     end;
+      210 		     call initiate_file_$component (exec_dirname, exec_ename, exec_component, R_ACCESS,
+      211 			exec_buffer_ptr, exec_buffer_bc, code);
+      212 		     if code ^= 0 then do;		/* the file doesn't exist (sigh) */
+      213 			call com_err_ (code, QEDX, "Macro file: ^a",
+      214 			     pathname_$component (exec_dirname, exec_ename, exec_component));
+      215 			go to RETURN_FROM_QEDX;
+      216 		     end;
+      217 		end;
+      218 
+      219 	     else do;				/* Nth non-control argument: a macro argument */
+      220 		if ^have_macro_arguments then do;	/* ... first macro argument */
+      221 		     call get_temp_segment_ (QEDX, args_buffer_ptr, code);
+      222 		     if code ^= 0 then do;
+      223 			call com_err_ (code, QEDX, "Obtaining buffer space for macro arguments.");
+      224 			go to RETURN_FROM_QEDX;
+      225 		     end;
+      226 		     args_buffer_used = 0;
+      227 		     have_macro_arguments = "1"b;
+      228 		end;
+      229 		call add_to_args_buffer (argument);
+      230 		call add_to_args_buffer (NL);
+      231 	     end;
+      232 	end;
+      233 
+      234 	if no_rw_path & ^have_pathname then do;
+      235 	     call com_err_ (error_table_$inconsistent, QEDX, """-no_rw_path"" must be used with ""-pathname"".");
+      236 	     go to RETURN_FROM_QEDX;
+      237 	end;
+      238 
+      239 
+      240 /* Arguments have been validated: setup qedx_info data structure and invoke qedx_ */
+      241 
+      242 	local_qi.header.version = QEDX_INFO_VERSION_1;
+      243 	local_qi.header.editor_name = QEDX;
+      244 
+      245 	string (local_qi.header.flags) = ""b;
+      246 	local_qi.header.no_rw_path = no_rw_path;
+      247 	local_qi.header.query_if_modified = "1"b;	/* finally after all these years ... */
+      248 
+      249 	local_qi.header.n_buffers = 0;		/* no initial buffers yet */
+      250 
+      251 	if have_pathname then do;			/* include a buffer 0 containing requested file ... */
+      252 	     local_qi.header.n_buffers, idx = 1;
+      253 	     local_qi.buffers (idx).buffer_name = "0";
+      254 	     local_qi.buffers (idx).buffer_pathname = pathname_$component (input_dirname, input_ename, input_component);
+      255 	     string (local_qi.buffers (idx).flags) = ""b;
+      256 	end;
+      257 
+      258 	if have_macro_pathname then do;		/* exec buffer containing a macro to execute ... */
+      259 	     local_qi.header.n_buffers, idx = local_qi.header.n_buffers + 1;
+      260 	     local_qi.buffers (idx).buffer_name = "exec";
+      261 	     local_qi.buffers (idx).buffer_pathname = ""; /* ... no pathname by default */
+      262 	     local_qi.buffers (idx).region_ptr = exec_buffer_ptr;
+      263 	     local_qi.buffers (idx).region_max_lth,	/* ... get size from the system */
+      264 		local_qi.buffers (idx).region_initial_lth = divide ((exec_buffer_bc + 8), 9, 21, 0);
+      265 	     string (local_qi.buffers (idx).flags) = ""b;
+      266 	     local_qi.buffers (idx).read_write_region, local_qi.buffers (idx).execute_buffer = "1"b;
+      267 	end;					/* ... get initial content from us but can't write back */
+      268 
+      269 	if have_macro_arguments then do;		/* a "file" of arguments to the macro ... */
+      270 	     local_qi.header.n_buffers, idx = local_qi.header.n_buffers + 1;
+      271 	     local_qi.buffers (idx).buffer_name = "args";
+      272 	     local_qi.buffers (idx).buffer_pathname = ""; /* ... no pathname by default */
+      273 	     local_qi.buffers (idx).region_ptr = args_buffer_ptr;
+      274 	     local_qi.buffers (idx).region_max_lth, local_qi.buffers (idx).region_initial_lth = args_buffer_used;
+      275 	     string (local_qi.buffers (idx).flags) = ""b;
+      276 	     local_qi.buffers (idx).read_write_region = "1"b;
+      277 	end;					/* ... get initial content from us but can't write back */
+      278 
+      279 
+      280 	call qedx_ (addr (local_qi), code);		/* INVOKE THE EDITOR */
+      281 
+      282 
+      283 RETURN_FROM_QEDX:
+      284 	call cleanup_qedx_invocation ();
+      285 
+      286 	return;
+      287 
+      288 /* Add a character string to the macro arguments buffer */
+      289 
+      290 add_to_args_buffer:
+      291      procedure (p_string);
+      292 
+      293 dcl  p_string character (*) parameter;
+      294 
+      295 	if (args_buffer_used + length (p_string)) > length (args_buffer) then do;
+      296 	     call com_err_ (error_table_$bigarg, QEDX, "Too many macro arguments.  First failing argument: ""^a"".",
+      297 		argument);
+      298 	     go to RETURN_FROM_QEDX;
+      299 	end;
+      300 
+      301 	substr (args_buffer, (args_buffer_used + 1), length (p_string)) = p_string;
+      302 	args_buffer_used = args_buffer_used + length (p_string);
+      303 
+      304 	return;
+      305 
+      306      end add_to_args_buffer;
+      307 
+      308 
+      309 
+      310 /* Cleanup after an invocation of qedx */
+      311 
+      312 cleanup_qedx_invocation:
+      313      procedure ();
+      314 
+      315 	if input_file_ptr ^= null () then do;		/* a very small window nonetheless ... */
+      316 	     call terminate_file_ (input_file_ptr, 0, TERM_FILE_TERM, (0));
+      317 	     input_file_ptr = null ();
+      318 	end;
+      319 
+      320 	if exec_buffer_ptr ^= null () then do;
+      321 	     call terminate_file_ (exec_buffer_ptr, 0, TERM_FILE_TERM, (0));
+      322 	     exec_buffer_ptr = null ();
+      323 	end;
+      324 
+      325 	if args_buffer_ptr ^= null () then do;
+      326 	     call release_temp_segment_ (QEDX, args_buffer_ptr, (0));
+      327 	     args_buffer_ptr = null ();
+      328 	end;
+      329 
+      330 	invocation_level = invocation_level - 1;	/* all gone */
+      331 
+      332 	return;
+      333 
+      334      end cleanup_qedx_invocation;
+      335 
+  1     1 /* BEGIN INCLUDE FILE ... qedx_info.incl.pl1 */
+  1     2 /* Created:  January 1983 by G. Palter */
+  1     3 
+  1     4 /* Data structure which supplies input/output arguments to qedx_ subroutine */
+  1     5 
+  1     6 dcl  1 qedx_info aligned based (qedx_info_ptr),
+  1     7        2 header,					/* allows use of like to build automatic version */
+  1     8          3 version character (8),
+  1     9          3 editor_name character (72) unaligned,
+  1    10          3 buffer_io entry (pointer, bit (1) aligned),	/* procedure invoked to read/write an editor buffer */
+  1    11          3 flags,
+  1    12 	 4 no_rw_path bit (1) unaligned,		/* ON => no r/w may use a pathname and R/W are illegal */
+  1    13 	 4 query_if_modified bit (1) unaligned,		/* ON => query on exit if modified buffers exist */
+  1    14 	 4 caller_does_io bit (1) unaligned,		/* ON => caller does actual work of read/write requests */
+  1    15 	 4 quit_forced bit (1) unaligned,		/* set ON => user used Q or asked to punt modified buffers */
+  1    16 	 4 buffers_truncated bit (1) unaligned,		/* set ON => some editing lost when written */
+  1    17 	 4 pad bit (29) unaligned,
+  1    18          3 n_buffers fixed binary,			/* # of buffers supplied by caller */
+  1    19        2 buffers (qedx_info_n_buffers refer (qedx_info.n_buffers)),
+  1    20          3 buffer_name character (16) unaligned,		/* name of the buffer */
+  1    21          3 buffer_pathname character (256) unaligned,	/* initial default pathname of buffer */
+  1    22          3 region_ptr pointer,			/* -> caller's optional region */
+  1    23          3 region_max_lth fixed binary (21),		/* # of characters which will fit in caller's region */
+  1    24          3 region_initial_lth fixed binary (21),		/* # of characters in caller's region for initial read */
+  1    25          3 region_final_lth fixed binary (21),		/* set to # of characters placed in caller's region on exit */
+  1    26          3 flags,
+  1    27 	 4 read_write_region bit (1) unaligned,		/* ON => use caller's region as default for read/write;
+  1    28*						   OFF => use file specified by pathname as default */
+  1    29 	 4 locked_pathname bit (1) unaligned,		/* ON => read/write will never change default pathname or
+  1    30*						         prevent qedx from trusting the default path;
+  1    31*						   OFF => read with pathname sets ^trusted and write with
+  1    32*							pathname changes the default */
+  1    33 	 4 execute_buffer bit (1) unaligned,		/* ON => execute it's contents before reading from terminal */
+  1    34 	 /*** following switches apply only when read_write_region is ON ... */
+  1    35 	 4 default_read_ok bit (1) unaligned,		/* ON => r without explicit pathname is OK */
+  1    36 	 4 default_write_ok bit (1) unaligned,		/* ON => w without explicit pathname is OK */
+  1    37 	 4 auto_write bit (1) unaligned,		/* ON => automatically write buffer contents on "q" */
+  1    38 	 4 truncated bit (1) unaligned,		/* set ON => edited version is too long for caller's region */
+  1    39 	 4 pad bit (29) unaligned;
+  1    40 
+  1    41 dcl  qedx_info_ptr pointer;
+  1    42 dcl  qedx_info_n_buffers fixed binary;			/* needed to allocate above structure */
+  1    43 
+  1    44 dcl  QEDX_INFO_VERSION_1 character (8) static options (constant) initial ("qxi_01.1");
+  1    45 
+  1    46 /* END INCLUDE FILE ... qedx_info.incl.pl1 */
+      336 
+      337 
+  2     1 /* BEGIN INCLUDE FILE ... access_mode_values.incl.pl1
+  2     2*
+  2     3*   Values for the "access mode" argument so often used in hardcore
+  2     4*   James R. Davis 26 Jan 81  MCR 4844
+  2     5*   Added constants for SM access 4/28/82 Jay Pattin
+  2     6*   Added text strings 03/19/85 Chris Jones
+  2     7**/
+  2     8 
+  2     9 
+  2    10 /* format: style4,delnl,insnl,indattr,ifthen,dclind10 */
+  2    11 dcl	(
+  2    12 	N_ACCESS		   init ("000"b),
+  2    13 	R_ACCESS		   init ("100"b),
+  2    14 	E_ACCESS		   init ("010"b),
+  2    15 	W_ACCESS		   init ("001"b),
+  2    16 	RE_ACCESS		   init ("110"b),
+  2    17 	REW_ACCESS	   init ("111"b),
+  2    18 	RW_ACCESS		   init ("101"b),
+  2    19 	S_ACCESS		   init ("100"b),
+  2    20 	M_ACCESS		   init ("010"b),
+  2    21 	A_ACCESS		   init ("001"b),
+  2    22 	SA_ACCESS		   init ("101"b),
+  2    23 	SM_ACCESS		   init ("110"b),
+  2    24 	SMA_ACCESS	   init ("111"b)
+  2    25 	)		   bit (3) internal static options (constant);
+  2    26 
+  2    27 /* The following arrays are meant to be accessed by doing either 1) bin (bit_value) or
+  2    28*   2) divide (bin_value, 2) to come up with an index into the array. */
+  2    29 
+  2    30 dcl	SEG_ACCESS_MODE_NAMES  (0:7) init ("null", "W", "E", "EW", "R", "RW", "RE", "REW") char (4) internal
+  2    31 			   static options (constant);
+  2    32 
+  2    33 dcl	DIR_ACCESS_MODE_NAMES  (0:7) init ("null", "A", "M", "MA", "S", "SA", "SM", "SMA") char (4) internal
+  2    34 			   static options (constant);
+  2    35 
+  2    36 dcl	(
+  2    37 	N_ACCESS_BIN	   init (00000b),
+  2    38 	R_ACCESS_BIN	   init (01000b),
+  2    39 	E_ACCESS_BIN	   init (00100b),
+  2    40 	W_ACCESS_BIN	   init (00010b),
+  2    41 	RW_ACCESS_BIN	   init (01010b),
+  2    42 	RE_ACCESS_BIN	   init (01100b),
+  2    43 	REW_ACCESS_BIN	   init (01110b),
+  2    44 	S_ACCESS_BIN	   init (01000b),
+  2    45 	M_ACCESS_BIN	   init (00010b),
+  2    46 	A_ACCESS_BIN	   init (00001b),
+  2    47 	SA_ACCESS_BIN	   init (01001b),
+  2    48 	SM_ACCESS_BIN	   init (01010b),
+  2    49 	SMA_ACCESS_BIN	   init (01011b)
+  2    50 	)		   fixed bin (5) internal static options (constant);
+  2    51 
+  2    52 /* END INCLUDE FILE ... access_mode_values.incl.pl1 */
+      338 
+      339 
+  3     1 /* BEGIN INCLUDE FILE ... terminate_file.incl.pl1 */
+  3     2 /* format: style2,^inddcls,idind32 */
+  3     3 
+  3     4 declare 1 terminate_file_switches	based,
+  3     5 	2 truncate		bit (1) unaligned,
+  3     6 	2 set_bc			bit (1) unaligned,
+  3     7 	2 terminate		bit (1) unaligned,
+  3     8 	2 force_write		bit (1) unaligned,
+  3     9 	2 delete			bit (1) unaligned;
+  3    10 
+  3    11 declare TERM_FILE_TRUNC		bit (1) internal static options (constant) initial ("1"b);
+  3    12 declare TERM_FILE_BC		bit (2) internal static options (constant) initial ("01"b);
+  3    13 declare TERM_FILE_TRUNC_BC		bit (2) internal static options (constant) initial ("11"b);
+  3    14 declare TERM_FILE_TERM		bit (3) internal static options (constant) initial ("001"b);
+  3    15 declare TERM_FILE_TRUNC_BC_TERM	bit (3) internal static options (constant) initial ("111"b);
+  3    16 declare TERM_FILE_FORCE_WRITE		bit (4) internal static options (constant) initial ("0001"b);
+  3    17 declare TERM_FILE_DELETE		bit (5) internal static options (constant) initial ("00001"b);
+  3    18 
+  3    19 /* END INCLUDE FILE ... terminate_file.incl.pl1 */
+      340 
+      341 
+      342      end qedx;
+	SOURCE FILES USED IN THIS COMPILATION.
+
+LINE      NUMBER  DATE MODIFIED     NAME			PATHNAME
+             0    11/11/89  0805.9  qedx.pl1                          >spec>install>1111>qedx.pl1
+336          1    05/04/83  1118.0  qedx_info.incl.pl1                >ldd>include>qedx_info.incl.pl1
+338          2    04/11/85  1452.6  access_mode_values.incl.pl1       >ldd>include>access_mode_values.incl.pl1
+340          3    04/06/83  1239.4  terminate_file.incl.pl1           >ldd>include>terminate_file.incl.pl1
+	NAMES DECLARED IN THIS COMPILATION.
+
+IDENTIFIER	     OFFSET    LOC STORAGE CLASS   DATA TYPE		ATTRIBUTES AND REFERENCES
+								(* indicates a set context)
+
+NAMES DECLARED BY DECLARE STATEMENT.
+NL                              000406 constant        char(1)                  initial packed unaligned dcl 56 set ref 230*
+QEDX                            000376 constant        char(32)                 initial packed unaligned dcl 59 set ref 117* 122*
+                                                                                  153* 164* 171* 177* 183* 189* 198* 204* 207* 213*
+                                                                                  221* 223* 235* 243 296* 326*
+QEDX_INFO_VERSION_1             000374 constant        char(8)                  initial packed unaligned dcl 1-44 ref 242
+RECURSION_EXPLANATION                  defined         char(920)                packed unaligned dcl 85 set ref 122*
+RECURSION_EXPLANATION_SECTIONS  000000 constant        structure                level 1 dcl 61
+R_ACCESS                        000432 constant        bit(3)                   initial packed unaligned dcl 2-11 set ref 186* 210*
+TERM_FILE_TERM                  000372 constant        bit(3)                   initial packed unaligned dcl 3-14 set ref 193* 316*
+                                                                                  321*
+args_buffer                            based           char                     packed unaligned dcl 39 set ref 295 301*
+args_buffer_ptr                 000302 automatic       pointer                  dcl 41 set ref 130* 221* 273 295 301 325 326* 327*
+args_buffer_used                000300 automatic       fixed bin(21,0)          dcl 40 set ref 226* 274 295 301 302* 302
+argument                               based           char                     packed unaligned dcl 23 set ref 157 157 160 162 162
+                                                                                  171* 180* 183* 198* 204* 207* 229* 296*
+argument_idx                    000104 automatic       fixed bin(17,0)          dcl 26 set ref 149* 151* 153* 170 174* 174 175* 177*
+argument_lth                    000102 automatic       fixed bin(21,0)          dcl 25 set ref 151* 157 157 160 162 162 171 171 175*
+                                                                                  180 180 183 183 198 198 204 204 207 207 229 229
+                                                                                  296 296
+argument_ptr                    000100 automatic       pointer                  dcl 24 set ref 151* 157 157 160 162 162 171 175* 180
+                                                                                  183 198 204 207 229 296
+buffer_name              32     000304 automatic       char(16)                 array level 3 packed packed unaligned dcl 43 set ref
+                                                                                  253* 260* 271*
+buffer_pathname          36     000304 automatic       char(256)                array level 3 packed packed unaligned dcl 43 set ref
+                                                                                  254* 261* 272*
+buffers                  32            based           structure                array level 2 in structure "qedx_info" dcl 1-6
+                                                                                  in procedure "qx"
+buffers                  32     000304 automatic       structure                array level 2 in structure "local_qi" dcl 43
+                                                                                  in procedure "qx"
+cleanup                         000704 stack reference condition                dcl 109 ref 133
+code                            000702 automatic       fixed bin(35,0)          dcl 52 set ref 115* 116 117* 151* 152 153* 175* 176
+                                                                                  177* 180* 182 183* 186* 188 189* 204* 206 207*
+                                                                                  210* 212 213* 221* 222 223* 280*
+com_err_                        000026 constant        entry                    external dcl 95 ref 117 153 164 171 177 183 189 198
+                                                                                  207 213 223 235 296
+command_query_$yes_no           000030 constant        entry                    external dcl 96 ref 122
+cu_$arg_count                   000032 constant        entry                    external dcl 97 ref 115
+cu_$arg_ptr                     000034 constant        entry                    external dcl 98 ref 151 175
+divide                                                 builtin function         dcl 111 ref 263
+editor_name               2     000304 automatic       char(72)                 level 3 packed packed unaligned dcl 43 set ref 243*
+error_table_$badopt             000014 external static fixed bin(35,0)          dcl 91 set ref 198*
+error_table_$bigarg             000016 external static fixed bin(35,0)          dcl 91 set ref 296*
+error_table_$inconsistent       000020 external static fixed bin(35,0)          dcl 91 set ref 235*
+error_table_$noarg              000022 external static fixed bin(35,0)          dcl 91 set ref 171*
+error_table_$too_many_args      000024 external static fixed bin(35,0)          dcl 91 set ref 164*
+exec_buffer_bc                  000274 automatic       fixed bin(24,0)          dcl 36 set ref 210* 263
+exec_buffer_ptr                 000276 automatic       pointer                  dcl 37 set ref 130* 210* 262 320 321* 322*
+exec_component                  000264 automatic       char(32)                 packed unaligned dcl 35 set ref 204* 210* 213* 213*
+exec_dirname                    000202 automatic       char(168)                packed unaligned dcl 33 set ref 204* 210* 213* 213*
+exec_ename                      000254 automatic       char(32)                 packed unaligned dcl 34 set ref 204* 210* 213* 213*
+execute_buffer          143(02) 000304 automatic       bit(1)                   array level 4 packed packed unaligned dcl 43 set ref
+                                                                                  266*
+expand_pathname_$component      000036 constant        entry                    external dcl 99 ref 180
+expand_pathname_$component_add_suffix
+                                000040 constant        entry                    external dcl 100 ref 204
+flags                    30     000304 automatic       structure                level 3 in structure "local_qi" dcl 43 in procedure
+                                                                                  "qx" set ref 245*
+flags                   143     000304 automatic       structure                array level 3 in structure "local_qi" dcl 43
+                                                                                  in procedure "qx" set ref 255* 265* 275*
+get_temp_segment_               000042 constant        entry                    external dcl 102 ref 221
+have_macro_arguments            000700 automatic       bit(1)                   dcl 49 set ref 144* 220 227* 269
+have_macro_pathname             000677 automatic       bit(1)                   dcl 49 set ref 144* 157 203* 258
+have_pathname                   000676 automatic       bit(1)                   dcl 49 set ref 144* 162 169* 234 251
+header                          000304 automatic       structure                level 2 in structure "local_qi" dcl 43 in procedure
+                                                                                  "qx"
+header                                 based           structure                level 2 in structure "qedx_info" dcl 1-6
+                                                                                  in procedure "qx"
+idx                             000701 automatic       fixed bin(17,0)          dcl 51 set ref 252* 253 254 255 259* 260 261 262 263
+                                                                                  263 265 266 266 270* 271 272 273 274 274 275 276
+index                                                  builtin function         dcl 111 ref 157
+initiate_file_$component        000044 constant        entry                    external dcl 103 ref 186 210
+input_component                 000167 automatic       char(32)                 packed unaligned dcl 30 set ref 180* 186* 189* 189*
+                                                                                  254*
+input_dirname                   000105 automatic       char(168)                packed unaligned dcl 28 set ref 180* 186* 189* 189*
+                                                                                  254*
+input_ename                     000157 automatic       char(32)                 packed unaligned dcl 29 set ref 180* 186* 189* 189*
+                                                                                  254*
+input_file_ptr                  000200 automatic       pointer                  dcl 31 set ref 130* 186* 193* 194* 315 316* 317*
+invocation_level                000010 internal static fixed bin(17,0)          initial dcl 54 set ref 121 122 122* 122 128* 128
+                                                                                  330* 330
+length                                                 builtin function         dcl 111 ref 295 295 301 302
+local_qi                        000304 automatic       structure                level 1 dcl 43 set ref 280 280
+n_arguments                     000103 automatic       fixed bin(17,0)          dcl 26 set ref 115* 149 170
+n_buffers                31     000304 automatic       fixed bin(17,0)          level 3 dcl 43 set ref 249* 252* 259 259* 270 270*
+no_rw_path               30     000304 automatic       bit(1)                   level 4 in structure "local_qi" packed packed
+                                                                                  unaligned dcl 43 in procedure "qx" set ref 246*
+no_rw_path                      000675 automatic       bit(1)                   dcl 49 in procedure "qx" set ref 144* 157* 160* 234
+                                                                                  246
+null                                                   builtin function         dcl 111 ref 130 194 315 317 320 322 325 327
+ok_to_continue                  000674 automatic       bit(1)                   packed unaligned dcl 47 set ref 122* 125
+p_string                               parameter       char                     packed unaligned dcl 293 ref 290 295 301 301 302
+part1                           000000 constant        char(200)                initial level 2 packed packed unaligned dcl 61 ref
+                                                                                  122 122
+pathname_$component             000046 constant        entry                    external dcl 105 ref 189 189 213 213 254
+qedx_                           000050 constant        entry                    external dcl 106 ref 280
+qedx_info                              based           structure                level 1 dcl 1-6
+query_if_modified        30(01) 000304 automatic       bit(1)                   level 4 packed packed unaligned dcl 43 set ref 247*
+read_write_region       143     000304 automatic       bit(1)                   array level 4 packed packed unaligned dcl 43 set ref
+                                                                                  266* 276*
+region_initial_lth      141     000304 automatic       fixed bin(21,0)          array level 3 dcl 43 set ref 263* 274*
+region_max_lth          140     000304 automatic       fixed bin(21,0)          array level 3 dcl 43 set ref 263* 274*
+region_ptr              136     000304 automatic       pointer                  array level 3 dcl 43 set ref 262* 273*
+release_temp_segment_           000052 constant        entry                    external dcl 107 ref 326
+string                                                 builtin function         dcl 111 set ref 245* 255* 265* 275*
+substr                                                 builtin function         dcl 111 set ref 301*
+sys_info$max_seg_size           000012 external static fixed bin(19,0)          dcl 88 ref 295 301
+terminate_file_                 000054 constant        entry                    external dcl 108 ref 193 316 321
+version                         000304 automatic       char(8)                  level 3 dcl 43 set ref 242*
+
+NAMES DECLARED BY DECLARE STATEMENT AND NEVER REFERENCED.
+A_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+A_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+DIR_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-33
+E_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+E_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+M_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+M_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+N_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+N_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+REW_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+REW_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+RE_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RE_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+RW_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+RW_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+R_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+SA_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SA_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+SEG_ACCESS_MODE_NAMES                  internal static char(4)                  initial array packed unaligned dcl 2-30
+SMA_ACCESS                             internal static bit(3)                   initial packed unaligned dcl 2-11
+SMA_ACCESS_BIN                         internal static fixed bin(5,0)           initial dcl 2-36
+SM_ACCESS                              internal static bit(3)                   initial packed unaligned dcl 2-11
+SM_ACCESS_BIN                          internal static fixed bin(5,0)           initial dcl 2-36
+S_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+S_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+TERM_FILE_BC                           internal static bit(2)                   initial packed unaligned dcl 3-12
+TERM_FILE_DELETE                       internal static bit(5)                   initial packed unaligned dcl 3-17
+TERM_FILE_FORCE_WRITE                  internal static bit(4)                   initial packed unaligned dcl 3-16
+TERM_FILE_TRUNC                        internal static bit(1)                   initial packed unaligned dcl 3-11
+TERM_FILE_TRUNC_BC                     internal static bit(2)                   initial packed unaligned dcl 3-13
+TERM_FILE_TRUNC_BC_TERM                internal static bit(3)                   initial packed unaligned dcl 3-15
+W_ACCESS                               internal static bit(3)                   initial packed unaligned dcl 2-11
+W_ACCESS_BIN                           internal static fixed bin(5,0)           initial dcl 2-36
+qedx_info_n_buffers                    automatic       fixed bin(17,0)          dcl 1-42
+qedx_info_ptr                          automatic       pointer                  dcl 1-41
+terminate_file_switches                based           structure                level 1 packed packed unaligned dcl 3-4
+
+NAMES DECLARED BY EXPLICIT CONTEXT.
+RETURN_FROM_QEDX                002334 constant        label                    dcl 283 ref 154 166 172 178 184 191 199 208 215 224
+                                                                                  236 298
+add_to_args_buffer              002341 constant        entry                    internal dcl 290 ref 229 230
+cleanup_qedx_invocation         002430 constant        entry                    internal dcl 312 ref 133 283
+qedx                            000627 constant        entry                    external dcl 18
+qx                              000620 constant        entry                    external dcl 18
+
+NAME DECLARED BY CONTEXT OR IMPLICATION.
+addr                                                   builtin function         ref 280 280
+
+STORAGE REQUIREMENTS FOR THIS PROGRAM.
+
+	Object	Text	Link	Symbol	Defs	Static
+Start          0       0      3050        3126    2575        3060
+Length      3406    2575        56         243     252           2
+
+BLOCK NAME	         STACK SIZE     TYPE		WHY NONQUICK/WHO SHARES STACK FRAME
+qx                                  630 external procedure  is an external procedure.  
+on unit on line 133                  64 on unit               
+add_to_args_buffer                      internal procedure  shares stack frame of external procedure qx.  
+cleanup_qedx_invocation              84 internal procedure  is called by several nonquick procedures.  
+
+STORAGE FOR INTERNAL STATIC VARIABLES.
+
+   LOC IDENTIFIER                  BLOCK NAME
+000010 invocation_level            qx
+
+STORAGE FOR AUTOMATIC VARIABLES.
+
+STACK FRAME                 LOC IDENTIFIER                  BLOCK NAME
+qx                       000100 argument_ptr                qx
+                         000102 argument_lth                qx
+                         000103 n_arguments                 qx
+                         000104 argument_idx                qx
+                         000105 input_dirname               qx
+                         000157 input_ename                 qx
+                         000167 input_component             qx
+                         000200 input_file_ptr              qx
+                         000202 exec_dirname                qx
+                         000254 exec_ename                  qx
+                         000264 exec_component              qx
+                         000274 exec_buffer_bc              qx
+                         000276 exec_buffer_ptr             qx
+                         000300 args_buffer_used            qx
+                         000302 args_buffer_ptr             qx
+                         000304 local_qi                    qx
+                         000674 ok_to_continue              qx
+                         000675 no_rw_path                  qx
+                         000676 have_pathname               qx
+                         000677 have_macro_pathname         qx
+                         000700 have_macro_arguments        qx
+                         000701 idx                         qx
+                         000702 code                        qx
+
+THE FOLLOWING EXTERNAL OPERATORS ARE USED BY THIS PROGRAM.
+r_g_a               call_ext_out_desc   call_ext_out        call_int_this       call_int_other      return_mac
+enable_op           ext_entry           int_entry
+
+THE FOLLOWING EXTERNAL ENTRIES ARE CALLED BY THIS PROGRAM.
+com_err_                      command_query_$yes_no         cu_$arg_count                 cu_$arg_ptr
+expand_pathname_$component    expand_pathname_$component_add_suffix                       get_temp_segment_
+initiate_file_$component      pathname_$component           qedx_                         release_temp_segment_
+terminate_file_
+
+THE FOLLOWING EXTERNAL VARIABLES ARE USED BY THIS PROGRAM.
+error_table_$badopt           error_table_$bigarg           error_table_$inconsistent     error_table_$noarg
+error_table_$too_many_args    sys_info$max_seg_size
+
+
+
+
+   LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC      LINE    LOC   
+     18 000617       115 000634       116 000644       117 000646       118 000663       121 000664       122 000667
+    125 000744       128 000747       130 000751       133 000755       144 000777       149 001003       151 001013
+    152 001030       153 001032       154 001065       157 001066       160 001114       162 001122       164 001134
+    166 001160       169 001161       170 001163       171 001166       172 001221       174 001222       175 001223
+    176 001240       177 001242       178 001275       180 001276       182 001331       183 001333       184 001367
+    186 001370       188 001431       189 001433       191 001510       193 001511       194 001540       195 001542
+    198 001543       199 001575       200 001576       203 001577       204 001601       206 001637       207 001641
+    208 001677       210 001700       212 001740       213 001742       215 002021       217 002022       220 002023
+    221 002025       222 002046       223 002050       224 002074       226 002075       227 002076       229 002100
+    230 002113       232 002116       234 002120       235 002124       236 002150       242 002151       243 002153
+    245 002156       246 002157       247 002163       249 002165       251 002166       252 002170       253 002173
+    254 002200       255 002234       258 002235       259 002237       260 002243       261 002250       262 002254
+    263 002256       265 002264       266 002265       269 002271       270 002273       271 002277       272 002304
+    273 002310       274 002312       275 002316       276 002317       280 002321       283 002334       286 002340
+    290 002341       295 002352       296 002362       298 002414       301 002415       302 002425       304 002426
+    312 002427       315 002435       316 002442       317 002470       320 002473       321 002477       322 002526
+    325 002531       326 002535       327 002557       330 002562       332 002565
+
+
+                                          -----------------------------------------------------------
+
+
+Historical Background
+
+This edition of the Multics software materials and documentation is provided and donated
+to Massachusetts Institute of Technology by Group BULL including BULL HN Information Systems Inc. 
+as a contribution to computer science knowledge.  
+This donation is made also to give evidence of the common contributions of Massachusetts Institute of Technology,
+Bell Laboratories, General Electric, Honeywell Information Systems Inc., Honeywell BULL Inc., Groupe BULL
+and BULL HN Information Systems Inc. to the development of this operating system. 
+Multics development was initiated by Massachusetts Institute of Technology Project MAC (1963-1970),
+renamed the MIT Laboratory for Computer Science and Artificial Intelligence in the mid 1970s, under the leadership
+of Professor Fernando Jose Corbato. Users consider that Multics provided the best software architecture 
+for managing computer hardware properly and for executing programs. Many subsequent operating systems 
+incorporated Multics principles.
+Multics was distributed in 1975 to 2000 by Group Bull in Europe , and in the U.S. by Bull HN Information Systems Inc., 
+as successor in interest by change in name only to Honeywell Bull Inc. and Honeywell Information Systems Inc. .
+
+                                          -----------------------------------------------------------
+
+Permission to use, copy, modify, and distribute these programs and their documentation for any purpose and without
+fee is hereby granted,provided that the below copyright notice and historical background appear in all copies
+and that both the copyright notice and historical background and this permission notice appear in supporting
+documentation, and that the names of MIT, HIS, BULL or BULL HN not be used in advertising or publicity pertaining
+to distribution of the programs without specific prior written permission.
+    Copyright 1972 by Massachusetts Institute of Technology and Honeywell Information Systems Inc.
+    Copyright 2006 by BULL HN Information Systems Inc.
+    Copyright 2006 by Bull SAS
+    All Rights Reserved
