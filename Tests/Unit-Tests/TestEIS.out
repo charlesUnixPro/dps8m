@@ -1,11 +1,11 @@
-2402 (004542) words loaded
+2432 (004600) words loaded
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestEIS ... 2/15 20:53 
+This is TestEIS ... 2/19 00:00 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))
-Result: 320000000001 043105777777 (Should be 320000000001 043105XXXXXX)
+Result: 320000000001 043105000000 (Should be 320000000001 043105XXXXXX)
 Result: '      -12345' (Should be '      -12345')
 DTB Tests ...
 Result: 777777775456 (Should be 777777775456)
@@ -25,6 +25,7 @@ Result: 000000000022 064126170235 (Should be 000000000022 064126170235)
 Result: 'SOURCE T' (Should be 'SOURCE T')
 Result: '.....LE ....' (Should be '.....LE ....')
 Result: "HIS IS" (Should be "HIS IS")
+Result: 'QwErTyUiOp' (Should be 'QwErTyUiOp')
 MRL Tests .....
 Result: '0000  ABCDEFGHIJKL' (Should be 'xxxx  ABCDEFGHIJKL')
 Result: '000000320001 043105147211' (Should be '000000320001 043105147211')
@@ -109,8 +110,8 @@ CMPN Tests ...
 2. Result FLD2 = FLD1
 3. Result FLD2 > FLD1
 
-cpuCycles = 25637
+cpuCycles = 25958
 TestEIS-10> g 0
 
-DIS instruction, IC: 003252 (000000616000)
+DIS instruction, IC: 003311 (000000616000)
 Goodbye

@@ -22,8 +22,8 @@ segments load deferred
 segments lot snap
 
 set debug stderr
-;set cpu debug=trace;REGDUMPPR
-set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
+;set cpu debug=trace
+;set cpu debug=trace;regdumpaqi;regdumpidx;addrmod;appending;REGDUMPPR
 ;set cpu debug=trace;addrmod;appending;REGDUMPPR
 
 g 1
