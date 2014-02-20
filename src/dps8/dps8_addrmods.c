@@ -1403,6 +1403,7 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
             
+// XXX Should thie if(prepare)?
                 TPR.CA = Yi;
                 // read data
                 if (operType == readCY || operType == rmwCY) //READOP(i))
@@ -1448,7 +1449,7 @@ R_MOD:;
             
                 Write(i, tmp18, indword, OPERAND_STORE, i->a);
             
-                TPR.CA = Yi;
+                //TPR.CA = Yi;
             
             return SCPE_OK;
             
