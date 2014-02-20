@@ -170,9 +170,11 @@ operand
     : expr 
     ;
 
-operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
+operands: /* empty */       { opnd.hi = 0; opnd.lo = 0; opnd.bit29 = false;             }
     | operand               {
                                 opnd.lo = 0;
+                                opnd.bit29 = false;
+                                
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
@@ -189,6 +191,7 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
                             }
     | operand ',' modifier  {
                                 opnd.lo = $3 & 077;
+                                opnd.bit29 = false;
                                 if ($1->type == eExprTemporary)
                                 {
                                     opnd.hi = (6 << 15) | ($1->value & 077777);
@@ -203,18 +206,19 @@ operands: /* empty */       { opnd.hi = 0; opnd.lo = 0;                        }
                                     opnd.hi = $1->value & AMASK;
 
                             }
-    | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0;         }
+    | literal               { opnd.hi = $1->addr & AMASK; opnd.lo = 0; opnd.bit29 = false;        }
     | literal ',' modifier  {
                                if ($3 == 3 || $3 == 7)
                                   opnd.hi = get18($1, (int)$3); // process literal w/ du/dl modifier
                                else
                                   opnd.hi = $1->addr & AMASK;
                                opnd.lo = $3 & 077;
+                               opnd.bit29 = false;
                             }
     | ptr_reg '|' operand               { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = 0;        }
     | ptr_reg '|' operand ',' modifier  { opnd.bit29 = true; opnd.hi = (word18)(($1 << 15) | ($3->value & 077777)); opnd.lo = $5 & 077; }
 
-    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0;    }
+    | VFDLIT    vfdArgs                 { literal *l = doVFDLiteral($2); opnd.hi = l->addr & AMASK; opnd.lo = 0; opnd.bit29 = false;   }
 
     | external                          { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = 020;      }
     | external ',' modifier             { expr *e = getExtRef($1); opnd.bit29 = true; opnd.hi = (word18)(4 << 15) | (word18)e->value; opnd.lo = $3 & 077; }
