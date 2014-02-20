@@ -1998,6 +1998,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Super user:               %01o(8)\n", switches . super_user);
     sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", switches . halt_on_unimp);
+    sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
 
     return SCPE_OK;
 }
@@ -2026,6 +2027,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           super_user = n
 //           epp_hack = n
 //           halt_on_unimplmented = n
+//           disable_wam = 0
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2117,6 +2119,7 @@ static config_list_t cpu_config_list [] =
     /* 19 */ { "super_user", 0, 1, cfg_on_off },
     /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
     /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
+    /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2235,6 +2238,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 21: // HALT_ON_UNIMPLEMENTED
               switches . halt_on_unimp = v;
+              break;
+
+            case 22: // DISABLE_WAM
+              switches . disable_wam = v;
               break;
 
             default:

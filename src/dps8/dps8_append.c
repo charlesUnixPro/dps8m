@@ -266,6 +266,12 @@ static _sdw* fetchSDWfromSDWAM(DCDstruct *i, word15 segno)
         sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0):segno=%05o\n", segno);
     }
     
+    if (switches . disable_wam)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchSDWfromSDWAM(0): SDWAM disabled\n");
+        return NULL;
+    }
+    
 #if 0
     if (switches . degenerate_mode && (! i -> a) && (get_addr_mode () == ABSOLUTE_mode))
       {
@@ -481,6 +487,34 @@ t_stat dumpSDWAM (void)
  */
 static void loadSDWAM(word15 segno)
 {
+    if (switches . disable_wam)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "loadSDWAM: SDWAM disabled\n");
+        _sdw *p = &SDWAM[0];
+        p->ADDR = SDW0.ADDR;
+        p->R1 = SDW0.R1;
+        p->R2 = SDW0.R2;
+        p->R3 = SDW0.R3;
+        p->BOUND = SDW0.BOUND;
+        p->R = SDW0.R;
+        p->E = SDW0.E;
+        p->W = SDW0.W;
+        p->P = SDW0.P;
+        p->U = SDW0.U;
+        p->G = SDW0.G;
+        p->C = SDW0.C;
+        p->CL = SDW0.EB;
+        p->POINTER = segno;
+        p->USE = 0;
+            
+        //p->_initialized = true;     // in use by SDWAM
+        p->F = true;     // in use by SDWAM
+            
+        SDW = p;
+            
+        return;
+    }
+    
     /* If the SDWAM match logic does not indicate a hit, the SDW is fetched from the descriptor segment in main memory and loaded into the SDWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63?), and the newly loaded register is read out into the address preparation circuitry.
      */
     for(int _n = 0 ; _n < 64 ; _n++)
@@ -545,6 +579,12 @@ static void loadSDWAM(word15 segno)
 
 static _ptw* fetchPTWfromPTWAM(word15 segno, word18 CA)
 {
+    if (switches . disable_wam)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "fetchPTWfromPTWAM: PTWAM disabled\n");
+        return NULL;
+    }
+    
     for(int _n = 0 ; _n < 64 ; _n++)
     {
         if (((CA >> 10) & 0377) == ((PTWAM[_n].PAGENO >> 4) & 0377) && PTWAM[_n].POINTER == segno && PTWAM[_n].F)   //_initialized)
@@ -590,6 +630,23 @@ static _ptw0* fetchPTW(_sdw *sdw, word18 offset)
 
 static void loadPTWAM(word15 segno, word18 offset)
 {
+    if (switches . disable_wam)
+    {
+        sim_debug(DBG_APPENDING, &cpu_dev, "loadPTWAM: PTWAM disabled\n");
+        _ptw *p = &PTWAM[0];
+        p->ADDR = PTW0.ADDR;
+        p->M = PTW0.M;
+        p->PAGENO = (offset >> 6) & 07777;
+        p->POINTER = segno;
+        p->USE = 0;
+            
+            //p->_initialized = true;
+        p->F = true;
+            
+        PTW = p;
+        return;
+    }
+    
     /*
      * If the PTWAM match logic does not indicate a hit, the PTW is fetched from main memory and loaded into the PTWAM register with usage count 0 (the oldest), all usage counts are decremented by one with the newly loaded register rolling over from 0 to 15 (63), and the newly loaded register is read out into the address preparation circuitry.
      */
