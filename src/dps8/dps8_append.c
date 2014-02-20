@@ -727,7 +727,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault)
 
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%d) acvFaults=%d\n", strACV(acvfault), (int)acvFault, acvFaults);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d\n", strACV(acvfault), (long)acvFault, acvFaults);
     }
     
     doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
@@ -809,6 +809,7 @@ word24
 doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 {
 //    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) lastCycle=%s, thisCycle=%s\n", strPCT(lastCycle), strPCT(thisCycle));
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) thisCycle=%s\n", strPCT(thisCycle));
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) PPR.PRR=%o PPR.PSR=%05o\n", PPR.PRR, PPR.PSR);
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(Entry) TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 
@@ -916,7 +917,7 @@ B:;
         goto E;
     
     // Transfer or instruction fetch?
-    if (instructionFetch || (i->info && i->info->flags & TRANSFER_INS))
+    if (instructionFetch || (thisCycle == OPERAND_READ && (i->info && i->info->flags & TRANSFER_INS)))
         goto F;
     
     //if (isSTROP(i))

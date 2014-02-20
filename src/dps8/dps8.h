@@ -2870,7 +2870,6 @@ char *strSDW0(_sdw0 *SDW);
 char *strSDW(_sdw *SDW);
 char *strDSBR(void);
 t_stat dumpSDWAM (void);
-bool doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag);
 
 /* dps8_bar.c */
 

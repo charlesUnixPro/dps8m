@@ -522,7 +522,7 @@ static void doITS(word4 Tag)
 }
 
 
-bool
+static bool
 doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
 {
     word6 indTag = GET_TAG(indword);
@@ -560,7 +560,7 @@ doITSITP(DCDstruct *i, word18 address, word36 indword, word6 Tag)
     // this is probably sooo wrong, but it's a start ...
     itxPair[0] = indword;
     
-    Read(i, address + 1, &itxPair[1], OPERAND_READ, i->a);
+    Read(i, address + 1, &itxPair[1], INDIRECT_WORD_FETCH, i->a);
     
     sim_debug(DBG_APPENDING, &cpu_dev, "doITS/ITP: YPair= %012llo %012llo\n", itxPair[0], itxPair[1]);
     
@@ -694,10 +694,19 @@ R_MOD:;
         
         Read(i, TPR.CA, &indword, INDIRECT_WORD_FETCH, i->a); //TM_RI);
     
-        TPR.CA = GETHI(indword);
-        rTAG = GET_TAG(indword);
+        if (ISITP(indword) || ISITS(indword))
+        {
+           if (!doITSITP(i, iCA, indword, iTAG))
+               return SCPE_UNK;    // some problem with ITS/ITP stuff
+           // doITSITP set TPR.CA, rTag, ry
+        }
+        else
+        {
+            TPR.CA = GETHI(indword);
+            rTAG = GET_TAG(indword);
+            rY = TPR.CA;
+        }
         
-        rY = TPR.CA;
         
 #ifndef QUIET_UNUSED
     RI_MOD2:;
@@ -731,8 +740,8 @@ R_MOD:;
 #if 0
             goto IT_MOD;
 #else
-       {
-           if (!doITSITP(i, iCA, indword, iTAG))
+        {
+            if (!doITSITP(i, iCA, indword, iTAG))
                return SCPE_UNK;    // some problem with ITS/ITP stuff
         
             if (operType == prepareCA)
@@ -874,7 +883,7 @@ R_MOD:;
                 if (!doITSITP(i, iCA, indword, iTAG))
                     return SCPE_UNK;    // some problem with ITS/ITP stuff
 
-                sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
+                sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP: TPR.TSR:%06o TPR.CA:%06o\n", TPR.TSR, TPR.CA);
 
                 if (operType == prepareCA)
                 {
@@ -883,11 +892,11 @@ R_MOD:;
                 }
                 if (operType == readCY || operType == rmwCY)
                 {
-                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR(i));
+                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s):\n", opDescSTR(i));
 
                     ReadOP(i, TPR.CA, OPERAND_READ, true);
                     
-                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
+                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "SPEC_ITS/ITP (%s): Operand contents: %s\n", opDescSTR(i), operandSTR(i));
                 }
             
                 if (operType == writeCY || operType == rmwCY)
@@ -898,7 +907,7 @@ R_MOD:;
                     modCont->i = i;
                     modCont->segment = TPR.TSR;
                     
-                    sim_debug(DBG_ADDRMOD | DBG_APPENDING, &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
+                    sim_debug((DBG_ADDRMOD | DBG_APPENDING), &cpu_dev, "IT_MOD(SPEC_ITP/SPEC_ITS): saving continuation '%s'\n", modContSTR(modCont));
                 }
                 goto startCA;
                 
