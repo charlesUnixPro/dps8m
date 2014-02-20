@@ -1036,25 +1036,6 @@ The file `20184.ini' is will set up the base system and boot the '20184.tap' tap
 
 \part{AL-39 errata}
 
-\section{Page or unpaged mode}
-
-AL-39,Page 289: 
-
-\begin{quote}
-"A bit in the \texttt{SDW} for a segment (\texttt{SDW.U}) specifies whether the segment is paged or
-unpaged."
-\end{quote}
-
-This makes no sense; the procedure for looking up an \texttt{SDW} is different for paged and unpaged
-configurations. I believe the sentence should read:
-
-\begin{quote}
-"A bit in the \texttt{DSBR} for a segment (\texttt{DSBR.U}) specifies whether the segment is paged or
-unpaged."
-\end{quote}
-
-The same error appears on page 390.
-
 \section{\texttt{FRD} instruction.}
 
 In the description of the \texttt{FRD} instruction AL39 has these notes:
