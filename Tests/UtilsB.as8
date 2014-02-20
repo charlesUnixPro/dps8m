@@ -1,0 +1,78 @@
+"
+" some more utility routines for use in the FXE environment ...
+"
+
+    name        UtilsB
+    segdef      getCharAB
+    "entry       getCharAB
+    
+  	segref      UtilsA, ioa
+
+    
+"
+" return in A the character given by arg1[arg2]
+"
+
+            even
+saveRA:      bss     ,2
+saveX:      bss     ,8
+saveIR:     bss     ,1
+
+temp1:      bss     ,1
+temp2:      bss     ,1
+arg1:       bss     ,1
+arg2:       bss     ,1
+
+            even
+LAQ:
+LA:         bss     ,1
+LQ:         bss     ,1
+
+            sixteen
+savePR:     bss     ,16
+
+            even
+strPtr:     bss     ,2
+
+getCharAB:  "push
+        sti     saveIR      " save IR
+        sreg    saveX       " save index registers
+        spri    savePR      " save PRs
+
+        epp3    pr2|2       " add 2 words for arguments
+        spri3   saveRA      " save for return to caller
+
+        lda     pr2|0       " pick up pointer to string - arg1
+        sta     arg1
+
+        lda     pr2|1       " pick up index - arg2
+        sta     arg2
+
+        lprp3   arg1        " string address => pr3
+        sprp3   temp2
+
+        tsp2    UtilsA$ioa
+        acc     ~getCharAB: arg1: ^w / ^n\r\n~
+        nop     arg1
+        nop     arg2
+
+        ldq     arg2        " pick up index - arg2
+        qrl     18          " move upper 18-bit to lower 18-bits
+        div     =4,dl       " how many words to skip => Q, char pos in A
+        stq     LQ          " words to skip => Q
+        sta     LA          " char pos => A
+
+        tsp2    UtilsA$ioa
+        acc     ~getCharAB: ... ^d / ^d\r\n~
+        nop     LQ
+        nop     LA
+
+        " determine how many words we need to skip for index arg2
+
+        lpri    savePR
+        lreg    saveX       " restore regsiters
+
+        rtcd    saveRA
+
+        "return
+
