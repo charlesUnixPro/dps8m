@@ -3835,12 +3835,21 @@ void scm(DCDstruct *ins)
             ctest &= 0777;   // keep 9-bits
     }
 
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d srcCN2:%d srcTA:%d srcTA2:%d srcSZ:%d mask:0%06o ctest: 0%03o\n",
+      __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcTA2, e -> srcSZ, 
+      mask, ctest);
+
     word18 y3 = GETHI(e->OP3);
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
     word18 r = (word18)getMFReg(y3REG, true);
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s y3:0%06o y3A:%d y3REG: %d, r:%d\n",
+      __func__, y3, y3A, y3REG, r);
+
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     if (y3A)
@@ -3862,6 +3871,11 @@ void scm(DCDstruct *ins)
             
             e->ADDR3.mat = viaPR;
         }
+
+        sim_debug (DBG_TRACEEXT, & cpu_dev, 
+          "%s is y3a: n:%d offset:0%06o y3:0%06o ARn_CHAR:%d ARn_BITNO:%d SNR:0%5o RNR:%d mat%d\n",
+          __func__, n, offset, y3, ARn_CHAR, ARn_BITNO, e->ADDR3.SNR, e->ADDR3.RNR, e->ADDR3.mat);
+
     }
     
     y3 +=  ((9*ARn_CHAR + 36*r + ARn_BITNO) / 36);
@@ -3869,6 +3883,9 @@ void scm(DCDstruct *ins)
     
     e->ADDR3.address = y3;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s y3: :0%06o\n",
+      __func__, y3);
     //get469(NULL, 0, 0, 0);    // initialize char getter
     
     int i = 0;
