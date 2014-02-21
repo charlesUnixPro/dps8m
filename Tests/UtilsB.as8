@@ -3,7 +3,7 @@
 "
 
     name        UtilsB
-    segdef      getCharAB
+    segdef      getChar
     "entry       getCharAB
     
   	segref      UtilsA, ioa
@@ -15,11 +15,10 @@
 
             even
 saveRA:      bss     ,2
+            eight
 saveX:      bss     ,8
 saveIR:     bss     ,1
 
-temp1:      bss     ,1
-temp2:      bss     ,1
 arg1:       bss     ,1
 arg2:       bss     ,1
 
@@ -31,10 +30,19 @@ LQ:         bss     ,1
             sixteen
 savePR:     bss     ,16
 
-            even
-strPtr:     bss     ,2
+"
+" get 8/9-bit character of string
+"
+" Usage:
+"   tsp2     UtilsB$getChar
+"   dec      packedPointeerToACC string
+"   arg      char #
+"
+" returns char in A
+"
+"
 
-getCharAB:  "push
+getChar:  "push
         sti     saveIR      " save IR
         sreg    saveX       " save index registers
         spri    savePR      " save PRs
@@ -49,25 +57,31 @@ getCharAB:  "push
         sta     arg2
 
         lprp3   arg1        " string address => pr3
-        sprp3   temp2
 
-        tsp2    UtilsA$ioa
-        acc     ~getCharAB: arg1: ^w / ^n\r\n~
-        nop     arg1
-        nop     arg2
-
+        " determine how many words we need to skip for index arg2
         ldq     arg2        " pick up index - arg2
         qrl     18          " move upper 18-bit to lower 18-bits
         div     =4,dl       " how many words to skip => Q, char pos in A
         stq     LQ          " words to skip => Q
         sta     LA          " char pos => A
+        
+        lda     =3,dl
+        ssa     LA          " 3 - LA => LA
 
-        tsp2    UtilsA$ioa
-        acc     ~getCharAB: ... ^d / ^d\r\n~
-        nop     LQ
-        nop     LA
+        lxl2    LQ          " words to skip in x2
+        lda     pr3|0,x2    " src wrd => A
 
-        " determine how many words we need to skip for index arg2
+        " src word is in A. Shift right until desired char in in 8..0
+        ldq     LA          " pos => Q
+        eax2    0,ql        " Ql => x2
+        
+loop:   tze     done
+        arl     9           " 9-bits/byte
+        eax2    -1,x2       " x2 -= 1
+        tra     loop
+
+done:   ana     =0777,dl    " mask off all but lower 9-bits
+        sta     saveX+4     " save A in register save area
 
         lpri    savePR
         lreg    saveX       " restore regsiters
