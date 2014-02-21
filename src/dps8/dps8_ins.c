@@ -409,7 +409,7 @@ t_stat executeInstruction(DCDstruct *ci)
         //if (processorAddressingMode == APPEND_MODE)
         if (get_addr_mode() == APPEND_mode)
         {
-            char * where = lookupSystemBookAddress (PPR.PSR, rIC);
+            char * where = lookupAddress (PPR.PSR, rIC);
             if (where)
               sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, ans);
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
@@ -704,21 +704,22 @@ t_stat executeInstruction(DCDstruct *ci)
     
     if ((cpu_dev.dctrl & DBG_TRACE) && sim_deb)
     {
+        char * compname;
+        word18 compoffset;
+        char * where = lookupAddress (PPR.PSR, rIC, & compname, & compoffset);
+        if (where)
+        {
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, where);
+            if_sim_debug (DBG_TRACE, &cpu_dev)
+              listSource (compname, compoffset);
+        }
+
         if (get_addr_mode() == ABSOLUTE_mode)
         {
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == APPEND_mode)
         {
-            char * compname;
-            word18 compoffset;
-            char * where = lookupSystemBookAddress (PPR.PSR, rIC, & compname, & compoffset);
-            if (where)
-              {
-                sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, where);
-                if_sim_debug (DBG_TRACE, &cpu_dev)
-                  listSource (compname, compoffset);
-              }
             sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == BAR_mode)

@@ -1813,6 +1813,7 @@ bool getSegmentAddressString(int addr, char *msg);
 t_stat createLOT(bool);     // create link offset table segment
 t_stat snapLOT(bool);       // fill in link offset table segment
 t_stat createStack(int, bool);    // create ring n stack
+char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 
 #define LOT "lot_"
 
@@ -3019,6 +3020,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num);
 /* dps8_sys.c */
 
 extern word36 *M;
+char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffst);
 void listSource (char * compname, word18 offset);
 

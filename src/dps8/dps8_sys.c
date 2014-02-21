@@ -272,6 +272,14 @@ static int addBookComponent (int segnum, char * name, int txt_start, int txt_len
   }
  
 
+char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+  {
+    char * ret = lookupSystemBookAddress (segno, offset, compname, compoffset);
+    if (ret)
+      return ret;
+    ret = lookupSegmentAddress (segno, offset, compname, compoffset);
+    return ret;
+  }
 
 // Warning: returns ptr to static buffer
 char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
@@ -905,7 +913,7 @@ static t_stat lookupSystemBook (int32 arg, char * buf)
     if (* end1 == '\0' && * end2 == '\0' && * w3 == '\0')
       { 
         // n:n
-        char * ans = lookupSystemBookAddress (segno, offset, NULL, NULL);
+        char * ans = lookupAddress (segno, offset, NULL, NULL);
         sim_printf ("%s\n", ans ? ans : "not found");
       }
     else
@@ -932,7 +940,7 @@ static t_stat lookupSystemBook (int32 arg, char * buf)
 /*
     if (sscanf (buf, "%i:%i", & segno, & offset) != 2)
       return SCPE_ARG;
-    char * ans = lookupSystemBookAddress (segno, offset);
+    char * ans = lookupAddress (segno, offset);
     sim_printf ("%s\n", ans ? ans : "not found");
 */
     return SCPE_OK;

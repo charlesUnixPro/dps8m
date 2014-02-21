@@ -502,7 +502,7 @@ int resolveLinks(bool bVerbose)
 PRIVATE
 int loadDeferredSegment(segment *sg, int addr24)
 {
-    if (!sim_quiet) sim_printf("    loading %s as segment# %d\n", sg->name, sg->segno);
+    if (!sim_quiet) sim_printf("    loading %s as segment# 0%o\n", sg->name, sg->segno);
         
     int segno = sg->segno;
         
@@ -1207,6 +1207,26 @@ static t_stat loadUnpagedSegment(int segno, word24 addr, word18 count)
     core_write2(sdwaddress, yPair[0], yPair[1]);
     
     return SCPE_OK;
+}
+
+// Warning: returns ptr to static buffer
+char * lookupSegmentAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset)
+{
+    static char buf [129];
+    segment *s;
+    DL_FOREACH(segments, s)
+    {
+        if (s -> segno == segno)
+        {
+            if (compname)
+                * compname = s -> name;
+            if (compoffset)
+                * compoffset = 0;  
+            sprintf (buf, "%s:+0%0o", s -> name, offset);
+            return buf;
+        }
+    }
+    return NULL;
 }
 
 t_stat sim_dump (FILE *fileref, char *cptr, char *fnam, int flag)
