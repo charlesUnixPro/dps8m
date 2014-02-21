@@ -648,8 +648,6 @@ DCDstruct *fetchInstruction(word18 addr, DCDstruct *ins)  // fetch instrcution a
 //    return SCPE_OK;
 //}
 
-t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type acctyp, bool b29);
-
 DCDstruct *fetchOperands(DCDstruct *i)
 {
     
@@ -1028,7 +1026,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             SCF(tmp18 & I_OMASK, rIR, I_OMASK);
             SCF(tmp18 & I_TALLY, rIR, I_TALLY);
             SCF(tmp18 & I_PERR,  rIR, I_PERR);
-            // [CAC] I read this as "set PMASK iff PMASK is et"
+            // [CAC] I read this as "set PMASK iff PMASK is set"
             //SCF(bAbsPriv && (rIR & I_PMASK), rIR, I_PMASK);
             SCF(bAbsPriv && (tmp18 & I_PMASK), rIR, I_PMASK);
             SCF(tmp18 & I_TRUNC, rIR, I_TRUNC);

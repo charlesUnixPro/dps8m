@@ -2977,6 +2977,7 @@ void cu_safe_restore (void);
 void initializeTheMatrix (void);
 void addToTheMatrix (int32 opcode, bool opcodeX, bool a, word6 tag);
 t_stat displayTheMatrix (int32 arg, char * buf);
+t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29);
 
 /* dps8_iom.c */
 

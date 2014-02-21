@@ -1340,7 +1340,7 @@ O:;
     
     int CY316 = (CY >> 16) & 03;
  
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): C(Y)18,20 = %06o", CY316);
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): C(Y)18,20 = %06o\n", CY316);
     
     // C(TPR.TRR) ≥ RSDWH.R1?
     if (TPR.TRR >= RSDWH_R1)
