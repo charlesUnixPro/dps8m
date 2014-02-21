@@ -1336,8 +1336,11 @@ N:;
     goto M;
     
 O:;
-    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): ITS\n");
+    sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): RTCD\n");
     
+// All of this is done in the instruction; doing it here fouls the fetch
+// of the second word of the Ypair
+#if 0 
     int CY316 = (CY >> 16) & 03;
  
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(O): C(Y)18,20 = %06o\n", CY316);
@@ -1361,6 +1364,7 @@ O:;
             // RSDWH.R1 → C(TPR.TRR)
             TPR.TRR = RSDWH_R1;
     }
+#endif
     
     goto Exit;    // or 0 or -1???
     

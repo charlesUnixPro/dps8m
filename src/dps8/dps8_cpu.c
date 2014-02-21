@@ -1381,6 +1381,18 @@ t_stat ReadOP(DCDstruct *i, word18 addr, _processor_cycle_type cyctyp, bool b29)
         else
 #endif
         
+    // rtcd is an annoying edge case; ReadOP is called before the instruction
+    // is executed, so it's setting processorCycle to RTCD_OPERAND_FETCH is
+    // too late. Special case it here my noticing that this is an RTCD
+    // instruction
+    if (cyctyp == OPERAND_READ && i -> opcode == 0610 && ! i -> opcodeX)
+    {
+        addr &= 0777776;   // make even
+        Read(i, addr + 0, Ypair + 0, RTCD_OPERAND_FETCH, b29);
+        Read(i, addr + 1, Ypair + 1, RTCD_OPERAND_FETCH, b29);
+        return SCPE_OK;
+    }
+
     switch (OPSIZE(i))
     {
         case 1:
