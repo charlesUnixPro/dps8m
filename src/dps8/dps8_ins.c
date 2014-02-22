@@ -6453,6 +6453,9 @@ emCall(DCDstruct *i)
                           n, PRalias[n], PR[n].SNR, PR[n].RNR, PR[n].WORDNO, PR[n].BITNO);
             }
             break;
+        case 27:    // dump registers A & Q
+            sim_printf("A: %012llo Q:%012llo\n", rA, rQ);
+            break;
             
         case 8: ///< crlf to console
             sim_printf("\n");
