@@ -3855,7 +3855,7 @@ void scm(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
@@ -3873,7 +3873,7 @@ void scm(DCDstruct *ins)
         }
 
         sim_debug (DBG_TRACEEXT, & cpu_dev, 
-          "%s is y3a: n:%d offset:0%06o y3:0%06o ARn_CHAR:%d ARn_BITNO:%d SNR:0%5o RNR:%d mat%d\n",
+          "%s is y3a: n:%d offset:0%06o y3:0%06o ARn_CHAR:%d ARn_BITNO:%d SNR:0%5o RNR:%d mat: %d\n",
           __func__, n, offset, y3, ARn_CHAR, ARn_BITNO, e->ADDR3.SNR, e->ADDR3.RNR, e->ADDR3.mat);
 
     }
@@ -4043,7 +4043,7 @@ void scmr(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
@@ -4222,7 +4222,7 @@ void tct(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
@@ -4424,7 +4424,7 @@ void tctr(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
@@ -4732,7 +4732,7 @@ void scd(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
@@ -4925,7 +4925,7 @@ void scdr(DCDstruct *ins)
     if (y3A)
     {
         // if 3rd operand contains A (bit-29 set) then it Means Y-char93 is not the memory address of the data but is a reference to a pointer register pointing to the data.
-        int n = (int)bitfieldExtract36(y3A, 15, 3);
+        int n = (int)bitfieldExtract36(y3, 15, 3);
         int offset = y3 & 077777;  // 15-bit signed number
         y3 = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
         
