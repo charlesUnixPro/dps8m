@@ -1,3 +1,33 @@
+Fri Feb 21 20:50:14 PST 2014
+
+Latest simulator statistics.
+
+20184:       1,202,407 Cycles
+   8Feb14:   1,232,719
+  15Feb14:   1,587,430
+  16Feb14:   1,589,171
+  18Feb14:   2,681,244
+  20Feb14:   2,681,479
+  21Feb14:   2,741,968
+
+t4d_b.2:    33,299,676 Cycles, up from 31,360,622
+   8Feb14:  33,366,858
+
+UnitTests:              Pass
+
+t4d/faults: 30,791,956 Cycles
+
+
+Changes & Fixes
+
+Updated as8 to accomodate alternate index/address register syntax where the register number is an operand.
+
+Updated dps8 to include PL/I source-level tracing!
+
+Various fixes generally caused by typos or sleepy typists :-)
+
+
+
 Wed Feb 19 00:08:31 PST 2014
 Latest installment of simulator.
 

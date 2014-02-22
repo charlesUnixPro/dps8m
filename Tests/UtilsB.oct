@@ -1,27 +1,28 @@
-!INFO date Thu Feb 20 06:46:07 2014 UTC
+!INFO date Sat Feb 22 04:24:13 2014 UTC
 !INFO src UtilsB.as8
-!SIZE 000134
+!SIZE 000172
 !SEGNAME UtilsB
-!SEGDEF getCharAB 000062
-!LINKAGE 000132 1
-!SEGREF UtilsA ioa 000132
+!SEGDEF getChar 000060
+!SEGDEF putChar 000116
+!LINKAGE 000170 1
+!SEGREF UtilsA ioa 000170
 000000 xxxx 000000000000 saveRA:      bss     ,2
-000002 xxxx 000000000000 saveX:      bss     ,8
-000012 xxxx 000000000000 saveIR:     bss     ,1
-000013 xxxx 000000000000 temp1:      bss     ,1
-000014 xxxx 000000000000 temp2:      bss     ,1
-000015 xxxx 000000000000 arg1:       bss     ,1
-000016 xxxx 000000000000 arg2:       bss     ,1
-000017 xxxx 000000011000             even "(allocating 1 nop)
-000020 xxxx 000000000000 LA:         bss     ,1
-000021 xxxx 000000000000 LQ:         bss     ,1
-000022 xxxx 000000011000             sixteen "(allocating 14 nop's)
-000023 xxxx 000000011000 
-000024 xxxx 000000011000 
-000025 xxxx 000000011000 
-000026 xxxx 000000011000 
-000027 xxxx 000000011000 
-000030 xxxx 000000011000 
+000002 xxxx 000000011000             eight "(allocating 6 nop's)
+000003 xxxx 000000011000 
+000004 xxxx 000000011000 
+000005 xxxx 000000011000 
+000006 xxxx 000000011000 
+000007 xxxx 000000011000 
+000010 xxxx 000000000000 saveX:      bss     ,8
+000020 xxxx 000000000000 saveIR:     bss     ,1
+000021 xxxx 000000000000 arg1:       bss     ,1
+000022 xxxx 000000000000 arg2:       bss     ,1
+000023 xxxx 000000000000 arg3:       bss     ,1
+000024 xxxx 000000000000 temp1:      bss     ,1
+000025 xxxx 000000000000 temp2:      bss     ,1
+000026 xxxx 000000000000 LA:         bss     ,1
+000027 xxxx 000000000000 LQ:         bss     ,1
+000030 xxxx 000000011000             sixteen "(allocating 8 nop's)
 000031 xxxx 000000011000 
 000032 xxxx 000000011000 
 000033 xxxx 000000011000 
@@ -30,45 +31,76 @@
 000036 xxxx 000000011000 
 000037 xxxx 000000011000 
 000040 xxxx 000000000000 savePR:     bss     ,16
-000060 xxxx 000000000000 strPtr:     bss     ,2
-000062 xxxx 000012754000         sti     saveIR      " save IR
-000063 xxxx 000002753000         sreg    saveX       " save index registers
-000064 xxxx 000040254000         spri    savePR      " save PRs
-000065 xxxx 200002353500         epp3    pr2|2       " add 2 words for arguments
-000066 xxxx 000000253400         spri3   saveRA      " save for return to caller
-000067 xxxx 200000235100         lda     pr2|0       " pick up pointer to string - arg1
-000070 xxxx 000015755000         sta     arg1
-000071 xxxx 200001235100         lda     pr2|1       " pick up index - arg2
-000072 xxxx 000016755000         sta     arg2
-000073 xxxx 000015763000         lprp3   arg1        " string address => pr3
-000074 xxxx 000014543000         sprp3   temp2
-000075 xxxx 400000272120         tsp2    UtilsA$ioa
-000076 xxxx 032147145164         acc     ~getCharAB: arg1: ^w / ^n\r\n~
-000077 xxxx 103150141162 
-000100 xxxx 101102072040 
-000101 xxxx 141162147061 
-000102 xxxx 072040136167 
-000103 xxxx 040057040136 
-000104 xxxx 156015012040 
-000105 xxxx 000015011000         nop     arg1
-000106 xxxx 000016011000         nop     arg2
-000107 xxxx 000016236000         ldq     arg2        " pick up index - arg2
-000110 xxxx 000022772000         qrl     18          " move upper 18-bit to lower 18-bits
-000111 xxxx 000004506007         div     =4,dl       " how many words to skip => Q, char pos in A
-000112 xxxx 000021756000         stq     LQ          " words to skip => Q
-000113 xxxx 000020755000         sta     LA          " char pos => A
-000114 xxxx 400000272120         tsp2    UtilsA$ioa
-000115 xxxx 030147145164         acc     ~getCharAB: ... ^d / ^d\r\n~
-000116 xxxx 103150141162 
-000117 xxxx 101102072040 
-000120 xxxx 056056056040 
-000121 xxxx 136144040057 
-000122 xxxx 040136144015 
-000123 xxxx 012040040040 
-000124 xxxx 000021011000         nop     LQ
-000125 xxxx 000020011000         nop     LA
-000126 xxxx 000040173000         lpri    savePR
-000127 xxxx 000002073000         lreg    saveX       " restore regsiters
-000130 xxxx 000000610000         rtcd    saveRA
-000132 xxxx 000000000043 link UtilsA$ioa
-000133 xxxx 000000000000 
+000060 xxxx 000020754000         sti     saveIR      " save IR
+000061 xxxx 000010753000         sreg    saveX       " save index registers
+000062 xxxx 000040254000         spri    savePR      " save PRs
+000063 xxxx 200002353500         epp3    pr2|2       " add 2 words for arguments
+000064 xxxx 000000253400         spri3   saveRA      " save for return to caller
+000065 xxxx 200000235100         lda     pr2|0       " pick up pointer to string - arg1
+000066 xxxx 000021755000         sta     arg1
+000067 xxxx 200001235100         lda     pr2|1       " pick up index - arg2
+000070 xxxx 000022755000         sta     arg2
+000071 xxxx 000021763000         lprp3   arg1        " string address => pr3
+000072 xxxx 000022236000         ldq     arg2        " pick up index - arg2
+000073 xxxx 000022772000         qrl     18          " move upper 18-bit to lower 18-bits
+000074 xxxx 000004506007         div     =4,dl       " how many words to skip => Q, char pos in A
+000075 xxxx 000027756000         stq     LQ          " words to skip => Q
+000076 xxxx 000026755000         sta     LA          " char pos => A
+000077 xxxx 000003235007         lda     =3,dl
+000100 xxxx 000026155000         ssa     LA          " 3 - LA => LA
+000101 xxxx 000027722000         lxl2    LQ          " words to skip in x2
+000102 xxxx 300000235112         lda     pr3|0,x2    " src wrd => A
+000103 xxxx 000026236000         ldq     LA          " pos => Q
+000104 xxxx 000000622006         eax2    0,ql        " Ql => x2
+000105 xxxx 000111600000 loop:   tze     done
+000106 xxxx 000011771000         arl     9           " 9-bits/byte
+000107 xxxx 777777622012         eax2    -1,x2       " x2 -= 1
+000110 xxxx 000105710000         tra     loop
+000111 xxxx 000777375007 done:   ana     =0777,dl    " mask off all but lower 9-bits
+000112 xxxx 000014755000         sta     saveX+4     " save A in register save area
+000113 xxxx 000040173000         lpri    savePR
+000114 xxxx 000010073000         lreg    saveX       " restore regsiters
+000115 xxxx 000000610000         rtcd    saveRA
+000116 xxxx 000020754000         sti     saveIR      " save IR
+000117 xxxx 000010753000         sreg    saveX       " save index registers
+000120 xxxx 000040254000         spri    savePR      " save PRs
+000121 xxxx 200003353500         epp3    pr2|3       " add 3 words for arguments
+000122 xxxx 000000253400         spri3   saveRA      " save for return to caller
+000123 xxxx 200000235100         lda     pr2|0       " pick up pointer to string - arg1
+000124 xxxx 000021755000         sta     arg1
+000125 xxxx 200001235100         lda     pr2|1       " pick up index - arg2
+000126 xxxx 000022755000         sta     arg2
+000127 xxxx 200002235100         lda     pr2|2       " pick up char to put (in A18-35) - arg3
+000130 xxxx 000023755000         sta     arg3
+000131 xxxx 000021763000         lprp3   arg1        " string address => pr3
+000132 xxxx 000022236000         ldq     arg2        " pick up index - arg2
+000133 xxxx 000022772000         qrl     18          " move upper 18-bit to lower 18-bits
+000134 xxxx 000004506007         div     =4,dl       " how many words to skip => Q, char pos in A
+000135 xxxx 000027756000         stq     LQ          " words to skip => LQ
+000136 xxxx 000026755000         sta     LA          " char pos => LA
+000137 xxxx 000003235007         lda     =3,dl
+000140 xxxx 000026155000         ssa     LA          " 3 - LA => LA
+000141 xxxx 000027722000         lxl2    LQ          " words to skip in x2
+000142 xxxx 300000235112         lda     pr3|0,x2    " src wrd => A
+000143 xxxx 000024755000         sta     temp1       "         => temp1
+000144 xxxx 000023235000         lda     arg3
+000145 xxxx 000025755000         sta     temp2
+000146 xxxx 000003623000         eax3    3
+000147 xxxx 000011735000 lp1:    als     9           " scoot it over 9-bits
+000150 xxxx 000025255000         orsa    temp2       " or it into temp2 (2x)
+000151 xxxx 777777623013         eax3    -1,x3
+000152 xxxx 000147601000         tnz     lp1
+000153 xxxx 000025236000         ldq     temp2       " put repeated chars into Q
+000154 xxxx 000026235000         lda     LA          " get adjusted char posn to put
+000155 xxxx 000163716005         xec     table,al    " eXECute appropriate stbq instruction
+000156 xxxx 000024235000         lda     temp1
+000157 xxxx 300000755112         sta     pr3|0,x2    " write back modified word out
+000160 xxxx 000040173000         lpri    savePR
+000161 xxxx 000010073000         lreg    saveX       " restore regsiters
+000162 xxxx 000000610000         rtcd    saveRA
+000163 xxxx 000024552040 table:  stbq    temp1, 040
+000164 xxxx 000024552020         stbq    temp1, 020
+000165 xxxx 000024552010         stbq    temp1, 010
+000166 xxxx 000024552004         stbq    temp1, 004
+000170 xxxx 000000000043 link UtilsA$ioa
+000171 xxxx 000000000000 
