@@ -87,24 +87,24 @@ Examining segments ... segment numbering begins at: 9
     Processing segment lot_...
     Processing segment stack_0...
 Loading deferred segments ...
-    loading Play as segment# 13
+    loading Play as segment# 015
 Writing SDW to address 00001032 (DSBR.ADDR+2*13 offset) 
       168 (000250) words loaded into segment 13 (15) at address 201000
-    loading UtilsA as segment# 9
+    loading UtilsA as segment# 011
 Writing SDW to address 00001022 (DSBR.ADDR+2*9 offset) 
       1064 (002050) words loaded into segment 9 (11) at address 201260
-    loading simh_operators_ as segment# 12
+    loading simh_operators_ as segment# 014
 Writing SDW to address 00001030 (DSBR.ADDR+2*12 offset) 
       671 (001237) words loaded into segment 12 (14) at address 203340
-    loading power_of_two as segment# 11
+    loading power_of_two as segment# 013
 Writing SDW to address 00001026 (DSBR.ADDR+2*11 offset) 
       30 (000036) words loaded into segment 11 (13) at address 204600
-    loading lot_ as segment# 10
+    loading lot_ as segment# 012
 Writing SDW to address 00001024 (DSBR.ADDR+2*10 offset) 
       4095 (007777) words loaded into segment 10 (12) at address 204640
 LOT => PR[4]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
 LOT => PR[5]: SNR=00012 RNR=0 WORDNO=000000 BITNO:00
-    loading stack_0 as segment# 8
+    loading stack_0 as segment# 010
 Writing SDW to address 00001020 (DSBR.ADDR+2*8 offset) 
       49152 (140000) words loaded into segment 8 (10) at address 214640
 snapping lot_ links...
@@ -112,7 +112,7 @@ snapping lot_ links...
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	204640 + 0 => 000000000304
 	204640 + 15 => 000015000240
-Howdy world! - It's ' 2/17 13:43 '
+Howdy world! - It's ' 2/21 21:47 '
 We did it!!! 2**9=512
 We did it again!!! 2**11=2048
 Q=1050402 (Should be Q=1050402)

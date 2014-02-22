@@ -84,27 +84,27 @@ Examining segments ... segment numbering begins at: 17
     Processing segment lot_...
     Processing segment stack_0...
 Loading deferred segments ...
-    loading Bug_B_Gone_1 as segment# 19
+    loading Bug_B_Gone_1 as segment# 023
 Writing SDW to address 00001046 (DSBR.ADDR+2*19 offset) 
       196 (000304) words loaded into segment 19 (23) at address 201000
-    loading Bug_B_Gone_2 as segment# 20
+    loading Bug_B_Gone_2 as segment# 024
 Writing SDW to address 00001050 (DSBR.ADDR+2*20 offset) 
       48 (000060) words loaded into segment 20 (24) at address 201320
-    loading Bug_B_Gone_seg15 as segment# 13
+    loading Bug_B_Gone_seg15 as segment# 015
 Writing SDW to address 00001032 (DSBR.ADDR+2*13 offset) 
       258 (000402) words loaded into segment 13 (15) at address 201400
-    loading UtilsA as segment# 17
+    loading UtilsA as segment# 021
 Writing SDW to address 00001042 (DSBR.ADDR+2*17 offset) 
       1064 (002050) words loaded into segment 17 (21) at address 202020
-    loading simh_operators_ as segment# 21
+    loading simh_operators_ as segment# 025
 Writing SDW to address 00001052 (DSBR.ADDR+2*21 offset) 
       671 (001237) words loaded into segment 21 (25) at address 204100
-    loading lot_ as segment# 18
+    loading lot_ as segment# 022
 Writing SDW to address 00001044 (DSBR.ADDR+2*18 offset) 
       4095 (007777) words loaded into segment 18 (22) at address 205340
 LOT => PR[4]: SNR=00022 RNR=0 WORDNO=000000 BITNO:00
 LOT => PR[5]: SNR=00022 RNR=0 WORDNO=000000 BITNO:00
-    loading stack_0 as segment# 16
+    loading stack_0 as segment# 020
 Writing SDW to address 00001040 (DSBR.ADDR+2*16 offset) 
       49152 (140000) words loaded into segment 16 (20) at address 215340
 snapping lot_ links...
@@ -113,7 +113,7 @@ dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
 	205340 + 0 => 000000000150
 	205340 + 23 => 000023000302
 	205340 + 24 => 000024000056
-This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 2/19 00:56 '
+This is "Bug-B-Gone" (die bugs, die, die) - a.k.a 'TestBugs'! - It's ' 2/21 21:47 '
 BBG-1 ...
 ORSQ test 0 ... 0 (Should be 0)
 ORSQ test 1 ... 1234567 (Should be 1234567)
