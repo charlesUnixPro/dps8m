@@ -3,7 +3,7 @@
 "
 
     name        UtilsB
-    segdef      getChar
+    segdef      getChar, putChar
     "entry       getCharAB
     
   	segref      UtilsA, ioa
@@ -21,6 +21,10 @@ saveIR:     bss     ,1
 
 arg1:       bss     ,1
 arg2:       bss     ,1
+arg3:       bss     ,1
+
+temp1:      bss     ,1
+temp2:      bss     ,1
 
             even
 LAQ:
@@ -89,4 +93,89 @@ done:   ana     =0777,dl    " mask off all but lower 9-bits
         rtcd    saveRA
 
         "return
+
+"
+" put 8/9-bit character to string
+"
+" Usage:
+"   tsp2     UtilsB$putChar
+"   dec      packedPointeerToACC string
+"   arg      char #
+"   dec      char_to_write
+"
+" returns nothing
+"
+"
+
+putChar:  "push
+        sti     saveIR      " save IR
+        sreg    saveX       " save index registers
+        spri    savePR      " save PRs
+
+        epp3    pr2|3       " add 3 words for arguments
+        spri3   saveRA      " save for return to caller
+
+        lda     pr2|0       " pick up pointer to string - arg1
+        sta     arg1
+
+        lda     pr2|1       " pick up index - arg2
+        sta     arg2
+
+        lda     pr2|2       " pick up char to put (in A18-35) - arg3
+        sta     arg3
+
+        lprp3   arg1        " string address => pr3
+
+        " determine how many words we need to skip for index arg2
+        ldq     arg2        " pick up index - arg2
+        qrl     18          " move upper 18-bit to lower 18-bits
+        div     =4,dl       " how many words to skip => Q, char pos in A
+        stq     LQ          " words to skip => LQ
+        sta     LA          " char pos => LA
+        
+        lda     =3,dl
+        ssa     LA          " 3 - LA => LA
+
+        lxl2    LQ          " words to skip in x2
+        lda     pr3|0,x2    " src wrd => A
+        sta     temp1       "         => temp1
+
+        "
+        " duplicate src char 3 times since we're going to store it with stbq ... somewhere
+        "
+        lda     arg3        " get char
+        sta     temp2       " save in temp2 (1x)
+        als     9           " scoot it over 9-bits
+        orsa    temp2       " or it into temp2 (2x)
+        als     9           " scoot it over 9-bits
+        orsa    temp2       " or it into temp2 (3x)
+        als     9           " scoot it over 9-bits
+        orsa    temp2       " or it into temp2 (4x)
+        ldq     temp2       " put repeated chars into Q
+
+"        lda     arg3
+"        sta     temp2
+"        eax3    3
+"lp1:    als     9           " scoot it over 9-bits
+"        orsa    temp2       " or it into temp2 (2x)
+"        eax3    -1,x3
+"        tnz     lp1
+"        ldq     temp2       " put repeated chars into Q
+
+        lda     LA          " get adjusted char posn to put
+        xec     table,al    " eXECute appropriate stbq instruction
+
+        lda     temp1
+        sta     pr3|0,x2    " write back modified word out
+
+        lpri    savePR
+        lreg    saveX       " restore regsiters
+
+        rtcd    saveRA
+
+        "return
+table:  stbq    temp1, 040  " store byte 0 (bits 8-0)
+        stbq    temp1, 020  " store byte 1 (bits 9-17)
+        stbq    temp1, 010  " store byte 2 (bits 18-26)
+        stbq    temp1, 004  " store byte 3 (bits 27-35)
 

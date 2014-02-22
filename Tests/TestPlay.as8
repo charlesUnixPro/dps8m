@@ -10,7 +10,7 @@
 	segref	lot_,lot_
     segref  stack_0, stack_0
 
-    segref  UtilsB, getChar
+    segref  UtilsB, getChar, putChar
 
     link    I, <UtilsA>|[ioa]
     link    D, <UtilsA>|[rd_clockA]
@@ -53,6 +53,17 @@ a1: arg      17
     eax2     -1,x2
     tnz      lp
 
+
+    epp2     taf        " address of string => pr2
+    sprp2    a2         " save as argument to function
+
+    eax2     20
+lp1:stx2     a3
+
+    tsp2     UtilsB$putChar
+a2: zero     0, 0        " packed address of string
+a3: arg      17
+    vfd      27/0,A9/D
     
 allDone:
     tsp2	ioa
