@@ -1,5 +1,5 @@
-!INFO date Sat Feb 22 04:24:13 2014 UTC
-!INFO src UtilsB.as8
+!INFO date Sun Feb 23 01:06:39 2014 UTC
+!INFO src Play/UtilsB.as8
 !SIZE 000172
 !SEGNAME UtilsB
 !SEGDEF getChar 000060
@@ -83,24 +83,25 @@
 000141 xxxx 000027722000         lxl2    LQ          " words to skip in x2
 000142 xxxx 300000235112         lda     pr3|0,x2    " src wrd => A
 000143 xxxx 000024755000         sta     temp1       "         => temp1
-000144 xxxx 000023235000         lda     arg3
-000145 xxxx 000025755000         sta     temp2
-000146 xxxx 000003623000         eax3    3
-000147 xxxx 000011735000 lp1:    als     9           " scoot it over 9-bits
-000150 xxxx 000025255000         orsa    temp2       " or it into temp2 (2x)
-000151 xxxx 777777623013         eax3    -1,x3
-000152 xxxx 000147601000         tnz     lp1
-000153 xxxx 000025236000         ldq     temp2       " put repeated chars into Q
-000154 xxxx 000026235000         lda     LA          " get adjusted char posn to put
-000155 xxxx 000163716005         xec     table,al    " eXECute appropriate stbq instruction
-000156 xxxx 000024235000         lda     temp1
-000157 xxxx 300000755112         sta     pr3|0,x2    " write back modified word out
-000160 xxxx 000040173000         lpri    savePR
-000161 xxxx 000010073000         lreg    saveX       " restore regsiters
-000162 xxxx 000000610000         rtcd    saveRA
-000163 xxxx 000024552040 table:  stbq    temp1, 040
-000164 xxxx 000024552020         stbq    temp1, 020
-000165 xxxx 000024552010         stbq    temp1, 010
-000166 xxxx 000024552004         stbq    temp1, 004
+000144 xxxx 000023235000         lda     arg3        " get char
+000145 xxxx 000025755000         sta     temp2       " save in temp2 (1x)
+000146 xxxx 000011735000         als     9           " scoot it over 9-bits
+000147 xxxx 000025255000         orsa    temp2       " or it into temp2 (2x)
+000150 xxxx 000011735000         als     9           " scoot it over 9-bits
+000151 xxxx 000025255000         orsa    temp2       " or it into temp2 (3x)
+000152 xxxx 000011735000         als     9           " scoot it over 9-bits
+000153 xxxx 000025255000         orsa    temp2       " or it into temp2 (4x)
+000154 xxxx 000025236000         ldq     temp2       " put repeated chars into Q
+000155 xxxx 000026235000         lda     LA          " get adjusted char posn to put
+000156 xxxx 000164716005 $1:     xec     $3,al    " eXECute appropriate stbq instruction
+000157 xxxx 000024235000         lda     temp1
+000160 xxxx 300000755112 $2:     sta     pr3|0,x2    " write back modified word out
+000161 xxxx 000040173000         lpri    savePR
+000162 xxxx 000010073000         lreg    saveX       " restore regsiters
+000163 xxxx 000000610000         rtcd    saveRA
+000164 xxxx 000024552040 $3:     stbq    temp1, 040  " store byte 0 (bits 8-0)
+000165 xxxx 000024552020         stbq    temp1, 020  " store byte 1 (bits 9-17)
+000166 xxxx 000024552010         stbq    temp1, 010  " store byte 2 (bits 18-26)
+000167 xxxx 000024552004         stbq    temp1, 004  " store byte 3 (bits 27-35)
 000170 xxxx 000000000043 link UtilsA$ioa
 000171 xxxx 000000000000 

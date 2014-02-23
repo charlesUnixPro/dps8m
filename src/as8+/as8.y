@@ -97,8 +97,8 @@ expr: expr '+' expr         { $$ = add($1, $3);      }
     | expr '%' expr         { $$ = modulus($1, $3);  }
     | '(' expr ')'          { $$ = $2;               }
     | '-' expr %prec NEG 	{ $$ = neg($2);          }
-    | SYMBOL                { $$ = exprSymbolValue($1);    }
-    | integer               { $$ = exprWord36Value($1);    }
+    | SYMBOL                { $$ = exprSymbolValue($1);         }
+    | integer               { $$ = exprWord36Value($1);         }
     | '*'                   { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
     ;
 
@@ -110,8 +110,8 @@ lexpr
     | '(' lexpr ')'           { $$ = $2;            }
     | '^' lexpr %prec NOT 	  { $$ = not($2);       }
     | '-' expr %prec NEG 	  { $$ = neg8($2);      }
-    | SYMBOL                  { $$ = exprSymbolValue($1); }
-    | OCTAL                   { $$ = exprWord36Value($1); }
+    | SYMBOL                  { $$ = exprSymbolValue($1);       }
+    | OCTAL                   { $$ = exprWord36Value($1);       }
     | '*'                     { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
     ;
 
@@ -135,7 +135,8 @@ labels : /* empty */
     | labels label
     ;
 
-label: LABEL /*if (add_label($1) != 0) { YYERROR; } */
+label
+    : LABEL /*if (add_label($1) != 0) { YYERROR; } */
     ;
 
 stmt: /* empty */
