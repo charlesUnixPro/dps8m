@@ -5621,7 +5621,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5659,7 +5659,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // If A = 0, then
                 //   ADDRESS + C(REG) / 6 → C(ARn.WORDNO)
@@ -5699,7 +5699,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5738,7 +5738,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5790,9 +5790,9 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
                 if (! GET_A (i -> IWB))
-                    AR[ARn].WORDNO = (address + getCrAR(reg));
+                    AR[ARn].WORDNO = (address + SIGNEXT18(getCrAR(reg)));
                 else
-                    AR[ARn].WORDNO += (address + getCrAR(reg));
+                    AR[ARn].WORDNO += (address + SIGNEXT18(getCrAR(reg)));
                 
                 AR[ARn].WORDNO &= AMASK;    // keep to 18-bits
                 // AR[ARn].CHAR = 0;
@@ -5807,7 +5807,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5845,7 +5845,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5885,7 +5885,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5926,7 +5926,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)
@@ -5966,7 +5966,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 int address = SIGNEXT15((int)bitfieldExtract36(i->IWB, 18, 15));// 15-bit Address (Signed?)
                 int reg = i->IWB & 017;                     // 4-bit register modification (None except au, qu, al, ql, xn)
                 
-                int r = getCrAR(reg);
+                int r = SIGNEXT18(getCrAR(reg));
                 
                 // The a bit is zero if IGN_B29 is set;
                 //if (!i->a)

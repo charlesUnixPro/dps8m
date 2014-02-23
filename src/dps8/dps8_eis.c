@@ -4553,7 +4553,11 @@ void cmpc(DCDstruct *ins)
     //get469(NULL, 0, 0, 0);    // initialize src1 getter
     //get4692(NULL, 0, 0, 0);   // initialize src2 getter
     
-    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, 
+      "%s srcCN:%d srcCN2:%d srcTA:%d srcSZ:%d fill:0%03o\n",
+      __func__, e -> srcCN, e -> srcCN2, e -> srcTA, e -> srcSZ, 
+      fill);
+
     SETF(rIR, I_ZERO);  // set ZERO flag assuming strings are are equal ...
     SETF(rIR, I_CARRY); // set CARRY flag assuming strings are are equal ...
     
