@@ -97,6 +97,7 @@ nl				(\r?\n)|[;]
 ws      		[ \t\f]+
 
 comment         \".*$
+linecomment     ^{ws}?\*.*$
 
 real1    		[-+]?{digit}+\.([dEeE][-+]?{digit}+)?
 real2    		[-+]?{digit}+\.{digit}+([dDeE][-+]?{digit}+)?
@@ -673,10 +674,9 @@ everythingelse	.
 
 ^.+ { litPosInLine = 0; REJECT; }
 
-^[ \t\f]*\*[^\n]*  { BEGIN (Junk); }
-<Junk>[^\n]+     {}  /* try to ignore everything else on line */
-<*>{comment}     {}  /* keep at the end */
-{everythingelse} {}
+<*>{comment}       {}  /* keep at the end */
+<*>{linecomment}   {}  /* keep at the end */
+{everythingelse}   {}
 
 <<EOF>>     { if (debug) printf("yylex(EOF):addr=%06o\n", addr); return EOF; }
 
