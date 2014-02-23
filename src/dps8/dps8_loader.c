@@ -93,6 +93,8 @@ segment *newSegment(char *name, int size, bool bDeferred)
     s->linkOffset = -1;
     s->linkSize = 0;
     
+    s->filename = NULL;
+
     s->next = NULL;
     s->prev = NULL;
     
@@ -120,6 +122,8 @@ void freeSegment(segment *s)
         free(s->M);
     if (s->name)
         free(s->name);
+    if (s->filename)
+        free(s->filename);
 }
 
 segment *segments = NULL;   // segment for current load unit
@@ -791,7 +795,7 @@ t_stat setupFXE()
 /*!
  * scan & process source file for any !directives that need to be processed, e.g. !segment, !go, etc....
  */
-t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
+t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
 {
     long curpos = ftell(f);
     
@@ -841,7 +845,8 @@ t_stat scanDirectives(FILE *f, bool bDeferred, bool bVerbose)
             
             // make a new segment
             segment *s = newSegment(args[1], objSize, bDeferred);
-           
+            s -> filename = strdup (fnam);
+   
             // see if segment already exists
             if (segments)
             {
@@ -1363,7 +1368,7 @@ t_stat sim_load (FILE *fileref, char *cptr, char *fnam, int flag)
     }
     
     // process any special directives from assembly
-    scanDirectives(fileref, bDeferred, bVerbose);
+    scanDirectives(fileref, fnam, bDeferred, bVerbose);
     
     switch (fmt) {                                          /* case fmt */
         case FMT_O:                                         /*!< OCT */

@@ -1868,6 +1868,9 @@ struct segment
     
     int     linkOffset; ///< link offset in segment
     int     linkSize;   ///< size of segments linkage section
+
+    // For symbolic debugging support
+    char    *filename;
     
     struct segment *next;
     struct segment *prev;
