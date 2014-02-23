@@ -445,6 +445,8 @@ expr *exprWord36Value(word36 i36);
 expr *exprLiteral(struct literal *l);
 expr *exprPtrExpr(int ptr_reg, expr *e);
 
+expr *exprLocalSymbolValue(char *s);
+
 
 void dumpextRef();
 void writEextRef(FILE *oct);
