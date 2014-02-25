@@ -219,14 +219,14 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
     
-    word18 address = GETHI(opDesc);
+    int address = SIGNEXT18(GETHI(opDesc));
     
     if (MFk & MFkAR)
     {
         // if MKf contains ar then it Means Y-charn is not the memory address of the data but is a reference to a pointer register pointing to the data.
         int n = (int)bitfieldExtract36(address, 15, 3);
-        int offset = address & 077777;  // 15-bit signed number
-        address = (AR[n].WORDNO + SIGNEXT15(offset)) & 0777777;
+        int offset = SIGNEXT15(address & 077777);  // 15-bit signed number
+        address = SIGNEXT18((AR[n].WORDNO + offset) & 0777777);
         
         ARn_CHAR = GET_AR_CHAR (n); // AR[n].CHAR;
         ARn_BITNO = GET_AR_BITNO (n); // AR[n].BITNO;
@@ -265,9 +265,13 @@ void parseAlphanumericOperandDescriptor(int k, EISstruct *e)
     else
         e->N[k-1] = opDesc & 07777;
     
-    word18 r = (word18)getMFReg(MFk & 017, true);
+    int r = SIGNEXT18((word18)getMFReg(MFk & 017, true));
     
-    if (!(MFk & MFkRL) && (MFk & 017) == 4)   // reg == IC ?
+    // AL-39 implies, and RJ-76 say that RL and reg == IC is illegal;
+    // but it the emulator ignores RL if reg == IC, then that PL/I
+    // generated code in Multics works. "Pragmatic debugging."
+
+    if (/*!(MFk & MFkRL) && */ (MFk & 017) == 4)   // reg == IC ?
     {
         //The ic modifier is permitted in MFk.REG and C (od)32,35 only if MFk.RL = 0, that is, if the contents of the register is an address offset, not the designation of a register containing the operand length.
         address += r;
@@ -3225,9 +3229,10 @@ void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
                 break;
         }
     
+    int chunk = size * maxPos; // 32 or 36
     int numBits = size * n;
     
-    int numWords =  (numBits + (initCN * size)) / ((size == 4) ? 32 : 36);  ///< how many additional words will the N chars take up?
+    int numWords =  (numBits + (initCN * size) + (chunk - 1)) / chunk;  ///< how many additional words will the N chars take up?
                                                                             ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
     int lastChar = (initCN + n - 1) % maxPos;       ///< last character number
     
@@ -4348,9 +4353,9 @@ void tctr(DCDstruct *ins)
     int xA = (int)bitfieldExtract36(xlat, 6, 1); // 'A' bit - indirect via pointer register
     int xREG = xlat & 0xf;
     
-    word18 r = (word18)getMFReg(xREG, true);
+    int r = SIGNEXT18 ((word18)getMFReg(xREG, true));
     
-    word18 xAddress = GETHI(xlat);
+    int xAddress = GETHI(xlat);
     
     word8 ARn_CHAR = 0;
     word6 ARn_BITNO = 0;
@@ -4413,11 +4418,11 @@ void tctr(DCDstruct *ins)
     
     // fetch 3rd operand ...
     
-    word18 y3 = GETHI(e->OP3);
+    int y3 = GETHI(e->OP3);
     int y3A = (int)bitfieldExtract36(e->OP3, 6, 1); // 'A' bit - indirect via pointer register
     int y3REG = e->OP3 & 0xf;
     
-    r = (word18)getMFReg(y3REG, true);
+    r = SIGNEXT18((word18)getMFReg(y3REG, true));
     
     ARn_CHAR = 0;
     ARn_BITNO = 0;
