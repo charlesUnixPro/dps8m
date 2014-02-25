@@ -640,6 +640,7 @@ static struct config_switches
     int mask_enable [N_ASSIGNMENTS]; // enable/disable
     int mask_assignment [N_ASSIGNMENTS]; // assigned port number
     int lower_store_size; // In K words, power of 2; 32 - 4096
+    int cyclic; // 7 bits
   } config_switches [N_SCU_UNITS_MAX];
 
 // System Controller
@@ -1061,14 +1062,14 @@ static int scu_get_config_switches(t_uint64 addr)
 // x = any octal digit
 //
 
-t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega, word18 regq)
+t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 rega, word36 regq)
   {
     // Only valid for a 4MW SCU
-    const char * moi = "SCU::scu_sscr";
 
     if (scu_unit_num >= scu_dev . numunits)
       {
-        sim_debug (DBG_ERR, &scu_dev, "scu_sscr: scu_unit_num out of range %d\n", scu_unit_num);
+        sim_debug (DBG_ERR, &scu_dev, "%s: scu_unit_num out of range %d\n",
+                   __func__, scu_unit_num);
         return STOP_BUG;
       }
     scu_t * scup = scu + scu_unit_num;
@@ -1079,7 +1080,7 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
     
     if (config_switches [scu_unit_num] . mode != MODE_PROGRAM)
       {
-        sim_debug (DBG_WARN, & scu_dev, "%s: SCU mode is 'MANUAL', not 'PROGRAM' -- sscr not allowed to set switches.\n", moi);
+        sim_debug (DBG_WARN, & scu_dev, "%s: SCU mode is 'MANUAL', not 'PROGRAM' -- sscr not allowed to set switches.\n", __func__);
 // XXX [CAC] Setting an unassigned register generates a STORE FAULT;
 // this probably should as well
         return STOP_BUG;
@@ -1088,10 +1089,45 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
     switch (function)
       {
         case 00000: // Set system controller mode register
+sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
-        case 00001: // Set system controller configuration register (4MW SCU only)
-          return STOP_UNIMP;
+        case 00001: // Set system controller configuration register 
+                    // (4MW SCU only)
+          {
+            // sim_printf ("sscr 1 A: %012llo Q: %012llo\n", rega, regq);
+            struct config_switches * sw = config_switches + scu_unit_num;
+            for (int maskab = 0; maskab < 2; maskab ++)
+              {
+                word9 mask = ((maskab ? regq : rega) >> 27) & 0377;
+                if (mask & 01)
+                  {
+                    sw -> mask_enable [maskab] = 1;
+                    for (int pn = 0; pn < N_SCU_PORTS; pn ++)
+                      {
+                        if ((2 << pn) & mask)
+                          {
+                            sw -> mask_assignment [maskab] = N_SCU_PORTS - 1 - pn;
+                            break;
+                          }
+                      }
+         
+                  }
+                else
+                  sw -> mask_enable [maskab] = 0;
+              }
+            sw -> lower_store_size = (rega >> 24) & 07;
+            sw -> cyclic = (regq >> 8) & 0177;
+            sw -> port_enable [0] = (rega >> 3) & 01;
+            sw -> port_enable [1] = (rega >> 2) & 01;
+            sw -> port_enable [2] = (rega >> 1) & 01;
+            sw -> port_enable [3] = (rega >> 0) & 01;
+            sw -> port_enable [4] = (regq >> 3) & 01;
+            sw -> port_enable [5] = (regq >> 2) & 01;
+            sw -> port_enable [6] = (regq >> 1) & 01;
+            sw -> port_enable [7] = (regq >> 0) & 01;
+            break;
+          }
 
         case 00002: // Set mask register port 0
         case 00012: // Set mask register port 1
@@ -1103,7 +1139,7 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
         case 00072: // Set mask register port 7
           {
             uint port_num = (function >> 3) & 07;
-            sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to %012o,%012o\n", port_num, rega, regq);
+            sim_debug (DBG_DEBUG, & scu_dev, "Set mask register port %d to %012llo,%012llo\n", port_num, rega, regq);
             uint rcv_port;
             // Determine which SCU port the indicated CPU is attached to
             for (rcv_port = 0; rcv_port < N_SCU_PORTS; rcv_port ++)
@@ -1111,7 +1147,7 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
                 break;
             if (rcv_port >= N_SCU_PORTS)
               {
-                sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
+                sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, rcv_port);
                 fault_gen (FAULT_STR);
                 return CONT_FAULT;
               }
@@ -1133,7 +1169,7 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
             if (! n_masks_found)
               {
 // According to bootload_tape_label.alm, this condition is aok
-                //sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to cpu on port %d\n", moi, rcv_port);
+                sim_debug (DBG_WARN, & scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, rcv_port);
                 //fault_gen (FAULT_STR); // XXX we are the SCU, we can't do fault gen.
                 //return CONT_FAULT;
                 return SCPE_OK;
@@ -1141,7 +1177,7 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
             if (n_masks_found > 1)
               {
                 // Not legal for Multics
-                sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", moi, rcv_port);
+                sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, rcv_port);
                 return STOP_WARN;
               }
     
@@ -1149,23 +1185,200 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega,
             scup -> interrupts[mask_num].exec_intr_mask = 0;
             scup -> interrupts[mask_num].exec_intr_mask |= (getbits36(rega, 0, 16) << 16);
             scup -> interrupts[mask_num].exec_intr_mask |= getbits36(regq, 0, 16);
-            sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, mask_num + 'A', bin2text(scup -> interrupts[mask_num].exec_intr_mask, N_CELL_INTERRUPTS));
+            sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", __func__, mask_num + 'A', bin2text(scup -> interrupts[mask_num].exec_intr_mask, N_CELL_INTERRUPTS));
           }
           break;
 
         case 00003: // Set interrupt cells
+sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         case 00004: // Set calendar clock (4MW SCU only)
         case 00005: 
+sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         case 00006: // Set unit mode register
         case 00007: 
           // XXX See notes in AL39 sscr re: store unit selection
+sim_printf ("sscr %o\n", function);
           return STOP_UNIMP;
 
         default:
+sim_printf ("sscr %o\n", function);
+          return STOP_UNIMP;
+      }
+    return SCPE_OK;
+  }
+
+t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * rega, word36 * regq)
+  {
+    // Only valid for a 4MW SCU
+
+    if (scu_unit_num >= scu_dev . numunits)
+      {
+        sim_debug (DBG_ERR, & scu_dev, "%s: scu_unit_num out of range %d\n", 
+                   __func__, scu_unit_num);
+        return STOP_BUG;
+      }
+
+    scu_t * scup = scu + scu_unit_num;
+
+
+    uint function = (addr >> 3) & 07777;
+
+    // See scs.incl.pl1
+    
+    switch (function)
+      {
+        case 00000: // Read system controller mode register
+          {
+            // AN-87
+            // 0..0 -> A
+            // 0..0 -> Q 36-49 (0-13)
+            // ID -> Q 50-53 (14-17)
+            // MODE REG -> Q 54-71 (18-35)
+            //
+            //  ID: 0000  8034, 8035
+            //      0001  Level 68 SC
+            //      0010  Level 66 SCU
+            // MODE REG: these fields are only used by T&D
+            * rega = 0;
+            * regq = 0000002000000; // ID = 0010
+            break;
+          }
+
+        case 00001: // Read configuration switches
+          {
+            // AN-87, scr.incl.pl1
+            //
+            // SCU:
+            // reg A:
+            //   MASK A | SIZE | A | A1 | B | B1 | PORT | 0 | MOD | NEA |
+            //   INT | LWR | PMR 0-3
+            // reg Q:
+            //   MASK B | not used | CYCLIC PRIOR | not used | PMR 4-7
+            //
+            //   MASK A/B (9 bits): EIMA switch setting for mask A/B. The
+            //    assigned port corresponds to the but position within the
+            //    field. A bit in position 9 indicates that the mask is
+            //    not assigned.
+            //
+            //  SIZE (3 bits): Size of lower store
+            //    000 = 32K ... 111 = 4M
+            //
+            //  A A1 B B1 (1 bit): store unit A/A1/B/B1 online
+            //
+            //  PORT (4 bits): Port number of the SCU port through which
+            //    the RSCR instruction was recieved
+            //
+            struct config_switches * sw = config_switches + scu_unit_num;
+            word9 maskab [2];
+            for (int i = 0; i < 2; i ++)
+              {
+                if (sw -> mask_enable [0])
+                  {
+                    maskab [i] = (2 << (N_SCU_PORTS - i - sw -> mask_assignment [i])) & 0377;
+                    maskab [i] = 0001;
+                  }
+                else
+                  maskab [i] = 0000;
+              }
+
+            int scu_port_num = -1; // The port that the rscr instruction was
+                                   // recieved on
+
+            for (int pn = 0; pn < N_SCU_PORTS; pn ++)
+              {
+                if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == cpu_unit_num)
+                  {
+                    scu_port_num = pn;
+                    break;
+                  }
+              }
+
+            if (scu_port_num < 0)
+              {
+                sim_debug (DBG_ERR, & scu_dev, "%s: can't find cpu port in the snarl of cables; scu_unit_no %d, cpu_unit_num %d\n", 
+                           __func__, scu_unit_num, cpu_unit_num);
+                return STOP_BUG;
+              }
+
+            * rega = (maskab [0] << 27) |
+                     ((sw -> lower_store_size & 07) << 24) |
+                     ((sw -> cyclic & 0177) << 8) |
+                     (017 << 20) | // All sore units always online
+                     ((scu_port_num & 017) << 16) |
+                     ((sw -> mode & 01) << 14) |
+                     ((0200) << 6) | // NEA all 0
+                     // interlace 0
+                     // lwr 0 (store A is low-order
+
+                     // Looking at scr_util.list, I *think* the port order
+                     // 0,1,2,3.
+                     ((sw -> port_enable [0] & 01) << 3) |
+                     ((sw -> port_enable [1] & 01) << 2) |
+                     ((sw -> port_enable [2] & 01) << 1) |
+                     ((sw -> port_enable [3] & 01) << 0);
+
+            * regq = (maskab [0] << 27) |
+                     // CYCLIC PRIOR 0
+                     // Looking at scr_util.list, I *think* the port order
+                     // 4,5,6,7.
+                     ((sw -> port_enable [4] & 01) << 3) |
+                     ((sw -> port_enable [5] & 01) << 2) |
+                     ((sw -> port_enable [6] & 01) << 1) |
+                     ((sw -> port_enable [7] & 01) << 0);
+
+            // sim_printf ("rscr 1 A: %012llo Q: %012llo\n", * rega, * regq);
+            break;
+          }
+
+        case 00004: // Get calendar clock (4MW SCU only)
+        case 00005: 
+          {
+            if (switches . steady_clock)
+              {
+                rA = 0;
+                rQ = cpuCycles;
+                break;
+              }
+            /// The calendar clock consists of a 52-bit register which counts
+            // microseconds and is readable as a double-precision integer by a
+            // single instruction from any central processor. This rate is in
+            // the same order of magnitude as the instruction processing rate of
+            // the GE-645, so that timing of 10-instruction subroutines is
+            // meaningful. The register is wide enough that overflow requires
+            // several tens of years; thus it serves as a calendar containing
+            // the number of microseconds since 0000 GMT, January 1, 1901
+            ///  Secs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800
+            //   Seconds
+            /// uSecs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800 000 000
+            //  uSeconds
+ 
+            struct timeval now;                
+            gettimeofday(&now, NULL);
+                
+            t_uint64 UnixSecs = now.tv_sec;                            // get uSecs since Jan 1, 1970
+            t_uint64 UnixuSecs = UnixSecs * 1000000LL + now.tv_usec;
+   
+            // now determine uSecs since Jan 1, 1901 ...
+            t_uint64 MulticsuSecs = 2177452800000000LL + UnixuSecs;
+ 
+            static t_uint64 lastRccl;                    //  value from last call
+ 
+            if (MulticsuSecs == lastRccl)
+                lastRccl = MulticsuSecs + 1;
+            else
+                lastRccl = MulticsuSecs;
+
+            rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
+            rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
+          }
+        break;
+
+        default:
+sim_printf ("rscr %o\n", function);
           return STOP_UNIMP;
       }
     return SCPE_OK;
@@ -1565,7 +1778,8 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
       {
         sim_printf ("Mask %c:                   %s\n", 'A' + i, sw -> mask_enable [i] ? (map [sw -> mask_assignment [i]]) : "Off");
       }
-    sim_printf ("Lower Store Size:        %dK\n", sw -> lower_store_size);
+    sim_printf ("Lower Store Size:        %o\n", sw -> lower_store_size);
+    sim_printf ("Cyclic:                  %03o\n", sw -> cyclic);
 
     return SCPE_OK;
   }
@@ -1577,7 +1791,8 @@ static t_stat scu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           mode=  manual | program
 //           mask[A|B] = off | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7
 //           portN = enable | disable
-//           lwrstoresize 32 | 64 | 128 | 256 | 512 | 1024 | 2048 | 4096
+//           lwrstoresize = 32 | 64 | 128 | 256 | 512 | 1024 | 2048 | 4096
+//           cyclic = n
 //
 //      o  nea is not implemented; will read as "nea off"
 //      o  Multics sets cyclic priority explicitly; config
@@ -1649,6 +1864,7 @@ static config_list_t scu_config_list [] =
     /*  9 */ { "port6", 1, 0, cfg_able_list },
     /* 10 */ { "port7", 1, 0, cfg_able_list },
     /* 11 */ { "lwrstoresize", 1, 0, cfg_size_list },
+    /* 12 */ { "cyclic", 0, 0200, NULL },
     { NULL }
   };
 
@@ -1713,6 +1929,10 @@ static t_stat scu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 11: // LWRSTORESIZE
               sw -> lower_store_size = v;
+              break;
+
+            case 12: // CYCLIC
+              sw -> cyclic = v;
               break;
 
             default:
