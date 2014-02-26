@@ -709,6 +709,7 @@ extern uint32 sim_brk_summ, sim_brk_types, sim_brk_dflt;
 extern DEVICE cpu_dev;
 extern DEVICE iom_dev;
 extern DEVICE tape_dev;
+extern DEVICE disk_dev;
 extern DEVICE *sim_devices[];
 extern UNIT mt_unit [];
 extern UNIT cpu_unit [];

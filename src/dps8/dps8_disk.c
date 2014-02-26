@@ -1,95 +1,236 @@
-//-- //
-//-- //  dps8_disk.c
-//-- //  dps8
-//-- //
-//-- //  Created by Harry Reed on 6/16/13.
-//-- //  Copyright (c) 2013 Harry Reed. All rights reserved.
-//-- //
-//-- 
-//-- #include <stdio.h>
-//-- 
-//-- #include "dps8.h"
-//-- #include "dps8_iom.h"
-//-- #include "dps8_disk.h"
-//-- 
+//
+//  dps8_disk.c
+//  dps8
+//
+//  Created by Harry Reed on 6/16/13.
+//  Copyright (c) 2013 Harry Reed. All rights reserved.
+//
+
+#include <stdio.h>
+
+#include "dps8.h"
+#include "dps8_iom.h"
+#include "dps8_disk.h"
+
 //-- // XXX We use this where we assume there is only one unit
 //-- #define ASSUME0 0
 //-- 
-//-- /*
-//--  disk.c -- disk drives
-//--  
+/*
+ disk.c -- disk drives
+ 
 //--  This is just a sketch; the emulator does not yet handle disks.
-//--  
-//--  See manual AN87
-//--  
-//--  */
-//-- 
-//-- /*
-//--  Copyright (c) 2007-2013 Michael Mondy
-//--  
-//--  This software is made available under the terms of the
-//--  ICU License -- ICU 1.8.1 and later.
-//--  See the LICENSE file at the top-level directory of this distribution and
-//--  at http://example.org/project/LICENSE.
-//--  */
-//-- 
-//-- 
-//-- #define M3381_SECTORS 6895616
-//-- // records per subdev: 74930 (127 * 590)
-//-- // number of sub-volumes: 3
-//-- // records per dev: 3 * 74930 = 224790
-//-- // cyl/sv: 590
-//-- // cyl: 1770 (3*590)
-//-- // rec/cyl 127
-//-- // tracks/cyl 15
-//-- // sector size: 512
-//-- // sectors: 451858
-//-- // data: 3367 MB, 3447808 KB, 6895616 sectors,
-//-- //  3530555392 bytes, 98070983 records?
-//-- 
-//-- #define N_DISK_UNITS 1
+ 
+ See manual AN87
+ 
+ */
+
+/*
+ Copyright (c) 2007-2013 Michael Mondy
+ 
+ This software is made available under the terms of the
+ ICU License -- ICU 1.8.1 and later.
+ See the LICENSE file at the top-level directory of this distribution and
+ at http://example.org/project/LICENSE.
+ */
+
+
+#define M3381_SECTORS 6895616
+// records per subdev: 74930 (127 * 590)
+// number of sub-volumes: 3
+// records per dev: 3 * 74930 = 224790
+// cyl/sv: 590
+// cyl: 1770 (3*590)
+// rec/cyl 127
+// tracks/cyl 15
+// sector size: 512
+// sectors: 451858
+// data: 3367 MB, 3447808 KB, 6895616 sectors,
+//  3530555392 bytes, 98070983 records?
+
+#define N_DISK_UNITS_MAX 16
+#define N_DISK_UNITS 1 // default
+
 //-- // extern t_stat disk_svc(UNIT *up);
-//-- UNIT disk_unit [N_DISK_UNITS] = {{
-//--     UDATA (&channel_svc, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)
-//-- }};
-//-- 
-//-- // No disks known to multics had more than 2^24 sectors...
-//-- DEVICE disk_dev = {
-//--     "DISK",       /*  name */
-//--     disk_unit,    /* units */
-//--     NULL,         /* registers */
-//--     NULL,         /* modifiers */
-//--     N_DISK_UNITS, /* #units */
-//--     10,           /* address radix */
-//--     24,           /* address width */
-//--     1,            /* address increment */
-//--     8,            /* data radix */
-//--     36,           /* data width */
-//--     NULL,         /* examine */
-//--     NULL,         /* deposit */ 
-//--     NULL,         /* reset */
-//--     NULL,         /* boot */
-//--     NULL,         /* attach */
-//--     NULL,         /* detach */
-//--     NULL,         /* context */
-//--     DEV_DEBUG,    /* flags */
-//--     0,            /* debug control flags */
-//--     0,            /* debug flag names */
-//--     NULL,         /* memory size change */
-//--     NULL          /* logical name */
-//-- };
-//-- 
-//-- 
+
+
+static t_stat disk_reset (DEVICE * dptr);
+static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
+static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
+static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read);
+static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
+
+UNIT disk_unit [N_DISK_UNITS_MAX] =
+  {
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)},
+    {UDATA (NULL, UNIT_FIX | UNIT_ATTABLE | UNIT_ROABLE | UNIT_DISABLE | UNIT_IDLE, M3381_SECTORS)}
+  };
+
+#define DISK_UNIT_NUM(uptr) ((uptr) - mt_unit)
+
+static DEBTAB disk_dt [] =
+  {
+    { "NOTIFY", DBG_NOTIFY },
+    { "INFO", DBG_INFO },
+    { "ERR", DBG_ERR },
+    { "WARN", DBG_WARN },
+    { "DEBUG", DBG_DEBUG },
+    { "ALL", DBG_ALL }, // don't move as it messes up DBG message
+    { NULL, 0 }
+  };
+
+#define UNIT_WATCH UNIT_V_UF
+
+static MTAB disk_mod [] =
+  {
+    { UNIT_WATCH, 1, "WATCH", "WATCH", NULL, NULL },
+    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
+    {
+      MTAB_XTD | MTAB_VDV | MTAB_NMO | MTAB_VALR, /* mask */
+      0,            /* match */
+      "NUNITS",     /* print string */
+      "NUNITS",         /* match string */
+      disk_set_nunits, /* validation routine */
+      disk_show_nunits, /* display routine */
+      "Number of DISK units in the system" /* value descriptor */
+    },
+    { 0 }
+  };
+
+
+// No disks known to multics had more than 2^24 sectors...
+DEVICE disk_dev = {
+    "DISK",       /*  name */
+    disk_unit,    /* units */
+    NULL,         /* registers */
+    disk_mod,     /* modifiers */
+    N_DISK_UNITS, /* #units */
+    10,           /* address radix */
+    24,           /* address width */
+    1,            /* address increment */
+    8,            /* data radix */
+    36,           /* data width */
+    NULL,         /* examine */
+    NULL,         /* deposit */ 
+    disk_reset,   /* reset */
+    NULL,         /* boot */
+    attach_unit,  /* attach */
+    detach_unit,  /* detach */
+    NULL,         /* context */
+    DEV_DEBUG,    /* flags */
+    0,            /* debug control flags */
+    disk_dt,      /* debug flag names */
+    NULL,         /* memory size change */
+    NULL          /* logical name */
+};
+
+
+static struct
+  {
+    int iom_unit_num;
+    int chan_num;
+    int dev_code;
+  } cables_from_ioms_to_disk [N_DISK_UNITS_MAX];
+
 
 /*
  * disk_init()
  *
  */
 
-void disk_init(void)
-{
-    // Nothing needed
-}
+// Once-only initialization
+
+void disk_init (void)
+  {
+    // memset (disk_state, 0, sizeof (disk_state));
+    for (int i = 0; i < N_DISK_UNITS_MAX; i ++)
+      cables_from_ioms_to_disk [i] . iom_unit_num = -1;
+  }
+
+static t_stat disk_reset (DEVICE * dptr)
+  {
+    for (int i = 0; i < dptr -> numunits; i ++)
+      {
+        // sim_disk_reset (& disk_unit [i]);
+        sim_cancel (& disk_unit [i]);
+      }
+    return SCPE_OK;
+  }
+
+t_stat cable_disk (int disk_unit_num, int iom_unit_num, int chan_num, int dev_code)
+  {
+    if (disk_unit_num < 0 || disk_unit_num >= disk_dev . numunits)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
+        sim_printf ("cable_disk: disk_unit_num out of range <%d>\n", disk_unit_num);
+        return SCPE_ARG;
+      }
+
+    if (cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num != -1)
+      {
+        // sim_debug (DBG_ERR, & sys_dev, "cable_disk: socket in use\n");
+        sim_printf ("cable_disk: socket in use\n");
+        return SCPE_ARG;
+      }
+
+    // Plug the other end of the cable in
+    t_stat rc = cable_to_iom (iom_unit_num, chan_num, dev_code, DEVT_DISK, chan_type_PSI, disk_unit_num, & disk_dev, & disk_unit [disk_unit_num], disk_iom_cmd, disk_iom_io);
+    if (rc)
+      return rc;
+
+    cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num = iom_unit_num;
+    cables_from_ioms_to_disk [disk_unit_num] . chan_num = chan_num;
+    cables_from_ioms_to_disk [disk_unit_num] . dev_code = dev_code;
+
+    return SCPE_OK;
+  }
+
+static int disk_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_data, bool * is_read)
+  {
+    * need_data = false;
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    int iom_unit_num = cables_from_ioms_to_disk [disk_unit_num] . iom_unit_num;
+
+    sim_debug (DBG_DEBUG, & disk_dev, "%s: IOM %c, Chan 0%o, dev-cmd 0%o, dev-code 0%o\n",
+            __func__, 'A' + iom_unit_num, pcwp -> chan, pcwp -> dev_cmd, pcwp -> dev_code);
+return 1; // XXX
+
+    return 0;
+  }
+
+static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati)
+  {
+    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    return 0;
+  }
+
+static t_stat disk_show_nunits (FILE *st, UNIT *uptr, int val, void *desc)
+  {
+    sim_printf("Number of DISK units in system is %d\n", disk_dev . numunits);
+    return SCPE_OK;
+  }
+
+static t_stat disk_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc)
+  {
+    int n = atoi (cptr);
+    if (n < 1 || n > N_DISK_UNITS_MAX)
+      return SCPE_ARG;
+    disk_dev . numunits = n;
+    return SCPE_OK;
+  }
 
 //-- /*
 //--  * disk_iom_cmd()
