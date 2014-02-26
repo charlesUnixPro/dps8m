@@ -1548,7 +1548,7 @@ typedef enum _fault_subtype _fault_subtype;
 
 void fault_gen(int f);  // depreciate when ready
 void doFault(DCDstruct *, _fault faultNumber, _fault_subtype faultSubtype, char *faultMsg); ///< fault handler
-void acvFault(DCDstruct *i, _fault_subtype acvfault);
+void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg);
 void doG7Faults();
 bool G7Pending();
 

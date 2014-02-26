@@ -3212,7 +3212,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             if (TPR.TRR > PPR.PRR)
             {
-                acvFault(i, OCALL);
+                acvFault(i, OCALL, "call6 access violation fault (outward call)");
                 return CONT_FAULT; // access violation fault (outward call)
             }
             if (TPR.TRR < PPR.PRR)
@@ -4000,9 +4000,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// C(calendar clock) → C(AQ)20,71
             // XXX This code belongs in scu.c; ASSUME0
             
-            c_0633:;    // for rscr clock/cal call.
+            //c_0633:;    // for rscr clock/cal call.
             
             {
+              /* t_stat rc = */ scu_rscr (/*scu_unit_num*/ 0, ASSUME0, 040, & reg_A, & reg_Q);
+#if 0
                 /// The calendar clock consists of a 52-bit register which counts microseconds and is readable as a double-precision integer by a single instruction from any central processor. This rate is in the same order of magnitude as the instruction processing rate of the GE-645, so that timing of 10-instruction subroutines is meaningful. The register is wide enough that overflow requires several tens of years; thus it serves as a calendar containing the number of microseconds since 0000 GMT, January 1, 1901
                 ///  Secs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800          Seconds
                 /// uSecs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800 000 000 uSeconds
@@ -4025,6 +4027,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
                 rQ =  lastRccl & 0777777777777;     // lower 36-bits of clock
                 rA = (lastRccl >> 36) & 0177777;    // upper 16-bits of clock
+#endif
             }
             break;
         

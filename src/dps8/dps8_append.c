@@ -218,7 +218,7 @@ static _ptw0* fetchDSPTW(word15 segno)
     sim_debug (DBG_APPENDING, & cpu_dev, "fetchDSPTW segno 0%o\n", segno);
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault: fetchDSPTW out of segment bounds fault");
         
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -242,7 +242,7 @@ static _ptw0* modifyDSPTW(word15 segno)
 {
     if (2 * segno >= 16 * (DSBR.BND + 1))
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault: modifyDSPTW out of segment bounds fault");
     
     word24 y1 = (2 * segno) % 1024;
     word24 x1 = (2 * segno - y1) / 1024;
@@ -399,7 +399,7 @@ static _sdw0 *fetchNSDW(word15 segno)
             sim_debug(DBG_APPENDING, &cpu_dev, "fetchNSDW(1):Access Violation, out of segment bounds for segno=%05o DSBR.BND=%d\n", segno, DSBR.BND);
         }
         // generate access violation, out of segment bounds fault
-        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault");
+        doFault(NULL /* XXX */, acc_viol_fault, ACV15, "acvFault fetchNSDW: out of segment bounds fault");
     }
     if (apndTrace)
     {
@@ -771,11 +771,11 @@ static char *strACV(_fault_subtype acv)
 
 static int acvFaults = 0;   ///< pending ACV faults
 
-void acvFault(DCDstruct *i, _fault_subtype acvfault)
+void acvFault(DCDstruct *i, _fault_subtype acvfault, char * msg)
 {
     
     char temp[256];
-    sprintf(temp, "group 6 ACV fault %s(%d)\n", strACV(acvfault), acvfault);
+    sprintf(temp, "group 6 ACV fault %s(%d): %s\n", strACV(acvfault), acvfault, msg);
 
     sim_printf("%s", temp);
     
@@ -784,7 +784,7 @@ void acvFault(DCDstruct *i, _fault_subtype acvfault)
 
     if (apndTrace)
     {
-        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d\n", strACV(acvfault), (long)acvFault, acvFaults);
+        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(acvFault): acvFault=%s(%ld) acvFaults=%d: %s\n", strACV(acvfault), (long)acvFault, acvFaults, msg);
     }
     
     doFault(i, acc_viol_fault, acvfault, temp); // NEW HWR 17 Dec 2013
@@ -878,6 +878,8 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
     int RSDWH_R1 = 0;
     
     acvFaults = 0;
+    char * acvFaultsMsg = "<unknown>";
+
     
     finalAddress = -1;  // not everything requires a final address
     
@@ -961,7 +963,7 @@ B:;
     //C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)?
     if (!(SDW->R1 <= SDW->R2 && SDW->R2 <= SDW->R3))
         // Set fault ACV0 = IRO
-        acvFault(i, ACV0);
+        acvFault(i, ACV0, "doAppendCycle(B) C(SDW.R1) ≤ C(SDW.R2) ≤ C(SDW .R3)");
     
     // No
     
@@ -970,7 +972,8 @@ B:;
 //        goto C;
     
     // Is OPCODE call6?
-    if (!instructionFetch && i->info->flags & CALL6_INS)
+    //if (!instructionFetch && i->info->flags & CALL6_INS)
+    if (thisCycle == OPERAND_READ && i->info->flags & CALL6_INS)
         goto E;
     
     // Transfer or instruction fetch?
@@ -986,11 +989,11 @@ B:;
         // C(TPR.TRR) > C(SDW .R2)?
         if (TPR.TRR > SDW->R2)
             //Set fault ACV5 = OWB
-            acvFault(i, ACV5);
+            acvFault(i, ACV5, "doAppendCycle(B) C(TPR.TRR) > C(SDW .R2)");
         
         if (!SDW->W)
             // Set fault ACV6 = W-OFF
-            acvFault(i, ACV6);
+            acvFault(i, ACV6, "doAppendCycle(B) ACV6 = W-OFF");
         goto G;
         
     } else {
@@ -999,17 +1002,21 @@ B:;
         
         // No
         // C(TPR.TRR) > C(SDW .R2)?
-        if (TPR.TRR > SDW->R2)
+        if (TPR.TRR > SDW->R2) {
             //Set fault ACV3 = ORB
             acvFaults |= ACV3;
+            acvFaultsMsg = "acvFaults(B) C(TPR.TRR) > C(SDW .R2)";
+        }
         
         if (SDW->R)
             goto G;
         
         //C(PPR.PSR) = C(TPR.TSR)?
-        if (PPR.PSR != TPR.TSR)
+        if (PPR.PSR != TPR.TSR) {
             //Set fault ACV4 = R-OFF
             acvFaults |= ACV4;
+            acvFaultsMsg = "acvFaults(B) C(PPR.PSR) = C(TPR.TSR)";
+        }
         
         goto G;
     }
@@ -1018,24 +1025,32 @@ C:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(C)\n");
 
     //C(TPR.TRR) < C(SDW .R1)?
-    if (TPR.TRR < SDW->R1)
+    if (TPR.TRR < SDW->R1) {
         //Set fault ACV1 = OEB
         acvFaults |= ACV1;
+        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) < C(SDW .R1)";
+    }
 
-    //￼￼￼￼￼C(TPR.TRR) > C(SDW .R2)?
-    if (TPR.TRR > SDW->R2)
+    //C(TPR.TRR) > C(SDW .R2)?
+    if (TPR.TRR > SDW->R2) {
         //Set fault ACV1 = OEB
         acvFaults |= ACV1;
+        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) > C(SDW .R2)";
+    }
 
     // SDW .E set ON?
-    if (SDW->E)
+    if (SDW->E) {
         //Set fault ACV2 = E-OFF
         acvFaults |= ACV2;
+        acvFaultsMsg = "acvFaults(C) SDW .E set ON";
+    }
     
     //C(TPR.TRR) ≥ C(PPR.PRR)
-    if (!(TPR.TRR >= PPR.PRR))
+    if (!(TPR.TRR >= PPR.PRR)) {
         // Set fault ACV11 = INRET
         acvFaults |= ACV11;
+        acvFaultsMsg = "acvFaults(C) C(TPR.TRR) ≥ C(PPR.PRR)";
+    }
     
 D:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(D)\n");
@@ -1045,8 +1060,10 @@ D:;
         goto G;
     
     // C(PPR.PRR) < RALR?
-    if (!(PPR.PRR < rRALR))
+    if (!(PPR.PRR < rRALR)) {
         acvFaults |= ACV13;
+        acvFaultsMsg = "acvFaults(D) C(PPR.PRR) < RALR";
+    }
     
     goto G;
     
@@ -1054,9 +1071,11 @@ E:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E): CALL6\n");
 
     //SDW .E set ON?
-    if (!SDW->E)
+    if (!SDW->E) {
         // Set fault ACV2 = E-OFF
         acvFaults |= ACV2;
+        acvFaultsMsg = "acvFaults(E) SDW .E set ON";
+    }
     
     //SDW .G set ON?
     if (SDW->G)
@@ -1069,30 +1088,38 @@ E:;
     // XXX This doesn't seem right
     // TPR.CA4-17 ≥ SDW.CL?
     //if ((TPR.CA & 0037777) >= SDW->CL)
-    if ((address & 0037777) >= SDW->CL)
+    if ((address & 0037777) >= SDW->CL) {
         // Set fault ACV7 = NO GA
         acvFaults |= ACV7;
+        acvFaultsMsg = "acvFaults(E) TPR.CA4-17 ≥ SDW.CL";
+    }
     
 E1:
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(E1): CALL6 (cont'd)\n");
 
     // C(TPR.TRR) > SDW.R3?
-    if (TPR.TRR > SDW->R3)
+    if (TPR.TRR > SDW->R3) {
         //Set fault ACV8 = OCB
         acvFaults |= ACV8;
+        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > SDW.R3";
+    }
     
     // C(TPR.TRR) < SDW.R1?
-    if (TPR.TRR < SDW->R1)
+    if (TPR.TRR < SDW->R1) {
         // Set fault ACV9 = OCALL
         acvFaults |= ACV9;
+        acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) < SDW.R1";
+    }
     
     
     // C(TPR.TRR) > C(PPR.PRR)?
     if (TPR.TRR > PPR.PRR)
         // C(PPR.PRR) < SDW.R2?
-        if (PPR.PRR < SDW->R2)
+        if (PPR.PRR < SDW->R2) {
             // Set fault ACV10 = BOC
             acvFaults |= ACV10;
+            acvFaultsMsg = "acvFaults(E1) C(TPR.TRR) > C(PPR.PRR) && C(PPR.PRR) < SDW.R2";
+        }
     
     // C(TPR.TRR) > SDW.R2?
     if (TPR.TRR > SDW->R2)
@@ -1106,21 +1133,29 @@ F:;
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(F): transfer or instruction fetch\n");
 
     // C(TPR.TRR) < C(SDW .R1)?
-    if (TPR.TRR < SDW->R1)
+    if (TPR.TRR < SDW->R1) {
         acvFaults |= ACV1;
+        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) < C(SDW .R1)";
+    }
     
     //C(TPR.TRR) > C(SDW .R2)?
-    if (TPR.TRR > SDW->R2)
+    if (TPR.TRR > SDW->R2) {
         acvFaults |= ACV1;
+        acvFaultsMsg = "acvFaults(F) C(TPR.TRR) > C(SDW .R2)";
+    }
     
     //SDW .E set ON?
-    if (!SDW->E)
+    if (!SDW->E) {
         acvFaults |= ACV2;
+        acvFaultsMsg = "acvFaults(F) SDW .E set ON";
+    }
     
     //C(PPR.PRR) = C(TPR.TRR)?
-    if (PPR.PRR != TPR.TRR)
+    if (PPR.PRR != TPR.TRR) {
         //Set fault ACV12 = CRT
         acvFaults |= ACV12;
+        acvFaultsMsg = "acvFaults(F) C(PPR.PRR) = C(TPR.TRR)";
+    }
     
     goto D;
 
@@ -1130,12 +1165,14 @@ G:;
     
     //C(TPR.CA)0,13 > SDW.BOUND?
     //if (((TPR.CA >> 4) & 037777) > SDW->BOUND)
-    if (((address >> 4) & 037777) > SDW->BOUND)
+    if (((address >> 4) & 037777) > SDW->BOUND) {
         acvFaults |= ACV15;
+        acvFaultsMsg = "acvFaults(G) C(TPR.CA)0,13 > SDW.BOUND";
+    }
     
     if (acvFaults)
         // Initiate an access violation fault
-        doFault(i, acc_viol_fault, acvFaults, "acvFaults");
+        doFault(i, acc_viol_fault, acvFaults, acvFaultsMsg);
     
     // is segment C(TPR.TSR) paged?
     if (SDW->U)
