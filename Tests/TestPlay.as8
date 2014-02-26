@@ -122,13 +122,14 @@ mlr:
     
   
     lda     =o104,dl
-    sta     regC
+    sta     C
     
     epp2    taf
     sprp2   regB
+    ldq     regB
     
     lda     =17,dl
-    sta     regA
+"    sta     regA
 
 
 *  b % a := c
@@ -175,7 +176,13 @@ l43170:
         oct	000400000043
         oct	000000000000
         
-
+        eight
+temp8: " 8-word block if temporary storage
+A:      dec     0
+Q:      dec 0
+result: dec 0
+C:      dec 0
+        bss     ,4
 
     INCLUDE     setupFXE.as8
 
