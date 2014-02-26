@@ -454,11 +454,13 @@ void listSource (char * compname, word18 offset)
                 // PL/I files have a line location table
                 //     "   LINE    LOC      LINE    LOC ...."
 
+                bool foundTable = false;
                 while (! feof (listing))
                   {
                     fgets (line, 132, listing);
                     if (strncmp (line, "   LINE    LOC", 14) != 0)
                       continue;
+                    foundTable = true;
                     // Found the table
                     // Table lines look like
                     //     "     13 000705       275 000713  ...
@@ -520,6 +522,22 @@ void listSource (char * compname, word18 offset)
                       }
                     goto fileDone;
                   } // if table start
+                if (! foundTable)
+                  {
+                    // Can't find the LINE/LOC table; look for listing
+                    rewind (listing);
+                    while (! feof (listing))
+                      {
+                        fgets (line, 132, listing);
+                        if (strncmp (line, offset_str + 4, offset_str_len - 4) == 0)
+                          {
+                            sim_printf ("%s", line);
+                            //break;
+                          }
+                        //if (strcmp (line, "\fLITERALS\n") == 0)
+                          //break;
+                      }
+                  } // if ! tableFound
               } // if PL/I listing
                         
 fileDone:
