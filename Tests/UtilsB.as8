@@ -163,14 +163,13 @@ putChar:  "push
 "        ldq     temp2       " put repeated chars into Q
 
         lda     LA          " get adjusted char posn to put
-$1:     xec     $3,al    " eXECute appropriate stbq instruction
+        xec     $3,al    " eXECute appropriate stbq instruction
 
         lda     temp1
-$2:     sta     pr3|0,x2    " write back modified word out
+        sta     pr3|0,x2    " write back modified word out
 
         lpri    savePR
         lreg    saveX       " restore regsiters
-
         rtcd    saveRA
 
         "return

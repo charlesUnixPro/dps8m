@@ -39,38 +39,118 @@ call_main:
     "call    getCharAB(ap|0)
     
     epp2     taf        " address of string => pr2
-    sprp2    a0        " save as argument to function
+    sprp2    $2         " save as argument to function
 
     eax2     20
-lp: stx2     a1
+$1: stx2     $3
 
     tsp2     UtilsB$getChar
-a0: zero     0, 0        " packed address of string
-a1: arg      17
+$2: zero     0, 0        " packed address of string
+$3: arg      17
 
     emcall  1
 
     eax2     -1,x2
-    tnz      lp
+    tnz      $1
+
+*
+* play with mlr for a lit'l bit ...
+*
+mlr:
+*    mlr     (pr),(pr)
+*d1: dec     0           " vfd   18/address,3/cn(0-3)x,2/TA(9=0),1/0,12/N
+"d2: dec     0
 
 
-    epp2     taf        " address of string => pr2
-    sprp2    a2         " save as argument to function
+*
+*    "epp2     msg2        " address of string => pr2
+*    epp3     res        " address of result => pr3
+*
+*    eax2    20          " we'll do this for 20 times
+*    eax3    1           " and we'll start at char offset 1
+*
+**   a9bdx   pr2|msg2,x3     " this is awful syntax. Like Bull/Honeywell better.
+*$1: a9bdx   msg2,x3,2       " msg=>pr2.WORDNO, x3=>pr2.CHAR
+*    "a9bd    0,x3,2         " msg=>pr2.WORDNO, x3=>pr2.CHAR
+*    mlr     (pr),(pr)
+*    desc9a  pr2|0,1         " src (vfd 18/ADDRESS,3/CN(0-3)x,2/TA(9=0),1/0,12/N)
+*    desc9a  pr3|0(3),1      " dst
+*
+*    lda     pr3|0
+*    emcall  1
+*
+*    eax3    1,x3            " bump char address/offset
+*    eax2    -1,x2           " decrement loop counter
+*    tnz     $1
 
-    eax2     20
-lp1:stx2     a3
 
-    tsp2     UtilsB$putChar
-a2: zero     0, 0        " packed address of string
-a3: arg      17
-    vfd      27/0,A9/D
+    epp2    msg2
+    sprp2   regB
     
+    lda     =17,dl
+    sta     regA
+
+    * a := b % a
+    lprp2   regB        " regB => pr2
+    lda     regA        " regA => A
+
+    epp3    regA        " &regA => pr3
+
+    a9bd    0,al,2      " al=>pr2.CHAR
+    mlr     (pr),(pr)
+    desc9a  pr2|0,1
+    desc9a  pr3|0(3),1
+    
+    lda     regA
+    emcall  1
+
+
+*
+* play with putChar for a bit ...
+*
+
+*    epp2     taf        " address of string => pr2
+*    sprp2    a2         " save as argument to function
+*
+*    eax2     20
+*lp1:stx2     a3
+*
+*    tsp2     UtilsB$putChar
+*a2: zero     0, 0        " packed address of string
+*a3: arg      17
+*    vfd      27/0,A9/D
+    
+  
+    lda     =o104,dl
+    sta     regC
+    
+    epp2    taf
+    sprp2   regB
+    
+    lda     =17,dl
+    sta     regA
+
+
+*  b % a := c
+
+    epp2    regC        " &regC => pr2
+    lda     regA        " regA => A
+    lprp3   regB        " regB => pr3
+
+    a9bd    0,al,3      " al=>pr3.CHAR
+    mlr     (pr),(pr)
+    desc9a  pr2|0(3),1  " get char from regC
+    desc9a  pr3|0,1     " write it to regB(regA)
+
+
 allDone:
     tsp2	ioa
 taf:acc     /T-H-A-T-S all folks (from 0|main) !!! /
 
 	dis
-    
+ 
+msg2:acc    /0123456789AbCdEfGhIjKlMnOpQrStUvWxYz/
+
 "
 " data ....
 "
@@ -78,6 +158,11 @@ even
 
 Date:   bss     2
 
+res:    bss     ,20
+
+regA:   bss     ,1
+regB:   bss     ,1
+regC:   bss     ,1
 
 " If not fault, dis@1
 	dis	*

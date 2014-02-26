@@ -1,4 +1,4 @@
-!INFO date Sun Feb 23 01:16:52 2014 UTC
+!INFO date Sun Feb 23 02:13:09 2014 UTC
 !INFO src UtilsB.as8
 !SIZE 000172
 !SEGNAME UtilsB
@@ -93,9 +93,9 @@
 000153 xxxx 000025255000         orsa    temp2       " or it into temp2 (4x)
 000154 xxxx 000025236000         ldq     temp2       " put repeated chars into Q
 000155 xxxx 000026235000         lda     LA          " get adjusted char posn to put
-000156 xxxx 000164716005 $1:     xec     $3,al    " eXECute appropriate stbq instruction
+000156 xxxx 000164716005         xec     $3,al    " eXECute appropriate stbq instruction
 000157 xxxx 000024235000         lda     temp1
-000160 xxxx 300000755112 $2:     sta     pr3|0,x2    " write back modified word out
+000160 xxxx 300000755112         sta     pr3|0,x2    " write back modified word out
 000161 xxxx 000040173000         lpri    savePR
 000162 xxxx 000010073000         lreg    saveX       " restore regsiters
 000163 xxxx 000000610000         rtcd    saveRA
