@@ -7,6 +7,7 @@
 //
 
 #include <stdio.h>
+#include <unistd.h>
 
 #include "dps8.h"
 #include "dps8_iom.h"
@@ -121,18 +122,10 @@ static struct
     int chan_num;
   } cables_from_ioms_to_con [N_OPCON_UNITS];
 
-// Buffer to accumulate Write ASCII
-#define writeBufSize 4096
-static word36 writeBuf [writeBufSize];
-static int writeBufCnt;
-
-//-- static void check_keyboard(int chan);
-//-- 
+static void check_keyboard (void);
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
 static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
-
-//-- // ============================================================================
 
 static t_stat opcon_reset (DEVICE * dptr)
   {
@@ -176,19 +169,19 @@ int opcon_autoinput_set(UNIT *uptr, int32 val, char *cptr, void *desc)
 //--     if (devp == NULL)
 //--         return 1;
 //--     chan_devinfo* devinfop = devp->ctxt;
-//--     struct s_console_state *con_statep = devinfop->statep;
-//--     if (con_statep->auto_input) {
+//--     struct s_console_state *console_state .  devinfop->statep;
+//--     if (console_state . auto_input) {
 //--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Discarding prior auto-input., __func__\n");
-//--         free(con_statep->auto_input);
+//--         free(console_state . auto_input);
 //--     }
 //--     if (cptr) {
-//--         con_statep->auto_input = strdup(cptr);
+//--         console_state . auto_input = strdup(cptr);
 //--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input now: %s\n", cptr, __func__);
 //--     } else {
-//--         con_statep->auto_input = NULL;
+//--         console_state . auto_input = NULL;
 //--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input disabled.\n", __func__);
 //--     }
-//--     con_statep->autop = con_statep->auto_input;
+//--     console_state . autop = console_state . auto_input;
     return SCPE_OK;
 }
 
@@ -201,11 +194,11 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 //--     if (devp == NULL)
 //--         return 1;
 //--     chan_devinfo* devinfop = devp->ctxt;
-//--     struct s_console_state *con_statep = devinfop->statep;
-//--     if (con_statep->auto_input == NULL)
+//--     struct s_console_state *console_state .  devinfop->statep;
+//--     if (console_state . auto_input == NULL)
 //--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: No auto-input exists.\n", __func__);
 //--     else
-//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input is/was: %s\n", __func__, con_statep->auto_input);
+//--         sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Auto-input is/was: %s\n", __func__, console_state . auto_input);
 //--     
     return SCPE_OK;
 }
@@ -243,7 +236,7 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 //--         sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, no device info for channel 0%o\n", chan);
 //--         return 1;
 //--     }
-//--     struct s_console_state *con_statep = devinfop->statep;
+//--     struct s_console_state *console_state .  devinfop->statep;
 //--     if (dev_code != 0) {
 //--         // Consoles don't have units
 //--         *majorp = 05;
@@ -251,20 +244,20 @@ int opcon_autoinput_show(FILE *st, UNIT *uptr, int val, void *desc)
 //--         sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Bad dev unit-num 0%o (%d decimal)\n", dev_code, dev_code);
 //--         return 1;
 //--     }
-//--     if (con_statep == NULL) {
-//--         if ((con_statep = malloc(sizeof(struct s_console_state))) == NULL) {
+//--     if (console_state . = NULL) {
+//--         if ((console_state .  malloc(sizeof(struct s_console_state))) == NULL) {
 //--             sim_debug (DBG_ERR, & opcon_dev, "con_check_args: Internal error, malloc failed.\n");
 //--             return 1;
 //--         }
-//--         devinfop->statep = con_statep;
-//--         con_statep->io_mode = no_mode;
-//--         con_statep->tailp = con_statep->buf;
-//--         con_statep->readp = con_statep->buf;
-//--         con_statep->have_eol = 0;
-//--         con_statep->auto_input = NULL;
-//--         con_statep->autop = NULL;
+//--         devinfop->statep = console_state . 
+//--         console_state . io_mode = no_mode;
+//--         console_state . tailp = console_state . buf;
+//--         console_state . readp = console_state . buf;
+//--         console_state . have_eol = 0;
+//--         console_state . auto_input = NULL;
+//--         console_state . autop = NULL;
 //--     }
-//--     *statepp = con_statep;
+//--     *statepp = console_state . 
 //--     return 0;
 //-- }
 //-- 
@@ -283,21 +276,9 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
   {
     * need_data = false;
     * is_read = true;
-//--     int chan = opcon_unit -> u3;
-//--     int dev_code = opcon_unit -> u4;
-//--     //int iom_unit_num = opcon_unit -> u5;
-//-- 
-//--     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o, dev-cmd 0%o, dev-code 0%o\n", __func__, chan, dev_cmd, dev_code);
-//--     
-//--     // FIXME: Should Major be added to 040? and left shifted 6? Ans: it's 4 bits
-//--     
-//--     DEVICE* devp;
-//--     con_state_t* con_statep;
-//--     if (con_check_args("CON::iom_cmd", chan, dev_code, majorp, subp, &devp, &con_statep) != 0)
-//--         return 1;
-//--     
-//--     check_keyboard(chan);
-//--     
+ 
+    check_keyboard ();
+    
     switch (p -> dev_cmd)
       {
         case 0: // CMD 00 Request status
@@ -309,28 +290,29 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
             return 0;
         }
 
-//--         case 023:               // Read ASCII
-//--             con_statep->io_mode = read_mode;
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Read ASCII command received\n", __func__);
-//--             if (con_statep->tailp != con_statep->buf)
-//--               {
-//--                 sim_debug (DBG_WARN, & opcon_dev, "%s: Discarding previously buffered input.\n", __func__);
-//--               }
-//--             // TODO: discard any buffered chars from SIMH?
-//--             con_statep->tailp = con_statep->buf;
-//--             con_statep->readp = con_statep->buf;
-//--             con_statep->have_eol = 0;
-//--             *majorp = 00;
-//--             *subp = 0;
-//--             // breakpoint not helpful as cmd is probably in a list with an IO
-//--             // cancel_run(STOP_IBKPT);
-//--             // sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Auto-breakpoint for read.\n");
-//--             return 0;
+        case 023:               // Read ASCII
+            console_state . io_mode = read_mode;
+            sim_debug (DBG_NOTIFY, & opcon_dev, "%s: Read ASCII command received\n", __func__);
+            if (console_state . tailp != console_state . buf)
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "%s: Discarding previously buffered input.\n", __func__);
+              }
+            // TODO: discard any buffered chars from SIMH?
+            console_state . tailp = console_state . buf;
+            console_state . readp = console_state . buf;
+            console_state . have_eol = 0;
+            //*majorp = 00;
+            //*subp = 0;
+            * stati = 04000;
+            * need_data = true;
+            // breakpoint not helpful as cmd is probably in a list with an IO
+            // cancel_run(STOP_IBKPT);
+            // sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_cmd: Auto-breakpoint for read.\n");
+            return 0;
 
         case 033:               // Write ASCII
             * is_read = false;
             console_state . io_mode = write_mode;
-            writeBufCnt = 0;
 
             sim_debug (DBG_NOTIFY, & opcon_dev,
                        "%s: Write ASCII cmd received\n", __func__);
@@ -392,15 +374,8 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
 static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
-// XXX
-//--     
-//--     DEVICE* devp;
-//--     con_state_t* con_statep;
-//--     const int dev_code = 0;
-//--     if (con_check_args("CON::iom_cmd", chan, dev_code, majorp, subp, &devp, &con_statep) != 0)
-//--         return 1;
-//--     
-//--     check_keyboard(chan);
+    
+    check_keyboard ();
     
     switch (console_state . io_mode)
       {
@@ -409,71 +384,121 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
           * stati = 05001;       // 05 -- Command Reject 01 Invalid Instruction Code
           return 1;
             
-//--         case read_mode: {
-//--             // Read keyboard if we don't have an EOL from the operator
-//--             // yet
-//--             if (! con_statep->have_eol) {
-//--                 // We won't return anything to the IOM until the operator
-//--                 // has finished entering a full line and pressed ENTER.
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Starting input loop for channel %d (%#o)\n", chan, chan);
-//--                 time_t now = time(NULL);
-//--                 while (time(NULL) < now + 30 && ! con_statep->have_eol) {
-//--                     check_keyboard(chan);
-//--                     usleep(100000);       // FIXME: blocking
-//--                 }
-//--                 // Impossible to both have EOL and have buffer overflow
-//--                 if (con_statep->tailp >= con_statep->buf + sizeof(con_statep->buf)) {
-//--                     *majorp = 03;       // 03 -- Data Alert
-//--                     *subp = 040;        // 10 -- Message length alert
-//--                     sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
+        case read_mode:
+          {
+            // Read keyboard if we don't have an EOL from the operator
+            // yet
+            if (! console_state . have_eol)
+              {
+                // We won't return anything to the IOM until the operator
+                // has finished entering a full line and pressed ENTER.
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Starting input loop for channel %d (%#o)\n", chan, chan);
+                time_t now = time(NULL);
+                while (time(NULL) < now + 30 && ! console_state . have_eol)
+                  {
+                    check_keyboard ();
+                    usleep (100000);       // FIXME: blocking
+                  }
+                // Impossible to both have EOL and have buffer overflow
+                if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+                  {
+                    //*majorp = 03;       // 03 -- Data Alert
+                    //*subp = 040;        // 10 -- Message length alert
+                    * stati = 04340;
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: buffer overflow\n");
 //--                     cancel_run(STOP_BKPT);
-//--                     return 1;
-//--                 }
-//--                 if (! con_statep->have_eol) {
-//--                     *majorp = 03;       // 03 -- Data Alert
-//--                     *subp = 010;        // 10 -- Operator distracted (30 sec timeout)
-//--                     sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout\n");
+                    return 1;
+                  }
+                if (! console_state . have_eol)
+                  {
+                    //*majorp = 03;       // 03 -- Data Alert
+                    //*subp = 010;        // 10 -- Operator distracted (30 sec timeout)
+                    * stati = 04310;
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Operator distracted (30 second timeout\n");
 //--                     cancel_run(STOP_BKPT);
-//--                 }
-//--             }
-//--             // We have an EOL from the operator
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Transfer for channel %d (%#o)\n", chan, chan);
-//--             // bce_command_processor_ expects multiples chars per word
-//--             for (int charno = 0; charno < 4; ++charno) {
-//--                 if (con_statep->readp >= con_statep->tailp)
-//--                     break;
-//--                 unsigned char c = *con_statep->readp++;
-//--                 *wordp = setbits36(*wordp, charno * 9, 9, c);
-//--             }
-//--             if (1) {
-//--                 char msg[17];
-//--                 for (int charno = 0; charno < 4; ++charno) {
-//--                     unsigned char c = getbits36(*wordp, charno * 9, 9);
-//--                     if (c <= 0177 && isprint(c))
-//--                         sprintf(msg+charno*4, " '%c'", c);
-//--                     else
-//--                         sprintf(msg+charno*4, "\\%03o", c);
-//--                 }
-//--                 msg[16] = 0;
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Returning word %012llo: %s\n", *wordp, msg);
-//--             }
-//--             int ret;
-//--             if (con_statep->readp == con_statep->tailp) {
-//--                 con_statep->readp = con_statep->buf;
-//--                 con_statep->tailp = con_statep->buf;
-//--                 // con_statep->have_eol = 0;
-//--                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Entire line now transferred.\n");
-//--                 ret = 1;    // FIXME: out of band request to return
-//--             } else {
-//--                 sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: %ld chars remain to be transfered.\n", con_statep->tailp - con_statep->readp);
-//--                 ret = 0;
-//--             }
-//--             *majorp = 0;
-//--             *subp = 0;
-//--             sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Auto breakpoint.\n");
-//--             cancel_run(STOP_BKPT);
-//--             return ret;
-//--         }
+                  }
+              }
+            // We have an EOL from the operator
+            sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Transfer for channel %d (%#o)\n", chan, chan);
+#if 0
+            // bce_command_processor_ expects multiples chars per word
+            for (int charno = 0; charno < 4; ++charno)
+              {
+                if (console_state . readp >= console_state . tailp)
+                    break;
+                unsigned char c = *console_state . readp++;
+                *wordp = setbits36(*wordp, charno * 9, 9, c);
+              }
+            if (1)
+              {
+                char msg[17];
+                for (int charno = 0; charno < 4; ++charno)
+                  {
+                    unsigned char c = getbits36(*wordp, charno * 9, 9);
+                    if (c <= 0177 && isprint(c))
+                        sprintf(msg+charno*4, " '%c'", c);
+                    else
+                        sprintf(msg+charno*4, "\\%03o", c);
+                  }
+                msg[16] = 0;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Returning word %012llo: %s\n", *wordp, msg);
+              }
+            int ret;
+            if (console_state . readp == console_state . tailp)
+              {
+                console_state . readp = console_state . buf;
+                console_state . tailp = console_state . buf;
+                // console_state . have_eol = 0;
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: Entire line now transferred.\n");
+                ret = 1;    // FIXME: out of band request to return
+              }
+            else
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: %ld chars remain to be transfered.\n", console_state . tailp - console_state . readp);
+                ret = 0;
+              }
+#else
+            // bce_command_processor_ expects multiples chars per word
+            
+            while (* tally && console_state . readp < console_state . tailp)
+              {
+                * wordp = 0040040040040;
+                for (int charno = 0; charno < 4; ++charno)
+                  {
+                    if (console_state . readp >= console_state . tailp)
+                      break;
+                    unsigned char c = * console_state . readp ++;
+                    * wordp = setbits36 (* wordp, charno * 9, 9, c);
+                  }
+                if (1)
+                  {
+                    char msg[17];
+                    for (int charno = 0; charno < 4; ++charno)
+                      {
+                        unsigned char c = getbits36(*wordp, charno * 9, 9);
+                        if (c <= 0177 && isprint(c))
+                            sprintf(msg+charno*4, " '%c'", c);
+                        else
+                            sprintf(msg+charno*4, "\\%03o", c);
+                      }
+                    msg[16] = 0;
+                    sim_debug (DBG_NOTIFY, & opcon_dev, "con_iom_io: Returning word %012llo: %s\n", *wordp, msg);
+                  }
+
+                wordp ++;
+                (* tally) --;
+              }
+            if (console_state . readp < console_state . tailp)
+              {
+                sim_debug (DBG_WARN, & opcon_dev, "con_iom_io: discarding %ld characters from end of line\n", console_state . tailp - console_state . readp);
+              }
+            console_state . readp = console_state . buf;
+            console_state . tailp = console_state . buf;
+            console_state . have_eol = 0;
+#endif
+            * stati = 04000;
+            return 0;
+          }
             
         case write_mode:
           {
@@ -594,30 +619,27 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--   }
 //-- 
 //-- // ============================================================================
-//-- 
-//-- /*
-//--  * check_keyboard()
-//--  *
-//--  * Check simulated keyboard and transfer input to buffer.
-//--  *
-//--  * FIXME: We allow input even when the console is not in input mode (but we're
-//--  * not really connected via a half-duplex channel either).
-//--  *
-//--  * TODO: Schedule this to run even when no console I/O is pending -- this
-//--  * will allow the user to see type-ahead feedback.
-//--  */
-//-- 
-//-- static void check_keyboard(int chan)
-//-- {
-//--     if (chan < 0 || chan >= max_channels) {
-//--         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Bad channel\n");
-//--         return;
-//--     }
-//--     DEVICE* devp = get_iom_channel_dev (cables_from_ioms_to_con [OPCON_UNIT_NUM] . iom_unit_num, chan, 0, NULL);
-//--     if (devp == NULL) {
-//--         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device\n");
-//--         return;
-//--     }
+
+/*
+ * check_keyboard()
+ *
+ * Check simulated keyboard and transfer input to buffer.
+ *
+ * FIXME: We allow input even when the console is not in input mode (but we're
+ * not really connected via a half-duplex channel either).
+ *
+ * TODO: Schedule this to run even when no console I/O is pending -- this
+ * will allow the user to see type-ahead feedback.
+ */
+
+static void check_keyboard (void)
+  {
+    //DEVICE * devp = get_iom_channel_dev (cables_from_ioms_to_con [OPCON_UNIT_NUM] . iom_unit_num, chan, 0, NULL);
+    //if (devp == NULL)
+      //{
+        //sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device\n");
+        //return;
+      //}
 //--     chan_devinfo* devinfop = devp->ctxt;
 //--     if (devinfop == NULL) {
 //--         sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: No device info\n");
@@ -629,85 +651,101 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 //--         return;
 //--     }
 //--     
-//--     int announce = 1;
-//--     for (;;) {
-//--         if (con_statep->tailp >= con_statep->buf + sizeof(con_statep->buf)) {
-//--             sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Buffer full; ignoring keyboard.\n");
-//--             return;
-//--         }
-//--         if (con_statep->have_eol)
-//--             return;
-//--         int c;
-//--         if (con_statep->io_mode == read_mode && con_statep->autop != NULL) {
-//--             if (announce) {
-//--                 const char *msg = "[auto-input] ";
-//--                 for (const char *s = msg; *s != 0; ++s)
-//--                     sim_putchar(*s);
-//--                 announce = 0;
-//--             }
-//--             c = *(con_statep->autop);
-//--             if (c == 0) {
-//--                 con_statep->have_eol = 1;
-//--                 free(con_statep->auto_input);
-//--                 con_statep->auto_input = NULL;
-//--                 con_statep->autop = NULL;
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got auto-input EOL for channel %d (%#o)\n", chan, chan);
-//--                 return;
-//--             }
-//--             ++ con_statep->autop;
-//--             if (isprint(c))
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '%c'\n", c);
-//--             else
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '\\%03o'\n", c);
-//--         } else {
-//--             c = sim_poll_kbd();
-//--             if (c == SCPE_OK)
-//--                 return; // no input
-//--             if (c == SCPE_STOP) {
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got <sim stop>\n");
-//--                 return; // User typed ^E to stop simulation
-//--             }
-//--             if (c < SCPE_KFLAG) {
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Bad char\n");
-//--                 return; // Should be impossible
-//--             }
-//--             c -= SCPE_KFLAG;    // translate to ascii
-//--             
-//--             if (isprint(c))
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '%c'\n", c);
-//--             else
-//--                 sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '\\%03o'\n", c);
-//--             
-//--             // FIXME: We don't allow user to set editing characters
-//--             if (c == '\177' || c == '\010') {
-//--                 if (con_statep->tailp > con_statep->buf) {
-//--                     -- con_statep->tailp;
-//--                     sim_putchar(c);
-//--                 }
-//--             }
-//--         }
-//--         if (c == '\014') {  // Form Feed, \f, ^L
-//--             sim_putchar('\r');
-//--             sim_putchar('\n');
-//--             for (const char *p = con_statep->buf; p < con_statep->tailp; ++p)
-//--                 sim_putchar(*p);
-//--         } else if (c == '\012' || c == '\015') {
-//--             // 012: New line, '\n', ^J
-//--             // 015: Carriage Return, \r, ^M
-//-- #if 0
-//--             // Transfer a NL to the buffer
-//--             // bce_command_processor_ looks for newlines but not CRs
-//--             *con_statep->tailp++ = 012;
-//-- #endif
-//--             // sim_putchar(c);
-//--             sim_putchar('\r');
-//--             sim_putchar('\n');
-//--             con_statep->have_eol = 1;
-//--             sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL for channel %d (%#o)\n", chan, chan);
-//--             return;
-//--         } else {
-//--             *con_statep->tailp++ = c;
-//--             sim_putchar(c);
-//--         }
-//--     }
-//-- }
+    int announce = 1;
+    for (;;)
+      {
+        if (console_state . tailp >= console_state . buf + sizeof(console_state . buf))
+         {
+            sim_debug (DBG_WARN, & opcon_dev, "check_keyboard: Buffer full; ignoring keyboard.\n");
+            return;
+        }
+        if (console_state . have_eol)
+            return;
+        int c;
+        if (console_state . io_mode == read_mode && console_state . autop != NULL)
+          {
+            if (announce)
+              {
+                const char *msg = "[auto-input] ";
+                for (const char *s = msg; *s != 0; ++s)
+                    sim_putchar(*s);
+                announce = 0;
+              }
+            c = * (console_state . autop);
+            if (c == 0)
+              {
+                console_state . have_eol = 1;
+                free(console_state . auto_input);
+                console_state . auto_input = NULL;
+                console_state . autop = NULL;
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got auto-input EOL\n");
+                return;
+              }
+            ++ console_state . autop;
+            if (isprint (c))
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '%c'\n", c);
+            else
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Used auto-input char '\\%03o'\n", c);
+          }
+        else
+          {
+            c = sim_poll_kbd();
+            if (c == SCPE_OK)
+                return; // no input
+            if (c == SCPE_STOP)
+              {
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got <sim stop>\n");
+                return; // User typed ^E to stop simulation
+              }
+            if (c < SCPE_KFLAG)
+              {
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Bad char\n");
+                return; // Should be impossible
+              }
+            c -= SCPE_KFLAG;    // translate to ascii
+            
+            if (isprint (c))
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '%c'\n", c);
+            else
+                sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got char '\\%03o'\n", c);
+            
+            // FIXME: We don't allow user to set editing characters
+            if (c == '\177' || c == '\010')
+              {
+                if (console_state . tailp > console_state . buf)
+                  {
+                    -- console_state . tailp;
+                    sim_putchar (c);
+                  }
+              }
+          }
+        if (c == '\014')  // Form Feed, \f, ^L
+          {
+            sim_putchar('\r');
+            sim_putchar('\n');
+            for (const char * p = console_state . buf; p < console_state . tailp; ++p)
+              sim_putchar (* p);
+          }
+        else if (c == '\012' || c == '\015')
+          {
+            // 012: New line, '\n', ^J
+            // 015: Carriage Return, \r, ^M
+#if 1
+            // Transfer a NL to the buffer
+            // bce_command_processor_ looks for newlines but not CRs
+            *console_state . tailp++ = 012;
+#endif
+            // sim_putchar(c);
+            sim_putchar ('\r');
+            sim_putchar ('\n');
+            console_state . have_eol = 1;
+            sim_debug (DBG_NOTIFY, & opcon_dev, "check_keyboard: Got EOL\n");
+            return;
+          }
+        else
+          {
+            * console_state . tailp ++ = c;
+            sim_putchar (c);
+          }
+      }
+  }
