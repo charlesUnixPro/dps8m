@@ -471,13 +471,13 @@ static void doITP(word4 Tag)
     TPR.TSR = PR[n].SNR;
     TPR.TRR = max3(PR[n].RNR, SDW->R1, TPR.TRR);
     TPR.TBR = GET_ITP_BITNO(itxPair);
-    TPR.CA = PAR[n].WORDNO + GET_ITP_WORDNO(itxPair);
+    TPR.CA = SIGNEXT18(PAR[n].WORDNO) + SIGNEXT18(GET_ITP_WORDNO(itxPair));
     if (GET_TM (Tag) == TM_IR)
-        TPR.CA += getCr(cu.CT_HOLD);
+        TPR.CA += SIGNEXT18(getCr(cu.CT_HOLD));
     else if (GET_TM (Tag) == TM_RI)
     {
         if (GET_ITP_MOD (itxPair) == TM_R || GET_ITP_MOD (itxPair) == TM_RI)
-            TPR.CA += getCr(GET_TAG (GET_ITP_MOD (itxPair)));
+            TPR.CA += SIGNEXT18(getCr(GET_TAG (GET_ITP_MOD (itxPair))));
     }
     rY = TPR.CA;
     
@@ -507,11 +507,11 @@ static void doITS(word4 Tag)
     //TPR.CA = GET_ITS_WORDNO(itxPair) + getCr(GET_TD(Tag));
     TPR.CA = GET_ITS_WORDNO(itxPair);
     if (GET_TM (Tag) == TM_IR)
-        TPR.CA += getCr(cu.CT_HOLD);
+        TPR.CA += SIGNEXT18(getCr(cu.CT_HOLD));
     else if (GET_TM (Tag) == TM_RI)
     {
         if (GET_ITS_MOD (itxPair) == TM_R || GET_ITS_MOD (itxPair) == TM_RI)
-            TPR.CA += getCr(GET_TAG (GET_ITS_MOD (itxPair)));
+            TPR.CA += SIGNEXT18(getCr(GET_TAG (GET_ITS_MOD (itxPair))));
     }
 
     rY = TPR.CA;
@@ -1403,7 +1403,7 @@ R_MOD:;
             
                 sim_debug(DBG_ADDRMOD, &cpu_dev, "IT_MOD(IT_ID): indword=%012llo Yi=%06o tally=%04o\n", indword, Yi, tally);
             
-// XXX Should thie if(prepare)?
+// XXX Should this be if(prepare)?
                 TPR.CA = Yi;
                 // read data
                 if (operType == readCY || operType == rmwCY) //READOP(i))

@@ -327,6 +327,7 @@ register modification. The modified C(TPR.CA) is then used to fetch an indirect 
 #define DBG_ALL (DBG_NOTIFY | DBG_INFO | DBG_ERR | DBG_DEBUG | DBG_WARN | DBG_ERR )
 #define DBG_FAULT       (1 << 17)  ///< follow fault handling
 #define DBG_INTR        (1 << 18)  // follow interrupt handling
+//#define DBG_CAC         (1 << 19)
 
 /* Global data */
 
@@ -1868,6 +1869,9 @@ struct segment
     
     int     linkOffset; ///< link offset in segment
     int     linkSize;   ///< size of segments linkage section
+
+    // For symbolic debugging support
+    char    *filename;
     
     struct segment *next;
     struct segment *prev;
@@ -3014,7 +3018,8 @@ int scu_set_interrupt(uint scu_unit_num, uint inum);
 t_stat cable_to_scu (int scu_unit_num, int scu_port_num, int iom_unit_num, int iom_port_num);
 t_stat cable_scu (int scu_unit_num, int scu_port_num, int cpu_unit_num, int cpu_port_num);
 void scu_init (void);
-t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word18 rega, word18 regq);
+t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 rega, word36 regq);
+t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * rega, word36 * regq);
 int scu_cioc (uint scu_unit_num, uint scu_port_num);
 
 /* dps8_sys.c */

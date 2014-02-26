@@ -3420,6 +3420,11 @@ static int do_ddcw (int iom_unit_num, int chan, int dev_code, int addr, dcw_t *d
     uint daddr = dcwp->fields.ddcw.daddr;
     uint tally = dcwp->fields.ddcw.tally;   // FIXME?
     t_uint64 word = 0;
+// XXX CAC IOM should pass the DPS8M address, not the real memory address
+// It passes the real memory address so that it can do both direct and
+// indirect lisst service; fix the xxx_iom_io interface to support both
+// services, and pass in the appropriate values (& of the direct word, dps8
+// address of the indirect words
     t_uint64 * wordp = (type == 3) ? & word : M + daddr;    // 2 impossible; see do_dcw
     if (type == 3 && tally != 1)
       {

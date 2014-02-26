@@ -556,7 +556,7 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
                       sim_printf ("%c", ch);
                     else
                       {
-                        if (ch)
+                        if (ch && ch != '\015' && ch != '\012' && ch != '\177')
                           sim_printf ("\\%03o", ch);
                       }
                     //if (ch == '\r')

@@ -1136,6 +1136,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             n = opcode & 07;  // get n
             rX[n] = GETLO(CY);
             
+//if (n == 4)
+//printf ("cac %06o:%06o X4 %06o\r\n", PPR.PSR, PPR.IC, rX[n]);
+
             if (rX[n] == 0)
                 SETF(rIR, I_ZERO);
             else
@@ -4566,6 +4569,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             return STOP_UNIMP;
 
         case 0413:  ///< rscr
+#if 0
             //The final computed address, C(TPR.CA), is used to select a system
             //controller and the function to be performed as follows:
             //EffectiveAddress Function
@@ -4596,6 +4600,9 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                 int EAF = hi & 077770;
                 switch (EAF)
                 {
+                    case 0030: // Interrupt cells A
+                      
+                    case 0031: // Interrupt cells A
                     case 0000:
                     case 0010:
                     case 0120:
@@ -4621,6 +4628,19 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                         return STOP_UNIMP;
                 }
             }
+#else
+            {
+              // Which port is the sought SCU connected to?
+              int cpu_port_num = query_scpage_map (TPR.CA);
+              // What is the IDNUM of the SCU connected to that port?
+              int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME0, TPR.CA, & reg_A, & reg_Q);
+              if (rc == CONT_FAULT)
+                doFault(i, store_fault, 0, "(sscr)");
+              if (rc)
+                return rc;
+            }
+#endif
             
             break;
             
