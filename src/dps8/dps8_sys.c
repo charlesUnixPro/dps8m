@@ -173,11 +173,10 @@ static t_stat sys_cable (int32 arg, char * buf)
       {
         rc = cable_mt (n1, n2, n3, n4);
       }
-// XXX not yet
-//    else if (strcasecmp (name, "DISK") == 0)
-//      {
-//        rc = cable_disk (n1, n2, n3, n4);
-//      }
+    else if (strcasecmp (name, "DISK") == 0)
+      {
+        rc = cable_disk (n1, n2, n3, n4);
+      }
     else if (strcasecmp (name, "OPCON") == 0)
       {
         rc = cable_opcon (n1, n2);
@@ -1446,6 +1445,7 @@ DEVICE * sim_devices [] =
     & cpu_dev, // dev[0] is special to simh; it is the 'default device'
     & iom_dev,
     & tape_dev,
+    & disk_dev,
     & scu_dev,
     & clk_dev,
     // & mpc_dev,

@@ -148,7 +148,7 @@ struct opCode NonEISopcodes[01000] = {
     {},
     {"swca", READ_OPERAND, 0},
     {"swcq", READ_OPERAND, 0},
-    {"lpri", READ_YBLOCK16 | PRIV_INS | NO_RPT, NO_DDCSS, 0},
+    {"lpri", READ_YBLOCK16 | NO_BAR | NO_RPT, NO_DDCSS, 0},
     {},
     {"sba", READ_OPERAND, 0},
     {"sbq", READ_OPERAND, 0},
