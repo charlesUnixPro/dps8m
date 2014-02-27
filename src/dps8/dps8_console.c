@@ -125,7 +125,7 @@ static struct
 static void check_keyboard (void);
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
+static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati);
 
 static t_stat opcon_reset (DEVICE * dptr)
   {
@@ -371,10 +371,16 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
  * Handle an I/O request.  Invoked by the IOM while processing a DDCW.
  */
 
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati)
+static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
     
+    if (* cp)
+      {
+        sim_debug (DBG_ERR, & opcon_dev, "%s: Ignoring initial non-zero cp (%u)\n", __func__, * cp);
+      }
+
+    * cp = 0;
     check_keyboard ();
     
     switch (console_state . io_mode)
@@ -460,16 +466,18 @@ static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uin
 #else
             // bce_command_processor_ expects multiples chars per word
             
+            //memset (wordp, 0, * tally * sizeof (* wordp));
             while (* tally && console_state . readp < console_state . tailp)
               {
-                * wordp = 0040040040040;
-                for (int charno = 0; charno < 4; ++charno)
+                int charno;
+                for (charno = 0; charno < 4; ++charno)
                   {
                     if (console_state . readp >= console_state . tailp)
                       break;
                     unsigned char c = * console_state . readp ++;
                     * wordp = setbits36 (* wordp, charno * 9, 9, c);
                   }
+                * cp = charno % 4;
                 if (1)
                   {
                     char msg[17];
@@ -730,7 +738,7 @@ static void check_keyboard (void)
           {
             // 012: New line, '\n', ^J
             // 015: Carriage Return, \r, ^M
-#if 1
+#if 0
             // Transfer a NL to the buffer
             // bce_command_processor_ looks for newlines but not CRs
             *console_state . tailp++ = 012;

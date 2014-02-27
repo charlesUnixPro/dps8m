@@ -94,7 +94,7 @@ static t_stat mt_rewind (UNIT * uptr, int32 value, char * cptr, void * desc);
 static t_stat mt_show_nunits (FILE *st, UNIT *uptr, int val, void *desc);
 static t_stat mt_set_nunits (UNIT * uptr, int32 value, char * cptr, void * desc);
 static int mt_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati);
+static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati);
 
 #define N_MT_UNITS_MAX 16
 #define N_MT_UNITS 1 // default
@@ -137,12 +137,12 @@ static DEBTAB mt_dt [] =
     { NULL, 0 }
   };
 
-#define UNIT_WATCH UNIT_V_UF
+//#define UNIT_WATCH (MTUF_V_UF + 1)
 
 static MTAB mt_mod [] =
   {
-    { UNIT_WATCH, 1, "WATCH", "WATCH", NULL, NULL },
-    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
+    //{ UNIT_WATCH, UNIT_WATCH, "WATCH", "WATCH", NULL, NULL },
+    //{ UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
     {
        MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
       0,            /* match */
@@ -413,9 +413,9 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
             tape_statep -> rec_num ++;
             tape_statep -> tbc = tbc;
             tape_statep -> words_processed = 0;
-            if (unitp->flags & UNIT_WATCH)
-              sim_printf ("Tape %ld reads record %d\n",
-                            MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+            // if (unitp->flags & UNIT_WATCH)
+              // sim_printf ("Tape %ld reads record %d\n",
+                            // MT_UNIT_NUM (unitp), tape_statep -> rec_num);
             * stati = 04000; // have_status = 1
             if (sim_tape_wrp (unitp))
               * stati |= 1;
@@ -556,7 +556,7 @@ static int extractWord36FromBuffer (uint8 * bufp, t_mtrlnt tbc, uint * words_pro
     return 0;
   }
 
-static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, t_uint64 * wordp, word12 * stati)
+static int mt_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati)
   {
     //sim_debug (DBG_DEBUG, & tape_dev, "%s\n", __func__);
     int mt_unit_num = MT_UNIT_NUM (unitp);
