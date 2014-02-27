@@ -1095,7 +1095,7 @@ sim_printf ("sscr %o\n", function);
         case 00001: // Set system controller configuration register 
                     // (4MW SCU only)
           {
-            // sim_printf ("sscr 1 A: %012llo Q: %012llo\n", rega, regq);
+            //sim_printf ("sscr 1 A: %012llo Q: %012llo\n", rega, regq);
             struct config_switches * sw = config_switches + scu_unit_num;
             for (int maskab = 0; maskab < 2; maskab ++)
               {
@@ -1321,7 +1321,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
                      ((sw -> port_enable [2] & 01) << 1) |
                      ((sw -> port_enable [3] & 01) << 0);
 
-            * regq = (maskab [0] << 27) |
+            * regq = (maskab [1] << 27) |
                      // CYCLIC PRIOR 0
                      // Looking at scr_util.list, I *think* the port order
                      // 4,5,6,7.
@@ -1330,7 +1330,7 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
                      ((sw -> port_enable [6] & 01) << 1) |
                      ((sw -> port_enable [7] & 01) << 0);
 
-            // sim_printf ("rscr 1 A: %012llo Q: %012llo\n", * rega, * regq);
+            //sim_printf ("rscr 1 A: %012llo Q: %012llo\n", * rega, * regq);
             break;
           }
 
@@ -1339,8 +1339,11 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
           {
             if (switches . steady_clock)
               {
-                rA = 0;
-                rQ = cpuCycles;
+                // The is a bit of code that is waiting for 5000 ms; this
+                // fools into going faster
+                __uint128_t big = cpuCycles * 50000;
+                rA = big >> 36;
+                rQ = cpuCycles & DMASK;
                 break;
               }
             /// The calendar clock consists of a 52-bit register which counts
