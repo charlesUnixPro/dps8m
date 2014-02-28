@@ -2984,7 +2984,7 @@ void mvn(DCDstruct *ins)
     
     bool Ovr = false, Trunc = false;
     
-    int SF = calcSF(e->SF1, e->SF2, e->SF3);
+    int SF = calcSF(e->SF1, e->SF2, 0); 
     
     char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, SF, e->R, &Ovr, &Trunc);
     
