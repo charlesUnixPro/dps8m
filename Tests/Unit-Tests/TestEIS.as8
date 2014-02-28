@@ -1745,17 +1745,76 @@ EQUAL3: call    ioa(msg51)
 
 MORE:   
         call    ioa(msg52)
+        
+        tra     MVN0
+
+*
+* MVN tests ...
+*
+
+MVNmsg:     acc     /MVN Tests ...\r\n/
+MVNmsg1:    acc     /Result: ^n (Should be 014022064127)\r\n/
+MVNmsg2:    acc     /Result: ^n (Should be 321043105001)\r\n/
+MVNmsg3:    acc     /Result: ^n (Should be 000000022065)\r\n/
+
+
+FLD1bm:     ac4     /1234567+/  "8P1234567+
+FLD2bm:     DEC     0           " 0+123457 (Result)
+
+FLD1bn:     aci     /00012345678-/  " 00012345678-
+FLD2bn:     BSS 1               " -12345+1 (Result) negative and truncation set ON
+
+FLD1bo:     aci     /0123456+/   " 8A123456+ (0123456+)
+FLD2bo:     BSS 1               " 00001235 (Result)
+            NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
+
+
+MVN0:
+        call    ioa(MVNmsg)
+        
+        MVN     (),(),round         ",,1                  "with rounding option
+        NDSC4   FLD1bm,0,8,2,-3     "sending field operand descr.
+        NDSC4   FLD2bm,1,7,1,-2     "receiving field operand descr.
+
+        call    ioa(MVNmsg1, FLD2bm)
+
+        MVN     (),(),t             ",,,,1 truncation fault enable option
+        NDSC9   FLD1bn,3,9,2,-2     "sending field operand descr.
+        NDSC4   FLD2bn,0,8,0        "receiving field operand descr.
+
+        call    ioa(MVNmsg2, FLD2bn)
+
+
+        "eax1    1
+        "eax2    2
+        "eax7    7
+        "eax4    FLD1bo
+
+        "equ X7,15
+        "awdx    pr4|0,4
+        ""awdx    0,4,4
+        "MVN     (pr,rl,x1),(id),round,p              " with rounding and plus sign options
+        "NDSC9   0,,X7,2,-2,4
+        "ARG     FLD2bo+1
+
+        MVN     (),(),round,p              " with rounding and plus sign options
+        NDSC9   FLD1bo,1,7,2,-2       " 0,,X7,2,-2,4
+        NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
+
+        call    ioa(MVNmsg3, FLD2bo)
+
+
+
         dis
+
+
 
 FLD1bl: ac4     /00123456/      " +00123456
 FLD2bl: ac4     /0123456+/      " +01234560
 FLD2bl.I: desc4ts FLD2bl,8,-2
 
 
-        
 
-        dis
-        
 msg3:      acc         "Result: ^n (Should be 777777775456)\r\n"
 msg4:      acc         "Result: ^n (Should be 777777001000)\r\n"
 msg5:      acc         "Result: ^n (Should be 000000000777)\r\n"
