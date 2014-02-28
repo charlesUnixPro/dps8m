@@ -1,23 +1,23 @@
-!INFO date Sun Feb 23 00:46:24 2014 UTC
+!INFO date Wed Feb 26 02:49:13 2014 UTC
 !INFO src TestPlay.as8
-!SIZE 000166
+!SIZE 000266
 !SEGNAME main
 !SEGDEF main 000000
-!LINKAGE 000136 12
-!SEGREF UtilsA ioa 000136
-!SEGREF UtilsA rd_clockA 000140
-!SEGREF lot_ lot_ 000142
-!SEGREF stack_0 stack_0 000144
-!SEGREF UtilsB getChar 000146
-!SEGREF UtilsB putChar 000150
-!SEGREF simh_operators_ operator_table 000152
-!SEGREF simh_operators_ operator_table 000154 +632
-!SEGREF simh_operators_ operator_table 000156 +633
-!SEGREF simh_operators_ operator_table 000160 +634
-!SEGREF simh_operators_ operator_table 000162 +635
-!SEGREF simh_operators_ operator_table 000164 +636
+!LINKAGE 000236 12
+!SEGREF UtilsA ioa 000236
+!SEGREF UtilsA rd_clockA 000240
+!SEGREF lot_ lot_ 000242
+!SEGREF stack_0 stack_0 000244
+!SEGREF UtilsB getChar 000246
+!SEGREF UtilsB putChar 000250
+!SEGREF simh_operators_ operator_table 000252
+!SEGREF simh_operators_ operator_table 000254 +632
+!SEGREF simh_operators_ operator_table 000256 +633
+!SEGREF simh_operators_ operator_table 000260 +634
+!SEGREF simh_operators_ operator_table 000262 +635
+!SEGREF simh_operators_ operator_table 000264 +636
 !GO 000000
-000000 xxxx 000070702000     tsx2    setupFXE
+000000 xxxx 000170702000     tsx2    setupFXE
 000001 xxxx 000000235000     LDA     I
 000002 xxxx 400000272120     tsp2	pr4|I, *        " ioa
 000003 xxxx 030124150151     acc     /This is "Play .... It's /
@@ -28,109 +28,151 @@
 000010 xxxx 111164047163 
 000011 xxxx 040040040040 
 000012 xxxx 400002272120     tsp2    UtilsA$rd_clockA
-000013 xxxx 000060757000     staq	Date        " MM/DD HH:MM
+000013 xxxx 000114757000     staq	Date        " MM/DD HH:MM
 000014 xxxx 400000272120     tsp2	ioa
 000015 xxxx 010047136147     acc     /'^g^g'\r\n/
 000016 xxxx 136147047015 
 000017 xxxx 012040040040 
-000020 xxxx 000060011000     nop     Date
-000021 xxxx 000061011000     nop     Date+1
-000022 xxxx 000045352000     epp2     taf        " address of string => pr2
-000023 xxxx 000027542000     sprp2    a0        " save as argument to function
+000020 xxxx 000114011000     nop     Date
+000021 xxxx 000115011000     nop     Date+1
+000022 xxxx 000067352000     epp2     taf        " address of string => pr2
+000023 xxxx 000027542000     sprp2    $2         " save as argument to function
 000024 xxxx 000024622000     eax2     20
-000025 xxxx 000030742000 lp: stx2     a1
+000025 xxxx 000030742000 $1: stx2     $3
 000026 xxxx 400010272120     tsp2     UtilsB$getChar
-000027 xxxx 000000000000 a0: zero     0, 0        " packed address of string
-000030 xxxx 000021000000 a1: arg      17
+000027 xxxx 000000000000 $2: zero     0, 0        " packed address of string
+000030 xxxx 000021000000 $3: arg      17
 000031 xxxx 000001420400     emcall  1
 000032 xxxx 777777622012     eax2     -1,x2
-000033 xxxx 000025601000     tnz      lp
-000034 xxxx 000045352000     epp2     taf        " address of string => pr2
-000035 xxxx 000041542000     sprp2    a2         " save as argument to function
-000036 xxxx 000024622000     eax2     20
-000037 xxxx 000042742000 lp1:stx2     a3
-000040 xxxx 400012272120     tsp2     UtilsB$putChar
-000041 xxxx 000000000000 a2: zero     0, 0        " packed address of string
-000042 xxxx 000021000000 a3: arg      17
-000043 xxxx 000000000104     vfd      27/0,A9/D
-000044 xxxx 400000272120     tsp2	ioa
-000045 xxxx 046124055110 taf:acc     /T-H-A-T-S all folks (from 0|main) !!! /
-000046 xxxx 055101055124 
-000047 xxxx 055123040141 
-000050 xxxx 154154040146 
-000051 xxxx 157154153163 
-000052 xxxx 040050146162 
-000053 xxxx 157155040060 
-000054 xxxx 174155141151 
-000055 xxxx 156051040041 
-000056 xxxx 041041040040 
-000057 xxxx 000000616000 	dis
-000060 xxxx 000000000000 Date:   bss     2
-000062 xxxx 000062616000 	dis	*
-000063 xxxx 000000011000     even "(allocating 1 nop)
-000064 xxxx 000011000043         ITS 9, 16
-000065 xxxx 000020000000 
-000066 xxxx 000400000043         oct	000400000043
-000067 xxxx 000000000000         oct	000000000000
-000070 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
-000071 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
-000072 xxxx 400006373520         eppsb   stack_0         " set-up stack base
-000073 xxxx 400006373520     eppsb   stack_0
-000074 xxxx 400006372120     eppsp   stack_0
-000075 xxxx 000100152003     adwpsp  =0100,du
-000076 xxxx 700022652100     sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
-000077 xxxx 700024652100     sprisp	sb|stack_header.stack_end_ptr
-000100 xxxx 400004352120 	eppbp	lot_						" set the lot ptrs
-000101 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
-000102 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
-000103 xxxx 000132352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
-000104 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
-000105 xxxx 400014352120 	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
-000106 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
-000107 xxxx 400016352120 	eppbp	simh_operators_$operator_table+call_offset,*
-000110 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
-000111 xxxx 400020352120 	eppbp	simh_operators_$operator_table+push_offset,*
-000112 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
-000113 xxxx 400022352120 	eppbp	simh_operators_$operator_table+return_offset,*
-000114 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
-000115 xxxx 400024352120 	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
-000116 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
-000117 xxxx 400026352120 	eppbp	simh_operators_$operator_table+entry_offset,*
-000120 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
-000121 xxxx 000134352020 	eppbp	=its(-1,1),*
-000122 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
-000123 xxxx 700046272120     tsp2 pr7|stack_header.entry_op_ptr,*
-000124 xxxx 000060627000     push
-000125 xxxx 700040272120 
-000126 xxxx 000000710012 	tra		0,2				" ... and return to caller
-000127 xxxx 000000011000 	even "(allocating 1 nop)
-000130 xxxx 000000000004 no_args:	zero	0,4
-000131 xxxx 000000000000 	zero	0,0
-000132 xxxx 077776000043 its literal (=its(77776,000002,00))
-000133 xxxx 000002000000 
-000134 xxxx 077777000043 its literal (=its(77777,000001,00))
-000135 xxxx 000001000000 
-000136 xxxx 000000000043 link UtilsA$ioa
-000137 xxxx 000000000000 
-000140 xxxx 000000000043 link UtilsA$rd_clockA
-000141 xxxx 000000000000 
-000142 xxxx 000000000043 link lot_$lot_
-000143 xxxx 000000000000 
-000144 xxxx 000000000043 link stack_0$stack_0
-000145 xxxx 000000000000 
-000146 xxxx 000000000043 link UtilsB$getChar
-000147 xxxx 000000000000 
-000150 xxxx 000000000043 link UtilsB$putChar
-000151 xxxx 000000000000 
-000152 xxxx 000000000043 link simh_operators_$operator_table
-000153 xxxx 000000000000 
-000154 xxxx 000000000043 link simh_operators_$operator_table+632
-000155 xxxx 001170000000 
-000156 xxxx 000000000043 link simh_operators_$operator_table+633
-000157 xxxx 001171000000 
-000160 xxxx 000000000043 link simh_operators_$operator_table+634
-000161 xxxx 001172000000 
-000162 xxxx 000000000043 link simh_operators_$operator_table+635
-000163 xxxx 001173000000 
-000164 xxxx 000000000043 link simh_operators_$operator_table+636
-000165 xxxx 001174000000 
+000033 xxxx 000025601000     tnz      $1
+000034 xxxx 000102352000     epp2    msg2
+000035 xxxx 000143542000     sprp2   regB
+000036 xxxx 000021235007     lda     =17,dl
+000037 xxxx 000142755000     sta     regA
+000040 xxxx 000143762000     lprp2   regB        " regB => pr2
+000041 xxxx 000142235000     lda     regA        " regA => A
+000042 xxxx 000142353400     epp3    regA        " &regA => pr3
+000043 xxxx 200000500505     a9bd    0,al,2      " al=>pr2.CHAR
+000044 xxxx 000100100500     mlr     (pr),(pr)
+000045 xxxx 200000000001     desc9a  pr2|0,1
+000046 xxxx 300000600001     desc9a  pr3|0(3),1
+000047 xxxx 000142235000     lda     regA
+000050 xxxx 000001420400     emcall  1
+000051 xxxx 000104235007     lda     =o104,dl
+000052 xxxx 000144755000     sta     regC
+000053 xxxx 000067352000     epp2    taf
+000054 xxxx 000143542000     sprp2   regB
+000055 xxxx 000021235007     lda     =17,dl
+000056 xxxx 000142755000     sta     regA
+000057 xxxx 000144352000     epp2    regC        " &regC => pr2
+000060 xxxx 000142235000     lda     regA        " regA => A
+000061 xxxx 000143763000     lprp3   regB        " regB => pr3
+000062 xxxx 300000500505     a9bd    0,al,3      " al=>pr3.CHAR
+000063 xxxx 000100100500     mlr     (pr),(pr)
+000064 xxxx 200000600001     desc9a  pr2|0(3),1  " get char from regC
+000065 xxxx 300000000001     desc9a  pr3|0,1     " write it to regB(regA)
+000066 xxxx 400000272120     tsp2	ioa
+000067 xxxx 046124055110 taf:acc     /T-H-A-T-S all folks (from 0|main) !!! /
+000070 xxxx 055101055124 
+000071 xxxx 055123040141 
+000072 xxxx 154154040146 
+000073 xxxx 157154153163 
+000074 xxxx 040050146162 
+000075 xxxx 157155040060 
+000076 xxxx 174155141151 
+000077 xxxx 156051040041 
+000100 xxxx 041041040040 
+000101 xxxx 000000616000 	dis
+000102 xxxx 044060061062 msg2:acc    /0123456789AbCdEfGhIjKlMnOpQrStUvWxYz/
+000103 xxxx 063064065066 
+000104 xxxx 067070071101 
+000105 xxxx 142103144105 
+000106 xxxx 146107150111 
+000107 xxxx 152113154115 
+000110 xxxx 156117160121 
+000111 xxxx 162123164125 
+000112 xxxx 166127170131 
+000113 xxxx 172040040040 
+000114 xxxx 000000000000 Date:   bss     2
+000116 xxxx 000000000000 res:    bss     ,20
+000142 xxxx 000000000000 regA:   bss     ,1
+000143 xxxx 000000000000 regB:   bss     ,1
+000144 xxxx 000000000000 regC:   bss     ,1
+000145 xxxx 000145616000 	dis	*
+000146 xxxx 000011000043         ITS 9, 16
+000147 xxxx 000020000000 
+000150 xxxx 000400000043         oct	000400000043
+000151 xxxx 000000000000         oct	000000000000
+000152 xxxx 000000011000         eight "(allocating 6 nop's)
+000153 xxxx 000000011000 
+000154 xxxx 000000011000 
+000155 xxxx 000000011000 
+000156 xxxx 000000011000 
+000157 xxxx 000000011000 
+000160 xxxx 000000000000 A:      dec     0
+000161 xxxx 000000000000 Q:      dec 0
+000162 xxxx 000000000000 result: dec 0
+000163 xxxx 000000000000 C:      dec 0
+000164 xxxx 000000000000         bss     ,4
+000170 xxxx 400004764120         lprplp  lot_            " set-up lp to point to this segments linkage section
+000171 xxxx 400006372120         eppsp   stack_0         " set-up stack pointer
+000172 xxxx 400006373520         eppsb   stack_0         " set-up stack base
+000173 xxxx 400006373520     eppsb   stack_0
+000174 xxxx 400006372120     eppsp   stack_0
+000175 xxxx 000100152003     adwpsp  =0100,du
+000176 xxxx 700022652100     sprisp	sb|stack_header.stack_begin_ptr 		" save beginning of 1st stack frame
+000177 xxxx 700024652100     sprisp	sb|stack_header.stack_end_ptr
+000200 xxxx 400004352120 	eppbp	lot_						" set the lot ptrs
+000201 xxxx 700026252100 	spribp	sb|stack_header.lot_ptr
+000202 xxxx 700052252100 	spribp	sb|stack_header.isot_ptr
+000203 xxxx 000232352020 	eppbp	=its(-2,2),*		" signal ptr terminates process
+000204 xxxx 700030252100 	spribp	sb|stack_header.signal_ptr
+000205 xxxx 400014352120 	eppbp	simh_operators_$operator_table  		" Get a ptr to  PL/I operators table.
+000206 xxxx 700034252100 	spribp	sb|stack_header.pl1_operators_ptr 	" Store in  inzr_stk0
+000207 xxxx 400016352120 	eppbp	simh_operators_$operator_table+call_offset,*
+000210 xxxx 700036252100 	spribp	sb|stack_header.call_op_ptr
+000211 xxxx 400020352120 	eppbp	simh_operators_$operator_table+push_offset,*
+000212 xxxx 700040252100 	spribp	sb|stack_header.push_op_ptr
+000213 xxxx 400022352120 	eppbp	simh_operators_$operator_table+return_offset,*
+000214 xxxx 700042252100 	spribp	sb|stack_header.return_op_ptr
+000215 xxxx 400024352120 	eppbp	simh_operators_$operator_table+return_no_pop_offset,*
+000216 xxxx 700044252100 	spribp	sb|stack_header.ret_no_pop_op_ptr
+000217 xxxx 400026352120 	eppbp	simh_operators_$operator_table+entry_offset,*
+000220 xxxx 700046252100 	spribp	sb|stack_header.entry_op_ptr
+000221 xxxx 000234352020 	eppbp	=its(-1,1),*
+000222 xxxx 700070252100 	spribp	sb|stack_header.heap_header_ptr
+000223 xxxx 700046272120     tsp2 pr7|stack_header.entry_op_ptr,*
+000224 xxxx 000060627000     push
+000225 xxxx 700040272120 
+000226 xxxx 000000710012 	tra		0,2				" ... and return to caller
+000227 xxxx 000000011000 	even "(allocating 1 nop)
+000230 xxxx 000000000004 no_args:	zero	0,4
+000231 xxxx 000000000000 	zero	0,0
+000232 xxxx 077776000043 its literal (=its(77776,000002,00))
+000233 xxxx 000002000000 
+000234 xxxx 077777000043 its literal (=its(77777,000001,00))
+000235 xxxx 000001000000 
+000236 xxxx 000000000043 link UtilsA$ioa
+000237 xxxx 000000000000 
+000240 xxxx 000000000043 link UtilsA$rd_clockA
+000241 xxxx 000000000000 
+000242 xxxx 000000000043 link lot_$lot_
+000243 xxxx 000000000000 
+000244 xxxx 000000000043 link stack_0$stack_0
+000245 xxxx 000000000000 
+000246 xxxx 000000000043 link UtilsB$getChar
+000247 xxxx 000000000000 
+000250 xxxx 000000000043 link UtilsB$putChar
+000251 xxxx 000000000000 
+000252 xxxx 000000000043 link simh_operators_$operator_table
+000253 xxxx 000000000000 
+000254 xxxx 000000000043 link simh_operators_$operator_table+632
+000255 xxxx 001170000000 
+000256 xxxx 000000000043 link simh_operators_$operator_table+633
+000257 xxxx 001171000000 
+000260 xxxx 000000000043 link simh_operators_$operator_table+634
+000261 xxxx 001172000000 
+000262 xxxx 000000000043 link simh_operators_$operator_table+635
+000263 xxxx 001173000000 
+000264 xxxx 000000000043 link simh_operators_$operator_table+636
+000265 xxxx 001174000000 

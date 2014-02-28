@@ -750,7 +750,7 @@ struct opCode EISopcodes[01000] = {
     {},
     {},
      /* 300 - 317 */ 
-    {"mvn", IGN_B29, 0, 3},
+    {"mvn", IGN_B29, 0, 2},
     {"btd", IGN_B29, 0, 2},
     {},
     {"cmpn", IGN_B29, 0, 2},

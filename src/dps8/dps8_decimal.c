@@ -293,7 +293,7 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
 } // decBCDFromNumber
 
 
-#ifndef QUIET_UNUSED
+//#ifndef QUIET_UNUSED
 static void printBCD(decNumber *a, decContext *set, int width)
 {
     uint8_t bcd[256];
@@ -306,7 +306,7 @@ static void printBCD(decNumber *a, decContext *set, int width)
         fprintf(stderr, "%d", bcd[n]);
     fprintf(stderr, "  scale=%d\n", -(a->exponent));
 }
-#endif
+//#endif
 
 #ifndef QUIET_UNUSED
 static char *getBCD(decNumber *a)
@@ -660,7 +660,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
                     ovr = true;
                 }
                 else
-                    fprintf(stderr, "formatDecimal(): How'd we get here?\n");
+                    sim_printf("formatDecimal(): How'd we get here?\n");
             }
         }
     }
@@ -2900,3 +2900,220 @@ void cmpn(DCDstruct *ins)
     SCF(cSigned == 1, rIR, I_NEG);
     SCF(cMag == 1, rIR, I_CARRY);
 }
+
+/*
+ * mvn - move numeric (initial version was deleted by house gnomes)
+ */
+void mvn(DCDstruct *ins)
+{
+    /*
+     * EXPLANATION:
+     * Starting at location YC1, the decimal number of data type TN1 and sign and decimal type S1 is moved, properly scaled, to the decimal number of data type TN2 and sign and decimal type S2 that starts at location YC2.
+     * If S2 indicates a fixed-point format, the results are stored as L2 digits using scale factor SF2, and thereby may cause most-significant-digit overflow and/or least- significant-digit truncation.
+     * If P = 1, positive signed 4-bit results are stored using octal 13 as the plus sign. Rounding is legal for both fixed-point and floating-point formats. If P = 0, positive signed 4-bit results are stored using octal 14 as the plus sign.
+     * Provided that string 1 and string 2 are not overlapped, the contents of the decimal number that starts in location YC1 remain unchanged.
+     */
+
+    EISstruct *e = ins->e;
+    
+    setupOperandDescriptor(1, e);
+    setupOperandDescriptor(2, e);
+    
+    parseNumericOperandDescriptor(1, e);
+    parseNumericOperandDescriptor(2, e);
+    
+    e->P = (bool)bitfieldExtract36(e->op0, 35, 1);  // 4-bit data sign character control
+    e->T = (bool)bitfieldExtract36(e->op0, 26, 1);  // truncation bit
+    e->R = (bool)bitfieldExtract36(e->op0, 25, 1);  // rounding bit
+    
+    e->srcTN = e->TN1;    // type of chars in src
+    e->srcCN = e->CN1;    // starting at char pos CN
+    
+    e->dstTN = e->TN2;    // type of chars in dst
+    e->dstCN = e->CN2;    // starting at char pos CN
+    
+    decContext set;
+    decContextDefault(&set, DEC_INIT_BASE);         // initialize
+    
+    decNumber _1;
+    
+    int n1 = 0, n2 = 0, sc1 = 0;
+    
+    EISloadInputBufferNumeric(ins, 1);   // according to MF1
+    
+    /*
+     * Here we need to distinguish between 4 type of numbers.
+     *
+     * CSFL - Floating-point, leading sign
+     * CSLS - Scaled fixed-point, leading sign
+     * CSTS - Scaled fixed-point, trailing sign
+     * CSNS - Scaled fixed-point, unsigned
+     */
+    
+    // determine precision
+    switch(e->S1)
+    {
+        case CSFL:
+            n1 = e->N1 - 1; // need to account for the - sign
+            if (e->srcTN == CTN4)
+                n1 -= 2;    // 2 4-bit digits exponent
+            else
+                n1 -= 1;    // 1 9-bit digit exponent
+            sc1 = 0;        // no scaling factor
+            break;
+        
+        case CSLS:
+        case CSTS:
+            n1 = e->N1 - 1; // only 1 sign
+            sc1 = -e->SF1;
+            break;
+        
+        case CSNS:
+            n1 = e->N1;     // no sign
+            sc1 = -e->SF1;
+            break;  // no sign wysiwyg
+    }
+    
+    decNumber *op1 = decBCD9ToNumber(e->inBuffer, n1, sc1, &_1);
+    if (e->sign == -1)
+        op1->bits = DECNEG;
+    if (e->S1 == CSFL)
+        op1->exponent = e->exponent;
+    if (decNumberIsZero(op1))
+        op1->exponent = 127;
+    
+    bool Ovr = false, Trunc = false;
+    
+    int SF = calcSF(e->SF1, e->SF2, 0); 
+    
+    char *res = formatDecimal(&set, op1, e->dstTN, e->N2, e->S2, SF, e->R, &Ovr, &Trunc);
+    
+    //printf("%s\r\n", res);
+    
+    // now write to memory in proper format.....
+    switch(e->S2)
+    {
+        case CSFL:
+            n2 = e->N2 - 1; // need to account for the sign
+            if (e->dstTN == CTN4)
+                n2 -= 2;    // 2 4-bit digit exponent
+            else
+                n2 -= 1;    // 1 9-bit digit exponent
+            break;
+        
+        case CSLS:
+        case CSTS:
+            n2 = e->N2 - 1; // 1 sign
+            break;
+        
+        case CSNS:
+            n2 = e->N2;     // no sign
+            break;          // no sign wysiwyg
+    }
+    
+    //word18 dstAddr = e->dstAddr;
+    int pos = e->dstCN;
+    
+    // 1st, take care of any leading sign .......
+    switch(e->S2)
+    {
+        case CSFL:  // floating-point, leading sign.
+        case CSLS:  // fixed-point, leading sign
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 : 014);  // default +
+                    break;
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSTS:  // nuttin' to do here .....
+        case CSNS:
+            break;  // no sign wysiwyg
+    }
+    
+    // 2nd, write the characteristic .....
+    for(int i = 0 ; i < n2 ; i++)
+        switch(e->dstTN)
+        {
+            case CTN4:
+                EISwrite49(&e->ADDR2, &pos, e->dstTN, res[i] - '0');
+                break;
+            case CTN9:
+                EISwrite49(&e->ADDR2, &pos, e->dstTN, res[i]);
+                break;
+        }
+    
+    // 3rd, take care of any trailing sign or exponent ...
+    switch(e->S2)
+    {
+        case CSTS:  // write trailing sign ....
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    if (e->P) //If TN2 and S2 specify a 4-bit signed number and P = 1, then the 13(8) plus sign character is placed appropriately if the result of the operation is positive.
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  013);  // special +
+                    else
+                        EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? 015 :  014);  // default +
+                    break;
+            
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, decNumberIsNegative(op1) ? '-' : '+');
+                    break;
+            }
+            break;
+        
+        case CSFL:  // floating-point, leading sign.
+            // write the exponent
+            switch(e->dstTN)
+            {
+                case CTN4:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, (op1->exponent >> 4) & 0xf); // upper 4-bits
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN,  op1->exponent       & 0xf); // lower 4-bits
+                    break;
+                case CTN9:
+                    EISwrite49(&e->ADDR2, &pos, e->dstTN, op1->exponent & 0xff);    // write 8-bit exponent
+                break;
+            }
+            break;
+        
+        case CSLS:  // fixed point, leading sign - already done
+        case CSNS:  // fixed point, unsigned - nuttin' needed to do
+            break;
+    }
+    
+    // set flags, etc ...
+    if (e->S2 == CSFL)
+    {
+        if (op1->exponent > 127)
+            SETF(rIR, I_EOFL);
+        if (op1->exponent < -128)
+            SETF(rIR, I_EUFL);
+    }
+    
+    SCF(decNumberIsNegative(op1), rIR, I_NEG);  // set negative indicator if op3 < 0
+    SCF(decNumberIsZero(op1), rIR, I_ZERO);     // set zero indicator if op3 == 0
+    
+    SCF(!e->R && Trunc, rIR, I_TRUNC); // If the truncation condition exists without rounding, then ON; otherwise OFF
+    
+    if (e->T && Trunc)
+    {
+        doFault(ins, 0, 0,"mvn truncation(overflow) fault");
+        SETF(rIR, I_OFLOW);
+    }
+    
+    if (Ovr)
+    {
+        SETF(rIR, I_OFLOW);
+        doFault(ins, 0,0,"mvn overflow fault");
+    }
+
+}
+
+

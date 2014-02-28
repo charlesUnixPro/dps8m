@@ -3,7 +3,7 @@
 "
 
     name        UtilsB
-    segdef      getChar, putChar
+    segdef      getCharBA, getCharAB, putChar
     "entry       getCharAB
     
   	segref      UtilsA, ioa
@@ -33,6 +33,46 @@ LQ:         bss     ,1
 
             sixteen
 savePR:     bss     ,16
+
+*
+* a := b % a
+*
+getCharBA:
+    stq     LQ
+    lprp3   LQ
+
+    spri2   saveRA      " save for return to caller
+
+    a9bd    0,al,3      " al=>pr3.CHAR
+    mlr     (pr),(pr)
+    desc9a  pr3|0,1
+    desc9a  $1(3),1
+
+    lda     $1
+    
+    rtcd    saveRA
+
+$1: bss     4
+
+*
+* a := a % b
+*
+getCharAB:
+    sta     LA
+    lprp3   LA
+
+    spri2   saveRA      " save for return to caller
+
+    a9bd    0,ql,3      " al=>pr3.CHAR
+    mlr     (pr),(pr)
+    desc9a  pr3|0,1
+    desc9a  $1(3),1
+
+    lda     $1
+    
+    rtcd    saveRA
+
+$1: bss     4
 
 "
 " get 8/9-bit character of string
@@ -93,6 +133,26 @@ done:   ana     =0777,dl    " mask off all but lower 9-bits
         rtcd    saveRA
 
         "return
+
+*
+* b % a := c
+*
+putCharBAC:
+        spri    savePR      " save PRs
+
+        epp3    pr2|2       " add 1 word for argument
+        spri3   saveRA      " save for return to caller
+
+        epp2    regC        *" &regC => pr2")
+        lda     regA        *" regA => A")
+		lprp3   regB        *" regB => pr3")
+		a9bd    0,al,4      *" al=>pr3.CHAR")
+		mlr     (pr),(pr)
+		desc9a  pr3|0(3),1  *" get char from regC")
+		desc9a  pr3|0,1     *" write it to regB(regA)")
+        
+        lpri    savePR
+        rtcd    saveRA
 
 "
 " put 8/9-bit character to string
@@ -163,14 +223,13 @@ putChar:  "push
 "        ldq     temp2       " put repeated chars into Q
 
         lda     LA          " get adjusted char posn to put
-$1:     xec     $3,al    " eXECute appropriate stbq instruction
+        xec     $3,al    " eXECute appropriate stbq instruction
 
         lda     temp1
-$2:     sta     pr3|0,x2    " write back modified word out
+        sta     pr3|0,x2    " write back modified word out
 
         lpri    savePR
         lreg    saveX       " restore regsiters
-
         rtcd    saveRA
 
         "return

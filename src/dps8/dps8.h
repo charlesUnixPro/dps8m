@@ -1308,6 +1308,7 @@ void setupOperandDescriptor(int k, EISstruct *e);
 void btd(DCDstruct *i);
 void dtb(DCDstruct *i);
 void mvne(DCDstruct *i);
+void mvn(DCDstruct *i);
 void mve(DCDstruct *i);
 void mlr(DCDstruct *i);
 void mrl(DCDstruct *i);
