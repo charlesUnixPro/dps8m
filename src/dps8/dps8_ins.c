@@ -4639,7 +4639,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
               int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
               t_stat rc = scu_rscr (scu_unit_num, ASSUME0, TPR.CA, & reg_A, & reg_Q);
               if (rc == CONT_FAULT)
-                doFault(i, store_fault, 0, "(sscr)");
+                doFault(i, store_fault, 0, "(rscr)");
               if (rc)
                 return rc;
             }
