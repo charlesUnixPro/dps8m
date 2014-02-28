@@ -379,7 +379,7 @@ void doMWEis(opCode *op, tuple *head)
         case 0226:  ///< "mp3d (3)"
         case 0207:  ///< "dv2d (2)"
         case 0227:  ///< "dv3d (3)"
-        case 0300:  ///< "mvn (3)"
+        case 0300:  ///< "mvn (2)"
             
             if (bP || bAscii)
                 i |= (1LL << 35);    // P bit
