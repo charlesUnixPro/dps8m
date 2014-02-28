@@ -1827,7 +1827,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                     c &= 0xf;   // hack off all but lower 4 bits
                     
                     if (c < 012 || c > 017)
-                        doFault(ins, 0, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
+                        doFault(ins, illproc_fault, 0, "loadInputBufferNumric(1): illegal char in input"); // TODO: generate ill proc fault
                     
                     if (c == 015)   // '-'
                         e->sign = -1;

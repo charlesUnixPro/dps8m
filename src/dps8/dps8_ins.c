@@ -6125,6 +6125,10 @@ static t_stat DoEISInstruction(DCDstruct *i)
             dv3d(i);
             break;
 
+        case 0300:  ///< mvn
+            mvn(i);
+            break;
+        
         case 0303:  ///< cmpn
             cmpn(i);
             break;
