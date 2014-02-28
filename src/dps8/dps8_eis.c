@@ -1329,26 +1329,41 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
         CN = e->CN[k-1];    // character number (position) 0-7 (4), 0-5 (6), 0-3 (9)
         TN = e->TN[k-1];    // type code
         
+        int chunk = 0;
+        int maxPos;
         switch (TN)
         {
             case CTN4:
                 //address = e->addr[k-1].address;
                 size = 4;
+                chunk = 32;
+                maxPos = 8;
                 break;
             case CTN9:
                 //address = e->addr[k-1].address;
                 size = 9;
+                chunk = 36;
+                maxPos = 4;
                 break;
         }
         
         /// since we want to write the data in reverse (since it's right justified) we need to determine
         /// the final address/CN for the type and go backwards from there
         
-        int numBits = ((TN == CTN4) ? 4 : 9) * N;               ///< 8 4-bit digits, 4 9-bit bytes / word
+        //int numBits = size * N;               ///< 8 4-bit digits, 4 9-bit bytes / word
         ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
         //int numWords = numBits / ((TN == CTN4) ? 32 : 36);      ///< how many additional words will the N chars take up?
-        int numWords = (numBits-1 + CN * size) / ((TN == CTN4) ? 32 : 36);      ///< how many additional words will the N chars take up?
-        int lastChar = (CN + N - 1) % ((TN == CTN4) ? 8 : 4);   ///< last character number
+
+// CN+N    numWords  (CN+N+3)/4   lastChar
+//   1       1                      0
+//   2       1                      1
+//   3       1                      2
+//   4       1                      3
+//   5       2                      0
+
+        int numWords = (CN + N + (maxPos - 1)) / maxPos;
+        numWords -= 1;
+        int lastChar = (CN + N - 1) % maxPos;   ///< last character number
         
         if (numWords > 0)           // more that the 1 word needed?
             //address += numWords;    // highest memory address
@@ -1803,6 +1818,7 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
     for(int n = 0 ; n < N ; n += 1)
     {
         int c = EISget49(a, &pos, TN);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "src: %d: %o\n", n, c);
         
         /*
          * Here we need to distinguish between 4 type of numbers.
@@ -1910,6 +1926,13 @@ void EISloadInputBufferNumeric(DCDstruct *ins, int k)
                 break;
         }
     }
+    if_sim_debug (DBG_TRACEEXT, & cpu_dev)
+      {
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "inBuffer:");
+        for (word9 *q = e->inBuffer; q < p; q ++)
+          sim_debug (DBG_TRACEEXT, & cpu_dev, " %02o", * q);
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "\n");
+      }
 }
 
 /*!
@@ -2334,7 +2357,7 @@ int mopLTE(EISstruct *e)
     e->mopTally -= 1;
     
     e->editInsertionTable[e->mopIF - 1] = next;
-    
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "LTE IT[%d]<=%d\n", e -> mopIF - 1, next);    
     return 0;
 }
 
@@ -2430,17 +2453,18 @@ int mopMFLS(EISstruct *e)
     
     for(int n = 0 ; n < e->mopIF ; n += 1)
     {
-        if (e->srcTally == 0 || e->dstTally == 0)
+        if (e->srcTally == 0 && e->dstTally > 1)
         {
             e->_faults = FAULT_IPR;
             return -1;
         }
         
         int c = *(e->in);
-
+        sim_debug (DBG_TRACEEXT, & cpu_dev, "MFLS n %d c %o\n", n, c);
         if (!e->mopES) { // e->mopES is OFF
             if (c == 0) {
                 // edit insertion table entry 1 is moved to the receiving field in place of the character.
+                sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is zero; edit insertion table entry 1 is moved to the receiving field in place of the character.\n");
                 writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[0]);
                 e->in += 1;
                 e->srcTally -= 1;
@@ -2449,11 +2473,12 @@ int mopMFLS(EISstruct *e)
                 if (!e->mopSN)
                 {
                     // then edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is off; edit insertion table entry 3 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[2]);
 
                     e->in += 1;
                     e->srcTally -= 1;
-                    if (e->srcTally == 0 || e->dstTally == 0)
+                    if (e->srcTally == 0 && e->dstTally > 1)
                     {
                         e->_faults |= FAULT_IPR;
                         return -1;
@@ -2464,11 +2489,12 @@ int mopMFLS(EISstruct *e)
                     e->mopES = true;
                 } else {
                     //  SN is ON; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.
+                    sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is off, c is non-zero, SN is OFF; edit insertion table entry 4 is moved to the receiving field; the character is also moved to the receiving field, and ES is set ON.\n");
                     writeToOutputBuffer(e, &e->out, 9, e->dstSZ, e->editInsertionTable[3]);
                     
                     e->in += 1;
                     e->srcTally -= 1;
-                    if (e->srcTally == 0 || e->dstTally == 0)
+                    if (e->srcTally == 0 && e->dstTally > 1)
                     {
                         e->_faults |= FAULT_IPR;
                         return -1;
@@ -2481,6 +2507,7 @@ int mopMFLS(EISstruct *e)
             }
         } else {
             // If ES is ON, the character is moved to the receiving field.
+            sim_debug (DBG_TRACEEXT, & cpu_dev, "ES is ON, the character is moved to the receiving field.\n");
             writeToOutputBuffer(e, &e->out, e->srcSZ, e->dstSZ, c);
             
             e->in += 1;
@@ -2792,6 +2819,7 @@ MOPstruct* EISgetMop(EISstruct *e)
     e->mopIF = e->mop9 & 0xf;
     
     MOPstruct *m = &mopTab[e->mop];
+    sim_debug (DBG_TRACEEXT, & cpu_dev, "MOP %s\n", m -> mopName);
     e->m = m;
     if (e->m == NULL || e->m->f == NULL)
     {
@@ -2914,7 +2942,11 @@ void mvne(DCDstruct *ins)
             e->dstSZ = 9;
             break;
     }
-    
+
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "mvne N1 %d N2 %d N3 %d TN1 %d CN1 %d TA3 %d CN3 %d\n",
+      e->N1, e->N2, e->N3, e->TN1, e->CN1, e->TA3, e->CN3);
+
     // 1. load sending string into inputBuffer
     EISloadInputBufferNumeric(ins, 1);   // according to MF1
     
