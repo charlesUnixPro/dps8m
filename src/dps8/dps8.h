@@ -2214,6 +2214,7 @@ typedef struct {
     uint halt_on_unimp; // If non-zero, halt CPU on unimplemented instruction
                         // instead of faulting
     uint disable_wam; // If non-zero, disable PTWAM, STWAM
+    uint bullet_time; // 
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU

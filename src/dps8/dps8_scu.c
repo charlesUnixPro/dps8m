@@ -1341,7 +1341,9 @@ t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * reg
               {
                 // The is a bit of code that is waiting for 5000 ms; this
                 // fools into going faster
-                __uint128_t big = cpuCycles * 50000;
+                __uint128_t big = cpuCycles;
+                if (switches . bullet_time)
+                  big *= 50000;
                 rA = big >> 36;
                 rQ = cpuCycles & DMASK;
                 break;

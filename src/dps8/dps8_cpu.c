@@ -71,7 +71,9 @@ static DEBTAB cpu_dt[] = {
     { "ALL",        DBG_ALL         }, // don't move as it messes up DBG message
 
     { "FAULT",      DBG_FAULT       },
-    { "INTR",       DBG_INTR       },
+    { "INTR",       DBG_INTR        },
+
+    // { "CAC",       DBG_CAC          },
 
     { NULL,         0               }
 };
@@ -1481,7 +1483,6 @@ int core_write(word24 addr, word36 data) {
     } else {
         M[addr] = data & DMASK;
     }
-//printf ("cac %06o:%06o store %012llo @ %08o\r\n", PPR.PSR, PPR.IC, data, addr);
     return 0;
 }
 
@@ -1736,7 +1737,10 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
                     PPR.P = 1;
                     return 1;
                 }
-                sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
+                // [CAC] This generates a lot of traffic because is_priv_mode
+                // is frequntly called to get the state, and not just to trap
+                // priviledge violations.
+                //sim_debug (DBG_FAULT, & cpu_dev, "is_priv_mode: not privledged; SDW->P: %d; PPR.PRR: %d\n", SDW->P, PPR.PRR);
                 break;
             default:
                 break;
@@ -2011,6 +2015,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("EPP hack:                 %01o(8)\n", switches . epp_hack);
     sim_printf("Halt on unimplemented:    %01o(8)\n", switches . halt_on_unimp);
     sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
+    sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
 
     return SCPE_OK;
 }
@@ -2040,6 +2045,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           epp_hack = n
 //           halt_on_unimplmented = n
 //           disable_wam = 0
+//           bullet_time = 0
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2132,6 +2138,7 @@ static config_list_t cpu_config_list [] =
     /* 20 */ { "epp_hack", 0, 1, cfg_on_off },
     /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
     /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
+    /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2254,6 +2261,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 22: // DISABLE_WAM
               switches . disable_wam = v;
+              break;
+
+            case 23: // BULLET_TIME
+              switches . bullet_time = v;
               break;
 
             default:
