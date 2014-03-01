@@ -1,10 +1,10 @@
 zero-initialized segments 0 .. 7
 zero-initialized SDWAM
 Writing SDW to address 00007000 (DSBR.ADDR+2*0 offset) 
-2504 (004710) words loaded into segment 0(0) at address 000000
+2532 (004744) words loaded into segment 0(0) at address 000000
 
 dps-8/m simulator V4.0-0 Beta        git commit id: c8ae76cb
-This is TestEIS ... 2/27 21:31 
+This is TestEIS ... 2/28 20:44 
 BTD Tests ...
 Result: 055065061062 (-512) (Should be 055065061062 (-512))
 Result: 000065065053 (55+) (Should be 000065065053 (55+))
@@ -116,9 +116,10 @@ MVN Tests ...
 Result: 014022064127 (Should be 014022064127)
 Result: 321043105001 (Should be 321043105001)
 Result: 000000022065 (Should be 000000022065)
+"+0 Test" - Result: 0 (Should be 0)
 
-cpuCycles = 27077
+cpuCycles = 27411
 TestEIS-14> g 0
 
-DIS instruction, IC: 003422 (000000616000)
+DIS instruction, IC: 003456 (000000616000)
 Goodbye

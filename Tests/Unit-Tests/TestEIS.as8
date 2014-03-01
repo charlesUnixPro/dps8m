@@ -1756,6 +1756,7 @@ MVNmsg:     acc     /MVN Tests ...\r\n/
 MVNmsg1:    acc     /Result: ^n (Should be 014022064127)\r\n/
 MVNmsg2:    acc     /Result: ^n (Should be 321043105001)\r\n/
 MVNmsg3:    acc     /Result: ^n (Should be 000000022065)\r\n/
+MVNmsg4:    acc     /"+0 Test" - Result: ^o (Should be 0)\r\n/
 
 
 FLD1bm:     ac4     /1234567+/  "8P1234567+
@@ -1764,10 +1765,14 @@ FLD2bm:     DEC     0           " 0+123457 (Result)
 FLD1bn:     aci     /00012345678-/  " 00012345678-
 FLD2bn:     BSS 1               " -12345+1 (Result) negative and truncation set ON
 
-FLD1bo:     aci     /0123456+/   " 8A123456+ (0123456+)
+FLD1bo:     aci     /0123456+/  " 8A123456+ (0123456+)
 FLD2bo:     BSS 1               " 00001235 (Result)
-            NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
+            "NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
+            desc4ns FLD2bo(2),6,-2
 
+FLD1bp:     aci     / +000000/  " 8A123456+ (0123456+)
+FLD2bp:     BSS 1               " 00001235 (Result)
+            desc4ns FLD2bo(2),6,-2
 
 MVN0:
         call    ioa(MVNmsg)
@@ -1784,26 +1789,27 @@ MVN0:
 
         call    ioa(MVNmsg2, FLD2bn)
 
-
         eax1    1
         eax2    2
         eax7    7
         eax4    FLD1bo
 
         equ X7,15
-        "awdx    pr4|0,4
+        awdx    pr4|0,4
         awdx    0,4,4
         MVN     (pr,rl,x1),(id),round,p              " with rounding and plus sign options
-        NDSC9   0,,X7,2,-2,4
+        "NDSC9   0,,X7,2,-2,4
+        desc9ts pr4|0,x7,-2
         ARG     FLD2bo+1
-
-        "MVN     (),(),round,p              " with rounding and plus sign options
-        "NDSC9   FLD1bo,1,7,2,-2       " 0,,X7,2,-2,4
-        "NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
 
         call    ioa(MVNmsg3, FLD2bo)
 
+        MVN     (),(),round,p              " with rounding and plus sign options
+        *NDSC9   FLD1bp,1,7,2,-2       " 0,,X7,2,-2,4
+        desc9ls FLD1bp(1),7,-2
+        NDSC4   FLD2bp,2,6,3,-2        "receiving field operand descr.
 
+        call    ioa(MVNmsg4, FLD2bp)
 
         dis
 
