@@ -16,7 +16,7 @@
 extern int yylineno;
 extern char* yytext;
 
-char *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8, *arg9, *arg10;
+//char *arg1, *arg2, *arg3, *arg4, *arg5, *arg6, *arg7, *arg8, *arg9, *arg10;
 
 // XXX remove these when ready 
 //word36 Eval(char *s) { return 0; }
@@ -2007,7 +2007,8 @@ void doNDSC9 (word18 *args)
         int am = args[5] ? (args[5] & 017) : 0;     ///< address register #
         
         word36 ndsc9 = 0;
-        if (!arg6)
+        //if (!arg6)
+        if (!args[5])
         {
             ndsc9 = (locsym << 18) & DMASK;
         }
@@ -2048,7 +2049,8 @@ void doNDSC4 (word18 *args)
         int am = args[5] ? (args[5] & 017) : 0;     // address register #
         
         word36 ndsc4 = 0;
-        if (!arg6)
+        //if (!arg6)
+        if (!args[5])
         {
             ndsc4 = (locsym << 18) & DMASK;
         }
@@ -2085,7 +2087,8 @@ void doBDSC (word18 *args)
         int am = args[4] ? (args[4] &   017) : 0;     // address register #
         
         word36 bdsc = 0;
-        if (!arg5)
+        //if (!arg5)
+        if (!args[4])
         {
             bdsc = (locsym << 18) & DMASK;
         }
