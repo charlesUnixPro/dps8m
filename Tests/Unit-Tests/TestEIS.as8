@@ -1595,8 +1595,8 @@ DV3D2:
 "        AWDX    0,4,4           put FLD1 address into AR4
 "
 "        DV3D (1,,,2),(,1),(,,1),1,1  with addr mod options
-"        NDSC9   0,0,2,3,-2,4    divisor operand descriptor (FLD1,2,2,3,-2)
-"        NDSC9   FLD2,0,X7,0     dividend operand descriptor (FLD2,0,8,0)
+"        NDSC9   0,0,2,3,-2,4    "divisor operand descriptor (FLD1,2,2,3,-2)
+"        NDSC9   FLD2bi,0,X7,0   "dividend operand descriptor (FLD2,0,8,0)
 "        ARG     2,2,4           ptr quotient operand desc
 "        USE     CONST.          memory contents
 "
@@ -1785,21 +1785,21 @@ MVN0:
         call    ioa(MVNmsg2, FLD2bn)
 
 
-        "eax1    1
-        "eax2    2
-        "eax7    7
-        "eax4    FLD1bo
+        eax1    1
+        eax2    2
+        eax7    7
+        eax4    FLD1bo
 
-        "equ X7,15
+        equ X7,15
         "awdx    pr4|0,4
-        ""awdx    0,4,4
-        "MVN     (pr,rl,x1),(id),round,p              " with rounding and plus sign options
-        "NDSC9   0,,X7,2,-2,4
-        "ARG     FLD2bo+1
+        awdx    0,4,4
+        MVN     (pr,rl,x1),(id),round,p              " with rounding and plus sign options
+        NDSC9   0,,X7,2,-2,4
+        ARG     FLD2bo+1
 
-        MVN     (),(),round,p              " with rounding and plus sign options
-        NDSC9   FLD1bo,1,7,2,-2       " 0,,X7,2,-2,4
-        NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
+        "MVN     (),(),round,p              " with rounding and plus sign options
+        "NDSC9   FLD1bo,1,7,2,-2       " 0,,X7,2,-2,4
+        "NDSC4   FLD2bo,2,6,3,-2        "receiving field operand descr.
 
         call    ioa(MVNmsg3, FLD2bo)
 

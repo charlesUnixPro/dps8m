@@ -6,10 +6,11 @@ de ppr.psr 0
 de ppr.p 1
 dpsinit segment table
 dpsinit SDWAM
-load ./TestEIS.oct segment 0 address  0
-;load Play/TestEIS.oct segment 0 address  0
+;load ./TestEIS.oct segment 0 address  0
+load Play/TestEIS.oct segment 0 address  0
 set debug stderr
 ;set cpu debug=trace;appending;regdumpaqi;regdumpppr;addrmod
 ;set cpu debug=unit
+;set cpu debug=traceex
 g 0
 q
