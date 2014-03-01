@@ -97,7 +97,7 @@ static decNumber * decBCDToNumber(const uByte *bcd, Int length, const Int scale,
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;;) {                            // forever
+    for (;last >= bcd;) {                            // forever
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
         if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
@@ -171,7 +171,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
     
     // copy the digits to the number's units, starting at the lsu
     // [unrolled]
-    for (;;) {                            // forever
+    for (;last >= bcd;) {                            // forever
         nib=(unsigned)(*last & 0x0f);
         // got a digit, in nib
         if (nib>9) {decNumberZero(dn); return NULL;}    // bad digit
@@ -186,6 +186,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
             cut=0;
         }
         last--;                             // ready for next
+        
         //        nib = *last & 0x0f;                // get right nibble
         //        if (nib>9) {decNumberZero(dn); return NULL;}
         //
