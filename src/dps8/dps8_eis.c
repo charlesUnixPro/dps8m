@@ -889,6 +889,8 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
 
     int sgn = 1;
     
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec: maxPos %d N1 %d\n", maxPos, e->N1);
     for(int n = 0 ; n < e->N1 ; n += 1)
     {
         if (pos > maxPos)   // overflows to next word?
@@ -910,10 +912,13 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                 c = (word9)GETBYTE(p->data, pos);
                 break;
         }
-        //fprintf(stderr, "c=%d\n", c);
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+          "loadDec: n %d c %d(%o)\n", n, c, c);
         
         if (n == 0 && e->TN1 == CTN4 && e->S1 == CSLS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN4, S1 CSLS\n");
             switch (c)
             {
                 case 015:   // 6-bit - sign
@@ -929,9 +934,14 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a leading sign
                     // XXX generate Ill Proc fault
             }
+            pos += 1;           // onto next posotion
             continue;
-        } else if (n == 0 && e->TN1 == CTN9 && e->S1 == CSLS)
+        }
+
+        if (n == 0 && e->TN1 == CTN9 && e->S1 == CSLS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n 0, TN1 CTN9, S1 CSLS\n");
             switch (c)
             {
                 case '-':
@@ -947,9 +957,14 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // XXX generate Ill Proc fault
 
             }
+            pos += 1;           // onto next posotion
             continue;
-        } else if (n == e->N1-1 && e->TN1 == CTN4 && e->S1 == CSTS)
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN4 && e->S1 == CSTS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN4, S1 CSTS\n");
             switch (c)
             {
                 case 015:   // 4-bit - sign
@@ -965,9 +980,13 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
-            continue;
-        } else if (n == e->N1-1 && e->TN1 == CTN9 && e->S1 == CSTS)
+            break;
+        }
+
+        if (n == e->N1-1 && e->TN1 == CTN9 && e->S1 == CSTS)
         {
+            sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec: n N1-1, TN1 CTN9, S1 CSTS\n");
             switch (c)
             {
                 case '-':
@@ -982,16 +1001,20 @@ void loadDec(EISaddr *p, int pos, EISstruct *e)
                     // not a trailing sign
                     // XXX generate Ill Proc fault
             }
-            continue;
+            break;
         }
         
         x *= 10;
         x += c & 0xf;
+        sim_debug (DBG_TRACEEXT, & cpu_dev,
+              "loadDec:  x %lld\n", (int64) x);
         
         pos += 1;           // onto next posotion
     }
     
     e->x = sgn * x;
+    sim_debug (DBG_TRACEEXT, & cpu_dev,
+      "loadDec:  final x %lld\n", (int64) x);
 }
 
 /*!
