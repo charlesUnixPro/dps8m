@@ -4603,7 +4603,7 @@ static t_stat iom_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
               p -> config_sw_port_halfsize [port_num] = v;
               break;
 
-            case 13: // HALFSIZE
+            case 13: // STORE_SIZE
               p -> config_sw_port_storesize [port_num] = v;
               break;
 
