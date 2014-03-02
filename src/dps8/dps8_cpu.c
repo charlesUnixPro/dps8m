@@ -140,6 +140,7 @@ const char *sim_stop_messages[] = {
  */
 
 int is_eis[1024];    // hack
+int xec_side_effect; // hack
 
 void init_opcodes (void)
 {
@@ -1121,6 +1122,7 @@ jmpRetry:;
         //processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
         processorCycle = INSTRUCTION_FETCH;
         
+        xec_side_effect = 0;
 
         ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
         
@@ -1276,7 +1278,9 @@ jmpNext:;
         // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
         if (ci->info->ndes > 0)
           rIC += ci->info->ndes;
-        
+        rIC += xec_side_effect;
+        xec_side_effect = 0;
+
     } while (reason == 0);
     
     sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);

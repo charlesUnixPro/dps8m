@@ -617,6 +617,7 @@ typedef enum _processor_operating_mode _processor_operating_mode;
 
 extern bool bPuls2;
 
+extern int xec_side_effect;
 
 
 // Abort codes, used to sort out longjmp's back to the main loop.
