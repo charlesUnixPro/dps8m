@@ -2217,6 +2217,7 @@ typedef struct {
                         // instead of faulting
     uint disable_wam; // If non-zero, disable PTWAM, STWAM
     uint bullet_time; // 
+    uint disable_kbd_bkpt;
 } switches_t;
 
 // System-wide info and options not tied to a specific CPU, IOM, or SCU
@@ -3032,6 +3033,7 @@ extern word36 *M;
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffst);
 void listSource (char * compname, word18 offset);
+t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset);
 
 /* dps8_utils.c */
 
