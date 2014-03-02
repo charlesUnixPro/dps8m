@@ -4058,7 +4058,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 DCDstruct *xec = decodeInstruction(CY, &_xec);    // fetch instruction into current instruction
                 
                 t_stat ret = executeInstruction(xec);
-                
+
+                // We need to communicate to the main cpu loop that the 
+                // instruction that is executed by xec had EIS operands
+                // that need to be skipped over when incrmenting the IC.
+                xec_side_effect = xec -> info -> ndes;
+
                 if (ret)
                     return (ret);
             }
