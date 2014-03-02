@@ -1269,7 +1269,7 @@ jmpTra:                 continue;   // don't bump rIC, instruction already did i
 
 jmpNext:;
         // doesn't seem to work as advertized
-        if (sim_poll_kbd())
+        if (switches . disable_kbd_bkpt == 0 && sim_poll_kbd())
             reason = STOP_BKPT;
        
         // XXX: what if sim stops during XEC/XED? if user wants to re-step
@@ -2027,6 +2027,7 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
     sim_printf("Halt on unimplemented:    %01o(8)\n", switches . halt_on_unimp);
     sim_printf("Disable PTWAN/STWAM:      %01o(8)\n", switches . disable_wam);
     sim_printf("Bullet time:              %01o(8)\n", switches . bullet_time);
+    sim_printf("Disable kbd bkpt:         %01o(8)\n", switches . disable_kbd_bkpt);
 
     return SCPE_OK;
 }
@@ -2055,8 +2056,9 @@ static t_stat cpu_show_config(FILE *st, UNIT *uptr, int val, void *desc)
 //           super_user = n
 //           epp_hack = n
 //           halt_on_unimplmented = n
-//           disable_wam = 0
-//           bullet_time = 0
+//           disable_wam = n
+//           bullet_time = n
+//           disable_kbd_bkpt = n
 
 static config_value_list_t cfg_multics_fault_base [] =
   {
@@ -2150,6 +2152,7 @@ static config_list_t cpu_config_list [] =
     /* 21 */ { "halt_on_unimplemented", 0, 1, cfg_on_off },
     /* 22 */ { "disable_wam", 0, 1, cfg_on_off },
     /* 23 */ { "bullet_time", 0, 1, cfg_on_off },
+    /* 24 */ { "disable_kbd_bkpt", 0, 1, cfg_on_off },
     { NULL }
   };
 
@@ -2276,6 +2279,10 @@ static t_stat cpu_set_config (UNIT * uptr, int32 value, char * cptr, void * desc
 
             case 23: // BULLET_TIME
               switches . bullet_time = v;
+              break;
+
+            case 24: // DISABLE_KBD_BKPT
+              switches . disable_kbd_bkpt = v;
               break;
 
             default:
@@ -2515,7 +2522,10 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
                 word18 compoffset;
                 char * where = lookupAddress (return_pr . SNR, offset, & compname, & compoffset);
                 if (where)
-                  listSource (compname, compoffset);
+                  {
+                    sim_printf ("%s\n", where);
+                    listSource (compname, compoffset);
+                  }
 
 //---                 if (seginfo_find_all(return_pr.SNR, offset, &where) == 0) {
 //---                     out_msg("stack trace: ");
