@@ -3032,6 +3032,7 @@ extern word36 *M;
 char * lookupAddress (word18 segno, word18 offset, char * * compname, word18 * compoffset);
 char * lookupSystemBookAddress (word18 segno, word18 offset, char * * compname, word18 * compoffst);
 void listSource (char * compname, word18 offset);
+t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset);
 
 /* dps8_utils.c */
 

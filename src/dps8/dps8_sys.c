@@ -556,9 +556,9 @@ static t_stat absAddr (int32 arg, char * buf)
     return absAddrN (segno, offset);
   }
 
-static t_stat absAddrN (int segno, int offset)
+t_stat computeAbsAddrN (word24 * absAddr, int segno, int offset)
   {
-    word36 res;
+    word24 res;
 
     if (get_addr_mode () != APPEND_mode)
       {
@@ -603,7 +603,7 @@ static t_stat absAddrN (int segno, int offset)
         // 6. Generate 24-bit absolute main memory address SDW.ADDR + offset.
 
         word24 ADDR = (SDWe >> 12) & 077777760;
-        res = (word36) ADDR + (word36) /*TPR.CA*/ offset;
+        res = (word24) ADDR + (word24) /*TPR.CA*/ offset;
         res &= PAMASK; //24 bit math
         //res <<= 12; // 24:12 format
 
@@ -741,7 +741,7 @@ static t_stat absAddrN (int segno, int offset)
             // 12. Generate the 24-bit absolute main memory address 
             // PTW(x2).ADDR + y2.
 
-            res = (((word36) PTW2 . ADDR) << 6)  + (word36) y2;
+            res = (((word24) PTW2 . ADDR) << 6)  + (word24) y2;
             res &= PAMASK; //24 bit math
             //res <<= 12; // 24:12 format
           }
@@ -749,11 +749,24 @@ static t_stat absAddrN (int segno, int offset)
           {
             // Segment is unpaged
             // SDW0.ADDR is the base address of the segment
-            res = (word36) SDW0 . ADDR + offset;
+            res = (word24) SDW0 . ADDR + offset;
             res &= PAMASK; //24 bit math
             res <<= 12; // 24:12 format
           }
       }
+
+    * absAddr = res;
+    return SCPE_OK;
+  }
+
+static t_stat absAddrN (int segno, int offset)
+  {
+    word24 res;
+
+    t_stat rc = computeAbsAddrN (& res, segno, offset);
+
+    if (rc)
+      return rc;
 
     sim_printf ("Address is %08llo\n", res);
     return SCPE_OK;
