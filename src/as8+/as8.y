@@ -81,9 +81,9 @@
  %left AND
  %left EQ NE
  %left LT LE GT GE*/
-%left '+' '-'		/* plus and minus have the least priority	*/
-%left '*' '/' '%' 	/* multiply, divide and modulus are next	*/
-%left NEG NOT		/* negate/complement is next				*/
+%left '+' '-'           /* plus and minus have the least priority	*/
+%left '*' '/' '%'       /* multiply, divide and modulus are next	*/
+%left PLUS NEG NOT		/* positive/negate/complement is next		*/
 
 %%
 input: /* empty  */
@@ -97,6 +97,7 @@ expr: expr '+' expr         { $$ = add($1, $3);      }
     | expr '%' expr         { $$ = modulus($1, $3);  }
     | '(' expr ')'          { $$ = $2;               }
     | '-' expr %prec NEG 	{ $$ = neg($2);          }
+    | '+' expr %prec PLUS 	{ $$ = $2;               }
     | SYMBOL                { $$ = exprSymbolValue($1);         }
     | integer               { $$ = exprWord36Value($1);         }
     | '*'                   { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
@@ -110,6 +111,7 @@ lexpr
     | '(' lexpr ')'           { $$ = $2;            }
     | '^' lexpr %prec NOT 	  { $$ = not($2);       }
     | '-' expr %prec NEG 	  { $$ = neg8($2);      }
+    | '+' expr %prec PLUS     { $$ = $2;            }
     | SYMBOL                  { $$ = exprSymbolValue($1);       }
     | OCTAL                   { $$ = exprWord36Value($1);       }
     | '*'                     { $$ = exprWord36Value((word36)addr); $$->type = eExprRelative; $$->lc = ".text.";  }
