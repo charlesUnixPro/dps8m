@@ -10,6 +10,7 @@
 
 #include "dps8.h"
 #include "dps8_iom.h"
+#include "dps8_scu.h"
 #include "dps8_mt.h"
 #include "dps8_disk.h"
 #include "dps8_utils.h"

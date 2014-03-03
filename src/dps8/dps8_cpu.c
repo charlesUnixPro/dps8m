@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_scu.h"
 #include "dps8_utils.h"
 
 // XXX Use this when we assume there is only a single unit

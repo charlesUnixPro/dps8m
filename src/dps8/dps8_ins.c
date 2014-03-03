@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_scu.h"
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
@@ -4574,7 +4575,21 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
         // Privileged - Configuration and Status
             
         case 0233:  ///< rmcm
-            return STOP_UNIMP;
+            {
+                // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
+                // specify which processor port (i.e., which system 
+                // controller) is used.
+                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+                t_stat rc = scu_rmcm (scu_unit_num, ASSUME0, & reg_A, & reg_Q);
+                if (rc == CONT_FAULT)
+                    doFault(i, store_fault, 0, "(rscr)");
+                if (rc)
+                    return rc;
+                SCF (rA == 0, rIR, I_ZERO);
+                SCF (rA & SIGN36, rIR, I_NEG);
+            }
+            break;
 
         case 0413:  ///< rscr
 #if 0
@@ -4817,32 +4832,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
 
-#if 0
-// XXX It is unclear but reasonable the the 2^1 factor is correct
-// portconfig coded size 0 is 32K, which is 2^15
-// 111 is 4096K; which is 2^22; 
-// this is the bank size, and each SCU has two banks, so 2^1
-// so  2 ^ ((mem coded size) + 15 + 1) should be the memory of a SCU
-
-            word24 work = TPR.CA;
-            int cpu_port_num = -1; // Not known
-            int port_num;
-            for (port_num = 0; port_num < N_CPU_PORTS; port_num ++)
-              {
-                if (switches . enable [port_num])
-                  {
-                    word24 sz = switches . store_size [port_num] << 16;
-                    word24 base = switches . assignment [port_num] * sz;
-                    if (work >= base && work < base + sz)
-                      {
-                        cpu_port_num = port_num;
-                        break;
-                      }
-                  }
-              }
-#else
             int cpu_port_num = query_scpage_map (TPR.CA);
-#endif
 
             if (cpu_port_num < 0)
               {

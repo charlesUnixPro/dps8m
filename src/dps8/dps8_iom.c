@@ -256,6 +256,7 @@
 
 #include "dps8.h"
 #include "dps8_utils.h"
+#include "dps8_scu.h"
 #include "dps8_iom.h"
 //-- #include "dps8_mt.h"
 //-- #include "dps8_disk.h"
@@ -1421,18 +1422,6 @@ void iom_init (void)
             for (int dev_code = 0; dev_code < N_DEV_CODES; dev_code ++)
               {
                 iom [unit_num] . channels [chan] [dev_code] . type = DEVT_NONE;
-//--                 channel_t * chanp = & iom [unit_num]  . channels [chan] [dev_code] . channel_state;
-//--                 chanp -> chan = chan;
-//--                 chanp -> dev_code = dev_code;
-//--                 chanp -> status . chan = chan;  // BUG/TODO: remove this member
-//--                 chanp -> unitp = NULL;
-//--                 chanp -> state = chn_idle;
-//--                 chanp -> xfer_running = 0;
-//--                 // FIXME: BUG/TODO: flag channels as "masked"
-//--                 memset (& chanp -> lpw, 0, sizeof (chanp -> lpw));
-//--                 chanp -> devinfo . iom_unit_num = unit_num;
-//--                 chanp -> devinfo . chan = chan;
-//--                 chanp -> devinfo . statep = NULL;
               }
           }
       }
