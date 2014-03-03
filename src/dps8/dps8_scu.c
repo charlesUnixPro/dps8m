@@ -2134,3 +2134,81 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
     
     return SCPE_OK;
   }
+
+t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
+  {
+    // A lot of guess work here....
+
+    // Which port is cpu_unit_num connected to? (i.e. which port did the 
+    // command come in on?
+    int scu_port_num = -1; // The port that the rscr instruction was
+                           // recieved on
+
+    for (int pn = 0; pn < N_SCU_PORTS; pn ++)
+      {
+        if (cables_from_cpus [scu_unit_num] [pn] . cpu_unit_num == cpu_unit_num)
+          {
+            scu_port_num = pn;
+            break;
+          }
+      }
+
+    sim_printf ("rmcm scu_port_num %d\n", scu_port_num);
+
+    if (scu_port_num < 0)
+      {
+        sim_debug (DBG_ERR, & scu_dev, "%s: can't find cpu port in the snarl of cables; scu_unit_no %d, cpu_unit_num %d\n", 
+                   __func__, scu_unit_num, cpu_unit_num);
+        return STOP_BUG;
+      }
+
+    //scu_t * scup = scu + scu_unit_num;
+    uint mask_num = -1;
+    uint n_masks_found = 0;
+    for (uint p = 0; p < N_ASSIGNMENTS; p ++)
+      {
+        //if (scup -> interrupts [p] . mask_assign . unassigned)
+        if (scu [scu_unit_num] . mask_enable [p] == 0) 
+          continue;
+        //if (scup -> interrupts [p] . mask_assign . port == scu_port_num)
+        if (scu [scu_unit_num] . mask_assignment [p] == scu_port_num) 
+          {
+            mask_num = p;
+            n_masks_found ++;
+          }
+      }
+ 
+    if (! n_masks_found)
+      {
+        // Not a problem; defined behavior
+        sim_debug (DBG_INFO, & scu_dev, "%s: No masks assigned to cpu on port %d\n", __func__, scu_port_num);
+        return SCPE_OK;
+      }
+
+    if (n_masks_found > 1)
+      {
+        // Not legal for Multics
+        sim_debug (DBG_WARN, &scu_dev, "%s: Multiple masks assigned to cpu on port %d\n", __func__, scu_port_num);
+      }
+
+    // A reg:
+    //  0          15  16           31  32       35
+    //    IER 0-15        00000000        PER 0-3 
+    // Q reg:
+    //  0          15  16           31  32       35
+    //    IER 16-32       00000000        PER 4-7 
+
+    scu [scu_unit_num] . exec_intr_mask [mask_num] =
+      (getbits36(rega, 0, 16) << 16) |
+      (getbits36(regq, 0, 16) <<  0);
+    scu [scu_unit_num] . port_enable [0] = getbits36 (rega, 32, 1);
+    scu [scu_unit_num] . port_enable [1] = getbits36 (rega, 33, 1);
+    scu [scu_unit_num] . port_enable [2] = getbits36 (rega, 34, 1);
+    scu [scu_unit_num] . port_enable [3] = getbits36 (rega, 35, 1);
+    scu [scu_unit_num] . port_enable [4] = getbits36 (regq, 32, 1);
+    scu [scu_unit_num] . port_enable [5] = getbits36 (regq, 33, 1);
+    scu [scu_unit_num] . port_enable [6] = getbits36 (regq, 34, 1);
+    scu [scu_unit_num] . port_enable [7] = getbits36 (regq, 35, 1);
+    
+    return SCPE_OK;
+  }

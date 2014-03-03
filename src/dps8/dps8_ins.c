@@ -4845,7 +4845,20 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
           break;
    
         case 0553:  ///< smcm
-            return STOP_UNIMP;
+            {
+                // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
+                // specify which processor port (i.e., which system 
+                // controller) is used.
+                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+                t_stat rc = scu_smcm (scu_unit_num, ASSUME0, reg_A, reg_Q);
+                if (rc == CONT_FAULT)
+                    doFault(i, store_fault, 0, "(rscr)");
+                if (rc)
+                    return rc;
+            }
+            break;
+
         case 0451:  ///< smic
             return STOP_UNIMP;
 

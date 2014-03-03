@@ -8,5 +8,6 @@ t_stat scu_sscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 rega,
 t_stat scu_rscr (uint scu_unit_num, uint cpu_unit_num, word36 addr, word36 * rega, word36 * regq);
 int scu_cioc (uint scu_unit_num, uint scu_port_num);
 t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * regq);
+t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq);
 
 
