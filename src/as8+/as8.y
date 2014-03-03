@@ -395,6 +395,7 @@ pop
     | PSEUDOOP                                   { doPop0($1);      }
     | PSEUDOOP2      operands
 
+    | ZERO                                       { doZero(0, 0);                   }
     | ZERO                   ',' expr            { doZero(0, $3->value);           }
     | ZERO                   ',' literal         { doZero(0, $3->addr);            }
     | ZERO           literal ',' expr            { doZero($2->addr, $4->value);    }
