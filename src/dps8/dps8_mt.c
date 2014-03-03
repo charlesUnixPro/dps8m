@@ -137,12 +137,12 @@ static DEBTAB mt_dt [] =
     { NULL, 0 }
   };
 
-//#define UNIT_WATCH (MTUF_V_UF + 1)
+#define UNIT_WATCH (1 << MTUF_V_UF)
 
 static MTAB mt_mod [] =
   {
-    //{ UNIT_WATCH, UNIT_WATCH, "WATCH", "WATCH", NULL, NULL },
-    //{ UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
+    { UNIT_WATCH, UNIT_WATCH, "WATCH", "WATCH", NULL, NULL },
+    { UNIT_WATCH, 0, "NOWATCH", "NOWATCH", NULL, NULL },
     {
        MTAB_XTD | MTAB_VUN | MTAB_NC, /* mask */
       0,            /* match */
@@ -413,9 +413,9 @@ static int mt_iom_cmd (UNIT * unitp, pcw_t * pcwp, word12 * stati, bool * need_d
             tape_statep -> rec_num ++;
             tape_statep -> tbc = tbc;
             tape_statep -> words_processed = 0;
-            // if (unitp->flags & UNIT_WATCH)
-              // sim_printf ("Tape %ld reads record %d\n",
-                            // MT_UNIT_NUM (unitp), tape_statep -> rec_num);
+            if (unitp->flags & UNIT_WATCH)
+              sim_printf ("Tape %ld reads record %d\n",
+                          MT_UNIT_NUM (unitp), tape_statep -> rec_num);
             * stati = 04000; // have_status = 1
             if (sim_tape_wrp (unitp))
               * stati |= 1;
