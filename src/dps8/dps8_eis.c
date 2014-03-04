@@ -1385,12 +1385,12 @@ static void EISwriteToOutputStringReverse(EISstruct *e, int k, int charToWrite)
 //   5       2                      0
 
         int numWords = (CN + N + (maxPos - 1)) / maxPos;
-        numWords -= 1;
+        int lastWordOffset = numWords - 1;
         int lastChar = (CN + N - 1) % maxPos;   ///< last character number
         
-        if (numWords > 0)           // more that the 1 word needed?
-            //address += numWords;    // highest memory address
-            e->addr[k-1].address += numWords;
+        if (lastWordOffset > 0)           // more that the 1 word needed?
+            //address += lastWordOffset;    // highest memory address
+            e->addr[k-1].address += lastWordOffset;
         
         pos = lastChar;             // last character number
         
@@ -1435,11 +1435,11 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     //int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
     int numWords = (numBits + CN * 9 + 35) / 36;       ///< how many additional words will the N chars take up?
     // convert from count to offset
-    numWords --;
+    int lastWordOffset = numWords - 1;
     int lastChar = (CN + N - 1) % 4;   ///< last character number
     
-    if (numWords > 0)           // more that the 1 word needed?
-        p->address += numWords;    // highest memory address
+    if (lastWordOffset > 0)           // more that the 1 word needed?
+        p->address += lastWordOffset;    // highest memory address
     int pos = lastChar;             // last character number
     
     int128 x = p->e->x;
@@ -3291,11 +3291,12 @@ void getOffsets(int n, int initCN, int ta, int *nWords, int *newCN)
     int numBits = size * n;
     
     int numWords =  (numBits + (initCN * size) + (chunk - 1)) / chunk;  ///< how many additional words will the N chars take up?
+    int lastWordOffset = numWords - 1;
                                                                             ///< (remember there are 4 slop bits in a 36-bit word when dealing with BCD)
     int lastChar = (initCN + n - 1) % maxPos;       ///< last character number
     
-    if (numWords > 1)          // more that the 1 word needed?
-        *nWords = numWords-1;  // # of additional words
+    if (lastWordOffset > 0)          // more that the 1 word needed?
+        *nWords = lastWordOffset;  // # of additional words
     else
         *nWords = 0;           // no additional words needed
     *newCN = lastChar;         // last character number
@@ -5438,10 +5439,11 @@ void getBitOffsets(int length, int initC, int initB, int *nWords, int *newC, int
     
     int endBit = (length + 9 * initC + initB - 1) % 36;
     
-    int numWords = length / 36;  ///< how many additional words will the bits take up?
+    int numWords = (length + 35) / 36;  ///< how many additional words will the bits take up?
+    int lastWordOffset = numWords - 1;
     
-    if (numWords > 1)          // more that the 1 word needed?
-        *nWords = numWords-1;  // # of additional words
+    if (lastWordOffset > 0)          // more that the 1 word needed?
+        *nWords = lastWordOffset;  // # of additional words
     else
         *nWords = 0;    // no additional words needed
     
