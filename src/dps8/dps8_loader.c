@@ -245,7 +245,11 @@ int objSize = -1;
 
 int segNamecmp(segment *a, segment *b)
 {
-    return strcmp(a->name, b->name);
+    if (*a->name && *b->name)
+      return strcmp(a->name, b->name);
+    if (*a->name)
+      return 1;
+    return -1;
 }
 int segdefNamecmp(segdef *a, segdef *b)
 {
