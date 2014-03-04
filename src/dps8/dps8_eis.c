@@ -1432,10 +1432,13 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     
     int numBits = 9 * N;               ///< 4 9-bit bytes / word
     //int numWords = numBits / 36;       ///< how many additional words will the N chars take up?
-    int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
+    //int numWords = (numBits + CN * 9) / 36;       ///< how many additional words will the N chars take up?
+    int numWords = (numBits + CN * 9 + 35) / 36;       ///< how many additional words will the N chars take up?
+    // convert from count to offset
+    numWords --;
     int lastChar = (CN + N - 1) % 4;   ///< last character number
     
-    if (numWords > 1)           // more that the 1 word needed?
+    if (numWords > 0)           // more that the 1 word needed?
         p->address += numWords;    // highest memory address
     int pos = lastChar;             // last character number
     
@@ -1452,7 +1455,7 @@ void EISwriteToBinaryStringReverse(EISaddr *p, int k)
     }
     
     // anything left in x?. If it's not all 1's we have an overflow!
-    if (~x)    // if it's all 1's this will be 0
+    if (~x && x != 0)    // if it's all 1's this will be 0
         SETF(p->e->_flags, I_OFLOW);
 }
 
