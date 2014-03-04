@@ -6544,6 +6544,9 @@ emCall(DCDstruct *i)
                     else
                         /* ch = ch */;
                     is_escape = false;
+                    buf [cnt ++] = ch;
+                    if (ch == '\0')
+                      break;
                 }
                 else
                 {
