@@ -2062,7 +2062,7 @@ t_stat scu_rmcm (uint scu_unit_num, uint cpu_unit_num, word36 * rega, word36 * r
           }
       }
 
-    sim_printf ("rmcm scu_port_num %d\n", scu_port_num);
+    //sim_printf ("rmcm scu_port_num %d\n", scu_port_num);
 
     if (scu_port_num < 0)
       {
@@ -2153,7 +2153,7 @@ t_stat scu_smcm (uint scu_unit_num, uint cpu_unit_num, word36 rega, word36 regq)
           }
       }
 
-    sim_printf ("rmcm scu_port_num %d\n", scu_port_num);
+    //sim_printf ("rmcm scu_port_num %d\n", scu_port_num);
 
     if (scu_port_num < 0)
       {
