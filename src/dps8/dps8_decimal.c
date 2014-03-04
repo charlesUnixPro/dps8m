@@ -231,7 +231,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
 /* ------------------------------------------------------------------ */
 static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
     const Unit *up=dn->lsu;     // Unit array pointer
-    uByte obyte, *out;          // current output byte, and where it goes
+    uByte obyte=0, *out;          // current output byte, and where it goes
     Int indigs=dn->digits;      // digits processed
     uInt cut=DECDPUN;           // downcounter per Unit
     uInt u=*up;                 // work
