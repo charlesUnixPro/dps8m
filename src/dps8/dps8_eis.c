@@ -731,13 +731,15 @@ int EISget49(EISaddr *p, int *pos, int tn)
     int maxPos = tn == CTN4 ? 7 : 3;
     
     //if (p->lastAddress != p->address)                 // read from memory if different address
-        p->data = EISRead(p);   // read data word from memory
+        // p->data = EISRead(p);   // read data word from memory
     
     if (*pos > maxPos)        // overflows to next word?
     {   // yep....
         *pos = 0;        // reset to 1st byte
         p->address = (p->address + 1) & AMASK;          // bump source to next address
         p->data = EISRead(p);    // read it from memory
+    } else {
+        p->data = EISRead(p);   // read data word from memory
     }
     
     int c = 0;
