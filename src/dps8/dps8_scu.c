@@ -853,8 +853,8 @@ static int scu_set_mask(t_uint64 addr, int port)
     
     // See AN87
     scu[ASSUME0].interrupts[port_pima].exec_intr_mask = 0;
-    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= (getbits36(reg_A, 0, 16) << 16);
-    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= getbits36(reg_Q, 0, 16);
+    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= (getbits36(rA, 0, 16) << 16);
+    scu[ASSUME0].interrupts[port_pima].exec_intr_mask |= getbits36(rQ, 0, 16);
     //sim_debug (DBG_DEBUG, &scu_dev, "%s: PIMA %c: EI mask set to %s\n", moi, port_pima + 'A', bin2text(scu[ASSUME0].interrupts[port_pima].exec_intr_mask, N_CELL_INTERRUPTS));
     return 0;
 }
@@ -894,8 +894,8 @@ static int scu_get_cpu_mask(t_uint64 addr)
     // int cpu_no = scu[ASSUME0].ports[rcv_port].idnum;  // CPU 0->'A', 1->'B', etc
     // int cpu_port = scu[ASSUME0].ports[rcv_port].devnum    // which port on the CPU?
     
-    reg_A = 0;
-    reg_Q = 0;
+    rA = 0;
+    rQ = 0;
     return scu_get_mask(addr, rcv_port);
 }
 #endif
@@ -929,15 +929,15 @@ static int scu_get_mode_register(t_uint64 addr)
     // to 256 K-words, but rscr 0001X can report an SCU with up to 4MW.  So,
     // we identify ourselves as an 4MW SCU.
     
-    reg_A = 0;  // first 50 bits are padding
-    reg_Q = 0;
-    reg_Q |= setbits36(reg_Q, 50-36, 4, 2); // id for a 4MW SCU (level 66 SCU)
+    rA = 0;  // first 50 bits are padding
+    rQ = 0;
+    rQ |= setbits36(rQ, 50-36, 4, 2); // id for a 4MW SCU (level 66 SCU)
     /*
      remaining bits are only for T&D test and diagnostics
      */
-    // reg_Q |= setbits36(reg_Q, 54-36, 2, 0);  // TS strobe normal timing
-    // reg_Q |= setbits36(reg_Q, 64-36, 2, 0);  // both 00b and 10b mean normal voltage
-    // reg_Q |= setbits36(reg_Q, 70-36, 1, 0);  // SGR accepted
+    // rQ |= setbits36(rQ, 54-36, 2, 0);  // TS strobe normal timing
+    // rQ |= setbits36(rQ, 64-36, 2, 0);  // both 00b and 10b mean normal voltage
+    // rQ |= setbits36(rQ, 70-36, 1, 0);  // SGR accepted
     
     return 0;
 }
@@ -966,23 +966,23 @@ static int scu_get_config_switches(t_uint64 addr)
     
     
     // See scr.incl.pl1
-    reg_A = 0;
+    rA = 0;
     // interrupt mask A port assignment
-    reg_A = setbits36(reg_A, 0, 9, scu[ASSUME0].interrupts[0].mask_assign.raw);
+    rA = setbits36(rA, 0, 9, scu[ASSUME0].interrupts[0].mask_assign.raw);
     // We have 4 banks and can have 4M-words, so report banks size 1024K-words
-    reg_A = setbits36(reg_A, 9, 3, 5);  // size of lower store -- 2^(5+5) == 1024 K-words
-    reg_A = setbits36(reg_A, 12, 4, 017);   // all four stores online
-    reg_A = setbits36(reg_A, 16, 4, rcv_port);  // requester's port #
-    reg_A = setbits36(reg_A, 21, 1, scu[ASSUME0].mode);  // programmable
-    reg_A = setbits36(reg_A, 22, 1, 0); // non-existent address logic enabled
-    reg_A = setbits36(reg_A, 23, 7, 0); // nea size
-    reg_A = setbits36(reg_A, 30, 1, 1); // internally interlaced
-    reg_A = setbits36(reg_A, 31, 1, 0); // store B is lower?
+    rA = setbits36(rA, 9, 3, 5);  // size of lower store -- 2^(5+5) == 1024 K-words
+    rA = setbits36(rA, 12, 4, 017);   // all four stores online
+    rA = setbits36(rA, 16, 4, rcv_port);  // requester's port #
+    rA = setbits36(rA, 21, 1, scu[ASSUME0].mode);  // programmable
+    rA = setbits36(rA, 22, 1, 0); // non-existent address logic enabled
+    rA = setbits36(rA, 23, 7, 0); // nea size
+    rA = setbits36(rA, 30, 1, 1); // internally interlaced
+    rA = setbits36(rA, 31, 1, 0); // store B is lower?
     for (int i = 0; i < 4; ++ i) {
         int pima = 0;
         int port = i + pima * 4;
         int enabled = scu[ASSUME0].ports[port].is_enabled;
-        reg_A = setbits36(reg_A, N_CELL_INTERRUPTS+i, 1, enabled); // enable masks for ports 0-3
+        rA = setbits36(rA, N_CELL_INTERRUPTS+i, 1, enabled); // enable masks for ports 0-3
         if (enabled)
           {
             sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is enabled, it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
@@ -993,14 +993,14 @@ static int scu_get_config_switches(t_uint64 addr)
           }
     }
     
-    reg_Q = 0;
-    reg_Q = setbits36(reg_Q, 0, 9, scu[ASSUME0].interrupts[1].mask_assign.raw);
-    reg_Q = setbits36(reg_Q, 57-36, 7, 0);  // cyclic port priority switches; BUG
+    rQ = 0;
+    rQ = setbits36(rQ, 0, 9, scu[ASSUME0].interrupts[1].mask_assign.raw);
+    rQ = setbits36(rQ, 57-36, 7, 0);  // cyclic port priority switches; BUG
     for (int i = 0; i < 4; ++ i) {
         int pima = 1;
         int port = i + pima * 4;
         int enabled = scu[ASSUME0].ports[port].is_enabled;
-        reg_Q = setbits36(reg_Q, 68-36+i, 1, enabled);  // enable masks for ports 4-7
+        rQ = setbits36(rQ, 68-36+i, 1, enabled);  // enable masks for ports 4-7
         if (enabled)
           {
             sim_debug (DBG_INFO, &scu_dev, "%s: Port %d is enabled, it points to port %d on %s %c.\n", moi, port, scu[ASSUME0].ports[port].dev_port, adev2text(scu[ASSUME0].ports[port].type), scu[ASSUME0].ports[port].idnum + 'A');
@@ -1439,8 +1439,8 @@ static int scu_get_mask(t_uint64 addr, int port)
         // TODO: AL-39 doesn't say what to do if the port has no mask
         // assigned.   However, rmcm zeros register A and Q for a
         // similar case...
-        reg_A = 0;
-        reg_Q = 0;
+        rA = 0;
+        rQ = 0;
         sim_debug (DBG_WARN, &scu_dev, "%s: No masks assigned to port %d\n", moi, port);
         return 0;
     }
@@ -1451,7 +1451,7 @@ static int scu_get_mask(t_uint64 addr, int port)
     
     sim_debug (DBG_INFO, &scu_dev, "%s: Found MASK %d assigned to port %d. Ports enabled on mask are:", moi, port_pima, port);
     // See AN87
-    reg_A = setbits36(0, 0, 16, scu[ASSUME0].interrupts[port_pima].exec_intr_mask >> 16);
+    rA = setbits36(0, 0, 16, scu[ASSUME0].interrupts[port_pima].exec_intr_mask >> 16);
     unsigned mask = 0;
     for (int i = 0; i < 4; ++ i) {
         int enabled = scu[ASSUME0].ports[i].is_enabled;
@@ -1462,9 +1462,9 @@ static int scu_get_mask(t_uint64 addr, int port)
             sim_debug (DBG_INFO, &scu_dev, " %d", i);
           }
     }
-    reg_A |= mask;
+    rA |= mask;
     
-    reg_Q = setbits36(0, 0, 16, scu[ASSUME0].interrupts[port_pima].exec_intr_mask & MASKBITS(16));
+    rQ = setbits36(0, 0, 16, scu[ASSUME0].interrupts[port_pima].exec_intr_mask & MASKBITS(16));
     mask = 0;
     for (int i = 0; i < 4; ++ i) {
         int enabled = scu[ASSUME0].ports[i+4].is_enabled;
@@ -1475,8 +1475,8 @@ static int scu_get_mask(t_uint64 addr, int port)
         mask <<= 1;
         mask |= enabled;
     }
-    reg_Q |= mask;
-    if ((reg_A & 017) == 0 && mask == 0)
+    rQ |= mask;
+    if ((rA & 017) == 0 && mask == 0)
       {
         sim_debug (DBG_INFO, &scu_dev, "none");
       }
@@ -1526,8 +1526,8 @@ static int scu_get_calendar(t_uint64 addr)
         now = seconds * 1000000 + msec * 1000;
     }
     
-    reg_Q = now & MASK36;
-    reg_A = (now >> 36) & MASK36;
+    rQ = now & MASK36;
+    rA = (now >> 36) & MASK36;
     
     return 0;
 }

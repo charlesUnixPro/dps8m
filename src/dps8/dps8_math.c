@@ -529,7 +529,8 @@ void fno(DCDstruct *ins)
         CLRF(rIR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        SCF(rE == -128 && m == 0, rIR, I_ZERO);
+        //SCF(rE == -128 && m == 0, rIR, I_ZERO);
+        SCF(rE == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
         // Neg:
         CLRF(rIR, I_NEG);
         return; // XXX: ???
@@ -542,7 +543,8 @@ void fno(DCDstruct *ins)
         rQ = m & MASK36;
 
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        SCF(rE == -128 && m == 0, rIR, I_ZERO);
+        //SCF(rE == -128 && m == 0, rIR, I_ZERO);
+        SCF(rE == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
         // Neg:
         CLRF(rIR, I_NEG);
         
@@ -608,7 +610,8 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         CLRF(rIR, I_OFLOW);
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        SCF(*E == -128 && m == 0, rIR, I_ZERO);
+        //SCF(*E == -128 && m == 0, rIR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
         // Neg:
         CLRF(rIR, I_NEG);
         return; // XXX: ???
@@ -621,7 +624,8 @@ void fnoEAQ(word8 *E, word36 *A, word36 *Q)
         *Q = m & MASK36;
         
         // Zero: If C(AQ) = floating point 0, then ON; otherwise OFF
-        SCF(*E == -128 && m == 0, rIR, I_ZERO);
+        //SCF(*E == -128 && m == 0, rIR, I_ZERO);
+        SCF(*E == 0200U /*-128*/ && m == 0, rIR, I_ZERO);
         // Neg:
         CLRF(rIR, I_NEG);
         

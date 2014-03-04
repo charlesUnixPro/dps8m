@@ -213,7 +213,7 @@ return 1; // XXX
 
 static int disk_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati)
   {
-    int disk_unit_num = DISK_UNIT_NUM (unitp);
+    //int disk_unit_num = DISK_UNIT_NUM (unitp);
     return 0;
   }
 

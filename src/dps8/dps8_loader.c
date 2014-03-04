@@ -828,9 +828,9 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
-            rIC = addr & AMASK;
+            PPR.IC = addr & AMASK;
             
-            if (rIC)
+            if (PPR.IC)
                 sim_printf("!GO address: %06lo\n", addr);
         }
         

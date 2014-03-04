@@ -294,7 +294,7 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
 } // decBCDFromNumber
 
 
-//#ifndef QUIET_UNUSED
+#ifndef QUIET_UNUSED
 static void printBCD(decNumber *a, decContext *set, int width)
 {
     uint8_t bcd[256];
@@ -307,7 +307,7 @@ static void printBCD(decNumber *a, decContext *set, int width)
         fprintf(stderr, "%d", bcd[n]);
     fprintf(stderr, "  scale=%d\n", -(a->exponent));
 }
-//#endif
+#endif
 
 static char *getBCD(decNumber *a)
 {

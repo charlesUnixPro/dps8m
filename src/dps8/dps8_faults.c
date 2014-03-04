@@ -10,7 +10,9 @@
 
 #include "dps8.h"
 
+#ifndef QUIET_UNUSED
 static t_uint64 FR;
+#endif
 
 /*
  FAULT RECOGNITION
@@ -439,7 +441,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
                 sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
                                      // break this logic
               {
-                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", rIC);
+                sim_printf ("Fault cascade @0%06o with no interrupts pending and no events in queue\n", PPR.IC);
                 sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
                 stop_reason = STOP_FLT_CASCADE;
                 longjmp (jmpMain, JMP_STOP);
@@ -472,7 +474,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
         return;
     }
     
-    int fltAddress = (rFAULTBASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
+    int fltAddress = (switches.FLT_BASE << 5) & 07740;            // (12-bits of which the top-most 7-bits are used)
     word24 addr = fltAddress + f->fault_address;    // absolute address of fault YPair
   
     bFaultCycle = true;                 // enter FAULT CYCLE
@@ -545,7 +547,7 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
 //    _processor_addressing_mode modeTemp = processorAddressingMode;
 //    
 //    processorAddressingMode = ABSOLUTE_MODE;
-//    word24 rIC_temp = rIC;
+//    word24 rIC_temp = PPR.IC;
 //    
 //    t_stat ret = doFaultInstructionPair(i, fltAddress);
 //    

@@ -769,7 +769,7 @@ static t_stat absAddrN (int segno, int offset)
     if (rc)
       return rc;
 
-    sim_printf ("Address is %08llo\n", res);
+    sim_printf ("Address is %08o\n", res);
     return SCPE_OK;
   }
 
