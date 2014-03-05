@@ -480,7 +480,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
               "formatDecimal: adjLen=%d E=%d SF=%d S=%s TN=%s digits(r2)=%s E2=%d\n", adjLen, r->exponent, sf, CS[s], CTN[tn],out2, r2->exponent);
         }
     }
-        
+    
     int scale;
     
     static uint8_t out[256];
@@ -500,7 +500,7 @@ static char *formatDecimal(decContext *set, decNumber *r, int tn, int n, int s, 
             if (r2->digits < adjLen)
             {
                 decNumber _s, *s;
-                s = decNumberFromInt32(&_s, r2->exponent - (adjLen - r2->digits));
+                s = decNumberFromInt32(&_s, abs(r2->exponent - (adjLen - r2->digits)));                
                 r2 = decNumberRescale(r2, r2, s, set);
             }
         decBCDFromNumber(out, adjLen, &scale, r2);
@@ -2633,11 +2633,10 @@ void dv3d(DCDstruct *ins)
     if (e->S2 == CSFL)
         op2->exponent = e->exponent;
     
-    
     decNumber *op3 = decNumberDivide(&_3, op2, op1, &set);  // Yes, they're switched
     
     bool Ovr = false, Trunc = false;
-    
+     
     int SF = calcSF(e->SF1, e->SF2, e->SF3);
     
     char *res = formatDecimal(&set, op3, e->dstTN, e->N3, e->S3, SF, e->R, &Ovr, &Trunc);

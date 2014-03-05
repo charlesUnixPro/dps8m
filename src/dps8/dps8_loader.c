@@ -894,6 +894,12 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
         //if (bDeferred && !strcasecmp(args[0], "!segdef"))
         if (!strcasecmp(args[0], "!segdef"))
         {
+            if (!currSegment)
+            {
+                sim_printf("Oops! No 'currentSegment'. Have you perhaps forgotten a 'name' directive?");
+                return SCPE_UNK;
+            }
+            
             char symbol[256];
             int value;
             
