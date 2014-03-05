@@ -2453,7 +2453,7 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
         if (prev != 0)
           {
             struct _par prev_pr;
-            if (words2its (M [addr + 020], M [addr + 021], & prev_pr))
+            if (words2its (M [addr + 020], M [addr + 021], & prev_pr) == 0)
               {
                 if (prev_pr . WORDNO != prev)
                   {
