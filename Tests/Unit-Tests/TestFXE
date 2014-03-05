@@ -1,3 +1,4 @@
+do ../../src/dps8/base_system.ini
 de DSBR.ADDR 01000
 de dsbr.u 1
 ;de dsbr.addr 020000
