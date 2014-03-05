@@ -42,5 +42,5 @@ typedef struct pcw_s
 
 
 typedef int iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-typedef int iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati);
+typedef int iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 t_stat cable_to_iom (int iom_unit_num, int chan_num, int dev_code, enum dev_type dev_type, chan_type ctype, int dev_unit_num, DEVICE * devp, UNIT * unitp, iom_cmd * iom_cmd, iom_io * iom_io);

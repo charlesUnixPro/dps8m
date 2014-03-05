@@ -1596,7 +1596,7 @@ int core_write2(word24 addr, word36 even, word36 odd) {
  *
  */
 
-void encode_instr(const instr_t *ip, t_uint64 *wordp)
+void encode_instr(const instr_t *ip, word36 *wordp)
 {
     *wordp = setbits36(0, 0, 18, ip->addr);
 #if 1

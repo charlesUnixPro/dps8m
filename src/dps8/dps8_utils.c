@@ -1172,7 +1172,7 @@ int bitfieldReverse(int x)
  * Extract a range of bits from a 36-bit word.
  */
 
-inline t_uint64 getbits36(t_uint64 x, int i, unsigned n) {
+inline word36 getbits36(word36 x, int i, unsigned n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-i-n+1;
     if (shift < 0 || shift > 35) {
@@ -1192,7 +1192,7 @@ inline t_uint64 getbits36(t_uint64 x, int i, unsigned n) {
  * starting at p set to the n lowest bits of val
  */
 
-inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
+inline word36 setbits36(word36 x, int p, unsigned n, word36 val)
 {
     int shift = 36 - p - n;
     if (shift < 0 || shift > 35) {
@@ -1200,11 +1200,11 @@ inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
 //        cancel_run(STOP_BUG);
         return 0;
     }
-    t_uint64 mask = ~ (~0<<n);  // n low bits on
+    word36 mask = ~ (~0<<n);  // n low bits on
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    t_uint64 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
+    word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
     return result;
 }
 

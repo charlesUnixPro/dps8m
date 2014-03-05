@@ -1722,8 +1722,8 @@ word72 bitfieldExtract72(word72 a, int b, int c);
 
 #define getbit18(x,n)  ((((x) >> (17-n)) & 1U) != 0U) // return nth bit of an 18bit half word
 
-t_uint64 getbits36(t_uint64 x, int i, unsigned n);
-t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val);
+word36 getbits36(word36 x, int i, unsigned n);
+word36 setbits36(word36 x, int p, unsigned n, word36 val);
 
 
 // single precision fp stuff...
@@ -2903,7 +2903,7 @@ extern UNIT opcon_unit [];
 /* dps8_cpu.c */
 
 void init_opcodes (void);
-void encode_instr(const instr_t *ip, t_uint64 *wordp);
+void encode_instr(const instr_t *ip, word36 *wordp);
 DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst);     // decode instruction into structure
 DCDstruct *fetchInstruction(word18 addr, DCDstruct *dst);      // fetch (+ decode) instrcution at address
 t_stat dpsCmd_Dump (int32 arg, char *buf);

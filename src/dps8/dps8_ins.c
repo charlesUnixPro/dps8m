@@ -68,9 +68,9 @@ static word18 getCrAR(word4 reg)
     return 0;
 }
 
-static t_uint64 scu_data[8];    // For SCU instruction
+static word36 scu_data[8];    // For SCU instruction
 
-static void scu2words(t_uint64 *words)
+static void scu2words(word36 *words)
 {
     // BUG:  We don't track much of the data that should be tracked
     
