@@ -1929,7 +1929,6 @@ static struct
         bool inuse;
         int scu_unit_num; // 
         DEVICE * devp;
-        UNIT * unitp;
       } ports [N_CPU_PORTS];
 
   } cpu_array [N_CPU_UNITS_MAX];
@@ -1977,17 +1976,10 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
       }
 
     DEVICE * devp = & scu_dev;
-    UNIT * unitp = & scu_unit [scu_unit_num];
      
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . inuse = true;
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . scu_unit_num = scu_unit_num;
-
     cpu_array [cpu_unit_num] . ports [cpu_port_num] . devp = devp;
-    cpu_array [cpu_unit_num] . ports [cpu_port_num] . unitp  = unitp;
-
-    unitp -> u3 = cpu_port_num;
-    unitp -> u4 = 0;
-    unitp -> u5 = cpu_unit_num;
 
     setup_scpage_map ();
 
