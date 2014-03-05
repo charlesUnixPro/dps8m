@@ -70,7 +70,9 @@ struct opCode *getIWBInfo(DCDstruct *i)
     
     if (p->mne == 0)
     {
+#ifndef QUIET_UNUSED
         int r = 1;
+#endif
     }
     
     return p->mne ? p : &UnImp;
@@ -247,10 +249,10 @@ word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSe
 //    if (isSigned)
 //    {
 //        // is op1 a 36-bit negative number?
-//        if (op1 & SIGN) // sign bit set (<0)?
+//        if (op1 & SIGN36) // sign bit set (<0)?
 //            op1 |= SIGNEXT;
 //        // is op2 a 36-bit negative number?
-//        if (op2 & SIGN) // sign bit set (<0)?
+//        if (op2 & SIGN36) // sign bit set (<0)?
 //            op2 |= SIGNEXT;
 //    } else {
         // just in case .....
@@ -285,8 +287,8 @@ word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSe
     {
         //bool carry = res & CARRY;
         bool carry = false;
-        //bool neg1 = op1 & SIGN;
-        //bool neg2 = op2 & SIGN;
+        //bool neg1 = op1 & SIGN36;
+        //bool neg2 = op2 & SIGN36;
         
         //if(!neg1 && !neg2)
             if(res & CARRY) {
@@ -313,9 +315,9 @@ word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSe
     {
         bool ovr = false;       // arith overflow?
 
-        bool MSB1 = op1 & SIGN;
-        bool MSB2 = op2 & SIGN;
-        bool MSBr = res & SIGN;
+        bool MSB1 = op1 & SIGN36;
+        bool MSB2 = op2 & SIGN36;
+        bool MSBr = res & SIGN36;
             
         if (op == '+')
             ovr = (MSB1 == MSB2) && (MSBr != MSB1);
@@ -339,7 +341,7 @@ word36 AddSub36(char op, bool isSigned, word36 op1, word36 op2, word18 flagsToSe
     
     if (flagsToSet & I_NEG)
     {
-        if (res & SIGN)            // if negative (things seem to want this even if unsigned ops)
+        if (res & SIGN36)            // if negative (things seem to want this even if unsigned ops)
             SETF(*flags, I_NEG);
         else
             CLRF(*flags, I_NEG);
@@ -416,7 +418,7 @@ if (op == '-') carry = ! carry; // XXX CAC black magic
     
     if (flagsToSet & I_NEG)
     {
-        if (res & SIGN)            // if negative (things seem to want this even if unsigned ops)
+        if (res & SIGN36)            // if negative (things seem to want this even if unsigned ops)
             SETF(*flags, I_NEG);
         else
             CLRF(*flags, I_NEG);
@@ -577,7 +579,7 @@ word36 compl36(word36 op1, word18 *flags)
     if (ovr)
         SETF(*flags, I_OFLOW);
         // should we continue operation if OVR fault?
-    if (res & SIGN)
+    if (res & SIGN36)
         SETF(*flags, I_NEG);
     else
         CLRF(*flags, I_NEG);
@@ -602,7 +604,7 @@ word18 compl18(word18 op1, word18 *flags)
     if (ovr)
         SETF(*flags, I_OFLOW);
     // should we continue operation if OVR fault?
-    if (res & SIGN)
+    if (res & SIGN36)
         SETF(*flags, I_NEG);
     else
         CLRF(*flags, I_NEG);
@@ -769,21 +771,21 @@ void cmp36(word36 oP1, word36 oP2, word18 *flags)
     word36s op1 = SIGNEXT36(oP1);
     word36s op2 = SIGNEXT36(oP2);
     
-    if (!(op1 & SIGN) && (op2 & SIGN) && (op1 > op2))
+    if (!(op1 & SIGN36) && (op2 & SIGN36) && (op1 > op2))
         CLRF(*flags, I_ZERO | I_NEG | I_CARRY);
-    else if ((op1 & SIGN) == (op2 & SIGN) && (op1 > op2))
+    else if ((op1 & SIGN36) == (op2 & SIGN36) && (op1 > op2))
     {
         SETF(*flags, I_CARRY);
         CLRF(*flags, I_ZERO | I_NEG);
-    } else if (((op1 & SIGN) == (op2 & SIGN)) && (op1 == op2))
+    } else if (((op1 & SIGN36) == (op2 & SIGN36)) && (op1 == op2))
     {
         SETF(*flags, I_ZERO | I_CARRY);
         CLRF(*flags, I_NEG);
-    } else if (((op1 & SIGN) == (op2 & SIGN)) && (op1 < op2))
+    } else if (((op1 & SIGN36) == (op2 & SIGN36)) && (op1 < op2))
     {
         SETF(*flags, I_NEG);
         CLRF(*flags, I_ZERO | I_CARRY);
-    } else if (((op1 & SIGN) && !(op2 & SIGN)) && (op1 < op2))
+    } else if (((op1 & SIGN36) && !(op2 & SIGN36)) && (op1 < op2))
     {
         SETF(*flags, I_CARRY | I_NEG);
         CLRF(*flags, I_ZERO);
@@ -819,17 +821,17 @@ void cmp36wl(word36 A, word36 Y, word36 Q, word18 *flags)
     bool Z = (A <= Y && Y <= Q) || (A >= Y && Y >= Q);
     SCF(Z, *flags, I_ZERO);
     
-    if (!(Q & SIGN) && (Y & SIGN) && (Q > Y))
+    if (!(Q & SIGN36) && (Y & SIGN36) && (Q > Y))
         CLRF(*flags, I_NEG | I_CARRY);
-    else if (((Q & SIGN) == (Y & SIGN)) && (Q >= Y))
+    else if (((Q & SIGN36) == (Y & SIGN36)) && (Q >= Y))
     {
         SETF(*flags, I_CARRY);
         CLRF(*flags, I_NEG);
-    } else if (((Q & SIGN) == (Y & SIGN)) && (Q < Y))
+    } else if (((Q & SIGN36) == (Y & SIGN36)) && (Q < Y))
     {
         CLRF(*flags, I_CARRY);
         SETF(*flags, I_NEG);
-    } else if ((Q & SIGN) && !(Y & SIGN) && (Q < Y))
+    } else if ((Q & SIGN36) && !(Y & SIGN36) && (Q < Y))
         SETF(*flags, I_NEG | I_CARRY);
 }
 
@@ -1162,7 +1164,7 @@ int bitfieldReverse(int x)
 }
 
 
-#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
+//#define MASKBITS(x) ( ~(~((t_uint64)0)<<x) ) // lower (x) bits all ones
 
 /*
  * getbits36()
@@ -1170,7 +1172,7 @@ int bitfieldReverse(int x)
  * Extract a range of bits from a 36-bit word.
  */
 
-inline t_uint64 getbits36(t_uint64 x, int i, unsigned n) {
+inline word36 getbits36(word36 x, int i, unsigned n) {
     // bit 35 is right end, bit zero is 36th from the right
     int shift = 35-i-n+1;
     if (shift < 0 || shift > 35) {
@@ -1190,7 +1192,7 @@ inline t_uint64 getbits36(t_uint64 x, int i, unsigned n) {
  * starting at p set to the n lowest bits of val
  */
 
-inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
+inline word36 setbits36(word36 x, int p, unsigned n, word36 val)
 {
     int shift = 36 - p - n;
     if (shift < 0 || shift > 35) {
@@ -1198,11 +1200,11 @@ inline t_uint64 setbits36(t_uint64 x, int p, unsigned n, t_uint64 val)
 //        cancel_run(STOP_BUG);
         return 0;
     }
-    t_uint64 mask = ~ (~0<<n);  // n low bits on
+    word36 mask = ~ (~0<<n);  // n low bits on
     mask <<= (unsigned) shift;  // shift 1s to proper position; result 0*1{n}0*
     // caller may provide val that is too big, e.g., a word with all bits
     // set to one, so we mask val
-    t_uint64 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
+    word36 result = (x & ~ mask) | ((val&MASKBITS(n)) << (36 - p - n));
     return result;
 }
 

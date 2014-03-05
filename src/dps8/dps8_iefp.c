@@ -36,10 +36,10 @@ IEFPState iefpState = eIEFPUnknown;
 PRIVATE
 t_stat IEFPInstructionFetch()
 {
-    ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
+    ci = fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
     
     // XXX The conditions are more rigorous: see AL39, pg 327
-    if (rIC % 2 == 0 && // Even address
+    if (PPR.IC % 2 == 0 && // Even address
             ci -> i == 0) // Not inhibited
         cpu . interrupt_flag = sample_interrupts ();
     else
@@ -84,7 +84,7 @@ t_stat IEFPExecuteInstruction()
             switch (ret)
             {
                 case CONT_TRA:
-                    return SCPE_OK;   // don't bump rIC, instruction already did it
+                    return SCPE_OK;   // don't bump PPR.IC, instruction already did it
                 case CONT_FAULT:
                 {
                     // XXX Instruction faulted.
@@ -100,7 +100,9 @@ t_stat IEFPExecuteInstruction()
         return STOP_DIS;
     }
     
+#ifndef QUIET_UNUSED
 jmpNext:;
+#endif
     // doesn't seem to work as advertized
     if (sim_poll_kbd())
         return STOP_BKPT;
@@ -114,12 +116,12 @@ jmpNext:;
     } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
     
     
-    rIC += 1;
+    PPR.IC += 1;
     
     // is this a multiword EIS?
     // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
     if (ci->info->ndes > 0)
-        rIC += ci->info->ndes;
+        PPR.IC += ci->info->ndes;
     
     return SCPE_OK;
 }

@@ -245,7 +245,11 @@ int objSize = -1;
 
 int segNamecmp(segment *a, segment *b)
 {
-    return strcmp(a->name, b->name);
+    if (*a->name && *b->name)
+      return strcmp(a->name, b->name);
+    if (*a->name)
+      return 1;
+    return -1;
 }
 int segdefNamecmp(segdef *a, segdef *b)
 {
@@ -828,9 +832,9 @@ t_stat scanDirectives(FILE *f, char * fnam, bool bDeferred, bool bVerbose)
         if (strcasecmp(args[0], "!go") == 0)
         {
             long addr = strtol(args[1], NULL, 0);
-            rIC = addr & AMASK;
+            PPR.IC = addr & AMASK;
             
-            if (rIC)
+            if (PPR.IC)
                 sim_printf("!GO address: %06lo\n", addr);
         }
         

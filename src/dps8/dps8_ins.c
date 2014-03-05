@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_scu.h"
 
 // XXX This is used wherever a single unit only is assumed
 #define ASSUME0 0
@@ -67,9 +68,9 @@ static word18 getCrAR(word4 reg)
     return 0;
 }
 
-static t_uint64 scu_data[8];    // For SCU instruction
+static word36 scu_data[8];    // For SCU instruction
 
-static void scu2words(t_uint64 *words)
+static void scu2words(word36 *words)
 {
     // BUG:  We don't track much of the data that should be tracked
     
@@ -404,19 +405,19 @@ t_stat executeInstruction(DCDstruct *ci)
         //if (processorAddressingMode == ABSOLUTE_MODE)
         if (get_addr_mode() == ABSOLUTE_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         //if (processorAddressingMode == APPEND_MODE)
         if (get_addr_mode() == APPEND_mode)
         {
-            char * where = lookupAddress (PPR.PSR, rIC);
+            char * where = lookupAddress (PPR.PSR, PPR.IC);
             if (where)
-              sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, ans);
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+              sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, PPR.IC, ans);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == BAR_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
     
@@ -653,7 +654,7 @@ DCDstruct *fetchOperands(DCDstruct *i)
     
     if (i->info->ndes > 0)
         for(int n = 0 ; n < i->info->ndes; n += 1)
-            Read(i, rIC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
+            Read(i, PPR.IC + 1 + n, &i->e->op[n], READ_OPERAND, 0); 
     else
         if (READOP(i) || RMWOP(i))
             ReadOP(i, TPR.CA, READ_OPERAND, 0);
@@ -706,31 +707,31 @@ t_stat executeInstruction(DCDstruct *ci)
     {
         char * compname;
         word18 compoffset;
-        char * where = lookupAddress (PPR.PSR, rIC, & compname, & compoffset);
+        char * where = lookupAddress (PPR.PSR, PPR.IC, & compname, & compoffset);
         if (where)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, rIC, where);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o %s\n", cpuCycles, PPR.PSR, PPR.IC, where);
             if_sim_debug (DBG_TRACE, &cpu_dev)
               listSource (compname, compoffset);
         }
 
         if (get_addr_mode() == ABSOLUTE_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, rIC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %06o %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.IC, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == APPEND_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o:%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, PPR.PSR, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
         if (get_addr_mode() == BAR_mode)
         {
-            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, rIC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
+            sim_debug(DBG_TRACE, &cpu_dev, "[%lld] %05o|%06o (%08o) %012llo (%s) %06o %03o(%d) %o %o %o %02o\n", cpuCycles, BAR.BASE, PPR.IC, finalAddress, IWB, disAssemble(IWB), address, opcode, opcodeX, a, i, GET_TM(tag) >> 4, GET_TD(tag) & 017);
         }
     }
 
 //    if (info->ndes > 0)
 //        for(int n = 0 ; n < info->ndes; n += 1)
-//            Read(ci, rIC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
+//            Read(ci, PPR.IC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
 //    else
 //    {
 //        if (ci->a)   // if A bit set set-up TPR stuff ...
@@ -746,7 +747,7 @@ t_stat executeInstruction(DCDstruct *ci)
         for(int n = 0 ; n < info->ndes; n += 1)
         {
             //setupForOperandRead (ci);
-            Read(ci, rIC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
+            Read(ci, PPR.IC + 1 + n, &ci->e->op[n], OPERAND_READ, 0); // I think.
         }
     }
     else
@@ -824,10 +825,10 @@ static t_stat doInstruction(DCDstruct *i)
 //    word36 Ypair[2];
 //    core_read2(CA, &Ypair[0], &Ypair[1]);
 //    
-//    word18 thisIC = rIC;
+//    word18 thisIC = PPR.IC;
 //    t_stat retEven = DoInstruction(i, Ypair[0]);
 //    
-//    if (rIC != thisIC)   // last instruction changed rIC so don't execute odd word.
+//    if (PPR.IC != thisIC)   // last instruction changed PPR.IC so don't execute odd word.
 //        return retEven;
 //    
 //    return DoInstruction(i, Ypair[1]);
@@ -947,7 +948,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                     SETF(rIR, I_ZERO);
                 else
                     CLRF(rIR, I_ZERO);
-                if (rA & SIGN)
+                if (rA & SIGN36)
                     SETF(rIR, I_NEG);
                 else
                     CLRF(rIR, I_NEG);
@@ -961,7 +962,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -975,7 +976,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -993,7 +994,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1062,7 +1063,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1078,7 +1079,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1221,13 +1222,13 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             // prior to modification.
             sim_debug (DBG_ERR, & cpu_dev, "stc1 ignoring initial TRO\n");
             //tmp36 = 0;
-            SETHI(CY, (rIC + 1) & 0777777);
+            SETHI(CY, (PPR.IC + 1) & 0777777);
             SETLO(CY, rIR & 0777760);
             
             break;
             
         case 0750:  ///< stc2
-            SETHI(CY, (rIC + 2) & 0777777);
+            SETHI(CY, (PPR.IC + 2) & 0777777);
 
             break;
             
@@ -1262,7 +1263,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             Ypair[0] = bitfieldInsert36(Ypair[0],     043,  0,  6);
             
             Ypair[1] = 0;
-            Ypair[1] = bitfieldInsert36(Ypair[0], rIC + 2, 18, 18);
+            Ypair[1] = bitfieldInsert36(Ypair[0], PPR.IC + 2, 18, 18);
             
             //Write2(i, TPR.CA, Ypair[0], Ypair[1], OperandWrite, rTAG);
 
@@ -1329,7 +1330,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN;    ///< A0
+                bool a0 = rA & SIGN36;    ///< A0
                 rA <<= 1;               // shift left 1
                 if (a0)                 // rotate A0 -> A35
                     rA |= 1;
@@ -1341,7 +1342,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1383,7 +1384,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1404,7 +1405,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1419,10 +1420,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
             for(int i = 0 ; i < tmp18 ; i++)
             {
-                bool a0 = rA & SIGN;    ///< A0
+                bool a0 = rA & SIGN36;    ///< A0
                 rA >>= 1;               // shift right 1
                 if (a0)                 // propagate sign bit
-                    rA |= SIGN;
+                    rA |= SIGN36;
             }
             rA &= DMASK;    // keep to 36-bits
             
@@ -1431,7 +1432,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1446,11 +1447,11 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             tmp36 = TPR.CA & 0177;      // CY bits 11-17
             for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN;    ///< A0
+                bool a0 = rA & SIGN36;    ///< A0
                 
                 rA <<= 1;               // shift left 1
                 
-                bool b0 = rQ & SIGN;    ///< Q0
+                bool b0 = rQ & SIGN36;    ///< Q0
                 if (b0)
                     rA |= 1;            // Q0 => A35
                 
@@ -1467,7 +1468,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1492,7 +1493,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 //if (rA & 0xfffffff000000000LL)  // any bits shifted out???
                 //    SETF(rIR, I_CARRY);
                 
-                bool b0 = rQ & SIGN;    ///< Q0
+                bool b0 = rQ & SIGN36;    ///< Q0
                 if (b0)
                     rA |= 1;            // Q0 => A35
                 
@@ -1507,7 +1508,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 if (tmpSign != (rA & SIGN36))
                     SETF(rIR, I_CARRY);
                 
-                bool b0 = rQ & SIGN;    ///< Q0
+                bool b0 = rQ & SIGN36;    ///< Q0
                 if (b0)
                     rA |= 1;            // Q0 => A35
                 
@@ -1531,7 +1532,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1550,7 +1551,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 rQ >>= 1;               // shift right 1
                 
                 if (a35)                // propagate sign bit
-                    rQ |= SIGN;
+                    rQ |= SIGN36;
             }
             rA &= DMASK;    // keep to 36-bits
             rQ &= DMASK;
@@ -1559,7 +1560,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1572,16 +1573,16 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool a0 = rA & SIGN;    ///< A0
+                bool a0 = rA & SIGN36;    ///< A0
                 bool a35 = rA & 1;      ///< A35
                 
                 rA >>= 1;               // shift right 1
                 if (a0)
-                    rA |= SIGN;
+                    rA |= SIGN36;
                 
                 rQ >>= 1;               // shift right 1
                 if (a35)                // propagate sign bit1
-                    rQ |= SIGN;
+                    rQ |= SIGN36;
             }
             rA &= DMASK;    // keep to 36-bits (probably ain't necessary)
             rQ &= DMASK;
@@ -1590,7 +1591,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 SETF(rIR, I_ZERO);
             else
                 CLRF(rIR, I_ZERO);
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1603,7 +1604,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool q0 = rQ & SIGN;    ///< Q0
+                bool q0 = rQ & SIGN36;    ///< Q0
                 rQ <<= 1;               // shift left 1
                 if (q0)                 // rotate A0 -> A35
                     rQ |= 1;
@@ -1615,7 +1616,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1658,7 +1659,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1678,7 +1679,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1691,10 +1692,10 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             tmp36 = TPR.CA & 0177;   // CY bits 11-17
             for(int i = 0 ; i < tmp36 ; i++)
             {
-                bool q0 = rQ & SIGN;    ///< Q0
+                bool q0 = rQ & SIGN36;    ///< Q0
                 rQ >>= 1;               // shift right 1
                 if (q0)                 // propagate sign bit
-                    rQ |= SIGN;
+                    rQ |= SIGN36;
             }
             rQ &= DMASK;    // keep to 36-bits
             
@@ -1703,7 +1704,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -1984,7 +1985,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 
             convertToWord36(tmp72, &rA, &rQ);
             SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-            SCF(rA & SIGN, rIR, I_NEG);
+            SCF(rA & SIGN36, rIR, I_NEG);
             
             break;
 
@@ -2006,9 +2007,9 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             
             // XXX this is probably the wrong way of doing it, but let's hope testing sorts this out.
             if (rA & SIGNEX)
-                rA |= SIGN;
+                rA |= SIGN36;
             
-            SCF(rA & SIGN, rIR, I_NEG);
+            SCF(rA & SIGN36, rIR, I_NEG);
 #else
             {
                 int64_t t0 = rQ;
@@ -2024,7 +2025,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 convertToWord36((word72)prod, &rA, &rQ);
 
                 SCF(rA == 0 && rQ == 0, rIR, I_ZERO);
-                SCF(rA & SIGN, rIR, I_NEG);
+                SCF(rA & SIGN36, rIR, I_NEG);
             }
 #endif
             break;
@@ -2042,7 +2043,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             {
                 // no division takes place
                 SCF(CY == 0, rIR, I_ZERO);
-                SCF(rQ & SIGN, rIR, I_NEG);
+                SCF(rQ & SIGN36, rIR, I_NEG);
                 // XXX divide check fault
                 doFault(i, div_fault, 0, "divide check");
             }
@@ -2109,7 +2110,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
 #endif
 
                 SCF(rQ == 0, rIR, I_ZERO);
-                SCF(rQ & SIGN, rIR, I_NEG);
+                SCF(rQ & SIGN36, rIR, I_NEG);
             }
             
             break;
@@ -2146,7 +2147,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 else
                     CLRF(rIR, I_ZERO);
                 
-                if (rA & SIGN)
+                if (rA & SIGN36)
                     SETF(rIR, I_NEG);
                 else
                     CLRF(rIR, I_NEG);
@@ -2193,8 +2194,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             /// Zero:     If | C(A) | = | C(Y) | , then ON; otherwise OFF
             /// Negative: If | C(A) | < | C(Y) | , then ON; otherwise OFF
             {
-                word36 a = rA & SIGN ? -rA : rA;
-                word36 y = CY & SIGN ? -CY : CY;
+                word36 a = rA & SIGN36 ? -rA : rA;
+                word36 y = CY & SIGN36 ? -CY : CY;
                 
                 SCF(a == y, rIR, I_ZERO);
                 SCF(a < y,  rIR, I_NEG);
@@ -2214,7 +2215,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 word36 Z = ~rQ & (rA ^ CY);
                 
                 SCF(Z == 0, rIR, I_ZERO);
-                SCF(Z & SIGN, rIR, I_NEG);
+                SCF(Z & SIGN36, rIR, I_NEG);
             }
             break;
             
@@ -2272,7 +2273,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2286,7 +2287,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2307,7 +2308,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2346,7 +2347,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2362,7 +2363,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (tmp36 & SIGN)
+            if (tmp36 & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2379,7 +2380,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (tmp36 & SIGN)
+            if (tmp36 & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2451,7 +2452,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2488,7 +2489,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2504,7 +2505,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2521,7 +2522,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2592,7 +2593,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2629,7 +2630,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rQ & SIGN)
+            if (rQ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2646,7 +2647,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2665,7 +2666,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (CY & SIGN)
+            if (CY & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2742,7 +2743,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN)
+            if (trZ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2780,7 +2781,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN)
+            if (trZ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2823,7 +2824,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (rA & SIGN)
+            if (rA & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -2859,7 +2860,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 CLRF(rIR, I_ZERO);
             
-            if (trZ & SIGN)
+            if (trZ & SIGN36)
                 SETF(rIR, I_NEG);
             else
                 CLRF(rIR, I_NEG);
@@ -4003,7 +4004,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             //c_0633:;    // for rscr clock/cal call.
             
             {
-              /* t_stat rc = */ scu_rscr (/*scu_unit_num*/ 0, ASSUME0, 040, & reg_A, & reg_Q);
+              /* t_stat rc = */ scu_rscr (/*scu_unit_num*/ 0, ASSUME0, 040, & rA, & rQ);
 #if 0
                 /// The calendar clock consists of a 52-bit register which counts microseconds and is readable as a double-precision integer by a single instruction from any central processor. This rate is in the same order of magnitude as the instruction processing rate of the GE-645, so that timing of 10-instruction subroutines is meaningful. The register is wide enough that overflow requires several tens of years; thus it serves as a calendar containing the number of microseconds since 0000 GMT, January 1, 1901
                 ///  Secs from Jan 1, 1901 to Jan 1, 1970 - 2 177 452 800          Seconds
@@ -4196,7 +4197,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 // fetch next instruction ...
                 
                 DCDstruct _nxt;   // our decoded instruction struct
-                DCDstruct *nxt = fetchInstruction(rIC+1, &_nxt);    // fetch next instruction into current instruction
+                DCDstruct *nxt = fetchInstruction(PPR.IC+1, &_nxt);    // fetch next instruction into current instruction
 
                 // XXX check for illegal modifiers only R & RI are allowed and only X1..X7
                 switch (GET_TM(nxt->tag))
@@ -4375,7 +4376,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 } while (exit == false);
                 
                 // Note: when using MMs fault code / ControlUnit() we don't do this here ...
-                rIC += 1;   // bump instruction counter
+                PPR.IC += 1;   // bump instruction counter
             }
             break;
             
@@ -4574,7 +4575,21 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
         // Privileged - Configuration and Status
             
         case 0233:  ///< rmcm
-            return STOP_UNIMP;
+            {
+                // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
+                // specify which processor port (i.e., which system 
+                // controller) is used.
+                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+                t_stat rc = scu_rmcm (scu_unit_num, ASSUME0, & rA, & rQ);
+                if (rc == CONT_FAULT)
+                    doFault(i, store_fault, 0, "(rscr)");
+                if (rc)
+                    return rc;
+                SCF (rA == 0, rIR, I_ZERO);
+                SCF (rA & SIGN36, rIR, I_NEG);
+            }
+            break;
 
         case 0413:  ///< rscr
 #if 0
@@ -4642,7 +4657,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
               int cpu_port_num = query_scpage_map (TPR.CA);
               // What is the IDNUM of the SCU connected to that port?
               int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-              t_stat rc = scu_rscr (scu_unit_num, ASSUME0, TPR.CA, & reg_A, & reg_Q);
+              t_stat rc = scu_rscr (scu_unit_num, ASSUME0, TPR.CA, & rA, & rQ);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(rscr)");
               if (rc)
@@ -4817,32 +4832,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
             // the word at Y) sends a connect signal to the port specified 
             // by C(Y) 33,35 .
 
-#if 0
-// XXX It is unclear but reasonable the the 2^1 factor is correct
-// portconfig coded size 0 is 32K, which is 2^15
-// 111 is 4096K; which is 2^22; 
-// this is the bank size, and each SCU has two banks, so 2^1
-// so  2 ^ ((mem coded size) + 15 + 1) should be the memory of a SCU
-
-            word24 work = TPR.CA;
-            int cpu_port_num = -1; // Not known
-            int port_num;
-            for (port_num = 0; port_num < N_CPU_PORTS; port_num ++)
-              {
-                if (switches . enable [port_num])
-                  {
-                    word24 sz = switches . store_size [port_num] << 16;
-                    word24 base = switches . assignment [port_num] * sz;
-                    if (work >= base && work < base + sz)
-                      {
-                        cpu_port_num = port_num;
-                        break;
-                      }
-                  }
-              }
-#else
             int cpu_port_num = query_scpage_map (TPR.CA);
-#endif
 
             if (cpu_port_num < 0)
               {
@@ -4855,7 +4845,20 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
           break;
    
         case 0553:  ///< smcm
-            return STOP_UNIMP;
+            {
+                // C(TPR.CA)0,2 (C(TPR.CA)1,2 for the DPS 8M processor) 
+                // specify which processor port (i.e., which system 
+                // controller) is used.
+                uint cpu_port_num = (TPR.CA >> 15) & 03;
+                int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
+                t_stat rc = scu_smcm (scu_unit_num, ASSUME0, rA, rQ);
+                if (rc == CONT_FAULT)
+                    doFault(i, store_fault, 0, "(rscr)");
+                if (rc)
+                    return rc;
+            }
+            break;
+
         case 0451:  ///< smic
             return STOP_UNIMP;
 
@@ -4865,7 +4868,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
               int cpu_port_num = query_scpage_map (TPR.CA);
               // What is the IDNUM of the SCU connected to that port?
               int scu_unit_num = query_scu_unit_num (ASSUME0, cpu_port_num);
-              t_stat rc = scu_sscr (scu_unit_num, ASSUME0, TPR.CA, reg_A, reg_Q);
+              t_stat rc = scu_sscr (scu_unit_num, ASSUME0, TPR.CA, rA, rQ);
               if (rc == CONT_FAULT)
                 doFault(i, store_fault, 0, "(sscr)");
               if (rc)
@@ -4954,7 +4957,7 @@ sim_debug (DBG_TRACE, & cpu_dev, "SCU %08o %012llo\n", TPR.CA, scu_data [4]);
                     sim_qcount () == 0)  // XXX If clk_svc is implemented it will 
                                          // break this logic
                   {
-                    sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", rIC);
+                    sim_printf ("DIS@0%06o with no interrupts pending and no events in queue\n", PPR.IC);
                     sim_printf("\r\ncpuCycles = %lld\n", cpuCycles);
                     //return STOP_DIS;
                     stop_reason = STOP_DIS;
@@ -5004,7 +5007,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             /// C(TPR.TSR) → C(PPR.PSR)
             if (rIR & (I_NEG | I_ZERO))
             {
-                rIC = TPR.CA;
+                PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 return CONT_TRA;
             }
@@ -5016,7 +5019,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(TPR.TSR) → C(PPR.PSR)
             if (!(rIR & I_NEG) && !(rIR & I_ZERO))
             {
-                rIC = TPR.CA;
+                PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
                 return CONT_TRA;
@@ -5029,7 +5032,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(TPR.TSR) → C(PPR.PSR)
             if (!(rIR & I_TRUNC))
             {
-                rIC = TPR.CA;
+                PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
                 return CONT_TRA;
@@ -5042,7 +5045,7 @@ static t_stat DoEISInstruction(DCDstruct *i)
             ///  C(TPR.TSR) → C(PPR.PSR)
             if (rIR & I_TRUNC)
             {
-                rIC = TPR.CA;
+                PPR.IC = TPR.CA;
                 PPR.PSR = TPR.TSR;
                 
                 CLRF(rIR, I_TRUNC);
@@ -6218,14 +6221,14 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 
                 rX[t] += blk;
                 
-                word36 fmt2 = (((rIC + 1) & AMASK) << 18) | ((word36) blk << 6);     ///< | t;
+                word36 fmt2 = (((PPR.IC + 1) & AMASK) << 18) | ((word36) blk << 6);     ///< | t;
                 //sim_debug(DBG_TRACE, &cpu_dev,  "pusht():writine fmt2=%012llo to X[%o]=%06o\n", fmt2, t, rX[t]);
                 
                 Write(rX[t], fmt2, OperandWrite, 0);    // write fmt 2 word to X[n] + blk
                 
                 rX[t] += 1;
                 
-                rIC = entry;
+                PPR.IC = entry;
                 
                 return CONT_TRA;
             }
@@ -6250,8 +6253,8 @@ static t_stat DoEISInstruction(DCDstruct *i)
                 //word18 rICx = (y + ic) & AMASK;
                 //sim_debug(DBG_TRACE, &cpu_dev, "popt() y=%06o n=%o ic:%06o blk=%d rICx=%06o\n", y, n, ic, blk, rICx);
                 
-                rIC = (y + ic) & AMASK;
-                //sim_debug(DBG_TRACE, &cpu_dev,  "popt() new IC = %06o X[%o]=%06o\n", rIC, n, rX[n]);
+                PPR.IC = (y + ic) & AMASK;
+                //sim_debug(DBG_TRACE, &cpu_dev,  "popt() new IC = %06o X[%o]=%06o\n", PPR.IC, n, rX[n]);
                 
                 return CONT_TRA;
                 
@@ -6354,7 +6357,7 @@ t_stat doXED(word36 *Ypair)
 // XXX The conditions are more rigorous: see AL39, pg 327
     // If we are in a fault handler, the IC points to the faulting instruction
     // but we technically are executing an even instruction
-    if (/* rIC % 2 == 0 && // Even address */
+    if (/* PPR.IC % 2 == 0 && // Even address */
         xec -> i == 0) // Not inhibited
       cpu . interrupt_flag = sample_interrupts ();
     else
@@ -6541,6 +6544,9 @@ emCall(DCDstruct *i)
                     else
                         /* ch = ch */;
                     is_escape = false;
+                    buf [cnt ++] = ch;
+                    if (ch == '\0')
+                      break;
                 }
                 else
                 {

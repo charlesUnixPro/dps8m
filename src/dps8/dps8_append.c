@@ -687,6 +687,7 @@ static void loadPTWAM(word15 segno, word18 offset)
 
 }
 
+#ifndef QUIET_UNUSED
 /**
  * modify target segment PTW (Set M=1) ...
  */
@@ -705,7 +706,7 @@ static _ptw* modifyPTW(_sdw *sdw, word18 offset)
     
     return PTW;
 }
-
+#endif
 
 
 
@@ -912,7 +913,9 @@ doAppendCycle(DCDstruct *i, word18 address, _processor_cycle_type thisCycle)
 //        sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(3) instructionfetch - TPR.TRR=%o TPR.TSR=%05o\n", TPR.TRR, TPR.TSR);
 //    }
 
+#ifndef QUIET_UNUSED
 A:;
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(A)\n");
     
     // is SDW for C(TPR.TSR) in SDWAM?
@@ -1021,7 +1024,9 @@ B:;
         goto G;
     }
     
+#ifndef QUIET_UNUSED
 C:;
+#endif
     sim_debug(DBG_APPENDING, &cpu_dev, "doAppendCycle(C)\n");
 
     //C(TPR.TRR) < C(SDW .R1)?

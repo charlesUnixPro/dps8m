@@ -231,7 +231,7 @@ static decNumber * decBCD9ToNumber(const word9 *bcd, Int length, const Int scale
 /* ------------------------------------------------------------------ */
 static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const decNumber *dn) {
     const Unit *up=dn->lsu;     // Unit array pointer
-    uByte obyte, *out;          // current output byte, and where it goes
+    uByte obyte=0, *out;          // current output byte, and where it goes
     Int indigs=dn->digits;      // digits processed
     uInt cut=DECDPUN;           // downcounter per Unit
     uInt u=*up;                 // work
@@ -294,7 +294,7 @@ static uint8_t * decBCDFromNumber(uint8_t *bcd, int length, int *scale, const de
 } // decBCDFromNumber
 
 
-//#ifndef QUIET_UNUSED
+#ifndef QUIET_UNUSED
 static void printBCD(decNumber *a, decContext *set, int width)
 {
     uint8_t bcd[256];
@@ -307,7 +307,7 @@ static void printBCD(decNumber *a, decContext *set, int width)
         fprintf(stderr, "%d", bcd[n]);
     fprintf(stderr, "  scale=%d\n", -(a->exponent));
 }
-//#endif
+#endif
 
 static char *getBCD(decNumber *a)
 {

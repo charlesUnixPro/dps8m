@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "dps8.h"
+#include "dps8_scu.h"
 #include "dps8_utils.h"
 
 // XXX Use this when we assume there is only a single unit
@@ -584,7 +585,7 @@ t_stat cpu_reset (DEVICE *dptr)
     for (int i = 0; i < MEMSIZE; i ++)
       M [i] = MEM_UNINITIALIZED;
 
-    rIC = 0;
+    PPR.IC = 0;
     rA = 0;
     rQ = 0;
     XECD = 0;
@@ -664,13 +665,11 @@ word18	rX[8];	/*!< index */
 //word18	rBAR;	/*!< base address [map: BAR, 18 0's] */
 /* format: 9b base, 9b bound */
 
-int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o rIC fetch */
+int XECD; /*!< for out-of-line XEC,XED,faults, etc w/o PPR.IC fetch */
 word36 XECD1; /*!< XEC instr / XED instr#1 */
 word36 XECD2; /*!< XED instr#2 */
 
 
-//word18	rIC;	/*!< instruction counter */
-// same as PPR.IC
  //word18	rIR;	/*!< indicator [15b] [map: 18 x's, rIR w/ 3 0's] */
 //IR_t IR;        // Indicator register   (until I can map MM IR to my rIR)
 
@@ -721,8 +720,6 @@ word8	rRALR;	/*!< ring alarm [3b] [map: 33 0's, RALR] */
 //word36	hAO[16];/*!< history: appending unit, odd word */
 //word36	rSW[5];	/*!< switches */
 
-//word12 rFAULTBASE;  ///< fault base (12-bits of which the top-most 7-bits are used)
-
 // end h6180 stuff
 
 struct _tpr TPR;    ///< Temporary Pointer Register
@@ -771,7 +768,7 @@ static BITFIELD dps8_IR_bits[] = {
 };
 
 static REG cpu_reg[] = {
-    { ORDATA (IC, rIC, VASIZE) },
+    { ORDATA (IC, PPR.IC, VASIZE) },
     //{ ORDATA (IR, rIR, 18) },
     { ORDATADF (IR, rIR, 18, "Indicator Register", dps8_IR_bits) },
     
@@ -980,7 +977,7 @@ ctl_unit_data_t cu;
 // display or modify memory can invoke much the APU. Howeveer, we don't
 // want interactive attempts to access non-existant memory locations
 // to register a fault.
-flag_t fault_gen_no_fault;
+bool fault_gen_no_fault;
 
 int stop_reason; // sim_instr return value for JMP_STOP
 
@@ -1094,10 +1091,10 @@ jmpRetry:;
         }
         
         sim_interval --;
-        //if (sim_brk_summ && sim_brk_test (rIC, SWMASK ('E'))) {    /* breakpoint? */
+        //if (sim_brk_summ && sim_brk_test (PPR.IC, SWMASK ('E'))) {    /* breakpoint? */
         // sim_brk_test expects a 32 bit address; PPR.IC into the low 18, and
         // PPR.PSR into the high 12
-        if (sim_brk_summ && sim_brk_test ((rIC & 0777777) | ((((t_addr) PPR.PSR) & 037777) << 18), SWMASK ('E'))) {    /* breakpoint? */
+        if (sim_brk_summ && sim_brk_test ((PPR.IC & 0777777) | ((((t_addr) PPR.PSR) & 037777) << 18), SWMASK ('E'))) {    /* breakpoint? */
             reason = STOP_BKPT;                        /* stop simulation */
             break;
         }
@@ -1129,14 +1126,14 @@ jmpRetry:;
         
         xec_side_effect = 0;
 
-        ci = fetchInstruction(rIC, currentInstruction);    // fetch instruction into current instruction struct
+        ci = fetchInstruction(PPR.IC, currentInstruction);    // fetch instruction into current instruction struct
         
         if (currentInstruction -> IWB == 0777777777777U &&
            switches . halt_on_unimp)
           return STOP_UNIMP;
 
 // XXX The conditions are more rigorous: see AL39, pg 327
-        if (rIC % 2 == 0 && // Even address
+        if (PPR.IC % 2 == 0 && // Even address
             ci -> i == 0) // Not inhibited
           cpu . interrupt_flag = sample_interrupts ();
         else
@@ -1249,7 +1246,7 @@ jmpIntr:;
                 switch (ret)
                 {
                     case CONT_TRA:
-jmpTra:                 continue;   // don't bump rIC, instruction already did it
+jmpTra:                 continue;   // don't bump PPR.IC, instruction already did it
                     case CONT_FAULT:
                     {
                         // XXX Instruction faulted.
@@ -1279,13 +1276,13 @@ jmpNext:;
         } else if(XECD == 2) {
           XECD = 0;
         } else if (cpu . cycle != DIS_cycle) // XXX maybe cycle == FETCH_cycle
-          rIC += 1;
+          PPR.IC += 1;
         
         // is this a multiword EIS?
         // XXX: no multiword EIS for XEC/XED/fault, right?? -MCW
         if (ci->info->ndes > 0)
-          rIC += ci->info->ndes;
-        rIC += xec_side_effect;
+          PPR.IC += ci->info->ndes;
+        PPR.IC += xec_side_effect;
         xec_side_effect = 0;
 
     } while (reason == 0);
@@ -1484,6 +1481,8 @@ int32 core_read(word24 addr, word36 *data)
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *data = M[addr] & DMASK;
+//if (addr == 01100 || addr == 01101)
+//sim_printf ("read %012llo@%06o\n", * data, addr);
     }
     return 0;
 }
@@ -1494,6 +1493,8 @@ int core_write(word24 addr, word36 data) {
     } else {
         M[addr] = data & DMASK;
     }
+//if (addr == 01100 || addr == 01101)
+//sim_printf ("write %012llo@%06o\n", data, addr);
     return 0;
 }
 
@@ -1517,6 +1518,8 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *odd = M[addr] & DMASK;
+//if (addr == 01101)
+//sim_printf ("read %012llo@%06o\nread %012llo@%06o\n", * even, addr - 1, * odd, addr);
         return 0;
     }
 }
@@ -1541,6 +1544,8 @@ int core_write2(word24 addr, word36 even, word36 odd) {
         }
         M[addr++] = even;
         M[addr] = odd;
+//if (addr == 01101)
+//sim_printf ("write %012llo@%06o\nwrite %012llo@%06o\n", even, addr - 1, odd, addr);
     }
     return 0;
 }
@@ -1591,7 +1596,7 @@ int core_write2(word24 addr, word36 even, word36 odd) {
  *
  */
 
-void encode_instr(const instr_t *ip, t_uint64 *wordp)
+void encode_instr(const instr_t *ip, word36 *wordp)
 {
     *wordp = setbits36(0, 0, 18, ip->addr);
 #if 1
@@ -1921,7 +1926,7 @@ static struct
   {
     struct
       {
-        flag_t inuse;
+        bool inuse;
         int scu_unit_num; // 
         DEVICE * devp;
         UNIT * unitp;
@@ -2448,7 +2453,7 @@ static int walk_stack (int output, void * frame_listp /* list<seg_addr_t>* frame
         if (prev != 0)
           {
             struct _par prev_pr;
-            if (words2its (M [addr + 020], M [addr + 021], & prev_pr))
+            if (words2its (M [addr + 020], M [addr + 021], & prev_pr) == 0)
               {
                 if (prev_pr . WORDNO != prev)
                   {

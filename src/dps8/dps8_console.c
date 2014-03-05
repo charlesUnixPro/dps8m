@@ -11,6 +11,7 @@
 
 #include "dps8.h"
 #include "dps8_iom.h"
+#include "dps8_console.h"
 
 /*
  console.c -- operator's console
@@ -105,7 +106,7 @@ typedef struct s_console_state
     char buf[81];
     char *tailp;
     char *readp;
-    flag_t have_eol;
+    bool have_eol;
     char *auto_input;
     char *autop;
  } con_state_t;
@@ -125,7 +126,7 @@ static struct
 static void check_keyboard (void);
 
 static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_data, bool * is_read);
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati);
+static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati);
 
 static t_stat opcon_reset (DEVICE * dptr)
   {
@@ -371,7 +372,7 @@ static int con_iom_cmd (UNIT * unitp, pcw_t * p, word12 * stati, bool * need_dat
  * Handle an I/O request.  Invoked by the IOM while processing a DDCW.
  */
 
-static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, t_uint64 * wordp, word12 * stati)
+static int con_iom_io (UNIT * unitp, int chan, int dev_code, uint * tally, uint * cp, word36 * wordp, word12 * stati)
 {
     sim_debug (DBG_DEBUG, & opcon_dev, "%s: Chan 0%o\n", __func__, chan);
     
