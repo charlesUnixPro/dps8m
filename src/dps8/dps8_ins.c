@@ -4519,7 +4519,8 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 
         case 0257:  ///< lsdp
-            return STOP_UNIMP;
+            doFault(i, illproc_fault, 0, "lsdp is illproc on DPS8M");
+            return CONT_FAULT;
 
         case 0613:  ///< rcu
             return STOP_UNIMP;
