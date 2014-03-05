@@ -1670,7 +1670,9 @@ void btd(DCDstruct *ins)
     
     //word18 addr = (e->TN1 == CTN4) ? e->YChar41 : e->YChar91;
     //load9x(e->N1, addr, e->CN1, e);
-    
+    if (e->N1 == 0 || e->N1 > 8)
+        doFault(ins, illproc_fault, 0, "btd(1): N1 == 0 || N1 > 8"); 
+
     load9x(e->N1, &e->ADDR1, e->CN1, e);
     
     EISwriteToOutputStringReverse(e, 2, 0);    // initialize output writer .....
