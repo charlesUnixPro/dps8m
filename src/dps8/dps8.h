@@ -2001,16 +2001,16 @@ typedef enum {
 typedef struct {
     cycles_t cycle;
     uint IC_abs; // translation of odd IC to an absolute address; see ADDRESS of cu history
-    flag_t irodd_invalid; // cached odd instr invalid due to memory write by even instr
+    bool irodd_invalid; // cached odd instr invalid due to memory write by even instr
     uint read_addr; // last absolute read; might be same as CA for our purposes...; see APU RMA
-    // flag_t instr_fetch; // true during an instruction fetch
+    // bool instr_fetch; // true during an instruction fetch
     /* The following are all from the control unit history register: */
-    flag_t trgo; // most recent instruction caused a transfer?
-    flag_t ic_odd; // executing odd pair?
-    flag_t poa; // prepare operand address
+    bool trgo; // most recent instruction caused a transfer?
+    bool ic_odd; // executing odd pair?
+    bool poa; // prepare operand address
     uint opcode; // currently executing opcode
     struct {
-        flag_t fhld; // An access violation or directed fault is waiting. AL39 mentions that the APU has this flag, but not where scpr stores it
+        bool fhld; // An access violation or directed fault is waiting. AL39 mentions that the APU has this flag, but not where scpr stores it
     } apu_state;
 
     bool interrupt_flag;
@@ -2039,9 +2039,9 @@ typedef struct {
 
 /* MF fields of EIS multi-word instructions -- 7 bits */
 typedef struct {
-    flag_t ar;
-    flag_t rl;
-    flag_t id;
+    bool ar;
+    bool rl;
+    bool id;
     uint reg;  // 4 bits
 } eis_mf_t;
 
@@ -2057,7 +2057,7 @@ typedef struct {
         } single;
         eis_mf_t mf1;     // from bits 29..35 of EIS instructions
     } mods;
-    flag_t is_eis_multiword;  // set true for relevent opcodes
+    bool is_eis_multiword;  // set true for relevent opcodes
     
     t_uint64 *wordEven; // HWR
     
@@ -2137,8 +2137,8 @@ typedef struct {
      */
     
     /* word 0, continued */
-    flag_t SD_ON;   // SDWAM enabled
-    flag_t PT_ON;   // PTWAM enabled
+    bool SD_ON;   // SDWAM enabled
+    bool PT_ON;   // PTWAM enabled
     
     /* word 1, continued  */
     struct {
@@ -2147,18 +2147,18 @@ typedef struct {
         // unsigned boc:1;      // bad outward call
         // unsigned ocb:1;      // out of call brackets
     } word1flags;
-    flag_t instr_fetch;     // our usage of this may match PI-AP
+    bool instr_fetch;     // our usage of this may match PI-AP
     
     /* word 2, continued */
     uint delta;     // 6 bits at 2[30..35]; addr increment for repeats
     
     /* word 5, continued */
-    flag_t rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
-    flag_t repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
-    flag_t rpt;     // execute an rpt instruction
+    bool rpts;        // just executed a repeat instr;  bit 12 in word one of the CU history register
+    bool repeat_first;        // "RF" flag -- first cycle of a repeat instruction; We also use with xed
+    bool rpt;     // execute an rpt instruction
     uint CT_HOLD;   // 6 bits at 5[30..35]; contents of the "remember modifier" register
-    flag_t xde;     // execute even instr from xed pair
-    flag_t xdo;     // execute even instr from xed pair
+    bool xde;     // execute even instr from xed pair
+    bool xdo;     // execute even instr from xed pair
     
     /* word 6 */
     //instr_t IR;     /* Working instr register; addr & tag are modified */
@@ -2174,13 +2174,13 @@ typedef struct {
 
 // Emulator-only interrupt and fault info
 typedef struct {
-    flag_t xed; // executed xed for a fault handler
-    flag_t any; // true if any of the below are true
-    flag_t int_pending;
+    bool xed; // executed xed for a fault handler
+    bool any; // true if any of the below are true
+    bool int_pending;
     int low_group; // Lowest group-number fault preset
     uint32 group7; // bitmask for multiple group 7 faults
     int fault[7]; // only one fault in groups 1..6 can be pending
-    flag_t interrupts[32];
+    bool interrupts[32];
 } events_t;
 
 
@@ -2236,7 +2236,7 @@ typedef struct {
         int read;
         int xfer;
     } mt_times;
-    flag_t warn_uninit; // Warn when reading uninitialized memory
+    bool warn_uninit; // Warn when reading uninitialized memory
 } sysinfo_t;
 
 // Statistics
@@ -2263,7 +2263,7 @@ extern ctl_unit_data_t cu;
 extern stats_t sys_stats;
 extern int is_eis[];
 
-extern flag_t fault_gen_no_fault;
+extern bool fault_gen_no_fault;
 
 //extern int fault2group[32];
 //extern int fault2prio[32];

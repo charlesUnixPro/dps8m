@@ -17,10 +17,10 @@ enum { max_channels = 32 }; // enums are more constant than consts...
 //-- 
 //--     int dev_code; // 6 bits
 //--     int chan_data; // 6 bits; often some sort of count
-//--     flag_t have_status; // set to true by the device when operation is complete
+//--     bool have_status; // set to true by the device when operation is complete
 //--     int major;
 //--     int substatus;
-//--     flag_t is_read;
+//--     bool is_read;
 //--     int time; // request by device for queuing via sim_activate()
 //-- } chan_devinfo;
 
@@ -30,7 +30,7 @@ typedef struct pcw_s
     int dev_code;   // 6 bits; 6..11
     int ext;        // 6 bits; 12..17; address extension
     int cp;         // 3 bits; 18..20, must be all ones
-    flag_t mask;    // extension control or mask; 1 bit; bit 21
+    bool mask;    // extension control or mask; 1 bit; bit 21
     int control;    // 2 bits; bit 22..23
     int chan_cmd;   // 6 bits; bit 24..29;
     // AN87 says: 00 single record xfer, 02 non data xfer,

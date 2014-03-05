@@ -977,7 +977,7 @@ ctl_unit_data_t cu;
 // display or modify memory can invoke much the APU. Howeveer, we don't
 // want interactive attempts to access non-existant memory locations
 // to register a fault.
-flag_t fault_gen_no_fault;
+bool fault_gen_no_fault;
 
 int stop_reason; // sim_instr return value for JMP_STOP
 
@@ -1926,7 +1926,7 @@ static struct
   {
     struct
       {
-        flag_t inuse;
+        bool inuse;
         int scu_unit_num; // 
         DEVICE * devp;
         UNIT * unitp;

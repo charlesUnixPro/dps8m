@@ -106,7 +106,7 @@ typedef struct s_console_state
     char buf[81];
     char *tailp;
     char *readp;
-    flag_t have_eol;
+    bool have_eol;
     char *auto_input;
     char *autop;
  } con_state_t;

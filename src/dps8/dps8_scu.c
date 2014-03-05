@@ -669,7 +669,7 @@ typedef struct
     // CPU/IOM connectivity; designated 0..7
     // [CAC] really CPU/SCU and SCU/IOM connectivity
     struct ports {
-        //flag_t is_enabled;
+        //bool is_enabled;
         enum active_dev type; // type of connected device
         int idnum; // id # of connected dev, 0..7
         int dev_port; // which port on the connected device?
@@ -1576,7 +1576,7 @@ int scu_cioc (uint scu_unit_num, uint scu_port_num)
 static int pima_parse_raw(int pima, const char *moi)
 {
     char pima_name = (pima == 0) ? 'A' : 'B';
-    flag_t unassigned = scu[ASSUME0].interrupts[pima].mask_assign.raw & 1;
+    bool unassigned = scu[ASSUME0].interrupts[pima].mask_assign.raw & 1;
     if (unassigned) {
         scu[ASSUME0].interrupts[pima].mask_assign.unassigned = 1;
         sim_debug (DBG_NOTIFY, &scu_dev, "%s: Unassigning MASK %c.\n", moi, pima_name);

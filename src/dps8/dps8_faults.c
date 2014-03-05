@@ -190,9 +190,9 @@ typedef enum {
 // "MR" Mode Register, L68
 typedef struct {
     // See member "word" for the raw bits, other member values are derivations
-    flag_t mr_enable; // bit 35 "n"
-    flag_t strobe; // bit 30 "l"
-    flag_t fault_reset; // bit 31 "m"
+    bool mr_enable; // bit 35 "n"
+    bool strobe; // bit 30 "l"
+    bool fault_reset; // bit 31 "m"
     t_uint64 word;
 } mode_reg_t;
 static mode_reg_t MR;
