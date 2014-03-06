@@ -80,22 +80,16 @@ DV3D_Test:
     tsp2    ioa
     acc     /DV3D test ...\r\n/
 
-    eax1    two_25
-    stx1    $1
-    eax1    two_26
-    stx1    $2
-
   	dv3d	(),(),()
-$1:	desc4ns	two_25,8
-$2:	desc9fl	two_26,11
+	desc4ns	two_25,8
+	desc9fl	two_26,11
 	desc9fl	out,13
 
     tsp2    ioa
-    acc     /    Result is: ^a^a^a^a ^w (Should be)\r\n/
+    acc     /    Result is: ^a^a^a ^w (Should be '+00000000002 000000 000000')\r\n/
     arg out
     arg out+1
     arg out+2
-    arg out+3
     arg out+3
 
   	dv3d	(),(),()
@@ -104,11 +98,10 @@ $2:	desc9fl	two_26,11
 	desc9fl	out,13
 
     tsp2    ioa
-    acc     /    Result is: ^a^a^a^a ^w (Should be)\r\n/
+    acc     /    Result is: ^a^a^a ^w (Should be '+00865313075 367000 000000')\r\n/
     arg out
     arg out+1
     arg out+2
-    arg out+3
     arg out+3
 
   	dv3d	(),(),()
@@ -117,24 +110,23 @@ $2:	desc9fl	two_26,11
 	desc9fl	out,13
 
     tsp2    ioa
-    acc     /    Result is: ^a^a^a^a ^w (Should be)\r\n/
+    acc     /    Result is: ^a^a^a ^w (Should be '-00865313075 366000 000000')\r\n/
     arg out
     arg out+1
     arg out+2
-    arg out+3
     arg out+3
 
     ldx2    saveX2
     tra     0,2
 
-two_25:	ac4	"33554432"
-two_26:	aci	"+067108864\000"
+two_25:     ac4	"33554432"
+two_26:     aci	"+067108864\000"
 
 two_25b:	ac4	"77554432"
-two_26b:	aci	"+067108864\005"
+two_26b:	aci	"+067108864\000"
 
 two_25c:	ac4	"77554432"
-two_26c:	aci	"+067108864\0377"
+two_26c:	aci	"-067108864\0377"
 
 
 out:	aci	"?????????????"
