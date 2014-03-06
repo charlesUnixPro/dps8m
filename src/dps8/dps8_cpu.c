@@ -1209,7 +1209,11 @@ jmpIntr:;
 
                     if (xrv == CONT_TRA)
                     {
-                        clear_TEMPORARY_ABSOLUTE_mode ();
+// The tricky case: We entered the fault in appending mode, and the fault
+// pair transfered in absolute mode. According to AL39 and T&D, we should
+// stay in absolute mode, not return to appending mode.
+                        if (!clear_TEMPORARY_ABSOLUTE_mode ())
+                          set_addr_mode (ABSOLUTE_mode);
                         sim_debug (DBG_INTR, & cpu_dev, "Interrupt pair transfers\n");
                         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
                     }
@@ -1481,8 +1485,6 @@ int32 core_read(word24 addr, word36 *data)
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *data = M[addr] & DMASK;
-//if (addr == 01100 || addr == 01101)
-//sim_printf ("read %012llo@%06o\n", * data, addr);
     }
     return 0;
 }
@@ -1493,8 +1495,6 @@ int core_write(word24 addr, word36 data) {
     } else {
         M[addr] = data & DMASK;
     }
-//if (addr == 01100 || addr == 01101)
-//sim_printf ("write %012llo@%06o\n", data, addr);
     return 0;
 }
 
@@ -1518,8 +1518,6 @@ int core_read2(word24 addr, word36 *even, word36 *odd) {
             sim_debug (DBG_WARN, & cpu_dev, "Unitialized memory accessed at address %08o; IC is 0%06o:0%06o\n", addr, PPR.PSR, PPR.IC);
         }
         *odd = M[addr] & DMASK;
-//if (addr == 01101)
-//sim_printf ("read %012llo@%06o\nread %012llo@%06o\n", * even, addr - 1, * odd, addr);
         return 0;
     }
 }
@@ -1544,8 +1542,6 @@ int core_write2(word24 addr, word36 even, word36 odd) {
         }
         M[addr++] = even;
         M[addr] = odd;
-//if (addr == 01101)
-//sim_printf ("write %012llo@%06o\nwrite %012llo@%06o\n", even, addr - 1, odd, addr);
     }
     return 0;
 }
@@ -1788,6 +1784,7 @@ DCDstruct *decodeInstruction(word36 inst, DCDstruct *dst)     // decode instruct
 
 
 static bool secret_addressing_mode;
+static bool went_appending; // we will go....
 /*
  * addr_modes_t get_addr_mode()
  *
@@ -1801,11 +1798,13 @@ static bool secret_addressing_mode;
 void set_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = true;
+    went_appending = false;
 }
 
-void clear_TEMPORARY_ABSOLUTE_mode (void)
+bool clear_TEMPORARY_ABSOLUTE_mode (void)
 {
     secret_addressing_mode = false;
+    return went_appending;
 }
 
 addr_modes_t get_addr_mode(void)
@@ -1835,6 +1834,13 @@ addr_modes_t get_addr_mode(void)
 
 void set_addr_mode(addr_modes_t mode)
 {
+// Temporary hack to fix fault/intr pair address mode state tracking
+//   1. secret_addressing_mode is only set in fault/intr pair processing.
+//   2. Assume that the only set_addr_mode that will occur is the b29 special
+//   case, and ITx if added.
+    if (secret_addressing_mode && mode == APPEND_mode)
+      went_appending = true;
+
     secret_addressing_mode = false;
     if (mode == ABSOLUTE_mode) {
         SETF(rIR, I_ABS);
@@ -1851,7 +1857,6 @@ void set_addr_mode(addr_modes_t mode)
         CLRF(rIR, I_ABS);
         
         SETF(rIR, I_NBAR);
-        
     } else if (mode == BAR_mode) {
         CLRF(rIR, I_ABS);
         CLRF(rIR, I_NBAR);
@@ -1945,14 +1950,12 @@ t_stat cable_to_cpu (int cpu_unit_num, int cpu_port_num, int scu_unit_num, int s
   {
     if (cpu_unit_num < 0 || cpu_unit_num >= cpu_dev . numunits)
       {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         sim_printf ("cable_to_cpu: cpu_unit_num out of range <%d>\n", cpu_unit_num);
         return SCPE_ARG;
       }
 
     if (cpu_port_num < 0 || cpu_port_num >= N_CPU_PORTS)
       {
-        //sim_debug (DBG_ERR, & sys_dev, "cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         sim_printf ("cable_to_cpu: cpu_port_num out of range <%d>\n", cpu_port_num);
         return SCPE_ARG;
       }

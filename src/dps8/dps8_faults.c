@@ -510,7 +510,11 @@ void doFault(DCDstruct *i, _fault faultNumber, _fault_subtype subFault, char *fa
     if (xrv == CONT_TRA)
     {
         // set_addr_mode(ABSOLUTE_mode);
-        clear_TEMPORARY_ABSOLUTE_mode ();
+// The tricky case: We entered the fault in appending mode, and the fault
+// pair transfered in absolute mode. According to AL39 and T&D, we should
+// stay in absolute mode, not return to appending mode.
+        if (!clear_TEMPORARY_ABSOLUTE_mode ())
+          set_addr_mode (ABSOLUTE_mode);
         sim_debug (DBG_FAULT, & cpu_dev, "Fault pair transfers\n");
         longjmp(jmpMain, JMP_TRA);      // execute transfer instruction
     }

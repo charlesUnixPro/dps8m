@@ -2938,7 +2938,7 @@ t_stat cable_to_cpu (int scu_unit_num, int scu_port_num, int iom_unit_num, int i
 bool sample_interrupts (void);
 int query_scpage_map (word24 addr);
 void set_TEMPORARY_ABSOLUTE_mode (void);
-void clear_TEMPORARY_ABSOLUTE_mode (void);
+bool clear_TEMPORARY_ABSOLUTE_mode (void);
 int query_scu_unit_num (int cpu_unit_num, int cpu_port_num);
 
 /* dps8_append.c */
