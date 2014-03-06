@@ -2882,6 +2882,170 @@ IT_MOD:;
 
 }
 
+void doPreliminaryComputedAddressFormationRpt(DCDstruct *i)    //, eCAFoper operType)
+{
+    eCAFoper operType = prepareCA;  // just for now
+    if (RMWOP(i))
+        operType = rmwCY;           // r/m/w cycle
+    else if (READOP(i))
+        operType = readCY;          // read cycle
+    else if (WRITEOP(i))
+        operType = writeCY;         // write cycle
+    
+    word18 tmp18;
+    word36 indword;
+
+    // XXX These may need to be saved across restarts
+    int prevTm = -1;
+    word18 indwordAddr;
+
+    modCont->bActive = false;   // assume no continuation necessary
+    
+    // These instructions not allowed in rpt
+    //if (i->iwb->flags & NO_TAG) // for instructions line STCA/STCQ
+    //    rTAG = 0;
+    //else
+    //    rTAG = i->tag;
+    
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormationRpt(Entry): operType:%s TPR.CA=%06o\n", opDescSTR(i), TPR.CA);
+    }
+    
+startCA:;
+    
+    Td = GET_TD(rTAG);
+    Tm = GET_TM(rTAG);
+
+    switch (Td)
+      {
+        case TD_X0:
+        case TD_X1:
+        case TD_X2:
+        case TD_X3:
+        case TD_X4:
+        case TD_X5:
+        case TD_X6:
+        case TD_X7:
+          break;
+        default:
+          // generate fault. Only Xn allowed
+          doFault(i, FAULT_IPR, 0, "ill addr mod from RPT");
+      }
+
+    int Xn = X(Td);
+    if (cu . repeat_first)
+      {
+        // XXX Sign extension?
+        //C(C(PPR.IC)+1)0,17 + C(Xn) -> y, y -> C(Xn)
+        rY = i -> address + rX[Xn];
+        rY &= MASK18;   // keep to 18-bits
+        rX[Xn] = rY;
+      }
+    else
+      {
+        // XXX Sign extension?
+        // C(Xn) + Delta -> y, y -> C(Xn);
+        rY = rX[Xn] + cu.delta;
+        rY &= MASK18;   // keep to 18-bits
+        rX[Xn] = rY;
+      }
+    sim_debug(DBG_ADDRMOD, &cpu_dev, "RPT n:%d Xn:%06o\n", Xn, rX[Xn]);
+
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "doPreliminaryComputedAddressFormationRpt(startCA): TAG=%02o(%s) Tm=%o Td=%o\n", rTAG, getModString(rTAG), Tm, Td);
+    }
+    switch(Tm) {
+        case TM_R:
+            goto R_MOD;
+        case TM_RI:
+            goto RI_MOD;
+    }
+    sim_printf("doPreliminaryComputedAddressFormationRpt(startCA): illegal or unknown Tm??? %o\n", GET_TM(rTAG));
+    return;
+    
+    
+    //! Register modification. Fig 6-3
+R_MOD:;
+    
+    TPR.CA = rY;
+    
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD: TPR.CA=%06o\n", TPR.CA);
+    }
+    
+    if (operType == readCY || operType == rmwCY) //READOP(i))
+    {
+        ReadOP(i, TPR.CA, DataRead, TM_R);  // read appropriate operand(s)
+        
+        if (adrTrace)
+        {
+            sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: %s: C(%06o)=%012llo\n", opDescSTR(i), TPR.CA, CY);
+            // XXX need to fix this with new read op stuff
+        }
+    }
+    if (operType == writeCY || operType == rmwCY) //WRITEOP(i))
+    {
+       modCont->bActive = true;    // will continue the write operation after instruction implementation
+       modCont->address = TPR.CA;
+       modCont->mod = TM_R;
+       modCont->i = i;
+
+       sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD(operType == %s): saving continuation '%s'\n", opDescSTR(i), modContSTR(modCont));
+
+       // Write(i, TPR.CA, CY, DataWrite, TM_R);
+       //
+       // if (adrTrace)
+       // {
+       //     sim_debug(DBG_ADDRMOD, &cpu_dev, "R_MOD1: writeCY: C(%06o)=%012llo\n", TPR.CA, CY);
+       // }
+    }
+    
+    return;
+    
+    //! Figure 6-4. Register Then Indirect Modification Flowchart
+RI_MOD:;
+    
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: Td=%o\n", Td);
+    }
+    
+    TPR.CA = rY;
+        
+    if (adrTrace)
+      {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "TPR.CA(After)=%06o\n", TPR.CA);
+      }
+    
+    if (switches . epp_hack)
+    {
+        // XXX CAC I am really unsure if this should be DataRead or OperandRead
+        Read(i, TPR.CA, &indword, DataRead, rTAG); //TM_RI);
+        indwordAddr = TPR.CA;
+        TPR.CA = GETHI(indword);
+        prevTm = Tm;
+        rTAG = GET_TAG(indword);
+    } else {
+        Read(i, TPR.CA, &indword, IndirectRead, rTAG); //TM_RI);
+        //Read(i, TPR.CA, &indword, operType == prepareCA ? DataRead : IndirectRead, rTAG); //TM_RI);
+
+        TPR.CA = GETHI(indword);
+        rTAG = GET_TAG(indword);
+    }
+    
+    rY = TPR.CA;
+    
+    if (adrTrace)
+    {
+        sim_debug(DBG_ADDRMOD, &cpu_dev, "RI_MOD: indword=%012llo TPR.CA=%06o rTAG=%02o\n", indword, TPR.CA, rTAG);
+    }
+    
+    return;
+}
+
 void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
 {
     if (modCont->bActive == false)
@@ -2892,10 +3056,6 @@ void doComputedAddressContinuation(DCDstruct *i)    //, eCAFoper operType)
 //        sim_printf("doComputedAddressContinuation(): operTpe != writeCY (%s)\n", opDescSTR(i));
 //        return;
 //    }
-    
-    directOperandFlag = false;
-    
-    //modCont->bActive = false;   // assume no continuation necessary
     
     sim_debug(DBG_ADDRMOD, &cpu_dev, "doComputedAddressContinuation(Entry): '%s'\n", modContSTR(modCont));
     

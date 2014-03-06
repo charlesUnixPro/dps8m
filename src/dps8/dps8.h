@@ -2121,8 +2121,9 @@ typedef struct {
     
     /* word 6 */
     //instr_t IR;     /* Working instr register; addr & tag are modified */
-    word18 IR;     /* Working instr register; addr & tag are modified */
-    uint tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it)
+    word36 IR;     /* Working instr register; addr & tag are modified */
+    //word6 tag;       // td portion of instr tag (we only update this for rpt instructions which is the only time we need it) XXX Not true; CAF updates it.
+
     
     /* word 7 */
     // instr_t IRODD;   // Instr holding register; odd word of last pair fetched
@@ -2821,6 +2822,7 @@ typedef struct modificationContinuation modificationContinuation;
 
 #define USE_CONTINUATIONS
 void doPreliminaryComputedAddressFormation(DCDstruct *i);  //, eCAFoper operType);
+void doPreliminaryComputedAddressFormationRpt(DCDstruct *i);  //, eCAFoper operType);
 void doComputedAddressContinuation(DCDstruct *i);    //, eCAFoper operType);
 
 

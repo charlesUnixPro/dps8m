@@ -458,7 +458,7 @@ static void setup_scpage_map (void)
 
         sim_debug (DBG_DEBUG, & cpu_dev, "setup_scpage_map: port:%d ss:%u as:%u sz:%u ba:%u\n", port_num, store_size, assignment, sz, base);
 
-	for (int pg = 0; pg < sz; pg ++)
+        for (int pg = 0; pg < sz; pg ++)
           {
             int scpg = base + pg;
             if (scpg >= 0 && scpg < N_SCPAGES)
@@ -579,9 +579,9 @@ word36 XECD2; /*!< XED instr#2 */
 
 word27 rTR; /*!< timer [map: TR, 9 0's] */
 
-//word18	ry;     /*!< address operand */
-word24	rY;     /*!< address operand */
-word8	rTAG;	/*!< instruction tag */
+//word18 ry;     /*!< address operand */
+word24 rY;     /*!< address operand */
+word8 rTAG; /*!< instruction tag */
 
 word8 tTB; /*!< char size indicator (TB6=6-bit,TB9=9-bit) [3b] */
 word8 tCF; /*!< character position field [3b] */
@@ -1123,6 +1123,8 @@ t_stat sim_instr (void)
 
                 if (cpu . interrupt_flag)
                   {
+// XXX this is wrong; the safe_save will save this value; safe_restore
+// will not be able to recover the correct state
                     cpu . cycle = INTERRUPT_cycle;
                     break;
                   }
@@ -1132,11 +1134,19 @@ t_stat sim_instr (void)
                     break;
                   }
 
-                processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
-        
+// XXX XXX XXX Make sure the rpt/repeat_first are cleared on interrupt
+// XXX XXX XXX or fault transfer
+// XXX XXX XXX Fix the int/fault safe store path to automagically set
+// XXX XXX XXX temporary_abs and clear rpt flags
 
-                ci = fetchInstruction(rIC, currentInstruction);    // fetch next instruction into current instruction struct
-        
+                if (! cu . rpt)
+                  {
+                    processorCycle = SEQUENTIAL_INSTRUCTION_FETCH;
+
+                    // fetch next instruction into current instruction struct
+                    ci = fetchInstruction(rIC, currentInstruction);
+                  }
+
                 // XXX The conditions are more rigorous: see AL39, pg 327
                 if (rIC % 2 == 0 && // Even address
                     ci -> i == 0) // Not inhibited
@@ -1149,17 +1159,13 @@ t_stat sim_instr (void)
                     cpu . interrupt_flag = false;
                     cpu . g7_flag = false;
                   }
-                cpu . cycle = EXEC_cycle;
-                break;
 
-            case EXEC_cycle:
-              {
                 static int Xn;
                 if (cu . repeat_first)
                   {
                     // check for illegal modifiers:
                     //    only R & RI are allowed 
-                    //    XXX only X1..X7
+                    //    only X1..X7
                     switch (GET_TM(ci->tag))
                       {
                         case TM_R:
@@ -1182,7 +1188,7 @@ t_stat sim_instr (void)
                         case TD_X7:
                           break;
                         default:
-                          // generate fault. Only R & RI allowed
+                          // generate fault. Only Xn allowed
                           doFault(ci, FAULT_IPR, 0, "ill addr mod from RPT");
                       }
                     // repeat allowed for this instruction?
@@ -1194,8 +1200,14 @@ t_stat sim_instr (void)
                     TPR.CA = (rX[Xn] + ci->address) & AMASK;
                     rX[Xn] = TPR.CA;
 
-                    cu . repeat_first = 0;
+                    cu . rpt = 1;
                   }
+
+                cpu . cycle = EXEC_cycle;
+                break;
+
+            case EXEC_cycle:
+              {
                 t_stat ret = executeInstruction (ci);
                 if (ret > 0)
                   {
@@ -1208,6 +1220,7 @@ t_stat sim_instr (void)
                       {
                         case CONT_TRA: // Instruction transferred
                           break;   // don't bump rIC, instruction already did it
+
                         // shouldn't happen; doFault never returns
                         //case CONT_FAULT:
                         default:
@@ -1217,6 +1230,8 @@ t_stat sim_instr (void)
                   }
                 if (cu . rpt)
                   {
+                    // Delay this to here to so that CAF can see it.
+                    cu . repeat_first = 0;
                     bool exit = false;
                     // The repetition cycle consists of the following steps:
                     //  a. Execute the repeated instruction
@@ -1291,12 +1306,14 @@ t_stat sim_instr (void)
                       break;
 
                     cu . rpt = false;
-                    // cpuCycles += 1; // XXX remove later when/if we can get this into the main loop
 
                   } // if (cu . rpt)
-
-                if (ret == 0)
-                  rIC ++;
+                else // !rpt
+                  {
+                    rIC ++;
+                    if (ci->iwb->ndes > 0)
+                      rIC += ci->iwb->ndes;
+                  }
                 cpu . cycle = FETCH_cycle;
               }
               break;
@@ -1318,7 +1335,7 @@ t_stat sim_instr (void)
                 // normal EXECUTE CYCLE but in the FAULT CYCLE with the
                 // processor in temporary absolute mode.
 
-                sim_printf ("fault cycle\n");
+                sim_debug (DBG_FAULT, & cpu_dev, "fault cycle\n");
     
 // There is problem with interrupts inside faults; scu_words will get
 // overwritten... No; the interrupt handler will safe_restore

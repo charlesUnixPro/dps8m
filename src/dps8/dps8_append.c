@@ -881,6 +881,7 @@ G:;
     
     // is prepage mode???
     // XXX: don't know what todo with this yet ...
+    // [CAC] This comment appears to be relevant to the NovaScale 9000.
     // The MVT, TCT, TCTR, and CMPCT instruction have a prepage check. The size of the translate table is determined by the TA1 data type as shown in the table below. Before the instruction is executed, a check is made for allocation in memory for the page for the translate table. If the page is not in memory, a Missing Page fault occurs before execution of the instruction. (cf. Bull, RJ78, p.7-75, sec 7.14.15)
     
     

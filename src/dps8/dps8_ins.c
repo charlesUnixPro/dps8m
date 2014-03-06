@@ -135,6 +135,30 @@ static word18 getCrAR(word4 reg)
 
 static t_uint64 scu_data[8];    // For SCU instruction
 
+// XXX This is to simplify processing of safe_restore; but
+// XXX shouldn't exist. The real h/w does this with out 
+// XXX this information.
+// XXX In the Control Unit data are:
+// XXX  FIF: Fault occured during instruction fetch
+// XXX  RFI: Restart this instruction
+// XXX  ITS: Execute ITS indirect cycle
+// XXX  ITP: Execute ITP indirect cycle
+// XXX  XDE: Execute instruction for Execute Double odd pair
+// XXX  XDO: Execute instruction for Execute Double even pair
+// XXX  RPT: Execute a Repeat instruction
+// XXX  RD:  Execute a  Repeat Double (rpd) instruction
+// XXX  RL:  Execute a Repeat Link (rpl) instruction
+// XXX  MIF: Mid-instruction interrupt indicator
+// XXX  F/I: Fault/interrupt flag
+// XXX            0 = interrupt
+// XXX            1 = fault
+// XXX  OOSB: For access violation fault - out of segment bounds
+
+static struct private_safe_store
+  {
+    cycles_t saveCPUCycle;
+  } private_safe_store;
+
 static void scu2words(t_uint64 *words)
 {
     // BUG:  We don't track much of the data that should be tracked
@@ -184,11 +208,6 @@ static void scu2words(t_uint64 *words)
     words[7] = cu.IRODD;
 }
 
-static struct private_safe_store
-  {
-    cycles_t saveCPUCycle;
-  } private_safe_store;
-
 
 void cu_safe_store(void)
 {
@@ -196,53 +215,60 @@ void cu_safe_store(void)
     // in FAULT mode can save the state as it existed at the time of the fault rather than
     // as it exists at the time the scu instruction is executed.
     scu2words(scu_data);
+// XXX Lose this
     private_safe_store . saveCPUCycle = cpu . cycle;
+}
+
+static void words2scu(t_uint64 *words)
+{
+    // BUG:  We don't track much of the data that should be tracked
+    
+    PPR.PRR  = getbits36(words[0], 0, 3);
+    PPR.PSR  = getbits36(words[0], 3, 15);
+    PPR.P    = getbits36(words[0], 18, 1);
+    // 19 "b" XSF
+    // 20 "c" SDWAMN
+    cu.SD_ON = getbits36(words[0], 21, 1);
+    // 22 "e" PTWAM
+    cu.PT_ON = getbits36(words[0], 23, 1);
+    // 24..32 various
+    // 33-35 FCT
+    
+    // words[1]
+    
+    TPR.TRR  =  getbits36(words[2], 0, 3);
+    TPR.TSR  = getbits36(words[2], 3, 15);
+    switches.cpu_num = getbits36(words[2], 27, 3);
+    cu.delta = getbits36(words[2], 30, 6);
+    
+    TPR.TBR  = getbits36(words[3], 30, 6);
+    
+    //save_IR(&words[4]);
+    rIR      = getbits36(words[4], 18, 18); // HWR
+    PPR.IC   = getbits36(words[4], 0, 18);
+    
+    TPR.CA   = getbits36(0, 0, 18);
+    cu.repeat_first = getbits36(words[5], 18, 1);
+    cu.rpt   = getbits36(words[5], 19, 1);
+    // BUG: Not all of CU data exists and/or is saved
+    cu.xde   = getbits36(words[5], 24, 1);
+    cu.xdo   = getbits36(words[5], 24, 1);
+    cu.CT_HOLD = getbits36(words[5], 30, 6);
+    
+    // XXX This will take some thought
+    //encode_instr(&cu.IR, &words[6]);    // BUG: cu.IR isn't kept fully up-to-date
+    //words[6] = ins;  // I think HWR
+    
+    cu.IRODD = words [7];
+// XXX Lose this
+    cpu . cycle = private_safe_store . saveCPUCycle;
+    // This bit of skullduggery cancels TEMPORARY_ABSOLUTE_mode
+    //set_addr_mode (get_addr_mode ());
 }
 
 void cu_safe_restore (void)
 {
-    // BUG:  We don't track much of the data that should be tracked
-    
-    PPR.PRR  = getbits36(scu_data[0], 0, 3);
-    PPR.PSR  = getbits36(scu_data[0], 3, 15);
-    PPR.P    = getbits36(scu_data[0], 18, 1);
-    // 19 "b" XSF
-    // 20 "c" SDWAMN
-    cu.SD_ON = getbits36(scu_data[0], 21, 1);
-    // 22 "e" PTWAM
-    cu.PT_ON = getbits36(scu_data[0], 23, 1);
-    // 24..32 various
-    // 33-35 FCT
-    
-    // scu_data[1]
-    
-    TPR.TRR  =  getbits36(scu_data[2], 0, 3);
-    TPR.TSR  = getbits36(scu_data[2], 3, 15);
-    switches.cpu_num = getbits36(scu_data[2], 27, 3);
-    cu.delta = getbits36(scu_data[2], 30, 6);
-    
-    TPR.TBR  = getbits36(scu_data[3], 30, 6);
-    
-    //save_IR(&scu_data[4]);
-    rIR      = getbits36(scu_data[4], 18, 18); // HWR
-    PPR.IC   = getbits36(scu_data[4], 0, 18);
-    
-    TPR.CA   = getbits36(0, 0, 18);
-    cu.repeat_first = getbits36(scu_data[5], 18, 1);
-    cu.rpt   = getbits36(scu_data[5], 19, 1);
-    // BUG: Not all of CU data exists and/or is saved
-    cu.xde   = getbits36(scu_data[5], 24, 1);
-    cu.xdo   = getbits36(scu_data[5], 24, 1);
-    cu.CT_HOLD = getbits36(scu_data[5], 30, 6);
-    
-    // XXX This will take some thought
-    //encode_instr(&cu.IR, &scu_data[6]);    // BUG: cu.IR isn't kept fully up-to-date
-    //scu_data[6] = ins;  // I think HWR
-    
-    cu.IRODD = scu_data [7];
-    cpu . cycle = private_safe_store . saveCPUCycle;
-    // This bit of skullduggery cancels TEMPORARY_ABSOLUTE_mode
-    set_addr_mode (get_addr_mode ());
+    words2scu(scu_data);
 }
 
 PRIVATE char *PRalias[] = {"ap", "ab", "bp", "bb", "lp", "lb", "sp", "sb" };
@@ -571,7 +597,10 @@ t_stat executeInstruction(DCDstruct *ci)
 //            else if (iwb->flags & STORE_YPAIR)
 //                op = writeCYpair;
 
-        doPreliminaryComputedAddressFormation(ci);  //, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
+        if (cu . rpt)
+            doPreliminaryComputedAddressFormationRpt(ci);
+        else
+            doPreliminaryComputedAddressFormation(ci);  //, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
 #else
         if (iwb->flags & (READ_OPERAND | PREPARE_CA))
             doComputedAddressFormation(ci, (iwb->flags & READ_OPERAND) ? readCY : prepareCA);
@@ -3115,6 +3144,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             else
                 n = (opcode & 3) + 4;
 
+// XXX According to figure 8.1, all of this is done by the append unit.
             PR[n].RNR = PPR.PRR;
             PR[n].SNR = PPR.PSR;
             PR[n].WORDNO = (PPR.IC + 1) & 0777777;
@@ -3838,7 +3868,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             cu.delta = i->tag;
             if (c)
                 rX[0] = i->address;    // Entire 18 bits
-            cu.rpt = 1;
+            cu.rpt = 0;
             cu.repeat_first = 1;
             // Setting cu.rpt will cause the instruction to be executed
             // until the termination is met.
@@ -3988,19 +4018,14 @@ static t_stat DoBasicInstruction(DCDstruct *i)
             break;
 #endif
             {
-              cu . rpts = 1;
             // AL39, page 209
-#ifndef QUIET_UNUSED
-              uint tally = (i->address >> 10);
-#endif
+              //uint tally = (i->address >> 10);
               uint c = (i->address >> 7) & 1;
-#ifndef QUIET_UNUSED
-              uint term = i->address & 0177;
-#endif
+              //uint term = i->address & 0177;
               cu . delta = i->tag;
               if (c)
                 rX[0] = i->address;    // Entire 18 bits
-              cu . rpt = 1;
+              cu . rpt = 0;
               cu . repeat_first = 1;
               // Setting cu.rpt will cause the instruction to be executed
               // until the termination is met.
@@ -4157,7 +4182,12 @@ static t_stat DoBasicInstruction(DCDstruct *i)
         case 0657:  ///< scu
             
             // ToDo: need to decode i into cu.IR
-            cu_safe_store();
+
+            // No! do not cu_safe_store here! The scu command stores a copy
+            // of the data that the processor saved when entering the
+            // the interrupt or fault cycle.
+            //cu_safe_store();
+
             // XXX STORE_YBLOCK8 not yet in; fix this code when it is
             sim_debug (DBG_ERR, & cpu_dev, "Fixme: SCU STORE_YBLOCK8 workaround\n");
             // XXX this may be way too simplistic ..... 
@@ -4567,7 +4597,7 @@ static t_stat DoBasicInstruction(DCDstruct *i)
                 sim_debug (DBG_MSG, & cpu_dev, "entered DIS_cycle\n");
                 sim_printf ("entered DIS_cycle\n");
                 cpu.cycle = DIS_cycle;
-                longjmp (jmpMain, JMP_ENTRY);
+                //longjmp (jmpMain, JMP_ENTRY);
                 break;
               }
             else
